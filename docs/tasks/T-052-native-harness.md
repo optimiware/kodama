@@ -2,7 +2,7 @@
 id: T-052
 milestone: M4
 status: deferred
-depends_on: [T-038]
+depends_on: []
 decision_blockers: []
 owns: [internal/agents/native/, images/harness-native/, test/integration/harness-native/]
 ---

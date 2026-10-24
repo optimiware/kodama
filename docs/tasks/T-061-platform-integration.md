@@ -2,7 +2,7 @@
 id: T-061
 milestone: production
 status: deferred
-depends_on: [T-039, T-046]
+depends_on: []
 decision_blockers: []
 owns: [internal/platformintegration/, internal/app/platform-integration.go, test/e2e/platform-integration/, docs/operations/platform-integration.md]
 ---

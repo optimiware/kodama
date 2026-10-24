@@ -182,7 +182,7 @@ func TestCreateSendsOnlyTheContract(t *testing.T) {
 		t.Fatalf("request %s %s %v", req.Path, req.Body, req.Header)
 	}
 	doc := decodeJSON(t, r.out)
-	if doc["created"] != true || doc["annotations"].(map[string]any)["kodama.optimi.io/deployment-id"] == nil {
+	if doc["created"] != true || doc["annotations"].(map[string]any)["kodama.optimi.com/deployment-id"] == nil {
 		t.Fatalf("receipt %v", doc)
 	}
 }

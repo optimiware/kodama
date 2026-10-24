@@ -2,7 +2,7 @@
 id: T-059
 milestone: M4
 status: deferred
-depends_on: [T-014, T-030]
+depends_on: []
 decision_blockers: []
 owns: [docs/implementation/chassis-guidance.md, templates/chassis-guidance/]
 ---

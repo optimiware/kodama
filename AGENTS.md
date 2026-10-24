@@ -92,7 +92,7 @@ The [task index](docs/tasks/README.md) records merged contributions and remainin
 
 ## OpenForge repository automation
 
-[OpenForge](../openforge/README.md) is the Bun/TypeScript contribution harness with an embedded OpenCode SDK 2.1.2 host. It plans, implements, independently reviews and qualifies task branches before publication. Kodama's product wrapper remains the separate T-031 milestone.
+OpenForge (`../openforge`) is the Bun/TypeScript contribution harness with an embedded OpenCode SDK 2.1.2 host. It plans, implements, independently reviews and qualifies task branches before publication. Kodama's product wrapper remains the separate T-031 milestone.
 
 Run `make openforge-install` in worktrees using OpenForge commands; it uses the frozen package lock. Checks never install dependencies or rewrite that lock. `make check-openforge` runs typechecking, Biome and Bun tests **for harness changes**; `make test-python` is for development-tooling changes. `make test` runs only infrastructure-free Go tests. The [task queue](docs/tasks/README.md) schedules Go core → M1 checkpoint → mocked agentic core → M2 checkpoint, with production/extra wrappers/chassis deferred.
 

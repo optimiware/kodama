@@ -136,13 +136,13 @@ func Test_deployment_annotation_lookup(t *testing.T) {
 		}
 
 		// Another deployment's claim on an object, then partial and absent.
-		w.ns.admin(t, "annotate", "deployment", "inventory", "--overwrite", "kodama.optimi.io/deployment-id=dep_someone_else")
+		w.ns.admin(t, "annotate", "deployment", "inventory", "--overwrite", "kodama.optimi.com/deployment-id=dep_someone_else")
 		r = w.lookup(key, nil)
 		w.requireCompleted(r)
 		if d := w.lookupDoc(r); d.Verdict != "foreign" {
 			t.Errorf("foreign: %+v", d)
 		}
-		w.ns.admin(t, "annotate", "deployment", "inventory", "--overwrite", "kodama.optimi.io/deployment-id="+string(rec.ID))
+		w.ns.admin(t, "annotate", "deployment", "inventory", "--overwrite", "kodama.optimi.com/deployment-id="+string(rec.ID))
 		w.ns.admin(t, "set", "image", "deployment/inventory", "app="+w.nodeRef)
 		w.ns.admin(t, "delete", "configmap", "inventory-config")
 		r = w.lookup(key, nil)

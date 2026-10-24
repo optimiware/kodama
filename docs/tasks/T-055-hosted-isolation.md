@@ -2,7 +2,7 @@
 id: T-055
 milestone: M4
 status: deferred
-depends_on: [T-038, T-056]
+depends_on: [T-056]
 decision_blockers: []
 owns: [deploy/helm/kodama/profiles/hosted/, test/e2e/hosted-isolation/, docs/operations/hosted-isolation.md]
 ---

@@ -31,14 +31,7 @@ bun ../openforge/src/cli.ts run --workers 8 > /tmp/<name>/openforge-run.log 2>&1
 
 Then loop: wait a fixed interval (a backgrounded `sleep 295` that notifies you), run the report, act, repeat. Do not busy-poll.
 
-```sh
-python3 .agents/skills/orchestrate-factory/scripts/factory_report.py status  --log /tmp/<name>/openforge-run.log
-python3 .agents/skills/orchestrate-factory/scripts/factory_report.py stuck   --log /tmp/<name>/openforge-run.log
-python3 .agents/skills/orchestrate-factory/scripts/factory_report.py metrics --hours 2
-python3 .agents/skills/orchestrate-factory/scripts/factory_report.py progress
-```
-
-`status` shows whether the process is alive, ready/active/parked tasks, the main-check state, paused-for-infrastructure tasks and recent commits. `stuck` shows the last shell command of each active task: a task that ran a command within a few minutes is working, however long it has been in one phase (implement runs of 60 to 110 minutes are normal for acceptance suites; the agent timeout is `agentTimeoutSeconds`).
+Check progress with the OpenForge project's own reports (see its README in `../openforge`) and the run log. The report scripts that used to live here moved with OpenForge. Judge a task by its last shell command: a task that ran a command within a few minutes is working, however long it has been in one phase (implement runs of 60 to 110 minutes are normal for acceptance suites; the agent timeout is `agentTimeoutSeconds`).
 
 Stop gracefully with `touch .work/.harness/HALT`; the process exits when active agents yield (usually 1 to 3 minutes). Remove the file before restarting. **A restart is how new harness code, prompts and config take effect**, and it is also how paused tasks are retried. Agents resume their sessions; their worktrees persist.
 

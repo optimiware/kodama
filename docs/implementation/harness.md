@@ -70,7 +70,7 @@ Unexpected worker failures cancel peer work and wait for all active workers and 
 
 ## Orchestrating a factory
 
-The orchestrator playbook (start and loop, triage of parked, paused and stalled tasks, prerequisite tasks, asynchronous decisions, throughput levers) is the repository skill [`orchestrate-factory`](../../.agents/skills/orchestrate-factory/SKILL.md), with read-only status, stuck, metrics and progress reports in `.agents/skills/orchestrate-factory/scripts/factory_report.py`.
+The orchestrator playbook (start and loop, triage of parked, paused and stalled tasks, prerequisite tasks, asynchronous decisions, throughput levers) is the repository skill [`orchestrate-factory`](../../.agents/skills/orchestrate-factory/SKILL.md).
 
 ## Telegram operator
 

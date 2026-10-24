@@ -2,7 +2,7 @@
 id: T-104
 milestone: production
 status: deferred
-depends_on: [T-089, T-105, T-103]
+depends_on: []
 decision_blockers: []
 owns: [test/e2e/kube-full/, test/integration/assembly-execution/, docs/acceptance/kube-full.md]
 check: DEV_STACK=cluster make check-go-integration PKGS="./test/e2e/kube-full/... ./test/integration/assembly-execution/..."

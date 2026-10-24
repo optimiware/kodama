@@ -16,18 +16,18 @@ import (
 // 63 characters), and every annotation is rechecked against committed attempt
 // data before an object is adopted, modified or deleted.
 const (
-	LabelManagedBy = "kodama.optimi.dev/managed-by"
+	LabelManagedBy = "kodama.optimi.com/managed-by"
 	ValueManagedBy = "job-executor"
-	LabelJob       = "kodama.optimi.dev/job"
+	LabelJob       = "kodama.optimi.com/job"
 
-	AnnTenant        = "kodama.optimi.dev/tenant"
-	AnnProject       = "kodama.optimi.dev/project"
-	AnnRun           = "kodama.optimi.dev/run"
-	AnnStep          = "kodama.optimi.dev/step"
-	AnnAttempt       = "kodama.optimi.dev/attempt"
-	AnnContextDigest = "kodama.optimi.dev/context-digest"
-	AnnFingerprint   = "kodama.optimi.dev/spec-fingerprint"
-	AnnWorkload      = "kodama.optimi.dev/workload"
+	AnnTenant        = "kodama.optimi.com/tenant"
+	AnnProject       = "kodama.optimi.com/project"
+	AnnRun           = "kodama.optimi.com/run"
+	AnnStep          = "kodama.optimi.com/step"
+	AnnAttempt       = "kodama.optimi.com/attempt"
+	AnnContextDigest = "kodama.optimi.com/context-digest"
+	AnnFingerprint   = "kodama.optimi.com/spec-fingerprint"
+	AnnWorkload      = "kodama.optimi.com/workload"
 
 	// PodLabelJobUID and PodLabelJobName are set on Pods by the Job controller.
 	PodLabelJobUID  = "batch.kubernetes.io/controller-uid"

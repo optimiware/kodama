@@ -2,7 +2,7 @@
 id: T-053
 milestone: M4
 status: deferred
-depends_on: [T-038]
+depends_on: []
 decision_blockers: []
 owns: [images/harness-claude/, test/integration/harness-claude/]
 ---

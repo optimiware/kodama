@@ -168,7 +168,7 @@ Sequence and recovery (DQ-08):
    change**. An unacknowledged report stops the script (`callback_unavailable`):
    nothing was applied.
 7. `kubectl apply` of the objects annotated with **every** annotation of the
-   receipt (`kodama.optimi.io/deployment-id`, `…/action-key`,
+   receipt (`kodama.optimi.com/deployment-id`, `…/action-key`,
    `…/configuration-digest` in the published fixtures), into the recorded
    namespace. A definite refusal (forbidden, invalid, admission) is reported
    `failed apply_rejected` with what exists. An indefinite failure is reported
@@ -215,7 +215,7 @@ on stdout and exits 0 whenever the observation completed:
  "deployment":{"id":"dep_…","status":"succeeded","reason":"ready","outcomeUnknown":false,
                "namespace":"…","configurationDigest":"sha256:…","imageDigest":"sha256:…",
                "sourceCommit":"…","actionKey":"run_…:deploy"},
- "annotations":{"kodama.optimi.io/deployment-id":"dep_…","…":"…"},
+ "annotations":{"kodama.optimi.com/deployment-id":"dep_…","…":"…"},
  "observed":[{"apiVersion":"apps/v1","kind":"Deployment","namespace":"…","name":"…",
               "present":true,"owned":true,"holder":"dep_…","uid":"…","ready":true}]}
 ```

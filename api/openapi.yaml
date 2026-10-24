@@ -3452,9 +3452,9 @@ components:
     DeploymentReceipt:
       value:
         annotations:
-          kodama.optimi.io/action-key: run_t035_1:deploy
-          kodama.optimi.io/configuration-digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-          kodama.optimi.io/deployment-id: dep_0123456789abcdef0123456789abcdef
+          kodama.optimi.com/action-key: run_t035_1:deploy
+          kodama.optimi.com/configuration-digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          kodama.optimi.com/deployment-id: dep_0123456789abcdef0123456789abcdef
         created: true
         deployment:
           actionKey: run_t035_1:deploy

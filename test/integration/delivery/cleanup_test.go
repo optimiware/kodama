@@ -179,7 +179,7 @@ func (w *world) bystanders() map[string]string {
 	w.t.Helper()
 	w.ns.admin(w.t, "create", "configmap", "bystander")
 	w.ns.admin(w.t, "create", "configmap", "foreign-claim")
-	w.ns.admin(w.t, "annotate", "configmap", "foreign-claim", "kodama.optimi.io/deployment-id=dep_someone_else")
+	w.ns.admin(w.t, "annotate", "configmap", "foreign-claim", "kodama.optimi.com/deployment-id=dep_someone_else")
 	return map[string]string{
 		"bystander":     uidOf(w.ns.object(w.t, "configmap", "bystander")),
 		"foreign-claim": uidOf(w.ns.object(w.t, "configmap", "foreign-claim")),

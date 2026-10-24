@@ -2,7 +2,7 @@
 id: T-085
 milestone: M4
 status: deferred
-depends_on: [T-044, T-031, T-038]
+depends_on: []
 decision_blockers: []
 owns: [test/e2e/live-agent/, docs/acceptance/live-agent.md]
 check: make check-go-integration PKGS=./test/e2e/live-agent/...

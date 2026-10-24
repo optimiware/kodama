@@ -2,7 +2,7 @@
 id: T-090
 milestone: production
 status: deferred
-depends_on: [T-089, T-044, T-028, T-104]
+depends_on: [T-104]
 decision_blockers: []
 owns: [deploy/staging/, test/e2e/staging/, docs/operations/staging.md]
 ---

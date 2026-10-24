@@ -23,7 +23,7 @@ After M1, build/test native-trigger policy, environment pinning, cleanup, profil
 T-075 → T-046 wires evidence-to-defect mapping, authenticated gate/notification links, work dependencies and flow summaries with unit tests. T-044 qualifies actual local persistence/replay/human completion. Browser-agent QA and application-stack expansion remain separately scheduled.
 
 ## After M3 — scheduled expansion
-O-26 schedules [T-105 secrets startup wiring](../tasks/T-105-secrets-startup.md), extracted from T-029. Full Kubernetes readiness T-104 now follows T-105/T-103 and includes live KMS validation during deployment; complete disaster recovery remains T-029. T-104/T-090 retain explicit scheduling requirements.
+O-26 schedules T-105 secrets startup wiring, extracted from T-029. Full Kubernetes readiness T-104 now follows T-105/T-103 and includes live KMS validation during deployment; complete disaster recovery remains T-029. T-104/T-090 retain explicit scheduling requirements.
 
 
 Defer chassis guidance (T-059), Supabase blueprint (T-047), browser QA/profile qualification (T-069), live agent/wrapper qualification (T-085), additional harnesses (T-052–T-054), optional Platform UI, stronger isolation and operator work. Keep completed wrapper/blueprint/adapter packages; they need not be rewritten or repeatedly qualified while finishing the core.

@@ -1,6 +1,6 @@
 # Foundation development environment
 
-This is the T-001 scaffold (a Go process, real dependency fixtures, and named acceptance checks) with the T-091 stack split: `DEV_STACK=services` builds the dependencies without a cluster. The [task](../docs/tasks/T-001-scaffold.md) is merged; Docker/Linux CI qualification is pending its first run.
+This is the T-001 scaffold (a Go process, real dependency fixtures, and named acceptance checks) with the T-091 stack split: `DEV_STACK=services` builds the dependencies without a cluster. The task is merged; Docker/Linux CI qualification is pending its first run.
 
 ## Prerequisites
 
@@ -62,7 +62,7 @@ Measured on one shared 8-core Xeon E5-1410 v2 (load average about 10, so absolut
 
 The clone clears the three-times bar for the core manifest on the scope's PostgreSQL (4.0× here, 3.8× in an earlier run) and not for the base schema, so the clone is for suites that migrate large manifests and `New` stays right for a base-only schema.
 
-The embedded comparison is a native binary, not a container with changed settings: `python3 scripts/dev/embedded_benchmark.py` downloads the pinned (SHA-256 checked) zonky.io `embedded-postgres-binaries` 17.6.0 archive that embedded-PostgreSQL libraries use, runs `initdb` into a temporary directory, starts `postgres` on a free loopback port, runs the same benchmark against it, stops it with `pg_ctl -m immediate` and deletes the directory. It adds no Go dependency. Besides the rows above, each embedded instance costs 1.4–1.6 s of `initdb` and about 0.11 s to start, which the scope container already paid at `dev-up`. An embedded binary does not remove the cost the clone removes: per-test migration of the core manifest still takes about 610 ms natively, 3–4× the container's clone time. Clones on an embedded instance are fast only with durability off, which the scope's PostgreSQL does not need to match for tests that examine persistence. No embedded binary is adopted; adopting one needs a recorded decision.
+The embedded comparison is a native binary, not a container with changed settings: a one-off script (removed after the measurement; see Git history) downloaded the pinned (SHA-256 checked) zonky.io `embedded-postgres-binaries` 17.6.0 archive that embedded-PostgreSQL libraries use, ran `initdb` into a temporary directory, started `postgres` on a free loopback port, ran the same benchmark against it, stopped it with `pg_ctl -m immediate` and deleted the directory. It added no Go dependency. Besides the rows above, each embedded instance costs 1.4–1.6 s of `initdb` and about 0.11 s to start, which the scope container already paid at `dev-up`. An embedded binary does not remove the cost the clone removes: per-test migration of the core manifest still takes about 610 ms natively, 3–4× the container's clone time. Clones on an embedded instance are fast only with durability off, which the scope's PostgreSQL does not need to match for tests that examine persistence. No embedded binary is adopted; adopting one needs a recorded decision.
 
 ### Podman runtime acceptance
 

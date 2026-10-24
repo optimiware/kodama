@@ -44,13 +44,13 @@ const Namespace = "kodama-podman"
 // Container labels. They select and describe managed containers; ownership
 // is decided by the durable record and the verified container ID.
 const (
-	LabelManagedBy   = "kodama.optimi.dev/managed-by"
+	LabelManagedBy   = "kodama.optimi.com/managed-by"
 	ValueManagedBy   = "podman-runtime"
-	LabelTenant      = "kodama.optimi.dev/tenant"
-	LabelProject     = "kodama.optimi.dev/project"
-	LabelAttempt     = "kodama.optimi.dev/attempt"
-	LabelUID         = "kodama.optimi.dev/uid"
-	LabelFingerprint = "kodama.optimi.dev/spec-fingerprint"
+	LabelTenant      = "kodama.optimi.com/tenant"
+	LabelProject     = "kodama.optimi.com/project"
+	LabelAttempt     = "kodama.optimi.com/attempt"
+	LabelUID         = "kodama.optimi.com/uid"
+	LabelFingerprint = "kodama.optimi.com/spec-fingerprint"
 )
 
 // Config configures a Runtime.

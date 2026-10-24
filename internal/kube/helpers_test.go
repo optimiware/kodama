@@ -20,7 +20,7 @@ func jsonUnmarshal(t *testing.T, b []byte, v any) {
 func parseRecord(t *testing.T, s kubernetes.Secret) map[string]any {
 	t.Helper()
 	var m map[string]any
-	jsonUnmarshal(t, []byte(s.Metadata.Annotations["kodama.optimi.dev/workload"]), &m)
+	jsonUnmarshal(t, []byte(s.Metadata.Annotations["kodama.optimi.com/workload"]), &m)
 	return m
 }
 

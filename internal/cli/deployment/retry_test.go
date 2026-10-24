@@ -53,7 +53,7 @@ func Test_deployment_cli_retry(t *testing.T) {
 		rec.status, rec.reason, rec.version = "succeeded", "ready", 4
 	})
 	human := c.run(createArgs()...)
-	if human.code != 0 || !strings.Contains(human.out, "replayed") || !strings.Contains(human.out, "kodama.optimi.io/deployment-id=") ||
+	if human.code != 0 || !strings.Contains(human.out, "replayed") || !strings.Contains(human.out, "kodama.optimi.com/deployment-id=") ||
 		!strings.Contains(human.out, "pending (registered)") || !strings.Contains(human.out, "version: 1") {
 		t.Fatalf("replay not visible or not the original: %q", human.out)
 	}

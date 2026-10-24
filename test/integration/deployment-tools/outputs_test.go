@@ -51,7 +51,7 @@ func Test_deployment_tools_outputs(t *testing.T) {
 			t.Errorf("record: image %s source %s status %s", rec.Image.Digest, rec.Source.Commit, rec.Status)
 		}
 		dep := w.requireAnnotated(rec, "deployment", "inventory")
-		if annotationsOf(dep)["kodama.optimi.io/configuration-digest"] != outs["configuration_digest"] {
+		if annotationsOf(dep)["kodama.optimi.com/configuration-digest"] != outs["configuration_digest"] {
 			t.Error("the live objects do not carry the configuration digest the step reports")
 		}
 		image := w.ns.admin(t, "get", "deployment", "inventory", "-o", "jsonpath={.spec.template.spec.containers[0].image}")

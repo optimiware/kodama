@@ -553,9 +553,9 @@ type AnnotationNames struct {
 
 // DefaultAnnotations is the fixture configuration published with this module.
 var DefaultAnnotations = AnnotationNames{
-	Deployment:    "kodama.optimi.io/deployment-id",
-	Action:        "kodama.optimi.io/action-key",
-	Configuration: "kodama.optimi.io/configuration-digest",
+	Deployment:    "kodama.optimi.com/deployment-id",
+	Action:        "kodama.optimi.com/action-key",
+	Configuration: "kodama.optimi.com/configuration-digest",
 }
 
 var annotationName = regexp.MustCompile(`^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$`)

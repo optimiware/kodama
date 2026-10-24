@@ -2,7 +2,7 @@
 id: T-069
 milestone: M3
 status: deferred
-depends_on: [T-038, T-040, T-047, T-067]
+depends_on: [T-047]
 decision_blockers: []
 owns: [images/exploratory-qa/, profiles/exploratory-qa/, test/integration/qa/]
 check: make check-go-integration PKGS=./test/integration/qa/...
