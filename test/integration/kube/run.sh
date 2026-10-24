@@ -22,12 +22,9 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 prefix="${KODAMA_RESOURCE_PREFIX:-t021}"
 state="$root/dev/.state/$prefix"
-lock="$root/dev/versions.lock.json"
-
-version() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.argv[2]]["version"])' "$lock" "$1"; }
-kind="$root/dev/.tools/kind-$(version kind)"
-kubectl="$root/dev/.tools/kubectl-$(version kubectl)"
-image="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["images"]["node"])' "$lock")"
+kind="$root/dev/.tools/bin/kind"
+kubectl="$root/dev/.tools/bin/kubectl"
+image="$(cd "$root" && go run ./dev/cmd/devctl tools image node)"
 [ -x "$kind" ] && [ -x "$kubectl" ] || { echo "kind/kubectl not installed; run: make tools" >&2; exit 2; }
 
 provider="${DEV_PROVIDER:-}"

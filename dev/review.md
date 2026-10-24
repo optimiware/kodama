@@ -6,7 +6,7 @@
 - Worktree: `.work/T-001-scaffold/` under the primary checkout.
 - Status: merged to `main` (commit `0c848fe`) after local Podman verification against the refreshed dependency set (below). No independent reviewer approved it; the owner directed the merge. Docker/Linux CI has not run.
 - Main changes: Go process scaffold using stdlib `flag`; health OpenAPI; locked dependencies/tools; Compose-managed dependency containers plus a kind cluster; Pod-native protocol probes; teardown acceptance; Make targets; CI; configuration/runbook.
-- Layout: the Python harness is in `scripts/dev/` (task ownership updated to include it); `dev/` keeps `compose.yaml`, the Containerfile, Go fixtures/probes, contracts, locks, and documentation.
+- Layout: the scaffold harness was Python in `scripts/dev/` (task ownership updated to include it); it has since been replaced by the Go tooling in `dev/cmd/` and `dev/internal/`. `dev/` keeps `compose.yaml`, the Containerfile, Go fixtures/probes, contracts, locks, and documentation.
 - Owner-directed contract changes: LocalStack replaces MinIO; oauthsonas replaces the proposed generic/Keycloak fixture; Compose runs the dependency containers. Matching task/spec/decision text is updated. T-012 retains local-key adapter implementation; T-001 supplies its key fixture.
 
 ## Dependency refresh
@@ -27,7 +27,7 @@ Run locally on 2026-10-19 with macOS ARM64, Go 1.27.2, Podman 6.1.4 (rootful App
 | `make fmt lint test build` | Passed: formatting, vet, actionlint, configuration/digest-pin validation (8 images), 110-document link/anchor/JSON/shell checks, Go race tests, ten Python tests, static host build |
 | `go mod verify`, `go mod tidy -diff`, `git diff --check` | Passed: modules verified, no lock drift, no whitespace errors |
 | `dev/.state/bin/kodama server --help` | Passed: flags for HTTP address, log level, shutdown timeout |
-| `make scaffold-smoke` (fresh scope, three runs) | Passed each time: server, PostgreSQL, JetStream, LocalStack S3, HTTPS Git, oauthsonas PKCE, Pod registry push, kubelet digest pull (about 2 minutes) |
+| `make scaffold-smoke` (fresh scope, three runs; now `make dev-smoke`) | Passed each time: server, PostgreSQL, JetStream, LocalStack S3, HTTPS Git, oauthsonas PKCE, Pod registry push, kubelet digest pull (about 2 minutes) |
 | `make dev-up` then `make test-integration` on an existing scope | Passed: Compose re-up and kubeconfig re-export are idempotent; EndpointSlices unchanged; probe passes again |
 | `make dev-teardown-check` | Passed: mismatched node identity rejected; one owned container removed to model partial cleanup; repeated cleanup; independent cluster/ConfigMap and user kubeconfig preserved |
 | `make dev-diagnostics` then `make dev-down` | Passed: report set produced with no credential or SQL material; complete teardown |
@@ -40,7 +40,7 @@ Bugs: the Git fixture rejected chunked pushes (Git switches to chunked above 1 M
 
 Risks: Git service gate is default-deny with exactly one `service` value, tokens are whitespace-trimmed and must differ, and the `Authorization` header is not forwarded to the CGI process; the probe now proves the runtime role differs from the migration role and cannot create tables, verifies the ID token for the client audience and nonce, and copies the platform manifest from registry image indexes; the development CA is valid for one year with random serials and `MaxPathLenZero`; the Alpine release moved from code to `versions.lock.json`.
 
-Simplifications: dependency containers moved out of Python into `dev/compose.yaml` (the Kubernetes workload generator, PVC/probe manifests, registry bookkeeping, and `chmod` workaround are gone). `environment.py` is about the same length as before (432 vs 446 lines) because it gained fixture generation and label-based ownership handling, so the gain is in responsibilities, not line count. JetStream uses the current `jetstream` package; the Containerfile uses `COPY --chmod`, a bind-mounted package, and an explicit `HOME`.
+Simplifications: dependency containers moved out of Python into `dev/compose.yaml` (the Kubernetes workload generator, PVC/probe manifests, registry bookkeeping, and `chmod` workaround are gone). the environment script was about the same length as before (432 vs 446 lines) because it gained fixture generation and label-based ownership handling, so the gain is in responsibilities, not line count. JetStream uses the current `jetstream` package; the Containerfile uses `COPY --chmod`, a bind-mounted package, and an explicit `HOME`.
 
 Not changed: LocalStack does not enforce S3 signature validation by default, so the S3 check proves the client signs requests and the protocol works, not credential enforcement. The docs state this scope.
 

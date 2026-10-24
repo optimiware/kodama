@@ -51,7 +51,7 @@ Three generic gates govern every task:
 
 1. **Scope gate:** Every changed file must fall under `owns`. Files listed in `openforge.json` `protected` (`go.mod`, `go.sum`) cannot be modified unless explicitly owned by the task.
 2. **Check & acceptance gate:** The task's `check` command runs under the in-process resource semaphores configured in `openforge.json` (`resources`).
-   - **Exit `0`:** Passes. When `acceptance` is non-empty, the harness passes `FORGE_RESULTS=<wt>/.harness/results.json` and verifies that every declared acceptance test name appears in `passed` (and not in `failed` or `skipped`). For Go tasks, `scripts/dev/go_results.py` parses `go test -json` output and writes `FORGE_RESULTS`.
+   - **Exit `0`:** Passes. When `acceptance` is non-empty, the harness passes `FORGE_RESULTS=<wt>/.harness/results.json` and verifies that every declared acceptance test name appears in `passed` (and not in `failed` or `skipped`). For Go tasks, `make check-go` (`dev/cmd/repoctl`) parses `go test -json` output and writes `FORGE_RESULTS`; a missing scope exits `75`.
    - **Exit `75` (`EX_TEMPFAIL`) or timeout (`124`):** Pauses the task for unavailable infrastructure without charging a repair attempt.
    - **Any other non-zero exit:** Sends the failure log tail to the `fixer` (up to `limits.repairs`).
 3. **Review gate:** Requires an `approve` verdict with zero blocking findings (`p1`, `blocker`, `major`) bound to the candidate fingerprint and qualification context. Tasks with `review: human` park for human review after passing checks, including when that policy changes while a task is stopped.

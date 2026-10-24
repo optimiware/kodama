@@ -1,24 +1,24 @@
-PYTHON ?= python3
 BUN ?= bun
 GO ?= go
 DEV_SCOPE ?= t-001-local
 DEV_PROVIDER ?= podman
 export DEV_PROVIDER
-ENV = $(PYTHON) scripts/dev/environment.py
-SCOPE_ARGS = --scope $(DEV_SCOPE) --provider $(DEV_PROVIDER)
+DEVCTL = $(GO) run ./dev/cmd/devctl
+REPOCTL = $(GO) run ./dev/cmd/repoctl
 OPENFORGE_DIR ?= ../openforge
 OPENFORGE = $(BUN) --no-install $(OPENFORGE_DIR)/src/cli.ts
 CHECK_PACKAGES ?=
 GO_CORE_PACKAGES = ./cmd/... ./internal/... ./api/... ./contracts/... ./pkg/... ./test/support/...
 PKGS ?= $(GO_CORE_PACKAGES)
+INTEGRATION_PKGS ?= ./test/e2e/m1/... ./test/integration/assembly-execution/...
 
-.PHONY: fmt fmt-check lint lint-openforge test test-go test-go-unit test-go-json test-python openforge-install test-openforge check-openforge check-go check-go-integration test-task check-task build tools dev-up dev-down test-integration test-assembly test-m1 test-m2 test-m3 test-chart api-generate api-check scaffold-smoke dev-teardown-check dev-diagnostics docs-check validate-tasks openforge-telegram
+.PHONY: fmt fmt-check lint lint-openforge test test-go test-go-unit test-go-json check-devtools openforge-install test-openforge check-openforge check-go check-go-integration test-podman test-task check-task build tools dev-up dev-down dev-preflight dev-integration dev-runtime test-integration dev-smoke test-assembly test-m1 test-m2 test-m3 test-chart api-generate api-check dev-teardown-check dev-diagnostics docs-check validate-tasks openforge-telegram
 
 fmt:
 	$(GO) fmt ./...
 
 fmt-check:
-	$(PYTHON) scripts/dev/check.py fmt $(CHECK_PACKAGES)
+	$(REPOCTL) fmt $(CHECK_PACKAGES)
 
 lint: lint-go
 
@@ -27,7 +27,7 @@ lint-go: fmt-check
 
 config-check:
 	$(GO) tool actionlint
-	$(PYTHON) scripts/dev/check.py config
+	$(REPOCTL) config
 
 test: test-go-unit
 
@@ -43,8 +43,11 @@ test-go-unit-json:
 test-go-json:
 	$(GO) test -json -race -count=1 ./...
 
-test-python:
-	$(PYTHON) scripts/dev/python_results.py
+# The development tooling itself: formatting, vet and tests for dev/ only.
+check-devtools:
+	$(REPOCTL) fmt
+	$(GO) vet ./dev/...
+	$(GO) test -race -count=1 ./dev/...
 
 openforge-install:
 	cd $(OPENFORGE_DIR) && $(BUN) install --frozen-lockfile
@@ -62,10 +65,14 @@ lint-openforge:
 check-openforge: lint-openforge test-openforge
 
 check-go:
-	$(PYTHON) scripts/dev/go_results.py $(PKGS)
+	$(REPOCTL) go $(PKGS)
 
 check-go-integration:
-	$(PYTHON) scripts/dev/go_results.py --integration $(PKGS)
+	$(REPOCTL) go --integration $(PKGS)
+
+# The real Podman runtime contract: no skip when the engine is missing.
+test-podman:
+	KODAMA_REQUIRE_PODMAN=1 $(GO) test -count=1 ./internal/runtime/podman/...
 
 test-task:
 	@test -n "$(TASK)" || { echo 'usage: make test-task TASK=T-080'; exit 2; }
@@ -76,23 +83,31 @@ check-task:
 	$(OPENFORGE) check-task $(TASK)
 
 build:
-	$(PYTHON) -c 'from pathlib import Path; Path("dev/.state/bin").mkdir(parents=True, exist_ok=True)'
+	@mkdir -p dev/.state/bin
 	CGO_ENABLED=0 $(GO) build -mod=readonly -trimpath -o dev/.state/bin/kodama ./cmd/kodama
 
 tools:
-	$(PYTHON) scripts/dev/tools.py
+	$(DEVCTL) tools
 
 dev-up:
-	$(ENV) up $(SCOPE_ARGS)
+	$(DEVCTL) up
 
 dev-down:
-	$(ENV) down $(SCOPE_ARGS)
+	$(DEVCTL) down
 
 dev-preflight:
-	$(ENV) preflight $(SCOPE_ARGS)
+	$(DEVCTL) preflight
 
+dev-integration:
+	$(DEVCTL) integration
+
+# The real Podman runtime adapter against this scope's services.
+dev-runtime:
+	$(DEVCTL) runtime
+
+# The M1 services scope: real PostgreSQL, JetStream, S3, Git, OIDC and Podman.
 test-integration:
-	$(ENV) integration $(SCOPE_ARGS)
+	DEV_SCOPE=$(DEV_SCOPE) DEV_STACK=services $(REPOCTL) go --integration $(INTEGRATION_PKGS)
 
 # The core assembly (T-070): unit checks plus the actual composition on a real
 # listener over the services named in the environment (README, "Core assembly").
@@ -149,17 +164,18 @@ api-check: api-generate
 	@git diff --exit-code -- api/openapi.yaml api/client || { echo 'api/openapi.yaml or api/client is stale: run make api-generate and commit the result'; exit 1; }
 	@test -z "$$(git ls-files --others --exclude-standard -- api/openapi.yaml api/client)" || { echo 'untracked generated API files: commit them'; exit 1; }
 
-scaffold-smoke: build
-	$(ENV) smoke $(SCOPE_ARGS)
+# A fresh scope: dependency containers plus the dependency probe.
+dev-smoke: build
+	$(DEVCTL) smoke
 
 dev-teardown-check:
-	$(PYTHON) scripts/dev/teardown_check.py $(SCOPE_ARGS)
+	$(DEVCTL) teardown-check
 
 dev-diagnostics:
-	$(ENV) diagnostics $(SCOPE_ARGS)
+	$(DEVCTL) diagnostics
 
 docs-check:
-	$(PYTHON) scripts/dev/check.py docs
+	$(REPOCTL) docs
 
 # Needs the separate OpenForge checkout (OPENFORGE_DIR, default ../openforge).
 validate-tasks:

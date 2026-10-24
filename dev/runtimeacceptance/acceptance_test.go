@@ -5,7 +5,7 @@
 // advertised host name, and Remove leaves nothing behind.
 //
 // It needs a scope built by `make dev-up DEV_STACK=services` and skips
-// without one. Run it through `scripts/dev/environment.py runtime`, or:
+// without one. Run it through `make dev-runtime`, or:
 //
 //	KODAMA_DEV_SCOPE_DIR=dev/.state/environments/<scope> go test ./dev/runtimeacceptance -count=1 -v
 package runtimeacceptance

@@ -1,9 +1,9 @@
 name: Repository tooling
 on:
   push:
-    paths: ['openforge.json', 'scripts/dev/**', 'scripts/release/**', 'dev/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
+    paths: ['openforge.json', 'dev/**', 'scripts/release/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
   pull_request:
-    paths: ['openforge.json', 'scripts/dev/**', 'scripts/release/**', 'dev/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
+    paths: ['openforge.json', 'dev/**', 'scripts/release/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
 permissions:
   contents: read
 jobs:
@@ -27,8 +27,8 @@ jobs:
           else
             changed=$(git ls-files)
           fi
-          if echo "$changed" | grep -Eq '^(scripts/dev/|dev/|Makefile|\.github/workflows/tooling.yml)'; then
-            make test-python
+          if echo "$changed" | grep -Eq '^(dev/|Makefile|\.github/workflows/tooling\.yml)'; then
+            make check-devtools
           fi
           if echo "$changed" | grep -Eq '^(scripts/release/|VERSION$)'; then
             python3 -m unittest scripts/release/test_version.py

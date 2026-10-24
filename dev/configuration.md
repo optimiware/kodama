@@ -27,7 +27,7 @@ For environment-only test startup set `KODAMA_SECRETS_ADAPTER=keyfile`; it defau
 | `DEV_PROVIDER` | `podman` on every OS | Explicit `docker` override for Docker/CI; no runtime auto-selection |
 | `DEV_SCOPE` | `t-001-local` | 2–31 lowercase letters/digits/hyphens; starts with letter, ends alphanumeric |
 
-Make variables become explicit arguments to the environment script. The CLI also reads them from environment when invoked directly. Python 3.9 and Make 3.81 are minimum host prerequisites. Go, kind, kubectl, the kind node image, client libraries, actionlint, and the additional Git package have exact locks; Compose and the Containerfile pin the fixture images by digest.
+Make variables become explicit arguments to `dev/cmd/devctl`, which also reads them from the environment when invoked directly. Go and Make 3.81 are the minimum host prerequisites; the development tooling is Go. Go, kind, kubectl, the kind node image, client libraries, actionlint, and the additional Git package have exact locks; Compose and the Containerfile pin the fixture images by digest.
 
 ## Generated Pod endpoint inventory
 

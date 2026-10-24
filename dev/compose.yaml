@@ -1,5 +1,5 @@
 # Dependency containers for one development scope. Run through
-# scripts/dev/environment.py (make dev-up), which supplies the KODAMA_*
+# dev/cmd/devctl (make dev-up), which supplies the KODAMA_*
 # variables and the project name and joins the containers to KODAMA_NETWORK:
 # kind's network in the cluster stack (so Pods reach them) or the scoped Podman
 # network of the services stack (so Podman workloads reach them). Images are pinned to multi-architecture index digests.

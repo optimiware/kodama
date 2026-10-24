@@ -10,7 +10,7 @@ Thanks for your interest. Kodama is early, so the most useful contributions righ
 
 ## Set up
 
-You need Go 1.27.2, GNU Make 3.81+ and Python 3.9+ (used by the formatting and docs checks). Podman is only needed for integration tests.
+You need Go 1.27.2 and GNU Make 3.81+. Podman is only needed for integration tests.
 
 ```sh
 git clone https://github.com/optimiware/kodama.git
@@ -34,8 +34,9 @@ That runs formatting, `go vet`, the unit tests and the build, with no containers
 | The HTTP API (`api/`) | `make api-generate`, then `make api-check` |
 | Documentation | `make docs-check` |
 | The Helm chart | `make test-chart` |
+| Development tooling under `dev/` | `make check-devtools` |
 
-Integration tests need the local service stack: see the [development runbook](dev/README.md) and `make test-integration`.
+Integration tests need the local service stack: see the [development runbook](dev/README.md), then run `make dev-up`, `make test-integration` and `make dev-down`.
 
 ## How the code is organised
 

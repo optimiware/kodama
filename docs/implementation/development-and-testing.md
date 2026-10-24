@@ -2,11 +2,11 @@
 
 ## Repository tooling bootstrap
 
-Go development needs Go **1.27.2** and Make. `make lint test build` runs product formatting/vet, infrastructure-free race-enabled unit tests and the binary build. It does not test OpenForge, start containers or need provider credentials. Formatting currently uses the small Python checker.
+Go development needs Go **1.27.2** and Make. `make lint test build` runs product formatting/vet, infrastructure-free race-enabled unit tests and the binary build. It does not test OpenForge, start containers or need provider credentials. Formatting and the repository checks are Go commands under `dev/cmd/`.
 
 The default Go scope is `GO_CORE_PACKAGES` in Make: commands, internal modules, public API/client, contracts, reusable packages and test support. Linux-only image wrappers, development-stack programs, templates and integration/e2e drivers are checked explicitly by their owning tasks/checkpoints, not silently included through `./...` on every host. The main unit batch uses `make test-go-unit-json` from that same scope.
 
-OpenForge commands additionally need Bun **1.4.2** and an explicit `make openforge-install` per worktree. Checks never install dependencies or rewrite the lockfile. `make check-openforge` qualifies harness changes, not Go product changes. Python **3.9+** remains for `scripts/dev/` environment/fixture tooling; `make test-python` is only for that tooling. The old Python task controller is retired.
+OpenForge commands additionally need Bun **1.4.2** and an explicit `make openforge-install` per worktree. Checks never install dependencies or rewrite the lockfile. `make check-openforge` qualifies harness changes, not Go product changes. The development tooling is Go (`dev/cmd/devctl`, `dev/cmd/repoctl`, `dev/internal/...`); `make check-devtools` qualifies it. Python remains only in release and staging scripts.
 
 For agent execution, `bun ../openforge/src/cli.ts doctor` checks configured role/model availability. [Runtime details](harness.md#embedded-runtime-and-reporting) distinguish credential discovery from a live-provider invocation.
 
@@ -53,7 +53,7 @@ Scheduled tasks explicitly declare the [task check contract](../tasks/README.md#
 | `component` | Scoped format/vet and `go test -race -count=1 -tags unit` over owned/declared packages; every named unit acceptance must pass |
 | `assembly` | Explicit package scope, required real services, completed package runs and named adapter/checkpoint acceptance |
 | `docs` | Documentation/task-graph checks |
-| `tooling` | Relevant tooling checks: OpenForge for its inputs, development Python for its inputs |
+| `tooling` | Relevant tooling checks: OpenForge and the development tooling for their inputs |
 | `full` | Explicit legacy/maintenance use only; never an implicit capability-task default |
 
 `component` unit receipts qualify a merge. `assembly` unit runs are development feedback only and cannot satisfy real acceptance. A skipped acceptance test, incomplete package execution or same-named test in another package never passes. Service fixtures use `test/support/layer.SkipService`; the unit layer also blanks service environment variables. A unit task's acceptance names must therefore name actual unit checks, not inherited service tests.
@@ -70,7 +70,7 @@ Formatting/vet/test scope follows the task. SQL/module/composition edits do not 
 
 Provisioning is needed only for the `test` and `production` environments; `development` needs none. Podman is the local default on every OS; `DEV_PROVIDER=docker` explicitly selects Docker (including CI). See [the development runbook](../../dev/README.md).
 
-The planned `DEV_STACK` selects what `dev-up` builds: `services` (the default for `test`: dependency containers and the Podman runtime on one network, no cluster) or `cluster` (adds a scoped kind cluster, for tasks whose subject is a Kubernetes target). T-091 delivers the split; until it merges, `dev-up` builds the cluster stack.
+`DEV_STACK` selects what `dev-up` builds: `services` (the default for `test`: dependency containers and the Podman runtime on one network, no cluster) or `cluster` (adds a scoped kind cluster, for tasks whose subject is a Kubernetes target).
 
 `DEV_SCOPE` selects **`dev/.state/environments/<scope>/` in the checkout running the check**. Task scopes are lowercased IDs with hyphens removed (`T-026` → `t026`); periodic main checks use `batch`.
 

@@ -35,7 +35,7 @@ acceptance: [unit_dispatch_replay, unit_cancel_fencing]
 ```
 
 - `make check-go PKGS=...`: runs scoped `gofmt`, `go vet -tags unit`, and `go test -json -race -count=1 -tags unit`, writing test outcomes to `$FORGE_RESULTS`.
-- `make test-python`: runs the `scripts/dev` unittests through `scripts/dev/python_results.py`, writing outcomes to `$FORGE_RESULTS`. Acceptance names match a test method or a test class (a class passes only when all its tests pass), e.g. class `TestUnitStackSelection` satisfies `unit_stack_selection`.
+- `make check-devtools`: formats, vets and tests the Go development tooling under `dev/`. It does not emit `FORGE_RESULTS`; tooling tasks name the Go test function in `acceptance`.
 - `make check-go-integration PKGS=...`: provisions `DEV_SCOPE` when it does not exist (stack from `DEV_STACK`, default `cluster`; `KODAMA_AUTO_PROVISION=0` disables), preflights it (exiting `75` if the environment is unavailable), loads `host-env.json`, and runs scoped integration tests.
 - `plan: true`: opts into the read-only planner stage before implementation (off by default).
 - `review: human`: parks the task for human review after checks pass.
