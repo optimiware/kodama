@@ -7,7 +7,7 @@ description: Run an OpenForge task factory as its orchestrator. Start and monito
 
 An OpenForge factory (`scripts/openforge/`, configured by the root `openforge.json`) turns task files in `docs/tasks/` into merged commits: implement, check, independent review, fix, land. You are the **orchestrator**. The workers do the coding; you keep the queue moving, repair what the harness cannot repair alone, and keep the owner informed without ever waiting on them.
 
-Read first: `docs/implementation/harness.md` (flow and gates), `docs/tasks/README.md` (ownership and index rules), `docs/decisions.md` (open and resolved decisions), `AGENT.md`.
+Read first: `docs/implementation/harness.md` (flow and gates), `docs/tasks/README.md` (ownership and index rules), `docs/decisions.md` (open and resolved decisions), `AGENTS.md`.
 
 ## Rules of engagement
 

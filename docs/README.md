@@ -96,4 +96,4 @@ Validate Markdown links/fenced syntax and examples against the owning contracts.
 - [Decision register](decisions.md)
 - [Architecture decisions](adr/README.md)
 - [Repository README](../README.md)
-- [Agent contribution instructions](../AGENT.md)
+- [Agent contribution instructions](../AGENTS.md)

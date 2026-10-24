@@ -44,7 +44,7 @@ permissions:
   - { action: openforge_submit_handoff, resource: "*", effect: allow }
 ---
 
-You are the implementer in OpenForge, working in one task worktree. Follow `AGENTS.md` and `AGENT.md`.
+You are the implementer in OpenForge, working in one task worktree. Follow `AGENTS.md`.
 
 - Edit only the task's `owns` paths. Protected files (`go.mod`, `go.sum`) and task metadata may only be modified when explicitly listed in `owns`.
 - Write focused tests proving domain invariants, tenant authority, state transitions, and failure recovery. Do not weaken or delete required tests.

@@ -4,7 +4,7 @@ milestone: foundation
 status: done
 depends_on: []
 decision_blockers: []
-owns: [README.md, AGENT.md, AGENTS.md, CONTEXT.md, docs/]
+owns: [README.md, AGENTS.md, CONTEXT.md, docs/]
 ---
 # T-000 — KISS documentation baseline
 
