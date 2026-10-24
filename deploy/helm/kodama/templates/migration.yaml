@@ -1,0 +1,101 @@
+{{- if .Values.migration.enabled }}
+{{- /*
+Schema migration, run once before the server rolls (Helm pre-install/pre-upgrade hook). It uses
+the migration database role through a secret FILE reference; the server never receives it, and
+the migration Pod never receives the runtime role.
+`kodama migrate` names the runtime role it grants (migration.runtimeRole) and applies the declared
+schema order as the owner; it never receives the runtime credential.
+*/ -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "kodama.migrationServiceAccount" . }}
+  labels:
+    {{- include "kodama.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+    {{- with .Values.serviceAccounts.migration.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kodama.fullname" . }}-migrate
+  labels:
+    {{- include "kodama.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "kodama.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "kodama.migrationServiceAccount" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: {{ include "kodama.releaseImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+          {{- with .Values.migration.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          args:
+            {{- toYaml .Values.migration.args | nindent 12 }}
+          env:
+            - name: KODAMA_LOG_LEVEL
+              value: {{ .Values.server.logLevel | quote }}
+            - name: KODAMA_DATABASE_RUNTIME_ROLE
+              value: {{ .Values.migration.runtimeRole | quote }}
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+          securityContext:
+            {{- include "kodama.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: secrets
+          secret:
+            secretName: {{ .Values.secrets.migration.existingSecret }}
+            defaultMode: 0440
+            items:
+              - key: database-migration-url
+                path: database-migration-url
+              {{- if .Values.config.tls.customCA }}
+              - key: ca.crt
+                path: ca.crt
+              {{- end }}
+{{- end }}

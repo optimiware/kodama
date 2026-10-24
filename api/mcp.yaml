@@ -1,0 +1,505 @@
+openapi: 3.0.3
+info:
+  title: Kodama MCP server registrations and proxy endpoint
+  version: 1.0.0
+  description: >-
+    Project registration of approved remote MCP servers and the module-owned runtime MCP
+    endpoint (docs/specs/ai-gateway-and-mcp-proxy.md, docs/contracts/http-api.md). Owned by
+    T-033. Shared conventions (error envelope, pagination, ETag, If-Match) come from
+    api/common.yaml. Types are generated into internal/mcpproxy/http/mcp.gen.go (see
+    internal/mcpproxy/http/generate.go).
+    A registration holds an approved HTTPS endpoint, an exact typed credential reference
+    (the name and one exact value version of an MCP-kind project secret) and the remote tool
+    names it enables. An agent profile names the qualified tools `<registrationId>/<toolName>`
+    an attempt may use; the proxy exposes the intersection of the two for both discovery and
+    invocation. No secret value, tool argument or tool result appears in any registration
+    response, audit entry or error. Reading registrations requires project:read; creating,
+    editing and deleting require project:settings and credential:manage, because a registration
+    binds a project credential to an endpoint.
+    Management routes sit under /api/v1/tenants/{tenantId}/projects/{projectId}.
+    The runtime MCP endpoint is documented in this fragment, separate from the frozen runtime
+    contract and from the human API: it accepts only an attempt token (audience kodama-runtime,
+    action tool.invoke), is not under /api/v1 and is served by the proxy itself.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/mcp-servers:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listMcpServers
+      summary: List the project's MCP server registrations
+      description: >-
+        Ordered by identifier. Deleted registrations are not listed. A cursor is bound to the
+        tenant, project and ordering that issued it, and every page is authorized again.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of registrations.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpServerPage'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    post:
+      operationId: createMcpServer
+      summary: Register an MCP server
+      description: >-
+        The endpoint must be an https URL without userinfo, query or fragment whose host and
+        port are approved by the installation. The credential must name an MCP-kind secret of
+        this project at an exact, non-revoked version. A foreign project's secret, a secret of
+        another kind or an unapproved endpoint is `invalid_mcp_server` (422) and writes nothing.
+        Unknown fields are rejected with 400. The response ETag is the registration version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpServerDraft'
+            example:
+              $ref: '#/components/examples/McpServerDraft/value'
+      responses:
+        '201':
+          description: The registration was created at version 1.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpServer'
+              example:
+                $ref: '#/components/examples/McpServer/value'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/InvalidMcpServer'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/mcp-servers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: 'common.yaml#/components/schemas/ID'
+    patch:
+      operationId: updateMcpServer
+      summary: Edit an MCP server registration
+      description: >-
+        Partial update guarded by If-Match. Omitted fields keep their value. The tenant,
+        project and identifier never change. A successful change makes every run binding and
+        session of the previous revision unusable: they are never silently re-pointed at the
+        new credential, so a run keeps failing closed until a new run binds the new revision.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpServerPatch'
+      responses:
+        '200':
+          description: The registration at its next version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpServer'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/InvalidMcpServer'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    delete:
+      operationId: deleteMcpServer
+      summary: Delete an MCP server registration
+      description: >-
+        Logical deletion guarded by If-Match. The registration becomes an irreversible
+        tombstone: it is no longer listed, and every binding and session that used it is
+        denied further use.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: The registration was deleted.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /internal/mcp/v1/attempts/{attemptId}/servers/{registrationId}:
+    servers:
+      - url: /
+        description: >-
+          Served by the proxy itself, outside /api/v1 and outside the frozen runtime
+          contract. The attempt token is the only accepted credential.
+    parameters:
+      - name: attemptId
+        in: path
+        required: true
+        schema:
+          $ref: 'common.yaml#/components/schemas/ID'
+      - name: registrationId
+        in: path
+        required: true
+        schema:
+          $ref: 'common.yaml#/components/schemas/ID'
+    post:
+      operationId: mcpProxyMessage
+      summary: MCP Streamable HTTP request through the proxy
+      description: >-
+        One JSON-RPC message of MCP revision 2025-11-25 over Streamable HTTP. The message
+        schemas belong to the pinned official Go SDK (github.com/modelcontextprotocol/go-sdk
+        v1.8.0) and are deliberately not redefined here. Without an `Mcp-Session-Id` header
+        the body must be an `initialize` request; the response carries the proxy-local
+        session identifier. The remote server's own session identifier never leaves the proxy.
+        Every request, whatever its method, authenticates the attempt token for the existing
+        `tool.invoke` action before anything else; tools/list and tools/call authorize again
+        and check the complete caller tuple (tenant, project, run, attempt, grant session).
+        Only the tools capability is advertised: resources, prompts, sampling, elicitation and
+        logging methods are answered method-not-found. tools/list returns the filtered,
+        complete listing with no cursor. tools/call outside the registration/profile
+        intersection fails exactly like an unknown tool. A call whose remote outcome is lost
+        is answered with an `isError` result carrying `_meta` keys `kodama/outcome` (`unknown`),
+        `kodama/requestId` and `kodama/code`; the proxy never retries it and claims no rollback.
+        Current use is verified from durable state, never from a cache, before the remote is
+        contacted for discovery or a call, and again periodically while either is in flight:
+        the attempt's authority, the session, the frozen registration revision and the exact
+        frozen credential version (not revoked, still pinned to the run). A revoked or
+        released credential or a changed registration ends the session like any other ended
+        session. If the check itself cannot be answered, the request is refused as
+        unavailable and no verdict is recorded about the session, so the same session works
+        again when the dependency recovers; a call already in flight is cancelled and
+        recorded as unknown with code `authority_unavailable` (or `authority_ended`).
+      security:
+        - attemptToken: []
+      parameters:
+        - $ref: '#/components/parameters/McpSessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A JSON-RPC 2.0 message defined by the MCP specification.
+      responses:
+        '200':
+          description: A JSON-RPC response; initialize responses carry the Mcp-Session-Id header.
+          headers:
+            Mcp-Session-Id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+        '202':
+          description: A notification or response was accepted.
+        '400':
+          $ref: '#/components/responses/McpError'
+        '401':
+          $ref: '#/components/responses/McpError'
+        '403':
+          $ref: '#/components/responses/McpError'
+        '404':
+          description: >-
+            Unknown registration, or a session that is unknown, copied from another caller,
+            expired, closed, invalidated, owned by another process or whose frozen credential
+            ended. All are the same answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpError'
+        '502':
+          $ref: '#/components/responses/McpError'
+        '503':
+          $ref: '#/components/responses/McpError'
+    get:
+      operationId: mcpProxyStream
+      summary: MCP server-to-client stream
+      description: >-
+        Authorizes like every proxy request and requires a session owned by the caller. The
+        proxy never relays remote server-initiated requests.
+      security:
+        - attemptToken: []
+      parameters:
+        - $ref: '#/components/parameters/McpSessionId'
+      responses:
+        '200':
+          description: An event stream owned by the session.
+        '400':
+          $ref: '#/components/responses/McpError'
+        '401':
+          $ref: '#/components/responses/McpError'
+        '404':
+          $ref: '#/components/responses/McpError'
+        '503':
+          $ref: '#/components/responses/McpError'
+    delete:
+      operationId: mcpProxyTerminate
+      summary: Terminate an MCP session
+      description: Ends the caller's session and closes its remote session. A closed session never revives.
+      security:
+        - attemptToken: []
+      parameters:
+        - $ref: '#/components/parameters/McpSessionId'
+      responses:
+        '200':
+          description: The session was terminated.
+        '204':
+          description: The session was terminated.
+        '401':
+          $ref: '#/components/responses/McpError'
+        '404':
+          $ref: '#/components/responses/McpError'
+        '503':
+          $ref: '#/components/responses/McpError'
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+    attemptToken:
+      type: http
+      scheme: bearer
+      description: >-
+        Attempt-scoped runtime token with audience kodama-runtime, distinct from human access
+        tokens. It authorizes the tool.invoke action only; it is never forwarded to a remote
+        server, and no remote credential is ever sent to the workload.
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    McpSessionId:
+      name: Mcp-Session-Id
+      in: header
+      required: false
+      description: The proxy-local session identifier returned by initialize.
+      schema:
+        type: string
+  responses:
+    InvalidMcpServer:
+      description: >-
+        invalid_mcp_server: the registration is well formed but violates a rule (endpoint
+        shape, an endpoint outside the approved destinations, a credential reference that is
+        missing, revoked, of another kind or of another project, tool names).
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: invalid_mcp_server
+              message: the MCP server registration violates a rule
+              requestId: req_00000000000000000000000000000001
+              details: {}
+    McpError:
+      description: A bounded, content-free failure of the proxy endpoint.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/McpError'
+  examples:
+    McpServerDraft:
+      value:
+        endpoint: https://mcp.example.invalid/mcp
+        credential:
+          name: remote-token
+          version: 1
+        tools: [echo, search]
+    McpServer:
+      value:
+        id: mcp_0123456789abcdef0123456789abcdef
+        endpoint: https://mcp.example.invalid/mcp
+        credential:
+          name: remote-token
+          version: 1
+        tools: [echo, search]
+        version: 1
+        createdBy: usr_admin
+        createdAt: '2026-10-20T09:00:00Z'
+        updatedBy: usr_admin
+        updatedAt: '2026-10-20T09:00:00Z'
+  schemas:
+    ToolName:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'
+      description: A remote tool name. The slash is reserved by the qualified form registrationId/toolName.
+    CredentialRef:
+      type: object
+      additionalProperties: false
+      required: [name, version]
+      description: >-
+        An exact typed secret reference: the name of an MCP-kind project secret and one exact
+        value version. There is no "current" alias, so a rotation cannot change what a run
+        resolves. The value is never returned by any route.
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{0,62}$'
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+    McpServerDraft:
+      type: object
+      additionalProperties: false
+      required: [endpoint, credential, tools]
+      properties:
+        endpoint:
+          type: string
+          maxLength: 512
+          pattern: '^https://[^@?#\s]+$'
+        credential:
+          $ref: '#/components/schemas/CredentialRef'
+        tools:
+          type: array
+          maxItems: 128
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ToolName'
+    McpServerPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        endpoint:
+          type: string
+          maxLength: 512
+          pattern: '^https://[^@?#\s]+$'
+        credential:
+          $ref: '#/components/schemas/CredentialRef'
+        tools:
+          type: array
+          maxItems: 128
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ToolName'
+    McpServer:
+      type: object
+      additionalProperties: false
+      required: [id, endpoint, credential, tools, version, createdBy, createdAt, updatedBy, updatedAt]
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        endpoint:
+          type: string
+        credential:
+          $ref: '#/components/schemas/CredentialRef'
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolName'
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    McpServerPage:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpServer'
+        nextCursor:
+          type: string
+          nullable: true
+    McpError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code]
+          properties:
+            code:
+              type: string

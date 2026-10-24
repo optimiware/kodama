@@ -1,0 +1,11 @@
+# Types-only generation, as for internal/httpapi/common.gen.go: no router,
+# client, server or embedded spec. Schemas shared with other fragments are
+# referenced through api/common.yaml and are not generated here.
+package: http
+output: types.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true
+import-mapping:
+  common.yaml: github.com/optimiware/kodama/internal/httpapi

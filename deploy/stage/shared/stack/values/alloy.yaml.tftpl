@@ -1,0 +1,91 @@
+# Grafana Alloy shared Helm values.
+# Tails Pod logs over the Kubernetes API (loki.source.kubernetes) without hostPath or root.
+# Restricts stream labels to low-cardinality keys and stores job_name/pod/attempt_id as Loki structured metadata.
+controller:
+  type: deployment
+  replicas: 1
+
+alloy:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  mounts:
+    varlog: false
+    dockercontainers: false
+  configMap:
+    create: true
+    content: |
+      discovery.kubernetes "kodama_pods" {
+        role = "pod"
+        namespaces {
+          names = ${jsonencode(monitored_namespaces)}
+        }
+      }
+
+      discovery.relabel "kodama_pods" {
+        targets = discovery.kubernetes.kodama_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_kodama_optimi_dev_managed_by"]
+          target_label  = "managed_by"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_kodama_optimi_dev_job"]
+          target_label  = "job_name"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+      }
+
+      loki.source.kubernetes "kodama_pods" {
+        targets    = discovery.relabel.kodama_pods.output
+        forward_to = [loki.process.kodama_metadata.receiver]
+      }
+
+      loki.process "kodama_metadata" {
+        stage.json {
+          expressions = {
+            attempt_id = "attempt",
+            level      = "level",
+          }
+        }
+
+        stage.structured_metadata {
+          values = {
+            job_name   = "",
+            pod        = "",
+            attempt_id = "",
+          }
+        }
+
+        stage.label_drop {
+          values = ["job_name", "pod", "attempt_id"]
+        }
+
+        forward_to = [loki.write.loki.receiver]
+      }
+
+      loki.write "loki" {
+        endpoint {
+          url = ${jsonencode(loki_push_url)}
+        }
+      }

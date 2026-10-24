@@ -1,0 +1,817 @@
+openapi: 3.0.3
+info:
+  title: Kodama work management
+  version: 1.0.0
+  description: >-
+    Work items, immutable history and explicit transitions (docs/specs/work-management.md,
+    docs/contracts/http-api.md). Owned by T-011. Shared conventions (ETags, If-Match,
+    error envelope, list pagination) come from api/common.yaml. Types are generated
+    into internal/work/http/work.gen.go (see internal/work/http/generate.go).
+    Every route sits under /api/v1/tenants/{tenantId}/projects/{projectId}.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/work-items:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listWorkItems
+      summary: List work items
+      description: >-
+        Ordered by (created_at, id); the identifier is the unique tie-breaker. Filters are
+        conjunctive, repeated values of one filter disjunctive. A cursor is bound to the
+        tenant, project, filters and ordering that issued it, and every page is authorized
+        again.
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/WorkState'
+          style: form
+          explode: true
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/WorkKind'
+          style: form
+          explode: true
+        - name: assigneeId
+          in: query
+          required: false
+          schema:
+            $ref: 'common.yaml#/components/schemas/ID'
+        - name: parentId
+          in: query
+          required: false
+          schema:
+            $ref: 'common.yaml#/components/schemas/ID'
+        - name: blocked
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of work items.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemPage'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    post:
+      operationId: createWorkItem
+      summary: Create a work item
+      description: >-
+        Creates the item in backlog at version 1 and content revision 1. Assigning an
+        assignee requires the technical-edit permission and a current scoped membership of
+        the assignee. A parent must be an epic of the same project.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkItem'
+            example:
+              kind: story
+              title: Resolve inventory exceptions
+              spec: "# Plan\nAdd a scoped review flow.\n\n# Behavior\nReviewers record ERP acknowledgments."
+              acceptanceCriteria:
+                - id: AC-1
+                  text: A reviewer resolves an exception with an audit record.
+      responses:
+        '201':
+          description: Created.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            Location:
+              schema:
+                type: string
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItem'
+              example:
+                $ref: '#/components/examples/CreatedWorkItem/value'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/work-items/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/WorkItemId'
+    get:
+      operationId: getWorkItem
+      summary: Read a work item
+      responses:
+        '200':
+          description: The work item; the ETag is its version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItem'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    patch:
+      operationId: updateWorkItem
+      summary: Edit content or blocking
+      description: >-
+        Replaces the supplied fields under If-Match. Omitted fields are unchanged; null
+        clears assigneeId, parentId and blockedReason. State, version, content revision
+        and caller identity cannot be set. Changing spec or acceptanceCriteria increments
+        contentRevision; every accepted change increments version and appends history.
+        Done and cancelled items accept no edits.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkItem'
+            example:
+              blockedReason: Waiting for ERP sandbox access
+      responses:
+        '200':
+          description: The updated work item.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItem'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/work-items/{id}/history:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/WorkItemId'
+    get:
+      operationId: listWorkItemHistory
+      summary: Immutable content and transition history
+      description: >-
+        Ordered by the resource version each mutation produced. A cursor is bound to this
+        work item and authorized again on every page.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of history entries.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryPage'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/work-items/{id}/transitions:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/WorkItemId'
+    post:
+      operationId: transitionWorkItem
+      summary: Explicit business transition
+      description: >-
+        Checks the allowed edge, the caller's permission for that edge, the expected
+        version and every prerequisite inside one transaction. Entering active, including
+        rework and reopening, is admitted under the project's active work limit. Leaving
+        active while a writer attempt is unsettled is 409 workspace_busy; cancel the run
+        and retry after settlement. review to done is a human decision: the caller must
+        be a person holding the completion permission, and the request names the observed
+        content revision, candidate, accepted criteria and acknowledged findings. A passing
+        run never completes work.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionRequest'
+            examples:
+              start:
+                summary: Start work
+                value:
+                  to: active
+              review:
+                summary: Submit the candidate for review
+                value:
+                  to: review
+                  review:
+                    candidateCommit: '1111111111111111111111111111111111111111'
+                    evidence:
+                      - type: artifact
+                        id: art_report_1
+              complete:
+                summary: Human completion
+                value:
+                  to: done
+                  reason: Accepted; F-7 is tracked separately.
+                  completion:
+                    contentRevision: 2
+                    candidateCommit: '1111111111111111111111111111111111111111'
+                    acceptedCriteria: [AC-1]
+                    acknowledgedFindings:
+                      - id: F-7
+                        summary: Export is slow
+      responses:
+        '200':
+          description: The transitioned work item.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItem'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          description: >-
+            Not permitted (forbidden), or the operation needs a human (human_required).
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: >-
+            workspace_busy (a writer attempt is unsettled), wip_limit_reached (no active
+            slot) or stale_review_subject (the observed revision, candidate or evidence is
+            no longer current).
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    WorkItemId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  responses:
+    Unprocessable:
+      description: >-
+        invalid_transition (the edge or the item's state forbids it) or prerequisite_unmet
+        (a reason, specification, evidence, acknowledgment or dependency is missing).
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+  examples:
+    CreatedWorkItem:
+      value:
+        id: wi_1042
+        kind: story
+        title: Resolve inventory exceptions
+        spec: "# Plan\nAdd a scoped review flow.\n\n# Behavior\nReviewers record ERP acknowledgments."
+        acceptanceCriteria:
+          - id: AC-1
+            text: A reviewer resolves an exception with an audit record.
+        evidenceLinks: []
+        assigneeId: null
+        parentId: null
+        state: backlog
+        blockedReason: null
+        version: 1
+        contentRevision: 1
+        reviewSubject: null
+        completion: null
+        createdBy:
+          type: user
+          id: usr_analyst
+        createdAt: '2026-10-19T10:05:00Z'
+        updatedAt: '2026-10-19T10:05:00Z'
+  schemas:
+    WorkKind:
+      type: string
+      enum: [epic, story, task, defect]
+    WorkState:
+      type: string
+      enum: [backlog, ready, active, review, done, cancelled]
+    ActorType:
+      type: string
+      enum: [user, service, workload, operator]
+    AcceptanceCriterion:
+      type: object
+      additionalProperties: false
+      required: [id, text]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    EvidenceRef:
+      type: object
+      description: A bounded reference to an existing artifact or source commit; never content.
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          type: string
+          enum: [artifact, commit]
+        id:
+          type: string
+          maxLength: 128
+          description: Artifact identifier, or a 40 or 64 digit lowercase hex commit.
+        note:
+          type: string
+          maxLength: 500
+    Finding:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+        summary:
+          type: string
+          maxLength: 500
+    Actor:
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          $ref: '#/components/schemas/ActorType'
+        id:
+          type: string
+          minLength: 1
+          maxLength: 256
+    ChildSummary:
+      type: object
+      additionalProperties: false
+      required: [total, done, cancelled]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        done:
+          type: integer
+          minimum: 0
+        cancelled:
+          type: integer
+          minimum: 0
+    ReviewSubject:
+      type: object
+      additionalProperties: false
+      required: [contentRevision, recordedAt]
+      properties:
+        candidateCommit:
+          type: string
+        evidence:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/EvidenceRef'
+        childSummary:
+          $ref: '#/components/schemas/ChildSummary'
+        contentRevision:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        recordedAt:
+          type: string
+          format: date-time
+    CompletionRecord:
+      type: object
+      additionalProperties: false
+      required: [completedBy, completedAt, contentRevision, acceptedCriteria]
+      properties:
+        completedBy:
+          $ref: '#/components/schemas/Actor'
+        completedAt:
+          type: string
+          format: date-time
+        contentRevision:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        candidateCommit:
+          type: string
+        childSummary:
+          $ref: '#/components/schemas/ChildSummary'
+        acceptedCriteria:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+        acknowledgedFindings:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Finding'
+        reason:
+          type: string
+          maxLength: 2048
+    WorkItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - title
+        - spec
+        - acceptanceCriteria
+        - evidenceLinks
+        - assigneeId
+        - parentId
+        - state
+        - blockedReason
+        - version
+        - contentRevision
+        - reviewSubject
+        - completion
+        - createdBy
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        kind:
+          $ref: '#/components/schemas/WorkKind'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        spec:
+          type: string
+          description: Specification Markdown (at most 65536 bytes). The plan is a section of it.
+        acceptanceCriteria:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AcceptanceCriterion'
+        evidenceLinks:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/EvidenceRef'
+        assigneeId:
+          type: string
+          nullable: true
+        parentId:
+          type: string
+          nullable: true
+        state:
+          $ref: '#/components/schemas/WorkState'
+        blockedReason:
+          type: string
+          nullable: true
+          maxLength: 2048
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        contentRevision:
+          $ref: 'common.yaml#/components/schemas/Version'
+        reviewSubject:
+          allOf:
+            - $ref: '#/components/schemas/ReviewSubject'
+          nullable: true
+        completion:
+          allOf:
+            - $ref: '#/components/schemas/CompletionRecord'
+          nullable: true
+        createdBy:
+          $ref: '#/components/schemas/Actor'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateWorkItem:
+      type: object
+      additionalProperties: false
+      required: [kind, title]
+      properties:
+        kind:
+          $ref: '#/components/schemas/WorkKind'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        spec:
+          type: string
+        acceptanceCriteria:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AcceptanceCriterion'
+        evidenceLinks:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/EvidenceRef'
+        assigneeId:
+          type: string
+        parentId:
+          type: string
+    UpdateWorkItem:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: >-
+        Fields omitted are unchanged. assigneeId, parentId and blockedReason accept null to
+        clear. The server rejects null for the other fields.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          x-go-type: Optional[string]
+          x-go-type-skip-optional-pointer: true
+        spec:
+          type: string
+          x-go-type: Optional[string]
+          x-go-type-skip-optional-pointer: true
+        acceptanceCriteria:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AcceptanceCriterion'
+          x-go-type: Optional[[]AcceptanceCriterion]
+          x-go-type-skip-optional-pointer: true
+        evidenceLinks:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/EvidenceRef'
+          x-go-type: Optional[[]EvidenceRef]
+          x-go-type-skip-optional-pointer: true
+        assigneeId:
+          type: string
+          nullable: true
+          x-go-type: Optional[string]
+          x-go-type-skip-optional-pointer: true
+        parentId:
+          type: string
+          nullable: true
+          x-go-type: Optional[string]
+          x-go-type-skip-optional-pointer: true
+        blockedReason:
+          type: string
+          nullable: true
+          maxLength: 2048
+          x-go-type: Optional[string]
+          x-go-type-skip-optional-pointer: true
+    ReviewClaim:
+      type: object
+      additionalProperties: false
+      required: [candidateCommit, evidence]
+      properties:
+        candidateCommit:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+        evidence:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/EvidenceRef'
+    CompletionClaim:
+      type: object
+      additionalProperties: false
+      required: [contentRevision, acceptedCriteria]
+      properties:
+        contentRevision:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        candidateCommit:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+        acceptedCriteria:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+        acknowledgedFindings:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Finding'
+    TransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [to]
+      properties:
+        to:
+          $ref: '#/components/schemas/WorkState'
+        reason:
+          type: string
+          maxLength: 2048
+        review:
+          $ref: '#/components/schemas/ReviewClaim'
+        completion:
+          $ref: '#/components/schemas/CompletionClaim'
+    HistoryEntry:
+      type: object
+      additionalProperties: false
+      required: [id, version, contentRevision, kind, actor, occurredAt, changedFields, before, after]
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        contentRevision:
+          $ref: 'common.yaml#/components/schemas/Version'
+        kind:
+          type: string
+          enum: [created, updated, transitioned]
+        actor:
+          $ref: '#/components/schemas/Actor'
+        occurredAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        changedFields:
+          type: array
+          items:
+            type: string
+        from:
+          $ref: '#/components/schemas/WorkState'
+        to:
+          $ref: '#/components/schemas/WorkState'
+        before:
+          type: object
+          additionalProperties: true
+          description: Previous values of the changed fields.
+        after:
+          type: object
+          additionalProperties: true
+          description: New values of the changed fields.
+        review:
+          $ref: '#/components/schemas/ReviewSubject'
+        completion:
+          $ref: '#/components/schemas/CompletionRecord'
+        requestId:
+          type: string
+    WorkItemPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/WorkItem'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+    HistoryPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/HistoryEntry'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'

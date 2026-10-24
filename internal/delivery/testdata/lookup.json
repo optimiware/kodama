@@ -1,0 +1,166 @@
+{
+  "fixture": "lookup",
+  "description": "Lookup by the attempt's own action key returns the recorded identities and status; another key is refused, as is a deployment that does not match the attempt's pinned configuration.",
+  "placeholders": "Every identifier, digest, URL and timestamp is a placeholder from the t035 test resource prefix; none names a real tenant, registry or cluster.",
+  "exchanges": [
+    {
+      "name": "lookup the attempt's own logical action",
+      "operation": "lookupRuntimeDeployment",
+      "request": {
+        "method": "GET",
+        "path": "/runtime/v1/attempts/att_t035_deploy_retry/deployments/by-action/run_t035_preview:deploy"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"2\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "running",
+            "reason": "applying",
+            "outcomeUnknown": false,
+            "objects": [
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory"
+              },
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory-worker"
+              }
+            ],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 2,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z",
+            "expiresAt": "2026-01-03T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": false
+        }
+      }
+    },
+    {
+      "name": "another action key is refused",
+      "operation": "lookupRuntimeDeployment",
+      "request": {
+        "method": "GET",
+        "path": "/runtime/v1/attempts/att_t035_deploy/deployments/by-action/run_t035_other:deploy"
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "pin_required",
+            "message": "the attempt's pinned configuration is absent or does not match",
+            "requestId": "req_00000000000000000000000000000001",
+            "details": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "read the deployment",
+      "operation": "getRuntimeDeployment",
+      "request": {
+        "method": "GET",
+        "path": "/runtime/v1/attempts/att_t035_deploy/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"2\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "running",
+            "reason": "applying",
+            "outcomeUnknown": false,
+            "objects": [
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory"
+              },
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory-worker"
+              }
+            ],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 2,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z",
+            "expiresAt": "2026-01-03T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": false
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,1733 @@
+{
+  "cases": [
+    {
+      "name": "baseline",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14",
+        "SD-08"
+      ],
+      "payload": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "schemaValid": true,
+      "valid": true,
+      "code": null
+    },
+    {
+      "name": "baseline_without_decisions_or_checks",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:15b1cd403e960e19c620e9c681869fd775ef22460438e61e122fa80287ec2396",
+        "requirements": [
+          "SD-01"
+        ],
+        "decisions": [],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": true,
+      "valid": true,
+      "code": null
+    },
+    {
+      "name": "baseline_digest_ignores_nothing_else",
+      "type": "DesignBaseline",
+      "requirements": [
+        "SD-08"
+      ],
+      "payload": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "schemaValid": true,
+      "valid": false,
+      "code": "baseline_digest_mismatch"
+    },
+    {
+      "name": "baseline_unsorted_requirements",
+      "type": "DesignBaseline",
+      "requirements": [
+        "SD-08"
+      ],
+      "payload": {
+        "digest": "sha256:2d9a2d7f2257909aa6396cc3dbb85bc175a2305e5c9266cb100ccb148d6ad789",
+        "requirements": [
+          "SD-01",
+          "AR-14"
+        ],
+        "decisions": [],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": true,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_unsorted_sources",
+      "type": "DesignBaseline",
+      "requirements": [
+        "SD-08"
+      ],
+      "payload": {
+        "digest": "sha256:8e3a04b6ce01c4cf3f0f26c42b0998a7730af0947820735089839678066e8c0f",
+        "requirements": [
+          "SD-01"
+        ],
+        "decisions": [],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": true,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_duplicate_requirement",
+      "type": "DesignBaseline",
+      "requirements": [
+        "SD-08"
+      ],
+      "payload": {
+        "digest": "sha256:48cbabdec9956cfbb576c00e990b45fe7a206261836ff9cb0e96243ecbe9c1f0",
+        "requirements": [
+          "SD-01",
+          "SD-01"
+        ],
+        "decisions": [],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_branch_instead_of_commit",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "main",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_path_traversal",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:0a9bd3cbdc0072e19ecb3960adddb45f415f4ddaef2f8c5a994e12be095efaeb",
+        "requirements": [
+          "SD-01"
+        ],
+        "decisions": [],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "../secrets/x"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_absolute_path",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:4b43b96734c0bc97913e52365528a4c6a1efbbaae498c2c328ed7185565d8166",
+        "requirements": [
+          "SD-01"
+        ],
+        "decisions": [],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "/etc/passwd"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_credentials_in_repository",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:8d09f37cdab943cbd35d2c106b65dc409142f8cd548e079db26ada52dbbeac64",
+        "requirements": [
+          "SD-01"
+        ],
+        "decisions": [],
+        "sources": [
+          {
+            "repository": "https://u:t@git.example.invalid/a.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_no_sources",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:b596469f26a80a57f84faa320ac2eb516f4f1e0b8f0ab5ffc5785892e2b0036c",
+        "requirements": [
+          "SD-01"
+        ],
+        "decisions": [],
+        "sources": [],
+        "requiredChecks": []
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_no_requirements",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:9d27d1d6e0d151f71a138c9fecef5d4b34371f666882a67f70d2eb1add18252d",
+        "requirements": [],
+        "decisions": [],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_lowercase_requirement",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:9b9840422f675a0c69750629d0fdc1584cd7ea4423b2f72e5d22ca75c022948c",
+        "requirements": [
+          "sd-01"
+        ],
+        "decisions": [],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_bad_decision_id",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:7c7276fd1e1ad8f2e75308774c79c476c5dd6dc2c83c7f039f201e8098ce46de",
+        "requirements": [
+          "SD-01"
+        ],
+        "decisions": [
+          "X-01"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          }
+        ],
+        "requiredChecks": []
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "baseline_unknown_field",
+      "type": "DesignBaseline",
+      "requirements": [
+        "AR-14"
+      ],
+      "payload": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ],
+        "latest": true
+      },
+      "schemaValid": true,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_conforms",
+      "type": "ConformanceReport",
+      "requirements": [
+        "AR-14",
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "schemaValid": true,
+      "valid": true,
+      "code": null
+    },
+    {
+      "name": "report_blocked_by_deviation",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [
+          {
+            "requirement": "SD-04",
+            "reason": "Adapter issues SQL without the tenant transaction helper."
+          }
+        ],
+        "disposition": "blocked"
+      },
+      "schemaValid": true,
+      "valid": true,
+      "code": null
+    },
+    {
+      "name": "report_blocked_by_failed_check",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "failed",
+            "evidenceArtifactIds": []
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "blocked"
+      },
+      "schemaValid": true,
+      "valid": true,
+      "code": null
+    },
+    {
+      "name": "report_blocked_by_not_run_check",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "not_run",
+            "evidenceArtifactIds": []
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "blocked"
+      },
+      "schemaValid": true,
+      "valid": true,
+      "code": null
+    },
+    {
+      "name": "report_conforms_with_deviation",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [
+          {
+            "requirement": "SD-04",
+            "reason": "Adapter issues SQL without the tenant transaction helper."
+          }
+        ],
+        "disposition": "conforms"
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_conforms_with_failed_check",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "failed",
+            "evidenceArtifactIds": []
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "schemaValid": true,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_blocked_but_all_passed",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "blocked"
+      },
+      "schemaValid": true,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_passed_check_without_evidence",
+      "type": "ConformanceReport",
+      "requirements": [
+        "AR-14",
+        "AR-06"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": []
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_unsorted_checks",
+      "type": "ConformanceReport",
+      "requirements": [
+        "SD-08"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          },
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "schemaValid": true,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_unsorted_evidence",
+      "type": "ConformanceReport",
+      "requirements": [
+        "SD-08"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_tests",
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "schemaValid": true,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_no_checks",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_unknown_outcome",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "skipped",
+            "evidenceArtifactIds": []
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_blank_deviation_reason",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [
+          {
+            "requirement": "SD-04",
+            "reason": "  "
+          }
+        ],
+        "disposition": "blocked"
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_uppercase_candidate",
+      "type": "ConformanceReport",
+      "requirements": [
+        "SD-08"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_missing_deviations_key",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "disposition": "conforms"
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    },
+    {
+      "name": "report_unknown_field",
+      "type": "ConformanceReport",
+      "requirements": [
+        "DQ-14"
+      ],
+      "payload": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms",
+        "selfApproved": true
+      },
+      "schemaValid": false,
+      "valid": false,
+      "code": "invalid_request"
+    }
+  ],
+  "checks": [
+    {
+      "name": "conforming_report",
+      "baseline": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "candidate": "2222222222222222222222222222222222222222",
+      "code": null,
+      "requirements": [
+        "AR-14",
+        "DQ-14",
+        "SD-08"
+      ]
+    },
+    {
+      "name": "extra_check_beyond_required_is_allowed",
+      "baseline": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          },
+          {
+            "id": "zz-extra",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "candidate": "2222222222222222222222222222222222222222",
+      "code": null,
+      "requirements": [
+        "DQ-14"
+      ]
+    },
+    {
+      "name": "wrong_candidate",
+      "baseline": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "candidate": "3333333333333333333333333333333333333333",
+      "code": "conformance_candidate_mismatch",
+      "requirements": [
+        "DQ-14",
+        "SD-08"
+      ]
+    },
+    {
+      "name": "stale_baseline",
+      "baseline": {
+        "digest": "sha256:376b93f3be3c7422383dc0d74401e78fa2a93dcc99724b3187ef59c0a884fde2",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "3333333333333333333333333333333333333333",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "candidate": "2222222222222222222222222222222222222222",
+      "code": "conformance_baseline_mismatch",
+      "requirements": [
+        "DQ-14",
+        "SD-08"
+      ]
+    },
+    {
+      "name": "candidate_checked_before_baseline",
+      "baseline": {
+        "digest": "sha256:376b93f3be3c7422383dc0d74401e78fa2a93dcc99724b3187ef59c0a884fde2",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "3333333333333333333333333333333333333333",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "candidate": "3333333333333333333333333333333333333333",
+      "code": "conformance_candidate_mismatch",
+      "requirements": [
+        "SD-08"
+      ]
+    },
+    {
+      "name": "required_check_missing",
+      "baseline": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "candidate": "2222222222222222222222222222222222222222",
+      "code": "conformance_incomplete",
+      "requirements": [
+        "DQ-14"
+      ]
+    },
+    {
+      "name": "blocked_by_unresolved_deviation",
+      "baseline": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [
+          {
+            "requirement": "SD-04",
+            "reason": "Adapter issues SQL without the tenant transaction helper."
+          }
+        ],
+        "disposition": "blocked"
+      },
+      "candidate": "2222222222222222222222222222222222222222",
+      "code": "conformance_blocked",
+      "requirements": [
+        "DQ-14",
+        "AR-14"
+      ]
+    },
+    {
+      "name": "blocked_by_failed_required_check",
+      "baseline": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "failed",
+            "evidenceArtifactIds": []
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "blocked"
+      },
+      "candidate": "2222222222222222222222222222222222222222",
+      "code": "conformance_blocked",
+      "requirements": [
+        "DQ-14"
+      ]
+    },
+    {
+      "name": "blocked_by_check_not_run",
+      "baseline": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "not_run",
+            "evidenceArtifactIds": []
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "blocked"
+      },
+      "candidate": "2222222222222222222222222222222222222222",
+      "code": "conformance_blocked",
+      "requirements": [
+        "DQ-14"
+      ]
+    },
+    {
+      "name": "structurally_invalid_report",
+      "baseline": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-08"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "blocked"
+      },
+      "candidate": "2222222222222222222222222222222222222222",
+      "code": "invalid_request",
+      "requirements": [
+        "DQ-14"
+      ]
+    },
+    {
+      "name": "baseline_with_edited_references",
+      "baseline": {
+        "digest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "requirements": [
+          "AR-14",
+          "DQ-14",
+          "SD-01",
+          "SD-09"
+        ],
+        "decisions": [
+          "C-16",
+          "P-16"
+        ],
+        "sources": [
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/implementation/design-conformance.md"
+          },
+          {
+            "repository": "https://git.example.invalid/acme/inventory.git",
+            "revision": "1111111111111111111111111111111111111111",
+            "path": "docs/specs/software-design.md"
+          }
+        ],
+        "requiredChecks": [
+          "module-boundaries",
+          "tenant-scope"
+        ]
+      },
+      "report": {
+        "baselineDigest": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "requirements": [
+          "SD-01",
+          "SD-04"
+        ],
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          },
+          {
+            "id": "tenant-scope",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review",
+              "art_tests"
+            ]
+          }
+        ],
+        "unresolvedDeviations": [],
+        "disposition": "conforms"
+      },
+      "candidate": "2222222222222222222222222222222222222222",
+      "code": "baseline_digest_mismatch",
+      "requirements": [
+        "SD-08"
+      ]
+    }
+  ],
+  "vectors": [
+    {
+      "name": "baseline_references",
+      "kind": "baseline",
+      "input": "{\"requirements\": [\"AR-14\", \"DQ-14\", \"SD-01\", \"SD-08\"], \"decisions\": [\"C-16\", \"P-16\"], \"sources\": [{\"repository\": \"https://git.example.invalid/acme/inventory.git\", \"revision\": \"1111111111111111111111111111111111111111\", \"path\": \"docs/implementation/design-conformance.md\"}, {\"repository\": \"https://git.example.invalid/acme/inventory.git\", \"revision\": \"1111111111111111111111111111111111111111\", \"path\": \"docs/specs/software-design.md\"}], \"requiredChecks\": [\"module-boundaries\", \"tenant-scope\"]}",
+      "canonical": "{\"decisions\":[\"C-16\",\"P-16\"],\"requiredChecks\":[\"module-boundaries\",\"tenant-scope\"],\"requirements\":[\"AR-14\",\"DQ-14\",\"SD-01\",\"SD-08\"],\"sources\":[{\"path\":\"docs/implementation/design-conformance.md\",\"repository\":\"https://git.example.invalid/acme/inventory.git\",\"revision\":\"1111111111111111111111111111111111111111\"},{\"path\":\"docs/specs/software-design.md\",\"repository\":\"https://git.example.invalid/acme/inventory.git\",\"revision\":\"1111111111111111111111111111111111111111\"}]}",
+      "sha256": "sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590"
+    },
+    {
+      "name": "baseline_minimal",
+      "kind": "baseline",
+      "input": "{\"requirements\": [\"SD-01\"], \"decisions\": [], \"sources\": [{\"repository\": \"https://git.example.invalid/acme/inventory.git\", \"revision\": \"1111111111111111111111111111111111111111\", \"path\": \"docs/implementation/design-conformance.md\"}], \"requiredChecks\": []}",
+      "canonical": "{\"decisions\":[],\"requiredChecks\":[],\"requirements\":[\"SD-01\"],\"sources\":[{\"path\":\"docs/implementation/design-conformance.md\",\"repository\":\"https://git.example.invalid/acme/inventory.git\",\"revision\":\"1111111111111111111111111111111111111111\"}]}",
+      "sha256": "sha256:15b1cd403e960e19c620e9c681869fd775ef22460438e61e122fa80287ec2396"
+    },
+    {
+      "name": "report_conforms",
+      "kind": "report",
+      "input": "{\"baselineDigest\": \"sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590\", \"candidateCommit\": \"2222222222222222222222222222222222222222\", \"requirements\": [\"SD-01\", \"SD-04\"], \"checks\": [{\"id\": \"module-boundaries\", \"outcome\": \"passed\", \"evidenceArtifactIds\": [\"art_review\"]}, {\"id\": \"tenant-scope\", \"outcome\": \"passed\", \"evidenceArtifactIds\": [\"art_review\", \"art_tests\"]}], \"unresolvedDeviations\": [], \"disposition\": \"conforms\"}",
+      "canonical": "{\"baselineDigest\":\"sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590\",\"candidateCommit\":\"2222222222222222222222222222222222222222\",\"checks\":[{\"evidenceArtifactIds\":[\"art_review\"],\"id\":\"module-boundaries\",\"outcome\":\"passed\"},{\"evidenceArtifactIds\":[\"art_review\",\"art_tests\"],\"id\":\"tenant-scope\",\"outcome\":\"passed\"}],\"disposition\":\"conforms\",\"requirements\":[\"SD-01\",\"SD-04\"],\"unresolvedDeviations\":[]}",
+      "sha256": "sha256:ea0d6affb34fb573e6c9a351f2e824e148191c1e429b8376862c5586778be297"
+    },
+    {
+      "name": "report_blocked",
+      "kind": "report",
+      "input": "{\"baselineDigest\": \"sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590\", \"candidateCommit\": \"2222222222222222222222222222222222222222\", \"requirements\": [\"SD-01\", \"SD-04\"], \"checks\": [{\"id\": \"module-boundaries\", \"outcome\": \"passed\", \"evidenceArtifactIds\": [\"art_review\"]}, {\"id\": \"tenant-scope\", \"outcome\": \"passed\", \"evidenceArtifactIds\": [\"art_review\", \"art_tests\"]}], \"unresolvedDeviations\": [{\"requirement\": \"SD-04\", \"reason\": \"Adapter issues SQL without the tenant transaction helper.\"}], \"disposition\": \"blocked\"}",
+      "canonical": "{\"baselineDigest\":\"sha256:a439ed6eb003147bc9cd199c9a8e9f5104b450ece4994ef458a5fc57917d8590\",\"candidateCommit\":\"2222222222222222222222222222222222222222\",\"checks\":[{\"evidenceArtifactIds\":[\"art_review\"],\"id\":\"module-boundaries\",\"outcome\":\"passed\"},{\"evidenceArtifactIds\":[\"art_review\",\"art_tests\"],\"id\":\"tenant-scope\",\"outcome\":\"passed\"}],\"disposition\":\"blocked\",\"requirements\":[\"SD-01\",\"SD-04\"],\"unresolvedDeviations\":[{\"reason\":\"Adapter issues SQL without the tenant transaction helper.\",\"requirement\":\"SD-04\"}]}",
+      "sha256": "sha256:0651b26160c1352d180bbadfc8bc67dbe0fe35dd39667f83b7d98aa3db4504cf"
+    }
+  ]
+}

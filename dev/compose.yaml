@@ -1,0 +1,83 @@
+# Dependency containers for one development scope. Run through
+# scripts/dev/environment.py (make dev-up), which supplies the KODAMA_*
+# variables and the project name and joins the containers to KODAMA_NETWORK:
+# kind's network in the cluster stack (so Pods reach them) or the scoped Podman
+# network of the services stack (so Podman workloads reach them). Images are pinned to multi-architecture index digests.
+x-fixture: &fixture
+  restart: "no"
+  networks: [kind]
+  labels:
+    dev.kodama.owner: ${KODAMA_OWNER}
+
+networks:
+  kind:
+    external: true
+    name: ${KODAMA_NETWORK}
+
+volumes:
+  postgres-data:
+  nats-data:
+  git-data:
+
+services:
+  registry:
+    <<: *fixture
+    image: docker.io/library/registry:3.1.2@sha256:01cd312e67026f06f5d89c3e133a4a9adc7cb9eeb9b1194e0b2954dfd770efd2
+    container_name: ${KODAMA_PROJECT}-registry
+    ports: ["127.0.0.1::5000"]
+
+  postgres:
+    <<: *fixture
+    image: docker.io/library/postgres:17.11@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+    container_name: ${KODAMA_PROJECT}-postgres
+    ports: ["127.0.0.1::5432"]
+    environment:
+      POSTGRES_PASSWORD_FILE: /secrets/postgres-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ${KODAMA_FIXTURES}:/secrets:ro
+      - ${KODAMA_FIXTURES}/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  nats:
+    <<: *fixture
+    image: docker.io/library/nats:2.15.1-alpine@sha256:7ae34c25dfd6fe2e01c6483eabef20d796690fdcac6c4d94ca780a6cf9877fde
+    container_name: ${KODAMA_PROJECT}-nats
+    ports: ["127.0.0.1::4222"]
+    command: ["-c", "/secrets/nats.conf"]
+    volumes:
+      - nats-data:/data
+      - ${KODAMA_FIXTURES}:/secrets:ro
+
+  localstack:
+    <<: *fixture
+    image: docker.io/localstack/localstack:4.14.0@sha256:3ebc37595918b8accb852f8048fef2aff047d465167edd655528065b07bc364a
+    container_name: ${KODAMA_PROJECT}-localstack
+    ports: ["127.0.0.1::4566"]
+    environment:
+      SERVICES: s3
+      EAGER_SERVICE_LOADING: "1"
+      AWS_DEFAULT_REGION: us-east-1
+
+  git:
+    <<: *fixture
+    image: ${KODAMA_IMAGE}
+    container_name: ${KODAMA_PROJECT}-git
+    entrypoint: ["/usr/local/bin/gitserver"]
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - git-data:/data
+      - ${KODAMA_FIXTURES}:/secrets:ro
+
+  oauthsonas:
+    <<: *fixture
+    image: ghcr.io/optimiware/oauthsonas:1.4.0@sha256:450a042217e49ac568a7b200d9636443e473c0e18e326231f18d2d88bc466c33
+    container_name: ${KODAMA_PROJECT}-oauthsonas
+    command: ["--config", "/secrets/oauthsonas.yaml", "--listen", "0.0.0.0:8181"]
+    environment:
+      OAUTHSONAS_ALLOW_NON_LOOPBACK: "true"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ${KODAMA_FIXTURES}:/secrets:ro

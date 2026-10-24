@@ -1,0 +1,15 @@
+{
+  "qa": {
+    "mappingPrincipal": "u_qa_mapper",
+    "reportOutput": "qa-report",
+    "deploymentInput": "deployment"
+  },
+  "chatops": {
+    "origin": "https://kodama.example.test",
+    "ports": [443],
+    "hosts": ["*.example.test"],
+    "privateEndpoints": [
+      {"tenant": "t_acme", "project": "p_inv", "address": "10.1.2.3:8443"}
+    ]
+  }
+}

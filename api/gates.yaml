@@ -1,0 +1,535 @@
+openapi: 3.0.3
+info:
+  title: Kodama human gates
+  version: 1.0.0
+  description: >-
+    Review and immutable decision of human gates
+    (docs/contracts/http-api.md, docs/specs/delivery-and-quality-gates.md). Owned by T-034.
+    Shared conventions (error envelope, pagination, ETag, idempotency) come from
+    api/common.yaml. Types are generated into internal/gates/http/gates.gen.go (see
+    internal/gates/http/generate.go). Every route sits under
+    /api/v1/tenants/{tenantId}/projects/{projectId}.
+
+
+    A gate is the recorded request for one authorized human decision about one subject. The
+    server builds the subject (tenant, project, work item, content revision, candidate commit,
+    definition, evidence ID/digest pairs, deployment and its configuration digest) and its
+    canonical SHA-256 digest; neither the subject nor the deciding actor is ever taken from a
+    request. The status is `pending`, `approved` or `rejected`. Expiry and invalidation are
+    derived applicability, not statuses: `expired` is computed from the snapshotted `deadline`,
+    and `invalidation` is a separate record that never rewrites the decision.
+
+
+    Gates are created by the server when a gate step of a run becomes ready; there is no create
+    route. Waiting for a gate consumes no compute. Approving a gate whose candidate was produced
+    by an agent additionally requires verified design conformance evidence
+    (`required.conformance.status = verified`); a blocked report stays visible and only
+    rejection is possible. Rework after a rejection is a new run and a new gate.
+
+
+    Reading requires evidence:read; deciding requires the human gate:decide permission (the
+    fixed `reviewer` role). Admin, engineer, workload and service identities cannot decide, and
+    a revoked reviewer cannot decide, replay a stored decision or have an earlier approval
+    consumed.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/gates:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listGates
+      summary: List gates of the project
+      description: >-
+        Ordered by (created_at, id). Requires evidence:read. The optional status filter may be
+        repeated; runId restricts the list to one run. A cursor is bound to the tenant, project,
+        filters and ordering that issued it, and every page is authorized again.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/GateStatus'
+          style: form
+          explode: true
+        - name: runId
+          in: query
+          required: false
+          schema:
+            $ref: 'common.yaml#/components/schemas/ID'
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of gates.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatePage'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/gates/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/GateId'
+    get:
+      operationId: getGate
+      summary: Read a gate with its subject, evidence snapshot and applicability
+      description: >-
+        Requires evidence:read. A gate of another tenant or project, an unknown gate and a gate
+        the caller may not see are all 404. The ETag is the gate version and is the value a
+        decision sends in If-Match.
+      responses:
+        '200':
+          description: The gate; the ETag is its version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gate'
+              example:
+                $ref: '#/components/examples/PendingGate/value'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/gates/{id}/decisions:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/GateId'
+    post:
+      operationId: decideGate
+      summary: Record the one immutable decision of a gate
+      description: >-
+        Requires gate:decide for a human reviewer, an `If-Match` header with the gate version and
+        an `Idempotency-Key`. The server derives the actor from the verified principal, then in
+        one transaction rechecks the reviewer's current authority (also after any lock wait), the
+        expected version, the subject digest, the deadline, any invalidation and the current
+        content, candidate, definition, evidence and deployment (its identity, configuration,
+        owning project and recorded candidate), applies the
+        decision and commits it with its audit record, the gate.decided event and the stored
+        response. Exactly one decision is ever recorded: of concurrent decisions one commits and
+        the others get 412 version_conflict. A repeat with the same key and body replays the
+        stored response after the caller's permission is checked again and records nothing; a
+        different body under a used key is 409 idempotency_conflict. Unknown fields are
+        rejected.
+
+
+        Denials. 409 `stale_gate_subject`: the digest is not the gate's, the gate expired or was
+        invalidated, or the current facts differ from the subject (details.reason names the
+        first difference: content_changed, candidate_changed, definition_changed,
+        evidence_changed, deployment_changed, step_not_waiting, work_cancelled, expired,
+        invalidated, subject_digest_mismatch); the prior decision is unchanged and a definitive
+        difference is recorded once as an invalidation. 412 `version_conflict`: stale If-Match.
+        428 `version_required`: no If-Match. 422 `invalid_transition`: the gate already has its
+        decision. 422 conformance denials, for approval only: `conformance_missing`,
+        `conformance_baseline_missing`, `conformance_evidence_invalid`, `conformance_malformed`
+        and T-003's `conformance_candidate_mismatch`, `conformance_baseline_mismatch`,
+        `conformance_incomplete` and `conformance_blocked` (these have no HTTP status in the
+        runtime contract; this route maps them to 422). 403 `forbidden`: the caller is not a
+        human reviewer of the project.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+        - $ref: 'common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GateDecisionRequest'
+            example:
+              decision: approve
+              subjectDigest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+              reason: Reviewed the identified source and test evidence.
+      responses:
+        '200':
+          description: The decision was recorded (or replayed). The ETag is the new gate version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            Idempotent-Replayed:
+              $ref: 'common.yaml#/components/headers/IdempotentReplayed'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gate'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: >-
+            idempotency_conflict (the key was used with a different request) or
+            stale_gate_subject (see the operation description; details.reason names why).
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          description: >-
+            invalid_transition (the gate is already decided) or a conformance denial of an
+            approval (conformance_missing, conformance_baseline_missing,
+            conformance_evidence_invalid, conformance_malformed, conformance_candidate_mismatch,
+            conformance_baseline_mismatch, conformance_incomplete, conformance_blocked).
+            Messages never echo evidence content.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    GateId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  schemas:
+    GateStatus:
+      type: string
+      enum: [pending, approved, rejected]
+      description: Exactly three statuses. Expiry and invalidation are derived, never statuses.
+    Digest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    GitCommit:
+      type: string
+      pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+    Timestamp:
+      type: string
+      format: date-time
+    Actor:
+      type: object
+      required: [type, id]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [user, service, workload, operator]
+        id:
+          type: string
+          minLength: 1
+          maxLength: 256
+    EvidenceRef:
+      type: object
+      required: [id, digest]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        digest:
+          $ref: '#/components/schemas/Digest'
+    Subject:
+      type: object
+      description: >-
+        The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both
+        null for a source-only gate.
+      required: [tenantId, projectId, workItemId, contentRevision, candidateCommit, definitionId, evidence, deploymentId, deploymentConfigDigest]
+      additionalProperties: false
+      properties:
+        tenantId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        projectId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        workItemId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        contentRevision:
+          $ref: 'common.yaml#/components/schemas/Version'
+        candidateCommit:
+          $ref: '#/components/schemas/GitCommit'
+        definitionId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        evidence:
+          type: array
+          maxItems: 256
+          items:
+            $ref: '#/components/schemas/EvidenceRef'
+        deploymentId:
+          type: string
+          nullable: true
+        deploymentConfigDigest:
+          type: string
+          nullable: true
+          pattern: '^sha256:[0-9a-f]{64}$'
+    RequiredEvidence:
+      type: object
+      required: [role, id, digest, expression, producer]
+      additionalProperties: false
+      properties:
+        role:
+          type: string
+          enum: [evidence, report, support]
+          description: >-
+            evidence: named by the gate step; report: the candidate's design conformance report;
+            support: an artifact the report cites for a check.
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        digest:
+          $ref: '#/components/schemas/Digest'
+        expression:
+          type: string
+          nullable: true
+        producer:
+          type: string
+          nullable: true
+          description: The step of this run that produced the artifact, or null for a pinned run input.
+    Conformance:
+      type: object
+      nullable: true
+      description: >-
+        Present only for an agent-produced candidate. A `blocked` snapshot refuses approval and
+        carries the denial code; the report stays bound to the subject for review.
+      required: [status, code, producerStep, baselineDigest, requiredChecks, reportId, reportDigest]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [verified, blocked]
+        code:
+          type: string
+          nullable: true
+        producerStep:
+          type: string
+        baselineDigest:
+          type: string
+          nullable: true
+        requiredChecks:
+          type: array
+          items:
+            type: string
+        reportId:
+          type: string
+          nullable: true
+        reportDigest:
+          type: string
+          nullable: true
+    Required:
+      type: object
+      required: [evidence, conformance]
+      additionalProperties: false
+      properties:
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequiredEvidence'
+        conformance:
+          $ref: '#/components/schemas/Conformance'
+    Decision:
+      type: object
+      nullable: true
+      required: [decidedBy, decision, reason, decidedAt]
+      additionalProperties: false
+      properties:
+        decidedBy:
+          $ref: '#/components/schemas/Actor'
+        decision:
+          type: string
+          enum: [approve, reject]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2048
+        decidedAt:
+          $ref: '#/components/schemas/Timestamp'
+    Invalidation:
+      type: object
+      nullable: true
+      required: [at, reason, supersedingCommit, supersedingRevision]
+      additionalProperties: false
+      properties:
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        reason:
+          type: string
+        supersedingCommit:
+          type: string
+          nullable: true
+        supersedingRevision:
+          type: integer
+          format: int64
+          nullable: true
+    Applicability:
+      type: object
+      description: >-
+        Derived at read time from the gate record alone (status, deadline, invalidation,
+        conformance). The decision and progression additionally recheck current facts.
+      required: [expired, applicable, reason]
+      additionalProperties: false
+      properties:
+        expired:
+          type: boolean
+        applicable:
+          type: boolean
+          description: True only for an approved, unexpired, uninvalidated gate whose conformance evidence is acceptable.
+        reason:
+          type: string
+          nullable: true
+    Gate:
+      type: object
+      required: [id, runId, stepId, status, subjectDigest, subject, required, requestedAt, deadline, decision, invalidation, applicability, version, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        runId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        stepId:
+          type: string
+        status:
+          $ref: '#/components/schemas/GateStatus'
+        subjectDigest:
+          $ref: '#/components/schemas/Digest'
+        subject:
+          $ref: '#/components/schemas/Subject'
+        required:
+          $ref: '#/components/schemas/Required'
+        requestedAt:
+          $ref: '#/components/schemas/Timestamp'
+        deadline:
+          $ref: '#/components/schemas/Timestamp'
+        decision:
+          $ref: '#/components/schemas/Decision'
+        invalidation:
+          $ref: '#/components/schemas/Invalidation'
+        applicability:
+          $ref: '#/components/schemas/Applicability'
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+    GatePage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Gate'
+        nextCursor:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 2048
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+    GateDecisionRequest:
+      type: object
+      required: [decision, subjectDigest, reason]
+      additionalProperties: false
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+        subjectDigest:
+          $ref: '#/components/schemas/Digest'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2048
+  examples:
+    PendingGate:
+      value:
+        id: gate_0123456789abcdef0123456789abcdef
+        runId: run_0123456789abcdef01234567
+        stepId: review
+        status: pending
+        subjectDigest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        subject:
+          tenantId: t_acme
+          projectId: p_inventory
+          workItemId: wi_1042
+          contentRevision: 2
+          candidateCommit: '1111111111111111111111111111111111111111'
+          definitionId: pd_01
+          evidence:
+            - id: art_tests
+              digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          deploymentId: null
+          deploymentConfigDigest: null
+        required:
+          evidence:
+            - role: evidence
+              id: art_tests
+              digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+              expression: '${{ steps.test.outputs.report }}'
+              producer: test
+          conformance: null
+        requestedAt: '2026-10-19T10:05:00Z'
+        deadline: '2026-10-20T10:05:00Z'
+        decision: null
+        invalidation: null
+        applicability:
+          expired: false
+          applicable: false
+          reason: not_approved
+        version: 1
+        createdAt: '2026-10-19T10:05:00Z'
+        updatedAt: '2026-10-19T10:05:00Z'

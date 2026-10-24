@@ -1,0 +1,16 @@
+{
+  "name": "coding",
+  "image": "registry.example.invalid/agent@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "wrapper": {"id": "kodama-wrapper", "version": "1.4.2", "command": ["/usr/local/bin/kodama-wrapper"], "harness": {"id": "opencode", "version": "0.9.1"}},
+  "instructions": "# Role\nImplement the work item and report conflicts instead of inventing architecture.",
+  "designBaseline": {
+    "requirements": ["AR-01", "AR-14"],
+    "decisions": ["C-16", "P-16"],
+    "sources": [{"repository": "https://git.example.invalid/kodama.git", "revision": "3030303030303030303030303030303030303030", "path": "docs/specs/agent-runtime.md"}],
+    "requiredChecks": ["module-boundaries", "tenant-authority"]
+  },
+  "model": {"name": "example-model", "endpoint": "https://gateway.example.invalid/v1"},
+  "tools": ["repo.read", "repo.search"],
+  "limits": {"wallSeconds": 1800, "maxRequests": 100, "maxTokens": 200000, "maxToolCalls": 50},
+  "transcript": {"record": true}
+}

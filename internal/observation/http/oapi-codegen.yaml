@@ -1,0 +1,10 @@
+# Types-only generation, as for internal/httpapi and internal/work/http: no router,
+# client or server.
+package: observationhttp
+output: observation.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true
+import-mapping:
+  common.yaml: github.com/optimiware/kodama/internal/httpapi

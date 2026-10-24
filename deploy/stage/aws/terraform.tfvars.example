@@ -1,0 +1,18 @@
+installation_id          = "kodama-stage-aws"
+region                   = "eu-west-1"
+environment_tier         = "staging"
+kubernetes_version       = "1.35"
+node_instance_type       = "m6i.large"
+node_count               = 2
+db_instance_class        = "db.t4g.medium"
+db_engine_version        = "17.11"
+db_backup_retention_days = 7
+ingress_host             = "kodama.stage.aws.example.invalid"
+runtime_callback_cidrs   = ["10.42.0.0/16"]
+
+tenants = [
+  {
+    namespace = "kodama-tenant-stage"
+    tenant_id = "t_stage"
+  }
+]

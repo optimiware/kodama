@@ -1,0 +1,25 @@
+{
+  "model": "gpt-a",
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  },
+  "max_tokens": 128,
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "stop": [
+    "END"
+  ],
+  "n": 1,
+  "messages": [
+    {
+      "role": "system",
+      "content": "Be brief."
+    },
+    {
+      "role": "user",
+      "content": "What is the weather in Oslo?",
+      "name": "alice"
+    }
+  ]
+}

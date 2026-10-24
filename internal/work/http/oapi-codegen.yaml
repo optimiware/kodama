@@ -1,0 +1,9 @@
+# Types-only generation, as for internal/httpapi: no router, client or server.
+package: workhttp
+output: work.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true
+import-mapping:
+  common.yaml: github.com/optimiware/kodama/internal/httpapi

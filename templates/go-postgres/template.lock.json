@@ -1,0 +1,20 @@
+{
+  "template": "go-postgres",
+  "version": "1.0.0",
+  "baseCommit": "dd823dc2c53f3d961ff48505b336aee3536d989a",
+  "go": "1.27.2",
+  "modules": {
+    "github.com/jackc/pgx/v5": "v5.11.0",
+    "github.com/coreos/go-oidc/v3": "v3.21.0"
+  },
+  "images": {
+    "runtimeBase": "cgr.dev/chainguard/static@sha256:17367e4d3ae2b46c3290858e483fac09be085c92b372360fe3bf6a6150848fde",
+    "toolsBase": "docker.io/library/golang:1.27.2@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a33d17e0345b111b945162d8"
+  },
+  "tools": {
+    "ko": {"version": "0.19.1", "sha256": {"linux-amd64": "635ac6ea3fd376c935fee597fbb29ab2c2449f49ef1655085fe3aa9c25fed7a5", "linux-arm64": "4099b2d1170d3b8a70e049237462efc2dd14d5fa30e9d2e5e108fb4f778cdd3f"}},
+    "kubectl": {"version": "1.37.1", "sha256": {"linux-amd64": "65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8", "linux-arm64": "ff749f4b78d9c4f1ec87307df9b50119ed819e2094aa9810cb9acffc3286c8c7"}}
+  },
+  "qualifiedOn": "2026-10-21",
+  "notes": "Digests were resolved and exercised on the qualification date above. The tools image digest is recorded by the installation after building deploy/tools/Containerfile."
+}

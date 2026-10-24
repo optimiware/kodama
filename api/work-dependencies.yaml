@@ -1,0 +1,320 @@
+openapi: 3.0.3
+info:
+  title: Kodama work dependencies
+  version: 1.0.0
+  description: >-
+    Business dependency links between work items of one project (docs/specs/work-management.md
+    WM-05, docs/contracts/http-api.md). Owned by T-045. A link says "the work item cannot start
+    until its prerequisite is done"; it is not a pipeline step dependency. Shared conventions
+    (ETags, If-Match, error envelope, list pagination) come from api/common.yaml.
+    Types are generated into internal/work/dependencies/http/dependencies.gen.go (see
+    internal/work/dependencies/http/generate.go). T-046 composes this fragment into the
+    published document and registers the routes, actions and migration.
+
+
+    Representation. The collection `/work-items/{id}/dependencies` lists the direct
+    prerequisites of the work item `{id}` (the dependent). A link is identified by
+    (tenant, project, dependent, prerequisite); `dependencyId` always names the prerequisite
+    work item. There is no separate graph resource and no PATCH.
+
+
+    Version semantics. Adding or removing a link is an edit of the dependent work item: an
+    actual change increments the dependent's `version` (its ETag) and appends one history entry
+    with changed field `dependencies`; it never changes `contentRevision`, the state or any
+    other field of either work item. POST and DELETE therefore require `If-Match` with the
+    dependent's current version and return the resulting version in `ETag`. Listing returns the
+    dependent's version, read in the same snapshot as the page, in `ETag`, which is the value
+    to send as `If-Match`.
+
+
+    Duplicates. After authorization and version validation, adding an existing link or removing
+    an absent link is a no-op: nothing is written, the version does not change and the response
+    carries the unchanged `ETag` (POST answers 200 instead of 201, DELETE answers 204 either
+    way). Both work items must still exist in the project.
+
+
+    Admission. A work item can leave `ready` for `active` only while every prerequisite is
+    `done`; refusal is the existing `422 prerequisite_unmet` of the work transition route. A
+    cancelled prerequisite never satisfies a link: remove the link to drop the prerequisite.
+    Done and cancelled work items accept no link changes, like any other edit.
+
+
+    Errors never disclose other resources. A prerequisite that does not exist, belongs to
+    another project or belongs to another tenant is the same `404 not_found` as a missing
+    dependent; the 422 graph error carries no path.
+    Every route sits under /api/v1.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/work-items/{id}/dependencies:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/WorkItemId'
+    get:
+      operationId: listWorkItemDependencies
+      summary: List the direct prerequisites of a work item
+      description: >-
+        Ordered by the prerequisite identifier, which is unique within the work item. The
+        response `ETag` is the dependent's version. A cursor is bound to the tenant, project and
+        dependent work item that issued it, and every page is authorized again (work_item:read).
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of direct prerequisites.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyPage'
+              example:
+                items:
+                  - dependentId: wi_1042
+                    dependencyId: wi_1040
+                    createdAt: '2026-10-19T10:05:00Z'
+                    createdBy:
+                      type: user
+                      id: usr_engineer
+                nextCursor: null
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    post:
+      operationId: addWorkItemDependency
+      summary: Add a prerequisite to a work item
+      description: >-
+        Requires work_item:edit_spec, re-evaluated inside the mutating transaction after every
+        lock wait. The prerequisite must be a work item of the same project; a link that would
+        make the work item depend on itself, directly or transitively, is
+        `422 dependency_cycle`. Graph changes of a project are serialized with its work
+        transitions. A work item has at most 100 direct prerequisites. Done and cancelled work
+        items accept no link changes (`422 invalid_transition`). An existing link is a no-op
+        (200, unchanged version).
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddDependency'
+            example:
+              dependencyId: wi_1040
+      responses:
+        '201':
+          description: The link was created; the ETag is the dependent's new version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyChange'
+              example:
+                dependentId: wi_1042
+                dependencyId: wi_1040
+                changed: true
+                version: 5
+        '200':
+          description: The link already existed; nothing was written and the ETag is unchanged.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyChange'
+              example:
+                dependentId: wi_1042
+                dependencyId: wi_1040
+                changed: false
+                version: 5
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/work-items/{id}/dependencies/{dependencyId}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/WorkItemId'
+      - $ref: '#/components/parameters/DependencyId'
+    delete:
+      operationId: removeWorkItemDependency
+      summary: Remove a prerequisite from a work item
+      description: >-
+        Requires work_item:edit_spec. Removing the link removes the prerequisite: the dependent
+        no longer waits for it. Removing an absent link is a no-op. Both work items must exist
+        in the project. Removal never deletes a work item.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: The link is absent; the ETag is the dependent's version (unchanged for a no-op).
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    WorkItemId:
+      name: id
+      in: path
+      required: true
+      description: The dependent work item, the one that waits.
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    DependencyId:
+      name: dependencyId
+      in: path
+      required: true
+      description: The prerequisite work item of the link.
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  responses:
+    Unprocessable:
+      description: >-
+        dependency_cycle (the link would make a work item depend on itself or exceed the bound
+        on prerequisites) or invalid_transition (a done or cancelled work item accepts no link
+        changes).
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+  schemas:
+    DependencyActorType:
+      type: string
+      enum: [user, service, workload, operator]
+    DependencyActor:
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          $ref: '#/components/schemas/DependencyActorType'
+        id:
+          type: string
+          minLength: 1
+          maxLength: 256
+    AddDependency:
+      type: object
+      additionalProperties: false
+      required: [dependencyId]
+      properties:
+        dependencyId:
+          $ref: 'common.yaml#/components/schemas/ID'
+    Dependency:
+      type: object
+      additionalProperties: false
+      required: [dependentId, dependencyId, createdAt, createdBy]
+      properties:
+        dependentId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        dependencyId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          $ref: '#/components/schemas/DependencyActor'
+    DependencyChange:
+      type: object
+      additionalProperties: false
+      required: [dependentId, dependencyId, changed, version]
+      properties:
+        dependentId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        dependencyId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        changed:
+          type: boolean
+          description: False for a no-op (the link already existed).
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+    DependencyPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Dependency'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'

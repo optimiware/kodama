@@ -1,0 +1,42 @@
+# NATS JetStream shared Helm values (in-cluster TLS + token auth from kodama-nats-auth Secret).
+config:
+  cluster:
+    enabled: false
+  jetstream:
+    enabled: true
+    fileStore:
+      pvc:
+        enabled: true
+        size: 10Gi
+  nats:
+    tls:
+      enabled: true
+      secretName: kodama-nats-tls
+      cert: tls.crt
+      key: tls.key
+      ca: ca.crt
+  merge:
+    authorization:
+      token: $NATS_AUTH_TOKEN
+
+container:
+  env:
+    NATS_AUTH_TOKEN:
+      valueFrom:
+        secretKeyRef:
+          name: kodama-nats-auth
+          key: nats-token
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+promExporter:
+  enabled: true
+  port: 7777
+
+natsBox:
+  enabled: false

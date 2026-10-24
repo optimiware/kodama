@@ -1,0 +1,158 @@
+[
+  {
+    "name": "sorted_keys_and_whitespace",
+    "input": "{ \"b\": 1,\n \"a\": [ 2, 1 ] , \"c\": {\"z\": null, \"y\": true} }",
+    "canonical": "{\"a\":[2,1],\"b\":1,\"c\":{\"y\":true,\"z\":null}}",
+    "sha256": "sha256:686d2fa4f2c9a88c9d924874329759d8ad1b4ae9e5cb143e3c507f28534a95a8"
+  },
+  {
+    "name": "null_is_not_omitted_present",
+    "input": "{\"question\":null,\"reason\":\"x\"}",
+    "canonical": "{\"question\":null,\"reason\":\"x\"}",
+    "sha256": "sha256:3db530cde8d998e290732bb5ad5c6101c62c775131ef1cc7de8f4860c9858cff"
+  },
+  {
+    "name": "null_is_not_omitted_absent",
+    "input": "{\"reason\":\"x\"}",
+    "canonical": "{\"reason\":\"x\"}",
+    "sha256": "sha256:64a16bbfb6ebeda8282cd548aa1b561185cdbb5d6d723c295edfc8fc1b11f3fb"
+  },
+  {
+    "name": "empty_containers",
+    "input": "{\"outputs\":{},\"diagnosticArtifactIds\":[]}",
+    "canonical": "{\"diagnosticArtifactIds\":[],\"outputs\":{}}",
+    "sha256": "sha256:2f5dc9bbb8f99a206110ff519ef4e20afa671a80d49db52a8a405de3d80e9ded"
+  },
+  {
+    "name": "array_order_preserved",
+    "input": "{\"ids\":[\"b\",\"a\",\"c\"]}",
+    "canonical": "{\"ids\":[\"b\",\"a\",\"c\"]}",
+    "sha256": "sha256:c41ba7f5521a123203a25453e2abbb5e23a3cc5c2477b66afe994b33269621da"
+  },
+  {
+    "name": "control_characters",
+    "input": "{\"s\":\"\\u0001\\u001f\\b\\f\\n\\r\\t\\u007f\"}",
+    "canonical": "{\"s\":\"\\u0001\\u001f\\b\\f\\n\\r\\t\"}",
+    "sha256": "sha256:b6244e45b8d8fe24abaa4ec0d959fee8dab8823faa41cee80c9ba4381aa5dbc7"
+  },
+  {
+    "name": "unescaped_when_not_required",
+    "input": "{\"s\":\"</script> & \\/ \\u2028 \\u00e9 \\ud83d\\ude00\"}",
+    "canonical": "{\"s\":\"</script> & /   é 😀\"}",
+    "sha256": "sha256:346515166bbdeccf65f611889b8ea415f5c8d0794a3614555cf5986f5d50bfac"
+  },
+  {
+    "name": "quote_and_backslash",
+    "input": "{\"s\":\"say \\\"hi\\\" \\\\ done\"}",
+    "canonical": "{\"s\":\"say \\\"hi\\\" \\\\ done\"}",
+    "sha256": "sha256:eb3844fb3e858d32ae9d8f2126f9d50595b9fc9307bea6557e006eb02cb7a050"
+  },
+  {
+    "name": "key_order_by_code_point_not_utf16",
+    "input": "{\"\\ud83d\\ude00\":1,\"\\uff5e\":2,\"\\u00e9\":3,\"Z\":4,\"z\":5}",
+    "canonical": "{\"Z\":4,\"z\":5,\"é\":3,\"～\":2,\"😀\":1}",
+    "sha256": "sha256:3bd28f1b7c4726dc75f8d015cf00914febd8762f2967e098908088066da93e2e"
+  },
+  {
+    "name": "integers",
+    "input": "{\"a\":0,\"b\":-1,\"c\":9007199254740991,\"d\":-9007199254740991}",
+    "canonical": "{\"a\":0,\"b\":-1,\"c\":9007199254740991,\"d\":-9007199254740991}",
+    "sha256": "sha256:1489b0fc5a4304a9d919746be4ad963ad9bfc71f114c4d983a708d1b3246aee6"
+  },
+  {
+    "name": "nested",
+    "input": "{\"result\":{\"outcome\":\"completed\",\"exitCode\":0,\"outputs\":{\"n\":3}}}",
+    "canonical": "{\"result\":{\"exitCode\":0,\"outcome\":\"completed\",\"outputs\":{\"n\":3}}}",
+    "sha256": "sha256:b38754525d6ec98f3e351fa46b9cd019c754bc723d7d66bcbe5071209abe776d"
+  },
+  {
+    "name": "rejects_float",
+    "input": "{\"a\":1.5}",
+    "error": true
+  },
+  {
+    "name": "rejects_float_integral",
+    "input": "{\"a\":1.0}",
+    "error": true
+  },
+  {
+    "name": "rejects_exponent",
+    "input": "{\"a\":1e3}",
+    "error": true
+  },
+  {
+    "name": "rejects_negative_zero",
+    "input": "{\"a\":-0}",
+    "error": true
+  },
+  {
+    "name": "rejects_leading_zero",
+    "input": "{\"a\":01}",
+    "error": true
+  },
+  {
+    "name": "rejects_plus_sign",
+    "input": "{\"a\":+1}",
+    "error": true
+  },
+  {
+    "name": "rejects_beyond_safe_range",
+    "input": "{\"a\":9007199254740992}",
+    "error": true
+  },
+  {
+    "name": "rejects_duplicate_key",
+    "input": "{\"a\":1,\"a\":1}",
+    "error": true
+  },
+  {
+    "name": "rejects_duplicate_key_after_escape",
+    "input": "{\"a\":1,\"\\u0061\":1}",
+    "error": true
+  },
+  {
+    "name": "rejects_trailing_data",
+    "input": "{\"a\":1} 2",
+    "error": true
+  },
+  {
+    "name": "rejects_lone_high_surrogate",
+    "input": "{\"a\":\"\\ud800\"}",
+    "error": true
+  },
+  {
+    "name": "rejects_lone_low_surrogate",
+    "input": "{\"a\":\"\\udc00\"}",
+    "error": true
+  },
+  {
+    "name": "rejects_raw_tab_in_string",
+    "input": "{\"a\":\"x\ty\"}",
+    "error": true
+  },
+  {
+    "name": "rejects_nan",
+    "input": "{\"a\":NaN}",
+    "error": true
+  },
+  {
+    "name": "rejects_single_quotes",
+    "input": "{'a':1}",
+    "error": true
+  },
+  {
+    "name": "rejects_depth_33",
+    "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+    "error": true
+  },
+  {
+    "name": "rejects_empty_input",
+    "input": "",
+    "error": true
+  },
+  {
+    "name": "rejects_trailing_comma",
+    "input": "{\"a\":1,}",
+    "error": true
+  }
+]

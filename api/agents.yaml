@@ -1,0 +1,511 @@
+openapi: 3.0.3
+info:
+  title: Kodama agent profiles
+  version: 1.0.0
+  description: >-
+    Registration and listing of immutable agent profile versions
+    (docs/specs/agent-runtime.md, docs/contracts/http-api.md). Owned by T-030.
+    Shared conventions (error envelope, pagination, ETag) come from api/common.yaml.
+    Types are generated into internal/agents/http/agents.gen.go (see
+    internal/agents/http/generate.go).
+    A profile version pins an image digest, a tested wrapper/harness combination,
+    instructions, an approved model, a tool allow-list, claimed limits, a design
+    baseline and a transcript policy. A pipeline agent step references one exact version as
+    `name@version`, the immutable reference returned by registration; a bare name is a
+    moving alias and is never accepted. There is no update, delete, session,
+    continuation or transcript route: changed content is the next version, identical
+    content returns the existing version, and a run pins the complete expanded profile
+    at admission.
+    Registration requires run:manage and listing requires run:read, through the identity
+    authority; the profile grants no authority to any run or workload.
+    Every route sits under /api/v1/tenants/{tenantId}/projects/{projectId}.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/agent-profiles:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listAgentProfiles
+      summary: List registered agent profile versions
+      description: >-
+        Ordered by (created_at, id); the identifier is the unique tie-breaker. The optional
+        name filter restricts the list to one profile name. A cursor is bound to the tenant,
+        project, filter and ordering that issued it, and every page is authorized again.
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ProfileName'
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of profile versions.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfilePage'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    post:
+      operationId: registerAgentProfile
+      summary: Register an agent profile version
+      description: >-
+        The request body is one JSON profile. The server authorizes the caller, validates the
+        profile, requires compatibility evidence for the exact image, wrapper, wrapper command
+        and harness combination and for every control the profile claims, requires the model
+        and tools to be approved for the project, and registers an immutable version.
+        An unqualified combination or unsupported claimed control is `profile_unsupported`
+        (422) and writes nothing. Content that is canonically identical to an existing
+        profile of the project returns that version with 200 and creates nothing; any other
+        content under a name creates the next version of that name with 201. Neither
+        If-Match nor Idempotency-Key is required because registration is content-addressed:
+        a retry after a lost response converges on the same version. A 503 may mean the
+        outcome is unknown; retrying is safe. Unknown fields and duplicate keys are rejected
+        with 400. Credentials never belong in a profile: the model endpoint is a
+        credential-free https URL and provider credentials stay with the AI gateway.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentProfileDraft'
+            example:
+              $ref: '#/components/examples/ProfileDraft/value'
+      responses:
+        '200':
+          description: >-
+            An identical profile was already registered; it is returned unchanged and nothing
+            was created.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            Location:
+              schema:
+                type: string
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfile'
+              example:
+                $ref: '#/components/examples/RegisteredProfile/value'
+        '201':
+          description: A new immutable version was created. The ETag is the version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            Location:
+              schema:
+                type: string
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfile'
+              example:
+                $ref: '#/components/examples/RegisteredProfile/value'
+        '400':
+          description: >-
+            The body is not one well-formed profile of the contract's shape (invalid_request),
+            or another common request failure.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: >-
+            profile_conflict: stored state contradicts the registration (for example a digest
+            match with different content). A retry does not help; an operator must investigate.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/InvalidProfile'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  responses:
+    InvalidProfile:
+      description: >-
+        invalid_profile: the profile is well formed but violates a rule (field syntax, bounds,
+        design baseline, unapproved model or tool; details.diagnostics lists stable codes
+        such as invalid_field, limit_exceeded, unapproved_model and unapproved_tool with their
+        paths), or profile_unsupported: the wrapper, harness and image combination or a
+        claimed control has no compatibility evidence in this installation.
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: profile_unsupported
+              message: the wrapper, harness and image combination has no compatibility evidence
+              requestId: req_00000000000000000000000000000001
+              details: {}
+  examples:
+    ProfileDraft:
+      value:
+        name: coding
+        image: registry.example.invalid/agent@sha256:1111111111111111111111111111111111111111111111111111111111111111
+        wrapper:
+          id: kodama-wrapper
+          version: 1.4.2
+          command: [/usr/local/bin/kodama-wrapper]
+          harness:
+            id: opencode
+            version: 0.9.1
+        instructions: |-
+          # Role
+          Implement the work item and report conflicts instead of inventing architecture.
+        designBaseline:
+          requirements: [AR-01, AR-14]
+          decisions: [C-16, P-16]
+          sources:
+            - repository: https://git.example.invalid/kodama.git
+              revision: '3030303030303030303030303030303030303030'
+              path: docs/specs/agent-runtime.md
+          requiredChecks: [module-boundaries, tenant-authority]
+        model:
+          name: example-model
+          endpoint: https://gateway.example.invalid/v1
+        tools: [repo.read, repo.search]
+        limits:
+          wallSeconds: 1800
+          maxRequests: 100
+          maxTokens: 200000
+          maxToolCalls: 50
+        transcript:
+          record: true
+    RegisteredProfile:
+      value:
+        id: ap_0123456789abcdef0123456789abcdef
+        name: coding
+        version: 1
+        reference: coding@1
+        digest: sha256:2222222222222222222222222222222222222222222222222222222222222222
+        profile:
+          name: coding
+          image: registry.example.invalid/agent@sha256:1111111111111111111111111111111111111111111111111111111111111111
+          wrapper:
+            id: kodama-wrapper
+            version: 1.4.2
+            command: [/usr/local/bin/kodama-wrapper]
+            harness:
+              id: opencode
+              version: 0.9.1
+          instructions: |-
+            # Role
+            Implement the work item and report conflicts instead of inventing architecture.
+          designBaseline:
+            digest: sha256:3333333333333333333333333333333333333333333333333333333333333333
+            requirements: [AR-01, AR-14]
+            decisions: [C-16, P-16]
+            sources:
+              - repository: https://git.example.invalid/kodama.git
+                revision: '3030303030303030303030303030303030303030'
+                path: docs/specs/agent-runtime.md
+            requiredChecks: [module-boundaries, tenant-authority]
+          model:
+            name: example-model
+            endpoint: https://gateway.example.invalid/v1
+          tools: [repo.read, repo.search]
+          limits:
+            wallSeconds: 1800
+            maxRequests: 100
+            maxTokens: 200000
+            maxToolCalls: 50
+          transcript:
+            record: true
+        createdBy:
+          type: user
+          id: usr_engineer
+        createdAt: '2026-10-19T10:05:00Z'
+  schemas:
+    ProfileName:
+      type: string
+      pattern: '^[a-z][a-z0-9_-]{0,62}$'
+    ActorType:
+      type: string
+      enum: [user, service, workload, operator]
+    Actor:
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          $ref: '#/components/schemas/ActorType'
+        id:
+          type: string
+          minLength: 1
+          maxLength: 256
+    Digest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    Harness:
+      type: object
+      additionalProperties: false
+      required: [id, version]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z][a-z0-9._-]{0,62}$'
+        version:
+          type: string
+          pattern: '^[0-9A-Za-z.+-]{1,64}$'
+    Wrapper:
+      type: object
+      additionalProperties: false
+      required: [id, version, command, harness]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z][a-z0-9._-]{0,62}$'
+        version:
+          type: string
+          pattern: '^[0-9A-Za-z.+-]{1,64}$'
+        command:
+          type: array
+          minItems: 1
+          maxItems: 16
+          description: The exact wrapper entrypoint argv inside the image; compatibility evidence must cover it.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 512
+        harness:
+          $ref: '#/components/schemas/Harness'
+    SourceRef:
+      type: object
+      additionalProperties: false
+      required: [repository, revision, path]
+      properties:
+        repository:
+          type: string
+          pattern: '^https://[^\s@/?#]+(/[^\s@?#]*)?$'
+        revision:
+          type: string
+          description: A Git object ID. Branches and tags are moving references and are rejected.
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+        path:
+          type: string
+          pattern: '^(\.?[A-Za-z0-9_-][A-Za-z0-9._-]*)(/\.?[A-Za-z0-9_-][A-Za-z0-9._-]*)*$'
+    DesignBaseline:
+      type: object
+      additionalProperties: false
+      description: >-
+        Reference-only design baseline pinned for every attempt of the profile. The server sorts
+        the lists canonically and computes the digest; a supplied digest must match.
+      required: [requirements, decisions, sources, requiredChecks]
+      properties:
+        digest:
+          $ref: '#/components/schemas/Digest'
+        requirements:
+          type: array
+          minItems: 1
+          maxItems: 256
+          items:
+            type: string
+            pattern: '^[A-Z]{2,4}-A?[0-9]{2,3}$'
+        decisions:
+          type: array
+          maxItems: 128
+          items:
+            type: string
+            pattern: '^[COP]-[0-9]{2}$'
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/SourceRef'
+        requiredChecks:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            pattern: '^[a-z][a-z0-9-]{0,62}$'
+    Model:
+      type: object
+      additionalProperties: false
+      required: [name, endpoint]
+      properties:
+        name:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$'
+        endpoint:
+          type: string
+          description: 'A credential-free https URL: no userinfo, query or fragment.'
+          pattern: '^https://[^\s@/?#]+(/[^\s@?#]*)?$'
+          maxLength: 512
+    Limits:
+      type: object
+      additionalProperties: false
+      required: [wallSeconds]
+      properties:
+        wallSeconds:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 86400
+        maxRequests:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+          description: Run-wide request allowance. Omitted means not claimed.
+        maxTokens:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+          description: Run-wide token allowance. Omitted means not claimed.
+        maxToolCalls:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+          description: Tool-call ceiling. Omitted means not claimed.
+    Transcript:
+      type: object
+      additionalProperties: false
+      required: [record]
+      properties:
+        record:
+          type: boolean
+          description: >-
+            Whether the wrapper records a transcript as a sensitive diagnostic artifact. Result,
+            usage and profile metadata stay attributable either way.
+    AgentProfileDraft:
+      type: object
+      additionalProperties: false
+      required: [name, image, wrapper, instructions, designBaseline, model, tools, limits, transcript]
+      properties:
+        name:
+          $ref: '#/components/schemas/ProfileName'
+        image:
+          type: string
+          description: The harness image, pinned by digest.
+          pattern: '^[^\s@]+@sha256:[0-9a-f]{64}$'
+          maxLength: 512
+        wrapper:
+          $ref: '#/components/schemas/Wrapper'
+        instructions:
+          type: string
+          minLength: 1
+          maxLength: 65536
+        designBaseline:
+          $ref: '#/components/schemas/DesignBaseline'
+        model:
+          $ref: '#/components/schemas/Model'
+        tools:
+          type: array
+          maxItems: 128
+          items:
+            type: string
+            pattern: '^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$'
+        limits:
+          $ref: '#/components/schemas/Limits'
+        transcript:
+          $ref: '#/components/schemas/Transcript'
+    CanonicalProfile:
+      type: object
+      description: >-
+        The canonical form of the registered profile (sorted keys, tools and baseline in
+        canonical order, integers preserved). Its SHA-256 is the digest.
+      additionalProperties: true
+      x-go-type: rawjson.RawMessage
+      x-go-type-import:
+        name: rawjson
+        path: encoding/json
+    AgentProfile:
+      type: object
+      additionalProperties: false
+      required: [id, name, version, reference, digest, profile, createdBy, createdAt]
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        name:
+          $ref: '#/components/schemas/ProfileName'
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        reference:
+          type: string
+          description: The immutable reference `name@version` a pipeline agent step uses.
+          pattern: '^[a-z][a-z0-9_-]{0,62}@[1-9][0-9]{0,15}$'
+        digest:
+          $ref: '#/components/schemas/Digest'
+        profile:
+          $ref: '#/components/schemas/CanonicalProfile'
+        createdBy:
+          $ref: '#/components/schemas/Actor'
+        createdAt:
+          type: string
+          format: date-time
+    AgentProfilePage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/AgentProfile'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'

@@ -1,0 +1,53 @@
+# Inputs, conditions, ordered writers, outputs, retries and secret references.
+apiVersion: kodama/v1alpha1
+kind: Pipeline
+metadata:
+  name: build-and-publish
+spec:
+  inputs:
+    publish: {type: boolean, default: false}
+    channel: {type: string, default: stable}
+    attempts: {type: integer, default: 9007199254740991}
+    screenshot: {type: artifact}
+  steps:
+    - id: format
+      kind: container
+      image: registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      workspace: {access: write, from: run}
+      command: [/bin/sh, -ec]
+      args:
+        - |
+          gofmt -w .
+          git add -A
+      timeoutSeconds: 300
+    - id: test
+      kind: container
+      needs: [format]
+      image: registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      workspace: {access: read, from: format}
+      command: [/bin/sh, -ec]
+      args: ["echo ${CHANNEL}"]
+      env:
+        CHANNEL: ${{ inputs.channel }}
+        SOURCE: ${{ steps.format.outputs.commit }}
+        STRICT: true
+        RETRIES: 3
+      retry: {maxAttempts: 3, backoffSeconds: 30, on: [infrastructure, transient]}
+      timeoutSeconds: 600
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/tests.json}
+        coverage: {type: integer}
+    - id: image
+      kind: container
+      needs: [test]
+      when: {input: publish, equals: true}
+      image: registry.example.invalid/builder@sha256:2222222222222222222222222222222222222222222222222222222222222222
+      workspace: {access: read, from: format}
+      command: [/kodama/bin/build-image]
+      env:
+        REGISTRY_TOKEN: {secretRef: "secret://project/registry-token"}
+      secretFiles:
+        netrc: "secret://project/netrc"
+      timeoutSeconds: 1200
+      outputs:
+        image: {type: ociArtifact}

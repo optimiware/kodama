@@ -1,0 +1,7 @@
+# Types-only generation, as for internal/work/http: no router, client or server.
+package: metricshttp
+output: work-summaries.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true

@@ -1,0 +1,93 @@
+{{- /*
+Control-plane RBAC, scoped to the configured tenant execution namespaces. Namespaced Roles only;
+no cluster-admin, no wildcards. The one ClusterRole can only `get` the named tenant namespaces
+(to verify Pod Security labels). Secrets access is off unless execution.rbac.manageSecrets=true.
+*/ -}}
+{{- range .Values.execution.tenants }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kodama.fullname" $ }}-control-plane
+  namespace: {{ .namespace }}
+  labels:
+    {{- include "kodama.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: execution-rbac
+rules:
+  # Attempt Jobs: created, observed and deleted by the control plane (T-021).
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  # Read-only tenant namespace policy checks.
+  - apiGroups: [""]
+    resources: ["serviceaccounts", "resourcequotas", "limitranges"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list"]
+  {{- if $.Values.execution.rbac.manageSecrets }}
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "delete"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kodama.fullname" $ }}-control-plane
+  namespace: {{ .namespace }}
+  labels:
+    {{- include "kodama.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: execution-rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kodama.fullname" $ }}-control-plane
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kodama.serverServiceAccount" $ }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- if .Values.execution.tenants }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ printf "%s-%s-tenant-namespaces" (include "kodama.fullname" .) .Release.Namespace | trunc 253 | trimSuffix "-" }}
+  labels:
+    {{- include "kodama.labels" . | nindent 4 }}
+    app.kubernetes.io/component: execution-rbac
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get"]
+    resourceNames:
+      {{- range .Values.execution.tenants }}
+      - {{ .namespace }}
+      {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s-%s-tenant-namespaces" (include "kodama.fullname" .) .Release.Namespace | trunc 253 | trimSuffix "-" }}
+  labels:
+    {{- include "kodama.labels" . | nindent 4 }}
+    app.kubernetes.io/component: execution-rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ printf "%s-%s-tenant-namespaces" (include "kodama.fullname" .) .Release.Namespace | trunc 253 | trimSuffix "-" }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kodama.serverServiceAccount" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

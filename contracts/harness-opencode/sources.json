@@ -1,0 +1,325 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "oc-doc-index",
+      "kind": "documented",
+      "location": "https://opencode.ai/v2/llms.txt",
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "Index of the OpenCode V2 documentation set; the pages below were selected from it.",
+      "provenance": "OpenCode project, official V2 documentation. Read by the coordinator (packet, 2026-10-21) and re-fetched by the T-074 implementer on 2026-10-21 (HTTP 200, 4061 bytes, sha256 79fe81b6d690646e875dbbbc696738286f677a47bd2ea39c4318437ed0dfacd0).",
+      "limitations": "Unversioned living page: no upstream release, tag or commit is given, so the digest identifies only the bytes seen on that date. Not tied to CLI build 2.1.2."
+    },
+    {
+      "id": "oc-doc-cli",
+      "kind": "documented",
+      "location": "https://opencode.ai/v2/docs/cli/",
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "'Use opencode run to submit a prompt without opening the interactive interface. It is designed for scripts, CI jobs, and other workflows that need model output directly in the terminal.' By default OpenCode discovers or starts one shared background server for the user account; 'Use --standalone to run with a private server, or --server to connect to a specific server URL'.",
+      "provenance": "OpenCode project, official V2 documentation (CLI page). Coordinator packet summary, 2026-10-21; implementer re-fetched the page the same day and confirmed the quoted sentences.",
+      "limitations": "The page documents no run flag list: the strings '--dir', '--pure', '--format' and '--auto' do not occur in the text the implementer fetched. It documents neither the NDJSON event schema, exit codes, signal handling, stdin behavior nor a non-interactive permission default. Dynamic HTML (byte length varied between two fetches), so no stable digest is recorded."
+    },
+    {
+      "id": "oc-doc-permissions",
+      "kind": "documented",
+      "location": "https://opencode.ai/v2/docs/permissions/",
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "V2 configuration uses a top-level `permissions` list of rules with `action`, `resource` and `effect`; actions include read, edit, glob, grep, shell, subagent, skill, question, webfetch, websearch, external_directory, `<server>_<tool>` for MCP tools, opencode_list_mcp_resources, opencode_read_mcp_resource and execute. 'shell runs with the host user's filesystem, process, and network authority. Directory inference from command text is best effort'.",
+      "provenance": "OpenCode project, official V2 documentation (permissions page). Coordinator packet summary, 2026-10-21; implementer re-fetched and confirmed the action table, the shell warning and the MCP `<server>_<tool>` resource form.",
+      "limitations": "Documents the rule vocabulary, not the default effect when no rule matches, nor how an unanswered `question`/permission prompt behaves under `opencode run`. OpenCode permissions are a guardrail inside the process; they are not Kodama authority or containment."
+    },
+    {
+      "id": "oc-doc-mcp",
+      "kind": "documented",
+      "location": "https://opencode.ai/v2/docs/mcp-servers/",
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "Servers live under `mcp.servers`; a remote server 'uses the MCP Streamable HTTP transport and requires an absolute URL'; `oauth: false` disables OAuth for header credentials; `codemode` defaults to true and groups tools as tools.<server>.<tool> with names normalized to <server>_<tool>; permission actions can hide or deny tools; server instructions returned at initialization are added to the system prompt; calls made for a session carry CallToolRequest.params._meta[\"ai.opencode/sessionID\"], documented as an opaque correlation value that must not be used by itself for authentication or authorization; the per-server `protocol` field accepts legacy (default), auto or 2026-07-28. The page's 'Protocol version' section documents that `legacy` (the default) sends `initialize` and speaks protocol revisions up to 2025-11-25, while `auto` probes with `server/discover` for 2026-07-28 and falls back to `legacy` when that is unsupported.",
+      "provenance": "OpenCode project, official V2 documentation (MCP servers page). Coordinator packet summary, 2026-10-21; implementer re-fetched and confirmed each listed statement.",
+      "limitations": "The page documents intended client behavior only; no exchange was measured, so OpenCode is not shown to interoperate with the Kodama pin 2025-11-25 proxy (gap U-08). Naming collisions after normalization are mentioned only as a uniqueness requirement; no collision resolution is specified in the text read. Resource helpers (list/read MCP resources) exist as built-in tools."
+    },
+    {
+      "id": "oc-doc-migrate",
+      "kind": "documented",
+      "location": "https://opencode.ai/v2/docs/migrate-v1/",
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "V1 names such as `permission`, `bash` and `task` are replaced in V2 native configuration; V1 `.opencode/` definitions are intended to remain compatible; API and plugin APIs are intentional breaks.",
+      "provenance": "OpenCode project, official V2 documentation (migration guide). Taken from the coordinator packet summary of 2026-10-21; the implementer fetched the page (HTTP 200) but did not re-verify each migration statement.",
+      "limitations": "Does not list removed or renamed `opencode run` flags, so it neither states nor excludes a replacement for `--dir` or `--pure`."
+    },
+    {
+      "id": "oc-doc-openapi",
+      "kind": "documented",
+      "location": "https://opencode.ai/v2/openapi.json",
+      "revision": "openapi 3.1.0; info.title 'opencode HttpApi'; info.version 0.0.1; sha256 c45c6cfc5984351957280c8131afafdef79ba366eec29b69480d63f8efa511b5",
+      "observedAt": "2026-10-21",
+      "claim": "The served schema describes these routes: POST/GET /api/session; GET/DELETE /api/session/{sessionID}; POST /api/session/{sessionID}/prompt; POST /api/session/{sessionID}/generate; GET /api/session/{sessionID}/message; POST /api/session/{sessionID}/interrupt; GET /api/session/active; GET /api/event; GET/POST /api/session/{sessionID}/permission and POST .../permission/{requestID}/reply; GET/POST /api/session/{sessionID}/form and POST .../form/{formID}/reply; GET /api/mcp; GET /api/info. Message and event types distinguish user, assistant (text, reasoning, tool) and shell messages, tool states streaming/running/completed/error, and a session outcome of succeeded, failed or interrupted.",
+      "provenance": "Machine-readable schema served by the OpenCode project. The coordinator fetched it on 2026-10-21 (packet calls it the 'measured HTTP surface'); the implementer re-fetched it the same day (595993 bytes) and confirmed the route and method list. No route was exercised by either party.",
+      "limitations": "Schema only. info.description reads 'Experimental HttpApi surface for selected instance routes' and the version is 0.0.1, so stability is not promised. It does not show process lifetime, authentication of the HTTP server, or that /interrupt terminates child processes. The /form routes' relationship to the `question` permission action is unread. These are server routes, not the Kodama result envelope."
+    },
+    {
+      "id": "oc-meas-version",
+      "kind": "coordinator-measured",
+      "location": "local `opencode --version` on the coordinator's host",
+      "revision": "2.1.2",
+      "observedAt": "2026-10-21",
+      "claim": "The installed build reports version 2.1.2. It is therefore the candidate version for qualification.",
+      "provenance": "Coordinator measurement recorded in the packet .harness/opencode-v2-research.md (gitignored, not reproduced by the implementer, who did not run the binary).",
+      "limitations": "Second-hand: no binary checksum, package source, install channel or image digest was recorded. A candidate, not a production pin, a qualified image or a compatibility-catalogue entry."
+    },
+    {
+      "id": "oc-meas-run-help",
+      "kind": "coordinator-measured",
+      "location": "local `opencode run --help` and `opencode --help`, build 2.1.2",
+      "revision": "2.1.2",
+      "observedAt": "2026-10-21",
+      "claim": "`run --help` advertises --standalone, --server, --continue/-c, --session/-s, --fork, --model/-m, --agent, --format default|json, --file/-f, --title, --thinking and --auto, and does not advertise --dir or --pure. Top-level help lists the subcommands run, serve, session, api, mcp, plugin, models, service, acp, debug, reload and upgrade. The background service is the default; --standalone or --server <url> select a private or explicit server.",
+      "provenance": "Coordinator measurement recorded in the packet, 2026-10-21. Not reproduced by the implementer.",
+      "limitations": "Help text is not a behavioral guarantee. The meaning, defaults and interaction of --auto, --continue, --session and --fork were not measured, and none of them is a Kodama continuation mechanism (AR-07/AR-08 are retired)."
+    },
+    {
+      "id": "oc-meas-removed-flags",
+      "kind": "coordinator-measured",
+      "location": "local `opencode run --pure ...` and `opencode run --dir ...`, build 2.1.2",
+      "revision": "2.1.2",
+      "observedAt": "2026-10-21",
+      "claim": "Both invocations fail with exit status 1 and print the run usage (unknown flags). The retired Python harness invocation that uses --pure and --dir is therefore not runnable on 2.1.2.",
+      "provenance": "Coordinator measurement recorded in the packet, 2026-10-21. Not reproduced by the implementer.",
+      "limitations": "Establishes absence of the flags on this build only. No documentation page read states a replacement; the packet's suggestion to use `opencode <directory>` is documented only for the interactive CLI, not for `run`. This checkpoint therefore selects no replacement flag."
+    },
+    {
+      "id": "oc-meas-ndjson",
+      "kind": "coordinator-measured",
+      "location": "local `opencode run --format json --model opencode/deepseek-v4.1-flash-free \"Reply with the single word OK and nothing else.\"`, build 2.1.2, run in /tmp without repository context",
+      "revision": "2.1.2",
+      "observedAt": "2026-10-21",
+      "claim": "Exit 0. Stdout was newline-delimited JSON with, in order, a `step_start`, a `text` and a `step_finish` event. Each event has `type`, `timestamp`, `sessionID` and a `part`; the text part carries the text and start/end times; `step_finish` carries `reason` (\"stop\"), `cost` (0) and `tokens` {input 114, output 2, reasoning 0, cache {read 5120, write 0}}. No terminal result envelope appeared.",
+      "provenance": "Coordinator measurement recorded in the packet, 2026-10-21. The abridged sample is reproduced in docs/implementation/opencode-wrapper-protocol.md. Not reproduced by the implementer.",
+      "limitations": "One trivial prompt against a free hosted model: no tool call, no repository, no MCP server, no permission prompt, no error, no cancellation and no gateway. The schema of other event types, the event order for tool use, and the failure shape are unknown. The retired harness parser's 'last text-producing step is the answer' rule is not a Kodama completion rule."
+    },
+    {
+      "id": "kodama-spec-agent-runtime",
+      "kind": "local-contract",
+      "location": "docs/specs/agent-runtime.md",
+      "revision": "git 80cd84f",
+      "observedAt": "2026-10-21",
+      "claim": "AR-02 (integration-tested wrapper/version), AR-05 (authorization from workload identity), AR-06 (valid structured result), AR-09 (cancellation stops the process tree and revokes new access), AR-10 (attributable result/usage and authorized transcript references), AR-11 (source changes published through the workspace protocol), AR-13 (`needs_input` fails with a question), AR-14 (candidate-bound conformance evidence); acceptance AR-A01, AR-A02, AR-A04, AR-A06, AR-A07. AR-07/AR-08 continuation are retired.",
+      "provenance": "Repository specification at the stated commit.",
+      "limitations": "Specification of intent; it selects no OpenCode flag, schema or version."
+    },
+    {
+      "id": "kodama-spec-gateway-mcp",
+      "kind": "local-contract",
+      "location": "docs/specs/ai-gateway-and-mcp-proxy.md",
+      "revision": "git 80cd84f",
+      "observedAt": "2026-10-21",
+      "claim": "GM-05 (explicit retry, no silent stream replacement), GM-07 (profile allow-list on discovery and invocation), GM-08 (caller-bound, expiring remote sessions), GM-10 (no automatic retry of side-effecting tools), GM-11 (independently configurable raw retention), GM-12 (pinned, compatibility-tested protocol/harness versions); acceptance GM-A03, GM-A04, GM-A05, GM-A07, GM-A08. First MCP transport is Streamable HTTP with integration-owned credentials.",
+      "provenance": "Repository specification at the stated commit.",
+      "limitations": "Specification of intent."
+    },
+    {
+      "id": "kodama-decisions",
+      "kind": "local-contract",
+      "location": "docs/decisions.md (C-15, O-04, C-12/C-13, C-16, O-07, O-17/O-18/O-19)",
+      "revision": "git 80cd84f",
+      "observedAt": "2026-10-21",
+      "claim": "C-15 starts with OpenCode headless over OpenAI-compatible HTTP; O-04 selects OpenCode plus a configurable OpenAI-compatible endpoint and requires the exact versions and protocol to be pinned and tested by T-031/T-032.",
+      "provenance": "Repository decision register at the stated commit.",
+      "limitations": "Selects a direction. It does not select a version, provider protocol beyond the gateway subset, or image."
+    },
+    {
+      "id": "kodama-runtime-contract",
+      "kind": "local-contract",
+      "location": "contracts/runtime/README.md; contracts/runtime/v1/schema.json; contracts/runtime/v1/fixtures/{cases,checks,scenarios,design}.json",
+      "revision": "git 80cd84f",
+      "observedAt": "2026-10-21",
+      "claim": "Frozen runtime v1: explicit nulls, strict requests, canonical ResultHash over the normalized result, result outcomes completed/failed/needs_input with their field rules, server-derived attempt status, same-hash result replay and `result_conflict` otherwise, source proposals with `publication_conflict`, `incompatible wrapper` = `422 profile_unsupported`, design baseline digest and the derived ConformanceReport with CheckConformance codes. Fixture selectors used by cases.json are `name` values in those files.",
+      "provenance": "Repository contract at the stated commit (T-003).",
+      "limitations": "Shape and protocol fixtures; they do not verify database state, cancellation races, Git publication or storage."
+    },
+    {
+      "id": "kodama-entrypoint",
+      "kind": "local-contract",
+      "location": "docs/implementation/step-entrypoint.md; internal/entrypoint/README.md",
+      "revision": "git 80cd84f",
+      "observedAt": "2026-10-21",
+      "claim": "The entrypoint runs the command as argv in its own process group with stdin closed and stdout/stderr merged into one bounded log, an allowlisted environment, SIGTERM then SIGKILL on cancel or timeout, an optional /kodama/results.json manifest (outcome completed|failed|needs_input, typed outputs, strict JSON, at most 1 MiB; absent file means completed), declared-output validation (exit zero never completes a step with a missing output), writer publication by expected-tip CAS, and one idempotent result submission. The runtime token is written to --token-file for the wrapper's own tools.",
+      "provenance": "Repository documents and implementation at the stated commit (T-016).",
+      "limitations": "The manifest is optional, so a command that never writes it is `completed` unless an output is declared. Reason vocabulary beyond exit_nonzero/timeout is entrypoint vocabulary awaiting T-022 adoption. The bounded command log is always captured as a diagnostic; whether it is uploaded is T-063's seam."
+    },
+    {
+      "id": "kodama-agents",
+      "kind": "local-contract",
+      "location": "internal/agents/README.md; internal/agents/payload.go; internal/agents/catalogue.go; internal/agents/values.go",
+      "revision": "git 80cd84f",
+      "observedAt": "2026-10-21",
+      "claim": "A profile version pins image digest, wrapper id/version/entrypoint, harness id/version, instructions, model, endpoint, sorted tool allow-list, claimed limits, transcript policy and design baseline. The wrapper payload is `agents.WrapperConfig` {version, profile {name, version, digest}, content}, canonical JSON, base64url (unpadded), cut into 3072-character arguments after the marker `kodama.agent-config/v1`. Registration requires an exact tuple (image, wrapper, entrypoint, harness) with evidence and the claimed controls from {model, requests, tokens, tool_calls, tool_allowlist, transcript} in an injected catalogue; wall time is an ordinary execution deadline, not a control. `needs_input` is a failed attempt with its question and no candidate.",
+      "provenance": "Repository implementation at the stated commit (T-030).",
+      "limitations": "No OpenCode wrapper, compatibility smoke result or production catalogue entry exists; those are T-031 outputs."
+    },
+    {
+      "id": "kodama-gateway",
+      "kind": "local-contract",
+      "location": "internal/gateway/protocol.md; internal/gateway/testdata/chat-completions/manifest.json; api/gateway.yaml",
+      "revision": "git 80cd84f",
+      "observedAt": "2026-10-21",
+      "claim": "Protocol revision chat-completions-stream/1: POST /gateway/v1/attempts/{attemptId}/chat/completions with a bearer runtime token; strict member set (model, messages, stream:true, stream_options include_usage only, n=1, one of max_tokens/max_completion_tokens, temperature, top_p, stop, tools, tool_choice, parallel_tool_calls); text-only messages; re-encoded SSE stream subset ending in [DONE]; in-stream error event and aborted body after bytes were delivered; limit_exceeded is 403 not 429; no gateway retry, fallback or stream replacement; usage and charging table. The manifest records `\"harness\": \"pending T-031\"` and `\"provider\": \"none claimed\"`.",
+      "provenance": "Repository implementation and fixtures at the stated commit (T-032).",
+      "limitations": "Deterministic fixtures prove the module implements the subset. They are not evidence that any real provider, model or OpenCode version produces or consumes it."
+    },
+    {
+      "id": "kodama-mcpproxy",
+      "kind": "local-contract",
+      "location": "internal/mcpproxy/README.md; internal/mcpproxy/protocol/compatibility.go; api/mcp.yaml",
+      "revision": "git 80cd84f",
+      "observedAt": "2026-10-21",
+      "claim": "Streamable HTTP only; official Go SDK github.com/modelcontextprotocol/go-sdk v1.8.0; single supported revision 2025-11-25 on both legs (the SDK's newer default 2026-07-28 is not used); only the `tools` capability is advertised; tools are addressed as `<registrationID>/<toolName>` (a bare name or wildcard grants nothing); every request authenticates the attempt token for `tool.invoke`; sessions are caller-tuple-bound and expire, with copied/expired/closed sessions all not-found; a lost, cancelled or timed-out call is `unknown`, never retried and never described as rolled back.",
+      "provenance": "Repository implementation at the stated commit (T-033).",
+      "limitations": "The module claims no OpenCode compatibility; its fixture proves only the declared SDK/protocol combination. Nothing mounts the routes yet (T-039)."
+    },
+    {
+      "id": "kodama-conformance-procedure",
+      "kind": "local-contract",
+      "location": "docs/implementation/design-conformance.md",
+      "revision": "git 80cd84f",
+      "observedAt": "2026-10-21",
+      "claim": "Immutable design baseline, candidate-bound conformance report and the disposition rules (`conforms` exactly when no unresolved deviation and every listed check passed) used by the checkpoint's own conformance record.",
+      "provenance": "Repository document at the stated commit.",
+      "limitations": "A syntactically valid report does not prove architectural correctness."
+    },
+    {
+      "id": "wp-synthetic-cases",
+      "kind": "synthetic-fixture",
+      "location": "contracts/harness-opencode/cases.json",
+      "revision": "git 80cd84f (authored in the T-074 branch)",
+      "observedAt": "2026-10-21",
+      "claim": "Boundary expectations derived from the local contracts above and mapped to their runtime/profile envelopes. Every input is invented.",
+      "provenance": "Authored by the T-074 implementer. Nothing in cases.json was captured from OpenCode, a provider or an MCP server.",
+      "limitations": "Contract-derived expectations, not measurements and not production HTTP schemas. They do not execute and do not certify any version, provider or image."
+    },
+    {
+      "id": "wp-gap-run-invocation",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-01: A working headless `run` invocation for build 2.1.2 that fixes the project directory, disables ambient/user/project plugins and configuration as needed, and takes the prompt without stdin is not established. --pure and --dir are absent from 2.1.2 run help; whether absence means removal or relocation, and what replaces their effect, is unknown.",
+      "provenance": "Gap derived from oc-meas-run-help, oc-meas-removed-flags and the absence of those flags from oc-doc-cli.",
+      "limitations": "Absence from help is not proof of removal. No flag is invented here. T-031 preparation must find primary evidence or measure."
+    },
+    {
+      "id": "wp-gap-result-schema",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-02: No documented stable terminal-result schema for `--format json` or for the HTTP event/message log. The sample shows no result envelope, so the wrapper must itself validate OpenCode output and write the entrypoint manifest; exit status and final prose establish nothing.",
+      "provenance": "Gap derived from oc-meas-ndjson and oc-doc-openapi.",
+      "limitations": "Event types for tool use, errors and permission prompts are unmeasured."
+    },
+    {
+      "id": "wp-gap-noninteractive",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-03: Behavior when OpenCode asks a question or permission with stdin closed and no human (default effect, timeout, hang or auto-approval) is not established. `--auto` is advertised but its meaning was not read or measured. The runtime `needs_input` outcome must be produced by the wrapper, not by an unanswered prompt.",
+      "provenance": "Gap derived from oc-doc-permissions, oc-meas-run-help and oc-doc-openapi (/permission and /form routes).",
+      "limitations": "A hang or auto-approval would breach AR-05/AR-13."
+    },
+    {
+      "id": "wp-gap-process-lifetime",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-04: Process containment is unmeasured. The default CLI uses a shared background service owned by the user account (oc-doc-cli); `--standalone` is documented as a private server but its child processes, signal handling, shutdown and what happens to shell children on SIGTERM/SIGKILL were not measured. The HTTP interrupt route alone does not show that the process tree stops.",
+      "provenance": "Gap derived from oc-doc-cli, oc-doc-openapi and oc-meas-run-help.",
+      "limitations": "AR-09 requires the whole tree to stop; a daemonized background service would escape the entrypoint's process group."
+    },
+    {
+      "id": "wp-gap-project-config",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-05: Whether OpenCode loads workspace-resident configuration, instructions, skills, plugins or MCP servers (V1 `.opencode/` definitions are said to remain compatible, oc-doc-migrate), and how an attempt-private configuration overrides or disables them, is not established. Repository instructions and workspace configuration must grant no authority (AR-05, AR-A02).",
+      "provenance": "Gap derived from oc-doc-migrate and oc-doc-mcp.",
+      "limitations": "Until measured, workspace configuration must be treated as untrusted input."
+    },
+    {
+      "id": "wp-gap-provider-config",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-06: How OpenCode 2.1.2 is configured for a custom OpenAI-compatible endpoint, the request members it sends (stream_options, tool schema, parallel_tool_calls, max-token member), its retry behavior, per-request authentication and handling of a rotating runtime token, and whether it can emit only the gateway's strict member set are not established by the packet. The measured sample used a hosted free model, not the gateway.",
+      "provenance": "Gap derived from oc-meas-ndjson and kodama-gateway.",
+      "limitations": "Any unsupported member is a 400 at the gateway. T-032 owns the comparison with real traffic; a required protocol change returns to that owner."
+    },
+    {
+      "id": "wp-gap-token-renewal",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-07: The entrypoint renews the runtime token and atomically rewrites --token-file. Whether OpenCode can read a bearer credential from a file or refresh it per request for provider and MCP legs, without the token entering configuration, the command log or the transcript, is not established.",
+      "provenance": "Gap derived from kodama-entrypoint, oc-doc-mcp (headers/environment substitution) and kodama-gateway.",
+      "limitations": "Environment substitution `{env:NAME}` is documented for config, but a static environment value does not renew and the command environment is an allowlist."
+    },
+    {
+      "id": "wp-gap-mcp-interop",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-08: Interoperability of OpenCode 2.1.2's MCP client with the Kodama proxy is unmeasured: whether the documented default `protocol: legacy` (sends `initialize`, speaks revisions up to 2025-11-25) actually negotiates with the proxy that accepts only 2025-11-25, whether `auto` (probes `server/discover` for 2026-07-28, documented to fall back to `legacy`) falls back cleanly against it, tools-only behavior, delivery and renewal of the attempt token as a header with `oauth: false`, Code Mode naming versus the `<registrationID>/<toolName>` profile entries, and denial behavior for a hidden tool. Naming normalization (`unsupported characters ... become _`) may map two tools to one name.",
+      "provenance": "Gap derived from oc-doc-mcp, oc-doc-permissions and kodama-mcpproxy.",
+      "limitations": "Packet configuration choices are options, not evidence of interoperability. T-033 owns the confirmation; an incompatibility returns to that owner."
+    },
+    {
+      "id": "wp-gap-transcript",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-09: How the wrapper obtains a transcript from OpenCode (NDJSON stdout, HTTP message log or both), uploads it as an authorized diagnostic, and ensures raw model text never reaches the entrypoint's always-captured command log when recording is disabled is not established. `--format json` text events carry model output on stdout.",
+      "provenance": "Gap derived from oc-meas-ndjson, kodama-entrypoint and kodama-agents.",
+      "limitations": "Transcripts are sensitive artifacts (AR-10, GM-11); the entrypoint merges stdout and stderr into one bounded log."
+    },
+    {
+      "id": "wp-gap-structured-completion",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-10: The entrypoint treats an absent results manifest as `completed` when no output is declared. Nothing in the entrypoint or OpenCode makes a wrapper-level completion guarantee, so T-031 must always write an explicit manifest and fail closed (a `failed` outcome with a wrapper-chosen reason code) when OpenCode output cannot be validated, rather than infer success from exit zero or prose.",
+      "provenance": "Gap derived from kodama-entrypoint and oc-meas-ndjson.",
+      "limitations": "Reason code selection is T-031's; the pattern is ^[a-z][a-z0-9_]{0,63}$."
+    },
+    {
+      "id": "wp-gap-upstream-revision",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-11: No immutable upstream source revision (release tag, commit or package checksum) and no raw measurement artifact (full help text, raw NDJSON, binary checksum) were captured. The documentation pages are living pages and the CLI evidence is the coordinator's transcript.",
+      "provenance": "Gap derived from the packet and the implementer's re-fetch.",
+      "limitations": "T-031 must record the exact tuple and raw evidence before any catalogue entry."
+    },
+    {
+      "id": "wp-gap-runtime-enforcement",
+      "kind": "unresolved",
+      "location": null,
+      "revision": null,
+      "observedAt": "2026-10-21",
+      "claim": "U-12: Whether OpenCode can be constrained to the approved model and the profile's tool allow-list, and made to fail rather than fall back or call other providers, tools, webfetch or websearch, is not established; the existing catalogue controls model, requests, tokens, tool_calls, tool_allowlist and transcript may be claimed only where gateway/proxy enforcement and a real smoke test exist.",
+      "provenance": "Gap derived from oc-doc-permissions and kodama-agents.",
+      "limitations": "No catalogue entry may be created from this checkpoint."
+    }
+  ]
+}

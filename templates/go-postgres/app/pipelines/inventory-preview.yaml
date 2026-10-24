@@ -1,0 +1,31 @@
+# Deploy a built image to the preview environment from the exact candidate commit.
+# The image comes from a previous run of inventory-quality-build: start this run
+# with that run's image artifact, its digest and repository, and the environment's
+# nonsecret snapshot (docs/operations.md, "Environment snapshot input").
+apiVersion: kodama/v1alpha1
+kind: Pipeline
+metadata:
+  name: inventory-preview
+spec:
+  inputs:
+    image: {type: artifact, required: true}
+    image_digest: {type: string, required: true}
+    image_repository: {type: string, required: true}
+    environment_snapshot: {type: string, required: true}
+  steps:
+    - id: preview
+      kind: container
+      environment: "@@PREVIEW_ENVIRONMENT_ID@@"
+      image: "@@TOOLS_IMAGE@@"
+      workspace: {access: read, from: run}
+      command: [/bin/sh, -ec]
+      args: ["cd /workspace && ./ci/deploy-preview.sh"]
+      env:
+        KODAMA_RUNTIME_URL: "@@RUNTIME_URL@@"
+        KODAMA_RUNTIME_TOKEN_FILE: /kodama/identity/token
+        REGISTRY_INSECURE: "@@REGISTRY_INSECURE@@"
+      timeoutSeconds: 900
+      outputs:
+        deployment_id: {type: string}
+        app_url: {type: string}
+        evidence: {type: artifact, path: /kodama/outputs/deployment.json}

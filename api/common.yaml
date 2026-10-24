@@ -1,0 +1,276 @@
+openapi: 3.0.3
+info:
+  title: Kodama common HTTP conventions
+  version: 1.0.0
+  description: >-
+    Shared schemas, parameters, headers and error responses for the public
+    Kodama HTTP interface (docs/contracts/http-api.md). This fragment declares
+    no product routes; each owning module references these components from its
+    own fragment, and the integration task assembles the published document.
+    Types are generated into internal/httpapi/common.gen.go with oapi-codegen
+    (see internal/httpapi/generate.go). The generator reads OpenAPI 3.0, so this
+    fragment is 3.0.3 rather than the 3.1 used by api/runtime.yaml.
+paths: {}
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        Bearer access token. The authenticator is injected into the router;
+        routes without verified identity are never served (deny by default).
+  parameters:
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: >-
+        Exactly one strong ETag equal to the quoted integer resource version, for
+        example "7". Required for editable content, settings, transitions and
+        decisions. Weak tags, the wildcard and comma-separated lists are rejected
+        with 400 invalid_request. A missing header is 428 version_required and a
+        stale version is 412 version_conflict.
+      schema:
+        $ref: '#/components/schemas/ETagValue'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Client-chosen key for run/deployment creation and gate decisions. The
+        stored lookup key is (principal, tenant, method, canonical route, key);
+        the request hash is stored and compared separately. A different request
+        for the same key is 409 idempotency_conflict.
+      schema:
+        $ref: '#/components/schemas/IdempotencyKeyValue'
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size. Values outside 1..200 are rejected, never clamped.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: >-
+        Opaque continuation token from a previous nextCursor. It is bound to the
+        tenant, project, endpoint, filters and sort of the request that issued it
+        and grants no permission; every page is authorized again.
+      schema:
+        $ref: '#/components/schemas/Cursor'
+  headers:
+    ETag:
+      description: Quoted integer resource version.
+      schema:
+        $ref: '#/components/schemas/ETagValue'
+    RequestId:
+      description: Server-generated identifier of this request, also present in error bodies.
+      schema:
+        type: string
+        pattern: '^req_[0-9a-f]{32}$'
+    RetryAfter:
+      description: Whole seconds, at least 1, after which the request may be retried.
+      schema:
+        type: integer
+        minimum: 1
+    IdempotentReplayed:
+      description: Present with the value true when the response is a stored replay of an earlier request.
+      schema:
+        type: string
+        enum: ['true']
+  schemas:
+    ID:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+      description: Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+    Version:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9007199254740991
+      description: Resource version; the ETag is this integer in double quotes.
+    ETagValue:
+      type: string
+      pattern: '^"[1-9][0-9]{0,15}"$'
+      description: Quoted integer version from 1 to 9007199254740991; the range is enforced by the server, not by the pattern.
+    IdempotencyKeyValue:
+      type: string
+      pattern: '^[A-Za-z0-9._~:-]{1,128}$'
+    Cursor:
+      type: string
+      minLength: 1
+      maxLength: 2048
+      pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+      description: Opaque, authenticated continuation token.
+    ErrorCode:
+      type: string
+      pattern: '^[a-z][a-z0-9_]*$'
+      description: >-
+        Stable machine-readable code. Common codes: invalid_request,
+        invalid_cursor, invalid_credential, forbidden, not_found,
+        idempotency_conflict, version_conflict, version_required, rate_limited,
+        internal_error, unavailable. Owning modules add codes in their own fragments.
+    Error:
+      type: object
+      required: [code, message, requestId, details]
+      additionalProperties: false
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          maxLength: 1024
+        requestId:
+          type: string
+          pattern: '^req_[0-9a-f]{32}$'
+        details:
+          type: object
+          additionalProperties: true
+          description: Structured, non-sensitive context; an empty object when there is none.
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          $ref: '#/components/schemas/Error'
+    Page:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: true
+        nextCursor:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 2048
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+          description: Token for the next page, or null when the list is exhausted.
+      description: >-
+        List envelope. Owning modules narrow items with allOf; there is no
+        universal success wrapper for other resources.
+  responses:
+    BadRequest:
+      description: Invalid request or invalid_cursor.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: Missing or invalid credential (invalid_credential).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: Authenticated but not permitted within the authorized scope (forbidden).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: Not found, or hidden because the caller may not learn that it exists (not_found).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Conflict:
+      description: Conflicting request, such as idempotency_conflict or a module-defined conflict.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    PayloadTooLarge:
+      description: Request body exceeds the configured bound (invalid_request).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    UnsupportedMediaType:
+      description: Request body is not application/json (invalid_request).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    PreconditionFailed:
+      description: Stale If-Match version (version_conflict).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    PreconditionRequired:
+      description: Required If-Match header is missing (version_required).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    TooManyRequests:
+      description: Scoped rate limit exceeded (rate_limited).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    InternalError:
+      description: Unexpected failure with no internal detail (internal_error).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unavailable:
+      description: A required dependency is unavailable, or an outcome is unknown and the same request may be retried (unavailable).
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'

@@ -1,0 +1,55 @@
+#!/bin/sh
+# Example server-side Git `post-receive` hook that notifies Kodama of each
+# accepted ref update (task T-036, contract in api/git-webhooks.yaml).
+#
+# Install on the Git host you control as hooks/post-receive in the bare
+# repository (mode 0755). It is an EXAMPLE: placeholders are marked <...>.
+#
+#   KODAMA_HOOK_URL     https://<kodama-host>/api/v1/git-hooks/<trigger id>
+#   KODAMA_HOOK_SECRET  the trigger's hook secret (>= 32 bytes, printable;
+#                       e.g. `openssl rand -hex 32`). Keep it out of the
+#                       repository and readable only by the Git service user.
+#   KODAMA_REPOSITORY   the repository identifier configured in the Kodama
+#                       project (a name, never a URL)
+#
+# The hook sends one POST per updated ref. A failed notification never blocks
+# or undoes the push (post-receive runs after acceptance); it is retried with
+# the SAME delivery id so Kodama deduplicates it. Payload fields are data:
+# Kodama verifies the commit on the remote itself and never executes them.
+set -u
+
+: "${KODAMA_HOOK_URL:?set KODAMA_HOOK_URL}"
+: "${KODAMA_HOOK_SECRET:?set KODAMA_HOOK_SECRET}"
+: "${KODAMA_REPOSITORY:?set KODAMA_REPOSITORY}"
+TRIGGER_ID=${KODAMA_HOOK_URL##*/}
+ATTEMPTS=${KODAMA_HOOK_ATTEMPTS:-4}
+
+while read -r before after ref; do
+	# One delivery id per ref update, reused verbatim on every retry.
+	delivery_id=$(printf '%s %s %s %s' "$after" "$ref" "$$" "$(date +%s%N 2>/dev/null || date +%s)" | openssl dgst -sha256 -hex | sed 's/^.* //' | cut -c1-48)
+	body=$(printf '{"schemaVersion":1,"repository":"%s","ref":"%s","before":"%s","after":"%s"}' \
+		"$KODAMA_REPOSITORY" "$ref" "$before" "$after")
+	attempt=1
+	while [ "$attempt" -le "$ATTEMPTS" ]; do
+		ts=$(date +%s)
+		digest=$(printf '%s' "$body" | openssl dgst -sha256 -hex | sed 's/^.* //')
+		signing=$(printf 'kodama-git-hook-v1\n%s\n%s\n%s\n%s' "$TRIGGER_ID" "$delivery_id" "$ts" "$digest")
+		sig=$(printf '%s' "$signing" | openssl dgst -sha256 -hmac "$KODAMA_HOOK_SECRET" -hex | sed 's/^.* //')
+		code=$(printf '%s' "$body" | curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+			-X POST "$KODAMA_HOOK_URL" \
+			-H 'Content-Type: application/json' \
+			-H "Kodama-Delivery-Id: $delivery_id" \
+			-H "Kodama-Timestamp: $ts" \
+			-H "Kodama-Signature: v1=$sig" \
+			--data-binary @- 2>/dev/null) || code=000
+		case "$code" in
+		2??) break ;;
+		# Definitive refusals will not change on retry.
+		400 | 401 | 409 | 413 | 422) echo "kodama: $ref refused (HTTP $code)" >&2; break ;;
+		esac
+		attempt=$((attempt + 1))
+		[ "$attempt" -le "$ATTEMPTS" ] && sleep "$attempt"
+	done
+	[ "$attempt" -gt "$ATTEMPTS" ] && echo "kodama: $ref not delivered after $ATTEMPTS attempts" >&2
+done
+exit 0

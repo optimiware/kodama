@@ -1,0 +1,16 @@
+# Daemonless image build (ko). The base image is pinned by digest; the build is
+# reproducible for a given source commit: trimmed paths, no embedded build ids,
+# a fixed timestamp (KO_DATA_DATE_EPOCH, set from the commit by ci/build.sh) and no SBOM.
+defaultBaseImage: cgr.dev/chainguard/static@sha256:17367e4d3ae2b46c3290858e483fac09be085c92b372360fe3bf6a6150848fde
+builds:
+  - id: inventory
+    main: ./cmd/inventory
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s
+      - -w
+      - -buildid=
+      - -X main.version={{ .Env.SOURCE_COMMIT }}

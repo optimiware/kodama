@@ -1,0 +1,77 @@
+# Variables and secrets
+
+**Scope:** M1 project variables and encrypted secrets. Production requires the installation cloud's KMS; T-028 implements AWS, GCP, and Scaleway adapters.
+
+**Authority profile:** O-19 selects the existing secrets module and KMS-encrypted PostgreSQL storage, with immutable version pins and scoped audited read-for-use. Standalone custody is the implemented local baseline; hosted core/provider credentials follow [platform integration](platform-integration.md) and T-061. The reviewed Platform current-value revision is not an immutable value version; hosted integration still needs the supported version interface rather than a second uncontrolled copy.
+
+## Model
+
+Variables are typed nonsecret values stored as plaintext in PostgreSQL. Secret values are envelope-encrypted, versioned, and write-only through the management interface. A secret has `kind` (`generic`, `git`, `model`, `mcp`, or `kubeconfig`), version, scope, and `revoked_at`. Typed secret payloads carry provider credentials; ordinary configuration remains in project/profile/environment settings. There is no generic connection resource.
+
+Precedence is pipeline input default → project variable of the declared name → explicit run input. Unknown names and type mismatches fail admission. Runs pin immutable effective values and secret versions. Environment configuration in M2 is an explicit snapshot on a deployment, not another implicit variable-inheritance level.
+
+## Encryption
+
+Kodama-local values use the Optimi Platform envelope in [runtime secret storage](https://github.com/optimiweb/platform/blob/05dec0d81a15f9c3bcac826508f0342761343d38/docs/specs/16-secrets.md). Implement that contract in this module. Do not import `github.com/optimiweb/platform`.
+
+The key provider holds a KEK and wraps one random 32-byte scope key per tenant generation. It does not wrap a data key for every secret value. Go derives a per-secret-revision AES-256-GCM key with HKDF-SHA-256. Associated data binds installation identity, tenant, project, secret ID, immutable name, and value version. Persist the ciphertext, algorithm, scope-key ID, and KEK reference. Value rotation creates a new value version. Rewrapping a scope key preserves the value version. Keep KEK versions required by retained backups.
+
+A supported installation runs on Kubernetes and requires PostgreSQL plus one KMS. Supported clouds are AWS, GCP, and Scaleway; the provider is AWS KMS, GCP Cloud KMS, or Scaleway Key Manager. The installation selects one provider. Startup fails if it is missing, and it never falls back to another cloud or to the development keyfile. Platform's `fr-par` residency does not select Kodama's cloud.
+
+Scope-key wrapping lives in `pkg/secretkeys`: ephemeral memory, a local keyfile, and Scaleway, AWS, and GCP on one wrap/unwrap contract. The binding is authenticated data. T-028 selects one of those providers behind the `KeyWrapper` port. It does not reimplement wrap/unwrap. Package tests are the adapter evidence for VS-06–VS-10. A live cloud run is production qualification (T-029), not a second implementation and not a harness blocker for T-028.
+
+Development uses a local keyfile of 32-byte KEKs supplied outside the database. The scaffold `master-key` file is that development KEK, not a value key. Replicas of a development profile share one keyfile. A plaintext database fallback is never used. Matching this envelope does not copy Platform secret rows or treat its current-value revision as a pinned version; T-061 qualifies selected O-19 hosted custody.
+
+## Runtime delivery
+### Installation startup
+
+Configuration document version 2 selects `secrets.adapter: keyfile | kms`. Production requires KMS and one `secrets.kms.provider: aws | gcp | scw`; test uses keyfile and development injects its ephemeral wrapper. T-105 constructs the selected workload-authenticated client, validates key mappings and performs the existing bounded startup wrap/unwrap probe before serving. The `scw` configuration name maps to the established Scaleway persisted KEK identity. Invalid settings, denied credentials and probe failures stop startup. Client resources close on construction failure and after drained shutdown. Live cloud/deployment qualification is T-104; full retained-data recovery remains T-029 under VS-10.
+
+`secrets.keyfile.current/files` selects pre-provisioned 32-byte files. `secrets.kms.kekId/current/resources` selects pre-provisioned keys and retained labels; label mappings and installation identity remain stable across rollouts. Startup never rotates or creates a cloud key. See [chart configuration](../../deploy/helm/kodama/README.md#kms-selection) for fields and credential projections.
+
+### Workload delivery
+
+Prefer the AI gateway and MCP proxy for agent provider credentials: the server resolves the approved pinned secret and performs the operation, while the agent receives only scoped runtime authority. Do not put provider tokens in prompts, tool arguments, source or ambient agent environments merely to enable a proxy call.
+
+An ordinary container script/build step may explicitly declare `env: {NAME: {secretRef: "secret://project/name"}}` under the existing pipeline contract. Admission pins the version and checks scope/purpose. Resolve it just in time into the authorized child environment, not plaintext Kubernetes Job/Pod fields; protected secret files outside source/output roots remain the preferred direct-delivery form where supported. A child receiving ENV or a file can read that secret, so the binding is an explicit disclosure grant, not a guarantee against a malicious script. Direct agent disclosure requires a separately explicit justified binding, never inheritance from a build step.
+
+Revocation prevents new resolution/proxy use. Redact known injected values and exclude secret files from bundles/artifacts; do not claim arbitrary output is leak-proof. T-061 qualifies hosted delivery and requests a bounded owner prerequisite if an existing runtime delivery seam needs extension; no frozen wire contract is silently changed here.
+
+## Requirements
+
+| ID | Requirement |
+| --- | --- |
+| VS-01 | Values MUST be scoped/versioned; secret values MUST use authenticated envelope encryption. |
+| VS-02 | Resolution MUST follow declared precedence and pin effective values/versions. |
+| VS-03 | Runtime resolution MUST be restricted to declared references and active attempt authority. |
+| VS-04 | Management reads/events/errors MUST omit secret values. |
+| VS-05 | Runtime delivery MUST be scoped and audited; prefer files outside source/output roots. |
+| VS-06 | Tampered ciphertext or ownership context MUST fail authentication. |
+| VS-07 | Rewrap and value rotation MUST retain pinned-version semantics. |
+| VS-08 | `revoked_at` MUST block new resolution; active consumers follow explicit termination/issuer-revocation procedures. |
+| VS-09 | KMS failure MUST surface a classified error without plaintext persistence/fallback. |
+| VS-10 | Production restore MUST demonstrate decryptability with retained key versions. |
+| VS-11 | Injected secret files MUST be excluded from source bundles/artifacts; diagnostics access and redaction remain separate controls. |
+| VS-12 | Deletion MUST account for pinned runs and backup retention and retain metadata audit. |
+| VS-13 | Agent provider credentials SHOULD stay behind scoped proxies. Direct ENV/file delivery MUST be explicitly declared, version-pinned, purpose-scoped and audited; plaintext MUST NOT be placed in Pod manifests or implicitly inherited by other steps. |
+
+## Interface and authorization
+
+Use project variable CRUD and secret create/metadata/version/revoke operations. Administrative management authority does not imply plaintext read. Resolve is an internal attempt interface. Long-lived Git write credentials are reserved for the control-plane publisher; runtime checkout uses read-only access.
+
+An already delivered secret cannot be recalled from memory. Revocation prevents further resolution and can trigger consumer termination and external credential rotation. Plain variables may appear in logs; confidential values must be secrets.
+
+## Acceptance
+
+| ID | Scenario | Requirements |
+| --- | --- | --- |
+| VS-A01 | Defaults/project values/run inputs resolve deterministically and reject unknown types | VS-01, VS-02 |
+| VS-A02 | Undeclared or cross-tenant secret resolution fails | VS-03, VS-05 |
+| VS-A03 | Management/event/error paths return no secret plaintext | VS-04 |
+| VS-A04 | Ciphertext/context swapping fails authentication | VS-06 |
+| VS-A05 | Rewrap preserves pinned values; new versions do not silently replace run inputs | VS-07 |
+| VS-A06 | Revocation blocks further resolution and records consumer handling | VS-08 |
+| VS-A07 | KMS outage preserves encrypted state and reports retryability | VS-09 |
+| VS-A08 | Restore decrypts required values; commits/artifacts exclude injected files | VS-10, VS-11 |
+| VS-A09 | Deletion reports outstanding references/backup retention | VS-12 |
+| VS-A10 | A proxy call succeeds without exposing the provider token to the agent; an authorized script ENV binding receives only its pinned value, while undeclared/foreign/revoked bindings and plaintext Pod-manifest injection fail | VS-02, VS-03, VS-04, VS-05, VS-08, VS-13 |

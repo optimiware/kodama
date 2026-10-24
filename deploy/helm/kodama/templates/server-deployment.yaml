@@ -1,0 +1,135 @@
+{{- include "kodama.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kodama.fullname" . }}
+  labels:
+    {{- include "kodama.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  # One server replica for the initial profile (the schema rejects any other value). Recreate
+  # avoids two control-plane instances overlapping during a rollout.
+  replicas: {{ .Values.server.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "kodama.serverSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kodama.labels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-server.yaml") . | sha256sum }}
+        {{- with .Values.server.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "kodama.serverServiceAccount" . }}
+      # The control plane calls the Kubernetes API (Jobs in tenant namespaces) with its own,
+      # namespace-scoped service account.
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: {{ .Values.server.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: {{ include "kodama.releaseImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+          # The composed product: the core assembly, never the health-only scaffold.
+          args: ["server", "--assembly", "core"]
+          # Process configuration (dev/configuration.md) plus the environment and the location of
+          # the settings document. The runtime Secret is mounted at /secrets, the server's default
+          # secrets directory. Everything else the core assembly
+          # needs comes from the rendered settings document (config.yaml) and the runtime Secret.
+          env:
+            # The chart's workload runtime is Kubernetes, which is the production environment:
+            # its construction guards refuse the development key, plaintext fixtures and a
+            # non-https callback, so an unsupported selection stops the server at startup.
+            - name: KODAMA_ENV
+              value: "production"
+            - name: KODAMA_CONFIG_FILE
+              value: /etc/kodama/config/config.yaml
+            - name: KODAMA_HTTP_ADDR
+              value: {{ printf ":%d" (int .Values.server.port) | quote }}
+            - name: KODAMA_LOG_LEVEL
+              value: {{ .Values.server.logLevel | quote }}
+            - name: KODAMA_SHUTDOWN_TIMEOUT
+              value: {{ .Values.server.shutdownTimeout | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.port }}
+              protocol: TCP
+          # Client discovery and the KMS probe allow up to 2 minutes; leave
+          # another minute for the other dependencies before liveness begins.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: {{ .Values.server.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.server.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: {{ .Values.server.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.server.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext:
+            {{- include "kodama.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: config
+              mountPath: /etc/kodama/config
+              readOnly: true
+            {{- if and (eq .Values.secrets.adapter "kms") (eq .Values.secrets.kms.provider "scw") }}
+            - name: kms-credentials
+              mountPath: /etc/kodama/kms-credentials
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.server.tmpSizeLimit | default "64Mi" }}
+        - name: secrets
+          secret:
+            secretName: {{ .Values.secrets.runtime.existingSecret }}
+            defaultMode: 0440
+            items:
+              {{- include "kodama.runtimeSecretItems" . | trim | nindent 14 }}
+        - name: config
+          configMap:
+            name: {{ include "kodama.fullname" . }}-config
+        {{- if and (eq .Values.secrets.adapter "kms") (eq .Values.secrets.kms.provider "scw") }}
+        - name: kms-credentials
+          secret:
+            secretName: {{ .Values.secrets.kms.scw.credentialsSecret }}
+            items:
+              - key: secret-key
+                path: secret-key
+            defaultMode: 0440
+        {{- end }}

@@ -1,0 +1,321 @@
+{
+  "fixture": "cleanup",
+  "description": "Cleanup is bound to the recorded deployment. A human (or the scheduler) records the request against the deployment's current version; an ordinary cleanup run that is proven bound to exactly this deployment reports its result. Failures stay visible and are retried; completion sets deletedAt and keeps the outcome, objects and history.",
+  "placeholders": "Every identifier, digest, URL and timestamp is a placeholder from the t035 test resource prefix; none names a real tenant, registry or cluster.",
+  "exchanges": [
+    {
+      "name": "request cleanup of a settled deployment",
+      "operation": "requestDeploymentCleanup",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/cleanup",
+        "headers": {
+          "If-Match": "\"3\""
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"4\""
+        },
+        "body": {
+          "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+          "environmentId": "env_t035_preview",
+          "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "namespace": "t035-preview",
+          "source": {
+            "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+            "commit": "1111111111111111111111111111111111111111"
+          },
+          "image": {
+            "artifactId": "art_t035_image",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "producer": {
+            "attemptId": "att_t035_build",
+            "runId": "run_t035_build",
+            "stepId": "build",
+            "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "runId": "run_t035_preview",
+          "stepId": "deploy",
+          "actionKey": "run_t035_preview:deploy",
+          "attemptId": "att_t035_deploy",
+          "status": "succeeded",
+          "reason": "ready",
+          "outcomeUnknown": false,
+          "objects": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory",
+              "uid": "00000000-0000-4000-8000-000000000001",
+              "ready": true
+            },
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory-worker",
+              "uid": "00000000-0000-4000-8000-000000000002",
+              "ready": true
+            }
+          ],
+          "cleanup": {
+            "state": "requested",
+            "requestedAt": "2026-01-03T04:00:00Z"
+          },
+          "version": 4,
+          "createdAt": "2026-01-02T03:04:05Z",
+          "updatedAt": "2026-01-03T04:00:00Z",
+          "expiresAt": "2026-01-03T03:04:05Z"
+        }
+      }
+    },
+    {
+      "name": "a stale version records nothing",
+      "operation": "requestDeploymentCleanup",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/cleanup",
+        "headers": {
+          "If-Match": "\"3\""
+        }
+      },
+      "response": {
+        "status": 412,
+        "body": {
+          "error": {
+            "code": "version_conflict",
+            "message": "the resource changed; reread it and retry with the current version",
+            "requestId": "req_00000000000000000000000000000001",
+            "details": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "a cleanup run reports a visible exception",
+      "operation": "reportRuntimeCleanup",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_cleanup/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/cleanup-result",
+        "body": {
+          "state": "failed",
+          "reason": "delete_failed",
+          "deleted": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory",
+              "uid": "00000000-0000-4000-8000-000000000001"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"5\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "succeeded",
+            "reason": "ready",
+            "outcomeUnknown": false,
+            "objects": [
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory",
+                "uid": "00000000-0000-4000-8000-000000000001",
+                "ready": true
+              },
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory-worker",
+                "uid": "00000000-0000-4000-8000-000000000002",
+                "ready": true
+              }
+            ],
+            "cleanup": {
+              "state": "failed",
+              "requestedAt": "2026-01-03T04:00:00Z",
+              "reason": "delete_failed"
+            },
+            "version": 5,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-03T04:05:00Z",
+            "expiresAt": "2026-01-03T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": false
+        }
+      }
+    },
+    {
+      "name": "the retried cleanup completes",
+      "operation": "reportRuntimeCleanup",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_cleanup/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/cleanup-result",
+        "body": {
+          "state": "done",
+          "deleted": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory",
+              "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory-worker",
+              "uid": "00000000-0000-4000-8000-000000000002"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"6\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "succeeded",
+            "reason": "ready",
+            "outcomeUnknown": false,
+            "objects": [
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory",
+                "uid": "00000000-0000-4000-8000-000000000001",
+                "ready": true
+              },
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory-worker",
+                "uid": "00000000-0000-4000-8000-000000000002",
+                "ready": true
+              }
+            ],
+            "cleanup": {
+              "state": "done",
+              "requestedAt": "2026-01-03T04:00:00Z"
+            },
+            "version": 6,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-03T04:10:00Z",
+            "expiresAt": "2026-01-03T03:04:05Z",
+            "deletedAt": "2026-01-03T04:10:00Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": false
+        }
+      }
+    },
+    {
+      "name": "a run that is not bound to this deployment is denied",
+      "operation": "reportRuntimeCleanup",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_unbound/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/cleanup-result",
+        "body": {
+          "state": "done",
+          "deleted": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory",
+              "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory-worker",
+              "uid": "00000000-0000-4000-8000-000000000002"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "the operation is not permitted",
+            "requestId": "req_00000000000000000000000000000001",
+            "details": {}
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# T-021 injector fixture image: the actual T-016 entrypoint (`kodama step`) built
+# as a static binary by the fixture, plus cp for the init container.
+FROM docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+LABEL io.kodama.t021.role=injector
+COPY --chmod=0755 kodama /usr/local/bin/kodama

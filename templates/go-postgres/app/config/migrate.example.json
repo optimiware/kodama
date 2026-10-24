@@ -1,0 +1,4 @@
+{
+  "database": {"urlFile": "/run/secrets/migrate/database-url", "maxConns": 2},
+  "runtimeRole": "inventory_runtime"
+}

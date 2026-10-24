@@ -1,0 +1,139 @@
+# Rendered by deploy/stage/shared/stack from the normalized stage_contract.
+# Conforms strictly to deploy/helm/kodama/values.schema.json (profile: external).
+profile: external
+
+authority:
+  mode: standalone
+
+installation:
+  id: ${contract.installation_id}
+
+image:
+  repository: ${kodama_image.repository}
+  tag: ${jsonencode(kodama_image.tag)}
+  digest: ${jsonencode(kodama_image.digest)}
+  pullPolicy: IfNotPresent
+
+serviceAccounts:
+  server:
+    annotations:
+%{ if length(contract.identities.kodama_server_sa_annotations) == 0 ~}
+      {}
+%{ else ~}
+%{ for k, v in contract.identities.kodama_server_sa_annotations ~}
+      ${jsonencode(k)}: ${jsonencode(v)}
+%{ endfor ~}
+%{ endif ~}
+  migration:
+    annotations: {}
+
+secrets:
+  adapter: kms
+  keyfile: null
+  kms:
+    provider: ${contract.kms.provider}
+    kekId: ${jsonencode(contract.kms.kek_id)}
+    current: ${jsonencode(contract.kms.current)}
+    startupTimeout: 10s
+    resources:
+%{ for label, key_id in contract.kms.resources ~}
+      ${label}: ${jsonencode(key_id)}
+%{ endfor ~}
+%{ if contract.kms.provider == "aws" ~}
+    aws:
+      region: ${jsonencode(contract.kms.aws_region)}
+    scw: null
+%{ endif ~}
+%{ if contract.kms.provider == "gcp" ~}
+    aws: null
+    scw: null
+%{ endif ~}
+%{ if contract.kms.provider == "scw" ~}
+    aws: null
+    scw:
+      credentialsSecret: ${jsonencode(contract.kms.scw_credentials_secret)}
+%{ endif ~}
+  runtime:
+    existingSecret: kodama-runtime
+  migration:
+    existingSecret: kodama-migration
+
+ingress:
+  enabled: true
+  className: nginx
+  host: ${jsonencode(contract.network.ingress_host)}
+  tls:
+    enabled: true
+    secretName: kodama-tls
+
+config:
+  nats:
+    url: ${jsonencode(nats_url)}
+  s3:
+    endpoint: ${jsonencode(contract.object_storage.endpoint)}
+    region: ${jsonencode(contract.object_storage.region)}
+    bucket: ${jsonencode(contract.object_storage.artifacts_bucket)}
+    prefix: ${jsonencode(contract.object_storage.artifacts_prefix)}
+    pathStyle: ${contract.object_storage.path_style}
+    credentials: static
+  git:
+    url: ${jsonencode(git_url)}
+  registry:
+    url: ${jsonencode(registry_url)}
+  oidc:
+    issuer: ${jsonencode(oidc_issuer)}
+    audience: ${jsonencode(oidc_audience)}
+    cliClientId: kodama-cli
+    redirectUri: "http://127.0.0.1:18999/callback"
+  tls:
+    customCA: ${custom_ca}
+
+migration:
+  enabled: true
+  command: []
+  args: ["migrate"]
+  runtimeRole: ${jsonencode(contract.postgres.runtime_role)}
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+execution:
+  trustProfile: trusted-engineer
+  serviceAccountName: kodama-execution
+  tenants:
+%{ for t in contract.tenants ~}
+    - namespace: ${jsonencode(t.namespace)}
+      tenantId: ${jsonencode(t.tenant_id)}
+%{ endfor ~}
+  runtime:
+    url: ${jsonencode(contract.network.runtime_url)}
+    signingGeneration: 1
+    egress:
+%{ for idx, cidr in contract.network.runtime_egress_cidrs ~}
+      - name: runtime-callback-${idx}
+        cidr: ${jsonencode(cidr)}
+        ports:
+          - port: 443
+%{ endfor ~}
+  exampleJob:
+    image:
+      repository: ${workload_image.repository}
+      tag: ${jsonencode(workload_image.tag)}
+      digest: ${jsonencode(workload_image.digest)}
+  network:
+    egress:
+%{ for rule in contract.network.dependency_egress_rules ~}
+      - name: ${jsonencode(rule.name)}
+        cidr: ${jsonencode(rule.cidr)}
+        ports:
+%{ for p in rule.ports ~}
+          - port: ${p}
+%{ endfor ~}
+%{ endfor ~}
+  rbac:
+    manageSecrets: true

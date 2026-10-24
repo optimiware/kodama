@@ -1,0 +1,18 @@
+project_id             = "example-kodama-stage"
+installation_id        = "kodama-stage-gcp"
+region                 = "europe-west1"
+environment_tier       = "staging"
+node_machine_type      = "e2-standard-4"
+node_count             = 1
+db_tier                = "db-custom-2-7680"
+db_engine_version      = "POSTGRES_17"
+db_pitr_retention_days = 7
+ingress_host           = "kodama.stage.gcp.example.invalid"
+runtime_callback_cidrs = ["10.43.0.0/20", "10.45.0.0/20"]
+
+tenants = [
+  {
+    namespace = "kodama-tenant-stage"
+    tenant_id = "t_stage"
+  }
+]

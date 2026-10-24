@@ -1,0 +1,17 @@
+# The pipeline-format example. The image digest is a placeholder.
+apiVersion: kodama/v1alpha1
+kind: Pipeline
+metadata:
+  name: test
+spec:
+  inputs: {}
+  steps:
+    - id: test
+      kind: container
+      image: registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      workspace: {access: read, from: run}
+      command: ["/bin/sh", "-ec"]
+      args: ["cd /workspace && go test -json ./... > /kodama/outputs/tests.json"]
+      timeoutSeconds: 600
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/tests.json}

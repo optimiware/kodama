@@ -1,0 +1,13 @@
+# Generated Go client for the core subset of the public API (api/openapi.yaml).
+# The package imports nothing from Kodama's internal packages: only the
+# standard library and its own ./internal/runtime helpers.
+package: client
+output: client.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: true
+  # The runtime helpers come from ./internal/runtime, not a new module.
+  user-templates:
+    imports.tmpl: templates/imports.tmpl

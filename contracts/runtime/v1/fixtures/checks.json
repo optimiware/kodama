@@ -1,0 +1,1727 @@
+[
+  {
+    "name": "completed_reader",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {
+        "report": "art_tests"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": null,
+    "requirements": [
+      "PX-10"
+    ]
+  },
+  {
+    "name": "completed_writer",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "write",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "expectedTip": "1111111111111111111111111111111111111111"
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "summary",
+          "type": "string",
+          "path": null
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": "2222222222222222222222222222222222222222",
+      "outputs": {
+        "summary": "ok"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": null,
+    "requirements": [
+      "PX-10",
+      "WS-06"
+    ]
+  },
+  {
+    "name": "completed_no_workspace_no_outputs",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": null,
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "none",
+        "source": null
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {},
+      "diagnosticArtifactIds": []
+    },
+    "artifacts": [],
+    "code": null,
+    "requirements": [
+      "PX-10"
+    ]
+  },
+  {
+    "name": "failed_keeps_diagnostics",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "failed",
+      "exitCode": 3,
+      "reason": "exit_nonzero",
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {},
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": null,
+    "requirements": [
+      "PX-10"
+    ]
+  },
+  {
+    "name": "needs_input_keeps_diagnostics",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "needs_input",
+      "exitCode": 0,
+      "reason": null,
+      "question": "Which environment?",
+      "sourceCommit": null,
+      "outputs": {},
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": null,
+    "requirements": [
+      "AR-13",
+      "AR-06"
+    ]
+  },
+  {
+    "name": "exit_zero_missing_output",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {},
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "output_invalid",
+    "requirements": [
+      "PX-10",
+      "AR-06"
+    ]
+  },
+  {
+    "name": "undeclared_output",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {
+        "report": "art_tests",
+        "extra": "x"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "output_invalid",
+    "requirements": [
+      "PX-10"
+    ]
+  },
+  {
+    "name": "output_wrong_type",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "count",
+          "type": "integer",
+          "path": null
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {
+        "count": "3"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "output_invalid",
+    "requirements": [
+      "PX-10"
+    ]
+  },
+  {
+    "name": "artifact_output_wrong_kind",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {
+        "report": "art_tests"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "oci",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "output_invalid",
+    "requirements": [
+      "PX-10"
+    ]
+  },
+  {
+    "name": "writer_without_source_commit",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "write",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "expectedTip": "1111111111111111111111111111111111111111"
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {},
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "output_invalid",
+    "requirements": [
+      "PX-10",
+      "WS-06"
+    ]
+  },
+  {
+    "name": "reader_with_source_commit",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": "2222222222222222222222222222222222222222",
+      "outputs": {
+        "report": "art_tests"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "output_invalid",
+    "requirements": [
+      "PX-10",
+      "WS-05"
+    ]
+  },
+  {
+    "name": "foreign_tenant_artifact",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {
+        "report": "art_tests"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_other",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "not_found",
+    "requirements": [
+      "IT-11",
+      "PX-10"
+    ]
+  },
+  {
+    "name": "foreign_attempt_artifact",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {
+        "report": "art_tests"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_other",
+        "kind": "file",
+        "usable": true
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "not_found",
+    "requirements": [
+      "IT-11"
+    ]
+  },
+  {
+    "name": "unknown_artifact",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {
+        "report": "art_tests"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "not_found",
+    "requirements": [
+      "IT-11"
+    ]
+  },
+  {
+    "name": "incomplete_upload",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {
+        "report": "art_tests"
+      },
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_tests",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": false
+      },
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_inventory",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "artifact_incomplete",
+    "requirements": [
+      "PX-10"
+    ]
+  },
+  {
+    "name": "foreign_diagnostic_artifact",
+    "context": {
+      "tenantId": "t_acme",
+      "projectId": "p_inventory",
+      "runId": "run_01",
+      "stepId": "test",
+      "attemptId": "att_01",
+      "actionKey": "run_01.test",
+      "definition": {
+        "id": "pd_01",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "workItem": {
+        "id": "wi_1042",
+        "contentRevision": 2,
+        "spec": "# Plan\nAdd a scoped review flow.",
+        "acceptanceCriteria": [
+          {
+            "id": "AC-1",
+            "text": "A reviewer resolves an exception with an audit record."
+          }
+        ]
+      },
+      "designBaseline": null,
+      "profile": null,
+      "command": {
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "go test ./..."
+        ],
+        "env": {
+          "CI": "true"
+        }
+      },
+      "workspace": {
+        "access": "read",
+        "source": {
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "commit": "1111111111111111111111111111111111111111",
+          "branch": null,
+          "expectedTip": null
+        }
+      },
+      "inputs": {
+        "target": "unit",
+        "verbose": false,
+        "shards": 4
+      },
+      "outputs": [
+        {
+          "name": "report",
+          "type": "artifact",
+          "path": "/kodama/outputs/tests.json"
+        }
+      ],
+      "secrets": [
+        {
+          "ref": "secret://project/erp-token",
+          "version": 2,
+          "name": "erp-token",
+          "delivery": "file"
+        }
+      ],
+      "environment": null,
+      "limits": {
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 104857600,
+        "maxOutputFiles": 100,
+        "maxDiagnosticBytes": 10485760
+      }
+    },
+    "result": {
+      "outcome": "failed",
+      "exitCode": 1,
+      "reason": "exit_nonzero",
+      "question": null,
+      "sourceCommit": null,
+      "outputs": {},
+      "diagnosticArtifactIds": [
+        "art_log"
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "art_log",
+        "tenantId": "t_acme",
+        "projectId": "p_other",
+        "attemptId": "att_01",
+        "kind": "file",
+        "usable": true
+      }
+    ],
+    "code": "not_found",
+    "requirements": [
+      "IT-11"
+    ]
+  }
+]

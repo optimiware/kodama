@@ -1,0 +1,91 @@
+# Development profile for the kind environment (T-001 fixtures, T-026 foundation e2e).
+#
+# DEVELOPMENT ONLY: plaintext in-cluster endpoints, static fixture credentials and the local
+# keyfile KEK (`master-key`). None of this is a supported production configuration.
+#
+# Endpoints are the Pod-reachable URLs from dev/configuration.md; the bucket and prefix follow the
+# scope naming `kodama-<scope>` / `<scope>/` (scope t-001-local is shown). Create the referenced
+# Secrets from dev/.state/environments/<scope>/fixtures/ before installing, for example:
+#   kubectl -n kodama-system create secret generic kodama-dev-runtime \
+#     --from-file=database-runtime-url=... --from-file=nats-token=... --from-file=master-key=...
+#
+#   helm template kodama deploy/helm/kodama -n kodama-system -f deploy/helm/kodama/values-dev.yaml
+
+profile: development
+
+installation:
+  id: kodama-dev
+
+# PLACEHOLDER: the scaffold builds and loads the server image itself; point these at the image
+# the development environment published (localhost:<port>/<scope>/...@sha256:...).
+image:
+  repository: localhost:5001/t-001-local/kodama
+  tag: dev
+  digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  pullPolicy: IfNotPresent
+
+secrets:
+  runtime:
+    existingSecret: kodama-dev-runtime
+  migration:
+    existingSecret: kodama-dev-migration
+
+config:
+  nats:
+    url: "nats://nats.kodama-deps.svc.cluster.local:4222"
+  s3:
+    endpoint: "http://localstack.kodama-deps.svc.cluster.local:4566"
+    region: us-east-1
+    bucket: kodama-t-001-local
+    prefix: "t-001-local/"
+    pathStyle: true
+    credentials: static
+  git:
+    url: "https://git.kodama-deps.svc.cluster.local:8443/fixture.git"
+  registry:
+    url: "http://registry.kodama-deps.svc.cluster.local:5000"
+  oidc:
+    issuer: "http://oauthsonas.kodama-deps.svc.cluster.local:8181"
+    audience: "https://kodama.example.test/api"
+    cliClientId: kodama-cli
+    redirectUri: "http://127.0.0.1:18999/callback"
+  tls:
+    # The Git fixture presents a certificate issued by the development CA (`ca.crt`).
+    customCA: true
+
+# NOTE: the chart runs the server in the production environment (the Kubernetes runtime), which
+# refuses the development keyfile, plaintext issuer/object-store endpoints and a non-https
+# callback. This profile therefore renders, but the server stops at startup until a supported
+# cloud key provider and HTTPS dependencies are configured; T-104 qualifies installed readiness.
+#
+# DEVELOPMENT ONLY. Local keyfile KEK: the 32-byte `master-key` fixture. Not a production
+# provider; the schema rejects it when profile=external.
+execution:
+  tenants:
+    - namespace: kodama-tenant-dev
+      tenantId: t_dev
+  # PLACEHOLDERS: the https origin workloads reach the runtime API at (TLS terminates in front of
+  # the server) and the only destination they may reach for it. The trust roots are the
+  # runtime-ca.crt file of the runtime Secret.
+  runtime:
+    url: "https://kodama-dev.example.test"
+    signingGeneration: 1
+    egress:
+      - name: runtime-callback
+        cidr: 10.89.0.0/16
+        ports: [{port: 443}]
+  network:
+    # Dev dependencies run as containers on kind's container network and are reached through
+    # selector-less Services. ADJUST the CIDR to your kind network (`podman network inspect kind`
+    # or `docker network inspect kind`). Only Git, S3 and registry ports are opened: never
+    # PostgreSQL (5432) or NATS (4222).
+    egress:
+      - name: dev-git
+        cidr: 10.89.0.0/16
+        ports: [{port: 8443}]
+      - name: dev-s3
+        cidr: 10.89.0.0/16
+        ports: [{port: 4566}]
+      - name: dev-registry
+        cidr: 10.89.0.0/16
+        ports: [{port: 5000}]

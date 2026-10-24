@@ -1,0 +1,9 @@
+# T-089 release image fixture for the chart: the real cmd/kodama built as a static binary by the
+# fixture. The chart uses one image for the server, the migration Job and the entrypoint injector
+# (whose default copy command needs cp, hence the shell userland). The base is pinned by digest and
+# the locally built image by the digest of its OCI archive index (see cluster_test.go).
+FROM docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+LABEL io.kodama.t089.role=release
+COPY --chmod=0755 kodama /usr/local/bin/kodama
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/kodama"]

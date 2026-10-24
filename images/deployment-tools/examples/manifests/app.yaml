@@ -1,0 +1,38 @@
+# Example manifests for apply.sh. The deployment's namespace comes from the
+# recorded configuration, so no namespace is set here; @@IMAGE@@ is replaced by
+# DEPLOY_IMAGE (a digest-pinned reference). Every object is annotated by the
+# script with the deployment receipt's reconciliation annotations.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-config
+data:
+  REPLICAS: "1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: inventory}
+  template:
+    metadata:
+      labels: {app: inventory}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: inventory
+          image: "@@IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          envFrom:
+            - configMapRef: {name: inventory-config}

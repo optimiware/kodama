@@ -1,0 +1,13 @@
+{
+  "model": "gpt-a",
+  "stream": true,
+  "messages": [
+    {
+      "role": "user",
+      "content": "x"
+    }
+  ],
+  "response_format": {
+    "type": "json_object"
+  }
+}

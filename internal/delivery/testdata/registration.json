@@ -1,0 +1,142 @@
+{
+  "fixture": "registration",
+  "description": "A script registers its pre-apply deployment record before any external change. The receipt carries the annotation values to put on every applied object; a retry attempt of the same step and a repeated call observe the one original deployment (created: false).",
+  "placeholders": "Every identifier, digest, URL and timestamp is a placeholder from the t035 test resource prefix; none names a real tenant, registry or cluster.",
+  "exchanges": [
+    {
+      "name": "register",
+      "operation": "registerRuntimeDeployment",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_deploy/deployments",
+        "body": {
+          "source": {
+            "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+            "commit": "1111111111111111111111111111111111111111"
+          },
+          "image": {
+            "artifactId": "art_t035_image",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "ETag": "\"1\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "pending",
+            "reason": "registered",
+            "outcomeUnknown": false,
+            "objects": [],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 1,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z",
+            "expiresAt": "2026-01-03T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": true
+        }
+      }
+    },
+    {
+      "name": "register again after a lost response, by a retry attempt of the same step",
+      "operation": "registerRuntimeDeployment",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_deploy_retry/deployments",
+        "body": {
+          "source": {
+            "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+            "commit": "1111111111111111111111111111111111111111"
+          },
+          "image": {
+            "artifactId": "art_t035_image",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"1\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "pending",
+            "reason": "registered",
+            "outcomeUnknown": false,
+            "objects": [],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 1,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z",
+            "expiresAt": "2026-01-03T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": false
+        }
+      },
+      "note": "The retry attempt has a new attempt identifier and token but the same logical action key; the originating attempt stays att_t035_deploy."
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "model": "gpt-a",
+  "stream": true,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "a",
+        "parameters": {
+          "type": "object"
+        }
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "function",
+    "function": {
+      "name": "b"
+    }
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "x"
+    }
+  ]
+}

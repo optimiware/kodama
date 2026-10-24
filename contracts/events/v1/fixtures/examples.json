@@ -1,0 +1,405 @@
+[
+ {
+  "id": "evt_work_item_created",
+  "schemaVersion": 1,
+  "type": "work_item.created",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "work_item",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "kind": "story",
+   "state": "draft"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_work_item_updated",
+  "schemaVersion": 1,
+  "type": "work_item.updated",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "work_item",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "changedFields": [
+    "title",
+    "specification"
+   ],
+   "contentRevision": 3
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_work_item_transitioned",
+  "schemaVersion": 1,
+  "type": "work_item.transitioned",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "work_item",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": "evt_00",
+  "data": {
+   "from": "ready",
+   "to": "active",
+   "transitionId": "tr_01"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_workspace_state_changed",
+  "schemaVersion": 1,
+  "type": "workspace.state_changed",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "workspace",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "from": "provisioning",
+   "to": "ready",
+   "reason": "clone_complete"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_workspace_checkpoint_created",
+  "schemaVersion": 1,
+  "type": "workspace.checkpoint_created",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "workspace",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "repository": "repo_1",
+   "previousCommit": null,
+   "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "publishingAttemptId": "att_9"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_run_created",
+  "schemaVersion": 1,
+  "type": "run.created",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "run",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "workItemId": "wi_1042",
+   "definitionId": "def_1",
+   "inputSnapshotDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_run_state_changed",
+  "schemaVersion": 1,
+  "type": "run.state_changed",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "run",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "from": "queued",
+   "to": "running",
+   "reason": "dispatched"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_step_attempt_state_changed",
+  "schemaVersion": 1,
+  "type": "step_attempt.state_changed",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "step_attempt",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "workload",
+   "id": "wl_1"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "runId": "run_1",
+   "stepId": "build",
+   "from": "running",
+   "to": "failed",
+   "reason": "timeout"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_gate_requested",
+  "schemaVersion": 1,
+  "type": "gate.requested",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "gate",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "contentRevision": 2,
+   "reviewerScope": "reviewer",
+   "deadline": "2026-10-20T10:05:00Z"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_gate_decided",
+  "schemaVersion": 1,
+  "type": "gate.decided",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "gate",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "decidedBy": {
+    "type": "user",
+    "id": "usr_rev"
+   },
+   "decision": "approved",
+   "state": "approved",
+   "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_gate_invalidated",
+  "schemaVersion": 1,
+  "type": "gate.invalidated",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "gate",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "reason": "superseded",
+   "supersedingCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_deployment_state_changed",
+  "schemaVersion": 1,
+  "type": "deployment.state_changed",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "deployment",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "environmentId": "env_preview",
+   "from": "pending",
+   "to": "applied",
+   "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "artifactIds": [
+    "art_1"
+   ]
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_membership_changed",
+  "schemaVersion": 1,
+  "type": "membership.changed",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "membership",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "userId": "usr_1",
+   "bindingIds": [
+    "mem_1"
+   ],
+   "effectiveVersion": 4
+  }
+ },
+ {
+  "id": "evt_project_settings_changed",
+  "schemaVersion": 1,
+  "type": "project.settings_changed",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "project",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "changedSettings": [
+    "activeWipLimit"
+   ],
+   "version": 3
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_configuration_changed",
+  "schemaVersion": 1,
+  "type": "configuration.changed",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "configuration",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "kind": "secret",
+   "version": 2,
+   "change": "rotated",
+   "scope": "project"
+  }
+ },
+ {
+  "id": "evt_usage_recorded",
+  "schemaVersion": 1,
+  "type": "usage.recorded",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "usage_record",
+   "id": "res_1",
+   "version": 7
+  },
+  "actor": {
+   "type": "user",
+   "id": "usr_engineer"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "runId": "run_1",
+   "attemptId": "att_1",
+   "model": "model-x",
+   "basis": "estimated",
+   "uncertainty": "high",
+   "inputTokens": 1200,
+   "outputTokens": 300
+  },
+  "projectId": "p_inventory"
+ }
+]

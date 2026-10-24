@@ -1,0 +1,283 @@
+{
+  "fixture": "structured_outcomes",
+  "description": "Outcomes are structured: each owned object carries its observed uid and readiness. Exit status and output text are not evidence. Three independent examples of the final report: ready, failed and unknown.",
+  "placeholders": "Every identifier, digest, URL and timestamp is a placeholder from the t035 test resource prefix; none names a real tenant, registry or cluster.",
+  "exchanges": [
+    {
+      "name": "succeeded with every object observed ready",
+      "operation": "reportRuntimeOutcome",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_deploy/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/outcome",
+        "body": {
+          "state": "succeeded",
+          "objects": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory",
+              "uid": "00000000-0000-4000-8000-000000000001",
+              "ready": true
+            },
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory-worker",
+              "uid": "00000000-0000-4000-8000-000000000002",
+              "ready": true
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"3\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "succeeded",
+            "reason": "ready",
+            "outcomeUnknown": false,
+            "objects": [
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory",
+                "uid": "00000000-0000-4000-8000-000000000001",
+                "ready": true
+              },
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory-worker",
+                "uid": "00000000-0000-4000-8000-000000000002",
+                "ready": true
+              }
+            ],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 3,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z",
+            "expiresAt": "2026-01-03T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": false
+        }
+      }
+    },
+    {
+      "name": "failed with a reason code (alternative to the report above)",
+      "operation": "reportRuntimeOutcome",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_deploy/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/outcome",
+        "body": {
+          "state": "failed",
+          "reason": "rollout_timeout",
+          "objects": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory",
+              "uid": "00000000-0000-4000-8000-000000000001"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"3\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "failed",
+            "reason": "rollout_timeout",
+            "outcomeUnknown": false,
+            "objects": [
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory",
+                "uid": "00000000-0000-4000-8000-000000000001"
+              },
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory-worker"
+              }
+            ],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 3,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z",
+            "expiresAt": "2026-01-03T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": false
+        }
+      }
+    },
+    {
+      "name": "unknown: the apply may have taken effect (alternative to the reports above)",
+      "operation": "reportRuntimeOutcome",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_deploy/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/outcome",
+        "body": {
+          "state": "unknown"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"3\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "running",
+            "reason": "outcome_unknown",
+            "outcomeUnknown": true,
+            "objects": [
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory"
+              },
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory-worker"
+              }
+            ],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 3,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z",
+            "expiresAt": "2026-01-03T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": false
+        }
+      }
+    },
+    {
+      "name": "a settled outcome is never rewritten",
+      "operation": "reportRuntimeOutcome",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_deploy/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/outcome",
+        "body": {
+          "state": "failed",
+          "reason": "changed_my_mind"
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "conflict",
+            "message": "the request conflicts with the recorded state",
+            "requestId": "req_00000000000000000000000000000001",
+            "details": {}
+          }
+        }
+      },
+      "note": "Assumes the deployment settled as succeeded above."
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "httpAddr": ":8080",
+  "database": {"urlFile": "/run/secrets/inventory/database-url", "maxConns": 10},
+  "oidc": {"issuer": "https://idp.example.invalid", "audience": "https://inventory.example.invalid/api", "allowInsecureIssuer": false},
+  "cursorKeyFile": "/run/secrets/inventory/cursor-key",
+  "shutdownTimeout": "10s"
+}

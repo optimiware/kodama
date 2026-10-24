@@ -1,0 +1,665 @@
+openapi: 3.0.3
+info:
+  title: Kodama pipeline runs
+  version: 1.0.0
+  description: >-
+    Creation, retrieval and cancellation of pipeline runs
+    (docs/contracts/http-api.md, docs/specs/pipeline-execution.md). Owned by T-020.
+    Shared conventions (error envelope, pagination, ETag, idempotency) come from
+    api/common.yaml. Types are generated into internal/execution/http/runs.gen.go
+    (see internal/execution/http/generate.go). Every route sits under
+    /api/v1/tenants/{tenantId}/projects/{projectId}.
+
+
+    A run pins its definition (ID and digest), the work item's content revision and
+    specification snapshot, the original source commit, the resolved inputs with their
+    provenance, and the exact secret versions each step uses (references and versions only,
+    never values). The pinned snapshot never changes; a rerun is another POST with a new
+    Idempotency-Key and creates a new run. Only work runs are created through this API:
+    deployment cleanup runs are internal and admitted only for a recorded deployment.
+
+
+    Waiting for a gate, capacity or retry backoff is derived from pending steps, not a
+    status. Cancellation is a request: POST .../cancel records it and returns 202 with the
+    run's current state; the run stays nonterminal until its admitted work is settled, so
+    poll the run. Events and logs are served by their own routes.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/runs:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listRuns
+      summary: List runs of the project
+      description: >-
+        Ordered by (created_at, id). Requires run:read. The optional status filter may be
+        repeated; workItemId restricts the list to one work item. A cursor is bound to the
+        tenant, project, filters and ordering that issued it, and every page is authorized again.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/RunStatus'
+          style: form
+          explode: true
+        - name: workItemId
+          in: query
+          required: false
+          schema:
+            $ref: 'common.yaml#/components/schemas/ID'
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of runs.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPage'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    post:
+      operationId: createRun
+      summary: Start a work run
+      description: >-
+        Requires run:manage and an Idempotency-Key. The server authorizes the caller, resolves
+        the registered definition, validates step kinds, input types and unknown inputs, pins
+        the work item's specification at the stated content revision, verifies that the source
+        commit belongs to the item's retained workspace history, pins the configuration and exact
+        secret versions, and creates the run in one transaction with its history, audit and
+        outbox events. The run is `queued`; it dispatches only after its run-bound source
+        reference is confirmed, which the server retries until it succeeds. A body that differs
+        under a used key is 409 idempotency_conflict; a lost response is recovered by repeating
+        the request with the same key (the stored response is replayed after the caller's
+        permission is checked again). Unknown fields are rejected.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRunRequest'
+            example:
+              workItemId: wi_1042
+              definitionId: pd_0123456789abcdef0123456789abcdef
+              contentRevision: 2
+              sourceCommit: '1111111111111111111111111111111111111111'
+              inputs:
+                region: eu
+      responses:
+        '201':
+          description: The run was created. The ETag is its version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            Location:
+              schema:
+                type: string
+            Idempotent-Replayed:
+              $ref: 'common.yaml#/components/headers/IdempotentReplayed'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+              example:
+                $ref: '#/components/examples/CreatedRun/value'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: >-
+            idempotency_conflict (the key was used with a different request), run_conflict (the
+            stated content revision is not current, or a stored state contradicts the request) or
+            work_item_not_runnable (the work item is cancelled or not actionable).
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          description: >-
+            admission_refused: the definition, a disabled step kind, an input type or an unknown
+            input, a secret reference or the source commit was rejected before any state was
+            created. Messages never echo values.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/runs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: getRun
+      summary: Read a run with its pinned input snapshot
+      description: Requires run:read. A run of another tenant or project is 404.
+      responses:
+        '200':
+          description: The run; the ETag is its version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/runs/{id}/steps:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: listRunSteps
+      summary: List a run's steps with their attempts and results
+      description: >-
+        Requires run:read. Steps are ordered by definition order. Outputs are present only for
+        a succeeded step: a failed step exposes diagnostic artifact references, never success
+        outputs. A cursor is bound to the run that issued it.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of steps.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StepPage'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/runs/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+    post:
+      operationId: cancelRun
+      summary: Request cancellation of a run
+      description: >-
+        Requires run:manage. Idempotently records the cancellation request and returns 202 with
+        the run's current state and cancelRequestedAt. New dispatch is refused from the commit
+        on, live attempts lose their authority at once and their workloads are terminated; the
+        run stays nonterminal until admitted work and known side effects are settled. Cancelling
+        a run that is already terminal changes nothing. The request carries no body.
+      responses:
+        '202':
+          description: The request was recorded. Poll the run until it is terminal.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+              example:
+                $ref: '#/components/examples/CancellingRun/value'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    RunId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  examples:
+    CreatedRun:
+      value:
+        id: run_0123456789abcdef01234567
+        purpose: work
+        workItemId: wi_1042
+        definitionId: pd_0123456789abcdef0123456789abcdef
+        definitionDigest: sha256:2222222222222222222222222222222222222222222222222222222222222222
+        contentRevision: 2
+        sourceCommit: '1111111111111111111111111111111111111111'
+        status: queued
+        reason: created
+        cancelRequestedAt: null
+        failureReason: null
+        inputSnapshot:
+          digest: sha256:3333333333333333333333333333333333333333333333333333333333333333
+          inputs:
+            - name: region
+              type: string
+              value: eu
+              source: run_input
+              variableId: null
+              variableVersion: null
+          secrets:
+            - step: deploy
+              ref: secret://project/token
+              version: 3
+              name: TOKEN
+              delivery: env
+        requestedBy:
+          type: user
+          id: usr_engineer
+        sourceRetention: pending
+        version: 1
+        createdAt: '2026-10-19T10:05:00Z'
+        startedAt: null
+        finishedAt: null
+    CancellingRun:
+      value:
+        id: run_0123456789abcdef01234567
+        purpose: work
+        workItemId: wi_1042
+        definitionId: pd_0123456789abcdef0123456789abcdef
+        definitionDigest: sha256:2222222222222222222222222222222222222222222222222222222222222222
+        contentRevision: 2
+        sourceCommit: '1111111111111111111111111111111111111111'
+        status: running
+        reason: cancel_requested
+        cancelRequestedAt: '2026-10-19T10:07:00Z'
+        failureReason: null
+        inputSnapshot:
+          digest: sha256:3333333333333333333333333333333333333333333333333333333333333333
+          inputs: []
+          secrets: []
+        requestedBy:
+          type: user
+          id: usr_engineer
+        sourceRetention: confirmed
+        version: 5
+        createdAt: '2026-10-19T10:05:00Z'
+        startedAt: '2026-10-19T10:05:30Z'
+        finishedAt: null
+  schemas:
+    RunStatus:
+      type: string
+      enum: [queued, running, succeeded, failed, cancelled]
+    StepStatus:
+      type: string
+      enum: [pending, running, succeeded, failed, skipped, cancelled]
+    AttemptStatus:
+      type: string
+      enum: [running, succeeded, failed, cancelled]
+    Reason:
+      type: string
+      pattern: '^[a-z][a-z0-9_]{0,63}$'
+      description: A classified, content-free reason code.
+    Scalar:
+      description: A string, boolean or integer (an artifact is carried as its artifact ID string).
+      oneOf:
+        - type: string
+          maxLength: 4096
+        - type: boolean
+        - type: integer
+          format: int64
+      x-go-type: ScalarValue
+    Actor:
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          type: string
+          enum: [user, service, workload, operator]
+        id:
+          type: string
+          minLength: 1
+          maxLength: 256
+    CreateRunRequest:
+      type: object
+      additionalProperties: false
+      required: [workItemId, definitionId, contentRevision, sourceCommit]
+      properties:
+        workItemId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        definitionId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        contentRevision:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        sourceCommit:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+        inputs:
+          type: object
+          maxProperties: 100
+          additionalProperties:
+            $ref: '#/components/schemas/Scalar'
+          description: >-
+            Run inputs by declared name. Unknown names and type mismatches are admission_refused.
+            Precedence is default, then project variable, then this value.
+    PinnedInput:
+      type: object
+      additionalProperties: false
+      required: [name, type, value, source, variableId, variableVersion]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [string, boolean, integer, artifact]
+        value:
+          $ref: '#/components/schemas/Scalar'
+        source:
+          type: string
+          enum: [default, project_variable, run_input]
+        variableId:
+          type: string
+          nullable: true
+        variableVersion:
+          type: integer
+          format: int64
+          nullable: true
+    PinnedSecret:
+      type: object
+      additionalProperties: false
+      required: [step, ref, version, name, delivery]
+      description: A secret reference and the exact version pinned for one step. Never a value.
+      properties:
+        step:
+          type: string
+        ref:
+          type: string
+          pattern: '^secret://[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9-]{0,62}$'
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        name:
+          type: string
+        delivery:
+          type: string
+          enum: [file, env]
+    InputSnapshot:
+      type: object
+      additionalProperties: false
+      required: [digest, inputs, secrets]
+      properties:
+        digest:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PinnedInput'
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/PinnedSecret'
+    Run:
+      type: object
+      additionalProperties: false
+      required: [id, purpose, workItemId, definitionId, definitionDigest, contentRevision, sourceCommit, status, reason, cancelRequestedAt,
+                 failureReason, inputSnapshot, requestedBy, sourceRetention, version, createdAt, startedAt, finishedAt]
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        purpose:
+          type: string
+          enum: [work, cleanup]
+          description: Only work runs are created through this API.
+        workItemId:
+          type: string
+          nullable: true
+        definitionId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        definitionDigest:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+        contentRevision:
+          type: integer
+          format: int64
+          nullable: true
+        sourceCommit:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        cancelRequestedAt:
+          type: string
+          format: date-time
+          nullable: true
+        failureReason:
+          allOf:
+            - $ref: '#/components/schemas/Reason'
+          nullable: true
+          description: The recorded failure intent; the run fails once its attempts settle.
+        inputSnapshot:
+          $ref: '#/components/schemas/InputSnapshot'
+        requestedBy:
+          $ref: '#/components/schemas/Actor'
+        sourceRetention:
+          type: string
+          enum: [not_required, pending, confirmed]
+          description: A work run dispatches only after its retained source reference is confirmed.
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+    RunPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Run'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+    Attempt:
+      type: object
+      description: >-
+        One attempt. Its reason is starting while the Job does not exist yet, and outcome_unknown for an
+        ambiguous failure that cannot be retried until its effects are reconciled. A terminal outcome is never rewritten.
+      additionalProperties: false
+      required: [id, ordinal, status, reason, failureClass, jobName, observedJobUid, access, inputCommit, startupDeadlineAt,
+                 executionDeadlineAt, startedAt, finishedAt, resultHash, diagnosticArtifactIds, settled, createdAt]
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        ordinal:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/AttemptStatus'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        failureClass:
+          type: string
+          nullable: true
+          enum: [infrastructure, transient, command, validation, policy, timeout, cancelled, null]
+        jobName:
+          type: string
+        observedJobUid:
+          type: string
+          nullable: true
+        access:
+          type: string
+          enum: [none, read, write]
+        inputCommit:
+          type: string
+          nullable: true
+        startupDeadlineAt:
+          type: string
+          format: date-time
+        executionDeadlineAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        resultHash:
+          type: string
+          nullable: true
+          pattern: '^sha256:[0-9a-f]{64}$'
+        diagnosticArtifactIds:
+          type: array
+          items:
+            $ref: 'common.yaml#/components/schemas/ID'
+        settled:
+          type: boolean
+          description: True when the attempt's effects are accounted for; a terminal run requires every attempt settled.
+        createdAt:
+          type: string
+          format: date-time
+    Step:
+      type: object
+      additionalProperties: false
+      required: [id, kind, status, reason, nextAttemptAt, actionKey, attemptsStarted, maxAttempts, outputs, sourceCommit, attempts]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{0,62}$'
+        kind:
+          type: string
+          enum: [container, agent, gate]
+        status:
+          $ref: '#/components/schemas/StepStatus'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        nextAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: The persisted retry backoff of a pending step.
+        actionKey:
+          type: string
+          description: Stable across the step's attempts.
+        attemptsStarted:
+          type: integer
+          minimum: 0
+        maxAttempts:
+          type: integer
+          minimum: 1
+        outputs:
+          type: object
+          nullable: true
+          additionalProperties:
+            $ref: '#/components/schemas/Scalar'
+          description: Finalized success outputs; null unless the step succeeded.
+        sourceCommit:
+          type: string
+          nullable: true
+          description: A successful writer's published commit.
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attempt'
+    StepPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Step'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'

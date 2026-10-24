@@ -1,0 +1,2478 @@
+[
+ {
+  "name": "valid work_item.created",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_work_item_created",
+   "schemaVersion": 1,
+   "type": "work_item.created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "kind": "story",
+    "state": "draft"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid work_item.updated",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_work_item_updated",
+   "schemaVersion": 1,
+   "type": "work_item.updated",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "changedFields": [
+     "title",
+     "specification"
+    ],
+    "contentRevision": 3
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid work_item.transitioned",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid workspace.state_changed",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_workspace_state_changed",
+   "schemaVersion": 1,
+   "type": "workspace.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "provisioning",
+    "to": "ready",
+    "reason": "clone_complete"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid workspace.checkpoint_created",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": null,
+    "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "publishingAttemptId": "att_9"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid run.created",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_run_created",
+   "schemaVersion": 1,
+   "type": "run.created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "workItemId": "wi_1042",
+    "definitionId": "def_1",
+    "inputSnapshotDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid run.state_changed",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_run_state_changed",
+   "schemaVersion": 1,
+   "type": "run.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "queued",
+    "to": "running",
+    "reason": "dispatched"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid step_attempt.state_changed",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_step_attempt_state_changed",
+   "schemaVersion": 1,
+   "type": "step_attempt.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "step_attempt",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "workload",
+    "id": "wl_1"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_1",
+    "stepId": "build",
+    "from": "running",
+    "to": "failed",
+    "reason": "timeout"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid gate.requested",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_gate_requested",
+   "schemaVersion": 1,
+   "type": "gate.requested",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "contentRevision": 2,
+    "reviewerScope": "reviewer",
+    "deadline": "2026-10-20T10:05:00Z"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid gate.decided",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_gate_decided",
+   "schemaVersion": 1,
+   "type": "gate.decided",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "decidedBy": {
+     "type": "user",
+     "id": "usr_rev"
+    },
+    "decision": "approved",
+    "state": "approved",
+    "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid gate.invalidated",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_gate_invalidated",
+   "schemaVersion": 1,
+   "type": "gate.invalidated",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "reason": "superseded",
+    "supersedingCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid deployment.state_changed",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_deployment_state_changed",
+   "schemaVersion": 1,
+   "type": "deployment.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "deployment",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "environmentId": "env_preview",
+    "from": "pending",
+    "to": "applied",
+    "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifactIds": [
+     "art_1"
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid membership.changed",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_membership_changed",
+   "schemaVersion": 1,
+   "type": "membership.changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "membership",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "userId": "usr_1",
+    "bindingIds": [
+     "mem_1"
+    ],
+    "effectiveVersion": 4
+   }
+  }
+ },
+ {
+  "name": "valid project.settings_changed",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_project_settings_changed",
+   "schemaVersion": 1,
+   "type": "project.settings_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "project",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "changedSettings": [
+     "activeWipLimit"
+    ],
+    "version": 3
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid configuration.changed",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_configuration_changed",
+   "schemaVersion": 1,
+   "type": "configuration.changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "configuration",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "kind": "secret",
+    "version": 2,
+    "change": "rotated",
+    "scope": "project"
+   }
+  }
+ },
+ {
+  "name": "valid usage.recorded",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_usage_recorded",
+   "schemaVersion": 1,
+   "type": "usage.recorded",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "usage_record",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_1",
+    "attemptId": "att_1",
+    "model": "model-x",
+    "basis": "estimated",
+    "uncertainty": "high",
+    "inputTokens": 1200,
+    "outputTokens": 300
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "checkpoint by human synchronization",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "newCommit": "cccccccccccccccccccccccccccccccccccccccc",
+    "humanSynchronization": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "tenant-wide event may carry a project",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_membership_changed",
+   "schemaVersion": 1,
+   "type": "membership.changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "membership",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "userId": "usr_1",
+    "bindingIds": [
+     "mem_1"
+    ],
+    "effectiveVersion": 4
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "service and operator actors",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_work_item_created",
+   "schemaVersion": 1,
+   "type": "work_item.created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "operator",
+    "id": "ops"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "kind": "task",
+    "state": "draft"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "optional additions in data and envelope are compatible",
+  "valid": true,
+  "schemaValid": true,
+  "error": null,
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01",
+    "futureField": {
+     "nested": [
+      1,
+      2
+     ]
+    }
+   },
+   "projectId": "p_inventory",
+   "extra": "ok"
+  }
+ },
+ {
+  "name": "sub-second timestamps",
+  "valid": true,
+  "schemaValid": true,
+  "error": null,
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00.123456Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "unknown schema version",
+  "valid": false,
+  "schemaValid": false,
+  "error": "unsupported_version",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 2,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "zero schema version",
+  "valid": false,
+  "schemaValid": false,
+  "error": "unsupported_version",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 0,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "unknown event type",
+  "valid": false,
+  "schemaValid": false,
+  "error": "unsupported_type",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.exploded",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "missing tenant",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "invalid tenant id",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "tenant id with wildcard",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t.*",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "invalid project id",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "../p"
+  }
+ },
+ {
+  "name": "project required for project-scoped type",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   }
+  }
+ },
+ {
+  "name": "empty project id is not tenant-wide",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": ""
+  }
+ },
+ {
+  "name": "resource type mismatch",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "resource version zero",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 0
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "resource version beyond 2^53-1",
+  "valid": false,
+  "schemaValid": false,
+  "error": "malformed",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 9007199254740992
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "unsupported actor type",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "robot",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "empty actor id",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": ""
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "actor with control character",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr\u0007"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "missing correlation id",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "missing causation id member",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "invalid causation id",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt 1",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "non-UTC timestamp",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00+02:00",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "timestamp without zone",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "data is not an object",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": [
+    1
+   ],
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "data missing required field",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "active"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run state change without reason",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_run_state_changed",
+   "schemaVersion": 1,
+   "type": "run.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "queued",
+    "to": "running"
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "run state change with null reason",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_run_state_changed",
+   "schemaVersion": 1,
+   "type": "run.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "queued",
+    "to": "running",
+    "reason": null
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "step attempt state change without reason",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_step_attempt_state_changed",
+   "schemaVersion": 1,
+   "type": "step_attempt.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "step_attempt",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "workload",
+    "id": "wl_1"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_1",
+    "stepId": "build",
+    "from": "running",
+    "to": "failed"
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "gate requested without deadline",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_gate_requested",
+   "schemaVersion": 1,
+   "type": "gate.requested",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "contentRevision": 2,
+    "reviewerScope": "reviewer"
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "gate requested with null deadline",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_gate_requested",
+   "schemaVersion": 1,
+   "type": "gate.requested",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "contentRevision": 2,
+    "reviewerScope": "reviewer",
+    "deadline": null
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "data field with wrong type",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": 7,
+    "to": "active",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "data state is not a code",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_transitioned",
+   "schemaVersion": 1,
+   "type": "work_item.transitioned",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": "evt_00",
+   "data": {
+    "from": "ready",
+    "to": "Active State",
+    "transitionId": "tr_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "checkpoint needs an origin",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": null,
+    "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "checkpoint with both origins",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": null,
+    "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "publishingAttemptId": "att_9",
+    "humanSynchronization": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "checkpoint bad commit",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": null,
+    "newCommit": "main",
+    "publishingAttemptId": "att_9"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "checkpoint previous commit may be omitted",
+  "valid": true,
+  "schemaValid": true,
+  "error": null,
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "publishingAttemptId": "att_9"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "deployment without any reference",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_deployment_state_changed",
+   "schemaVersion": 1,
+   "type": "deployment.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "deployment",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "environmentId": "env_preview",
+    "from": "pending",
+    "to": "applied"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "deployment with empty artifact list only",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_deployment_state_changed",
+   "schemaVersion": 1,
+   "type": "deployment.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "deployment",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "environmentId": "env_preview",
+    "from": "pending",
+    "to": "applied",
+    "artifactIds": []
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "gate decision value",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_gate_decided",
+   "schemaVersion": 1,
+   "type": "gate.decided",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "decidedBy": {
+     "type": "user",
+     "id": "usr_rev"
+    },
+    "decision": "maybe",
+    "state": "approved",
+    "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "gate subject digest format",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_gate_decided",
+   "schemaVersion": 1,
+   "type": "gate.decided",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "decidedBy": {
+     "type": "user",
+     "id": "usr_rev"
+    },
+    "decision": "approved",
+    "state": "approved",
+    "subjectDigest": "sha256:xyz"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "membership without bindings",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_membership_changed",
+   "schemaVersion": 1,
+   "type": "membership.changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "membership",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "userId": "usr_1",
+    "bindingIds": [],
+    "effectiveVersion": 4
+   }
+  }
+ },
+ {
+  "name": "negative usage",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_usage_recorded",
+   "schemaVersion": 1,
+   "type": "usage.recorded",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "usage_record",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_1",
+    "attemptId": "att_1",
+    "model": "model-x",
+    "basis": "estimated",
+    "uncertainty": "high",
+    "inputTokens": -1,
+    "outputTokens": 300
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "usage basis",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_usage_recorded",
+   "schemaVersion": 1,
+   "type": "usage.recorded",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "usage_record",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_1",
+    "attemptId": "att_1",
+    "model": "model-x",
+    "basis": "guess",
+    "uncertainty": "high",
+    "inputTokens": 1200,
+    "outputTokens": 300
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "duplicate changed field names",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_updated",
+   "schemaVersion": 1,
+   "type": "work_item.updated",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "changedFields": [
+     "a",
+     "a"
+    ],
+    "contentRevision": 3
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "empty changed fields",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_updated",
+   "schemaVersion": 1,
+   "type": "work_item.updated",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "changedFields": [],
+    "contentRevision": 3
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "configuration change kind",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_configuration_changed",
+   "schemaVersion": 1,
+   "type": "configuration.changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "configuration",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "kind": "secret",
+    "version": 2,
+    "change": "leaked",
+    "scope": "project"
+   }
+  }
+ },
+ {
+  "name": "duplicate top-level key",
+  "valid": false,
+  "schemaValid": null,
+  "error": "malformed",
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\",\"id\":\"evt_other\"}"
+ },
+ {
+  "name": "duplicate key in data",
+  "valid": false,
+  "schemaValid": null,
+  "error": "malformed",
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"from\": \"draft\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "trailing data",
+  "valid": false,
+  "schemaValid": null,
+  "error": "malformed",
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"} {}"
+ },
+ {
+  "name": "not an object",
+  "valid": false,
+  "schemaValid": null,
+  "error": "malformed",
+  "raw": "[1,2]"
+ },
+ {
+  "name": "floating point resource version",
+  "valid": false,
+  "schemaValid": null,
+  "error": "malformed",
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7.5}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "nesting beyond limit",
+  "valid": false,
+  "schemaValid": null,
+  "error": "malformed",
+  "raw": "{\"data\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}"
+ },
+ {
+  "name": "empty input",
+  "valid": false,
+  "schemaValid": null,
+  "error": "malformed",
+  "raw": ""
+ },
+ {
+  "name": "case alias after the real top-level member is ignored",
+  "valid": true,
+  "schemaValid": true,
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\", \"ID\": \"evt_other\"}"
+ },
+ {
+  "name": "case alias before the real top-level member is ignored",
+  "valid": true,
+  "schemaValid": true,
+  "raw": "{\"ID\": \"evt_other\", \"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "case aliases of tenant and project members are ignored",
+  "valid": true,
+  "schemaValid": true,
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\", \"TenantID\": \"t_other\", \"PROJECTID\": \"p_other\"}"
+ },
+ {
+  "name": "case aliases in data are ignored",
+  "valid": true,
+  "schemaValid": true,
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\", \"From\": \"draft\", \"TO\": \"closed\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "case aliases in resource and actor are ignored",
+  "valid": true,
+  "schemaValid": true,
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7, \"ID\": \"res_other\", \"Version\": 99}, \"actor\": {\"Type\": \"service\", \"type\": \"user\", \"id\": \"usr_engineer\", \"ID\": \"usr_other\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "wrong-case id instead of id is invalid",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "raw": "{\"ID\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "wrong-case tenantId instead of tenantId is invalid",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"TenantID\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "wrong-case data member instead of the required member is invalid",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"From\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "wrong-case resource member instead of the required member is invalid",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"Version\": 7}, \"actor\": {\"type\": \"user\", \"id\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "wrong-case actor member instead of the required member is invalid",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "raw": "{\"id\": \"evt_work_item_transitioned\", \"schemaVersion\": 1, \"type\": \"work_item.transitioned\", \"occurredAt\": \"2026-10-19T10:05:00Z\", \"tenantId\": \"t_acme\", \"resource\": {\"type\": \"work_item\", \"id\": \"res_1\", \"version\": 7}, \"actor\": {\"type\": \"user\", \"ID\": \"usr_engineer\"}, \"correlationId\": \"req_01\", \"causationId\": \"evt_00\", \"data\": {\"from\": \"ready\", \"to\": \"active\", \"transitionId\": \"tr_01\"}, \"projectId\": \"p_inventory\"}"
+ },
+ {
+  "name": "work_item.updated optional contentRevision must not be explicit null",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_work_item_updated",
+   "schemaVersion": 1,
+   "type": "work_item.updated",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "work_item",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "changedFields": [
+     "title",
+     "specification"
+    ],
+    "contentRevision": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "gate.invalidated optional supersedingCommit must not be explicit null",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_gate_invalidated",
+   "schemaVersion": 1,
+   "type": "gate.invalidated",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "reason": "superseded",
+    "supersedingCommit": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "gate.invalidated optional supersedingRevision must not be explicit null",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_gate_invalidated",
+   "schemaVersion": 1,
+   "type": "gate.invalidated",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "gate",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "reason": "superseded",
+    "supersedingCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "supersedingRevision": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "deployment.state_changed optional sourceCommit must not be explicit null",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_deployment_state_changed",
+   "schemaVersion": 1,
+   "type": "deployment.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "deployment",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "environmentId": "env_preview",
+    "from": "pending",
+    "to": "applied",
+    "sourceCommit": null,
+    "artifactIds": [
+     "art_1"
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "deployment.state_changed optional artifactIds must not be explicit null",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_deployment_state_changed",
+   "schemaVersion": 1,
+   "type": "deployment.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "deployment",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "environmentId": "env_preview",
+    "from": "pending",
+    "to": "applied",
+    "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifactIds": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "deployment.state_changed optional imageDigest must not be explicit null",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_deployment_state_changed",
+   "schemaVersion": 1,
+   "type": "deployment.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "deployment",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "environmentId": "env_preview",
+    "from": "pending",
+    "to": "applied",
+    "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifactIds": [
+     "art_1"
+    ],
+    "imageDigest": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "usage.recorded optional inputTokens must not be explicit null",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_usage_recorded",
+   "schemaVersion": 1,
+   "type": "usage.recorded",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "usage_record",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_1",
+    "attemptId": "att_1",
+    "model": "model-x",
+    "basis": "estimated",
+    "uncertainty": "high",
+    "inputTokens": null,
+    "outputTokens": 300
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "usage.recorded optional outputTokens must not be explicit null",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_usage_recorded",
+   "schemaVersion": 1,
+   "type": "usage.recorded",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "usage_record",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_1",
+    "attemptId": "att_1",
+    "model": "model-x",
+    "basis": "estimated",
+    "uncertainty": "high",
+    "inputTokens": 1200,
+    "outputTokens": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "workspace.checkpoint_created optional publishingAttemptId must not be explicit null",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": null,
+    "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "publishingAttemptId": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "checkpoint humanSynchronization null is not an origin",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": null,
+    "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "humanSynchronization": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "checkpoint humanSynchronization false alone is not an origin",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": null,
+    "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "humanSynchronization": false
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "checkpoint attempt with humanSynchronization false has both members",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": null,
+    "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "publishingAttemptId": "att_9",
+    "humanSynchronization": false
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "checkpoint attempt with humanSynchronization null has both members",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_workspace_checkpoint_created",
+   "schemaVersion": 1,
+   "type": "workspace.checkpoint_created",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "res_1",
+    "version": 7
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repository": "repo_1",
+    "previousCommit": null,
+    "newCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "publishingAttemptId": "att_9",
+    "humanSynchronization": null
+   },
+   "projectId": "p_inventory"
+  }
+ }
+]

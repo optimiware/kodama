@@ -1,0 +1,28 @@
+# Planned M2 shapes. They are structurally valid, but an installation that only
+# enables containers rejects them at registration (kind_disabled).
+apiVersion: kodama/v1alpha1
+kind: Pipeline
+metadata:
+  name: implement-and-review
+spec:
+  steps:
+    - id: implement
+      kind: agent
+      agent: {profile: coding-v1}
+      workspace: {access: write, from: run}
+      timeoutSeconds: 1800
+    - id: test
+      kind: container
+      needs: [implement]
+      image: registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      workspace: {access: read, from: implement}
+      command: [/bin/sh, -ec]
+      args: ["go test ./..."]
+      timeoutSeconds: 600
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/tests.json}
+    - id: review
+      kind: gate
+      needs: [test]
+      gate:
+        evidence: ["${{ steps.test.outputs.report }}"]
