@@ -62,7 +62,7 @@ move cross-module checks to their existing integration owners.
 
 Before merging after the harness pauses, rebase this task onto current `main`,
 preserve newly completed task statuses, and regenerate the index with
-`bun scripts/openforge/src/cli.ts index --write`. Run `make docs-check`,
+`bun ../openforge/src/cli.ts index --write`. Run `make docs-check`,
 `make lint` and `make test`; retain independent review approval for the resulting
 diff. Restart the harness only after the reviewed changes are merged, so newly
 eligible lanes read the revised task contracts. No task is marked done by this review.

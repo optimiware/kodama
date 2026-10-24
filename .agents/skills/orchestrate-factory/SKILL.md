@@ -5,7 +5,7 @@ description: Run an OpenForge task factory as its orchestrator. Start and monito
 
 # Orchestrating a task factory
 
-An OpenForge factory (`scripts/openforge/`, configured by the root `openforge.json`) turns task files in `docs/tasks/` into merged commits: implement, check, independent review, fix, land. You are the **orchestrator**. The workers do the coding; you keep the queue moving, repair what the harness cannot repair alone, and keep the owner informed without ever waiting on them.
+An OpenForge factory (`../openforge/` (a separate project), configured by the root `openforge.json`) turns task files in `docs/tasks/` into merged commits: implement, check, independent review, fix, land. You are the **orchestrator**. The workers do the coding; you keep the queue moving, repair what the harness cannot repair alone, and keep the owner informed without ever waiting on them.
 
 Read first: `docs/implementation/harness.md` (flow and gates), `docs/tasks/README.md` (ownership and index rules), `docs/decisions.md` (open and resolved decisions), `AGENTS.md`.
 
@@ -22,11 +22,11 @@ Read first: `docs/implementation/harness.md` (flow and gates), `docs/tasks/READM
 
 ```sh
 make openforge-install
-bun scripts/openforge/src/cli.ts doctor && bun scripts/openforge/src/cli.ts validate
-bun scripts/openforge/src/cli.ts ready
+bun ../openforge/src/cli.ts doctor && bun ../openforge/src/cli.ts validate
+bun ../openforge/src/cli.ts ready
 # start (background; keep the log somewhere writable)
 set -a; source .env; set +a
-bun scripts/openforge/src/cli.ts run --workers 8 > /tmp/<name>/openforge-run.log 2>&1
+bun ../openforge/src/cli.ts run --workers 8 > /tmp/<name>/openforge-run.log 2>&1
 ```
 
 Then loop: wait a fixed interval (a backgrounded `sleep 295` that notifies you), run the report, act, repeat. Do not busy-poll.
@@ -67,7 +67,7 @@ The owner can do the same supervision from a private Telegram chat with `make op
 | Gate fails scenarios that pass for the fixer (e.g. "needs the `cluster` stack ... kubeconfig is missing") | The task's `check:` has no `DEV_STACK`, and an **existing scope of another stack shadows auto-provisioning** (`host-env.json` already exists; `up` keeps the recorded stack) | Put the stack in the task's `check:` (`DEV_STACK=cluster make check-go-integration ...`). To switch a scope: confirm nothing is using it (below), `make dev-down`, remove the state dir if it lingers, `dev-up` with the right stack. `cluster` is a superset of `services`. |
 | Integration packages die with `panic: test timed out after 10m0s` | Go's default test timeout on a loaded host | `go_results.py --integration` now passes `-timeout 30m` (`KODAMA_GO_TEST_TIMEOUT`). Agents' own integration runs are outside the harness resource semaphore, so several tasks contend; expect slowdowns. |
 | Parked implementer says a small repair is outside its `owns` and the owner already scheduled the defect | Ownership gap | Extend `owns` with only the files named (a few lines), say why in the task file, validate, commit, `unpark`. A larger or unscheduled gap is a prerequisite task or a decision. |
-| Main check failed (`blocked: true`) | Real regression, a flake, or a commit during the check | Read `.work/.harness/main-check.log`. Rerun the failing test alone and under contention. If it is a real defect (a rare one is still a defect), fix the root cause on `main` with a regression test; then `bun scripts/openforge/src/cli.ts batch --retry`. "checkout changed while checking" only needs the retry. Landing is gated while blocked; implementing and reviewing continue. |
+| Main check failed (`blocked: true`) | Real regression, a flake, or a commit during the check | Read `.work/.harness/main-check.log`. Rerun the failing test alone and under contention. If it is a real defect (a rare one is still a defect), fix the root cause on `main` with a regression test; then `bun ../openforge/src/cli.ts batch --retry`. "checkout changed while checking" only needs the retry. Landing is gated while blocked; implementing and reviewing continue. |
 | Process exited, no `HALT` file | Drain, not a crash | `status`: if everything left is parked or blocked, fix that, then restart. |
 | A task is `verified` or `implemented` for a long time with a recent shell | Long check or fixer | Wait. Integration checks run minutes; implement runs hours. |
 | Unparked task lost the guidance you wrote into `state.json` | `unpark` bumps the generation and `init()` clears findings and repair fields | Put guidance in the task file's contract text (the prompt includes it), or edit `state.json` only after the harness has re-initialised the task. |
@@ -81,7 +81,7 @@ Use this when a parked task reports a defect or missing piece outside its owned 
 2. File `docs/tasks/T-NNN-slug.md` with frontmatter `id, milestone, status: planned, depends_on, decision_blockers: [], owns, check, resources, acceptance` and sections Goal, Contract, Deliverables, Acceptance, Out of scope. Copy the exact failing evidence and, when the reporter verified a repair, the diff. `acceptance` names are the Go test names the check must report as passed (`Test_<name>` normalises to the name); say so in the Acceptance paragraph.
 3. Choose `owns` narrowly and **disjoint from every running task**, or the scheduler will serialize them. Prefer new code in its own package and leave the binding in a shared assembly package to one final task.
 4. Add the new id to the blocked task's `depends_on`.
-5. `bun scripts/openforge/src/cli.ts index --write`, then `validate` and `make docs-check`, then commit in one step. The running harness reloads task files each iteration and starts the task within seconds.
+5. `bun ../openforge/src/cli.ts index --write`, then `validate` and `make docs-check`, then commit in one step. The running harness reloads task files each iteration and starts the task within seconds.
 6. When it merges: `git -C <worktree> rebase main`, set the parked task's state to `implemented` with the new `candidateCommit` (or leave it `planned` if it must re-implement), add a short "prerequisites landed" note to its task file, and `unpark`.
 
 ## Recording an asynchronous decision

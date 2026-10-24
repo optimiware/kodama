@@ -8,7 +8,7 @@ The default Go scope is `GO_CORE_PACKAGES` in Make: commands, internal modules, 
 
 OpenForge commands additionally need Bun **1.4.2** and an explicit `make openforge-install` per worktree. Checks never install dependencies or rewrite the lockfile. `make check-openforge` qualifies harness changes, not Go product changes. Python **3.9+** remains for `scripts/dev/` environment/fixture tooling; `make test-python` is only for that tooling. The old Python task controller is retired.
 
-For agent execution, `bun scripts/openforge/src/cli.ts doctor` checks configured role/model availability. [Runtime details](harness.md#embedded-runtime-and-reporting) distinguish credential discovery from a live-provider invocation.
+For agent execution, `bun ../openforge/src/cli.ts doctor` checks configured role/model availability. [Runtime details](harness.md#embedded-runtime-and-reporting) distinguish credential discovery from a live-provider invocation.
 
 ## Test layers
 
@@ -91,7 +91,7 @@ Use one assigned branch/worktree and exclusive owned paths per task. Independent
 OpenForge supervises commands with cross-process leases. For manual parallel checks use:
 
 ```sh
-bun scripts/openforge/src/cli.ts resources --resources go -- go test -race -count=1 -tags unit ./internal/execution/...
+bun ../openforge/src/cli.ts resources --resources go -- go test -race -count=1 -tags unit ./internal/execution/...
 ```
 
 Reserve `services` and, where needed, `kind` for actual integration. Preserve process cancellation/draining and lease ownership; see [capacity](harness.md#scoped-checks-and-capacity).

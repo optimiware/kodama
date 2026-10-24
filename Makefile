@@ -6,7 +6,8 @@ DEV_PROVIDER ?= podman
 export DEV_PROVIDER
 ENV = $(PYTHON) scripts/dev/environment.py
 SCOPE_ARGS = --scope $(DEV_SCOPE) --provider $(DEV_PROVIDER)
-OPENFORGE = $(BUN) --no-install scripts/openforge/src/cli.ts
+OPENFORGE_DIR ?= ../openforge
+OPENFORGE = $(BUN) --no-install $(OPENFORGE_DIR)/src/cli.ts
 CHECK_PACKAGES ?=
 GO_CORE_PACKAGES = ./cmd/... ./internal/... ./api/... ./contracts/... ./pkg/... ./test/support/...
 PKGS ?= $(GO_CORE_PACKAGES)
@@ -46,17 +47,17 @@ test-python:
 	$(PYTHON) scripts/dev/python_results.py
 
 openforge-install:
-	cd scripts/openforge && $(BUN) install --frozen-lockfile
+	cd $(OPENFORGE_DIR) && $(BUN) install --frozen-lockfile
 
 openforge-telegram:
 	$(OPENFORGE) telegram
 
 test-openforge:
-	cd scripts/openforge && $(BUN) --no-install test test
+	cd $(OPENFORGE_DIR) && $(BUN) --no-install test test
 
 lint-openforge:
-	cd scripts/openforge && $(BUN) --no-install run typecheck
-	cd scripts/openforge && $(BUN) --no-install run lint
+	cd $(OPENFORGE_DIR) && $(BUN) --no-install run typecheck
+	cd $(OPENFORGE_DIR) && $(BUN) --no-install run lint
 
 check-openforge: lint-openforge test-openforge
 

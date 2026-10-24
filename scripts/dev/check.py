@@ -64,8 +64,6 @@ def config():
     for path in (ROOT / "scripts/dev").glob("*.py"):
         ast.parse(path.read_text(), filename=str(path))
     json.loads((ROOT / "openforge.json").read_text())
-    for name in ("package.json", "tsconfig.json", "biome.json"):
-        json.loads((ROOT / "scripts/openforge" / name).read_text())
     for path in [*source_files(ROOT / ".opencode", ".json"), *ROOT.glob("opencode.json")]:
         json.loads(path.read_text())
     for path in [*(ROOT / "dev/contracts").glob("*.json"), *source_files(ROOT / "contracts", ".json")]:
@@ -98,7 +96,7 @@ def anchors(text):
 
 def docs():
     files = list(ROOT.glob("*.md")) + list(source_files(ROOT / "docs", ".md")) + list((ROOT / "dev").glob("*.md")) + list(source_files(ROOT / "contracts", ".md"))
-    files += list(source_files(ROOT / ".opencode/agents", ".md")) + [ROOT / "scripts/openforge/README.md"]
+    files += list(source_files(ROOT / ".opencode/agents", ".md"))
     for path in files:
         text = path.read_text()
         if len(re.findall(r"^```", text, re.MULTILINE)) % 2:

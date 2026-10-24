@@ -1,22 +1,22 @@
 # OpenForge autonomous task harness
 
-OpenForge (`scripts/openforge/`) is a project-agnostic Bun/TypeScript SDLC harness embedding `@opencode/sdk` **2.1.2**. All project-specific commands, environment variables, resource limits, and protected paths live in the root [`openforge.json`](../../openforge.json), `Makefile`, and `.opencode/agents/`.
+OpenForge (`../openforge/` (a separate project)) is a project-agnostic Bun/TypeScript SDLC harness embedding `@opencode/sdk` **2.1.2**. All project-specific commands, environment variables, resource limits, and protected paths live in the root [`openforge.json`](../../openforge.json), `Makefile`, and `.opencode/agents/`.
 
 ## Commands
 
 ```sh
 make openforge-install
-bun scripts/openforge/src/cli.ts validate
-bun scripts/openforge/src/cli.ts ready
-bun scripts/openforge/src/cli.ts run --dry-run
-bun scripts/openforge/src/cli.ts run --workers 5
-bun scripts/openforge/src/cli.ts check-task T-080
-bun scripts/openforge/src/cli.ts status --json
-bun scripts/openforge/src/cli.ts batch
-bun scripts/openforge/src/cli.ts batch --retry
-bun scripts/openforge/src/cli.ts unpark T-080
-bun scripts/openforge/src/cli.ts doctor
-bun scripts/openforge/src/cli.ts telegram
+bun ../openforge/src/cli.ts validate
+bun ../openforge/src/cli.ts ready
+bun ../openforge/src/cli.ts run --dry-run
+bun ../openforge/src/cli.ts run --workers 5
+bun ../openforge/src/cli.ts check-task T-080
+bun ../openforge/src/cli.ts status --json
+bun ../openforge/src/cli.ts batch
+bun ../openforge/src/cli.ts batch --retry
+bun ../openforge/src/cli.ts unpark T-080
+bun ../openforge/src/cli.ts doctor
+bun ../openforge/src/cli.ts telegram
 ```
 
 ## Task flow
@@ -58,7 +58,7 @@ Three generic gates govern every task:
 
 ## Periodic main check
 
-After `mainCheckEvery` merges (default `5`) and at queue drain (`mainCheckOnDrain`), OpenForge runs `mainCheck` (`make lint-go`, `make test-go-unit`) on `main` and records the state in `.work/.harness/main.json`. A failing `mainCheck` blocks landing while allowing tasks to continue implementing, checking, and reviewing in parallel; repair `main` and run `bun scripts/openforge/src/cli.ts batch --retry`.
+After `mainCheckEvery` merges (default `5`) and at queue drain (`mainCheckOnDrain`), OpenForge runs `mainCheck` (`make lint-go`, `make test-go-unit`) on `main` and records the state in `.work/.harness/main.json`. A failing `mainCheck` blocks landing while allowing tasks to continue implementing, checking, and reviewing in parallel; repair `main` and run `bun ../openforge/src/cli.ts batch --retry`.
 
 Before and after each command, the primary checkout must be clean on the configured base branch at the captured commit. Wrong-branch, dirty-tree, or commit-drift results block publication and cannot mark the captured commit green.
 
@@ -74,7 +74,7 @@ The orchestrator playbook (start and loop, triage of parked, paused and stalled 
 
 ## Telegram operator
 
-`bun scripts/openforge/src/cli.ts telegram` (or `make openforge-telegram`) runs a private conversational operator beside the queue. It long-polls the Bot API, so the host does not need a public webhook. Configure it in the primary checkout `.env` or the process environment:
+`bun ../openforge/src/cli.ts telegram` (or `make openforge-telegram`) runs a private conversational operator beside the queue. It long-polls the Bot API, so the host does not need a public webhook. Configure it in the primary checkout `.env` or the process environment:
 
 ```sh
 TELEGRAM_BOT_TOKEN=replace-with-botfather-token
@@ -87,4 +87,4 @@ Only that numeric owner, in a private chat, can read factory state or invoke an 
 
 The operator can halt and resume the queue, unpark a task, retry the main check, and prepare a task or decision on an operation branch. Preparation validates the task graph. Publication fast-forwards a clean base checkout only after the owner presses Publish or sends `/publish <id>`. It does not count as a task landing and does not bypass a dirty checkout or an in-progress publication lock. Tokens and credential-named environment values are redacted from replies, and the operator cannot pass provider keys into task agent shells.
 
-A launchd agent can keep the process up across login. Point `WorkingDirectory` at the primary checkout, invoke `bun scripts/openforge/src/cli.ts telegram`, and keep the token in `.env` rather than in the plist. Stop it with SIGTERM; that does not halt the queue. Create `.work/.harness/HALT`, or send `/halt`, to stop workers.
+A launchd agent can keep the process up across login. Point `WorkingDirectory` at the primary checkout, invoke `bun ../openforge/src/cli.ts telegram`, and keep the token in `.env` rather than in the plist. Stop it with SIGTERM; that does not halt the queue. Create `.work/.harness/HALT`, or send `/halt`, to stop workers.

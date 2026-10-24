@@ -70,7 +70,7 @@ def events():
 
 
 def cli_status():
-    p = subprocess.run(["bun", "scripts/openforge/src/cli.ts", "status", "--json"], cwd=ROOT, capture_output=True, text=True)
+    p = subprocess.run(["bun", os.environ.get("OPENFORGE_DIR", "../openforge") + "/src/cli.ts", "status", "--json"], cwd=ROOT, capture_output=True, text=True)
     text = p.stdout
     start = text.find("{")
     try:

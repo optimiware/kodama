@@ -38,7 +38,7 @@ checksums and digests.
 make check-task TASK=T-043              # fast loop: no services (domain tests, contracts, generation); never qualifying evidence
 make dev-up DEV_SCOPE=t043              # a kind cluster, registry, PostgreSQL and OIDC provider for the real delivery suites
 # real delivery qualification: hold go, services and kind throughout
-bun scripts/openforge/src/cli.ts resources --resources go,services,kind --execution-timeout 3000 -- \
+bun ../openforge/src/cli.ts resources --resources go,services,kind --execution-timeout 3000 -- \
   go test -race -count=1 -timeout=40m ./templates/go-postgres/acceptance/...
 ```
 

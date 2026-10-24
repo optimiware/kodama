@@ -1,9 +1,9 @@
 name: Repository tooling
 on:
   push:
-    paths: ['openforge.json', 'scripts/openforge/**', 'scripts/dev/**', 'scripts/release/**', 'dev/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
+    paths: ['openforge.json', 'scripts/dev/**', 'scripts/release/**', 'dev/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
   pull_request:
-    paths: ['openforge.json', 'scripts/openforge/**', 'scripts/dev/**', 'scripts/release/**', 'dev/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
+    paths: ['openforge.json', 'scripts/dev/**', 'scripts/release/**', 'dev/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
 permissions:
   contents: read
 jobs:
@@ -30,7 +30,7 @@ jobs:
           else
             changed=$(git ls-files)
           fi
-          if echo "$changed" | grep -Eq '^(openforge\.json|scripts/openforge/|\.opencode/|Makefile|\.github/workflows/tooling\.yml)'; then
+          if echo "$changed" | grep -Eq '^(openforge\.json|\.opencode/|Makefile|\.github/workflows/tooling\.yml)'; then
             make check-openforge
           fi
           if echo "$changed" | grep -Eq '^(scripts/dev/|dev/|Makefile|\.github/workflows/tooling.yml)'; then

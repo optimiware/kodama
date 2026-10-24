@@ -153,7 +153,7 @@ INVENTORY_DEV_ENV=<kodama>/dev/.state/environments/<scope> \
 
 Holding the scope provisioned does not hold its `kind` lease while tests run. In the Kodama repository, run the
 real suites under the shared resource wrapper so `go`, `services` and `kind` stay leased throughout, for example
-`bun scripts/openforge/src/cli.ts resources --resources go,services,kind --execution-timeout 3000 -- <test command>`
+`bun ../openforge/src/cli.ts resources --resources go,services,kind --execution-timeout 3000 -- <test command>`
 (without it the wrapper's default 1800 seconds covers queueing and execution together; set `--queue-timeout` separately if admission may wait). `make check-task ... LAYER=all` reserves only `go,services`, so it does not by itself
 cover the cluster. Service-free checks (`make check-task TASK=T-043`) need none of this and are never qualifying
 evidence. The suites allow up to 25 minutes themselves, so give `go test` an explicit `-timeout` above the
