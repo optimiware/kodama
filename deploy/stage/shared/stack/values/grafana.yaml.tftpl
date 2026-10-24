@@ -24,6 +24,8 @@ securityContext:
 ingress:
   enabled: true
   ingressClassName: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
   hosts:
     - ${jsonencode(ingress_host)}
   tls:

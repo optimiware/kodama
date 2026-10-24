@@ -82,6 +82,8 @@ volumeMounts:
 ingress:
   enabled: true
   className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
   hosts:
     - host: ${jsonencode(issuer_host)}
       paths:

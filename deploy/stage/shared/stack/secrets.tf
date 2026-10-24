@@ -4,15 +4,8 @@
 # resource is replaced (`tofu apply -replace=...`), never because a script ran again.
 
 locals {
-  installation = var.stage_contract.installation_id
-  host         = var.stage_contract.network.ingress_host
-  public_hosts = [
-    local.host,
-    "grafana.${local.host}",
-    "auth.${local.host}",
-    "git.${local.host}",
-    "registry.${local.host}",
-  ]
+  installation      = var.stage_contract.installation_id
+  host              = var.stage_contract.network.ingress_host
   pg                = var.stage_contract.postgres
   tenant_ids        = [for t in var.stage_contract.tenants : t.tenant_id]
   git_url_effective = coalesce(var.git_url, "https://git.${local.host}/optimi/kodama-source.git")
@@ -38,48 +31,6 @@ resource "kubernetes_namespace_v1" "deps" {
   metadata {
     name = var.deps_namespace
   }
-}
-
-# ---- installation CA and leaf certificates ----
-
-resource "tls_private_key" "ca" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P256"
-}
-
-resource "tls_self_signed_cert" "ca" {
-  private_key_pem       = tls_private_key.ca.private_key_pem
-  is_ca_certificate     = true
-  validity_period_hours = 8760 * 3
-  early_renewal_hours   = 24 * 60
-  allowed_uses          = ["cert_signing", "crl_signing"]
-
-  subject {
-    common_name = "${local.installation}-ca"
-  }
-}
-
-resource "tls_private_key" "ingress" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P256"
-}
-
-resource "tls_cert_request" "ingress" {
-  private_key_pem = tls_private_key.ingress.private_key_pem
-  dns_names       = local.public_hosts
-
-  subject {
-    common_name = local.host
-  }
-}
-
-resource "tls_locally_signed_cert" "ingress" {
-  cert_request_pem      = tls_cert_request.ingress.cert_request_pem
-  ca_private_key_pem    = tls_private_key.ca.private_key_pem
-  ca_cert_pem           = tls_self_signed_cert.ca.cert_pem
-  validity_period_hours = 8760
-  early_renewal_hours   = 24 * 30
-  allowed_uses          = ["digital_signature", "key_encipherment", "server_auth"]
 }
 
 # Runtime P-256 signing key (PKCS#8 PEM), the key tokens of the workload runtime API are signed with.
@@ -278,8 +229,7 @@ resource "kubernetes_secret_v1" "runtime" {
     "git-read-token"       = data.kubernetes_secret_v1.git_tokens.data["read"]
     "git-write-token"      = data.kubernetes_secret_v1.git_tokens.data["write"]
     "runtime-signing-key"  = tls_private_key.runtime_signing.private_key_pem_pkcs8
-    "runtime-ca.crt"       = tls_self_signed_cert.ca.cert_pem
-    "ca.crt"               = tls_self_signed_cert.ca.cert_pem
+    "runtime-ca.crt"       = file("${path.module}/values/isrg-roots.pem")
     "s3-access-key"        = var.bootstrap_secrets["artifacts_s3_access_key"]
     "s3-secret-key"        = var.bootstrap_secrets["artifacts_s3_secret_key"]
     "git-credentials.json" = jsonencode([
@@ -314,7 +264,6 @@ resource "kubernetes_secret_v1" "migration" {
 
   data = {
     "database-migration-url" = "postgres://${local.pg.migration_role}:${local.migration_password}@${local.pg.host}:${local.pg.port}/${local.pg.database}?sslmode=${local.pg.ssl_mode}"
-    "ca.crt"                 = tls_self_signed_cert.ca.cert_pem
   }
 }
 
@@ -326,26 +275,6 @@ resource "kubernetes_secret_v1" "nats_auth" {
   data = {
     "nats-token" = random_password.nats_token.result
   }
-}
-
-resource "kubernetes_secret_v1" "ingress_tls" {
-  for_each = {
-    kodama-tls         = var.control_plane_namespace
-    kodama-grafana-tls = var.observability_namespace
-    kodama-deps-tls    = var.deps_namespace
-  }
-
-  metadata {
-    name      = each.key
-    namespace = each.value
-  }
-  type = "kubernetes.io/tls"
-  data = {
-    "tls.crt" = "${tls_locally_signed_cert.ingress.cert_pem}${tls_self_signed_cert.ca.cert_pem}"
-    "tls.key" = tls_private_key.ingress.private_key_pem_pkcs8
-  }
-
-  depends_on = [kubernetes_namespace_v1.control_plane, kubernetes_namespace_v1.observability, kubernetes_namespace_v1.deps]
 }
 
 resource "kubernetes_secret_v1" "kms_scw" {

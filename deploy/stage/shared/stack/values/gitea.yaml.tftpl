@@ -13,6 +13,7 @@ ingress:
   enabled: true
   className: nginx
   annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
     nginx.ingress.kubernetes.io/proxy-body-size: "64m"
   hosts:
     - host: ${jsonencode(host)}

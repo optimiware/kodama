@@ -160,7 +160,8 @@ tfvars = {
     "registry_url": os.environ.get("KODAMA_REGISTRY_URL") or f"https://registry.{host}",
     "oidc_issuer": os.environ.get("KODAMA_OIDC_ISSUER") or f"https://auth.{host}",
     "oidc_audience": os.environ.get("KODAMA_OIDC_AUDIENCE") or f"https://{host}/api",
-    "custom_ca": True,
+    "custom_ca": False,
+    "acme_email": os.environ.get("KODAMA_ACME_EMAIL", ""),
     "nats_tls": os.environ.get("KODAMA_NATS_TLS", "false").lower() == "true",
 }
 with open(tfvars_out, "w", encoding="utf-8") as fh:

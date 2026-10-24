@@ -61,6 +61,8 @@ secrets:
 ingress:
   enabled: true
   className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
   host: ${jsonencode(contract.network.ingress_host)}
   tls:
     enabled: true

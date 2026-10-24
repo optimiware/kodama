@@ -11,6 +11,7 @@ chmod 0700 "${WORK_DIR}"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 
 export KODAMA_IMAGE_DIGEST="sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+export KODAMA_ACME_EMAIL="ops@stage-tests.local"
 export KODAMA_WORKLOAD_IMAGE_DIGEST="sha256:b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1"
 
 log_info "1. ShellCheck on all stage scripts and Markdown link/fence check on deploy/stage/README.md"
@@ -167,10 +168,10 @@ for secret_name, block in blocks.items():
 if checked < 8:
     raise SystemExit(f"only {checked} mounted Secret keys found; the drift check is not reading the chart")
 
-hosts = re.search(r"public_hosts = \[(.*?)\]", stack, re.S).group(1)
-for prefix in ("grafana.", "auth.", "git.", "registry."):
-    if '"%s${local.host}"' % prefix not in hosts:
-        raise SystemExit(f"ingress certificate SANs miss {prefix}<ingress_host>")
+for tpl in ("kodama", "dex", "gitea", "grafana"):
+    text = open(sys.argv[2].replace("secrets.tf", f"values/{tpl}.yaml.tftpl"), encoding="utf-8").read()
+    if "cert-manager.io/cluster-issuer: letsencrypt" not in text:
+        raise SystemExit(f"the {tpl} ingress does not request a Let's Encrypt certificate")
 PY
 
 log_info "5. Negative contract, values provenance, and kubeconfig cluster-mismatch checks"

@@ -95,6 +95,21 @@ variable "deps_namespace" {
   default     = "kodama-deps"
 }
 
+variable "acme_email" {
+  description = "Contact email of the Let's Encrypt (ACME) account that issues the public ingress certificates."
+  type        = string
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.acme_email))
+    error_message = "acme_email must be an email address."
+  }
+}
+
+variable "acme_server" {
+  description = "ACME directory URL (Let's Encrypt production by default; use the staging directory only for dry runs, its certificates are not trusted)."
+  type        = string
+  default     = "https://acme-v02.api.letsencrypt.org/directory"
+}
+
 variable "nats_tls" {
   description = "Whether NATS serves TLS. Stage default is false: plaintext nats:// with token authentication on the cluster network, which the chart accepts only under profile=development. Re-enabling TLS (profile=external) needs the private-CA design tracked by T-106."
   type        = bool
@@ -160,9 +175,9 @@ variable "oidc_audience" {
 }
 
 variable "custom_ca" {
-  description = "Whether the runtime and migration Secrets carry ca.crt for internal TLS verification."
+  description = "Whether the runtime and migration Secrets carry ca.crt for a private CA. Stage default false: public ingress certificates come from Let's Encrypt and the private-CA design is T-106."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "chart_versions" {
@@ -174,6 +189,7 @@ variable "chart_versions" {
     prometheus = string
     grafana    = string
     ingress    = string
+    certmgr    = string
     gitea      = string
     dex        = string
   })
@@ -184,6 +200,7 @@ variable "chart_versions" {
     prometheus = "29.38.0"
     grafana    = "14.0.1"
     ingress    = "4.15.1"
+    certmgr    = "v1.21.3"
     gitea      = "12.7.0"
     dex        = "0.26.0"
   }

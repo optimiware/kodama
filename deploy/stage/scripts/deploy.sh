@@ -162,6 +162,7 @@ tofu -chdir="${CLOUD_DIR}" init -input=false -backend-config="path=${STATE_DIR}/
 tofu -chdir="${CLOUD_DIR}" validate
 tofu -chdir="${CLOUD_DIR}" apply -input=false -auto-approve
 
+[[ -n "${KODAMA_ACME_EMAIL:-}" ]] || die "KODAMA_ACME_EMAIL (Let's Encrypt account contact) is required for a real deployment"
 CONTRACT_FILE="${CONTRACT_OUT:-${WORK_DIR}/stage_contract.json}"
 SECRETS_FILE="${WORK_DIR}/stage_bootstrap_secrets.json"
 tofu -chdir="${CLOUD_DIR}" output -json stage_contract >"${CONTRACT_FILE}"
