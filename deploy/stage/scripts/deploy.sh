@@ -6,40 +6,29 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 usage() {
   cat <<'EOF'
-Usage: deploy/stage/scripts/deploy.sh --cloud <aws|gcp|scw> [--contract-out <path>] [--validate-only]
+Usage: deploy/stage/scripts/deploy.sh --cloud <aws|gcp|scw> [--contract-out <path>] [--values-out <path>] [--validate-only]
 
 1. Validates (or applies) the cloud OpenTofu root under deploy/stage/<cloud>.
 2. Exports the normalized stage_contract JSON and validates its C-18/O-05/O-26 invariants.
 3. Renders the shared Kodama Helm values and validates them with `helm lint --strict` and `helm template`.
-4. Unless --validate-only is set, runs bootstrap.sh and applies deploy/stage/shared/stack.
+4. Unless --validate-only is set, runs bootstrap.sh, applies deploy/stage/shared/stack, and writes the
+   deployed Kodama Helm values to --values-out for downstream evidence gates.
 EOF
 }
 
 CLOUD=""
 VALIDATE_ONLY=0
 CONTRACT_OUT=""
+VALUES_OUT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --cloud)
-      CLOUD="$2"
-      shift 2
-      ;;
-    --contract-out)
-      CONTRACT_OUT="$2"
-      shift 2
-      ;;
-    --validate-only)
-      VALIDATE_ONLY=1
-      shift
-      ;;
-    -h | --help)
-      usage
-      exit 0
-      ;;
-    *)
-      die "unknown argument: $1"
-      ;;
+    --cloud) CLOUD="$2"; shift 2 ;;
+    --contract-out) CONTRACT_OUT="$2"; shift 2 ;;
+    --values-out) VALUES_OUT="$2"; shift 2 ;;
+    --validate-only) VALIDATE_ONLY=1; shift ;;
+    -h | --help) usage; exit 0 ;;
+    *) die "unknown argument: $1" ;;
   esac
 done
 
@@ -57,7 +46,6 @@ tofu -chdir="${CLOUD_DIR}" fmt -check
 tofu -chdir="${STACK_DIR}" fmt -check
 
 if [[ "${VALIDATE_ONLY}" -eq 1 ]]; then
-  # Synthesize a representative stage_contract for the selected cloud and verify Helm schema + bootstrap dry-run.
   CONTRACT_FILE="${CONTRACT_OUT:-${WORK_DIR}/stage_contract.${CLOUD}.json}"
   python3 - "${CLOUD}" "${CONTRACT_FILE}" <<'PY'
 import json
@@ -98,9 +86,9 @@ contract = {
     "environment_tier": "staging",
     "cluster": {
         "name": f"kodama-stage-{cloud}",
-        "endpoint": f"https://k8s.{cloud}.stage.example.invalid",
+        "endpoint": f"https://k8s.{cloud}.stage.optimi.dev",
         "ca_certificate": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCg==",
-        "oidc_issuer": f"https://oidc.{cloud}.stage.example.invalid",
+        "oidc_issuer": f"https://oidc.{cloud}.stage.optimi.dev",
     },
     "postgres": {
         "host": f"pg.{cloud}.stage.internal",
@@ -136,8 +124,8 @@ contract = {
         "loki_sa_annotations": {},
     },
     "network": {
-        "runtime_url": f"https://kodama.stage.{cloud}.example.invalid",
-        "ingress_host": f"kodama.stage.{cloud}.example.invalid",
+        "runtime_url": f"https://kodama.stage.{cloud}.optimi.dev",
+        "ingress_host": f"kodama.stage.{cloud}.optimi.dev",
         "runtime_egress_cidrs": ["10.42.0.0/16"],
         "dependency_egress_rules": [
             {"name": "git-https", "cidr": "198.51.100.0/24", "ports": [443]},
@@ -154,7 +142,7 @@ with open(out_path, "w", encoding="utf-8") as fh:
     fh.write("\n")
 PY
 
-  VALUES_FILE="${WORK_DIR}/kodama-values.${CLOUD}.yaml"
+  VALUES_FILE="${VALUES_OUT:-${WORK_DIR}/kodama-values.${CLOUD}.yaml}"
   render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}"
   helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
   helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${VALUES_FILE}" >/dev/null
@@ -173,8 +161,9 @@ tofu -chdir="${CLOUD_DIR}" output -json stage_contract >"${CONTRACT_FILE}"
 tofu -chdir="${CLOUD_DIR}" output -json stage_bootstrap_secrets >"${SECRETS_FILE}"
 chmod 0600 "${SECRETS_FILE}"
 
-VALUES_FILE="${WORK_DIR}/kodama-values.yaml"
+VALUES_FILE="${VALUES_OUT:-${WORK_DIR}/kodama-values.yaml}"
 render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}"
+verify_values_provenance "${VALUES_FILE}"
 helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
 
 "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${CONTRACT_FILE}" --secrets "${SECRETS_FILE}"
@@ -184,5 +173,10 @@ tofu -chdir="${STACK_DIR}" validate
 tofu -chdir="${STACK_DIR}" apply -input=false -auto-approve \
   -var="kubeconfig_path=${KUBECONFIG:-${HOME}/.kube/config}" \
   -var="stage_contract=$(cat "${CONTRACT_FILE}")"
+
+if [[ -n "${VALUES_OUT}" ]]; then
+  tofu -chdir="${STACK_DIR}" output -raw rendered_kodama_values >"${VALUES_OUT}"
+  verify_values_provenance "${VALUES_OUT}"
+fi
 
 log_info "deployment complete for cloud=${CLOUD}"

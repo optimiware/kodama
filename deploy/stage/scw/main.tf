@@ -166,6 +166,27 @@ resource "scaleway_iam_api_key" "artifacts_s3" {
   default_project_id = var.project_id
 }
 
+resource "scaleway_object_bucket_policy" "artifacts" {
+  bucket = scaleway_object_bucket.artifacts.name
+  region = var.region
+  policy = jsonencode({
+    Version = "2023-04-17"
+    Id      = "${local.name_prefix}-artifacts-bucket-policy"
+    Statement = [
+      {
+        Sid       = "AllowArtifactsApplicationOnly"
+        Effect    = "Allow"
+        Principal = { SCW = "application_id:${scaleway_iam_application.artifacts_s3.id}" }
+        Action    = ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = [
+          scaleway_object_bucket.artifacts.name,
+          "${scaleway_object_bucket.artifacts.name}/*",
+        ]
+      }
+    ]
+  })
+}
+
 resource "scaleway_iam_application" "logs_s3" {
   name        = "${local.name_prefix}-loki-s3"
   description = "Loki S3 log storage identity"
@@ -184,4 +205,25 @@ resource "scaleway_iam_policy" "logs_s3" {
 resource "scaleway_iam_api_key" "logs_s3" {
   application_id     = scaleway_iam_application.logs_s3.id
   default_project_id = var.project_id
+}
+
+resource "scaleway_object_bucket_policy" "logs" {
+  bucket = scaleway_object_bucket.logs.name
+  region = var.region
+  policy = jsonencode({
+    Version = "2023-04-17"
+    Id      = "${local.name_prefix}-logs-bucket-policy"
+    Statement = [
+      {
+        Sid       = "AllowLogsApplicationOnly"
+        Effect    = "Allow"
+        Principal = { SCW = "application_id:${scaleway_iam_application.logs_s3.id}" }
+        Action    = ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = [
+          scaleway_object_bucket.logs.name,
+          "${scaleway_object_bucket.logs.name}/*",
+        ]
+      }
+    ]
+  })
 }

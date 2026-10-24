@@ -10,15 +10,16 @@ Usage: deploy/stage/scripts/evidence.sh \
   --gate <readiness|staging|recovery|platform|release> \
   --cloud <aws|gcp|scw> \
   --contract <stage_contract.json> \
+  --values <kodama-values.yaml> \
   --results <forge_results.json> \
   --status <passed|failed> \
   [--evidence-root <dir>] \
   [--notes <text>]
 
 Produces an immutable evidence directory containing:
-  - manifest.json (commit, cloud, installation_id, gate, status, SHA-256 digests, backup/PITR posture)
+  - manifest.json (commit, cloud, installation_id, gate, status, bundle_dir, SHA-256 digests, backup/PITR posture)
   - stage_contract.json
-  - kodama-values.yaml (rendered and schema-validated)
+  - kodama-values.yaml (exact deployed values, verified free of placeholder digests unless STAGE_ALLOW_PLACEHOLDERS=1)
   - forge_results.json
   - SUMMARY.md
 And updates <evidence-root>/latest-<gate>-<cloud>.json for downstream gates.
@@ -28,6 +29,7 @@ EOF
 GATE=""
 CLOUD=""
 CONTRACT_FILE=""
+VALUES_FILE=""
 RESULTS_FILE=""
 STATUS=""
 EVIDENCE_ROOT="${STAGE_EVIDENCE_ROOT:-${STAGE_DIR}/.evidence}"
@@ -35,47 +37,24 @@ NOTES=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --gate)
-      GATE="$2"
-      shift 2
-      ;;
-    --cloud)
-      CLOUD="$2"
-      shift 2
-      ;;
-    --contract)
-      CONTRACT_FILE="$2"
-      shift 2
-      ;;
-    --results)
-      RESULTS_FILE="$2"
-      shift 2
-      ;;
-    --status)
-      STATUS="$2"
-      shift 2
-      ;;
-    --evidence-root)
-      EVIDENCE_ROOT="$2"
-      shift 2
-      ;;
-    --notes)
-      NOTES="$2"
-      shift 2
-      ;;
-    -h | --help)
-      usage
-      exit 0
-      ;;
-    *)
-      die "unknown argument: $1"
-      ;;
+    --gate) GATE="$2"; shift 2 ;;
+    --cloud) CLOUD="$2"; shift 2 ;;
+    --contract) CONTRACT_FILE="$2"; shift 2 ;;
+    --values) VALUES_FILE="$2"; shift 2 ;;
+    --results) RESULTS_FILE="$2"; shift 2 ;;
+    --status) STATUS="$2"; shift 2 ;;
+    --evidence-root) EVIDENCE_ROOT="$2"; shift 2 ;;
+    --notes) NOTES="$2"; shift 2 ;;
+    -h | --help) usage; exit 0 ;;
+    *) die "unknown argument: $1" ;;
   esac
 done
 
 validate_cloud "${CLOUD}"
 validate_stage_contract "${CONTRACT_FILE}"
+[[ -f "${VALUES_FILE}" ]] || die "values file missing: ${VALUES_FILE}"
 [[ -f "${RESULTS_FILE}" ]] || die "results file missing: ${RESULTS_FILE}"
+verify_values_provenance "${VALUES_FILE}"
 
 GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -83,8 +62,8 @@ BUNDLE_DIR="${EVIDENCE_ROOT}/${GATE}/${TIMESTAMP}-${CLOUD}-${GIT_SHA}"
 mkdir -p "${BUNDLE_DIR}"
 
 cp "${CONTRACT_FILE}" "${BUNDLE_DIR}/stage_contract.json"
+cp "${VALUES_FILE}" "${BUNDLE_DIR}/kodama-values.yaml"
 cp "${RESULTS_FILE}" "${BUNDLE_DIR}/forge_results.json"
-render_kodama_values_from_contract "${CONTRACT_FILE}" "${BUNDLE_DIR}/kodama-values.yaml"
 
 scan_no_plaintext_secrets "${BUNDLE_DIR}"
 
@@ -94,7 +73,7 @@ import json
 from pathlib import Path
 import sys
 
-bundle_dir = Path(sys.argv[1])
+bundle_dir = Path(sys.argv[1]).resolve()
 gate, cloud, git_sha, ts, status, notes, root_dir = sys.argv[2:9]
 
 def sha256_file(p: Path) -> str:
@@ -110,6 +89,7 @@ manifest = {
     "status": status,
     "timestamp_utc": ts,
     "git_commit": git_sha,
+    "bundle_dir": str(bundle_dir),
     "cloud": cloud,
     "installation_id": contract["installation_id"],
     "region": contract["region"],
@@ -145,6 +125,7 @@ summary = f"""# Stage Gate Evidence — `{gate}` ({cloud})
 - **Cloud / Region / Tier:** `{cloud}` / `{contract['region']}` / `{contract['environment_tier']}`
 - **KMS Provider:** `{contract['kms']['provider']}` (current label `{contract['kms']['current']}`)
 - **PostgreSQL Backup Posture:** PITR=`{pg['pitr_enabled']}`, retention=`{pg['backup_retention_days']}d`, est. RPO=`{pg['rpo_minutes_estimate']}m`, O-11 30d PITR qualified=`{pg['qualifies_o11_pitr']}`
+- **Values Digest:** `{manifest['artifacts']['kodama-values.yaml']}`
 - **Passed Acceptance Checks ({len(manifest['passed_tests'])}):** `{', '.join(manifest['passed_tests']) or 'none'}`
 - **Notes:** {notes or 'none'}
 """

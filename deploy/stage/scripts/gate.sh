@@ -10,6 +10,7 @@ Usage: deploy/stage/scripts/gate.sh \
   --gate <readiness|staging|recovery|platform|release|critical-path> \
   --cloud <aws|gcp|scw> \
   --contract <stage_contract.json> \
+  [--values <kodama-values.yaml>] \
   [--results-dir <dir>] \
   [--evidence-root <dir>]
 
@@ -25,44 +26,35 @@ EOF
 GATE=""
 CLOUD=""
 CONTRACT_FILE=""
+VALUES_FILE=""
 RESULTS_DIR=""
 EVIDENCE_ROOT="${STAGE_EVIDENCE_ROOT:-${STAGE_DIR}/.evidence}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --gate)
-      GATE="$2"
-      shift 2
-      ;;
-    --cloud)
-      CLOUD="$2"
-      shift 2
-      ;;
-    --contract)
-      CONTRACT_FILE="$2"
-      shift 2
-      ;;
-    --results-dir)
-      RESULTS_DIR="$2"
-      shift 2
-      ;;
-    --evidence-root)
-      EVIDENCE_ROOT="$2"
-      shift 2
-      ;;
-    -h | --help)
-      usage
-      exit 0
-      ;;
-    *)
-      die "unknown argument: $1"
-      ;;
+    --gate) GATE="$2"; shift 2 ;;
+    --cloud) CLOUD="$2"; shift 2 ;;
+    --contract) CONTRACT_FILE="$2"; shift 2 ;;
+    --values) VALUES_FILE="$2"; shift 2 ;;
+    --results-dir) RESULTS_DIR="$2"; shift 2 ;;
+    --evidence-root) EVIDENCE_ROOT="$2"; shift 2 ;;
+    -h | --help) usage; exit 0 ;;
+    *) die "unknown argument: $1" ;;
   esac
 done
 
 validate_cloud "${CLOUD}"
 [[ -n "${CONTRACT_FILE}" ]] || die "--contract <stage_contract.json> is required"
 validate_stage_contract "${CONTRACT_FILE}"
+
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kodama-gate-runner.XXXXXX")"
+trap 'rm -rf "${WORK_DIR}"' EXIT
+
+if [[ -z "${VALUES_FILE}" ]]; then
+  VALUES_FILE="${WORK_DIR}/kodama-values.yaml"
+  render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}"
+fi
+verify_values_provenance "${VALUES_FILE}"
 
 run_single_gate() {
   local g="$1"
@@ -72,6 +64,7 @@ run_single_gate() {
   local args=(
     --cloud "${CLOUD}"
     --contract "${CONTRACT_FILE}"
+    --values "${VALUES_FILE}"
     --evidence-root "${EVIDENCE_ROOT}"
   )
   if [[ -n "${RESULTS_DIR}" && -f "${RESULTS_DIR}/${g}.json" ]]; then
