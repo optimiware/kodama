@@ -111,7 +111,7 @@ The schema (`values.schema.json`) is strict: unknown fields are rejected at ever
 | `execution.exampleJob.image` | Placeholder workload image for the fixture | Digest required |
 | `execution.quota`, `execution.limitRange` | ResourceQuota and LimitRange applied to every tenant namespace | |
 | `execution.network.egress[]` | Explicit CIDR egress rules (Git, S3, registry) | Every rule needs ports; ports 5432, 6432, 4222, 6222, 8222 are rejected |
-| `execution.rbac.manageSecrets` | Grant `create/get/delete` on Secrets in tenant namespaces | Default `false`; enable only if T-021 needs it |
+| `execution.rbac.manageSecrets` | Grant `create/get/list/delete` on Secrets in tenant namespaces (the reconciler lists managed Secrets) | Default `false`; enable only if T-021 needs it |
 | `execution.trustProfile` | Declared execution trust | Fixed to `trusted-engineer` |
 
 ### Server process configuration

@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -1176,5 +1177,39 @@ func Test_helm_empty_egress_still_renders_policy(t *testing.T) {
 	}
 	if found == 0 {
 		t.Fatal("allow-external-egress was not rendered with an empty egress list")
+	}
+}
+
+// Test_helm_secret_management_rbac guards the opt-in Secret rule of the tenant Roles: the server's
+// reconciler lists the managed admission Secrets of every tenant namespace, so `list` must be granted
+// with the verbs that create and remove them (a Role without it left a freshly installed server unable
+// to finish a reconcile pass), and nothing broader.
+func Test_helm_secret_management_rbac(t *testing.T) {
+	args := []string{"template", releaseName, ".", "--namespace", releaseNamespace, "--set", "execution.rbac.manageSecrets=true"}
+	stdout, stderr, err := helm(t, args...)
+	if err != nil {
+		t.Fatalf("helm %s failed: %v\n%s", strings.Join(args, " "), err, stderr)
+	}
+	docs := parseDocuments(t, stdout)
+	want := []string{"create", "delete", "get", "list"}
+	found := 0
+	for _, role := range ofKind(docs, "Role") {
+		for _, r := range asList(role["rules"]) {
+			rule := asMap(r)
+			for _, res := range strList(rule["resources"]) {
+				if res != "secrets" {
+					continue
+				}
+				found++
+				got := strList(rule["verbs"])
+				sort.Strings(got)
+				if !slices.Equal(got, want) {
+					t.Errorf("Role %s grants Secret verbs %v, want exactly %v", nameOf(role), got, want)
+				}
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("manageSecrets=true rendered no Secret rule")
 	}
 }

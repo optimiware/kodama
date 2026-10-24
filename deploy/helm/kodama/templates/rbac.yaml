@@ -37,7 +37,7 @@ rules:
   {{- if $.Values.execution.rbac.manageSecrets }}
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["create", "get", "delete"]
+    verbs: ["create", "get", "list", "delete"]
   {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
