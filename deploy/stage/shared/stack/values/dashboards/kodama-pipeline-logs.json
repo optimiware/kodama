@@ -1,0 +1,32 @@
+{
+  "title": "Kodama Pipeline & Control-Plane Logs",
+  "uid": "kodama-pipeline-logs",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "kodama-loki" },
+        "query": "label_values(namespace)"
+      },
+      { "name": "attempt_id", "type": "textbox", "query": "" },
+      { "name": "search", "type": "textbox", "query": "" }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Pipeline Step & Control-Plane Logs (Structured Metadata Search)",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "kodama-loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{namespace=~\"$namespace\"} | attempt_id=~\"$attempt_id.*\" |= \"$search\""
+        }
+      ]
+    }
+  ]
+}

@@ -9,13 +9,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 #   2. ensures the repository owner user, the empty-history source repository and its `main` branch;
 #   3. ensures a read-scoped and a write-scoped access token that the API still accepts, replacing a
 #      token only when the one stored in kodama-runtime is missing or rejected;
-#   4. patches git-read-token and git-write-token of the kodama-runtime Secret.
-# Inputs (environment): KUBECONFIG, KODAMA_DEPS_NAMESPACE, KODAMA_SYSTEM_NAMESPACE,
-# KODAMA_GITEA_RELEASE, KODAMA_GIT_URL.
+#   4. publishes both tokens as the kodama-git-tokens Secret (keys read, write) in the deps namespace; OpenTofu
+#      reads that Secret back and renders the runtime Secret from it.
+# Inputs (environment): KUBECONFIG, KODAMA_DEPS_NAMESPACE, KODAMA_GITEA_RELEASE, KODAMA_GIT_URL.
 
 require_cmd kubectl python3 curl
 DEPS_NS="${KODAMA_DEPS_NAMESPACE:-kodama-deps}"
-SYS_NS="${KODAMA_SYSTEM_NAMESPACE:-kodama-system}"
 RELEASE="${KODAMA_GITEA_RELEASE:-kodama-gitea}"
 GIT_URL="${KODAMA_GIT_URL:?KODAMA_GIT_URL is required}"
 OWNER="$(python3 -c 'import sys; from urllib.parse import urlparse; print(urlparse(sys.argv[1]).path.strip("/").split("/")[0])' "${GIT_URL}")"
@@ -57,7 +56,7 @@ if [[ "$(status_of "${res}")" == "404" ]]; then
 fi
 
 # 3. Tokens: keep a stored token only while the API accepts it with the expected scope.
-stored() { kube -n "${SYS_NS}" get secret kodama-runtime -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
+stored() { kube -n "${DEPS_NS}" get secret kodama-git-tokens -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
 token_ok() { # token
   local tok="$1" code
   [[ -n "${tok}" ]] || return 1
@@ -72,8 +71,8 @@ new_token() { # name scopes -> token
     gitea admin user generate-access-token --username "${OWNER}" --token-name "${name}-$(date -u +%Y%m%d%H%M%S)" --scopes "${scopes}" --raw
 }
 
-READ_TOKEN="$(stored git-read-token)"
-WRITE_TOKEN="$(stored git-write-token)"
+READ_TOKEN="$(stored read)"
+WRITE_TOKEN="$(stored write)"
 if ! token_ok "${READ_TOKEN}"; then
   READ_TOKEN="$(new_token kodama-read read:repository | tr -d '\r\n')"
   log_info "minted a read-scoped Git token"
@@ -86,9 +85,11 @@ token_ok "${READ_TOKEN}" || die "the read token does not authenticate"
 token_ok "${WRITE_TOKEN}" || die "the write token does not authenticate"
 
 # 4. Publish.
-python3 - "${READ_TOKEN}" "${WRITE_TOKEN}" <<'PY' | kube -n "${SYS_NS}" patch secret kodama-runtime --type merge --patch-file /dev/stdin
-import base64, json, sys
-b = lambda s: base64.b64encode(s.encode()).decode()
-print(json.dumps({"data": {"git-read-token": b(sys.argv[1]), "git-write-token": b(sys.argv[2])}}))
-PY
-log_info "Git server ready: ${GIT_URL} (owner ${OWNER}); tokens published to ${SYS_NS}/kodama-runtime"
+TOKEN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kodama-git-tokens.XXXXXX")"
+trap 'rm -rf "${TOKEN_DIR}"' EXIT
+printf '%s' "${READ_TOKEN}" >"${TOKEN_DIR}/read"
+printf '%s' "${WRITE_TOKEN}" >"${TOKEN_DIR}/write"
+kube -n "${DEPS_NS}" create secret generic kodama-git-tokens \
+  --from-file=read="${TOKEN_DIR}/read" --from-file=write="${TOKEN_DIR}/write" \
+  --dry-run=client -o yaml | kube apply -f - >/dev/null
+log_info "Git server ready: ${GIT_URL} (owner ${OWNER}); tokens published to ${DEPS_NS}/kodama-git-tokens"

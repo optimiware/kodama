@@ -45,8 +45,13 @@ locals {
     issuer      = coalesce(var.oidc_issuer, "https://auth.${local.deps_host}")
     issuer_host = trimprefix(coalesce(var.oidc_issuer, "https://auth.${local.deps_host}"), "https://")
     audience    = coalesce(var.oidc_audience, "https://${local.deps_host}/api")
-    users       = var.dex_users
-    tls_secret  = "kodama-deps-tls"
+    users = [for p in local.personas : {
+      username = p
+      email    = "${p}@stage.kodama.invalid"
+      user_id  = p
+      hash     = htpasswd_password.persona[p].bcrypt
+    }]
+    tls_secret = "kodama-deps-tls"
   })
 
   gitea_values = templatefile("${path.module}/values/gitea.yaml.tftpl", {
@@ -72,6 +77,7 @@ resource "helm_release" "nats" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.nats_values]
+  depends_on       = [kubernetes_secret_v1.nats_auth, kubernetes_secret_v1.nats_tls]
 }
 
 resource "helm_release" "loki" {
@@ -85,6 +91,7 @@ resource "helm_release" "loki" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.loki_values]
+  depends_on       = [kubernetes_secret_v1.loki_s3]
 }
 
 resource "helm_release" "alloy" {
@@ -98,7 +105,7 @@ resource "helm_release" "alloy" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.alloy_values]
-  depends_on       = [helm_release.loki]
+  depends_on       = [helm_release.loki, kubernetes_namespace_v1.observability]
 }
 
 resource "helm_release" "prometheus" {
@@ -112,6 +119,7 @@ resource "helm_release" "prometheus" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.prometheus_values]
+  depends_on       = [kubernetes_namespace_v1.observability]
 }
 
 resource "helm_release" "grafana" {
@@ -125,7 +133,7 @@ resource "helm_release" "grafana" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.grafana_values]
-  depends_on       = [helm_release.loki, helm_release.prometheus]
+  depends_on       = [helm_release.loki, helm_release.prometheus, kubernetes_secret_v1.grafana_admin, kubernetes_secret_v1.ingress_tls, kubernetes_config_map_v1.grafana_dashboards, helm_release.ingress_nginx]
 }
 
 resource "helm_release" "kodama" {
@@ -137,7 +145,7 @@ resource "helm_release" "kodama" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.kodama_values]
-  depends_on       = [helm_release.nats, terraform_data.deps_init, helm_release.dex]
+  depends_on       = [helm_release.nats, terraform_data.deps_init, helm_release.dex, kubernetes_secret_v1.runtime, kubernetes_secret_v1.migration, kubernetes_secret_v1.kms_scw, kubernetes_secret_v1.ingress_tls, kubernetes_job_v1.bootstrap_sql, helm_release.ingress_nginx]
 }
 
 resource "helm_release" "ingress_nginx" {
@@ -164,7 +172,7 @@ resource "helm_release" "dex" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.dex_values]
-  depends_on       = [helm_release.ingress_nginx]
+  depends_on       = [helm_release.ingress_nginx, kubernetes_secret_v1.deps_auth, kubernetes_secret_v1.ingress_tls]
 }
 
 resource "helm_release" "gitea" {
@@ -178,7 +186,7 @@ resource "helm_release" "gitea" {
   cleanup_on_fail  = true
   timeout          = 600
   values           = [local.gitea_values]
-  depends_on       = [helm_release.ingress_nginx]
+  depends_on       = [helm_release.ingress_nginx, kubernetes_secret_v1.gitea_admin, kubernetes_secret_v1.ingress_tls]
 }
 
 # Creates the stage Git owner, repository and scoped tokens in Gitea and publishes them to the
@@ -193,11 +201,10 @@ resource "terraform_data" "deps_init" {
   provisioner "local-exec" {
     command = "${path.module}/../../scripts/deps-init.sh"
     environment = {
-      KUBECONFIG              = var.kubeconfig_path
-      KODAMA_DEPS_NAMESPACE   = var.deps_namespace
-      KODAMA_SYSTEM_NAMESPACE = var.control_plane_namespace
-      KODAMA_GITEA_RELEASE    = helm_release.gitea.name
-      KODAMA_GIT_URL          = coalesce(var.git_url, "https://git.${local.deps_host}/optimi/kodama-source.git")
+      KUBECONFIG            = var.kubeconfig_path
+      KODAMA_DEPS_NAMESPACE = var.deps_namespace
+      KODAMA_GITEA_RELEASE  = helm_release.gitea.name
+      KODAMA_GIT_URL        = coalesce(var.git_url, "https://git.${local.deps_host}/optimi/kodama-source.git")
     }
   }
 }

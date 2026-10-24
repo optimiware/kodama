@@ -11,8 +11,9 @@ Usage: deploy/stage/scripts/deploy.sh --cloud <aws|gcp|scw> [--contract-out <pat
 1. Validates (or applies) the cloud OpenTofu root under deploy/stage/<cloud>.
 2. Exports the normalized stage_contract JSON and validates its C-18/O-05/O-26 invariants.
 3. Renders the shared Kodama Helm values and validates them with `helm lint --strict` and `helm template`.
-4. Unless --validate-only is set, runs bootstrap.sh, applies deploy/stage/shared/stack, and writes the
-   deployed Kodama Helm values to --values-out for downstream evidence gates.
+4. Unless --validate-only is set, applies deploy/stage/shared/stack, which generates and pushes every
+   Secret (CA and leaf certificates, credentials, database roles) into Kubernetes before installing the
+   charts, and writes the deployed Kodama Helm values to --values-out for downstream evidence gates.
 EOF
 }
 
@@ -149,7 +150,8 @@ PY
   render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}" "${STACK_TFVARS}"
   helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
   helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${VALUES_FILE}" >/dev/null
-  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${CONTRACT_FILE}" --stack-tfvars "${STACK_TFVARS}" --work-dir "${WORK_DIR}/boot" --dry-run
+  tofu -chdir="${STACK_DIR}" init -input=false -backend=false >/dev/null
+  tofu -chdir="${STACK_DIR}" validate
   log_info "validate-only succeeded for cloud=${CLOUD}"
   exit 0
 fi
@@ -172,7 +174,16 @@ render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}" "${STACK_
 verify_values_provenance "${VALUES_FILE}"
 helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
 
-"${STAGE_DIR}/scripts/bootstrap.sh" --contract "${CONTRACT_FILE}" --stack-tfvars "${STACK_TFVARS}" --secrets "${SECRETS_FILE}"
+# Cloud secrets reach the stack as a sensitive variable file (0600, removed with the work directory).
+SECRETS_TFVARS="${WORK_DIR}/stack.secrets.tfvars.json"
+python3 - "${SECRETS_FILE}" "${SECRETS_TFVARS}" <<'PY'
+import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    secrets = json.load(fh)
+with open(sys.argv[2], "w", encoding="utf-8") as fh:
+    json.dump({"bootstrap_secrets": secrets}, fh)
+PY
+chmod 0600 "${SECRETS_TFVARS}"
 
 tofu -chdir="${STACK_DIR}" init -input=false -backend-config="path=${STATE_DIR}/${CLOUD}-stack.tfstate"
 tofu -chdir="${STACK_DIR}" validate
@@ -181,10 +192,10 @@ tofu -chdir="${STACK_DIR}" validate
 if ! tofu -chdir="${STACK_DIR}" state list 2>/dev/null | grep -qx 'helm_release.ingress_nginx' &&
   helm --kubeconfig "${KUBECONFIG:-${HOME}/.kube/config}" status ingress-nginx -n ingress-nginx >/dev/null 2>&1; then
   log_info "importing the existing ingress-nginx release into the stack state"
-  tofu -chdir="${STACK_DIR}" import -input=false -var-file="${STACK_TFVARS}" helm_release.ingress_nginx ingress-nginx/ingress-nginx
+  tofu -chdir="${STACK_DIR}" import -input=false -var-file="${STACK_TFVARS}" -var-file="${SECRETS_TFVARS}" helm_release.ingress_nginx ingress-nginx/ingress-nginx
 fi
 tofu -chdir="${STACK_DIR}" apply -input=false -auto-approve \
-  -var-file="${STACK_TFVARS}"
+  -var-file="${STACK_TFVARS}" -var-file="${SECRETS_TFVARS}"
 
 APPLIED_VALUES="${WORK_DIR}/applied-kodama-values.yaml"
 tofu -chdir="${STACK_DIR}" output -raw rendered_kodama_values >"${APPLIED_VALUES}"

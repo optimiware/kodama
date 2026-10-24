@@ -16,7 +16,7 @@ export KODAMA_WORKLOAD_IMAGE_DIGEST="sha256:b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3
 log_info "1. ShellCheck on all stage scripts and Markdown link/fence check on deploy/stage/README.md"
 shellcheck -x \
   "${STAGE_DIR}/scripts/lib.sh" \
-  "${STAGE_DIR}/scripts/bootstrap.sh" \
+  "${STAGE_DIR}/scripts/deps-init.sh" \
   "${STAGE_DIR}/scripts/deploy.sh" \
   "${STAGE_DIR}/scripts/gate.sh" \
   "${STAGE_DIR}/scripts/evidence.sh" \
@@ -118,230 +118,59 @@ EOF
   helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
 done
 
-log_info "4. Bootstrap leaf TLS SANs, psql execution, Secret reuse & failure injection (Forbidden / incomplete Secret)"
+log_info "4. Shared stack: OpenTofu validation and chart/Secret key drift checks"
 MOCK_BIN="${WORK_DIR}/mock-bin"
-MOCK_STATE="${WORK_DIR}/mock-state"
-mkdir -p "${MOCK_BIN}" "${MOCK_STATE}"
+mkdir -p "${MOCK_BIN}"
 
-cat >"${MOCK_BIN}/psql" <<EOF
+# Minimal kubectl stand-in: only the kubeconfig cluster-endpoint probe of run_stage_go_suite is exercised offline.
+cat >"${MOCK_BIN}/kubectl" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
-echo "\$*" >>"${MOCK_STATE}/psql.calls"
-for i in "\$@"; do
-  if [[ -f "\$i" ]]; then
-    cat "\$i" >>"${MOCK_STATE}/psql.sql"
-  fi
-done
-EOF
-chmod +x "${MOCK_BIN}/psql"
+if [[ "$*" == *"config view --minify"* ]]; then
+  printf '%s' "${MOCK_CLUSTER_SERVER:-https://k8s.aws.stage.optimi.dev}"
+  exit 0
+fi
+exit 0
+MOCK
+chmod +x "${MOCK_BIN}/kubectl"
+MOCK_STATE="${WORK_DIR}/mock-state"
+mkdir -p "${MOCK_STATE}"
 
-cat >"${WORK_DIR}/mock_kubectl.py" <<'PY'
-import base64
-import json
-import os
-from pathlib import Path
+tofu -chdir="${STAGE_DIR}/shared/stack" init -input=false -backend=false >/dev/null
+tofu -chdir="${STAGE_DIR}/shared/stack" validate >/dev/null
+
+helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${WORK_DIR}/values-scw.yaml" >"${WORK_DIR}/chart-scw.yaml"
+python3 - "${WORK_DIR}/chart-scw.yaml" "${STAGE_DIR}/shared/stack/secrets.tf" <<'PY'
+import re
 import sys
 
-state_dir = Path(os.environ["MOCK_KUBE_STATE"])
-state_dir.mkdir(parents=True, exist_ok=True)
-args = sys.argv[1:]
+chart = open(sys.argv[1], encoding="utf-8").read()
+stack = open(sys.argv[2], encoding="utf-8").read()
 
-clean = []
-i = 0
-while i < len(args):
-    if args[i] == "--kubeconfig":
-        i += 2
-        continue
-    clean.append(args[i])
-    i += 1
-args = clean
 
-if args[:3] == ["config", "view", "--minify"]:
-    sys.stdout.write(os.environ.get("MOCK_CLUSTER_SERVER", "https://k8s.aws.stage.optimi.dev"))
-    sys.exit(0)
+def secret_block(name: str) -> str:
+    m = re.search(r'resource "kubernetes_secret_v1" "%s" \{(.*?)\n\}\n' % name, stack, re.S)
+    if not m:
+        raise SystemExit(f"stack has no kubernetes_secret_v1.{name}")
+    return m.group(1)
 
-ns = "default"
-if len(args) >= 2 and args[0] == "-n":
-    ns = args[1]
-    args = args[2:]
 
-if len(args) >= 4 and args[0] == "get" and args[1] == "secret":
-    if os.environ.get("MOCK_KUBE_FORBIDDEN") == "1":
-        sys.stderr.write("Error from server (Forbidden): secrets is forbidden\n")
-        sys.exit(1)
-    if os.environ.get("MOCK_KUBE_EXEC_NOT_FOUND") == "1":
-        sys.stderr.write("Unable to connect to the server: getting credentials: exec: executable aws not found\n")
-        sys.exit(1)
-    name = args[2]
-    ignore_missing = "--ignore-not-found" in args
-    p = state_dir / f"{ns}__{name}.json"
-    if not p.is_file():
-        if ignore_missing:
-            sys.exit(0)
-        sys.stderr.write(f'Error from server (NotFound): secrets "{name}" not found\n')
-        sys.exit(1)
-    sys.stdout.write(p.read_text(encoding="utf-8"))
-    sys.exit(0)
+blocks = {"kodama-runtime": secret_block("runtime"), "kodama-migration": secret_block("migration")}
+checked = 0
+for secret_name, block in blocks.items():
+    for m in re.finditer(r"secretName: %s\n(.*?)(?:\n        - name:|\n      containers:|\n---)" % re.escape(secret_name), chart, re.S):
+        for key in re.findall(r"- key: (\S+)", m.group(1)):
+            checked += 1
+            if '"%s"' % key not in block:
+                raise SystemExit(f"chart mounts {secret_name} key {key!r} but shared/stack does not generate it")
+if checked < 8:
+    raise SystemExit(f"only {checked} mounted Secret keys found; the drift check is not reading the chart")
 
-if args[:2] == ["delete", "pod"]:
-    sys.exit(0)
-
-if args and args[0] == "run":
-    # The role SQL Pod: the first stdin line is the DSN, the rest is the SQL script.
-    stdin = sys.stdin.read()
-    dsn, _, sql = stdin.partition("\n")
-    with open(state_dir / "pod.calls", "a", encoding="utf-8") as fh:
-        fh.write(" ".join(a for a in args if not a.startswith("--overrides")) + "\n")
-        fh.write("dsn-first-line=" + ("postgres://" in dsn and "yes" or "no") + "\n")
-    with open(state_dir / "pod.sql", "a", encoding="utf-8") as fh:
-        fh.write(sql)
-    sys.exit(0)
-
-if len(args) >= 2 and args[0] == "create" and args[1] == "namespace":
-    sys.stdout.write(json.dumps({"kind": "Namespace", "metadata": {"name": args[2]}}))
-    sys.exit(0)
-
-if len(args) >= 3 and args[0] == "create" and args[1] in ("secret", "configmap"):
-    kind = args[1]
-    name = args[3] if kind == "secret" else args[2]
-    data = {}
-    for a in args:
-        if a.startswith("--from-file="):
-            rest = a.split("=", 1)[1]
-            if "=" in rest:
-                k, fp = rest.split("=", 1)
-                data[k] = base64.b64encode(Path(fp).read_bytes()).decode("ascii")
-            else:
-                d = Path(rest)
-                for child in sorted(d.iterdir()):
-                    if child.is_file():
-                        data[child.name] = base64.b64encode(child.read_bytes()).decode("ascii")
-        elif a.startswith("--from-env-file="):
-            fp = Path(a.split("=", 1)[1])
-            for line in fp.read_text(encoding="utf-8").splitlines():
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    data[k] = base64.b64encode(v.encode("utf-8")).decode("ascii")
-        elif a.startswith("--cert="):
-            fp = Path(a.split("=", 1)[1])
-            data["tls.crt"] = base64.b64encode(fp.read_bytes()).decode("ascii")
-        elif a.startswith("--key="):
-            fp = Path(a.split("=", 1)[1])
-            data["tls.key"] = base64.b64encode(fp.read_bytes()).decode("ascii")
-    doc = {"kind": kind.capitalize(), "namespace": ns, "name": name, "data": data}
-    sys.stdout.write(json.dumps(doc))
-    sys.exit(0)
-
-if args[:2] == ["apply", "-f"]:
-    raw = sys.stdin.read().strip()
-    if raw:
-        doc = json.loads(raw)
-        if doc.get("kind") == "Secret":
-            p = state_dir / f"{doc['namespace']}__{doc['name']}.json"
-            p.write_text(json.dumps(doc), encoding="utf-8")
-    sys.exit(0)
+hosts = re.search(r"public_hosts = \[(.*?)\]", stack, re.S).group(1)
+for prefix in ("grafana.", "auth.", "git.", "registry."):
+    if '"%s${local.host}"' % prefix not in hosts:
+        raise SystemExit(f"ingress certificate SANs miss {prefix}<ingress_host>")
 PY
-
-cat >"${MOCK_BIN}/kubectl" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-exec python3 "${WORK_DIR}/mock_kubectl.py" "\$@"
-EOF
-chmod +x "${MOCK_BIN}/kubectl"
-
-cat >"${WORK_DIR}/boot-secrets.json" <<'EOF'
-{
-  "postgres_admin_username": "kodama_admin",
-  "postgres_admin_password": "test_admin_password_123",
-  "artifacts_s3_access_key": "AKIASTAGEARTIFACTS",
-  "artifacts_s3_secret_key": "s3_art_secret",
-  "logs_s3_access_key": "AKIASTAGELOGS",
-  "logs_s3_secret_key": "s3_logs_secret"
-}
-EOF
-
-# 4a. Forbidden or exec-plugin-not-found Secret read must abort with exit code 75 BEFORE calling psql
-set +e
-PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" MOCK_KUBE_FORBIDDEN="1" \
-  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${WORK_DIR}/boot-forbidden" 2>/dev/null
-forb_rc=$?
-PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" MOCK_KUBE_EXEC_NOT_FOUND="1" \
-  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${WORK_DIR}/boot-exec-nf" 2>/dev/null
-exec_nf_rc=$?
-set -e
-[[ "${forb_rc}" -eq 75 ]] || die "expected Forbidden Secret read to exit 75, got ${forb_rc}"
-[[ "${exec_nf_rc}" -eq 75 ]] || die "expected exec-plugin-not-found Secret read to exit 75, got ${exec_nf_rc}"
-[[ ! -f "${MOCK_STATE}/psql.calls" ]] || die "psql must not be called when Secret inspection fails"
-
-BOOT_DIR1="${WORK_DIR}/boot-run1"
-BOOT_DIR2="${WORK_DIR}/boot-run2"
-KODAMA_GIT_URL="https://git.external.optimi.dev:8443/org/kodama-source.git" \
-  PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
-  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${BOOT_DIR1}"
-
-[[ -s "${MOCK_STATE}/pod.calls" ]] || die "bootstrap.sh did not run the role SQL Pod"
-grep -q "dsn-first-line=yes" "${MOCK_STATE}/pod.calls" || die "the role SQL Pod did not receive the DSN as the first stdin line"
-grep -q "CREATE ROLE kodama_migration" "${MOCK_STATE}/pod.sql" || die "roles.sql was not sent to the role SQL Pod"
-[[ ! -f "${MOCK_STATE}/psql.calls" ]] || die "the local psql must only run with STAGE_PSQL_LOCAL=1"
-
-# The one runtime/ingress certificate covers every public stage hostname (auth, git, registry, grafana).
-for san in kodama.stage.aws.optimi.dev grafana.kodama.stage.aws.optimi.dev auth.kodama.stage.aws.optimi.dev git.kodama.stage.aws.optimi.dev registry.kodama.stage.aws.optimi.dev; do
-  openssl x509 -in "${BOOT_DIR1}/runtime-tls.crt" -noout -text | grep -q "DNS:${san}" || die "runtime-tls.crt missing SAN ${san}"
-done
-python3 - "${BOOT_DIR1}/deps/personas.json" <<'PY'
-import json, sys
-p = json.load(open(sys.argv[1]))
-assert set(p) == {"admin", "analyst", "engineer", "reviewer", "viewer", "outsider", "foreign"}, sorted(p)
-for name, v in p.items():
-    assert v["hash"].startswith("$2a$10$") and len(v["password"]) == 32, name
-PY
-
-# Verify external Git URL override is reflected in git-credentials.json urlPrefix
-python3 - "${BOOT_DIR1}/kodama-runtime/git-credentials.json" <<'PY'
-import json, sys
-creds = json.load(open(sys.argv[1]))
-assert len(creds) == 2, creds
-for entry in creds:
-    assert entry["urlPrefix"] == "https://git.external.optimi.dev:8443/", entry
-    assert entry["tenants"] == ["t_stage"], entry
-PY
-
-openssl verify -CAfile "${BOOT_DIR1}/ca.crt" "${BOOT_DIR1}/nats-tls.crt" >/dev/null
-openssl x509 -in "${BOOT_DIR1}/nats-tls.crt" -noout -text | grep -q "CA:FALSE" || die "nats-tls.crt must be CA:FALSE"
-openssl x509 -in "${BOOT_DIR1}/nats-tls.crt" -noout -text | grep -q "DNS:kodama-nats.kodama-system.svc.cluster.local" || die "nats-tls.crt missing NATS service DNS SAN"
-
-# Run bootstrap a second time into a fresh work-dir and verify existing Secrets in cluster are preserved!
-KODAMA_GIT_URL="https://git.external.optimi.dev:8443/org/kodama-source.git" \
-  PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
-  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${BOOT_DIR2}"
-
-for preserved in \
-  "kodama-runtime/database-runtime-url" \
-  "kodama-runtime/git-credentials.json" \
-  "kodama-runtime/runtime-signing-key" \
-  "kodama-runtime/cursor-key" \
-  "kodama-runtime/idempotency-hash-key" \
-  "kodama-runtime/nats-token" \
-  "kodama-runtime/ca.crt" \
-  "kodama-migration/database-migration-url" \
-  "deps/personas.json" \
-  "deps/gitea-admin-password" \
-  "deps/dex-api-client-secret"; do
-  cmp -s "${BOOT_DIR1}/${preserved}" "${BOOT_DIR2}/${preserved}" || die "bootstrap rerun did not preserve ${preserved}"
-done
-
-# 4b. Corrupting an existing Secret (removing cursor-key) must fail closed on rerun
-python3 - "${MOCK_STATE}/kodama-system__kodama-runtime.json" <<'PY'
-import json, sys
-p = sys.argv[1]
-doc = json.load(open(p))
-doc["data"].pop("cursor-key", None)
-json.dump(doc, open(p, "w"))
-PY
-if PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
-  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${WORK_DIR}/boot-corrupt" 2>/dev/null; then
-  die "expected incomplete existing Secret to abort bootstrap"
-fi
 
 log_info "5. Negative contract, values provenance, and kubeconfig cluster-mismatch checks"
 python3 - "${WORK_DIR}/contract-aws.json" "${WORK_DIR}/bad-kms.json" <<'PY'
@@ -555,4 +384,4 @@ prepare_results_for_contract "${WORK_DIR}/contract-aws-prod.json" "${WORK_DIR}/v
   --results-dir "${RESULTS_DIR}" --evidence-root "${EVIDENCE_ROOT}"
 
 [[ -f "${EVIDENCE_ROOT}/latest-release-aws.json" ]] || die "missing latest-release-aws.json receipt"
-log_info "PASS all stage OpenTofu, Helm, ShellCheck, bootstrap idempotency and critical-path gate checks"
+log_info "PASS all stage OpenTofu, Helm, ShellCheck, stack validation and critical-path gate checks"
