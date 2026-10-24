@@ -116,6 +116,18 @@ variable "nats_tls" {
   default     = false
 }
 
+variable "issuer_allowed_cidrs" {
+  description = "Operator networks (CIDRs) allowed to reach the OIDC issuer's token-issuing paths (/oauth2, /userinfo, /logout) from outside the cluster. Pod addresses are always allowed."
+  type        = list(string)
+  default     = []
+}
+
+variable "oauthsonas_image" {
+  description = "Digest-pinned oauthsonas image (the persona OIDC issuer of the stage authority)."
+  type        = string
+  default     = "ghcr.io/optimiware/oauthsonas:1.4.0@sha256:450a042217e49ac568a7b200d9636443e473c0e18e326231f18d2d88bc466c33"
+}
+
 variable "psql_image" {
   description = "Image of the short-lived Job that creates the database roles."
   type        = string
@@ -191,7 +203,6 @@ variable "chart_versions" {
     ingress    = string
     certmgr    = string
     gitea      = string
-    dex        = string
   })
   default = {
     nats       = "2.15.1"
@@ -202,6 +213,5 @@ variable "chart_versions" {
     ingress    = "4.15.1"
     certmgr    = "v1.21.3"
     gitea      = "12.7.0"
-    dex        = "0.26.0"
   }
 }

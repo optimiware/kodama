@@ -168,10 +168,19 @@ for secret_name, block in blocks.items():
 if checked < 8:
     raise SystemExit(f"only {checked} mounted Secret keys found; the drift check is not reading the chart")
 
-for tpl in ("kodama", "dex", "gitea", "grafana"):
+for tpl in ("kodama", "gitea", "grafana"):
     text = open(sys.argv[2].replace("secrets.tf", f"values/{tpl}.yaml.tftpl"), encoding="utf-8").read()
     if "cert-manager.io/cluster-issuer: letsencrypt" not in text:
         raise SystemExit(f"the {tpl} ingress does not request a Let's Encrypt certificate")
+
+oauth = open(sys.argv[2].replace("secrets.tf", "oauthsonas.tf"), encoding="utf-8").read()
+for needle in ('"cert-manager.io/cluster-issuer" = "letsencrypt"', "whitelist-source-range", "OAUTHSONAS_ACCESS_CODE", 'type = "Recreate"'):
+    if needle not in oauth:
+        raise SystemExit(f"oauthsonas.tf lost its safeguard: {needle}")
+
+variables = open(sys.argv[2].replace("secrets.tf", "variables.tf"), encoding="utf-8").read()
+if not re.search(r'variable "oauthsonas_image".*?@sha256:[0-9a-f]{64}', variables, re.S):
+    raise SystemExit("the oauthsonas image is not pinned by digest")
 PY
 
 log_info "5. Negative contract, values provenance, and kubeconfig cluster-mismatch checks"

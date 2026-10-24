@@ -162,6 +162,7 @@ tfvars = {
     "oidc_audience": os.environ.get("KODAMA_OIDC_AUDIENCE") or f"https://{host}/api",
     "custom_ca": False,
     "acme_email": os.environ.get("KODAMA_ACME_EMAIL", ""),
+    "issuer_allowed_cidrs": [c for c in os.environ.get("KODAMA_ISSUER_ALLOWED_CIDRS", "").split(",") if c],
     "nats_tls": os.environ.get("KODAMA_NATS_TLS", "false").lower() == "true",
 }
 with open(tfvars_out, "w", encoding="utf-8") as fh:

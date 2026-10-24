@@ -82,27 +82,6 @@ resource "random_password" "gitea_admin" {
   special = false
 }
 
-resource "random_password" "dex_api_client" {
-  length  = 48
-  special = false
-}
-
-resource "random_password" "dex_tests_client" {
-  length  = 48
-  special = false
-}
-
-resource "random_password" "persona" {
-  for_each = toset(local.personas)
-  length   = 32
-  special  = false
-}
-
-resource "htpasswd_password" "persona" {
-  for_each = toset(local.personas)
-  password = random_password.persona[each.key].result
-}
-
 # ---- database roles (run from inside the cluster: managed PostgreSQL has no public endpoint) ----
 
 locals {
@@ -332,14 +311,3 @@ resource "kubernetes_secret_v1" "gitea_admin" {
   }
 }
 
-resource "kubernetes_secret_v1" "deps_auth" {
-  metadata {
-    name      = "kodama-deps-auth"
-    namespace = kubernetes_namespace_v1.deps.metadata[0].name
-  }
-  data = {
-    "dex-api-client-secret"   = random_password.dex_api_client.result
-    "dex-tests-client-secret" = random_password.dex_tests_client.result
-    "personas.json"           = jsonencode({ for p in local.personas : p => { password = random_password.persona[p].result } })
-  }
-}

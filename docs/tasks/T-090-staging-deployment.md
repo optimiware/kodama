@@ -28,7 +28,7 @@ Stage values and an install/upgrade/uninstall runbook with exact commands, the s
 ## Check contract (scheduled 2026-10-24)
 The first stage target is the Kodama-owned standalone cluster `kodama-stage-scw` (`deploy/stage/scw`, Kubernetes 1.37). It is a standalone smoke deployment and is not relabelled as Platform stage or hosted integration (T-061). Its Scaleway database has scheduled backups only (no 30-day PITR), which this gate records and T-029/T-056 refuse. The task owns `deploy/stage/` (OpenTofu roots, shared stack, bootstrap/deploy/gate/evidence scripts); T-104 consumes it unchanged.
 
-**Recorded deviation (O-27).** The stage's NATS is plaintext with token authentication (chart `profile: development`, `KODAMA_ENV=production`); the stage handoff must state this and may not claim NATS TLS. [T-106](T-106-production-tls-hardening.md) tracks its removal.
+**Recorded deviation (O-27).** The stage's NATS is plaintext with token authentication (chart `profile: development`, `KODAMA_ENV=production`); the stage handoff must state this and may not claim NATS TLS. [T-106](T-106-production-tls-hardening.md) tracks its removal. The issuer is the `oauthsonas` persona fixture; the handoff must say so.
 
 ## Out of scope
 Production release and support claims (T-056), hosted Platform authority (T-061), measured capacity, recovery drills (T-029) and stronger isolation (T-055).

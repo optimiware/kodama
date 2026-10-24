@@ -42,19 +42,6 @@ locals {
 
   deps_host = var.stage_contract.network.ingress_host
 
-  dex_values = templatefile("${path.module}/values/dex.yaml.tftpl", {
-    issuer      = coalesce(var.oidc_issuer, "https://auth.${local.deps_host}")
-    issuer_host = trimprefix(coalesce(var.oidc_issuer, "https://auth.${local.deps_host}"), "https://")
-    audience    = coalesce(var.oidc_audience, "https://${local.deps_host}/api")
-    users = [for p in local.personas : {
-      username = p
-      email    = "${p}@stage.kodama.invalid"
-      user_id  = p
-      hash     = htpasswd_password.persona[p].bcrypt
-    }]
-    tls_secret = "kodama-dex-tls"
-  })
-
   gitea_values = templatefile("${path.module}/values/gitea.yaml.tftpl", {
     host       = trimsuffix(trimprefix(coalesce(var.git_url, "https://git.${local.deps_host}/optimi/kodama-source.git"), "https://"), "/optimi/kodama-source.git")
     tls_secret = "kodama-gitea-tls"
@@ -146,7 +133,7 @@ resource "helm_release" "kodama" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.kodama_values]
-  depends_on       = [helm_release.nats, terraform_data.deps_init, helm_release.dex, kubernetes_secret_v1.runtime, kubernetes_secret_v1.migration, kubernetes_secret_v1.kms_scw, kubernetes_job_v1.bootstrap_sql, helm_release.ingress_nginx, helm_release.cluster_issuer, terraform_data.public_certs]
+  depends_on       = [helm_release.nats, terraform_data.deps_init, kubernetes_deployment_v1.oauthsonas, kubernetes_secret_v1.runtime, kubernetes_secret_v1.migration, kubernetes_secret_v1.kms_scw, kubernetes_job_v1.bootstrap_sql, helm_release.ingress_nginx, helm_release.cluster_issuer, terraform_data.public_certs]
 }
 
 resource "helm_release" "ingress_nginx" {
@@ -160,20 +147,6 @@ resource "helm_release" "ingress_nginx" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [file("${path.module}/values/ingress-nginx.yaml")]
-}
-
-resource "helm_release" "dex" {
-  name             = "kodama-dex"
-  repository       = "https://charts.dexidp.io"
-  chart            = "dex"
-  version          = var.chart_versions.dex
-  namespace        = var.deps_namespace
-  create_namespace = false
-  atomic           = true
-  cleanup_on_fail  = true
-  timeout          = 300
-  values           = [local.dex_values]
-  depends_on       = [helm_release.ingress_nginx, helm_release.cluster_issuer, kubernetes_secret_v1.deps_auth]
 }
 
 resource "helm_release" "gitea" {
@@ -195,7 +168,7 @@ resource "helm_release" "gitea" {
 resource "terraform_data" "deps_init" {
   triggers_replace = [
     helm_release.gitea.version,
-    helm_release.dex.version,
+    var.oauthsonas_image,
     filesha256("${path.module}/../../scripts/deps-init.sh"),
   ]
 
@@ -246,7 +219,7 @@ resource "helm_release" "cluster_issuer" {
 # The OIDC issuer must present a publicly trusted certificate before the server's readiness probe runs.
 resource "terraform_data" "public_certs" {
   triggers_replace = [
-    helm_release.dex.version,
+    var.oauthsonas_image,
     helm_release.gitea.version,
     helm_release.grafana.version,
     filesha256("${path.module}/../../scripts/wait-certs.sh"),
@@ -257,7 +230,7 @@ resource "terraform_data" "public_certs" {
     environment = {
       KUBECONFIG = var.kubeconfig_path
       KODAMA_WAIT_CERTS = join(",", [
-        "${var.deps_namespace}/kodama-dex-tls",
+        "${var.deps_namespace}/kodama-oauthsonas-tls",
         "${var.deps_namespace}/kodama-gitea-tls",
         "${var.observability_namespace}/kodama-grafana-tls",
       ])

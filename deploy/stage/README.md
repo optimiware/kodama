@@ -11,7 +11,8 @@ deploy/stage/
   scw/                    # Dedicated Kapsule (Cilium), Managed PostgreSQL, Object Storage, Key Manager (fr-par)
   shared/
     stack/                # Shared Helm releases consuming stage_contract from aws, gcp, or scw
-      secrets.tf          # Namespaces, installation CA and leaf certificates, credentials, database roles, every Secret
+      secrets.tf          # Namespaces, credentials, database roles, every Secret
+      oauthsonas.tf       # Persona OIDC issuer (digest-pinned) with access code and ingress allowlist
       values/
         kodama.yaml.tftpl # Renders external profile values validated by deploy/helm/kodama/values.schema.json
         nats.yaml.tftpl   # NATS JetStream (TLS + token auth + persistent fileStore)
@@ -19,7 +20,6 @@ deploy/stage/
         alloy.yaml.tftpl  # Grafana Alloy (non-root Pod API log collection -> Loki structured metadata)
         prometheus.yaml.tftpl # Minimal Prometheus server (drops high-cardinality tenant/attempt labels)
         grafana.yaml.tftpl    # Operator-authenticated Grafana with Loki/Prometheus & pipeline log search dashboard
-        dex.yaml.tftpl        # Dex OIDC issuer (standalone authority) with static personas
         gitea.yaml.tftpl      # Gitea Git HTTPS server (SQLite, no SSH, no registration)
         ingress-nginx.yaml    # Ingress controller behind a Scaleway Load Balancer
   images/workload/        # Stage workload image (shell, Git, CA certificates)
@@ -92,6 +92,15 @@ root does not hand over role passwords.
 system CA store, so a private CA cannot secure NATS or the OIDC issuer yet (T-106). `KODAMA_ENV=production` still refuses every development
 and test adapter. Evidence from this stage must name the profile and cannot claim NATS TLS. The OIDC issuer therefore
 uses a publicly trusted (Let's Encrypt) certificate.
+
+**Identity fixture (O-27).** The standalone authority's issuer is the Optimi `oauthsonas` persona provider, pinned by
+digest. It is a development/test fixture: persona selection replaces authentication, so anyone who completes its
+authorize flow can act as any persona (a persona token for `admin` becomes the tenant administrator). The stage
+therefore gates the authorize flow with a random access code (Secret `kodama-oauthsonas-access` in `kodama-deps`),
+restricts `/oauth2`, `/userinfo` and `/logout` at the ingress to `issuer_allowed_cidrs` plus pod addresses
+(`KODAMA_ISSUER_ALLOWED_CIDRS`; `deploy.sh` defaults it to the operator's public address), and leaves discovery and
+JWKS open. It runs as one replica with all state in memory, so a restart invalidates every token. Do not treat it
+as an identity system; hosted authority (T-061) replaces it.
 
 Run critical-path qualification gates and emit evidence bundles:
 
