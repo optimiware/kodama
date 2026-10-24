@@ -1,0 +1,8 @@
+# Scaleway Load Balancer in front of the stage ingress. Not the default IngressClass: every
+# stage Ingress selects `nginx` explicitly.
+controller:
+  ingressClassResource:
+    default: false
+  service:
+    annotations:
+      service.beta.kubernetes.io/scw-loadbalancer-type: LB-S

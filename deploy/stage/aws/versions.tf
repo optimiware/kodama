@@ -1,6 +1,10 @@
 terraform {
   required_version = ">= 1.8.0"
 
+  # Partial configuration: deploy.sh passes -backend-config=path=$STAGE_STATE_DIR/<root>.tfstate so state
+  # (which holds database and API-key secrets) lives outside the checkout.
+  backend "local" {}
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"

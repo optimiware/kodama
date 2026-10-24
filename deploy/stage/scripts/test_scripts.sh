@@ -183,6 +183,20 @@ if len(args) >= 4 and args[0] == "get" and args[1] == "secret":
     sys.stdout.write(p.read_text(encoding="utf-8"))
     sys.exit(0)
 
+if args[:2] == ["delete", "pod"]:
+    sys.exit(0)
+
+if args and args[0] == "run":
+    # The role SQL Pod: the first stdin line is the DSN, the rest is the SQL script.
+    stdin = sys.stdin.read()
+    dsn, _, sql = stdin.partition("\n")
+    with open(state_dir / "pod.calls", "a", encoding="utf-8") as fh:
+        fh.write(" ".join(a for a in args if not a.startswith("--overrides")) + "\n")
+        fh.write("dsn-first-line=" + ("postgres://" in dsn and "yes" or "no") + "\n")
+    with open(state_dir / "pod.sql", "a", encoding="utf-8") as fh:
+        fh.write(sql)
+    sys.exit(0)
+
 if len(args) >= 2 and args[0] == "create" and args[1] == "namespace":
     sys.stdout.write(json.dumps({"kind": "Namespace", "metadata": {"name": args[2]}}))
     sys.exit(0)
@@ -265,8 +279,22 @@ KODAMA_GIT_URL="https://git.external.optimi.dev:8443/org/kodama-source.git" \
   PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
   "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${BOOT_DIR1}"
 
-[[ -s "${MOCK_STATE}/psql.calls" ]] || die "bootstrap.sh did not invoke psql"
-grep -q "CREATE ROLE kodama_migration" "${MOCK_STATE}/psql.sql" || die "roles.sql was not executed by psql"
+[[ -s "${MOCK_STATE}/pod.calls" ]] || die "bootstrap.sh did not run the role SQL Pod"
+grep -q "dsn-first-line=yes" "${MOCK_STATE}/pod.calls" || die "the role SQL Pod did not receive the DSN as the first stdin line"
+grep -q "CREATE ROLE kodama_migration" "${MOCK_STATE}/pod.sql" || die "roles.sql was not sent to the role SQL Pod"
+[[ ! -f "${MOCK_STATE}/psql.calls" ]] || die "the local psql must only run with STAGE_PSQL_LOCAL=1"
+
+# The one runtime/ingress certificate covers every public stage hostname (auth, git, registry, grafana).
+for san in kodama.stage.aws.optimi.dev grafana.kodama.stage.aws.optimi.dev auth.kodama.stage.aws.optimi.dev git.kodama.stage.aws.optimi.dev registry.kodama.stage.aws.optimi.dev; do
+  openssl x509 -in "${BOOT_DIR1}/runtime-tls.crt" -noout -text | grep -q "DNS:${san}" || die "runtime-tls.crt missing SAN ${san}"
+done
+python3 - "${BOOT_DIR1}/deps/personas.json" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+assert set(p) == {"admin", "analyst", "engineer", "reviewer", "viewer", "outsider", "foreign"}, sorted(p)
+for name, v in p.items():
+    assert v["hash"].startswith("$2a$10$") and len(v["password"]) == 32, name
+PY
 
 # Verify external Git URL override is reflected in git-credentials.json urlPrefix
 python3 - "${BOOT_DIR1}/kodama-runtime/git-credentials.json" <<'PY'
@@ -295,7 +323,10 @@ for preserved in \
   "kodama-runtime/idempotency-hash-key" \
   "kodama-runtime/nats-token" \
   "kodama-runtime/ca.crt" \
-  "kodama-migration/database-migration-url"; do
+  "kodama-migration/database-migration-url" \
+  "deps/personas.json" \
+  "deps/gitea-admin-password" \
+  "deps/dex-api-client-secret"; do
   cmp -s "${BOOT_DIR1}/${preserved}" "${BOOT_DIR2}/${preserved}" || die "bootstrap rerun did not preserve ${preserved}"
 done
 

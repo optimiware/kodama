@@ -41,7 +41,7 @@ done
 
 [[ -n "${CONTRACT_FILE}" ]] || die "--contract <stage_contract.json> is required"
 validate_stage_contract "${CONTRACT_FILE}"
-require_cmd python3 openssl
+require_cmd python3 openssl htpasswd
 
 if [[ -z "${WORK_DIR}" ]]; then
   WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kodama-stage-bootstrap.XXXXXX")"
@@ -93,6 +93,7 @@ REQUIRED_KEYS = {
     "kodama-migration": ["database-migration-url", "ca.crt"],
     "kodama-nats-tls": ["ca.crt", "ca.key", "tls.crt", "tls.key", "runtime-tls.crt", "runtime-tls.key"],
     "kodama-grafana-admin": ["admin-user", "admin-password"],
+    "kodama-deps-auth": ["gitea-admin-password", "dex-api-client-secret", "dex-tests-client-secret", "personas.json"],
 }
 
 def get_secret(ns: str, name: str) -> dict:
@@ -136,6 +137,7 @@ data = {
     "kodama-migration": get_secret("kodama-system", "kodama-migration"),
     "kodama-nats-tls": get_secret("kodama-system", "kodama-nats-tls"),
     "kodama-grafana-admin": get_secret("kodama-observability", "kodama-grafana-admin"),
+    "kodama-deps-auth": get_secret("kodama-deps", "kodama-deps-auth"),
 }
 present = [k for k, v in data.items() if v]
 if present and len(present) != len(data):
@@ -178,6 +180,7 @@ ex_rt = existing.get("kodama-runtime") or {}
 ex_mig = existing.get("kodama-migration") or {}
 ex_tls = existing.get("kodama-nats-tls") or {}
 ex_graf = existing.get("kodama-grafana-admin") or {}
+ex_deps = existing.get("kodama-deps-auth") or {}
 
 def existing_bytes(secret_map: dict, key: str, local_path: Path):
     if key in secret_map:
@@ -201,6 +204,8 @@ mig_dir = work_dir / "kodama-migration"
 mig_dir.mkdir(exist_ok=True)
 obs_dir = work_dir / "observability"
 obs_dir.mkdir(exist_ok=True)
+deps_dir = work_dir / "deps"
+deps_dir.mkdir(exist_ok=True)
 
 pg = c["postgres"]
 mig_role = pg["migration_role"]
@@ -305,9 +310,16 @@ def ensure_leaf_cert(prefix: str, cn: str, dns_names: list[str], ex_crt_key: str
     prev_crt = existing_bytes(ex_tls, ex_crt_key, crt_file)
     prev_key = existing_bytes(ex_tls, ex_key_key, key_file)
     if prev_crt and prev_key and prev_ca_crt:
-        crt_file.write_bytes(prev_crt)
-        key_file.write_bytes(prev_key)
-        return
+        probe = work_dir / f"{prefix}.prev.crt"
+        probe.write_bytes(prev_crt)
+        shown = subprocess.run(
+            ["openssl", "x509", "-in", str(probe), "-noout", "-text"],
+            capture_output=True, text=True,
+        )
+        if shown.returncode == 0 and all(f"DNS:{d}" in shown.stdout for d in dns_names):
+            crt_file.write_bytes(prev_crt)
+            key_file.write_bytes(prev_key)
+            return
 
     san = ",".join(f"DNS:{d}" for d in dns_names)
     ext_file.write_text(
@@ -355,7 +367,7 @@ ingress_host = c["network"]["ingress_host"]
 ensure_leaf_cert(
     "runtime-tls",
     ingress_host,
-    [ingress_host, f"grafana.{ingress_host}"],
+    [ingress_host, f"grafana.{ingress_host}", f"auth.{ingress_host}", f"git.{ingress_host}", f"registry.{ingress_host}"],
     "runtime-tls.crt",
     "runtime-tls.key",
 )
@@ -446,6 +458,46 @@ if git_creds is None:
 )
 (mig_dir / "ca.crt").write_bytes(ca_crt.read_bytes())
 
+# 4b. Stage dependencies: Gitea admin, Dex client secrets and OIDC personas
+PERSONAS = ["admin", "analyst", "engineer", "reviewer", "viewer", "outsider", "foreign"]
+
+def bcrypt_hash(password: str) -> str:
+    out = subprocess.run(["htpasswd", "-bnBC", "10", "", password], check=True, capture_output=True, text=True).stdout
+    return out.strip().lstrip(":").replace("$2y$", "$2a$", 1)
+
+gitea_admin_pass = (
+    (existing_bytes(ex_deps, "gitea-admin-password", deps_dir / "gitea-admin-password") or b"").decode("utf-8")
+    or secrets.token_hex(24)
+)
+dex_api_secret = (
+    (existing_bytes(ex_deps, "dex-api-client-secret", deps_dir / "dex-api-client-secret") or b"").decode("utf-8")
+    or secrets.token_hex(24)
+)
+dex_tests_secret = (
+    (existing_bytes(ex_deps, "dex-tests-client-secret", deps_dir / "dex-tests-client-secret") or b"").decode("utf-8")
+    or secrets.token_hex(24)
+)
+prev_personas_raw = existing_bytes(ex_deps, "personas.json", deps_dir / "personas.json")
+prev_personas = json.loads(prev_personas_raw.decode("utf-8")) if prev_personas_raw else {}
+personas = {}
+for name in PERSONAS:
+    prev = prev_personas.get(name) or {}
+    password = prev.get("password") or secrets.token_hex(16)
+    personas[name] = {"password": password, "hash": prev.get("hash") or bcrypt_hash(password)}
+(deps_dir / "gitea-admin-user").write_text("kodama-admin", encoding="utf-8")
+(deps_dir / "gitea-admin-password").write_text(gitea_admin_pass, encoding="utf-8")
+(deps_dir / "dex-api-client-secret").write_text(dex_api_secret, encoding="utf-8")
+(deps_dir / "dex-tests-client-secret").write_text(dex_tests_secret, encoding="utf-8")
+(deps_dir / "personas.json").write_text(json.dumps(personas, indent=2), encoding="utf-8")
+
+stack_tfvars["dex_users"] = [
+    {"username": n, "email": f"{n}@stage.kodama.invalid", "user_id": n, "hash": personas[n]["hash"]}
+    for n in PERSONAS
+]
+with open(tfvars_path, "w", encoding="utf-8") as fh:
+    json.dump(stack_tfvars, fh, indent=2)
+    fh.write("\n")
+
 # 5. Observability & NATS secret payloads
 (obs_dir / "nats-token").write_text(nats_token, encoding="utf-8")
 (obs_dir / "loki-s3.env").write_text(
@@ -525,11 +577,27 @@ print(f"postgres://{quote(user)}:{quote(pw)}@{pg['host']}:{pg['port']}/{pg['data
 PY
 )"
 
-psql "${ADMIN_DSN}" -v ON_ERROR_STOP=1 -f "${WORK_DIR}/roles.sql" >/dev/null
-
-for ns in kodama-system kodama-observability; do
-  kube create namespace "${ns}" --dry-run=client -o yaml | kube apply -f -
+for ns in kodama-system kodama-observability kodama-deps; do
+  kube create namespace "${ns}" --dry-run=client -o yaml | kube apply -f - >/dev/null
 done
+
+run_roles_sql() {
+  if [[ "${STAGE_PSQL_LOCAL:-0}" == "1" ]]; then
+    psql "${ADMIN_DSN}" -v ON_ERROR_STOP=1 -f "${WORK_DIR}/roles.sql" >/dev/null
+    return
+  fi
+  # Managed PostgreSQL has no public endpoint: run psql from a short-lived Pod in the cluster. The DSN is
+  # the first stdin line, never an argument or an environment variable of the Pod spec.
+  local image="${STAGE_PSQL_IMAGE:-docker.io/library/postgres:17-alpine}"
+  # shellcheck disable=SC2016
+  local overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":70,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"kodama-bootstrap-sql","image":"'"${image}"'","stdin":true,"command":["sh","-c","read -r DSN; exec psql \"$DSN\" -v ON_ERROR_STOP=1 -f -"],"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}},"resources":{"limits":{"memory":"128Mi"}}}]}}'
+  kube -n kodama-system delete pod kodama-bootstrap-sql --ignore-not-found >/dev/null
+  { printf '%s\n' "${ADMIN_DSN}"; cat "${WORK_DIR}/roles.sql"; } |
+    kube -n kodama-system run kodama-bootstrap-sql --rm -i --quiet --restart=Never --image="${image}" --overrides="${overrides}" >/dev/null ||
+    die "role bootstrap SQL failed (see: kubectl -n kodama-system logs kodama-bootstrap-sql)"
+}
+run_roles_sql
+
 
 kube -n kodama-system create secret generic kodama-runtime \
   --from-file="${WORK_DIR}/kodama-runtime" --dry-run=client -o yaml | kube apply -f -
@@ -573,8 +641,25 @@ kube -n kodama-observability create secret tls kodama-grafana-tls \
   --key="${WORK_DIR}/runtime-tls.key" \
   --dry-run=client -o yaml | kube apply -f -
 
+kube -n kodama-deps create secret generic kodama-deps-auth \
+  --from-file=gitea-admin-password="${WORK_DIR}/deps/gitea-admin-password" \
+  --from-file=dex-api-client-secret="${WORK_DIR}/deps/dex-api-client-secret" \
+  --from-file=dex-tests-client-secret="${WORK_DIR}/deps/dex-tests-client-secret" \
+  --from-file=personas.json="${WORK_DIR}/deps/personas.json" \
+  --dry-run=client -o yaml | kube apply -f -
+
+kube -n kodama-deps create secret generic kodama-gitea-admin \
+  --from-file=username="${WORK_DIR}/deps/gitea-admin-user" \
+  --from-file=password="${WORK_DIR}/deps/gitea-admin-password" \
+  --dry-run=client -o yaml | kube apply -f -
+
+kube -n kodama-deps create secret tls kodama-deps-tls \
+  --cert="${WORK_DIR}/runtime-tls.crt" \
+  --key="${WORK_DIR}/runtime-tls.key" \
+  --dry-run=client -o yaml | kube apply -f -
+
 kube -n kodama-observability create configmap kodama-grafana-dashboards \
   --from-file=kodama-pipeline-logs.json="${WORK_DIR}/observability/kodama-pipeline-logs.json" \
   --dry-run=client -o yaml | kube apply -f -
 
-log_info "bootstrap complete for namespaces kodama-system and kodama-observability"
+log_info "bootstrap complete for namespaces kodama-system, kodama-observability and kodama-deps"

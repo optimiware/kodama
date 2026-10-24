@@ -1,0 +1,62 @@
+# Gitea: the stage Git HTTPS server (single instance, SQLite on a PVC, no SSH, no registration).
+image:
+  rootless: true
+
+strategy:
+  type: Recreate
+
+service:
+  ssh:
+    type: ClusterIP
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+  hosts:
+    - host: ${jsonencode(host)}
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ${jsonencode(tls_secret)}
+      hosts:
+        - ${jsonencode(host)}
+
+persistence:
+  enabled: true
+  size: 10Gi
+
+gitea:
+  admin:
+    existingSecret: kodama-gitea-admin
+  config:
+    server:
+      DOMAIN: ${jsonencode(host)}
+      ROOT_URL: ${jsonencode("https://${host}/")}
+      DISABLE_SSH: true
+    database:
+      DB_TYPE: sqlite3
+    session:
+      PROVIDER: memory
+    cache:
+      ADAPTER: memory
+    queue:
+      TYPE: level
+    service:
+      DISABLE_REGISTRATION: true
+    security:
+      INSTALL_LOCK: true
+
+valkey-cluster:
+  enabled: false
+valkey:
+  enabled: false
+postgresql-ha:
+  enabled: false
+postgresql:
+  enabled: false
+
+test:
+  enabled: false

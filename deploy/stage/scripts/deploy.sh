@@ -35,6 +35,8 @@ done
 validate_cloud "${CLOUD}"
 require_cmd tofu helm python3
 
+# Operator-owned directory for OpenTofu state (database/API-key secrets never live in the checkout).
+STATE_DIR="${STAGE_STATE_DIR:-${HOME}/.kube/kodama-stage/state}"
 CLOUD_DIR="${STAGE_DIR}/${CLOUD}"
 STACK_DIR="${STAGE_DIR}/shared/stack"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kodama-stage-deploy.XXXXXX")"
@@ -152,7 +154,9 @@ PY
   exit 0
 fi
 
-tofu -chdir="${CLOUD_DIR}" init -input=false
+mkdir -p "${STATE_DIR}"
+chmod 0700 "${STATE_DIR}"
+tofu -chdir="${CLOUD_DIR}" init -input=false -backend-config="path=${STATE_DIR}/${CLOUD}.tfstate"
 tofu -chdir="${CLOUD_DIR}" validate
 tofu -chdir="${CLOUD_DIR}" apply -input=false -auto-approve
 
@@ -170,8 +174,15 @@ helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/n
 
 "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${CONTRACT_FILE}" --stack-tfvars "${STACK_TFVARS}" --secrets "${SECRETS_FILE}"
 
-tofu -chdir="${STACK_DIR}" init -input=false
+tofu -chdir="${STACK_DIR}" init -input=false -backend-config="path=${STATE_DIR}/${CLOUD}-stack.tfstate"
 tofu -chdir="${STACK_DIR}" validate
+
+# Adopt a controller installed before the stack managed it (same release, same chart), once.
+if ! tofu -chdir="${STACK_DIR}" state list 2>/dev/null | grep -qx 'helm_release.ingress_nginx' &&
+  helm --kubeconfig "${KUBECONFIG:-${HOME}/.kube/config}" status ingress-nginx -n ingress-nginx >/dev/null 2>&1; then
+  log_info "importing the existing ingress-nginx release into the stack state"
+  tofu -chdir="${STACK_DIR}" import -input=false -var-file="${STACK_TFVARS}" helm_release.ingress_nginx ingress-nginx/ingress-nginx
+fi
 tofu -chdir="${STACK_DIR}" apply -input=false -auto-approve \
   -var-file="${STACK_TFVARS}"
 

@@ -259,3 +259,12 @@ resource "scaleway_object_bucket_policy" "logs" {
     ]
   })
 }
+
+# --- Scaleway Container Registry (public read, authenticated push; hosts the digest-pinned Kodama and workload images) ---
+
+resource "scaleway_registry_namespace" "images" {
+  name        = local.name_prefix
+  region      = var.region
+  description = "Digest-pinned Kodama stage images (anonymous pull, no secrets baked in)"
+  is_public   = true
+}

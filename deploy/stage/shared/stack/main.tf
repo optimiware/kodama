@@ -39,6 +39,21 @@ locals {
     observability_namespace = var.observability_namespace
   })
 
+  deps_host = var.stage_contract.network.ingress_host
+
+  dex_values = templatefile("${path.module}/values/dex.yaml.tftpl", {
+    issuer      = coalesce(var.oidc_issuer, "https://auth.${local.deps_host}")
+    issuer_host = trimprefix(coalesce(var.oidc_issuer, "https://auth.${local.deps_host}"), "https://")
+    audience    = coalesce(var.oidc_audience, "https://${local.deps_host}/api")
+    users       = var.dex_users
+    tls_secret  = "kodama-deps-tls"
+  })
+
+  gitea_values = templatefile("${path.module}/values/gitea.yaml.tftpl", {
+    host       = trimsuffix(trimprefix(coalesce(var.git_url, "https://git.${local.deps_host}/optimi/kodama-source.git"), "https://"), "/optimi/kodama-source.git")
+    tls_secret = "kodama-deps-tls"
+  })
+
   grafana_values = templatefile("${path.module}/values/grafana.yaml.tftpl", {
     loki_url     = local.loki_url
     prom_url     = local.prom_url
@@ -122,5 +137,67 @@ resource "helm_release" "kodama" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.kodama_values]
-  depends_on       = [helm_release.nats]
+  depends_on       = [helm_release.nats, terraform_data.deps_init, helm_release.dex]
+}
+
+resource "helm_release" "ingress_nginx" {
+  name             = "ingress-nginx"
+  repository       = "https://kubernetes.github.io/ingress-nginx"
+  chart            = "ingress-nginx"
+  version          = var.chart_versions.ingress
+  namespace        = "ingress-nginx"
+  create_namespace = true
+  atomic           = true
+  cleanup_on_fail  = true
+  timeout          = 300
+  values           = [file("${path.module}/values/ingress-nginx.yaml")]
+}
+
+resource "helm_release" "dex" {
+  name             = "kodama-dex"
+  repository       = "https://charts.dexidp.io"
+  chart            = "dex"
+  version          = var.chart_versions.dex
+  namespace        = var.deps_namespace
+  create_namespace = false
+  atomic           = true
+  cleanup_on_fail  = true
+  timeout          = 300
+  values           = [local.dex_values]
+  depends_on       = [helm_release.ingress_nginx]
+}
+
+resource "helm_release" "gitea" {
+  name             = "kodama-gitea"
+  repository       = "https://dl.gitea.com/charts/"
+  chart            = "gitea"
+  version          = var.chart_versions.gitea
+  namespace        = var.deps_namespace
+  create_namespace = false
+  atomic           = true
+  cleanup_on_fail  = true
+  timeout          = 600
+  values           = [local.gitea_values]
+  depends_on       = [helm_release.ingress_nginx]
+}
+
+# Creates the stage Git owner, repository and scoped tokens in Gitea and publishes them to the
+# kodama-runtime Secret before the Kodama release (and its migration hook) starts.
+resource "terraform_data" "deps_init" {
+  triggers_replace = [
+    helm_release.gitea.version,
+    helm_release.dex.version,
+    filesha256("${path.module}/../../scripts/deps-init.sh"),
+  ]
+
+  provisioner "local-exec" {
+    command = "${path.module}/../../scripts/deps-init.sh"
+    environment = {
+      KUBECONFIG              = var.kubeconfig_path
+      KODAMA_DEPS_NAMESPACE   = var.deps_namespace
+      KODAMA_SYSTEM_NAMESPACE = var.control_plane_namespace
+      KODAMA_GITEA_RELEASE    = helm_release.gitea.name
+      KODAMA_GIT_URL          = coalesce(var.git_url, "https://git.${local.deps_host}/optimi/kodama-source.git")
+    }
+  }
 }

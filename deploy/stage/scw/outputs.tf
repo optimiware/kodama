@@ -62,6 +62,10 @@ output "stage_contract" {
     }
 
     tenants = var.tenants
+
+    images = {
+      registry_endpoint = scaleway_registry_namespace.images.endpoint
+    }
   }
 }
 

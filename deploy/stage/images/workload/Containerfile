@@ -1,0 +1,8 @@
+# Stage workload image: the userland tenant steps run in on the stage cluster.
+# The `kodama` entrypoint is injected by the init container, never baked in.
+# Git and CA certificates are required by source-consuming pipeline steps.
+FROM docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+RUN apk add --no-cache git ca-certificates
+LABEL io.kodama.stage.role=workload
+USER 65532:65532
+WORKDIR /tmp

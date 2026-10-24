@@ -1,0 +1,86 @@
+# Dex: the stage OIDC issuer (standalone authority). Access tokens carry the Kodama API audience
+# through Dex's cross-client scope (audience:server:client_id:<api client>), which the CLI and the
+# qualification client request. Client secrets come from the kodama-deps-auth Secret.
+envFrom: []
+env: {}
+envVars:
+  - name: KODAMA_API_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: kodama-deps-auth
+        key: dex-api-client-secret
+  - name: KODAMA_TESTS_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: kodama-deps-auth
+        key: dex-tests-client-secret
+
+config:
+  issuer: ${jsonencode(issuer)}
+  storage:
+    type: kubernetes
+    config:
+      inCluster: true
+  web:
+    http: 0.0.0.0:5556
+  oauth2:
+    skipApprovalScreen: true
+    passwordConnector: local
+    grantTypes:
+      - authorization_code
+      - refresh_token
+      - password
+  enablePasswordDB: true
+  expiry:
+    idTokens: 30m
+  staticClients:
+    - id: kodama-cli
+      name: Kodama CLI
+      public: true
+      redirectURIs:
+        - http://127.0.0.1:18999/callback
+    - id: ${jsonencode(audience)}
+      name: Kodama API
+      secretEnv: KODAMA_API_CLIENT_SECRET
+      redirectURIs:
+        - http://127.0.0.1:18999/callback
+      trustedPeers:
+        - kodama-cli
+        - kodama-stage-tests
+    - id: kodama-stage-tests
+      name: Kodama stage qualification
+      secretEnv: KODAMA_TESTS_CLIENT_SECRET
+      redirectURIs:
+        - http://127.0.0.1:18999/callback
+  staticPasswords:
+%{ for u in users ~}
+    - email: ${jsonencode(u.email)}
+      username: ${jsonencode(u.username)}
+      userID: ${jsonencode(u.user_id)}
+      hash: ${jsonencode(u.hash)}
+%{ endfor ~}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: ${jsonencode(issuer_host)}
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ${jsonencode(tls_secret)}
+      hosts:
+        - ${jsonencode(issuer_host)}

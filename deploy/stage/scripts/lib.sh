@@ -131,21 +131,31 @@ contract_path, tfvars_out, kubeconfig_path = sys.argv[1:4]
 c = json.load(open(contract_path, "r", encoding="utf-8"))
 host = c["network"]["ingress_host"]
 
+images = {}
+images_file = os.environ.get("KODAMA_IMAGES_FILE", "")
+if images_file:
+    with open(images_file, "r", encoding="utf-8") as fh:
+        images = json.load(fh)
+registry = (c.get("images") or {}).get("registry_endpoint", "")
+
+
+def image(kind: str, default_repo: str, default_tag: str, default_digest: str, env_prefix: str) -> dict:
+    cfg = images.get(kind) or {}
+    repo_default = f"{registry}/{kind}" if registry else default_repo
+    return {
+        "repository": os.environ.get(f"{env_prefix}_REPOSITORY") or cfg.get("repository") or repo_default,
+        "tag": os.environ.get(f"{env_prefix}_TAG") or cfg.get("tag") or default_tag,
+        "digest": os.environ.get(f"{env_prefix}_DIGEST") or cfg.get("digest") or default_digest,
+    }
+
+
 tfvars = {
     "kubeconfig_path": kubeconfig_path,
     "stage_contract": c,
     "control_plane_namespace": "kodama-system",
     "observability_namespace": "kodama-observability",
-    "kodama_image": {
-        "repository": os.environ.get("KODAMA_IMAGE_REPOSITORY", "ghcr.io/optimiware/kodama"),
-        "tag": os.environ.get("KODAMA_IMAGE_TAG", "0.0.1"),
-        "digest": os.environ.get("KODAMA_IMAGE_DIGEST", "sha256:" + "1" * 64),
-    },
-    "example_workload_image": {
-        "repository": os.environ.get("KODAMA_WORKLOAD_IMAGE_REPOSITORY", "ghcr.io/optimiware/kodama-workload"),
-        "tag": os.environ.get("KODAMA_WORKLOAD_IMAGE_TAG", "0.0.1"),
-        "digest": os.environ.get("KODAMA_WORKLOAD_IMAGE_DIGEST", "sha256:" + "2" * 64),
-    },
+    "kodama_image": image("kodama", "ghcr.io/optimiware/kodama", "0.0.1", "sha256:" + "1" * 64, "KODAMA_IMAGE"),
+    "example_workload_image": image("workload", "ghcr.io/optimiware/kodama-workload", "0.0.1", "sha256:" + "2" * 64, "KODAMA_WORKLOAD_IMAGE"),
     "git_url": os.environ.get("KODAMA_GIT_URL") or f"https://git.{host}/optimi/kodama-source.git",
     "registry_url": os.environ.get("KODAMA_REGISTRY_URL") or f"https://registry.{host}",
     "oidc_issuer": os.environ.get("KODAMA_OIDC_ISSUER") or f"https://auth.{host}",
