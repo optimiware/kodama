@@ -485,12 +485,13 @@ func TestM3CompositionSmoke(t *testing.T) {
 
 	t.Run("documentation names only targets and files that exist", func(t *testing.T) {
 		root := repoRoot(t)
-		readme := mustRead(t, filepath.Join(root, "README.md"))
+		readme := mustRead(t, filepath.Join(root, "docs", "implementation", "assembly-status.md"))
+		makeDocs := readme + mustRead(t, filepath.Join(root, "README.md")) + mustRead(t, filepath.Join(root, "AGENTS.md"))
 		makefile := mustRead(t, filepath.Join(root, "Makefile"))
 		ci := mustRead(t, filepath.Join(root, ".github", "workflows", "ci.yml"))
-		for _, m := range regexp.MustCompile("`make ([a-z][a-z0-9-]*)").FindAllStringSubmatch(readme, -1) {
+		for _, m := range regexp.MustCompile("`make ([a-z][a-z0-9-]*)").FindAllStringSubmatch(makeDocs, -1) {
 			if !regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(m[1]) + `:`).MatchString(makefile) {
-				t.Errorf("README names `make %s`, which the Makefile does not define", m[1])
+				t.Errorf("the documentation names `make %s`, which the Makefile does not define", m[1])
 			}
 		}
 		for _, target := range []string{"test-m1", "test-m2", "test-m3", "api-check"} {
@@ -507,7 +508,7 @@ func TestM3CompositionSmoke(t *testing.T) {
 			"chatops-restore-fence", "business-loop.example.json", "T-044",
 		} {
 			if !strings.Contains(readme, claim) {
-				t.Errorf("README does not say %q", claim)
+				t.Errorf("the assembly status document does not say %q", claim)
 			}
 		}
 		for _, name := range d.Routes.Disabled {
@@ -518,7 +519,7 @@ func TestM3CompositionSmoke(t *testing.T) {
 			}
 		}
 		if !strings.Contains(readme, "internal/app/testdata/business-loop.example.json") {
-			t.Error("README does not point at the installation statement example")
+			t.Error("the assembly status document does not point at the installation statement example")
 		}
 	})
 }
