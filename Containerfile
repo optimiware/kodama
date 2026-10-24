@@ -35,7 +35,7 @@ RUN set -eu; \
 
 FROM docker.io/library/debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
 
-ARG SNAPSHOT=20260824T000000Z
+ARG SNAPSHOT=20261020T213255Z
 ARG VERSION=0.0.0
 ARG REVISION=unknown
 
@@ -50,7 +50,7 @@ COPY --from=build --chmod=0755 /out/kodama /usr/local/bin/kodama
 
 LABEL org.opencontainers.image.title="kodama" \
       org.opencontainers.image.description="Kodama control plane: server, migrate, and the static step binary" \
-      org.opencontainers.image.source="https://github.com/optimiweb/kodama-forge" \
+      org.opencontainers.image.source="https://github.com/optimiware/kodama" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
