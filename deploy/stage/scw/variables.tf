@@ -40,9 +40,9 @@ variable "private_network_cidr" {
 }
 
 variable "kubernetes_version" {
-  description = "Pinned Scaleway Kapsule Kubernetes version."
+  description = "Pinned Scaleway Kapsule Kubernetes patch version (x.y.z; Kapsule rejects a bare minor without auto-upgrade)."
   type        = string
-  default     = "1.35"
+  default     = "1.35.9"
 }
 
 variable "node_type" {
@@ -131,4 +131,10 @@ variable "tenants" {
       tenant_id = "t_stage"
     }
   ]
+}
+
+variable "operator_user_ids" {
+  description = "Scaleway IAM user UUIDs that keep access to the buckets alongside the application identities. The OpenTofu operator must be listed or the bucket policy locks it out of refresh, update and destroy."
+  type        = list(string)
+  default     = []
 }

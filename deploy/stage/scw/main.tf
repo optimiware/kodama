@@ -1,5 +1,6 @@
 locals {
-  name_prefix = var.installation_id
+  name_prefix         = var.installation_id
+  operator_principals = [for u in var.operator_user_ids : "user_id:${u}"]
 }
 
 # --- Dedicated VPC & Private Network ---
@@ -117,7 +118,7 @@ resource "scaleway_iam_policy" "kodama_kms" {
 
   rule {
     project_ids          = [var.project_id]
-    permission_set_names = ["KeyManagerReadOnly", "KeyManagerCryptoOperations"]
+    permission_set_names = ["KeyManagerReadOnly", "KeyManagerKeyEncrypt", "KeyManagerKeyDecrypt"]
   }
 }
 
@@ -125,6 +126,10 @@ resource "scaleway_iam_api_key" "kodama_kms" {
   application_id     = scaleway_iam_application.kodama_kms.id
   default_project_id = var.project_id
   description        = "Mounted at /etc/kodama/kms-credentials/secret-key"
+
+  lifecycle {
+    ignore_changes = [expires_at]
+  }
 }
 
 # --- Scaleway Object Storage (Separated: Artifacts vs Loki Logs) ---
@@ -163,6 +168,10 @@ resource "scaleway_iam_policy" "artifacts_s3" {
 resource "scaleway_iam_api_key" "artifacts_s3" {
   application_id     = scaleway_iam_application.artifacts_s3.id
   default_project_id = var.project_id
+
+  lifecycle {
+    ignore_changes = [expires_at]
+  }
 }
 
 resource "scaleway_object_bucket_policy" "artifacts" {
@@ -177,6 +186,16 @@ resource "scaleway_object_bucket_policy" "artifacts" {
         Effect    = "Allow"
         Principal = { SCW = "application_id:${scaleway_iam_application.artifacts_s3.id}" }
         Action    = ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = [
+          scaleway_object_bucket.artifacts.name,
+          "${scaleway_object_bucket.artifacts.name}/*",
+        ]
+      },
+      {
+        Sid       = "AllowOperatorsFullAccess"
+        Effect    = "Allow"
+        Principal = { SCW = local.operator_principals }
+        Action    = "s3:*"
         Resource = [
           scaleway_object_bucket.artifacts.name,
           "${scaleway_object_bucket.artifacts.name}/*",
@@ -204,6 +223,10 @@ resource "scaleway_iam_policy" "logs_s3" {
 resource "scaleway_iam_api_key" "logs_s3" {
   application_id     = scaleway_iam_application.logs_s3.id
   default_project_id = var.project_id
+
+  lifecycle {
+    ignore_changes = [expires_at]
+  }
 }
 
 resource "scaleway_object_bucket_policy" "logs" {
@@ -218,6 +241,16 @@ resource "scaleway_object_bucket_policy" "logs" {
         Effect    = "Allow"
         Principal = { SCW = "application_id:${scaleway_iam_application.logs_s3.id}" }
         Action    = ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = [
+          scaleway_object_bucket.logs.name,
+          "${scaleway_object_bucket.logs.name}/*",
+        ]
+      },
+      {
+        Sid       = "AllowOperatorsFullAccess"
+        Effect    = "Allow"
+        Principal = { SCW = local.operator_principals }
+        Action    = "s3:*"
         Resource = [
           scaleway_object_bucket.logs.name,
           "${scaleway_object_bucket.logs.name}/*",
