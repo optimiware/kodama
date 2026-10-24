@@ -17,10 +17,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.4.2
-      - run: make openforge-install docs-check config-check
+      - run: make docs-check config-check
       - name: Qualify changed tooling only
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -29,9 +26,6 @@ jobs:
             changed=$(git diff --name-only "$BASE" HEAD)
           else
             changed=$(git ls-files)
-          fi
-          if echo "$changed" | grep -Eq '^(openforge\.json|\.opencode/|Makefile|\.github/workflows/tooling\.yml)'; then
-            make check-openforge
           fi
           if echo "$changed" | grep -Eq '^(scripts/dev/|dev/|Makefile|\.github/workflows/tooling.yml)'; then
             make test-python

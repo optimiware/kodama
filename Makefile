@@ -12,7 +12,7 @@ CHECK_PACKAGES ?=
 GO_CORE_PACKAGES = ./cmd/... ./internal/... ./api/... ./contracts/... ./pkg/... ./test/support/...
 PKGS ?= $(GO_CORE_PACKAGES)
 
-.PHONY: fmt fmt-check lint lint-openforge test test-go test-go-unit test-go-json test-python openforge-install test-openforge check-openforge check-go check-go-integration test-task check-task build tools dev-up dev-down test-integration test-assembly test-m1 test-m2 test-m3 test-chart api-generate api-check scaffold-smoke dev-teardown-check dev-diagnostics docs-check openforge-telegram
+.PHONY: fmt fmt-check lint lint-openforge test test-go test-go-unit test-go-json test-python openforge-install test-openforge check-openforge check-go check-go-integration test-task check-task build tools dev-up dev-down test-integration test-assembly test-m1 test-m2 test-m3 test-chart api-generate api-check scaffold-smoke dev-teardown-check dev-diagnostics docs-check validate-tasks openforge-telegram
 
 fmt:
 	$(GO) fmt ./...
@@ -160,6 +160,9 @@ dev-diagnostics:
 
 docs-check:
 	$(PYTHON) scripts/dev/check.py docs
+
+# Needs the separate OpenForge checkout (OPENFORGE_DIR, default ../openforge).
+validate-tasks:
 	$(OPENFORGE) validate
 
 .PHONY: lint-go config-check dev-preflight test-go-unit-json

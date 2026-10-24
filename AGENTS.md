@@ -88,7 +88,7 @@ The [image workflow](.github/workflows/image.yml) builds `linux/amd64` and `linu
 podman build -f Containerfile -t localhost/kodama:0.0.1 .
 ```
 
-The [task index](docs/tasks/README.md) records merged contributions and remaining joins. Incremental composition (T-070 core → T-071 execution → T-072 manual agent/delivery, with milestone joins between them) turns those contributions into usable slices; T-070, T-071, T-072, T-039, T-075 and T-046 are assembled (T-072, T-039, T-075 and T-046 over injected adapters in unit tests: the real SQL, deployment, Git-admission and Podman/kind joins are T-073, T-067 and T-038, and the real business-loop joins are T-044), and the installed round trips (T-026) are not yet recorded. Until that evidence is merged, the compiled binary is not a complete factory.
+See [project status](docs/status.md) for what works today and what is still pending.
 
 ## OpenForge repository automation
 

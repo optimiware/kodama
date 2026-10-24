@@ -1,8 +1,20 @@
-# Kodama specification book
+# Kodama documentation
 
-This is the implementation-oriented design book for Kodama. Specifications describe the required behavior; the [task index](tasks/README.md) records merged capability contributions. Package implementation, executable wiring, milestone acceptance and production qualification are distinct evidence boundaries. Markdown contracts are accompanied by existing runtime schemas and module OpenAPI fragments; aggregate/public-client integration remains task-owned.
+Kodama is an API-first software factory: coding agents and container pipelines do the work, and people make the decisions. These documents describe what it does, how it is built and how to run it.
 
-Start implementation with the [KISS review](review-kiss.md), [implementation baseline](implementation/README.md), and [dependency-linked tasks](tasks/README.md). Keep one Go module with vertical packages and explicit app composition; use the [seam owner map](implementation/repository-layout.md#package-seam-contracts) and [validation profiles](implementation/development-and-testing.md#validation-profiles). Finish unit-tested Go modules first on the in-memory `development` environment ([environments](implementation/environments.md)), then M1/M2 Podman integration checkpoints on `test`, then Kubernetes conformance and staging; agent capacity follows `--workers`, separately from service/kind limits.
+## Start here
+
+| I want to... | Read |
+| --- | --- |
+| See what works today | [Project status](status.md) |
+| Understand the idea | [Vision and scope](book/01-vision-and-scope.md), then [domain and lifecycles](book/03-domain-and-lifecycles.md) |
+| See it in a real scenario | [ERP gap to preview](examples/workflows/erp-gap-to-preview.md) |
+| Understand the architecture | [System architecture](book/05-system-architecture.md) and the [ADR index](adr/README.md) |
+| Integrate with the API | [Contracts](contracts/README.md) and the [HTTP interface](contracts/http-api.md) |
+| Install and operate it | [Installation and configuration](operations/installation-and-configuration.md) |
+| Contribute code | [CONTRIBUTING.md](../CONTRIBUTING.md) and the [specifications](#contributors) |
+
+The documents are specifications: they describe the required behavior, and [project status](status.md) says how much of it exists. Package implementation, executable wiring, milestone acceptance and production qualification are separate evidence boundaries.
 
 ## Reading paths
 
@@ -92,8 +104,10 @@ Validate Markdown links/fenced syntax and examples against the owning contracts.
 
 ## Project navigation
 
+- [Project status](status.md) and [assembly status](implementation/assembly-status.md)
+- [Task backlog](tasks/README.md)
 - [Capability traceability](traceability.md)
 - [Decision register](decisions.md)
 - [Architecture decisions](adr/README.md)
 - [Repository README](../README.md)
-- [Agent contribution instructions](../AGENTS.md)
+- [Contributing](../CONTRIBUTING.md) and [instructions for agents](../AGENTS.md)

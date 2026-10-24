@@ -4,15 +4,69 @@
 
 # Kodama
 
-**An API-first, Kubernetes-native software factory: Optimi's agent layer and autonomous SDLC.**
+**An open-source, API-first software factory for Kubernetes. Coding agents and container pipelines do the work; people make the decisions.**
 
-Kodama turns business requests into working software. It connects a request to a specification, a working environment, an executable pipeline, review evidence and a deployment, with humans deciding at the points that matter.
+[![CI](https://github.com/optimiware/kodama/actions/workflows/ci.yml/badge.svg)](https://github.com/optimiware/kodama/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/optimiware/kodama)](LICENSE)
+[![Go](https://img.shields.io/github/go-mod/go-version/optimiware/kodama)](go.mod)
 
-It is built for organizations that write software to fill the gaps in their ERP, CRM and legacy systems, and want less dependence on disconnected SaaS products.
+Kodama turns a business request into reviewed, deployed software. It connects a request to a specification, a working branch, a pipeline run, evidence and a deployment, and it stops at the points where an accountable human has to say yes.
 
-> **Status:** early development. The core packages and the command-line client are in place, and the server already runs a first end-to-end slice. It is not yet a complete, production-ready factory. See the [detailed status](docs/implementation/assembly-status.md).
+It is built for teams that write software to fill the gaps in their ERP, CRM and legacy systems, and want less dependence on disconnected SaaS products.
 
-## How it works
+> **Status: early.** The core platform runs end to end on a developer machine, verified against real PostgreSQL, JetStream, S3, Git and Podman. It is not production-ready yet. See the [project status](docs/status.md) for what works and what doesn't.
+
+```mermaid
+flowchart LR
+    A[Business request] --> B[Work item and specification]
+    B --> C[Pipeline run<br/>agents and containers]
+    C --> D{Human gate}
+    D -- approved --> E[Preview and staging]
+    D -- rework --> C
+```
+
+## What a pipeline looks like
+
+A pipeline is a versioned file. Agents and ordinary containers are steps, and a gate waits for a person (abridged from the [full example](docs/examples/workflows/erp-gap-to-preview.md)):
+
+```yaml
+apiVersion: kodama/v1alpha1
+kind: Pipeline
+metadata:
+  name: inventory-preview
+spec:
+  steps:
+    - id: implement                # an agent writes the change on the work item's branch
+      kind: agent
+      agent: {profile: coding-v1}
+      workspace: {access: write, from: run}
+
+    - id: test                     # an ordinary container checks it
+      kind: container
+      needs: [implement]
+      image: registry.example.invalid/go-tools@sha256:1111…
+      command: ["/bin/sh", "-ec"]
+      args: ["cd /workspace && ./ci/quality.sh"]
+      workspace: {access: read, from: implement}
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/quality.json}
+
+    - id: review                   # a person decides, looking at that evidence
+      kind: gate
+      needs: [test]
+      gate:
+        evidence: ["${{ steps.test.outputs.report }}"]
+```
+
+## Why Kodama
+
+- **API-first.** Everything is available through the HTTP API, a generated Go client and the CLI, so it fits the editors and tools you already use.
+- **Small core.** One Go server, one step entrypoint, a handful of durable records, and ordinary Git and container commands.
+- **Recoverable.** Source you published and results you committed survive container and server failures. Retries and cancellation are durable.
+- **Humans accept.** Agents produce evidence. People accept business outcomes.
+- **Safe by default.** Tenant and project scope travel through data, execution, events and artifacts. Secrets are KMS-encrypted and write-only through the API.
+
+## The pieces
 
 - A **work item** captures intent, acceptance criteria and business progress.
 - A **workspace** pairs an actionable work item with a Git branch. Commits are durable checkpoints.
@@ -20,59 +74,38 @@ It is built for organizations that write software to fill the gaps in their ERP,
 - A **gate** asks one accountable human to decide, based on identified source and evidence.
 - A **blueprint** provides stack-specific conventions, templates and agent guidance.
 
-Engineers work from the CLI, HTTP API, MCP and webhooks, in the editors they already use. Business analysts give requirements and review results through the same interfaces and integrations.
-
-## Reference lifecycle
-
-```text
-Story or task → Plan → Specification → Prototype → Implementation
-  → QA gate → Build → Preview → Staging → E2E testing
-  → AI exploratory QA → Human review → Completion
-```
-
-Each project picks the stages it needs. ChatOps reports meaningful events along the way, and review and rework form an explicit loop.
-
-## Capabilities
-
-- Built-in work management with Kanban policies, WIP limits and a fast API.
-- Container pipelines with durable retries, cancellation, recovery and human gates.
-- Agent steps using a native harness or a headless coding harness.
-- Tenant-aware authentication, RBAC, quotas and audit.
-- AI gateway and MCP proxy with scoped access and usage accounting.
-- Project variables and KMS-encrypted secrets.
-- Build, preview, staging, test evidence, human review and ChatOps.
-- Blueprints for Go + PostgreSQL and Supabase + Hono + Vite.
+Reference lifecycle: story → plan → specification → prototype → implementation → QA gate → build → preview → staging → E2E tests → AI exploratory QA → human review → done. Each project picks the stages it needs.
 
 ## Built with
 
-| Technology | Role |
-| --- | --- |
-| Go | API, domain logic, orchestration and gateways, in one server |
-| Kubernetes | Pipeline steps run as native Jobs, with tenants separated by namespace |
-| PostgreSQL | Product and workflow state, variables, encrypted secrets |
-| NATS JetStream | Event delivery and notifications |
-| Git and S3-compatible storage | Source and guidance in Git; artifacts and logs in S3 |
+Go for the server, Kubernetes Jobs for pipeline steps, PostgreSQL for state and encrypted secrets, NATS JetStream for events, Git for source and S3-compatible storage for artifacts and logs. It targets AWS, GCP and Scaleway, and one installation serves several tenants in separate namespaces. See the [architecture](docs/book/05-system-architecture.md).
 
-Kodama supports AWS, GCP and Scaleway, and requires Kubernetes, PostgreSQL and that cloud's KMS. Hosted and standalone installations share the same product contracts.
+## Try it
 
-Optimi Platform is the company core and owns shared tenant authority. Kodama owns agent execution and the software-delivery lifecycle within that authority. See [platform integration](docs/specs/platform-integration.md).
+```sh
+make test-m1     # the whole first slice in memory: no containers, about 30 seconds
+make build       # builds dev/.state/bin/kodama
+dev/.state/bin/kodama --help
+```
+
+Running the real server needs PostgreSQL, JetStream, S3, Git and an OIDC issuer. The [development runbook](dev/README.md) brings them up locally with Podman. You need Go 1.27.2 and GNU Make.
 
 ## Documentation
 
-Start at the [documentation index](docs/README.md).
-
-- [Vision and scope](docs/book/01-vision-and-scope.md)
+- [Project status](docs/status.md)
+- [Vision and scope](docs/book/01-vision-and-scope.md) and [roadmap](docs/book/07-delivery-roadmap.md)
 - [Domain and lifecycles](docs/book/03-domain-and-lifecycles.md)
 - [System architecture](docs/book/05-system-architecture.md)
 - [Reference workflow](docs/examples/workflows/erp-gap-to-preview.md)
 - [Installation design](docs/operations/installation-and-configuration.md)
-- [Implementation roadmap](docs/book/07-delivery-roadmap.md)
-- [Decision register](docs/decisions.md)
+- [All documentation](docs/README.md)
+
+Kodama is the agent layer of Optimi Platform, which owns shared tenant identity and core services. Kodama owns agent execution and the software-delivery lifecycle within that authority, and also runs standalone. See [platform integration](docs/specs/platform-integration.md) and the [Optimi documentation](https://optimi.com/en/docs/kodama).
 
 ## Contributing
 
-Build, test and contribution instructions are in [AGENTS.md](AGENTS.md).
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Kodama is licensed under the [Apache License, Version 2.0](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE).
