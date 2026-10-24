@@ -119,6 +119,14 @@ resource "tls_private_key" "runtime_signing" {
 
 # ---- generated credentials ----
 
+locals {
+  # A cloud root that provisions the database roles itself (Scaleway: the admin user cannot grant on the
+  # platform-owned database) hands over their passwords; otherwise the roles are created below by SQL.
+  external_roles     = lookup(var.bootstrap_secrets, "migration_password", "") != "" && lookup(var.bootstrap_secrets, "runtime_password", "") != ""
+  migration_password = local.external_roles ? var.bootstrap_secrets["migration_password"] : random_password.migration.result
+  runtime_password   = local.external_roles ? var.bootstrap_secrets["runtime_password"] : random_password.runtime.result
+}
+
 resource "random_password" "migration" {
   length  = 40
   special = false
@@ -201,6 +209,8 @@ locals {
 }
 
 resource "kubernetes_secret_v1" "bootstrap_sql" {
+  count = local.external_roles ? 0 : 1
+
   metadata {
     name      = "kodama-bootstrap-sql-${local.roles_token}"
     namespace = kubernetes_namespace_v1.control_plane.metadata[0].name
@@ -212,6 +222,8 @@ resource "kubernetes_secret_v1" "bootstrap_sql" {
 }
 
 resource "kubernetes_job_v1" "bootstrap_sql" {
+  count = local.external_roles ? 0 : 1
+
   metadata {
     name      = "kodama-bootstrap-sql-${local.roles_token}"
     namespace = kubernetes_namespace_v1.control_plane.metadata[0].name
@@ -257,7 +269,7 @@ resource "kubernetes_job_v1" "bootstrap_sql" {
         volume {
           name = "sql"
           secret {
-            secret_name  = kubernetes_secret_v1.bootstrap_sql.metadata[0].name
+            secret_name  = kubernetes_secret_v1.bootstrap_sql[0].metadata[0].name
             default_mode = "0440"
           }
         }
@@ -290,7 +302,7 @@ resource "kubernetes_secret_v1" "runtime" {
   }
 
   data = {
-    "database-runtime-url" = "postgres://${local.pg.runtime_role}:${random_password.runtime.result}@${local.pg.host}:${local.pg.port}/${local.pg.database}?sslmode=${local.pg.ssl_mode}"
+    "database-runtime-url" = "postgres://${local.pg.runtime_role}:${local.runtime_password}@${local.pg.host}:${local.pg.port}/${local.pg.database}?sslmode=${local.pg.ssl_mode}"
     "nats-token"           = random_password.nats_token.result
     "git-read-token"       = data.kubernetes_secret_v1.git_tokens.data["read"]
     "git-write-token"      = data.kubernetes_secret_v1.git_tokens.data["write"]
@@ -330,7 +342,7 @@ resource "kubernetes_secret_v1" "migration" {
   }
 
   data = {
-    "database-migration-url" = "postgres://${local.pg.migration_role}:${random_password.migration.result}@${local.pg.host}:${local.pg.port}/${local.pg.database}?sslmode=${local.pg.ssl_mode}"
+    "database-migration-url" = "postgres://${local.pg.migration_role}:${local.migration_password}@${local.pg.host}:${local.pg.port}/${local.pg.database}?sslmode=${local.pg.ssl_mode}"
     "ca.crt"                 = tls_self_signed_cert.ca.cert_pem
   }
 }

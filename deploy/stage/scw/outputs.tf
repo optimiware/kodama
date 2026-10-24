@@ -75,6 +75,8 @@ output "stage_bootstrap_secrets" {
   value = {
     postgres_admin_username = scaleway_rdb_instance.postgres.user_name
     postgres_admin_password = random_password.postgres_admin.result
+    migration_password      = random_password.db_migration.result
+    runtime_password        = random_password.db_runtime.result
     artifacts_s3_access_key = scaleway_iam_api_key.artifacts_s3.access_key
     artifacts_s3_secret_key = scaleway_iam_api_key.artifacts_s3.secret_key
     logs_s3_access_key      = scaleway_iam_api_key.logs_s3.access_key

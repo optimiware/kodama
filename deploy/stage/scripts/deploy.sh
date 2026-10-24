@@ -189,7 +189,8 @@ tofu -chdir="${STACK_DIR}" init -input=false -backend-config="path=${STATE_DIR}/
 tofu -chdir="${STACK_DIR}" validate
 
 # Adopt a controller installed before the stack managed it (same release, same chart), once.
-if ! tofu -chdir="${STACK_DIR}" state list 2>/dev/null | grep -qx 'helm_release.ingress_nginx' &&
+STACK_RESOURCES="$(tofu -chdir="${STACK_DIR}" state list 2>/dev/null || true)"
+if ! grep -qx 'helm_release.ingress_nginx' <<<"${STACK_RESOURCES}" &&
   helm --kubeconfig "${KUBECONFIG:-${HOME}/.kube/config}" status ingress-nginx -n ingress-nginx >/dev/null 2>&1; then
   log_info "importing the existing ingress-nginx release into the stack state"
   tofu -chdir="${STACK_DIR}" import -input=false -var-file="${STACK_TFVARS}" -var-file="${SECRETS_TFVARS}" helm_release.ingress_nginx ingress-nginx/ingress-nginx

@@ -87,6 +87,47 @@ resource "scaleway_rdb_privilege" "admin" {
   permission    = "all"
 }
 
+# Distinct least-privilege roles. The managed admin user cannot grant on the platform-owned database, so the
+# roles and their privileges are created through the platform API (which runs as the database superadmin).
+
+resource "random_password" "db_migration" {
+  length  = 40
+  special = false
+}
+
+resource "random_password" "db_runtime" {
+  length  = 40
+  special = false
+}
+
+resource "scaleway_rdb_user" "migration" {
+  instance_id = scaleway_rdb_instance.postgres.id
+  name        = "kodama_migration"
+  password    = random_password.db_migration.result
+  is_admin    = false
+}
+
+resource "scaleway_rdb_user" "runtime" {
+  instance_id = scaleway_rdb_instance.postgres.id
+  name        = "kodama_runtime"
+  password    = random_password.db_runtime.result
+  is_admin    = false
+}
+
+resource "scaleway_rdb_privilege" "migration" {
+  instance_id   = scaleway_rdb_instance.postgres.id
+  user_name     = scaleway_rdb_user.migration.name
+  database_name = scaleway_rdb_database.kodama.name
+  permission    = "all"
+}
+
+resource "scaleway_rdb_privilege" "runtime" {
+  instance_id   = scaleway_rdb_instance.postgres.id
+  user_name     = scaleway_rdb_user.runtime.name
+  database_name = scaleway_rdb_database.kodama.name
+  permission    = "readwrite"
+}
+
 # --- Scaleway Key Manager (fr-par Symmetric AES-256-GCM Keys + Scoped IAM Key) ---
 
 resource "scaleway_key_manager_key" "kek_v1" {
