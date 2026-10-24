@@ -18,12 +18,6 @@ locals {
   git_url_effective = coalesce(var.git_url, "https://git.${local.host}/optimi/kodama-source.git")
   git_origin        = "https://${split("/", trimprefix(local.git_url_effective, "https://"))[0]}/"
   personas          = ["admin", "analyst", "engineer", "reviewer", "viewer", "outsider", "foreign"]
-  nats_dns = [
-    "kodama-nats",
-    "kodama-nats.${var.control_plane_namespace}",
-    "kodama-nats.${var.control_plane_namespace}.svc",
-    "kodama-nats.${var.control_plane_namespace}.svc.cluster.local",
-  ]
 }
 
 # ---- namespaces ----
@@ -63,29 +57,6 @@ resource "tls_self_signed_cert" "ca" {
   subject {
     common_name = "${local.installation}-ca"
   }
-}
-
-resource "tls_private_key" "nats" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P256"
-}
-
-resource "tls_cert_request" "nats" {
-  private_key_pem = tls_private_key.nats.private_key_pem
-  dns_names       = local.nats_dns
-
-  subject {
-    common_name = local.nats_dns[3]
-  }
-}
-
-resource "tls_locally_signed_cert" "nats" {
-  cert_request_pem      = tls_cert_request.nats.cert_request_pem
-  ca_private_key_pem    = tls_private_key.ca.private_key_pem
-  ca_cert_pem           = tls_self_signed_cert.ca.cert_pem
-  validity_period_hours = 8760
-  early_renewal_hours   = 24 * 30
-  allowed_uses          = ["digital_signature", "key_encipherment", "server_auth"]
 }
 
 resource "tls_private_key" "ingress" {
@@ -354,18 +325,6 @@ resource "kubernetes_secret_v1" "nats_auth" {
   }
   data = {
     "nats-token" = random_password.nats_token.result
-  }
-}
-
-resource "kubernetes_secret_v1" "nats_tls" {
-  metadata {
-    name      = "kodama-nats-tls"
-    namespace = kubernetes_namespace_v1.control_plane.metadata[0].name
-  }
-  data = {
-    "ca.crt"  = tls_self_signed_cert.ca.cert_pem
-    "tls.crt" = tls_locally_signed_cert.nats.cert_pem
-    "tls.key" = tls_private_key.nats.private_key_pem_pkcs8
   }
 }
 

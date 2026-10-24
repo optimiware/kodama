@@ -1,5 +1,5 @@
 locals {
-  nats_url = "tls://kodama-nats.${var.control_plane_namespace}.svc.cluster.local:4222"
+  nats_url = "${var.nats_tls ? "tls" : "nats"}://kodama-nats.${var.control_plane_namespace}.svc.cluster.local:4222"
   loki_url = "http://kodama-loki.${var.observability_namespace}.svc.cluster.local:3100"
   prom_url = "http://kodama-prometheus-server.${var.observability_namespace}.svc.cluster.local:80"
 
@@ -11,6 +11,7 @@ locals {
   kodama_values = templatefile("${path.module}/values/kodama.yaml.tftpl", {
     contract       = var.stage_contract
     nats_url       = local.nats_url
+    profile        = var.nats_tls ? "external" : "development"
     kodama_image   = var.kodama_image
     workload_image = var.example_workload_image
     git_url        = coalesce(var.git_url, "https://git.${var.stage_contract.network.ingress_host}/optimi/kodama-source.git")
@@ -77,7 +78,7 @@ resource "helm_release" "nats" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.nats_values]
-  depends_on       = [kubernetes_secret_v1.nats_auth, kubernetes_secret_v1.nats_tls]
+  depends_on       = [kubernetes_secret_v1.nats_auth]
 }
 
 resource "helm_release" "loki" {

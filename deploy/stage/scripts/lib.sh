@@ -161,6 +161,7 @@ tfvars = {
     "oidc_issuer": os.environ.get("KODAMA_OIDC_ISSUER") or f"https://auth.{host}",
     "oidc_audience": os.environ.get("KODAMA_OIDC_AUDIENCE") or f"https://{host}/api",
     "custom_ca": True,
+    "nats_tls": os.environ.get("KODAMA_NATS_TLS", "false").lower() == "true",
 }
 with open(tfvars_out, "w", encoding="utf-8") as fh:
     json.dump(tfvars, fh, indent=2)
@@ -189,7 +190,8 @@ locals {
   v = jsondecode(file("${abs_tfvars}"))
   rendered = templatefile("${STAGE_DIR}/shared/stack/values/kodama.yaml.tftpl", {
     contract       = local.v.stage_contract
-    nats_url       = "tls://kodama-nats.\${local.v.control_plane_namespace}.svc.cluster.local:4222"
+    nats_url       = "\${local.v.nats_tls ? "tls" : "nats"}://kodama-nats.\${local.v.control_plane_namespace}.svc.cluster.local:4222"
+    profile        = local.v.nats_tls ? "external" : "development"
     kodama_image   = local.v.kodama_image
     workload_image = local.v.example_workload_image
     git_url        = local.v.git_url

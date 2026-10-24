@@ -84,11 +84,11 @@ Scaleway database roles are created through the platform API (`scaleway_rdb_user
 the managed admin user cannot grant on the platform-owned database; the stack falls back to a SQL Job when a cloud
 root does not hand over role passwords.
 
-**Known limitation (qualification blocker).** The server's NATS client and its OIDC client trust only the system
-CA store; the chart requires `tls://` for NATS and `https://` for the issuer, so an installation whose in-cluster
-NATS or OIDC certificates are signed by a private CA cannot start (`x509: certificate signed by unknown authority`).
-Git, the runtime callback and the registry do honour the installation CA. This is a product gap tracked against T-104
-(supported TLS), not a stage-script defect.
+**Recorded deviation (O-27, T-106).** NATS runs plaintext (`nats://`, token authentication) under chart
+`profile: development` (stack variable `nats_tls=false`), because the server's NATS and OIDC clients trust only the
+system CA store and no private-CA trust design exists yet. `KODAMA_ENV=production` still refuses every development
+and test adapter. Evidence from this stage must name the profile and cannot claim NATS TLS. The OIDC issuer must
+present a certificate the server's system trust store accepts; see the open items in the stage handoff.
 
 Run critical-path qualification gates and emit evidence bundles:
 

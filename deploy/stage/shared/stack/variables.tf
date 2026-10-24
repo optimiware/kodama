@@ -95,6 +95,12 @@ variable "deps_namespace" {
   default     = "kodama-deps"
 }
 
+variable "nats_tls" {
+  description = "Whether NATS serves TLS. Stage default is false: plaintext nats:// with token authentication on the cluster network, which the chart accepts only under profile=development. Re-enabling TLS (profile=external) needs the private-CA design tracked by T-106."
+  type        = bool
+  default     = false
+}
+
 variable "psql_image" {
   description = "Image of the short-lived Job that creates the database roles."
   type        = string

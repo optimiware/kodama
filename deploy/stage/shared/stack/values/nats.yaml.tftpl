@@ -1,4 +1,5 @@
-# NATS JetStream shared Helm values (in-cluster TLS + token auth from kodama-nats-auth Secret).
+# NATS JetStream shared Helm values: token authentication from the kodama-nats-auth Secret.
+# Plaintext on the cluster network by design for the stage (see variable nats_tls and T-106).
 config:
   cluster:
     enabled: false
@@ -8,13 +9,6 @@ config:
       pvc:
         enabled: true
         size: 10Gi
-  nats:
-    tls:
-      enabled: true
-      secretName: kodama-nats-tls
-      cert: tls.crt
-      key: tls.key
-      ca: ca.crt
   merge:
     authorization:
       # `<< >>` renders the value unquoted, so NATS expands the environment variable; a quoted

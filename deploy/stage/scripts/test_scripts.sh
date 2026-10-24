@@ -67,7 +67,7 @@ for cloud in aws gcp scw; do
   write_stack_tfvars "${WORK_DIR}/contract-${cloud}.json" "${RENDER_DIR}/terraform.tfvars.json" "/tmp/kubeconfig"
   cat >"${RENDER_DIR}/main.tf" <<EOF
 locals {
-  nats_url = "tls://kodama-nats.\${var.control_plane_namespace}.svc.cluster.local:4222"
+  nats_url = "\${var.nats_tls ? "tls" : "nats"}://kodama-nats.\${var.control_plane_namespace}.svc.cluster.local:4222"
   loki_url = "http://kodama-loki.\${var.observability_namespace}.svc.cluster.local:3100"
   prom_url = "http://kodama-prometheus-server.\${var.observability_namespace}.svc.cluster.local:80"
   monitored_namespaces = concat([var.control_plane_namespace], [for t in var.stage_contract.tenants : t.namespace])
@@ -75,6 +75,7 @@ locals {
   kodama_values = templatefile("${STAGE_DIR}/shared/stack/values/kodama.yaml.tftpl", {
     contract       = var.stage_contract
     nats_url       = local.nats_url
+    profile        = var.nats_tls ? "external" : "development"
     kodama_image   = var.kodama_image
     workload_image = var.example_workload_image
     git_url        = coalesce(var.git_url, "https://git.\${var.stage_contract.network.ingress_host}/optimi/kodama-source.git")

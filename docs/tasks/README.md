@@ -194,6 +194,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-103 Remaining M1 acceptance cleanup](T-103-m1-acceptance-cleanup.md) | T-026, T-099, T-101 | done |
 | [T-104 Full Kubernetes installation readiness](T-104-kubernetes-full-readiness.md) | T-089, T-105, T-103 | planned |
 | [T-105 Secrets startup wiring](T-105-secrets-startup.md) | T-028, T-044, T-103 | done |
+| [T-106 Production TLS hardening with a private CA](T-106-production-tls-hardening.md) | T-104, T-090, T-105 | deferred |
 
 ## Verification and scope
 
