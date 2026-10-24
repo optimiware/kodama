@@ -91,13 +91,23 @@ resource "scaleway_rdb_privilege" "admin" {
 # roles and their privileges are created through the platform API (which runs as the database superadmin).
 
 resource "random_password" "db_migration" {
-  length  = 40
-  special = false
+  length           = 40
+  special          = true
+  override_special = "-_"
+  min_upper        = 2
+  min_lower        = 2
+  min_numeric      = 2
+  min_special      = 2
 }
 
 resource "random_password" "db_runtime" {
-  length  = 40
-  special = false
+  length           = 40
+  special          = true
+  override_special = "-_"
+  min_upper        = 2
+  min_lower        = 2
+  min_numeric      = 2
+  min_special      = 2
 }
 
 resource "scaleway_rdb_user" "migration" {
