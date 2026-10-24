@@ -1,0 +1,10 @@
+{
+  "task": "T-031",
+  "opencodeVersion": "opencode v2.1.2",
+  "opencodeSha256": "22636c800ba6c8dc5353e264183bb3927725d824cba412f007dea9c694740f52",
+  "wrapperSha256": "763528d74df9c857bec5c32f3f7fd2341936070e16046a5ebacda8fdf707eb47",
+  "localImageId": "83f30b37ef524b61719231271dccfa5a9881574676450b0ecd018f1412bb713a",
+  "registryRef": "localhost:33067/t-batch/t031/harness-opencode@sha256:f2e543dc4919668be1783c2f5e03198383856f9cf13de832e06657553ad12117",
+  "pushedDigest": "sha256:f2e543dc4919668be1783c2f5e03198383856f9cf13de832e06657553ad12117",
+  "packages": "bash=5.2.15-2+b13 ca-certificates=20250419~deb12u1 coreutils=9.1-1 git=1:2.39.5-0+deb12u3 libc6=2.36-9+deb12u14 ripgrep=13.0.0-4+b2 "
+}

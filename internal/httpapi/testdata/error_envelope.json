@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "version_conflict",
+    "message": "the resource changed; reread it and retry with the current version",
+    "requestId": "req_0123456789abcdef0123456789abcdef",
+    "details": {}
+  }
+}

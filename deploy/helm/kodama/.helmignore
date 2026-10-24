@@ -1,0 +1,7 @@
+# Tests and tooling live next to the chart but are not part of the package.
+*_test.go
+testdata/
+.git*
+*.swp
+*.bak
+*.orig

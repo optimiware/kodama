@@ -1,0 +1,277 @@
+# Kodama chart defaults (T-018).
+#
+# These defaults render a complete DEVELOPMENT-grade profile with placeholder endpoints and a
+# placeholder image digest. Use values-dev.yaml for the kind fixtures or values-external.yaml
+# as the starting point for an installation against external dependencies.
+#
+# Rules enforced by values.schema.json:
+#   * credentials are never values: only references to existing Kubernetes Secrets
+#     (existingSecret) or workload-identity configuration;
+#   * the server runs exactly one replica;
+#   * every image is pinned by digest (the digests below are PLACEHOLDERS);
+#   * exactly one KMS provider is selected, and the development keyfile is rejected when
+#     profile=external.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Deployment profile. "development" permits plaintext in-cluster fixtures and the local keyfile
+# KEK. "external" requires TLS endpoints and a cloud KMS provider (AWS, GCP or Scaleway).
+profile: development
+
+# Authority profile: selected explicitly, independent of execution trust.
+# "hosted" is NOT supported until T-061 and fails rendering; there is no local fallback.
+authority:
+  mode: standalone
+
+# Identity of this installation. It binds envelope-encryption contexts and must stay stable for
+# the life of the installation (never reuse it for another installation's data).
+# PLACEHOLDER: set your own.
+installation:
+  id: kodama-example
+
+# Release image. It serves `kodama server`, the migration command and, through an init
+# container, provides the static `kodama` binary injected into tenant Jobs.
+# The main-branch workflow publishes ghcr.io/<owner>/kodama:<semver> (see
+# .github/workflows/image.yml). PLACEHOLDER repository and digest: override with the
+# published image before a real install.
+image:
+  repository: registry.example.invalid/kodama/kodama
+  tag: "0.0.0-placeholder"
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  pullPolicy: IfNotPresent
+
+# Names of existing image pull Secrets (references only).
+imagePullSecrets: []
+
+# Container hardening for the server and migration containers. The schema fixes the booleans
+# below; only the numeric IDs are adjustable.
+securityContext:
+  runAsUser: 65532
+  runAsGroup: 65532
+  runAsNonRoot: true
+  privileged: false
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+
+# Control-plane service accounts. Annotations carry workload-identity configuration
+# (for example eks.amazonaws.com/role-arn or iam.gke.io/gcp-service-account).
+serviceAccounts:
+  server:
+    annotations: {}
+  migration:
+    annotations: {}
+
+server:
+  # Fixed to 1 for the initial profile; the schema rejects any other value.
+  replicaCount: 1
+  port: 8080
+  # Process configuration frozen by T-001 (dev/configuration.md). Rendered as KODAMA_* environment.
+  logLevel: INFO
+  shutdownTimeout: 10s
+  # Should exceed shutdownTimeout (at most 1m).
+  terminationGracePeriodSeconds: 30
+  tmpSizeLimit: 64Mi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  probes:
+    liveness:
+      periodSeconds: 10
+      failureThreshold: 3
+    readiness:
+      periodSeconds: 5
+      failureThreshold: 3
+  podAnnotations: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
+  tls:
+    enabled: false
+    # Existing TLS Secret (or one issued by an annotation-driven controller).
+    secretName: ""
+
+# References to Secrets that already exist in the release namespace. The chart never creates
+# Secrets. Required keys (file names from dev/configuration.md):
+#   runtime:   database-runtime-url, nats-token, git-read-token, git-write-token,
+#              git-credentials.json (the installation Git credential references: ref, username,
+#              passwordFile -> git-read-token/git-write-token, urlPrefix, tenants),
+#              cursor-key and idempotency-hash-key (raw bytes, at least 32 each),
+#              runtime-signing-key (PEM P-256, generation execution.runtime.signingGeneration),
+#              runtime-ca.crt (PEM certificates: the trust roots workloads use for execution.runtime.url),
+#              s3-access-key + s3-secret-key (config.s3.credentials=static; the core assembly
+#              serves no other object store credentials),
+#              ca.crt (when config.tls.customCA=true), master-key (development keyfile only)
+#   migration: database-migration-url
+secrets:
+  adapter: keyfile
+  keyfile: {} # defaults to current v1 at /secrets/master-key when selected
+  runtime:
+    existingSecret: kodama-runtime
+  migration:
+    existingSecret: kodama-migration
+
+# Non-secret integration wiring.
+# Rendered into the <release>-config ConfigMap as config.yaml (mounted at /etc/kodama/config,
+# selected by KODAMA_CONFIG_FILE) and read strictly by the server (internal/app ChartConfig):
+# endpoints, identifiers and the execution policy, never a credential.
+config:
+  nats:
+    url: "tls://nats.example.invalid:4222"
+  s3:
+    endpoint: "https://s3.example.invalid"
+    region: us-east-1
+    bucket: kodama
+    prefix: ""
+    pathStyle: false
+    # static: read s3-access-key/s3-secret-key files. workloadIdentity: no key files mounted.
+    credentials: static
+  git:
+    url: "https://git.example.invalid/kodama.git"
+  registry:
+    url: "https://registry.example.invalid"
+  oidc:
+    issuer: "https://issuer.example.invalid"
+    audience: "https://kodama.example.invalid/api"
+    cliClientId: kodama-cli
+    redirectUri: "http://127.0.0.1:18999/callback"
+  tls:
+    customCA: false
+
+# One-time schema migration, run as a Helm pre-install/pre-upgrade hook with the migration role.
+migration:
+  enabled: true
+  # `kodama migrate`, rendered as container args after the image ENTRYPOINT; set `command` to
+  # override the entrypoint as well.
+  command: []
+  args: ["migrate"]
+  # The runtime role the migrations grant minimal access to, by name. The migration Job holds the
+  # owner credential only, never the runtime one.
+  runtimeRole: kodama_runtime
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+# Tenant execution namespaces and Job settings. Helm renders namespaces, policy and the
+# settings the server reads. JOBS ARE NOT CREATED BY HELM: the server creates them at runtime
+# (T-021) inside these namespaces.
+execution:
+  # Trusted-engineer baseline only. Not an untrusted-hosted isolation claim.
+  trustProfile: trusted-engineer
+  # Per-namespace execution service account (token never mounted into Jobs).
+  serviceAccountName: kodama-execution
+  # Tenant execution namespaces. Names must start with "kodama-". Namespaces and their guardrails
+  # carry helm.sh/resource-policy: keep and survive uninstall and removal from this list.
+  tenants:
+    - namespace: kodama-tenant-example
+      # The Kodama tenant whose attempts run in this namespace (one tenant per namespace).
+      tenantId: t_example
+  # The runtime API as tenant workloads reach it (rendered into the server's settings document
+  # and the execution policy). The server serves plain HTTP: `url` must be an https origin whose
+  # TLS terminates in front of it (ingress or mesh), which is outside this chart; the server
+  # refuses a plain-http origin under the production environment. The trust roots workloads use
+  # for `url` are the `runtime-ca.crt` file (certificates only) of the runtime Secret. `egress`
+  # is the only destination a workload may reach for the callback. PLACEHOLDERS: replace url and
+  # egress.
+  runtime:
+    url: "https://kodama.example.invalid"
+    # Generation of the `runtime-signing-key` in the runtime Secret. Never reuse a generation for
+    # another key.
+    signingGeneration: 1
+    egress:
+      - name: runtime-callback
+        cidr: 192.0.2.10/32
+        ports: [{port: 443}]
+  # Entrypoint injection (docs/implementation/step-entrypoint.md): an init container from the
+  # release image copies the static kodama binary into the shared tools volume /kodama/bin.
+  entrypoint:
+    sourcePath: /usr/local/bin/kodama
+    # PENDING T-016/T-021: empty means ["cp", sourcePath, "/kodama/bin/kodama"], which requires a
+    # copy tool in the release image. Override when the image provides its own self-copy command.
+    copyCommand: []
+  volumes:
+    workspaceSizeLimit: 5Gi
+    outputsSizeLimit: 1Gi
+    scratchSizeLimit: 512Mi
+    resultsSizeLimit: 1Mi
+    # Memory-backed (medium: Memory); counts against container memory limits.
+    secretsSizeLimit: 16Mi
+    identitySizeLimit: 1Mi
+    toolsSizeLimit: 128Mi
+  job:
+    activeDeadlineSeconds: 3600
+    terminationGracePeriodSeconds: 30
+    runAsUser: 65532
+    runAsGroup: 65532
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+        ephemeral-storage: 1Gi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+        ephemeral-storage: 8Gi
+    injectorResources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+        ephemeral-storage: 16Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+        ephemeral-storage: 128Mi
+  # Fixture only (rendered into the <release>-job-example ConfigMap). PLACEHOLDER image.
+  exampleJob:
+    image:
+      repository: registry.example.invalid/kodama/workload-example
+      tag: "0.0.0-placeholder"
+      digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  quota:
+    pods: 20
+    count/jobs.batch: 20
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    requests.ephemeral-storage: 40Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    limits.ephemeral-storage: 160Gi
+  limitRange:
+    default:
+      cpu: "1"
+      memory: 1Gi
+      ephemeral-storage: 4Gi
+    defaultRequest:
+      cpu: 100m
+      memory: 256Mi
+      ephemeral-storage: 512Mi
+    max:
+      cpu: "4"
+      memory: 8Gi
+      ephemeral-storage: 16Gi
+  network:
+    # Explicit CIDR egress rules for Git, S3 and registry. Every rule needs ports. PostgreSQL and
+    # NATS ports are rejected by the schema: tenant Pods never reach control-plane stores.
+    egress: []
+    #  - name: git
+    #    cidr: 203.0.113.0/24
+    #    ports: [{port: 443}]
+  rbac:
+    # Grant the control plane create/get/delete on Secrets in tenant namespaces. Off until T-021
+    # needs it to deliver admission material.
+    manageSecrets: false

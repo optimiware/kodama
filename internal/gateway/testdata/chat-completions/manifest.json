@@ -1,0 +1,152 @@
+{
+  "protocolRevision": "chat-completions-stream/1",
+  "scope": "OpenAI-compatible streaming chat completions only; deterministic fixtures, not provider qualification",
+  "qualification": {
+    "harness": "pending T-031",
+    "provider": "none claimed",
+    "note": "T-031 selects the OpenCode version and runs the real harness smoke test; passing these fixtures is not GM-12 end-to-end evidence"
+  },
+  "accepted": [
+    "requests/minimal.json",
+    "requests/full.json",
+    "requests/tool_loop.json"
+  ],
+  "rejected": [
+    {
+      "file": "requests/rejected-not_streaming.json",
+      "reason": "only streaming requests are supported"
+    },
+    {
+      "file": "requests/rejected-stream_missing.json",
+      "reason": "only streaming requests are supported"
+    },
+    {
+      "file": "requests/rejected-unknown_member.json",
+      "reason": "unsupported member"
+    },
+    {
+      "file": "requests/rejected-logprobs.json",
+      "reason": "unsupported member"
+    },
+    {
+      "file": "requests/rejected-legacy_functions.json",
+      "reason": "unsupported member"
+    },
+    {
+      "file": "requests/rejected-multiple_choices.json",
+      "reason": "only one choice"
+    },
+    {
+      "file": "requests/rejected-multimodal_content.json",
+      "reason": "content must be text"
+    },
+    {
+      "file": "requests/rejected-unknown_message_member.json",
+      "reason": "unsupported member"
+    },
+    {
+      "file": "requests/rejected-unsupported_role.json",
+      "reason": "role is not supported"
+    },
+    {
+      "file": "requests/rejected-tool_message_without_id.json",
+      "reason": "needs a tool call id"
+    },
+    {
+      "file": "requests/rejected-undeclared_tool_choice.json",
+      "reason": "undeclared function"
+    },
+    {
+      "file": "requests/rejected-tool_choice_without_tools.json",
+      "reason": "needs declared tools"
+    },
+    {
+      "file": "requests/rejected-non_function_tool.json",
+      "reason": "only function tools"
+    },
+    {
+      "file": "requests/rejected-both_token_limits.json",
+      "reason": "only one of"
+    },
+    {
+      "file": "requests/rejected-zero_max_tokens.json",
+      "reason": "max_tokens must be"
+    },
+    {
+      "file": "requests/rejected-bad_temperature.json",
+      "reason": "out of range"
+    },
+    {
+      "file": "requests/rejected-bad_model_name.json",
+      "reason": "model"
+    },
+    {
+      "file": "requests/rejected-no_messages.json",
+      "reason": "messages must be"
+    },
+    {
+      "file": "requests/rejected-stream_options_unknown.json",
+      "reason": "unsupported member"
+    }
+  ],
+  "streams": [
+    {
+      "file": "streams/text.sse",
+      "outcome": "complete",
+      "frames": 5,
+      "usage": {
+        "input": 12,
+        "output": 2
+      },
+      "finish": "stop",
+      "model": "gpt-a-2026-10-01"
+    },
+    {
+      "file": "streams/tool_calls.sse",
+      "outcome": "complete",
+      "frames": 5,
+      "usage": {
+        "input": 40,
+        "output": 18
+      },
+      "finish": "tool_calls",
+      "model": "gpt-a-2026-10-01"
+    },
+    {
+      "file": "streams/no_usage.sse",
+      "outcome": "complete",
+      "frames": 2,
+      "usage": null,
+      "finish": "stop",
+      "model": "gpt-a-2026-10-01"
+    },
+    {
+      "file": "streams/inconsistent_usage.sse",
+      "outcome": "complete",
+      "frames": 3,
+      "usage": "invalid",
+      "finish": "stop",
+      "model": "gpt-a-2026-10-01"
+    },
+    {
+      "file": "streams/truncated.sse",
+      "outcome": "truncated"
+    },
+    {
+      "file": "streams/malformed_event.sse",
+      "outcome": "protocol"
+    },
+    {
+      "file": "streams/unknown_field.sse",
+      "outcome": "protocol"
+    },
+    {
+      "file": "streams/multi_choice.sse",
+      "outcome": "protocol"
+    },
+    {
+      "file": "streams/bad_finish.sse",
+      "outcome": "protocol"
+    }
+  ]
+}

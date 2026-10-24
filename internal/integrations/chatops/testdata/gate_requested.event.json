@@ -1,0 +1,19 @@
+{
+  "id": "evt_01gate",
+  "schemaVersion": 1,
+  "type": "gate.requested",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "projectId": "p_inventory",
+  "resource": {"type": "gate", "id": "gate_1042", "version": 1},
+  "actor": {"type": "user", "id": "usr_engineer"},
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+    "subjectDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "contentRevision": 3,
+    "reviewerScope": "project",
+    "deadline": "2027-01-01T00:00:00Z",
+    "internalNote": "free-form producer data that must never be forwarded"
+  }
+}

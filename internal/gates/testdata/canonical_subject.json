@@ -1,0 +1,87 @@
+[
+  {
+    "name": "specification example",
+    "subject": {
+      "candidateCommit": "1111111111111111111111111111111111111111",
+      "contentRevision": 2,
+      "definitionId": "pd_01",
+      "evidence": [
+        {
+          "id": "art_tests",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "projectId": "p_inventory",
+      "tenantId": "t_acme",
+      "workItemId": "wi_1042"
+    },
+    "canonical": "{\"candidateCommit\":\"1111111111111111111111111111111111111111\",\"contentRevision\":2,\"definitionId\":\"pd_01\",\"deploymentConfigDigest\":null,\"deploymentId\":null,\"evidence\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"id\":\"art_tests\"}],\"projectId\":\"p_inventory\",\"tenantId\":\"t_acme\",\"workItemId\":\"wi_1042\"}",
+    "digest": "sha256:5f6f22a353ca87984abc73ea3a2794e729632ca5e8b931a3bb7ca08832626d71"
+  },
+  {
+    "name": "unsorted evidence",
+    "subject": {
+      "candidateCommit": "1111111111111111111111111111111111111111",
+      "contentRevision": 2,
+      "definitionId": "pd_01",
+      "evidence": [
+        {
+          "id": "art_z",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        {
+          "id": "art_a",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "id": "art_a",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "id": "art_m",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "projectId": "p_inventory",
+      "tenantId": "t_acme",
+      "workItemId": "wi_1042"
+    },
+    "canonical": "{\"candidateCommit\":\"1111111111111111111111111111111111111111\",\"contentRevision\":2,\"definitionId\":\"pd_01\",\"deploymentConfigDigest\":null,\"deploymentId\":null,\"evidence\":[{\"digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"id\":\"art_a\"},{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"id\":\"art_m\"},{\"digest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"id\":\"art_z\"}],\"projectId\":\"p_inventory\",\"tenantId\":\"t_acme\",\"workItemId\":\"wi_1042\"}",
+    "digest": "sha256:568b5b7115ebcde8ced7e548e89957f6db0b44eb3662a375e93768b7739f8514"
+  },
+  {
+    "name": "no evidence",
+    "subject": {
+      "candidateCommit": "2222222222222222222222222222222222222222",
+      "contentRevision": 1,
+      "definitionId": "pd_01",
+      "evidence": [],
+      "projectId": "p_inventory",
+      "tenantId": "t_acme",
+      "workItemId": "wi_1042"
+    },
+    "canonical": "{\"candidateCommit\":\"2222222222222222222222222222222222222222\",\"contentRevision\":1,\"definitionId\":\"pd_01\",\"deploymentConfigDigest\":null,\"deploymentId\":null,\"evidence\":[],\"projectId\":\"p_inventory\",\"tenantId\":\"t_acme\",\"workItemId\":\"wi_1042\"}",
+    "digest": "sha256:cedac6b313231043404e829e0d74c70f1350539a5db09046cfa19d4a2f941fea"
+  },
+  {
+    "name": "deployment configuration",
+    "subject": {
+      "candidateCommit": "1111111111111111111111111111111111111111",
+      "contentRevision": 9007199254740991,
+      "definitionId": "pd_02",
+      "deploymentConfigDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "deploymentId": "dep_7",
+      "evidence": [
+        {
+          "id": "art_tests",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "projectId": "p_inventory",
+      "tenantId": "t_acme",
+      "workItemId": "wi_1042"
+    },
+    "canonical": "{\"candidateCommit\":\"1111111111111111111111111111111111111111\",\"contentRevision\":9007199254740991,\"definitionId\":\"pd_02\",\"deploymentConfigDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deploymentId\":\"dep_7\",\"evidence\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"id\":\"art_tests\"}],\"projectId\":\"p_inventory\",\"tenantId\":\"t_acme\",\"workItemId\":\"wi_1042\"}",
+    "digest": "sha256:df3bb799292425af0fc90212547e3c9ceb42ea3d62fd48078a7f456759408178"
+  }
+]

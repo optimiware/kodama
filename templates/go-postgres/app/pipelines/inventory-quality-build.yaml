@@ -1,0 +1,63 @@
+# Quality gate, human review, then a reproducible image build.
+# Render installation values first: sh ci/render-pipelines.sh values.env OUTDIR
+# Values written between double at-signs are installation inputs, never application defaults.
+apiVersion: kodama/v1alpha1
+kind: Pipeline
+metadata:
+  name: inventory-quality-build
+spec:
+  inputs:
+    registry_repository: {type: string, required: true}
+  steps:
+    - id: implement
+      kind: agent
+      agent: {profile: "@@CODING_PROFILE@@"}
+      workspace: {access: write, from: run}
+      timeoutSeconds: 1800
+      # The selected profile's wrapper must write the candidate-bound design
+      # conformance report here (docs/implementation/design-conformance.md in the
+      # factory). It is an ordinary declared artifact, not an approval resource;
+      # this declaration does not by itself prove that a profile produces it.
+      outputs:
+        conformance: {type: artifact, path: /kodama/outputs/conformance.json}
+    - id: quality
+      kind: container
+      needs: [implement]
+      image: "@@TOOLS_IMAGE@@"
+      workspace: {access: read, from: implement}
+      command: [/bin/sh, -ec]
+      args: ["cd /workspace && ./ci/quality.sh"]
+      env:
+        INVENTORY_TEST_ADMIN_URL: {secretRef: "secret://project/quality-database-admin-url"}
+        INVENTORY_TEST_PREFIX: "@@RESOURCE_PREFIX@@"
+      timeoutSeconds: 1500
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/quality.json}
+        log: {type: artifact, path: /kodama/outputs/quality.log}
+    - id: review
+      kind: gate
+      needs: [quality]
+      gate:
+        evidence:
+          - "${{ steps.implement.outputs.conformance }}"
+          - "${{ steps.quality.outputs.report }}"
+          - "${{ steps.quality.outputs.log }}"
+    - id: build
+      kind: container
+      needs: [review]
+      image: "@@TOOLS_IMAGE@@"
+      workspace: {access: read, from: implement}
+      command: [/bin/sh, -ec]
+      args: ["cd /workspace && ./ci/build.sh"]
+      env:
+        KO_DOCKER_REPO: ${{ inputs.registry_repository }}
+        TOOLS_IMAGE: "@@TOOLS_IMAGE@@"
+        REGISTRY_INSECURE: "@@REGISTRY_INSECURE@@"
+        KODAMA_RUNTIME_URL: "@@RUNTIME_URL@@"
+        KODAMA_RUNTIME_TOKEN_FILE: /kodama/identity/token
+      secretFiles:
+        config.json: "secret://project/registry-docker-config"
+      timeoutSeconds: 1200
+      outputs:
+        image: {type: ociArtifact}
+        metadata: {type: artifact, path: /kodama/outputs/build-metadata.json}

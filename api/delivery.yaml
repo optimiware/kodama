@@ -1,0 +1,996 @@
+openapi: 3.0.3
+info:
+  title: Kodama environments and deployments
+  version: 1.0.0
+  description: >-
+    Environment definitions and durable deployment records (task T-035;
+    specification: docs/specs/delivery-and-quality-gates.md, docs/contracts/http-api.md
+    `P/environments` and `P/deployments`, docs/implementation/environment-pinning.md).
+    Shared conventions (error envelope, pagination, ETag, idempotency) come from
+    api/common.yaml. Types are generated into internal/delivery/http/delivery.gen.go
+    (see internal/delivery/http/generate.go).
+
+    This is record keeping around ordinary scripts. Nothing here applies anything to a
+    cluster: a script applies its own manifests and reports structured results. A
+    deployment is a durable pre-apply row (`pending`), becomes `running` when the script
+    records the objects it is about to create, and settles as `succeeded` or `failed`;
+    `outcome_unknown` is a `running` deployment whose apply may have taken effect and
+    blocks another apply until it is settled by observation. Readiness is structured:
+    each owned object carries its observed `uid` and `ready` flag. Exit status and
+    output text are never readiness, and no manifest, kubeconfig content or credential
+    value is accepted or returned.
+
+    Two audiences share the module. The human routes sit under
+    `/api/v1/tenants/{tenantId}/projects/{projectId}` and require a verified human
+    principal with the documented permission. The runtime routes sit under
+    `/runtime/v1/attempts/{attemptId}`, authenticate the attempt's bearer token for the
+    `deployment.call` action (a distinct audience from human access) and derive the
+    tenant, project, run, step, action key, originating attempt and environment pin
+    from the attempt's immutable pinned context, never from the request. A callback
+    whose pin is absent, foreign or mismatched, or whose retained configuration does not
+    carry the pinned credential bindings, is refused; the environment's current
+    settings are never consulted as a fallback.
+
+    Public creation never accepts current environment settings. A human registers a
+    deployment only against an existing attempt's immutable context (`attemptId`), with
+    the candidate `source` and the `image` to deploy; the image must be a verified OCI
+    output of exactly that source.
+servers:
+  - url: /api/v1
+paths:
+  /tenants/{tenantId}/projects/{projectId}/environments:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listEnvironments
+      summary: List the project's environments
+      description: >-
+        Ordered by name. The cursor is bound to the tenant, project, endpoint and ordering
+        and every page is authorized again. Requires run:read.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of environments.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentPage'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    post:
+      operationId: createEnvironment
+      summary: Define an environment
+      description: >-
+        Requires deployment:manage. The deployment credential must be a project-owned
+        `kubeconfig` secret; target access stays namespace-scoped by that credential.
+        Script credentials are explicit bindings (`name`, `ref`, `delivery` as `file` or
+        `env`); a value is never accepted here and reaches only the ordinary script that
+        declares the environment, never an agent step. A `preview` environment carries a
+        TTL (default 24 hours, configurable per installation and per environment); a
+        `stage` environment has none and is never expired by a schedule. A name used in the
+        project is `name_taken` (409). Unknown fields are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnvironmentCreate'}
+            example: {$ref: '#/components/examples/EnvironmentCreate/value'}
+      responses:
+        '201':
+          description: The environment at version 1.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            Location: {schema: {type: string}}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Environment'}
+              example: {$ref: '#/components/examples/Environment/value'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/NameTaken'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/environments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/EnvironmentId'
+    get:
+      operationId: getEnvironment
+      summary: Read an environment
+      description: Requires run:read. A foreign or hidden environment is the same 404.
+      responses:
+        '200':
+          description: The environment.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Environment'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    patch:
+      operationId: updateEnvironment
+      summary: Edit an environment
+      description: >-
+        Requires deployment:manage and `If-Match`. The version is compared inside the write.
+        Omitted members are unchanged; the name and kind never change. An edit that changes
+        nothing leaves the version alone. Retained configuration snapshots are immutable
+        copies: runs admitted before the edit keep the configuration they pinned, and a
+        credential rotation or edit affects only runs admitted afterwards.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnvironmentEdit'}
+      responses:
+        '200':
+          description: The environment after the edit.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Environment'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '412': {$ref: 'common.yaml#/components/responses/PreconditionFailed'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '428': {$ref: 'common.yaml#/components/responses/PreconditionRequired'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/deployments:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listDeployments
+      summary: List deployment records
+      description: >-
+        Ordered by identifier. Filters are `environmentId` and `status`; an unknown query
+        parameter is rejected. The cursor is bound to the filters. Requires run:read.
+      parameters:
+        - name: environmentId
+          in: query
+          required: false
+          schema: {$ref: 'common.yaml#/components/schemas/ID'}
+        - name: status
+          in: query
+          required: false
+          schema: {$ref: '#/components/schemas/DeploymentStatus'}
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of deployments.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeploymentPage'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    post:
+      operationId: createDeployment
+      summary: Register a deployment against an attempt's pinned context
+      description: >-
+        Requires deployment:manage and `Idempotency-Key`. The body names an existing
+        originating attempt, the candidate source and the image. The environment, its
+        immutable configuration pin, the run, step and action key come from that attempt's
+        pinned context and its retained configuration snapshot; current environment
+        settings, manifests and credential values are never accepted. The image must be a
+        usable OCI output of a succeeded producer, a pinned input of the attempt, and of
+        exactly the stated source (`image_provenance_rejected`, 422, otherwise).
+
+        The record, its history, audit entry, the `deployment.state_changed` event and the
+        stored response commit together. A retry with the same key and body replays the
+        stored response (after authorization is checked again); a changed body under the
+        same key is `idempotency_conflict`. Independently of the HTTP key, the logical action
+        key owns exactly one deployment: a different key for the same logical request
+        observes the original (200, `created: false`), and different immutable inputs for
+        the same action are `conflict`. A 503 may mean the outcome is unknown; retry with
+        the same key.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeploymentCreate'}
+            example: {$ref: '#/components/examples/DeploymentCreate/value'}
+      responses:
+        '200':
+          description: >-
+            The logical action already had a deployment (created by another request or key); it
+            is returned unchanged with `created: false`, or this is a stored replay.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            Location: {schema: {type: string}}
+            Idempotent-Replayed: {$ref: 'common.yaml#/components/headers/IdempotentReplayed'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeploymentReceipt'}
+        '201':
+          description: The pending, pre-apply deployment record was created.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            Location: {schema: {type: string}}
+            Idempotent-Replayed: {$ref: 'common.yaml#/components/headers/IdempotentReplayed'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeploymentReceipt'}
+              example: {$ref: '#/components/examples/DeploymentReceipt/value'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/DeploymentConflict'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/deployments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/DeploymentId'
+    get:
+      operationId: getDeployment
+      summary: Read a deployment record
+      description: Requires run:read. A foreign or hidden deployment is the same 404.
+      responses:
+        '200':
+          description: The deployment.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Deployment'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/deployments/{id}/cleanup:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/DeploymentId'
+    post:
+      operationId: requestDeploymentCleanup
+      summary: Request cleanup of a settled deployment's owned objects
+      description: >-
+        Requires deployment:manage and `If-Match`; the version is compared inside the write,
+        so a stale request records nothing. The request body is empty. A deployment that is
+        not settled (and whose outcome is not unknown) is `invalid_transition`; a repeated
+        request on an unchanged version records nothing. This records the request only: the
+        cleanup run, its schedule and the Kubernetes deletes belong to other tasks, and the
+        run reports its result through the runtime route
+        `POST /runtime/v1/attempts/{attemptId}/deployments/{id}/cleanup-result`.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: The deployment with its cleanup request recorded.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Deployment'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '412': {$ref: 'common.yaml#/components/responses/PreconditionFailed'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '428': {$ref: 'common.yaml#/components/responses/PreconditionRequired'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /attempts/{attemptId}/deployments:
+    servers:
+      - url: /runtime/v1
+    parameters:
+      - $ref: '#/components/parameters/AttemptId'
+    post:
+      operationId: registerRuntimeDeployment
+      summary: Register the attempt's pre-apply deployment record
+      description: >-
+        Call before the first external change. Authenticates `deployment.call` for the
+        route's attempt and repeats the session check in the committing transaction. The
+        body names only the candidate source and the image; run, step, action key,
+        originating attempt and environment pin come from the attempt's pinned context.
+        Idempotent by the logical action: a retry, a concurrent identical call and an
+        authorized retry attempt of the same step receive the one original deployment.
+        The receipt carries the annotation values to put on every applied object. No
+        `Idempotency-Key` is used.
+      security: [{runtimeBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RuntimeDeploymentRegister'}
+            example: {$ref: '#/components/examples/RuntimeRegister/value'}
+      responses:
+        '200':
+          description: The deployment already existed for this logical action.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeploymentReceipt'}
+        '201':
+          description: The record was created.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeploymentReceipt'}
+              example: {$ref: '#/components/examples/DeploymentReceipt/value'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/RuntimeForbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/DeploymentConflict'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '501': {$ref: '#/components/responses/NotConfigured'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /attempts/{attemptId}/deployments/by-action/{actionKey}:
+    servers:
+      - url: /runtime/v1
+    parameters:
+      - $ref: '#/components/parameters/AttemptId'
+      - name: actionKey
+        in: path
+        required: true
+        schema: {$ref: '#/components/schemas/ActionKey'}
+    get:
+      operationId: lookupRuntimeDeployment
+      summary: Look up the deployment of the attempt's own logical action
+      description: >-
+        After a lost response, a restart or a retry attempt of the same step, returns the
+        recorded identities, status and annotation values. The key must be the attempt's
+        own pinned action key; another key is refused. Observe the objects by their
+        annotations before applying again, and never re-apply while `outcomeUnknown` is
+        true.
+      security: [{runtimeBearer: []}]
+      responses:
+        '200':
+          description: The deployment receipt.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeploymentReceipt'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/RuntimeForbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '501': {$ref: '#/components/responses/NotConfigured'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /attempts/{attemptId}/deployments/{id}:
+    servers:
+      - url: /runtime/v1
+    parameters:
+      - $ref: '#/components/parameters/AttemptId'
+      - $ref: '#/components/parameters/DeploymentId'
+    get:
+      operationId: getRuntimeDeployment
+      summary: Read a deployment bound to the attempt
+      description: >-
+        Available to the step of the deployment's own logical action, and to a cleanup run
+        proven bound to that deployment through the cleanup binding reader. Any other
+        deployment is refused.
+      security: [{runtimeBearer: []}]
+      responses:
+        '200':
+          description: The deployment receipt.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeploymentReceipt'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/RuntimeForbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '501': {$ref: '#/components/responses/NotConfigured'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /attempts/{attemptId}/deployments/{id}/outcome:
+    servers:
+      - url: /runtime/v1
+    parameters:
+      - $ref: '#/components/parameters/AttemptId'
+      - $ref: '#/components/parameters/DeploymentId'
+    post:
+      operationId: reportRuntimeOutcome
+      summary: Record a structured apply outcome
+      description: >-
+        `applying` records the intended object identities before the first external change
+        (pending to running; a repeat with the same objects is a replay and different
+        objects are `conflict`). `succeeded` settles with every intended object observed
+        ready with its UID. `failed` settles with a reason code. `unknown` records an apply
+        that may have taken effect but was not confirmed: the deployment stays running and a
+        new `applying` is `outcome_unknown` (409) until it is settled by observation. A
+        replay of an identical report returns the stored receipt; a different report for a
+        settled outcome is `conflict`. Output text and exit status are not evidence.
+      security: [{runtimeBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OutcomeReport'}
+            example: {$ref: '#/components/examples/OutcomeSucceeded/value'}
+      responses:
+        '200':
+          description: The deployment receipt after the report.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeploymentReceipt'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/RuntimeForbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/DeploymentConflict'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '501': {$ref: '#/components/responses/NotConfigured'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /attempts/{attemptId}/deployments/{id}/cleanup-result:
+    servers:
+      - url: /runtime/v1
+    parameters:
+      - $ref: '#/components/parameters/AttemptId'
+      - $ref: '#/components/parameters/DeploymentId'
+    post:
+      operationId: reportRuntimeCleanup
+      summary: Record a cleanup run's result
+      description: >-
+        Only a cleanup run proven bound to exactly this deployment through the cleanup binding
+        reader may report; environment equality alone is not proof and an absent reader or
+        binding denies. A report is refused before cleanup was requested and for objects the
+        deployment does not own. `done` lists every owned object and sets `deletedAt` while
+        keeping the outcome, objects and history; `failed` and `unknown` are kept as visible
+        exceptions and may be retried.
+      security: [{runtimeBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CleanupReport'}
+            example: {$ref: '#/components/examples/CleanupDone/value'}
+      responses:
+        '200':
+          description: The deployment receipt after the report.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeploymentReceipt'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/RuntimeForbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/DeploymentConflict'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '501': {$ref: '#/components/responses/NotConfigured'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+    runtimeBearer:
+      type: http
+      scheme: bearer
+      description: >-
+        The attempt's runtime token with the `deployment.call` action. A token for another
+        attempt, route, tenant or signing generation, or without that action, is refused.
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: {$ref: 'common.yaml#/components/schemas/ID'}
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: {$ref: 'common.yaml#/components/schemas/ID'}
+    EnvironmentId:
+      name: id
+      in: path
+      required: true
+      schema: {$ref: 'common.yaml#/components/schemas/ID'}
+    DeploymentId:
+      name: id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/DeploymentID'}
+    AttemptId:
+      name: attemptId
+      in: path
+      required: true
+      schema: {$ref: 'common.yaml#/components/schemas/ID'}
+  responses:
+    NameTaken:
+      description: name_taken (the environment name is used in the project) or another conflict.
+      headers:
+        X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+      content:
+        application/json:
+          schema: {$ref: 'common.yaml#/components/schemas/ErrorEnvelope'}
+    DeploymentConflict:
+      description: >-
+        idempotency_conflict (a changed body under the same key); conflict (changed immutable
+        inputs for an existing action, a different report for a settled outcome, or different
+        intended objects); outcome_unknown (a new apply while the previous outcome is unknown,
+        reconcile it first).
+      headers:
+        X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+      content:
+        application/json:
+          schema: {$ref: 'common.yaml#/components/schemas/ErrorEnvelope'}
+    Unprocessable:
+      description: >-
+        invalid_transition (the lifecycle forbids the change), credential_unavailable (a
+        credential reference is missing, foreign, revoked or not a kubeconfig where one is
+        required) or image_provenance_rejected (the image is not a verified output of this
+        source, producer and project). Nothing was written.
+      headers:
+        X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+      content:
+        application/json:
+          schema: {$ref: 'common.yaml#/components/schemas/ErrorEnvelope'}
+    RuntimeForbidden:
+      description: >-
+        forbidden (the action is not granted, or the caller is not bound to this deployment),
+        pin_required (the attempt's pinned context or retained configuration is absent,
+        foreign or mismatched; there is no fallback to current settings) or attempt_revoked
+        (the attempt no longer holds authority; no replay exception applies).
+      headers:
+        X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+      content:
+        application/json:
+          schema: {$ref: 'common.yaml#/components/schemas/ErrorEnvelope'}
+    NotConfigured:
+      description: not_configured. The installation has not configured this capability; nothing was done.
+      headers:
+        X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+      content:
+        application/json:
+          schema: {$ref: 'common.yaml#/components/schemas/ErrorEnvelope'}
+  schemas:
+    DeploymentID:
+      type: string
+      pattern: '^dep_[a-f0-9]{32}$'
+      description: Derived from the tenant, project and action key, so every retry names the same record.
+    ActionKey:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+    Digest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    EnvironmentKind:
+      type: string
+      enum: [preview, stage]
+    SecretDelivery:
+      type: string
+      enum: [file, env]
+    DeploymentStatus:
+      type: string
+      enum: [pending, running, succeeded, failed]
+    CleanupState:
+      type: string
+      enum: [none, requested, failed, unknown, done]
+    CredentialBinding:
+      type: object
+      additionalProperties: false
+      required: [name, ref, delivery]
+      properties:
+        name:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+          description: The file or environment name the script receives the value under.
+        ref:
+          type: string
+          pattern: '^secret://project/[a-z][a-z0-9-]{0,62}$'
+          description: A project secret reference. A value or version is never part of the definition.
+        delivery:
+          $ref: '#/components/schemas/SecretDelivery'
+    Environment:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind, target, namespace, kubeconfig, secrets, config, version, createdAt, updatedAt]
+      properties:
+        id: {$ref: 'common.yaml#/components/schemas/ID'}
+        name: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+        kind: {$ref: '#/components/schemas/EnvironmentKind'}
+        target: {type: string, pattern: '^[a-z][a-z0-9._-]{0,62}$', description: A label of the cluster or target.}
+        namespace: {type: string, description: The single Kubernetes namespace a deployment may touch.}
+        kubeconfig:
+          $ref: '#/components/schemas/CredentialBinding'
+        secrets:
+          type: array
+          maxItems: 32
+          items: {$ref: '#/components/schemas/CredentialBinding'}
+        config:
+          type: object
+          maxProperties: 64
+          additionalProperties: {type: string, maxLength: 1024}
+          description: Explicit nonsecret configuration.
+        previewTtlSeconds:
+          type: integer
+          minimum: 60
+          maximum: 2592000
+          description: Present for a preview environment only.
+        version: {$ref: 'common.yaml#/components/schemas/Version'}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    EnvironmentCreate:
+      type: object
+      additionalProperties: false
+      required: [name, kind, target, namespace, kubeconfig]
+      properties:
+        name: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+        kind: {$ref: '#/components/schemas/EnvironmentKind'}
+        target: {type: string, pattern: '^[a-z][a-z0-9._-]{0,62}$'}
+        namespace: {type: string}
+        kubeconfig: {$ref: '#/components/schemas/CredentialBinding'}
+        secrets:
+          type: array
+          maxItems: 32
+          items: {$ref: '#/components/schemas/CredentialBinding'}
+        config:
+          type: object
+          maxProperties: 64
+          additionalProperties: {type: string, maxLength: 1024}
+        previewTtlSeconds:
+          type: integer
+          minimum: 60
+          maximum: 2592000
+          description: Preview only; defaults to the installation's preview TTL (24 hours unless configured).
+    EnvironmentEdit:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted members are unchanged; name and kind cannot change.
+      properties:
+        target: {type: string, pattern: '^[a-z][a-z0-9._-]{0,62}$'}
+        namespace: {type: string}
+        kubeconfig: {$ref: '#/components/schemas/CredentialBinding'}
+        secrets:
+          type: array
+          maxItems: 32
+          items: {$ref: '#/components/schemas/CredentialBinding'}
+        config:
+          type: object
+          maxProperties: 64
+          additionalProperties: {type: string, maxLength: 1024}
+        previewTtlSeconds:
+          type: integer
+          minimum: 60
+          maximum: 2592000
+    EnvironmentPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/Environment'}
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+    Source:
+      type: object
+      additionalProperties: false
+      required: [repositoryUrl, commit]
+      properties:
+        repositoryUrl:
+          type: string
+          pattern: '^https://[^\s@/?#]+(/[^\s@?#]*)?$'
+          description: A repository URL without credentials.
+        commit:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+    Image:
+      type: object
+      additionalProperties: false
+      required: [artifactId, digest]
+      properties:
+        artifactId: {$ref: 'common.yaml#/components/schemas/ID'}
+        digest: {$ref: '#/components/schemas/Digest'}
+    Producer:
+      type: object
+      additionalProperties: false
+      required: [attemptId, runId, stepId, toolImage]
+      description: >-
+        The verified origin of the image, taken from the producing attempt's immutable
+        context and accepted result, never from caller text.
+      properties:
+        attemptId: {$ref: 'common.yaml#/components/schemas/ID'}
+        runId: {$ref: 'common.yaml#/components/schemas/ID'}
+        stepId: {type: string}
+        toolImage: {type: string}
+    ObjectRef:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, namespace, name]
+      description: >-
+        One external object a deployment owns: a reference only, no manifest or content.
+        Before apply it is the intended identity; afterwards it also carries the observed
+        `uid` and structured readiness. The namespace must be the environment's namespace.
+      properties:
+        apiVersion: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9./-]{0,99}$'}
+        kind: {type: string, pattern: '^[A-Za-z][A-Za-z0-9]{0,62}$'}
+        namespace: {type: string}
+        name: {type: string, pattern: '^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$'}
+        uid: {type: string, pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'}
+        ready: {type: boolean}
+    Cleanup:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state: {$ref: '#/components/schemas/CleanupState'}
+        reason: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}
+        requestedAt: {type: string, format: date-time}
+    Deployment:
+      type: object
+      additionalProperties: false
+      required: [id, environmentId, configurationDigest, namespace, source, image, producer, runId, stepId, actionKey, attemptId, status, reason, outcomeUnknown, objects, cleanup, version, createdAt, updatedAt]
+      properties:
+        id: {$ref: '#/components/schemas/DeploymentID'}
+        environmentId: {$ref: 'common.yaml#/components/schemas/ID'}
+        configurationDigest:
+          $ref: '#/components/schemas/Digest'
+        namespace: {type: string}
+        source: {$ref: '#/components/schemas/Source'}
+        image: {$ref: '#/components/schemas/Image'}
+        producer: {$ref: '#/components/schemas/Producer'}
+        runId: {$ref: 'common.yaml#/components/schemas/ID'}
+        stepId: {type: string}
+        actionKey: {$ref: '#/components/schemas/ActionKey'}
+        attemptId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        status: {$ref: '#/components/schemas/DeploymentStatus'}
+        reason:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+          description: registered, applying, outcome_unknown, ready or the failure's reason code.
+        outcomeUnknown:
+          type: boolean
+          description: True for a running deployment whose apply may have taken effect; another apply is blocked until it is settled.
+        objects:
+          type: array
+          maxItems: 64
+          items: {$ref: '#/components/schemas/ObjectRef'}
+        expiresAt: {type: string, format: date-time}
+        cleanup: {$ref: '#/components/schemas/Cleanup'}
+        deletedAt: {type: string, format: date-time}
+        version: {$ref: 'common.yaml#/components/schemas/Version'}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    DeploymentReceipt:
+      type: object
+      additionalProperties: false
+      required: [deployment, annotations, created]
+      properties:
+        deployment: {$ref: '#/components/schemas/Deployment'}
+        annotations:
+          type: object
+          additionalProperties: {type: string}
+          description: >-
+            The annotation names and values a script puts on every object it applies so a lost
+            acknowledgment can be reconciled by observing the cluster. The names are
+            installation configuration.
+        created:
+          type: boolean
+          description: True only for the call that created the record.
+    DeploymentCreate:
+      type: object
+      additionalProperties: false
+      required: [attemptId, source, image]
+      properties:
+        attemptId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        source: {$ref: '#/components/schemas/Source'}
+        image: {$ref: '#/components/schemas/Image'}
+    RuntimeDeploymentRegister:
+      type: object
+      additionalProperties: false
+      required: [source, image]
+      properties:
+        source: {$ref: '#/components/schemas/Source'}
+        image: {$ref: '#/components/schemas/Image'}
+    OutcomeReport:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [applying, succeeded, failed, unknown]
+        reason:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+          description: Required for `failed` and forbidden otherwise.
+        objects:
+          type: array
+          maxItems: 64
+          items: {$ref: '#/components/schemas/ObjectRef'}
+          description: >-
+            Intended identities for `applying` (no uid or ready); observed objects with uid and
+            readiness for `succeeded` and `failed`; empty for `unknown`.
+    CleanupReport:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [done, failed, unknown]
+        reason:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+          description: Required for `failed` and `unknown`.
+        deleted:
+          type: array
+          maxItems: 64
+          items: {$ref: '#/components/schemas/ObjectRef'}
+          description: Owned objects confirmed absent. `done` lists every owned object.
+    DeploymentPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/Deployment'}
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+  examples:
+    EnvironmentCreate:
+      value:
+        name: preview
+        kind: preview
+        target: kind
+        namespace: t035-preview
+        kubeconfig: {name: KUBECONFIG, ref: 'secret://project/kubeconfig', delivery: file}
+        secrets:
+          - {name: REGISTRY_TOKEN, ref: 'secret://project/registry-token', delivery: env}
+        config: {REPLICAS: '1'}
+        previewTtlSeconds: 86400
+    Environment:
+      value:
+        id: env_t035_1
+        name: preview
+        kind: preview
+        target: kind
+        namespace: t035-preview
+        kubeconfig: {name: KUBECONFIG, ref: 'secret://project/kubeconfig', delivery: file}
+        secrets:
+          - {name: REGISTRY_TOKEN, ref: 'secret://project/registry-token', delivery: env}
+        config: {REPLICAS: '1'}
+        previewTtlSeconds: 86400
+        version: 1
+        createdAt: '2026-01-02T03:04:05Z'
+        updatedAt: '2026-01-02T03:04:05Z'
+    DeploymentCreate:
+      value:
+        attemptId: att_t035_deploy
+        source:
+          repositoryUrl: https://git.t035.invalid/acme/inventory.git
+          commit: '1111111111111111111111111111111111111111'
+        image:
+          artifactId: art_t035_image
+          digest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    RuntimeRegister:
+      value:
+        source:
+          repositoryUrl: https://git.t035.invalid/acme/inventory.git
+          commit: '1111111111111111111111111111111111111111'
+        image:
+          artifactId: art_t035_image
+          digest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    DeploymentReceipt:
+      value:
+        created: true
+        annotations:
+          kodama.optimi.io/deployment-id: dep_0123456789abcdef0123456789abcdef
+          kodama.optimi.io/action-key: 'run_t035_1:deploy'
+          kodama.optimi.io/configuration-digest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        deployment:
+          id: dep_0123456789abcdef0123456789abcdef
+          environmentId: env_t035_1
+          configurationDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+          namespace: t035-preview
+          source:
+            repositoryUrl: https://git.t035.invalid/acme/inventory.git
+            commit: '1111111111111111111111111111111111111111'
+          image:
+            artifactId: art_t035_image
+            digest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          producer:
+            attemptId: att_t035_build
+            runId: run_t035_0
+            stepId: build
+            toolImage: 'registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+          runId: run_t035_1
+          stepId: deploy
+          actionKey: 'run_t035_1:deploy'
+          attemptId: att_t035_deploy
+          status: pending
+          reason: registered
+          outcomeUnknown: false
+          objects: []
+          expiresAt: '2026-01-03T03:04:05Z'
+          cleanup: {state: none}
+          version: 1
+          createdAt: '2026-01-02T03:04:05Z'
+          updatedAt: '2026-01-02T03:04:05Z'
+    OutcomeSucceeded:
+      value:
+        state: succeeded
+        objects:
+          - {apiVersion: apps/v1, kind: Deployment, namespace: t035-preview, name: inventory, uid: '00000000-0000-4000-8000-000000000001', ready: true}
+    CleanupDone:
+      value:
+        state: done
+        deleted:
+          - {apiVersion: apps/v1, kind: Deployment, namespace: t035-preview, name: inventory, uid: '00000000-0000-4000-8000-000000000001'}

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: kodama
+description: >-
+  Kodama initial installation profile: one server Deployment, a pre-install/pre-upgrade
+  migration Job, and restricted tenant execution namespaces. No operator, no CRDs, no bundled
+  production database.
+type: application
+version: 0.1.0
+# Placeholder: replaced by the release process together with image.tag/image.digest.
+appVersion: "0.0.0-placeholder"
+kubeVersion: ">=1.28.0-0"
+keywords:
+  - kodama
+  - software-factory

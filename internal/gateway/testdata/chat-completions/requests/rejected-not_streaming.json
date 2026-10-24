@@ -1,0 +1,10 @@
+{
+  "model": "gpt-a",
+  "stream": false,
+  "messages": [
+    {
+      "role": "user",
+      "content": "x"
+    }
+  ]
+}

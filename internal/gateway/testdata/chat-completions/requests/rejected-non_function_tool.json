@@ -1,0 +1,15 @@
+{
+  "model": "gpt-a",
+  "stream": true,
+  "tools": [
+    {
+      "type": "retrieval"
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "x"
+    }
+  ]
+}

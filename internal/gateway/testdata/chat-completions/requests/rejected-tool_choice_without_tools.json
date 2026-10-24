@@ -1,0 +1,11 @@
+{
+  "model": "gpt-a",
+  "stream": true,
+  "tool_choice": "auto",
+  "messages": [
+    {
+      "role": "user",
+      "content": "x"
+    }
+  ]
+}

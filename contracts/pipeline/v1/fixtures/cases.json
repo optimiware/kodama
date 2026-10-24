@@ -1,0 +1,93 @@
+[
+  {
+    "name": "unknown step field",
+    "format": "yaml",
+    "schemaValid": false,
+    "code": "unknown_field",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: a, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, retries: 3}\n"
+  },
+  {
+    "name": "tag only image",
+    "format": "yaml",
+    "schemaValid": false,
+    "code": "mutable_image",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: a, kind: container, image: \"golang:1.24\", command: [x], timeoutSeconds: 5}\n"
+  },
+  {
+    "name": "none workspace with a source",
+    "format": "yaml",
+    "schemaValid": false,
+    "code": "invalid_source",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: a, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, workspace: {access: none, from: run}}\n"
+  },
+  {
+    "name": "artifact output without a path",
+    "format": "yaml",
+    "schemaValid": false,
+    "code": "missing_field",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: a, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, outputs: {r: {type: artifact}}}\n"
+  },
+  {
+    "name": "gate with a condition",
+    "format": "yaml",
+    "schemaValid": false,
+    "code": "conditional_gate",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  inputs: {d: {type: boolean}}\n  steps:\n    - {id: g, kind: gate, when: {input: d, equals: true}}\n"
+  },
+  {
+    "name": "gate with an image",
+    "format": "yaml",
+    "schemaValid": false,
+    "code": "gate_field",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: g, kind: gate, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\"}\n"
+  },
+  {
+    "name": "container without a timeout",
+    "format": "yaml",
+    "schemaValid": false,
+    "code": "missing_field",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: a, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x]}\n"
+  },
+  {
+    "name": "retry class outside the contract",
+    "format": "yaml",
+    "schemaValid": false,
+    "code": "invalid_value",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: a, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, retry: {maxAttempts: 2, on: [exit-code]}}\n"
+  },
+  {
+    "name": "duplicate key",
+    "format": "yaml",
+    "schemaValid": null,
+    "code": "duplicate_key",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p, name: q}\nspec:\n  steps: []\n"
+  },
+  {
+    "name": "dependency cycle",
+    "format": "yaml",
+    "schemaValid": true,
+    "code": "cycle",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: a, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, needs: [b]}\n    - {id: b, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, needs: [a]}\n"
+  },
+  {
+    "name": "undeclared output",
+    "format": "yaml",
+    "schemaValid": true,
+    "code": "unknown_output",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: a, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5}\n    - {id: b, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, needs: [a], env: {V: \"${{ steps.a.outputs.nope }}\"}}\n"
+  },
+  {
+    "name": "parallel writers",
+    "format": "yaml",
+    "schemaValid": true,
+    "code": "parallel_writers",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  steps:\n    - {id: a, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, workspace: {access: write, from: run}}\n    - {id: b, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, workspace: {access: write, from: run}}\n"
+  },
+  {
+    "name": "interpolated argument",
+    "format": "yaml",
+    "schemaValid": true,
+    "code": "interpolation",
+    "document": "apiVersion: kodama/v1alpha1\nkind: Pipeline\nmetadata: {name: p}\nspec:\n  inputs: {s: {type: string}}\n  steps:\n    - {id: a, kind: container, image: \"x@sha256:1111111111111111111111111111111111111111111111111111111111111111\", command: [x], timeoutSeconds: 5, args: [\"echo ${{ inputs.s }}\"]}\n"
+  }
+]

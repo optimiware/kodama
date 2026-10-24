@@ -1,0 +1,8 @@
+{
+  "base_image": "docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8",
+  "image_pinning": "locally built images are loaded into the node's containerd and referenced as <repo>@sha256:<sha256 of the oci-archive index.json>",
+  "image_repositories": {
+    "workload": "t064.local/workload",
+    "injector": "t064.local/injector"
+  }
+}

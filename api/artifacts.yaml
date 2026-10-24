@@ -1,0 +1,230 @@
+openapi: 3.0.3
+info:
+  title: Kodama artifact API
+  version: 1.0.0
+  description: >-
+    Scoped metadata and download of retained artifacts (task T-015; specification:
+    docs/specs/pipeline-execution.md, docs/specs/delivery-and-quality-gates.md,
+    route: docs/contracts/http-api.md `GET P/artifacts/{id}`). This fragment
+    defines the representation the HTTP contract leaves open; it adds no route.
+
+    Artifacts are created by the producing attempt through the internal runtime
+    interface (api/runtime.yaml: `POST /runtime/v1/attempts/{attemptId}/artifacts`
+    and `.../complete`), never through this document. The response carries safe
+    metadata only: no storage bucket, key, credential or registry credential.
+    `download` is null unless it was requested with `download=true` and the
+    artifact holds verified bytes; it is a short-lived, scoped transfer
+    instruction, not an identity, and is never stored or replayed. A reference
+    becomes usable only after ownership, digest and size checks: an artifact in
+    state `reserved` has metadata but no download.
+
+    A missing artifact, an artifact of another tenant or project and an artifact
+    the caller may not see are the same 404 not_found. Shared conventions (error
+    envelope, ETag) come from api/common.yaml. Paths are relative to the /api/v1
+    base URL.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/artifacts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ArtifactId'
+    get:
+      operationId: getArtifact
+      summary: Read artifact metadata and, on request, a short-lived download instruction
+      description: >-
+        Authorization (including the visibility of diagnostic artifacts) is
+        evaluated on every call before any instruction is issued. With
+        `download=true` an artifact that is not usable is 409
+        artifact_incomplete.
+      parameters:
+        - name: download
+          in: query
+          required: false
+          description: Issue a download instruction for verified file content.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: The artifact.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artifact'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409':
+          description: artifact_incomplete (a download was requested for content that is not verified or no longer retained).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer access token verified by the injected authenticator.
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ArtifactId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  schemas:
+    ArtifactKind:
+      type: string
+      enum: [file, oci]
+      description: A file kept by Kodama, or a verified registration of content in an OCI registry.
+    ArtifactRole:
+      type: string
+      enum: [output, diagnostic, bundle]
+    ArtifactState:
+      type: string
+      enum: [reserved, registered, usable]
+      description: >-
+        reserved: a file whose bytes are not verified (never usable). registered:
+        an OCI registration verified against its registry. usable: a file whose
+        bytes were verified and sealed.
+    ArtifactAvailability:
+      type: string
+      enum: [available, abandoned, removed]
+      description: >-
+        Local content bookkeeping, separate from state. abandoned: a reservation
+        that was never completed and was cleaned up. removed: content deleted
+        under a retention policy (metadata and provenance remain). Registry
+        content is never removed by Kodama.
+    Digest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    SourceProvenance:
+      type: object
+      required: [repositoryUrl, commit]
+      additionalProperties: false
+      description: The trusted source the producing attempt worked from.
+      properties:
+        repositoryUrl:
+          type: string
+          pattern: '^https://[^\s@/?#]+(/[^\s@?#]*)?$'
+        commit:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+    ArtifactDownload:
+      type: object
+      required: [method, url, expiresAt]
+      additionalProperties: false
+      description: Short-lived transfer instruction. It is a bearer capability, so do not log or store it.
+      properties:
+        method:
+          type: string
+          enum: [GET]
+        url:
+          type: string
+          pattern: '^https?://[^\s]+$'
+        expiresAt:
+          type: string
+          format: date-time
+    Artifact:
+      type: object
+      required:
+        - id
+        - attemptId
+        - runId
+        - stepId
+        - name
+        - kind
+        - role
+        - state
+        - availability
+        - digest
+        - mediaType
+        - sizeBytes
+        - registry
+        - source
+        - version
+        - createdAt
+        - verifiedAt
+        - download
+      additionalProperties: false
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        attemptId:
+          $ref: 'common.yaml#/components/schemas/ID'
+          description: The producing attempt.
+        runId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        stepId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        name:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+        kind:
+          $ref: '#/components/schemas/ArtifactKind'
+        role:
+          $ref: '#/components/schemas/ArtifactRole'
+        state:
+          $ref: '#/components/schemas/ArtifactState'
+        availability:
+          $ref: '#/components/schemas/ArtifactAvailability'
+        digest:
+          $ref: '#/components/schemas/Digest'
+        mediaType:
+          type: string
+          nullable: true
+          description: Files only.
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1099511627776
+          nullable: true
+          description: The declared size of a file, or the verified manifest size of a registration.
+        registry:
+          type: string
+          nullable: true
+          description: OCI only. The canonical registry/repository, without tag or digest.
+        source:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/SourceProvenance'
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        createdAt:
+          type: string
+          format: date-time
+        verifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        download:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ArtifactDownload'

@@ -1,0 +1,308 @@
+openapi: 3.0.3
+info:
+  title: Kodama work flow summaries
+  version: 1.0.0
+  description: >-
+    Flow observations derived from immutable work history (docs/specs/work-management.md
+    WM-12, docs/book/04-lean-flow-and-governance.md). Owned by T-042. This fragment declares
+    no routes and no resource: it contributes an optional query option set and an optional
+    `flowSummary` member to the items of the existing work list
+    (listWorkItems in api/work.yaml). T-046 composes it into the published document, binds
+    the options into the list cursor and authorizes every page. Semantics of intervals and
+    windows are documented in internal/metrics/README.md and are summarized on each schema.
+    Types are generated into internal/metrics/http/work-summaries.gen.go
+    (see internal/metrics/http/generate.go).
+paths: {}
+components:
+  parameters:
+    IncludeFlowSummary:
+      name: includeFlowSummary
+      in: query
+      required: false
+      description: >-
+        When true, every item of the page carries a `flowSummary` for the observation window
+        given by `flowFrom` and `flowTo`, both of which are then required. Default false: items
+        are returned exactly as without this contribution. Filtering, ordering and pagination
+        are unchanged; the option set is bound to the page cursor.
+      schema:
+        type: boolean
+        default: false
+    FlowFrom:
+      name: flowFrom
+      in: query
+      required: false
+      description: >-
+        Inclusive start of the observation window, an RFC 3339 instant with at most microsecond
+        precision, not before 2000-01-01T00:00:00Z. Required with includeFlowSummary=true.
+      schema:
+        type: string
+        format: date-time
+    FlowTo:
+      name: flowTo
+      in: query
+      required: false
+      description: >-
+        Exclusive end of the observation window, an RFC 3339 instant with at most microsecond
+        precision, after flowFrom and not in the future. Required with includeFlowSummary=true.
+        Violations are 400 invalid_request.
+      schema:
+        type: string
+        format: date-time
+  schemas:
+    FlowSummaryStatus:
+      type: string
+      enum: [ok, not_started, invalid_history]
+      x-enum-varnames: [FlowSummaryStatusOK, FlowSummaryStatusNotStarted, FlowSummaryStatusInvalidHistory]
+      description: >-
+        ok: derived from a coherent history. not_started: no history was recorded before
+        the window ended, so there is no flow to report. invalid_history: the stored history
+        violates its chain invariants; no figures are reported (all are zero) and `anomaly`
+        names the first violation.
+    FlowState:
+      type: string
+      enum: [backlog, ready, active, review, done, cancelled]
+      x-enum-varnames: [FlowStateBacklog, FlowStateReady, FlowStateActive, FlowStateReview, FlowStateDone, FlowStateCancelled]
+      description: A work item state in the vocabulary of api/work.yaml (WorkState).
+    FlowWindow:
+      type: object
+      additionalProperties: false
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          format: date-time
+          description: Inclusive start, UTC.
+        to:
+          type: string
+          format: date-time
+          description: Exclusive end, UTC.
+    FlowDurations:
+      type: object
+      additionalProperties: false
+      required: [leadMicros, activeMicros, reviewMicros, blockedMicros, reopenedMicros, completedLeadMicros]
+      description: >-
+        Whole microseconds, clipped to the window except completedLeadMicros. Blocked time
+        overlaps the active, review and other unfinished time it happens in; the parts are not
+        additive and blockedMicros never exceeds leadMicros.
+      properties:
+        leadMicros:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Time in unfinished states (backlog, ready, active, review). Time spent done between
+            a completion and a reopening is excluded; cancellation ends an episode without being
+            a successful completion.
+        activeMicros:
+          type: integer
+          format: int64
+          minimum: 0
+        reviewMicros:
+          type: integer
+          format: int64
+          minimum: 0
+        blockedMicros:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Unfinished time while a blocked reason is recorded.
+        reopenedMicros:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Lead time of unfinished episodes that began with a reopening (done to active).
+        completedLeadMicros:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Sum of the whole, unclipped durations of episodes completed (done) inside the window.
+            Unlike the others it is not clipped at the window start.
+    FlowCounts:
+      type: object
+      additionalProperties: false
+      required: [reopens, blockedIntervals, completedEpisodes, cancelledEpisodes]
+      properties:
+        reopens:
+          type: integer
+          minimum: 0
+          description: Reopenings (done to active) recorded inside the window; review rework is not a reopening.
+        blockedIntervals:
+          type: integer
+          minimum: 0
+          description: >-
+            Blocked intervals with a non-empty overlap with the window. Editing other fields or
+            replacing the reason does not split an interval; a terminal state does.
+        completedEpisodes:
+          type: integer
+          minimum: 0
+          description: Unfinished episodes that ended done inside the window.
+        cancelledEpisodes:
+          type: integer
+          minimum: 0
+          description: Unfinished episodes that ended cancelled inside the window.
+    FlowCensoring:
+      type: object
+      additionalProperties: false
+      required: [inFlightAtStart, openAtEnd, stateAtEnd]
+      description: >-
+        Where the window cuts the item's history. Open intervals are capped at the window end;
+        the cap is not a completion.
+      properties:
+        inFlightAtStart:
+          type: boolean
+          description: >-
+            An unfinished episode began before the window and had not ended before it, so the
+            time before the window is not in the clipped durations.
+        openAtEnd:
+          type: boolean
+          description: The item was still unfinished when the window closed.
+        stateAtEnd:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/FlowState'
+          description: The state just before the window end; null when status is not_started or invalid_history.
+    FlowSummary:
+      type: object
+      additionalProperties: false
+      required: [status, anomaly, window, observedVersion, durations, counts, censoring]
+      description: >-
+        Flow observation of one work item over one window, derived at read time from immutable
+        history. It is a read model: it has no identifier, no version and no ETag, and it is
+        never stored.
+      properties:
+        status:
+          $ref: '#/components/schemas/FlowSummaryStatus'
+        anomaly:
+          type: string
+          nullable: true
+          maxLength: 64
+          description: Name of the first history violation when status is invalid_history; otherwise null.
+        window:
+          $ref: '#/components/schemas/FlowWindow'
+        observedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: >-
+            Newest history version recorded before the window end (0 when none): the revision of
+            history the figures were derived from. Later reads of the same window may differ.
+        durations:
+          $ref: '#/components/schemas/FlowDurations'
+        counts:
+          $ref: '#/components/schemas/FlowCounts'
+        censoring:
+          $ref: '#/components/schemas/FlowCensoring'
+    FlowSummaryContribution:
+      type: object
+      description: >-
+        The member contributed to each item of the existing work-list page (WorkItem in
+        api/work.yaml) when includeFlowSummary=true. The member is absent otherwise, so the
+        item shape and the page shape (items, nextCursor) are unchanged. Absent on a requested
+        page means the summary could not be derived for that item; it is never null.
+        T-046 adds the optional `flowSummary` property to the list item schema.
+      properties:
+        flowSummary:
+          $ref: '#/components/schemas/FlowSummary'
+  examples:
+    CompletedAfterReopen:
+      summary: A blocked, reopened and completed item over a month
+      value:
+        status: ok
+        anomaly: null
+        window:
+          from: '2026-10-01T00:00:00Z'
+          to: '2026-11-01T00:00:00Z'
+        observedVersion: 14
+        durations:
+          leadMicros: 432000000000
+          activeMicros: 259200000000
+          reviewMicros: 86400000000
+          blockedMicros: 43200000000
+          reopenedMicros: 86400000000
+          completedLeadMicros: 432000000000
+        counts:
+          reopens: 1
+          blockedIntervals: 2
+          completedEpisodes: 2
+          cancelledEpisodes: 0
+        censoring:
+          inFlightAtStart: false
+          openAtEnd: false
+          stateAtEnd: done
+    OpenAtWindowEnd:
+      summary: An item still in review when the window closes
+      value:
+        status: ok
+        anomaly: null
+        window:
+          from: '2026-10-10T00:00:00Z'
+          to: '2026-10-20T12:00:00Z'
+        observedVersion: 9
+        durations:
+          leadMicros: 907200000000
+          activeMicros: 345600000000
+          reviewMicros: 172800000000
+          blockedMicros: 0
+          reopenedMicros: 0
+          completedLeadMicros: 0
+        counts:
+          reopens: 0
+          blockedIntervals: 0
+          completedEpisodes: 0
+          cancelledEpisodes: 0
+        censoring:
+          inFlightAtStart: true
+          openAtEnd: true
+          stateAtEnd: review
+    NotStarted:
+      summary: An item created after the window ended
+      value:
+        status: not_started
+        anomaly: null
+        window:
+          from: '2026-09-01T00:00:00Z'
+          to: '2026-10-01T00:00:00Z'
+        observedVersion: 0
+        durations:
+          leadMicros: 0
+          activeMicros: 0
+          reviewMicros: 0
+          blockedMicros: 0
+          reopenedMicros: 0
+          completedLeadMicros: 0
+        counts:
+          reopens: 0
+          blockedIntervals: 0
+          completedEpisodes: 0
+          cancelledEpisodes: 0
+        censoring:
+          inFlightAtStart: false
+          openAtEnd: false
+          stateAtEnd: null
+    InvalidHistory:
+      summary: Stored history that is not a valid chain; no figures are invented
+      value:
+        status: invalid_history
+        anomaly: version_gap
+        window:
+          from: '2026-10-01T00:00:00Z'
+          to: '2026-11-01T00:00:00Z'
+        observedVersion: 0
+        durations:
+          leadMicros: 0
+          activeMicros: 0
+          reviewMicros: 0
+          blockedMicros: 0
+          reopenedMicros: 0
+          completedLeadMicros: 0
+        counts:
+          reopens: 0
+          blockedIntervals: 0
+          completedEpisodes: 0
+          cancelledEpisodes: 0
+        censoring:
+          inFlightAtStart: false
+          openAtEnd: false
+          stateAtEnd: null

@@ -1,0 +1,211 @@
+{
+  "fixture": "pinned_configuration",
+  "description": "An environment lists credential references (name, reference, delivery form), never values or versions. Admission pins an immutable configuration snapshot (its digest) to the run; later edits and credential rotation create new snapshots and leave the pinned one, and every deployment recorded against it, unchanged.",
+  "placeholders": "Every identifier, digest, URL and timestamp is a placeholder from the t035 test resource prefix; none names a real tenant, registry or cluster.",
+  "exchanges": [
+    {
+      "name": "define a preview environment with an explicit script credential",
+      "operation": "createEnvironment",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/environments",
+        "body": {
+          "name": "preview",
+          "kind": "preview",
+          "target": "kind",
+          "namespace": "t035-preview",
+          "kubeconfig": {
+            "name": "KUBECONFIG",
+            "ref": "secret://project/kubeconfig",
+            "delivery": "file"
+          },
+          "secrets": [
+            {
+              "name": "REGISTRY_TOKEN",
+              "ref": "secret://project/registry-token",
+              "delivery": "env"
+            }
+          ],
+          "config": {
+            "REPLICAS": "1"
+          },
+          "previewTtlSeconds": 86400
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "ETag": "\"1\"",
+          "Location": "/api/v1/tenants/t035_acme/projects/p035_inventory/environments/env_t035_preview"
+        },
+        "body": {
+          "id": "env_t035_preview",
+          "name": "preview",
+          "kind": "preview",
+          "target": "kind",
+          "namespace": "t035-preview",
+          "kubeconfig": {
+            "name": "KUBECONFIG",
+            "ref": "secret://project/kubeconfig",
+            "delivery": "file"
+          },
+          "secrets": [
+            {
+              "name": "REGISTRY_TOKEN",
+              "ref": "secret://project/registry-token",
+              "delivery": "env"
+            }
+          ],
+          "config": {
+            "REPLICAS": "1"
+          },
+          "previewTtlSeconds": 86400,
+          "version": 1,
+          "createdAt": "2026-01-02T03:04:05Z",
+          "updatedAt": "2026-01-02T03:04:05Z"
+        }
+      }
+    },
+    {
+      "name": "edit it under If-Match",
+      "operation": "updateEnvironment",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/environments/env_t035_preview",
+        "headers": {
+          "If-Match": "\"1\""
+        },
+        "body": {
+          "config": {
+            "REPLICAS": "3"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"2\""
+        },
+        "body": {
+          "id": "env_t035_preview",
+          "name": "preview",
+          "kind": "preview",
+          "target": "kind",
+          "namespace": "t035-preview",
+          "kubeconfig": {
+            "name": "KUBECONFIG",
+            "ref": "secret://project/kubeconfig",
+            "delivery": "file"
+          },
+          "secrets": [
+            {
+              "name": "REGISTRY_TOKEN",
+              "ref": "secret://project/registry-token",
+              "delivery": "env"
+            }
+          ],
+          "config": {
+            "REPLICAS": "3"
+          },
+          "previewTtlSeconds": 86400,
+          "version": 2,
+          "createdAt": "2026-01-02T03:04:05Z",
+          "updatedAt": "2026-01-02T05:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "a deployment recorded before the edit keeps its pinned configuration",
+      "operation": "getDeployment",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"2\""
+        },
+        "body": {
+          "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+          "environmentId": "env_t035_preview",
+          "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "namespace": "t035-preview",
+          "source": {
+            "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+            "commit": "1111111111111111111111111111111111111111"
+          },
+          "image": {
+            "artifactId": "art_t035_image",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "producer": {
+            "attemptId": "att_t035_build",
+            "runId": "run_t035_build",
+            "stepId": "build",
+            "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "runId": "run_t035_preview",
+          "stepId": "deploy",
+          "actionKey": "run_t035_preview:deploy",
+          "attemptId": "att_t035_deploy",
+          "status": "running",
+          "reason": "applying",
+          "outcomeUnknown": false,
+          "objects": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory"
+            },
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory-worker"
+            }
+          ],
+          "cleanup": {
+            "state": "none"
+          },
+          "version": 2,
+          "createdAt": "2026-01-02T03:04:05Z",
+          "updatedAt": "2026-01-02T03:04:05Z",
+          "expiresAt": "2026-01-03T03:04:05Z"
+        }
+      },
+      "note": "configurationDigest is unchanged by the edit above; a run admitted after it pins a new digest."
+    },
+    {
+      "name": "a credential reference outside the project is refused",
+      "operation": "createEnvironment",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/environments",
+        "body": {
+          "name": "other",
+          "kind": "stage",
+          "target": "kind",
+          "namespace": "other",
+          "kubeconfig": {
+            "name": "KUBECONFIG",
+            "ref": "secret://project/not-mine",
+            "delivery": "file"
+          }
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "credential_unavailable",
+            "message": "a credential is not available in this project",
+            "requestId": "req_00000000000000000000000000000001",
+            "details": {}
+          }
+        }
+      }
+    }
+  ]
+}

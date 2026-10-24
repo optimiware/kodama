@@ -1,0 +1,12 @@
+{
+  "task": "T-065",
+  "baseImage": "docker.io/library/debian@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867",
+  "kubectlVersion": "1.37.1",
+  "scripts": "c1c14714f155b23be3728c1284508ab65306b735dfaeec03e371cb764e8931fd  apply.sh 818840d3a3e5f421dfb611e2aa94b48d2bd666c6759c461d4beb7e9e82d66535  lookup.sh 930f079a308641b455a061def3eb02b5cd643a2cff3da8e0e687ab35280bf9a4  delete.sh ce9de3d81ff4dbd21613483d0efc6c44882c4d0044e5bb724649dc82422f3052  lib.sh ",
+  "localImageId": "sha256:83146b60bf2137044455c3d410d8b97b51367cc5719c65c1628f452980f90df4",
+  "localManifestDigest": "sha256:4447302ce45c5f795ce7160b7f7d8d80cc8e34f95b52c1a17cae3bbe61a66797",
+  "registryRef": "",
+  "pushedDigest": "",
+  "reproducibility": "identical image id (sha256:83146b60bf2137044455c3d410d8b97b51367cc5719c65c1628f452980f90df4)",
+  "packages": "bash=5.2.15-2+b13 ca-certificates=20250419~deb12u1 coreutils=9.1-1 curl=7.88.1-10+deb12u15 findutils=4.9.0-4 git=1:2.39.5-0+deb12u3 grep=3.8-5 jq=1.6-2.1+deb12u2 libc6=2.36-9+deb12u14 sed=4.9-1+deb12u1 "
+}

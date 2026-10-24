@@ -1,0 +1,335 @@
+{
+  "fixture": "stage_promotion",
+  "description": "A promotion deploys the same verified image digest to a stage environment: a different logical action (its own run, step and action key) and a stage record that never expires, while the image, source and producer provenance are unchanged. Creation takes an Idempotency-Key.",
+  "placeholders": "Every identifier, digest, URL and timestamp is a placeholder from the t035 test resource prefix; none names a real tenant, registry or cluster.",
+  "exchanges": [
+    {
+      "name": "define the stage environment",
+      "operation": "createEnvironment",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/environments",
+        "body": {
+          "name": "stage",
+          "kind": "stage",
+          "target": "kind",
+          "namespace": "t035-stage",
+          "kubeconfig": {
+            "name": "KUBECONFIG",
+            "ref": "secret://project/kubeconfig",
+            "delivery": "file"
+          },
+          "config": {
+            "REPLICAS": "3"
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "ETag": "\"1\"",
+          "Location": "/api/v1/tenants/t035_acme/projects/p035_inventory/environments/env_t035_stage"
+        },
+        "body": {
+          "id": "env_t035_stage",
+          "name": "stage",
+          "kind": "stage",
+          "target": "kind",
+          "namespace": "t035-stage",
+          "kubeconfig": {
+            "name": "KUBECONFIG",
+            "ref": "secret://project/kubeconfig",
+            "delivery": "file"
+          },
+          "secrets": [],
+          "config": {
+            "REPLICAS": "3"
+          },
+          "version": 1,
+          "createdAt": "2026-01-02T03:04:05Z",
+          "updatedAt": "2026-01-02T03:04:05Z"
+        }
+      }
+    },
+    {
+      "name": "register the promotion against the promoting attempt's pinned context",
+      "operation": "createDeployment",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments",
+        "headers": {
+          "Idempotency-Key": "promote-1"
+        },
+        "body": {
+          "attemptId": "att_t035_promote",
+          "source": {
+            "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+            "commit": "1111111111111111111111111111111111111111"
+          },
+          "image": {
+            "artifactId": "art_t035_image",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "ETag": "\"1\"",
+          "Location": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments/dep_d7dc2822d7fde320ee64583d999dca47"
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_d7dc2822d7fde320ee64583d999dca47",
+            "environmentId": "env_t035_stage",
+            "configurationDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "namespace": "t035-stage",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_stage",
+            "stepId": "deploy",
+            "actionKey": "run_t035_stage:deploy",
+            "attemptId": "att_t035_promote",
+            "status": "pending",
+            "reason": "registered",
+            "outcomeUnknown": false,
+            "objects": [],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 1,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_d7dc2822d7fde320ee64583d999dca47",
+            "kodama.optimi.io/action-key": "run_t035_stage:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          "created": true
+        }
+      }
+    },
+    {
+      "name": "a retry with the same key and body replays the stored response",
+      "operation": "createDeployment",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments",
+        "headers": {
+          "Idempotency-Key": "promote-1"
+        },
+        "body": {
+          "attemptId": "att_t035_promote",
+          "source": {
+            "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+            "commit": "1111111111111111111111111111111111111111"
+          },
+          "image": {
+            "artifactId": "art_t035_image",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "ETag": "\"1\"",
+          "Idempotent-Replayed": "true"
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_d7dc2822d7fde320ee64583d999dca47",
+            "environmentId": "env_t035_stage",
+            "configurationDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "namespace": "t035-stage",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_stage",
+            "stepId": "deploy",
+            "actionKey": "run_t035_stage:deploy",
+            "attemptId": "att_t035_promote",
+            "status": "pending",
+            "reason": "registered",
+            "outcomeUnknown": false,
+            "objects": [],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 1,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_d7dc2822d7fde320ee64583d999dca47",
+            "kodama.optimi.io/action-key": "run_t035_stage:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          "created": true
+        }
+      },
+      "note": "Replay authorization is checked again before the stored body is released."
+    },
+    {
+      "name": "a changed body under the same key conflicts",
+      "operation": "createDeployment",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments",
+        "headers": {
+          "Idempotency-Key": "promote-1"
+        },
+        "body": {
+          "attemptId": "att_t035_other",
+          "source": {
+            "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+            "commit": "1111111111111111111111111111111111111111"
+          },
+          "image": {
+            "artifactId": "art_t035_image",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "idempotency_conflict",
+            "message": "the Idempotency-Key was already used for a different request",
+            "requestId": "req_00000000000000000000000000000001",
+            "details": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "a different key for the same logical action observes the original",
+      "operation": "createDeployment",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments",
+        "headers": {
+          "Idempotency-Key": "promote-2"
+        },
+        "body": {
+          "attemptId": "att_t035_promote",
+          "source": {
+            "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+            "commit": "1111111111111111111111111111111111111111"
+          },
+          "image": {
+            "artifactId": "art_t035_image",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"1\"",
+          "Location": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments/dep_d7dc2822d7fde320ee64583d999dca47"
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_d7dc2822d7fde320ee64583d999dca47",
+            "environmentId": "env_t035_stage",
+            "configurationDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "namespace": "t035-stage",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_stage",
+            "stepId": "deploy",
+            "actionKey": "run_t035_stage:deploy",
+            "attemptId": "att_t035_promote",
+            "status": "pending",
+            "reason": "registered",
+            "outcomeUnknown": false,
+            "objects": [],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 1,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_d7dc2822d7fde320ee64583d999dca47",
+            "kodama.optimi.io/action-key": "run_t035_stage:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          "created": false
+        }
+      }
+    },
+    {
+      "name": "an image that is not a verified output of this source is refused",
+      "operation": "createDeployment",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/tenants/t035_acme/projects/p035_inventory/deployments",
+        "headers": {
+          "Idempotency-Key": "promote-3"
+        },
+        "body": {
+          "attemptId": "att_t035_promote",
+          "source": {
+            "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+            "commit": "2222222222222222222222222222222222222222"
+          },
+          "image": {
+            "artifactId": "art_t035_image",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "image_provenance_rejected",
+            "message": "the image is not a verified output of this source",
+            "requestId": "req_00000000000000000000000000000001",
+            "details": {}
+          }
+        }
+      }
+    }
+  ]
+}

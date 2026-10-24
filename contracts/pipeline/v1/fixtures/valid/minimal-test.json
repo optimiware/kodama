@@ -1,0 +1,20 @@
+{
+  "apiVersion": "kodama/v1alpha1",
+  "kind": "Pipeline",
+  "metadata": {"name": "test"},
+  "spec": {
+    "steps": [
+      {
+        "timeoutSeconds": 600,
+        "outputs": {"report": {"path": "/kodama/outputs/tests.json", "type": "artifact"}},
+        "args": ["cd /workspace && go test -json ./... > /kodama/outputs/tests.json"],
+        "command": ["/bin/sh", "-ec"],
+        "workspace": {"from": "run", "access": "read"},
+        "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "kind": "container",
+        "id": "test"
+      }
+    ],
+    "inputs": {}
+  }
+}

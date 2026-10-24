@@ -1,0 +1,723 @@
+openapi: 3.0.3
+info:
+  title: Kodama model gateway API
+  version: 1.0.0
+  description: >-
+    Project model settings and the workload-facing streaming chat completions
+    route of the model gateway (task T-032; specification:
+    docs/specs/ai-gateway-and-mcp-proxy.md, module contract:
+    internal/gateway/README.md and internal/gateway/protocol.md).
+
+    Two audiences, two authentications. The management route
+    (`model-settings`) is a human route under the /api/v1 base URL and uses the
+    shared conventions of api/common.yaml (ETag/If-Match, error envelope). The
+    workload route is served under its own base path `/gateway/v1` and is
+    authenticated by a runtime token of the attempt (audience
+    `kodama-runtime`, action `model.invoke`) obtained through api/runtime.yaml;
+    the tenant, project, run and attempt are taken from the verified token and
+    the durable grant, never from the request. It is a proposed route of this
+    module and is not one of the eight frozen runtime-contract routes.
+
+    The workload route accepts exactly the subset of OpenAI-compatible
+    streaming chat completions listed in ChatCompletionRequest. Every other
+    member or mode is rejected with 400 invalid_request, never forwarded. The
+    provider credential, endpoint and model policy never appear in a workload
+    request or response (management responses show settings and secret
+    references, never credential values). Supported protocol revision: chat-completions-stream/1. This
+    document and the fixtures in internal/gateway/testdata freeze the protocol;
+    they do not claim that any real harness or provider version is qualified
+    (T-031 owns the OpenCode smoke test).
+
+    Usage records, request outcomes and the single-in-flight slot are internal
+    to the gateway; usage is published through the existing `usage.recorded`
+    event (basis observed|estimated plus an uncertainty code) and is not an HTTP
+    resource of this fragment.
+
+    Usage and request/token limits are operational accounting for execution
+    admission, not pricing, payments, subscriptions or entitlements; Platform
+    owns those. Model provider credentials are held server-side by the gateway
+    (selected custody direction O-19; hosted qualification is T-061) and are
+    never returned, delivered to the workload or exposed in any response.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/model-settings:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: getModelSettings
+      summary: Read the project's model settings
+      description: >-
+        Requires `config:read`. A project that never stored settings has the
+        virtual, disabled revision 1 (`stored: false`), so a first PUT carries
+        `If-Match: "1"` and no wildcard creation semantics exist. The first stored
+        revision is 2. The response never contains a credential value.
+      responses:
+        '200':
+          description: The current settings.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelSettings'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    put:
+      operationId: replaceModelSettings
+      summary: Replace the project's model settings
+      description: >-
+        Requires `project:settings`, rechecked inside the write transaction, and
+        If-Match (the ETag as last read). Replaces the whole representation. An
+        edit that changes nothing and carries the current revision returns that
+        revision unchanged. Replaying a successful update with its old If-Match
+        receives a precondition failure: reread the settings to learn whether the
+        update landed. Each change appends an immutable
+        revision, an audit entry and a `project.settings_changed` event. The
+        endpoint must be an installation-approved destination, the credential a
+        `model` secret of this project at an existing, unrevoked exact version,
+        and `recording` may only be enabled when the installation has a content
+        recorder. A run's policy is bound, together with its exact credential
+        version pin, atomically at that run's first model admission; a run keeps
+        that binding afterwards, so a change affects runs whose first model
+        admission comes later (a run that has not yet made a model request uses
+        the settings current at its first one), except that disabling the project
+        or recording takes effect on the next request of every run. This
+        management response contains settings and the secret reference, never a
+        credential value.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplaceModelSettingsRequest'
+      responses:
+        '200':
+          description: The stored settings (unchanged when the edit changed nothing).
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelSettings'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409':
+          description: >-
+            credential_unusable (the secret is missing, foreign, not a model secret,
+            revoked, or the version does not exist), destination_not_approved (the
+            endpoint's origin or path is not approved) or recording_unavailable (no
+            content recorder is configured).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '412': {$ref: 'common.yaml#/components/responses/PreconditionFailed'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '428': {$ref: 'common.yaml#/components/responses/PreconditionRequired'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /gateway/v1/attempts/{attemptId}/chat/completions:
+    parameters:
+      - $ref: '#/components/parameters/AttemptId'
+    post:
+      operationId: createChatCompletion
+      summary: Stream one chat completion through the project's approved endpoint
+      description: >-
+        Workload route; not part of the /api/v1 base URL. Authenticated by the
+        attempt's runtime token (`Authorization: Bearer`), which must be valid for
+        the attempt in the path and grant `model.invoke`. Never retried by the
+        gateway.
+
+
+        Order of effects: verify the token; decode the body strictly; admit
+        atomically (current attempt authority, run policy binding, model
+        allow-list, request size/input/output bounds, request cap, and the run's
+        single unresolved request across all replicas); open the exact pinned
+        credential; forward; settle usage exactly once. A refusal before
+        admission consumes nothing.
+
+
+        Success is a `text/event-stream` of validated `chat.completion.chunk`
+        events ending with `data: [DONE]`. Only validated members are forwarded;
+        unknown provider members are dropped. If the stream fails after bytes were
+        delivered, the gateway writes one in-stream error event
+        (`{"error":{"code":...,"message":...,"type":"kodama_gateway"}}`), never
+        writes `[DONE]`, and aborts the response so the transport shows an
+        incomplete body; a partially delivered stream is never replaced by
+        another response. Failures before the first byte are ordinary JSON error
+        responses. The model confirmed by the provider and the destination that
+        was contacted are recorded in the usage record; a model the provider did
+        not confirm is recorded as unconfirmed.
+
+
+        Retry is the workload's explicit decision and is a new request: it needs a
+        new admission, consumes another request allowance and cannot start while
+        an earlier request of the run is unresolved. A request whose provider
+        outcome is unknown keeps the run's slot (409 run_busy) until
+        reconciliation and trusted evidence settle it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+      responses:
+        '200':
+          description: >-
+            A stream of validated completion chunks terminated by [DONE]. A stream
+            that ends without [DONE], or with an in-stream error event, failed.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+            Cache-Control:
+              schema: {type: string, enum: [no-store]}
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionStream'
+        '400':
+          description: >-
+            invalid_request: malformed body, an unsupported member or mode, or a
+            malformed route attempt identifier.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '401':
+          description: invalid_credential (missing, malformed, expired, retired or foreign runtime token).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+            WWW-Authenticate:
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            forbidden (the grant lacks model.invoke, or the attempt is cancelled or
+            revoked), model_not_allowed (the model is not on the run's allow-list)
+            or limit_exceeded (the run's request cap, token allowance, or the
+            request's size, input or output bound). limit_exceeded is permanent for
+            the run and must not be retried.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '409':
+          description: >-
+            run_busy (another request of the run is unresolved; Retry-After applies),
+            model_not_configured (the project has no enabled model settings) or
+            request_superseded (reconciliation settled the request first).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+            Retry-After: {$ref: 'common.yaml#/components/headers/RetryAfter'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '502':
+          description: >-
+            provider_error (the provider failed or rejected the request before any
+            byte reached the workload) or destination_not_approved. The body never
+            quotes provider output or credentials.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '503':
+          description: >-
+            unavailable (a dependency could not decide; nothing was sent unless the
+            usage record says otherwise) or credential_unavailable (the pinned
+            credential cannot be used).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+            Retry-After: {$ref: 'common.yaml#/components/headers/RetryAfter'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        Management routes: the access token verified by the injected
+        authenticator. Workload route: a runtime token (audience kodama-runtime)
+        of the attempt in the path.
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    AttemptId:
+      name: attemptId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  schemas:
+    ModelName:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,127}$'
+      description: A model identifier.
+    CredentialReference:
+      type: object
+      required: [ref, version]
+      additionalProperties: false
+      properties:
+        ref:
+          type: string
+          pattern: '^secret://project/[a-z][a-z0-9-]{0,62}$'
+          description: A project secret of kind `model`.
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+          description: >-
+            The exact secret value version. The gateway never substitutes a newer
+            version; moving the pin is a settings change that affects later runs.
+    ModelLimits:
+      type: object
+      required: [maxRequests, tokenAllowance, maxRequestBytes, maxInputTokens, maxOutputTokens]
+      additionalProperties: false
+      properties:
+        maxRequests:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 100000
+          description: Requests one run may admit, counted atomically at admission.
+        tokenAllowance:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1099511627776
+          description: >-
+            New requests are admitted only while charged tokens are below this
+            allowance. Charged tokens are the provider's observed usage or, when
+            usage is missing, invalid or uncertain, the request bound. At most one
+            request is unresolved per run, so charged tokens stay below
+            `tokenAllowance - 1 + maxInputTokens + maxOutputTokens`. This is a
+            token-overshoot bound for charges within the verified
+            provider/input/output bounds, used for operational admission; it is
+            not a monetary guarantee, price or entitlement (Platform owns
+            those). Usage a provider reports above those bounds fails the
+            request as `bound_exceeded` and is recorded unclamped.
+        maxRequestBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 4194304
+        maxInputTokens:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 4000000
+          description: Bound of the conservative input-token estimate of one request.
+        maxOutputTokens:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000000
+          description: Bound of the output tokens one request may ask for; sent to the provider as the enforced limit.
+    ReplaceModelSettingsRequest:
+      type: object
+      required: [enabled, endpoint, credential, models, limits]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        endpoint:
+          type: string
+          maxLength: 512
+          description: >-
+            Base URL of an installation-approved OpenAI-compatible provider: https,
+            no credentials, query or fragment; requests go to `<endpoint>/chat/completions`.
+        credential:
+          $ref: '#/components/schemas/CredentialReference'
+        models:
+          type: array
+          minItems: 1
+          maxItems: 32
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ModelName'
+          description: The allow-list; a request for any other model is refused.
+        limits:
+          $ref: '#/components/schemas/ModelLimits'
+        recording:
+          type: boolean
+          default: false
+          description: >-
+            Raw content recording, independent of usage metadata and off by default.
+            Needs `project:settings` and an installation content recorder; a workload
+            cannot enable it. Retention is an authorized opt-in starting at seven days
+            under the approved retention baseline; storage and deletion belong to the
+            recorder, not this module.
+    ModelSettings:
+      type: object
+      required: [version, stored, enabled, endpoint, credential, models, limits, recording]
+      additionalProperties: false
+      properties:
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        stored:
+          type: boolean
+          description: false for the virtual disabled revision 1 of a project without settings.
+        enabled:
+          type: boolean
+        endpoint:
+          type: string
+          nullable: true
+        credential:
+          allOf:
+            - $ref: '#/components/schemas/CredentialReference'
+          nullable: true
+        models:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/ModelName'
+        limits:
+          allOf:
+            - $ref: '#/components/schemas/ModelLimits'
+          nullable: true
+        recording:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedBy:
+          type: string
+          nullable: true
+    ChatToolCall:
+      type: object
+      required: [id, type, function]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9_.:-]{1,64}$'
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          required: [name, arguments]
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+              pattern: '^[A-Za-z0-9_-]{1,64}$'
+            arguments:
+              type: string
+              description: JSON text of the call arguments.
+    ChatMessage:
+      type: object
+      required: [role]
+      additionalProperties: false
+      description: >-
+        Text only. `content` is required except for an assistant message that
+        carries tool calls (where it is null or absent). Multimodal content parts
+        are not supported.
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+        content:
+          type: string
+          nullable: true
+          maxLength: 524288
+        name:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,64}$'
+        tool_calls:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/ChatToolCall'
+          description: Assistant messages only.
+        tool_call_id:
+          type: string
+          pattern: '^[A-Za-z0-9_.:-]{1,64}$'
+          description: Required for, and only allowed on, tool messages.
+    ChatTool:
+      type: object
+      required: [type, function]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          required: [name]
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+              pattern: '^[A-Za-z0-9_-]{1,64}$'
+            description:
+              type: string
+              maxLength: 4096
+            parameters:
+              type: object
+              additionalProperties: true
+              description: A JSON Schema object, at most 32 KiB.
+    ChatToolChoice:
+      # Kept as raw JSON in the generated types: the union has no struct form that
+      # avoids a generator runtime dependency, and the module decodes it strictly.
+      x-go-type: rawjson.RawMessage
+      x-go-type-import:
+        path: encoding/json
+        name: rawjson
+      oneOf:
+        - type: string
+          enum: [none, auto, required]
+        - type: object
+          required: [type, function]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [function]
+            function:
+              type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  description: A declared tool.
+    ChatStop:
+      x-go-type: rawjson.RawMessage
+      x-go-type-import:
+        path: encoding/json
+        name: rawjson
+      oneOf:
+        - type: string
+          minLength: 1
+          maxLength: 64
+        - type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages, stream]
+      additionalProperties: false
+      description: >-
+        The complete accepted subset of protocol revision chat-completions-stream/1.
+        Any other member (response_format, logprobs, functions, seed, user, store,
+        metadata, ...) is rejected with 400 invalid_request. `max_tokens` and
+        `max_completion_tokens` are alternatives; without either the run's output
+        limit is used, and a larger value than the run's limit is refused with
+        403 limit_exceeded.
+      properties:
+        model:
+          $ref: '#/components/schemas/ModelName'
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 256
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+        stream:
+          type: boolean
+          enum: [true]
+          description: Only streaming is supported.
+        stream_options:
+          type: object
+          additionalProperties: false
+          properties:
+            include_usage:
+              type: boolean
+              enum: [true]
+        n:
+          type: integer
+          enum: [1]
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        max_completion_tokens:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+        top_p:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          maximum: 1
+        stop:
+          $ref: '#/components/schemas/ChatStop'
+        tools:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/ChatTool'
+        tool_choice:
+          $ref: '#/components/schemas/ChatToolChoice'
+        parallel_tool_calls:
+          type: boolean
+          description: Needs declared tools.
+    ChatDeltaToolCall:
+      type: object
+      required: [index]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          maximum: 31
+        id:
+          type: string
+          maxLength: 64
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+              maxLength: 64
+            arguments:
+              type: string
+    ChatCompletionChunk:
+      type: object
+      required: [id, object, model, choices]
+      additionalProperties: false
+      description: >-
+        One validated stream event. Unknown provider members are dropped. `usage`
+        appears on the final event when the provider reports it; usage that is
+        missing or invalid is charged conservatively server-side.
+      properties:
+        id:
+          type: string
+          maxLength: 256
+        object:
+          type: string
+          enum: [chat.completion.chunk]
+        created:
+          type: integer
+          format: int64
+        model:
+          type: string
+          description: The model the provider reports (may be empty when it reports none).
+        choices:
+          type: array
+          maxItems: 1
+          items:
+            type: object
+            required: [index, delta, finish_reason]
+            additionalProperties: false
+            properties:
+              index:
+                type: integer
+                enum: [0]
+              delta:
+                type: object
+                additionalProperties: false
+                properties:
+                  role:
+                    type: string
+                    enum: [assistant]
+                  content:
+                    type: string
+                    nullable: true
+                  tool_calls:
+                    type: array
+                    maxItems: 32
+                    items:
+                      $ref: '#/components/schemas/ChatDeltaToolCall'
+              finish_reason:
+                type: string
+                nullable: true
+                enum: [stop, length, tool_calls, content_filter]
+        usage:
+          type: object
+          additionalProperties: false
+          required: [prompt_tokens, completion_tokens, total_tokens]
+          properties:
+            prompt_tokens: {type: integer, format: int64, minimum: 0}
+            completion_tokens: {type: integer, format: int64, minimum: 0}
+            total_tokens: {type: integer, format: int64, minimum: 0}
+    ChatStreamError:
+      type: object
+      required: [error]
+      additionalProperties: false
+      description: >-
+        The in-stream failure event. After it the response is aborted and `[DONE]`
+        is never sent.
+      properties:
+        error:
+          type: object
+          required: [code, message, type]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              pattern: '^[a-z][a-z0-9_]*$'
+              description: >-
+                A stable reason: stream_truncated, stream_idle, protocol_violation,
+                response_too_large, bound_exceeded, client_cancelled, attempt_cancelled,
+                authority_unavailable, deadline_exceeded, unavailable.
+            message:
+              type: string
+              maxLength: 256
+              description: Fixed text; never provider output.
+            type:
+              type: string
+              enum: [kodama_gateway]
+    ChatCompletionStream:
+      type: string
+      description: >-
+        Server-sent events: `data: <ChatCompletionChunk JSON>` frames separated by
+        blank lines, then `data: [DONE]`. A failed stream carries one
+        `data: <ChatStreamError JSON>` frame and no `[DONE]`.

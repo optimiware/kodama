@@ -1,0 +1,9 @@
+Copyright 2024 Harness, Inc.
+
+This package contains a modified subset of Harness netpolicy:
+https://github.com/harness/harness/tree/71005497269fecb8f389f360a75436e305583e9f/netpolicy
+
+Licensed under the Apache License, Version 2.0; see LICENSE.
+Modified for Kodama to retain only a public-address predicate and TCP dial hook,
+with stricter IPv6 special-use filtering. The upstream repository's Harbor and
+container-registry notices concern code not included in this package.

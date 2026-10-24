@@ -1,0 +1,2 @@
+data: {"id": "x", "object": "chat.completion.chunk", "model": "gpt-a", "choices": [{"index": 0, "delta": {"content": "a"}}, {"index": 1, "delta": {"content": "b"}}]}
+

@@ -1,0 +1,90 @@
+{
+  "description": "Frozen T-023 log completeness fixtures for T-063 (wrapper upload) and T-064 (controller fallback join). `artifact` is the verified log artifact the sidecar accompanies; `metadata: null` is a legacy log without a sidecar.",
+  "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+  "cases": [
+    {
+      "name": "verified_wrapper_log",
+      "artifact": {"id": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120},
+      "metadata": {"version": 1, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120}, "completeness": "complete", "reasons": []},
+      "decode": "ok", "bind": "ok", "completeness": "complete"
+    },
+    {
+      "name": "legacy_log_without_metadata",
+      "artifact": {"id": "art_legacy01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120},
+      "metadata": null,
+      "decode": "none", "bind": "none", "completeness": "unknown"
+    },
+    {
+      "name": "truncated_collection",
+      "artifact": {"id": "art_trunc001", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 1048576},
+      "metadata": {"version": 1, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_trunc001", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 1048576}, "completeness": "partial", "reasons": ["truncated"]},
+      "decode": "ok", "bind": "ok", "completeness": "partial"
+    },
+    {
+      "name": "failed_upload",
+      "artifact": {"id": "art_failup001", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 64},
+      "metadata": {"version": 1, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_failup001", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 64}, "completeness": "partial", "reasons": ["upload_failed"]},
+      "decode": "ok", "bind": "ok", "completeness": "partial"
+    },
+    {
+      "name": "controller_capture",
+      "artifact": {"id": "art_ctrl00001", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 300},
+      "metadata": {"version": 1, "source": "controller", "logName": "controller-g1.log", "log": {"artifactId": "art_ctrl00001", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 300}, "completeness": "unknown", "reasons": ["controller_capture"]},
+      "decode": "ok", "bind": "ok", "completeness": "unknown"
+    },
+    {
+      "name": "controller_claims_complete",
+      "artifact": {"id": "art_ctrl00002", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 300},
+      "metadata": {"version": 1, "source": "controller", "logName": "controller-g1.log", "log": {"artifactId": "art_ctrl00002", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 300}, "completeness": "complete", "reasons": []},
+      "decode": "invalid"
+    },
+    {
+      "name": "missing_workload",
+      "artifact": {"id": "art_gone00001", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 0},
+      "metadata": {"version": 1, "source": "controller", "logName": "controller-g1.log", "log": {"artifactId": "art_gone00001", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 0}, "completeness": "partial", "reasons": ["controller_capture", "workload_missing"]},
+      "decode": "ok", "bind": "ok", "completeness": "partial"
+    },
+    {
+      "name": "duplicate_linkage",
+      "artifact": {"id": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120},
+      "metadata": {"version": 1, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120}, "completeness": "complete", "reasons": []},
+      "decode": "ok", "bind": "ok", "completeness": "complete", "note": "the identical statement observed twice is one linkage"
+    },
+    {
+      "name": "foreign_reference",
+      "artifact": {"id": "art_other0001", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120},
+      "metadata": {"version": 1, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120}, "completeness": "complete", "reasons": []},
+      "decode": "ok", "bind": "binding"
+    },
+    {
+      "name": "replaced_bytes",
+      "artifact": {"id": "art_wrapper01", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "sizeBytes": 120},
+      "metadata": {"version": 1, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120}, "completeness": "complete", "reasons": []},
+      "decode": "ok", "bind": "binding"
+    },
+    {
+      "name": "complete_with_reason",
+      "artifact": {"id": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120},
+      "metadata": {"version": 1, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120}, "completeness": "complete", "reasons": ["truncated"]},
+      "decode": "invalid"
+    },
+    {
+      "name": "partial_without_reason",
+      "artifact": {"id": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120},
+      "metadata": {"version": 1, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120}, "completeness": "partial", "reasons": []},
+      "decode": "invalid"
+    },
+    {
+      "name": "unknown_field",
+      "artifact": {"id": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120},
+      "metadata": {"version": 1, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120}, "completeness": "complete", "reasons": [], "success": true},
+      "decode": "invalid"
+    },
+    {
+      "name": "future_version",
+      "artifact": {"id": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120},
+      "metadata": {"version": 2, "source": "wrapper", "logName": "command.log", "log": {"artifactId": "art_wrapper01", "digest": "sha256:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", "sizeBytes": 120}, "completeness": "complete", "reasons": []},
+      "decode": "invalid"
+    }
+  ]
+}

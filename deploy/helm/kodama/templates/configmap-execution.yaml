@@ -1,0 +1,52 @@
+{{- /*
+A readable rendering of the execution settings and a restricted Job fixture, for operators and
+tests. The server does NOT read this ConfigMap: its execution policy is the `execution` section of
+the settings document in <release>-config (config.yaml). Helm renders namespaces and policy; the
+server creates Jobs at runtime.
+*/ -}}
+{{- $vol := .Values.execution.volumes -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kodama.fullname" . }}-execution
+  labels:
+    {{- include "kodama.labels" . | nindent 4 }}
+    app.kubernetes.io/component: execution
+data:
+  execution.yaml: |
+    # Reference rendering only: Jobs are created by the server at runtime, not by Helm.
+    trustProfile: {{ .Values.execution.trustProfile }}
+    namespaces:
+      {{- range .Values.execution.tenants }}
+      - {{ .namespace }}
+      {{- else }} []
+      {{- end }}
+    serviceAccountName: {{ .Values.execution.serviceAccountName }}
+    callbackUrl: {{ .Values.execution.runtime.url }}
+    job:
+      backoffLimit: 0
+      restartPolicy: Never
+      activeDeadlineSeconds: {{ .Values.execution.job.activeDeadlineSeconds }}
+      automountServiceAccountToken: false
+      primaryContainers: 1
+      runAsUser: {{ .Values.execution.job.runAsUser }}
+      runAsGroup: {{ .Values.execution.job.runAsGroup }}
+      resources:
+        {{- toYaml .Values.execution.job.resources | nindent 8 }}
+    entrypoint:
+      image: {{ include "kodama.releaseImage" . }}
+      sourcePath: {{ .Values.execution.entrypoint.sourcePath }}
+      toolsPath: /kodama/bin
+      copyCommand:
+        {{- include "kodama.injectCommand" . | nindent 8 }}
+      command: ["/kodama/bin/kodama", "step"]
+      resources:
+        {{- toYaml .Values.execution.job.injectorResources | nindent 8 }}
+    volumes:
+      workspace: {path: /workspace, sizeLimit: {{ $vol.workspaceSizeLimit }}}
+      outputs: {path: /kodama/outputs, sizeLimit: {{ $vol.outputsSizeLimit }}}
+      secrets: {path: /kodama/secrets, medium: Memory, sizeLimit: {{ $vol.secretsSizeLimit }}}
+      identity: {path: /kodama/identity, medium: Memory, sizeLimit: {{ $vol.identitySizeLimit }}}
+      tools: {path: /kodama/bin, readOnlyForWorkload: true, sizeLimit: {{ $vol.toolsSizeLimit }}}
+  job-example.yaml: |
+    {{- include "kodama.exampleJob" . | nindent 4 }}

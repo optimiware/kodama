@@ -1,0 +1,41 @@
+name: Repository tooling
+on:
+  push:
+    paths: ['openforge.json', 'scripts/openforge/**', 'scripts/dev/**', 'scripts/release/**', 'dev/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
+  pull_request:
+    paths: ['openforge.json', 'scripts/openforge/**', 'scripts/dev/**', 'scripts/release/**', 'dev/**', '.opencode/**', 'docs/**', '*.md', 'Makefile', 'Containerfile', 'VERSION', '.github/workflows/tooling.yml', '.github/workflows/image.yml']
+permissions:
+  contents: read
+jobs:
+  tooling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - run: make openforge-install docs-check config-check
+      - name: Qualify changed tooling only
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only "$BASE" HEAD)
+          else
+            changed=$(git ls-files)
+          fi
+          if echo "$changed" | grep -Eq '^(openforge\.json|scripts/openforge/|\.opencode/|Makefile|\.github/workflows/tooling\.yml)'; then
+            make check-openforge
+          fi
+          if echo "$changed" | grep -Eq '^(scripts/dev/|dev/|Makefile|\.github/workflows/tooling.yml)'; then
+            make test-python
+          fi
+          if echo "$changed" | grep -Eq '^(scripts/release/|VERSION$)'; then
+            python3 -m unittest scripts/release/test_version.py
+          fi

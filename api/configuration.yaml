@@ -1,0 +1,722 @@
+openapi: 3.0.3
+info:
+  title: Kodama configuration API
+  version: 1.0.0
+  description: >-
+    Project variables and encrypted typed secrets (task T-012; specification:
+    docs/specs/variables-and-secrets.md, routes: docs/contracts/http-api.md).
+    Variables are typed nonsecret values stored in plaintext. Secret values are
+    write-only: they are accepted in `value` of the create and new-version
+    requests and are never returned by any operation, error, event or audit
+    entry. Resolution of a secret for a running attempt is an internal runtime
+    interface (api/runtime.yaml, /runtime/v1/attempts/{attemptId}/secrets/resolve),
+    not part of this document, and administrative authority does not imply
+    plaintext read.
+
+    Shared conventions (ETag/If-Match, Idempotency-Key, cursors, error
+    envelope) come from api/common.yaml. Three integers are kept distinct: the
+    resource `version` (the ETag) counts management changes, a value version
+    (`valueVersion`, `currentVersion`, a secret version's `version`) counts value
+    revisions and is what runs pin, and the scope key wrapping revision is
+    internal and never exposed. Paths are relative to the /api/v1 base URL.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/variables:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listVariables
+      summary: List the project's variables ordered by name
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of variables. Deleted variables are not listed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VariablePage'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    post:
+      operationId: createVariable
+      summary: Create a typed project variable
+      description: >-
+        The name and type are immutable. The type is taken from the JSON type of
+        `value` (string, boolean or integer; integers are limited to +/-(2^53-1),
+        strings to 4096 bytes). A deleted variable's name is never reused.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVariableRequest'
+      responses:
+        '201':
+          description: Created, or the stored replay of the same keyed request (Idempotent-Replayed).
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            Location: {$ref: '#/components/headers/Location'}
+            Idempotent-Replayed: {$ref: 'common.yaml#/components/headers/IdempotentReplayed'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409':
+          description: idempotency_conflict (the key was used for a different request) or name_conflict (the name is, or was, used in the project).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/variables/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      operationId: getVariable
+      summary: Read a variable (a deleted variable is returned as a tombstone)
+      responses:
+        '200':
+          description: The variable.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    patch:
+      operationId: updateVariable
+      summary: Change a variable's value and/or description
+      description: >-
+        Requires If-Match. A changed value creates the next value version; runs
+        that already pinned a value version are unaffected. The value must keep
+        the variable's type. An edit that changes nothing leaves the version
+        unchanged.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVariableRequest'
+      responses:
+        '200':
+          description: The updated variable.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409':
+          description: resource_deleted (the variable is deleted).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '412': {$ref: 'common.yaml#/components/responses/PreconditionFailed'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '428': {$ref: 'common.yaml#/components/responses/PreconditionRequired'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    delete:
+      operationId: deleteVariable
+      summary: Logically delete a variable
+      description: >-
+        Requires If-Match. The name stays reserved and the value history is
+        retained. Repeating the request with the current ETag is a no-op.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Deleted.
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '412': {$ref: 'common.yaml#/components/responses/PreconditionFailed'}
+        '428': {$ref: 'common.yaml#/components/responses/PreconditionRequired'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/secrets:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listSecrets
+      summary: List secret metadata ordered by name
+      description: Never contains values. Deleted secrets are not listed; read one by ID to see its tombstone.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of secret metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretPage'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    post:
+      operationId: createSecret
+      summary: Create a typed secret with its first encrypted value (version 1)
+      description: >-
+        `value` is write-only: it is encrypted before any transaction starts and
+        is never returned, logged or stored in the idempotency record. A key
+        provider failure is 503 unavailable with `details.retryable`; no
+        plaintext is stored and no fallback key provider exists.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSecretRequest'
+      responses:
+        '201':
+          description: Created (metadata only), or the stored replay of the same keyed request.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            Location: {$ref: '#/components/headers/Location'}
+            Idempotent-Replayed: {$ref: 'common.yaml#/components/headers/IdempotentReplayed'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Secret'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409':
+          description: idempotency_conflict or name_conflict (the name is, or was, used in the project).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/secrets/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      operationId: getSecret
+      summary: Read secret metadata, including the retention report of a deleted secret
+      responses:
+        '200':
+          description: Metadata only.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Secret'
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    delete:
+      operationId: deleteSecret
+      summary: Logically delete a secret and report what is retained
+      description: >-
+        Requires If-Match. The name stays reserved. Pinned value versions, their
+        ciphertext, the audit trail and KEK references are retained; nothing is
+        purged. The response accounts for pinned runs, unacknowledged consumer
+        handling and backup retention, which this module cannot observe and so
+        reports as `unresolved`. Repeating the request with the current ETag
+        returns the same report without a new audit entry.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: The tombstone and the retention accounting.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteSecretResult'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '412': {$ref: 'common.yaml#/components/responses/PreconditionFailed'}
+        '428': {$ref: 'common.yaml#/components/responses/PreconditionRequired'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/secrets/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      operationId: listSecretVersions
+      summary: List a secret's value versions (metadata only) in ascending order
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of version metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretVersionPage'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    post:
+      operationId: createSecretVersion
+      summary: Add the next encrypted value version (rotation)
+      description: >-
+        Requires If-Match (the secret's ETag as last read) and Idempotency-Key.
+        The new version is exactly `currentVersion + 1`; a concurrent rotation
+        makes the loser fail with 412 version_conflict. Existing versions,
+        including those pinned by runs, are never replaced.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+        - $ref: 'common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSecretVersionRequest'
+      responses:
+        '201':
+          description: The new version's metadata and the secret's new metadata.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            Location: {$ref: '#/components/headers/Location'}
+            Idempotent-Replayed: {$ref: 'common.yaml#/components/headers/IdempotentReplayed'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretVersionResult'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409':
+          description: idempotency_conflict or resource_deleted (a deleted secret takes no new versions).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '412': {$ref: 'common.yaml#/components/responses/PreconditionFailed'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '428': {$ref: 'common.yaml#/components/responses/PreconditionRequired'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/secrets/{id}/versions/{version}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/VersionNumber'
+    post:
+      operationId: revokeSecretVersion
+      summary: Revoke one value version (one way)
+      description: >-
+        Sets the version's revocation time. Revocation blocks every further
+        resolution of that version, including by runs that already pinned it. It
+        cannot recall a value that was already delivered: the response lists the
+        external effects (consumer termination, issuer-side credential rotation)
+        that are now owed to known consumers and are tracked as pending until
+        their owners acknowledge them. Repeating the request keeps the original
+        revocation time and returns the same accounting.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeSecretVersionRequest'
+      responses:
+        '200':
+          description: The revoked version and the consumer handling accounting.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeSecretVersionResult'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer access token verified by the injected authenticator.
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    VersionNumber:
+      name: version
+      in: path
+      required: true
+      description: Value version of the secret (not the resource version).
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+        maximum: 9007199254740991
+  headers:
+    Location:
+      description: Absolute path of the created resource.
+      schema:
+        type: string
+  schemas:
+    VariableName:
+      type: string
+      pattern: '^[a-z][a-z0-9_-]{0,62}$'
+      description: Immutable. Equal to the pipeline input name it supplies.
+    SecretName:
+      type: string
+      pattern: '^[a-z][a-z0-9-]{0,62}$'
+      description: Immutable. Referenced from pipelines as secret://project/{name}.
+    SecretRef:
+      type: string
+      pattern: '^secret://project/[a-z][a-z0-9-]{0,62}$'
+    Scalar:
+      description: A string (at most 4096 bytes), boolean or integer within +/-(2^53-1).
+      x-go-type: runtimev1.Value
+      x-go-type-import:
+        path: github.com/optimiware/kodama/contracts/runtime/v1
+        name: runtimev1
+      oneOf:
+        - type: string
+          maxLength: 4096
+        - type: boolean
+        - type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+    VariableType:
+      type: string
+      enum: [string, boolean, integer]
+    SecretKind:
+      type: string
+      enum: [generic, git, model, mcp, kubeconfig]
+      description: >-
+        Immutable payload type. Provider-specific credential schemas are
+        interpreted by their consumers, not by this API.
+    Timestamp:
+      type: string
+      format: date-time
+      description: UTC instant.
+    Variable:
+      type: object
+      required: [id, name, type, value, valueVersion, description, version, createdAt, updatedAt, deletedAt]
+      additionalProperties: false
+      properties:
+        id: {$ref: 'common.yaml#/components/schemas/ID'}
+        name: {$ref: '#/components/schemas/VariableName'}
+        type: {$ref: '#/components/schemas/VariableType'}
+        value: {$ref: '#/components/schemas/Scalar'}
+        valueVersion:
+          allOf:
+            - $ref: 'common.yaml#/components/schemas/Version'
+          description: Value version pinned by runs; changes only when the value changes.
+        description:
+          type: string
+          maxLength: 1024
+        version:
+          allOf:
+            - $ref: 'common.yaml#/components/schemas/Version'
+          description: Resource version (the ETag).
+        createdAt: {$ref: '#/components/schemas/Timestamp'}
+        updatedAt: {$ref: '#/components/schemas/Timestamp'}
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+    CreateVariableRequest:
+      type: object
+      required: [name, value]
+      additionalProperties: false
+      properties:
+        name: {$ref: '#/components/schemas/VariableName'}
+        value: {$ref: '#/components/schemas/Scalar'}
+        description:
+          type: string
+          maxLength: 1024
+    UpdateVariableRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        value: {$ref: '#/components/schemas/Scalar'}
+        description:
+          type: string
+          maxLength: 1024
+    VariablePage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/Variable'}
+        nextCursor:
+          type: string
+          nullable: true
+    RetentionReport:
+      type: object
+      required: [pinnedVersions, activePins, pendingConsumerHandling, backupRetention]
+      additionalProperties: false
+      properties:
+        pinnedVersions:
+          type: integer
+          minimum: 0
+          description: Run pins that retain a value version of this secret.
+        activePins:
+          type: integer
+          minimum: 0
+          description: Pins whose consumer has not released them.
+        pendingConsumerHandling:
+          type: integer
+          minimum: 0
+          description: External effects owed to consumers and not yet acknowledged.
+        backupRetention:
+          type: string
+          enum: [unresolved]
+          description: >-
+            What is known about backups holding the ciphertext. This module
+            cannot observe backups, so it never reports none; the production
+            retention decision (O-11) and its operator procedure provide
+            evidence.
+    Secret:
+      type: object
+      required: [id, name, kind, ref, currentVersion, version, createdAt, updatedAt, deletedAt]
+      additionalProperties: false
+      description: Metadata only. There is no value, ciphertext, nonce, key or fingerprint member.
+      properties:
+        id: {$ref: 'common.yaml#/components/schemas/ID'}
+        name: {$ref: '#/components/schemas/SecretName'}
+        kind: {$ref: '#/components/schemas/SecretKind'}
+        ref: {$ref: '#/components/schemas/SecretRef'}
+        currentVersion:
+          allOf:
+            - $ref: 'common.yaml#/components/schemas/Version'
+          description: Highest value version. It may be revoked, in which case no version is pinnable until a new one is added.
+        version:
+          allOf:
+            - $ref: 'common.yaml#/components/schemas/Version'
+          description: Resource version (the ETag).
+        createdAt: {$ref: '#/components/schemas/Timestamp'}
+        updatedAt: {$ref: '#/components/schemas/Timestamp'}
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        retention:
+          allOf:
+            - $ref: '#/components/schemas/RetentionReport'
+          description: Present only on a deleted secret.
+    SecretPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/Secret'}
+        nextCursor:
+          type: string
+          nullable: true
+    SecretVersion:
+      type: object
+      required: [secretId, version, algorithm, keyGeneration, createdAt, createdBy, revokedAt]
+      additionalProperties: false
+      description: Metadata only.
+      properties:
+        secretId: {$ref: 'common.yaml#/components/schemas/ID'}
+        version:
+          allOf:
+            - $ref: 'common.yaml#/components/schemas/Version'
+          description: Value version.
+        algorithm:
+          type: string
+          description: Envelope algorithm identifier.
+        keyGeneration:
+          type: integer
+          minimum: 1
+          description: Tenant scope key generation that protects the value.
+        createdAt: {$ref: '#/components/schemas/Timestamp'}
+        createdBy:
+          type: string
+          description: Authenticated principal that created the version.
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+    SecretVersionPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/SecretVersion'}
+        nextCursor:
+          type: string
+          nullable: true
+    CreateSecretRequest:
+      type: object
+      required: [name, kind, value]
+      additionalProperties: false
+      properties:
+        name: {$ref: '#/components/schemas/SecretName'}
+        kind: {$ref: '#/components/schemas/SecretKind'}
+        value:
+          type: string
+          format: byte
+          writeOnly: true
+          minLength: 4
+          maxLength: 174768
+          description: Base64 (standard alphabet, padded) of 1 to 131072 bytes. Write-only; never returned.
+    CreateSecretVersionRequest:
+      type: object
+      required: [value]
+      additionalProperties: false
+      properties:
+        value:
+          type: string
+          format: byte
+          writeOnly: true
+          minLength: 4
+          maxLength: 174768
+          description: Base64 (standard alphabet, padded) of 1 to 131072 bytes. Write-only; never returned.
+    SecretVersionResult:
+      type: object
+      required: [secret, version]
+      additionalProperties: false
+      properties:
+        secret: {$ref: '#/components/schemas/Secret'}
+        version: {$ref: '#/components/schemas/SecretVersion'}
+    RevokeSecretVersionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 2048
+          description: Free text recorded in the audit entry. Never put secret values in it.
+    ConsumerHandlingSummary:
+      type: object
+      required: [total, pending]
+      additionalProperties: false
+      description: >-
+        External effects owed to known consumers of the revoked version. Pending
+        effects are tracked until their owners acknowledge them; their existence
+        does not claim that delivered bytes were recalled.
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        pending:
+          type: integer
+          minimum: 0
+    RevokeSecretVersionResult:
+      type: object
+      required: [secret, version, consumerHandling]
+      additionalProperties: false
+      properties:
+        secret: {$ref: '#/components/schemas/Secret'}
+        version: {$ref: '#/components/schemas/SecretVersion'}
+        consumerHandling: {$ref: '#/components/schemas/ConsumerHandlingSummary'}
+    DeleteSecretResult:
+      type: object
+      required: [secret, retention]
+      additionalProperties: false
+      properties:
+        secret: {$ref: '#/components/schemas/Secret'}
+        retention: {$ref: '#/components/schemas/RetentionReport'}

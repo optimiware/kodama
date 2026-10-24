@@ -1,0 +1,3908 @@
+{
+  "operations": {
+    "DELETE /tenants/{tenantId}/memberships/{id}": {
+      "id": "deleteMembership",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "204": "",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "DELETE /tenants/{tenantId}/projects/{projectId}/secrets/{id}": {
+      "id": "deleteSecret",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:DeleteSecretResult",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "DELETE /tenants/{tenantId}/projects/{projectId}/variables/{id}": {
+      "id": "deleteVariable",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "204": "",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /me": {
+      "id": "getMe",
+      "responses": {
+        "200": "ref:Me",
+        "401": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants": {
+      "id": "listTenants",
+      "params": {
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        }
+      },
+      "responses": {
+        "200": "ref:TenantPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/memberships": {
+      "id": "listMemberships",
+      "params": {
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        },
+        "query:projectId": {
+          "shape": "ref:ID"
+        },
+        "query:userId": {
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:MembershipPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects": {
+      "id": "listProjects",
+      "params": {
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        }
+      },
+      "responses": {
+        "200": "ref:ProjectPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}": {
+      "id": "getProject",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:Project",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/agent-profiles": {
+      "id": "listAgentProfiles",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        },
+        "query:name": {
+          "shape": "ref:ProfileName"
+        }
+      },
+      "responses": {
+        "200": "ref:AgentProfilePage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/artifacts/{id}": {
+      "id": "getArtifact",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:download": {
+          "shape": "boolean"
+        }
+      },
+      "responses": {
+        "200": "ref:Artifact",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/deployments": {
+      "id": "listDeployments",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:environmentId": {
+          "shape": "ref:ID"
+        },
+        "query:limit": {
+          "shape": "integer"
+        },
+        "query:status": {
+          "shape": "ref:DeploymentStatus"
+        }
+      },
+      "responses": {
+        "200": "ref:DeploymentPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/deployments/{id}": {
+      "id": "getDeployment",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:DeploymentID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:Deployment",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/environments": {
+      "id": "listEnvironments",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        }
+      },
+      "responses": {
+        "200": "ref:EnvironmentPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/environments/{id}": {
+      "id": "getEnvironment",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:Environment",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/events": {
+      "id": "observeProjectEvents",
+      "params": {
+        "header:Last-Event-ID": {
+          "shape": "ref:Cursor"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:type": {
+          "shape": "array[ref:ObservableEventType]"
+        }
+      },
+      "responses": {
+        "200": "ref:Snapshot",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "410": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/gates": {
+      "id": "listGates",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        },
+        "query:runId": {
+          "shape": "ref:ID"
+        },
+        "query:status": {
+          "shape": "array[ref:GateStatus]"
+        }
+      },
+      "responses": {
+        "200": "ref:GatePage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/gates/{id}": {
+      "id": "getGate",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:Gate",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/pipeline-definitions": {
+      "id": "listPipelineDefinitions",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        },
+        "query:name": {
+          "shape": "ref:PipelineName"
+        }
+      },
+      "responses": {
+        "200": "ref:PipelineDefinitionPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/pipeline-definitions/{id}": {
+      "id": "getPipelineDefinition",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:PipelineDefinition",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/runs": {
+      "id": "listRuns",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        },
+        "query:status": {
+          "shape": "array[ref:RunStatus]"
+        },
+        "query:workItemId": {
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:RunPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/runs/{id}": {
+      "id": "getRun",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:Run",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/runs/{id}/events": {
+      "id": "observeRunEvents",
+      "params": {
+        "header:Last-Event-ID": {
+          "shape": "ref:Cursor"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:type": {
+          "shape": "array[ref:ObservableEventType]"
+        }
+      },
+      "responses": {
+        "200": "ref:Snapshot",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "410": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/runs/{id}/logs": {
+      "id": "getRunLogs",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:attemptId": {
+          "shape": "ref:ID"
+        },
+        "query:follow": {
+          "shape": "boolean"
+        },
+        "query:source": {
+          "shape": "ref:LogSource"
+        },
+        "query:tail": {
+          "shape": "integer"
+        }
+      },
+      "responses": {
+        "200": "ref:LogRecord",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/runs/{id}/steps": {
+      "id": "listRunSteps",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        }
+      },
+      "responses": {
+        "200": "ref:StepPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/secrets": {
+      "id": "listSecrets",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        }
+      },
+      "responses": {
+        "200": "ref:SecretPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/secrets/{id}": {
+      "id": "getSecret",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:Secret",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/secrets/{id}/versions": {
+      "id": "listSecretVersions",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        }
+      },
+      "responses": {
+        "200": "ref:SecretVersionPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/variables": {
+      "id": "listVariables",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        }
+      },
+      "responses": {
+        "200": "ref:VariablePage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/variables/{id}": {
+      "id": "getVariable",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:Variable",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/work-items": {
+      "id": "listWorkItems",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:assigneeId": {
+          "shape": "ref:ID"
+        },
+        "query:blocked": {
+          "shape": "boolean"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:kind": {
+          "shape": "array[ref:WorkKind]"
+        },
+        "query:limit": {
+          "shape": "integer"
+        },
+        "query:parentId": {
+          "shape": "ref:ID"
+        },
+        "query:state": {
+          "shape": "array[ref:WorkState]"
+        }
+      },
+      "responses": {
+        "200": "ref:WorkItemPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/work-items/{id}": {
+      "id": "getWorkItem",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:WorkItem",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/work-items/{id}/history": {
+      "id": "listWorkItemHistory",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "query:cursor": {
+          "shape": "ref:Cursor"
+        },
+        "query:limit": {
+          "shape": "integer"
+        }
+      },
+      "responses": {
+        "200": "ref:HistoryPage",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "GET /tenants/{tenantId}/projects/{projectId}/workspaces/{id}": {
+      "id": "getWorkspace",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:Workspace",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "PATCH /tenants/{tenantId}/memberships/{id}": {
+      "id": "updateMembership",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:UpdateMembership",
+      "responses": {
+        "200": "ref:Membership",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "PATCH /tenants/{tenantId}/projects/{projectId}": {
+      "id": "updateProject",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:UpdateProject",
+      "responses": {
+        "200": "ref:Project",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "PATCH /tenants/{tenantId}/projects/{projectId}/environments/{id}": {
+      "id": "updateEnvironment",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:EnvironmentEdit",
+      "responses": {
+        "200": "ref:Environment",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "PATCH /tenants/{tenantId}/projects/{projectId}/variables/{id}": {
+      "id": "updateVariable",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:UpdateVariableRequest",
+      "responses": {
+        "200": "ref:Variable",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "PATCH /tenants/{tenantId}/projects/{projectId}/work-items/{id}": {
+      "id": "updateWorkItem",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:UpdateWorkItem",
+      "responses": {
+        "200": "ref:WorkItem",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/memberships": {
+      "id": "createMembership",
+      "params": {
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:CreateMembership",
+      "responses": {
+        "201": "ref:Membership",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects": {
+      "id": "createProject",
+      "params": {
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:CreateProject",
+      "responses": {
+        "201": "ref:Project",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/agent-profiles": {
+      "id": "registerAgentProfile",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:AgentProfileDraft",
+      "responses": {
+        "200": "ref:AgentProfile",
+        "201": "ref:AgentProfile",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/deployments": {
+      "id": "createDeployment",
+      "params": {
+        "header:Idempotency-Key": {
+          "required": true,
+          "shape": "ref:IdempotencyKeyValue"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:DeploymentCreate",
+      "responses": {
+        "200": "ref:DeploymentReceipt",
+        "201": "ref:DeploymentReceipt",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/deployments/{id}/cleanup": {
+      "id": "requestDeploymentCleanup",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:DeploymentID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "200": "ref:Deployment",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/environments": {
+      "id": "createEnvironment",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:EnvironmentCreate",
+      "responses": {
+        "201": "ref:Environment",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/gates/{id}/decisions": {
+      "id": "decideGate",
+      "params": {
+        "header:Idempotency-Key": {
+          "required": true,
+          "shape": "ref:IdempotencyKeyValue"
+        },
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:GateDecisionRequest",
+      "responses": {
+        "200": "ref:Gate",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/pipeline-definitions": {
+      "id": "registerPipelineDefinition",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:PipelineDocument",
+      "responses": {
+        "200": "ref:PipelineDefinition",
+        "201": "ref:PipelineDefinition",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/runs": {
+      "id": "createRun",
+      "params": {
+        "header:Idempotency-Key": {
+          "required": true,
+          "shape": "ref:IdempotencyKeyValue"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:CreateRunRequest",
+      "responses": {
+        "201": "ref:Run",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/runs/{id}/cancel": {
+      "id": "cancelRun",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "responses": {
+        "202": "ref:Run",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/secrets": {
+      "id": "createSecret",
+      "params": {
+        "header:Idempotency-Key": {
+          "required": true,
+          "shape": "ref:IdempotencyKeyValue"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:CreateSecretRequest",
+      "responses": {
+        "201": "ref:Secret",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/secrets/{id}/versions": {
+      "id": "createSecretVersion",
+      "params": {
+        "header:Idempotency-Key": {
+          "required": true,
+          "shape": "ref:IdempotencyKeyValue"
+        },
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:CreateSecretVersionRequest",
+      "responses": {
+        "201": "ref:SecretVersionResult",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/secrets/{id}/versions/{version}/revoke": {
+      "id": "revokeSecretVersion",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:version": {
+          "required": true,
+          "shape": "integer/int64"
+        }
+      },
+      "body": "optional",
+      "bodySchema": "ref:RevokeSecretVersionRequest",
+      "responses": {
+        "200": "ref:RevokeSecretVersionResult",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/variables": {
+      "id": "createVariable",
+      "params": {
+        "header:Idempotency-Key": {
+          "required": true,
+          "shape": "ref:IdempotencyKeyValue"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:CreateVariableRequest",
+      "responses": {
+        "201": "ref:Variable",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "500": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/work-items": {
+      "id": "createWorkItem",
+      "params": {
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:CreateWorkItem",
+      "responses": {
+        "201": "ref:WorkItem",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/work-items/{id}/transitions": {
+      "id": "transitionWorkItem",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "required",
+      "bodySchema": "ref:TransitionRequest",
+      "responses": {
+        "200": "ref:WorkItem",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "413": "ref:ErrorEnvelope",
+        "415": "ref:ErrorEnvelope",
+        "422": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/work-items/{id}/workspace": {
+      "id": "provisionWorkspace",
+      "params": {
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "optional",
+      "bodySchema": "ref:EmptyRequest",
+      "responses": {
+        "200": "ref:Workspace",
+        "201": "ref:Workspace",
+        "202": "ref:Workspace",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/workspaces/{id}/archive": {
+      "id": "archiveWorkspace",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "optional",
+      "bodySchema": "ref:EmptyRequest",
+      "responses": {
+        "200": "ref:Workspace",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/workspaces/{id}/restore": {
+      "id": "restoreWorkspace",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "optional",
+      "bodySchema": "ref:EmptyRequest",
+      "responses": {
+        "200": "ref:Workspace",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    },
+    "POST /tenants/{tenantId}/projects/{projectId}/workspaces/{id}/sync": {
+      "id": "syncWorkspace",
+      "params": {
+        "header:If-Match": {
+          "required": true,
+          "shape": "ref:ETagValue"
+        },
+        "path:id": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:projectId": {
+          "required": true,
+          "shape": "ref:ID"
+        },
+        "path:tenantId": {
+          "required": true,
+          "shape": "ref:ID"
+        }
+      },
+      "body": "optional",
+      "bodySchema": "ref:EmptyRequest",
+      "responses": {
+        "200": "ref:Workspace",
+        "400": "ref:ErrorEnvelope",
+        "401": "ref:ErrorEnvelope",
+        "403": "ref:ErrorEnvelope",
+        "404": "ref:ErrorEnvelope",
+        "409": "ref:ErrorEnvelope",
+        "412": "ref:ErrorEnvelope",
+        "428": "ref:ErrorEnvelope",
+        "429": "ref:ErrorEnvelope",
+        "503": "ref:ErrorEnvelope"
+      }
+    }
+  },
+  "schemas": {
+    "AcceptanceCriterion": {
+      "type": "object",
+      "required": [
+        "id",
+        "text"
+      ],
+      "properties": {
+        "id": "string",
+        "text": "string"
+      }
+    },
+    "ActionKey": {
+      "type": "string"
+    },
+    "Actor": {
+      "type": "object",
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": "string",
+        "type": "ref:ActorType"
+      }
+    },
+    "ActorType": {
+      "type": "string",
+      "enum": [
+        "operator",
+        "service",
+        "user",
+        "workload"
+      ]
+    },
+    "AgentProfile": {
+      "type": "object",
+      "required": [
+        "createdAt",
+        "createdBy",
+        "digest",
+        "id",
+        "name",
+        "profile",
+        "reference",
+        "version"
+      ],
+      "properties": {
+        "createdAt": "string/date-time",
+        "createdBy": "ref:Actor",
+        "digest": "ref:Digest",
+        "id": "ref:ID",
+        "name": "ref:ProfileName",
+        "profile": "ref:CanonicalProfile",
+        "reference": "string",
+        "version": "ref:Version"
+      }
+    },
+    "AgentProfileDraft": {
+      "type": "object",
+      "required": [
+        "designBaseline",
+        "image",
+        "instructions",
+        "limits",
+        "model",
+        "name",
+        "tools",
+        "transcript",
+        "wrapper"
+      ],
+      "properties": {
+        "designBaseline": "ref:DesignBaseline",
+        "image": "string",
+        "instructions": "string",
+        "limits": "ref:Limits",
+        "model": "ref:Model",
+        "name": "ref:ProfileName",
+        "tools": "array[string]",
+        "transcript": "ref:Transcript",
+        "wrapper": "ref:Wrapper"
+      }
+    },
+    "AgentProfilePage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:AgentProfile]",
+        "nextCursor": "string?"
+      }
+    },
+    "Applicability": {
+      "type": "object",
+      "required": [
+        "applicable",
+        "expired",
+        "reason"
+      ],
+      "properties": {
+        "applicable": "boolean",
+        "expired": "boolean",
+        "reason": "string?"
+      }
+    },
+    "Artifact": {
+      "type": "object",
+      "required": [
+        "attemptId",
+        "availability",
+        "createdAt",
+        "digest",
+        "download",
+        "id",
+        "kind",
+        "mediaType",
+        "name",
+        "registry",
+        "role",
+        "runId",
+        "sizeBytes",
+        "source",
+        "state",
+        "stepId",
+        "verifiedAt",
+        "version"
+      ],
+      "properties": {
+        "attemptId": "ref:ID",
+        "availability": "ref:ArtifactAvailability",
+        "createdAt": "string/date-time",
+        "digest": "ref:Digest",
+        "download": "?allOf(ref:ArtifactDownload)",
+        "id": "ref:ID",
+        "kind": "ref:ArtifactKind",
+        "mediaType": "string?",
+        "name": "string",
+        "registry": "string?",
+        "role": "ref:ArtifactRole",
+        "runId": "ref:ID",
+        "sizeBytes": "integer/int64?",
+        "source": "?allOf(ref:SourceProvenance)",
+        "state": "ref:ArtifactState",
+        "stepId": "string",
+        "verifiedAt": "string/date-time?",
+        "version": "ref:Version"
+      }
+    },
+    "ArtifactAvailability": {
+      "type": "string",
+      "enum": [
+        "abandoned",
+        "available",
+        "removed"
+      ]
+    },
+    "ArtifactDownload": {
+      "type": "object",
+      "required": [
+        "expiresAt",
+        "method",
+        "url"
+      ],
+      "properties": {
+        "expiresAt": "string/date-time",
+        "method": "string",
+        "url": "string"
+      }
+    },
+    "ArtifactKind": {
+      "type": "string",
+      "enum": [
+        "file",
+        "oci"
+      ]
+    },
+    "ArtifactRole": {
+      "type": "string",
+      "enum": [
+        "bundle",
+        "diagnostic",
+        "output"
+      ]
+    },
+    "ArtifactState": {
+      "type": "string",
+      "enum": [
+        "registered",
+        "reserved",
+        "usable"
+      ]
+    },
+    "Attempt": {
+      "type": "object",
+      "required": [
+        "access",
+        "createdAt",
+        "diagnosticArtifactIds",
+        "executionDeadlineAt",
+        "failureClass",
+        "finishedAt",
+        "id",
+        "inputCommit",
+        "jobName",
+        "observedJobUid",
+        "ordinal",
+        "reason",
+        "resultHash",
+        "settled",
+        "startedAt",
+        "startupDeadlineAt",
+        "status"
+      ],
+      "properties": {
+        "access": "string",
+        "createdAt": "string/date-time",
+        "diagnosticArtifactIds": "array[ref:ID]",
+        "executionDeadlineAt": "string/date-time?",
+        "failureClass": "string?",
+        "finishedAt": "string/date-time?",
+        "id": "ref:ID",
+        "inputCommit": "string?",
+        "jobName": "string",
+        "observedJobUid": "string?",
+        "ordinal": "integer",
+        "reason": "ref:Reason",
+        "resultHash": "string?",
+        "settled": "boolean",
+        "startedAt": "string/date-time?",
+        "startupDeadlineAt": "string/date-time",
+        "status": "ref:AttemptStatus"
+      }
+    },
+    "AttemptStatus": {
+      "type": "string",
+      "enum": [
+        "cancelled",
+        "failed",
+        "running",
+        "succeeded"
+      ]
+    },
+    "BindingGrant": {
+      "type": "object",
+      "required": [
+        "role",
+        "userId"
+      ],
+      "properties": {
+        "role": "ref:Role",
+        "userId": "ref:ID"
+      }
+    },
+    "CanonicalDefinition": {
+      "type": "object"
+    },
+    "CanonicalProfile": {
+      "type": "object"
+    },
+    "Checkpoint": {
+      "type": "object",
+      "required": [
+        "cursor"
+      ],
+      "properties": {
+        "cursor": "ref:Cursor"
+      }
+    },
+    "ChildSummary": {
+      "type": "object",
+      "required": [
+        "cancelled",
+        "done",
+        "total"
+      ],
+      "properties": {
+        "cancelled": "integer",
+        "done": "integer",
+        "total": "integer"
+      }
+    },
+    "Cleanup": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "reason": "string",
+        "requestedAt": "string/date-time",
+        "state": "ref:CleanupState"
+      }
+    },
+    "CleanupReport": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "deleted": "array[ref:ObjectRef]",
+        "reason": "string",
+        "state": "string"
+      }
+    },
+    "CleanupState": {
+      "type": "string",
+      "enum": [
+        "done",
+        "failed",
+        "none",
+        "requested",
+        "unknown"
+      ]
+    },
+    "Commit": {
+      "type": "string"
+    },
+    "CompletionClaim": {
+      "type": "object",
+      "required": [
+        "acceptedCriteria",
+        "contentRevision"
+      ],
+      "properties": {
+        "acceptedCriteria": "array[string]",
+        "acknowledgedFindings": "array[ref:Finding]",
+        "candidateCommit": "string",
+        "contentRevision": "integer/int64"
+      }
+    },
+    "CompletionRecord": {
+      "type": "object",
+      "required": [
+        "acceptedCriteria",
+        "completedAt",
+        "completedBy",
+        "contentRevision"
+      ],
+      "properties": {
+        "acceptedCriteria": "array[string]",
+        "acknowledgedFindings": "array[ref:Finding]",
+        "candidateCommit": "string",
+        "childSummary": "ref:ChildSummary",
+        "completedAt": "string/date-time",
+        "completedBy": "ref:Actor",
+        "contentRevision": "integer/int64",
+        "reason": "string"
+      }
+    },
+    "Conformance": {
+      "type": "object",
+      "required": [
+        "baselineDigest",
+        "code",
+        "producerStep",
+        "reportDigest",
+        "reportId",
+        "requiredChecks",
+        "status"
+      ],
+      "properties": {
+        "baselineDigest": "string?",
+        "code": "string?",
+        "producerStep": "string",
+        "reportDigest": "string?",
+        "reportId": "string?",
+        "requiredChecks": "array[string]",
+        "status": "string"
+      }
+    },
+    "ConsumerHandlingSummary": {
+      "type": "object",
+      "required": [
+        "pending",
+        "total"
+      ],
+      "properties": {
+        "pending": "integer",
+        "total": "integer"
+      }
+    },
+    "CreateMembership": {
+      "type": "object",
+      "required": [
+        "role",
+        "userId"
+      ],
+      "properties": {
+        "projectId": "ref:ID",
+        "role": "ref:Role",
+        "userId": "ref:ID"
+      }
+    },
+    "CreateProject": {
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "activeWipLimit": "integer",
+        "displayName": "string",
+        "key": "string",
+        "settings": "object"
+      }
+    },
+    "CreateRunRequest": {
+      "type": "object",
+      "required": [
+        "contentRevision",
+        "definitionId",
+        "sourceCommit",
+        "workItemId"
+      ],
+      "properties": {
+        "contentRevision": "integer/int64",
+        "definitionId": "ref:ID",
+        "inputs": "object",
+        "sourceCommit": "string",
+        "workItemId": "ref:ID"
+      }
+    },
+    "CreateSecretRequest": {
+      "type": "object",
+      "required": [
+        "kind",
+        "name",
+        "value"
+      ],
+      "properties": {
+        "kind": "ref:SecretKind",
+        "name": "ref:SecretName",
+        "value": "string/byte"
+      }
+    },
+    "CreateSecretVersionRequest": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": "string/byte"
+      }
+    },
+    "CreateVariableRequest": {
+      "type": "object",
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "description": "string",
+        "name": "ref:VariableName",
+        "value": "ref:Scalar"
+      }
+    },
+    "CreateWorkItem": {
+      "type": "object",
+      "required": [
+        "kind",
+        "title"
+      ],
+      "properties": {
+        "acceptanceCriteria": "array[ref:AcceptanceCriterion]",
+        "assigneeId": "string",
+        "evidenceLinks": "array[ref:EvidenceRef]",
+        "kind": "ref:WorkKind",
+        "parentId": "string",
+        "spec": "string",
+        "title": "string"
+      }
+    },
+    "CredentialBinding": {
+      "type": "object",
+      "required": [
+        "delivery",
+        "name",
+        "ref"
+      ],
+      "properties": {
+        "delivery": "ref:SecretDelivery",
+        "name": "string",
+        "ref": "string"
+      }
+    },
+    "Cursor": {
+      "type": "string"
+    },
+    "Decision": {
+      "type": "object",
+      "required": [
+        "decidedAt",
+        "decidedBy",
+        "decision",
+        "reason"
+      ],
+      "properties": {
+        "decidedAt": "ref:GatesTimestamp",
+        "decidedBy": "ref:GatesActor",
+        "decision": "string",
+        "reason": "string"
+      }
+    },
+    "DeleteSecretResult": {
+      "type": "object",
+      "required": [
+        "retention",
+        "secret"
+      ],
+      "properties": {
+        "retention": "ref:RetentionReport",
+        "secret": "ref:Secret"
+      }
+    },
+    "Deployment": {
+      "type": "object",
+      "required": [
+        "actionKey",
+        "attemptId",
+        "cleanup",
+        "configurationDigest",
+        "createdAt",
+        "environmentId",
+        "id",
+        "image",
+        "namespace",
+        "objects",
+        "outcomeUnknown",
+        "producer",
+        "reason",
+        "runId",
+        "source",
+        "status",
+        "stepId",
+        "updatedAt",
+        "version"
+      ],
+      "properties": {
+        "actionKey": "ref:ActionKey",
+        "attemptId": "ref:ID",
+        "cleanup": "ref:Cleanup",
+        "configurationDigest": "ref:Digest",
+        "createdAt": "string/date-time",
+        "deletedAt": "string/date-time",
+        "environmentId": "ref:ID",
+        "expiresAt": "string/date-time",
+        "id": "ref:DeploymentID",
+        "image": "ref:Image",
+        "namespace": "string",
+        "objects": "array[ref:ObjectRef]",
+        "outcomeUnknown": "boolean",
+        "producer": "ref:Producer",
+        "reason": "string",
+        "runId": "ref:ID",
+        "source": "ref:Source",
+        "status": "ref:DeploymentStatus",
+        "stepId": "string",
+        "updatedAt": "string/date-time",
+        "version": "ref:Version"
+      }
+    },
+    "DeploymentCreate": {
+      "type": "object",
+      "required": [
+        "attemptId",
+        "image",
+        "source"
+      ],
+      "properties": {
+        "attemptId": "ref:ID",
+        "image": "ref:Image",
+        "source": "ref:Source"
+      }
+    },
+    "DeploymentID": {
+      "type": "string"
+    },
+    "DeploymentPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Deployment]",
+        "nextCursor": "string?"
+      }
+    },
+    "DeploymentReceipt": {
+      "type": "object",
+      "required": [
+        "annotations",
+        "created",
+        "deployment"
+      ],
+      "properties": {
+        "annotations": "object",
+        "created": "boolean",
+        "deployment": "ref:Deployment"
+      }
+    },
+    "DeploymentStatus": {
+      "type": "string",
+      "enum": [
+        "failed",
+        "pending",
+        "running",
+        "succeeded"
+      ]
+    },
+    "DesignBaseline": {
+      "type": "object",
+      "required": [
+        "decisions",
+        "requiredChecks",
+        "requirements",
+        "sources"
+      ],
+      "properties": {
+        "decisions": "array[string]",
+        "digest": "ref:Digest",
+        "requiredChecks": "array[string]",
+        "requirements": "array[string]",
+        "sources": "array[ref:SourceRef]"
+      }
+    },
+    "Digest": {
+      "type": "string"
+    },
+    "ETagValue": {
+      "type": "string"
+    },
+    "EmptyRequest": {
+      "type": "object"
+    },
+    "Environment": {
+      "type": "object",
+      "required": [
+        "config",
+        "createdAt",
+        "id",
+        "kind",
+        "kubeconfig",
+        "name",
+        "namespace",
+        "secrets",
+        "target",
+        "updatedAt",
+        "version"
+      ],
+      "properties": {
+        "config": "object",
+        "createdAt": "string/date-time",
+        "id": "ref:ID",
+        "kind": "ref:EnvironmentKind",
+        "kubeconfig": "ref:CredentialBinding",
+        "name": "string",
+        "namespace": "string",
+        "previewTtlSeconds": "integer",
+        "secrets": "array[ref:CredentialBinding]",
+        "target": "string",
+        "updatedAt": "string/date-time",
+        "version": "ref:Version"
+      }
+    },
+    "EnvironmentCreate": {
+      "type": "object",
+      "required": [
+        "kind",
+        "kubeconfig",
+        "name",
+        "namespace",
+        "target"
+      ],
+      "properties": {
+        "config": "object",
+        "kind": "ref:EnvironmentKind",
+        "kubeconfig": "ref:CredentialBinding",
+        "name": "string",
+        "namespace": "string",
+        "previewTtlSeconds": "integer",
+        "secrets": "array[ref:CredentialBinding]",
+        "target": "string"
+      }
+    },
+    "EnvironmentEdit": {
+      "type": "object",
+      "properties": {
+        "config": "object",
+        "kubeconfig": "ref:CredentialBinding",
+        "namespace": "string",
+        "previewTtlSeconds": "integer",
+        "secrets": "array[ref:CredentialBinding]",
+        "target": "string"
+      }
+    },
+    "EnvironmentKind": {
+      "type": "string",
+      "enum": [
+        "preview",
+        "stage"
+      ]
+    },
+    "EnvironmentPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Environment]",
+        "nextCursor": "string?"
+      }
+    },
+    "Error": {
+      "type": "object",
+      "required": [
+        "code",
+        "details",
+        "message",
+        "requestId"
+      ],
+      "properties": {
+        "code": "ref:ErrorCode",
+        "details": "object",
+        "message": "string",
+        "requestId": "string"
+      }
+    },
+    "ErrorCode": {
+      "type": "string"
+    },
+    "ErrorEnvelope": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": "ref:Error"
+      }
+    },
+    "EvidenceRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": "string",
+        "note": "string",
+        "type": "string"
+      }
+    },
+    "Finding": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": "string",
+        "summary": "string"
+      }
+    },
+    "Gate": {
+      "type": "object",
+      "required": [
+        "applicability",
+        "createdAt",
+        "deadline",
+        "decision",
+        "id",
+        "invalidation",
+        "requestedAt",
+        "required",
+        "runId",
+        "status",
+        "stepId",
+        "subject",
+        "subjectDigest",
+        "updatedAt",
+        "version"
+      ],
+      "properties": {
+        "applicability": "ref:Applicability",
+        "createdAt": "ref:GatesTimestamp",
+        "deadline": "ref:GatesTimestamp",
+        "decision": "ref:Decision",
+        "id": "ref:ID",
+        "invalidation": "ref:Invalidation",
+        "requestedAt": "ref:GatesTimestamp",
+        "required": "ref:Required",
+        "runId": "ref:ID",
+        "status": "ref:GateStatus",
+        "stepId": "string",
+        "subject": "ref:Subject",
+        "subjectDigest": "ref:Digest",
+        "updatedAt": "ref:GatesTimestamp",
+        "version": "ref:Version"
+      }
+    },
+    "GateDecisionRequest": {
+      "type": "object",
+      "required": [
+        "decision",
+        "reason",
+        "subjectDigest"
+      ],
+      "properties": {
+        "decision": "string",
+        "reason": "string",
+        "subjectDigest": "ref:Digest"
+      }
+    },
+    "GatePage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Gate]",
+        "nextCursor": "string?"
+      }
+    },
+    "GateStatus": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "pending",
+        "rejected"
+      ]
+    },
+    "GatesActor": {
+      "type": "object",
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": "string",
+        "type": "string"
+      }
+    },
+    "GatesEvidenceRef": {
+      "type": "object",
+      "required": [
+        "digest",
+        "id"
+      ],
+      "properties": {
+        "digest": "ref:Digest",
+        "id": "ref:ID"
+      }
+    },
+    "GatesTimestamp": {
+      "type": "string"
+    },
+    "GitCommit": {
+      "type": "string"
+    },
+    "Harness": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": "string",
+        "version": "string"
+      }
+    },
+    "HistoryEntry": {
+      "type": "object",
+      "required": [
+        "actor",
+        "after",
+        "before",
+        "changedFields",
+        "contentRevision",
+        "id",
+        "kind",
+        "occurredAt",
+        "version"
+      ],
+      "properties": {
+        "actor": "ref:Actor",
+        "after": "object",
+        "before": "object",
+        "changedFields": "array[string]",
+        "completion": "ref:CompletionRecord",
+        "contentRevision": "ref:Version",
+        "from": "ref:WorkState",
+        "id": "ref:ID",
+        "kind": "string",
+        "occurredAt": "string/date-time",
+        "reason": "string",
+        "requestId": "string",
+        "review": "ref:ReviewSubject",
+        "to": "ref:WorkState",
+        "version": "ref:Version"
+      }
+    },
+    "HistoryPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:HistoryEntry]",
+        "nextCursor": "string?"
+      }
+    },
+    "ID": {
+      "type": "string"
+    },
+    "IdempotencyKeyValue": {
+      "type": "string"
+    },
+    "Image": {
+      "type": "object",
+      "required": [
+        "artifactId",
+        "digest"
+      ],
+      "properties": {
+        "artifactId": "ref:ID",
+        "digest": "ref:Digest"
+      }
+    },
+    "InputSnapshot": {
+      "type": "object",
+      "required": [
+        "digest",
+        "inputs",
+        "secrets"
+      ],
+      "properties": {
+        "digest": "string",
+        "inputs": "array[ref:PinnedInput]",
+        "secrets": "array[ref:PinnedSecret]"
+      }
+    },
+    "Invalidation": {
+      "type": "object",
+      "required": [
+        "at",
+        "reason",
+        "supersedingCommit",
+        "supersedingRevision"
+      ],
+      "properties": {
+        "at": "ref:GatesTimestamp",
+        "reason": "string",
+        "supersedingCommit": "string?",
+        "supersedingRevision": "integer/int64?"
+      }
+    },
+    "Limits": {
+      "type": "object",
+      "required": [
+        "wallSeconds"
+      ],
+      "properties": {
+        "maxRequests": "integer/int64",
+        "maxTokens": "integer/int64",
+        "maxToolCalls": "integer/int64",
+        "wallSeconds": "integer/int64"
+      }
+    },
+    "LogChunk": {
+      "type": "object",
+      "required": [
+        "lineTruncated",
+        "text",
+        "type"
+      ],
+      "properties": {
+        "lineTruncated": "boolean",
+        "text": "string",
+        "type": "string"
+      }
+    },
+    "LogCompleteness": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unknown"
+      ]
+    },
+    "LogLimits": {
+      "type": "object",
+      "required": [
+        "maxBytes",
+        "maxDurationSeconds",
+        "maxLineBytes",
+        "maxLines"
+      ],
+      "properties": {
+        "maxBytes": "integer",
+        "maxDurationSeconds": "integer",
+        "maxLineBytes": "integer",
+        "maxLines": "integer"
+      }
+    },
+    "LogMeta": {
+      "type": "object",
+      "required": [
+        "attemptId",
+        "completeness",
+        "follow",
+        "limits",
+        "origin",
+        "reasons",
+        "runId",
+        "stepId",
+        "tail",
+        "terminal",
+        "type"
+      ],
+      "properties": {
+        "attemptId": "ref:ID",
+        "completeness": "ref:LogCompleteness",
+        "follow": "boolean",
+        "limits": "ref:LogLimits",
+        "origin": "ref:LogOrigin",
+        "reasons": "array[ref:LogReason]",
+        "runId": "ref:ID",
+        "stepId": "string",
+        "tail": "integer",
+        "terminal": "boolean",
+        "type": "string"
+      }
+    },
+    "LogOrigin": {
+      "type": "string",
+      "enum": [
+        "controller",
+        "live",
+        "wrapper"
+      ]
+    },
+    "LogReason": {
+      "type": "string",
+      "enum": [
+        "controller_capture",
+        "interrupted",
+        "rotated",
+        "truncated",
+        "unverified",
+        "upload_failed",
+        "workload_missing"
+      ]
+    },
+    "LogRecord": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": "string"
+      }
+    },
+    "LogSource": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "controller",
+        "live",
+        "wrapper"
+      ]
+    },
+    "LogStop": {
+      "type": "string",
+      "enum": [
+        "authorization_changed",
+        "byte_limit",
+        "duration_limit",
+        "end",
+        "interrupted",
+        "line_limit",
+        "scan_limit",
+        "unavailable"
+      ]
+    },
+    "LogSummary": {
+      "type": "object",
+      "required": [
+        "bytes",
+        "lines",
+        "stop",
+        "truncated",
+        "type"
+      ],
+      "properties": {
+        "bytes": "integer",
+        "lines": "integer",
+        "stop": "ref:LogStop",
+        "truncated": "boolean",
+        "type": "string"
+      }
+    },
+    "Me": {
+      "type": "object",
+      "required": [
+        "createdAt",
+        "id",
+        "issuer",
+        "subject"
+      ],
+      "properties": {
+        "createdAt": "string/date-time",
+        "id": "ref:ID",
+        "issuer": "string",
+        "subject": "string"
+      }
+    },
+    "Membership": {
+      "type": "object",
+      "required": [
+        "createdAt",
+        "id",
+        "role",
+        "userId",
+        "version"
+      ],
+      "properties": {
+        "createdAt": "string/date-time",
+        "id": "ref:ID",
+        "projectId": "allOf(ref:ID)",
+        "role": "ref:Role",
+        "userId": "ref:ID",
+        "version": "ref:Version"
+      }
+    },
+    "MembershipPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Membership]",
+        "nextCursor": "string?"
+      }
+    },
+    "Model": {
+      "type": "object",
+      "required": [
+        "endpoint",
+        "name"
+      ],
+      "properties": {
+        "endpoint": "string",
+        "name": "string"
+      }
+    },
+    "ObjectRef": {
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "name",
+        "namespace"
+      ],
+      "properties": {
+        "apiVersion": "string",
+        "kind": "string",
+        "name": "string",
+        "namespace": "string",
+        "ready": "boolean",
+        "uid": "string"
+      }
+    },
+    "ObservableEventType": {
+      "type": "string",
+      "enum": [
+        "run.created",
+        "run.state_changed",
+        "step_attempt.state_changed",
+        "work_item.created",
+        "work_item.transitioned",
+        "work_item.updated"
+      ]
+    },
+    "ObservedActor": {
+      "type": "object",
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": "string",
+        "type": "string"
+      }
+    },
+    "ObservedEvent": {
+      "type": "object",
+      "required": [
+        "actor",
+        "causationId",
+        "correlationId",
+        "data",
+        "id",
+        "occurredAt",
+        "resource",
+        "schemaVersion",
+        "tenantId",
+        "type"
+      ],
+      "properties": {
+        "actor": "ref:ObservedActor",
+        "causationId": "string?",
+        "correlationId": "string",
+        "data": "object",
+        "id": "string",
+        "occurredAt": "string/date-time",
+        "projectId": "ref:ID",
+        "resource": "ref:ObservedResourceRef",
+        "schemaVersion": "integer",
+        "tenantId": "ref:ID",
+        "type": "ref:ObservableEventType"
+      }
+    },
+    "ObservedResource": {
+      "type": "object",
+      "required": [
+        "id",
+        "state",
+        "type",
+        "version"
+      ],
+      "properties": {
+        "id": "ref:ID",
+        "kind": "string",
+        "runId": "ref:ID",
+        "state": "string",
+        "stepId": "ref:ID",
+        "type": "ref:ObservedResourceType",
+        "version": "integer/int64"
+      }
+    },
+    "ObservedResourceRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "version"
+      ],
+      "properties": {
+        "id": "string",
+        "type": "string",
+        "version": "integer/int64"
+      }
+    },
+    "ObservedResourceType": {
+      "type": "string",
+      "enum": [
+        "run",
+        "step_attempt",
+        "work_item"
+      ]
+    },
+    "OutcomeReport": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "objects": "array[ref:ObjectRef]",
+        "reason": "string",
+        "state": "string"
+      }
+    },
+    "Page": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[object]",
+        "nextCursor": "string?"
+      }
+    },
+    "PinnedInput": {
+      "type": "object",
+      "required": [
+        "name",
+        "source",
+        "type",
+        "value",
+        "variableId",
+        "variableVersion"
+      ],
+      "properties": {
+        "name": "string",
+        "source": "string",
+        "type": "string",
+        "value": "ref:RunsScalar",
+        "variableId": "string?",
+        "variableVersion": "integer/int64?"
+      }
+    },
+    "PinnedSecret": {
+      "type": "object",
+      "required": [
+        "delivery",
+        "name",
+        "ref",
+        "step",
+        "version"
+      ],
+      "properties": {
+        "delivery": "string",
+        "name": "string",
+        "ref": "string",
+        "step": "string",
+        "version": "integer/int64"
+      }
+    },
+    "PipelineDefinition": {
+      "type": "object",
+      "required": [
+        "createdAt",
+        "createdBy",
+        "definition",
+        "digest",
+        "id",
+        "name",
+        "version"
+      ],
+      "properties": {
+        "createdAt": "string/date-time",
+        "createdBy": "ref:Actor",
+        "definition": "ref:CanonicalDefinition",
+        "digest": "string",
+        "id": "ref:ID",
+        "name": "ref:PipelineName",
+        "version": "ref:Version"
+      }
+    },
+    "PipelineDefinitionPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:PipelineDefinition]",
+        "nextCursor": "string?"
+      }
+    },
+    "PipelineDocument": {
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ],
+      "properties": {
+        "apiVersion": "string",
+        "kind": "string",
+        "metadata": "object",
+        "spec": "object"
+      }
+    },
+    "PipelineName": {
+      "type": "string"
+    },
+    "Producer": {
+      "type": "object",
+      "required": [
+        "attemptId",
+        "runId",
+        "stepId",
+        "toolImage"
+      ],
+      "properties": {
+        "attemptId": "ref:ID",
+        "runId": "ref:ID",
+        "stepId": "string",
+        "toolImage": "string"
+      }
+    },
+    "ProfileName": {
+      "type": "string"
+    },
+    "Project": {
+      "type": "object",
+      "required": [
+        "activeWipLimit",
+        "callerRoles",
+        "createdAt",
+        "displayName",
+        "id",
+        "key",
+        "settings",
+        "updatedAt",
+        "version"
+      ],
+      "properties": {
+        "activeWipLimit": "integer",
+        "callerRoles": "array[ref:Role]",
+        "createdAt": "string/date-time",
+        "displayName": "string",
+        "id": "ref:ID",
+        "key": "string",
+        "settings": "object",
+        "updatedAt": "string/date-time",
+        "version": "ref:Version"
+      }
+    },
+    "ProjectPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Project]",
+        "nextCursor": "string?"
+      }
+    },
+    "Publication": {
+      "type": "object",
+      "required": [
+        "attemptId",
+        "commit",
+        "expectedCommit",
+        "startedAt"
+      ],
+      "properties": {
+        "attemptId": "string",
+        "commit": "ref:Commit",
+        "expectedCommit": "ref:Commit",
+        "startedAt": "string/date-time"
+      }
+    },
+    "Reason": {
+      "type": "string"
+    },
+    "Required": {
+      "type": "object",
+      "required": [
+        "conformance",
+        "evidence"
+      ],
+      "properties": {
+        "conformance": "ref:Conformance",
+        "evidence": "array[ref:RequiredEvidence]"
+      }
+    },
+    "RequiredEvidence": {
+      "type": "object",
+      "required": [
+        "digest",
+        "expression",
+        "id",
+        "producer",
+        "role"
+      ],
+      "properties": {
+        "digest": "ref:Digest",
+        "expression": "string?",
+        "id": "ref:ID",
+        "producer": "string?",
+        "role": "string"
+      }
+    },
+    "ResyncRequired": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": "string",
+        "message": "string"
+      }
+    },
+    "RetentionReport": {
+      "type": "object",
+      "required": [
+        "activePins",
+        "backupRetention",
+        "pendingConsumerHandling",
+        "pinnedVersions"
+      ],
+      "properties": {
+        "activePins": "integer",
+        "backupRetention": "string",
+        "pendingConsumerHandling": "integer",
+        "pinnedVersions": "integer"
+      }
+    },
+    "ReviewClaim": {
+      "type": "object",
+      "required": [
+        "candidateCommit",
+        "evidence"
+      ],
+      "properties": {
+        "candidateCommit": "string",
+        "evidence": "array[ref:EvidenceRef]"
+      }
+    },
+    "ReviewSubject": {
+      "type": "object",
+      "required": [
+        "contentRevision",
+        "recordedAt"
+      ],
+      "properties": {
+        "candidateCommit": "string",
+        "childSummary": "ref:ChildSummary",
+        "contentRevision": "integer/int64",
+        "evidence": "array[ref:EvidenceRef]",
+        "recordedAt": "string/date-time"
+      }
+    },
+    "RevokeSecretVersionRequest": {
+      "type": "object",
+      "properties": {
+        "reason": "string"
+      }
+    },
+    "RevokeSecretVersionResult": {
+      "type": "object",
+      "required": [
+        "consumerHandling",
+        "secret",
+        "version"
+      ],
+      "properties": {
+        "consumerHandling": "ref:ConsumerHandlingSummary",
+        "secret": "ref:Secret",
+        "version": "ref:SecretVersion"
+      }
+    },
+    "Role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "analyst",
+        "engineer",
+        "reviewer",
+        "viewer"
+      ]
+    },
+    "RoleBindingsPatch": {
+      "type": "object",
+      "properties": {
+        "grant": "array[ref:BindingGrant]",
+        "revoke": "array[ref:ID]"
+      }
+    },
+    "Run": {
+      "type": "object",
+      "required": [
+        "cancelRequestedAt",
+        "contentRevision",
+        "createdAt",
+        "definitionDigest",
+        "definitionId",
+        "failureReason",
+        "finishedAt",
+        "id",
+        "inputSnapshot",
+        "purpose",
+        "reason",
+        "requestedBy",
+        "sourceCommit",
+        "sourceRetention",
+        "startedAt",
+        "status",
+        "version",
+        "workItemId"
+      ],
+      "properties": {
+        "cancelRequestedAt": "string/date-time?",
+        "contentRevision": "integer/int64?",
+        "createdAt": "string/date-time",
+        "definitionDigest": "string",
+        "definitionId": "ref:ID",
+        "failureReason": "?allOf(ref:Reason)",
+        "finishedAt": "string/date-time?",
+        "id": "ref:ID",
+        "inputSnapshot": "ref:InputSnapshot",
+        "purpose": "string",
+        "reason": "ref:Reason",
+        "requestedBy": "ref:RunsActor",
+        "sourceCommit": "string?",
+        "sourceRetention": "string",
+        "startedAt": "string/date-time?",
+        "status": "ref:RunStatus",
+        "version": "ref:Version",
+        "workItemId": "string?"
+      }
+    },
+    "RunPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Run]",
+        "nextCursor": "string?"
+      }
+    },
+    "RunStatus": {
+      "type": "string",
+      "enum": [
+        "cancelled",
+        "failed",
+        "queued",
+        "running",
+        "succeeded"
+      ]
+    },
+    "RunsActor": {
+      "type": "object",
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": "string",
+        "type": "string"
+      }
+    },
+    "RunsScalar": {},
+    "RuntimeDeploymentRegister": {
+      "type": "object",
+      "required": [
+        "image",
+        "source"
+      ],
+      "properties": {
+        "image": "ref:Image",
+        "source": "ref:Source"
+      }
+    },
+    "Scalar": {},
+    "Secret": {
+      "type": "object",
+      "required": [
+        "createdAt",
+        "currentVersion",
+        "deletedAt",
+        "id",
+        "kind",
+        "name",
+        "ref",
+        "updatedAt",
+        "version"
+      ],
+      "properties": {
+        "createdAt": "ref:Timestamp",
+        "currentVersion": "allOf(ref:Version)",
+        "deletedAt": "string/date-time?",
+        "id": "ref:ID",
+        "kind": "ref:SecretKind",
+        "name": "ref:SecretName",
+        "ref": "ref:SecretRef",
+        "retention": "allOf(ref:RetentionReport)",
+        "updatedAt": "ref:Timestamp",
+        "version": "allOf(ref:Version)"
+      }
+    },
+    "SecretDelivery": {
+      "type": "string",
+      "enum": [
+        "env",
+        "file"
+      ]
+    },
+    "SecretKind": {
+      "type": "string",
+      "enum": [
+        "generic",
+        "git",
+        "kubeconfig",
+        "mcp",
+        "model"
+      ]
+    },
+    "SecretName": {
+      "type": "string"
+    },
+    "SecretPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Secret]",
+        "nextCursor": "string?"
+      }
+    },
+    "SecretRef": {
+      "type": "string"
+    },
+    "SecretVersion": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "createdAt",
+        "createdBy",
+        "keyGeneration",
+        "revokedAt",
+        "secretId",
+        "version"
+      ],
+      "properties": {
+        "algorithm": "string",
+        "createdAt": "ref:Timestamp",
+        "createdBy": "string",
+        "keyGeneration": "integer",
+        "revokedAt": "string/date-time?",
+        "secretId": "ref:ID",
+        "version": "allOf(ref:Version)"
+      }
+    },
+    "SecretVersionPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:SecretVersion]",
+        "nextCursor": "string?"
+      }
+    },
+    "SecretVersionResult": {
+      "type": "object",
+      "required": [
+        "secret",
+        "version"
+      ],
+      "properties": {
+        "secret": "ref:Secret",
+        "version": "ref:SecretVersion"
+      }
+    },
+    "Snapshot": {
+      "type": "object",
+      "required": [
+        "cursor",
+        "resources"
+      ],
+      "properties": {
+        "cursor": "ref:Cursor",
+        "resources": "array[ref:ObservedResource]"
+      }
+    },
+    "Source": {
+      "type": "object",
+      "required": [
+        "commit",
+        "repositoryUrl"
+      ],
+      "properties": {
+        "commit": "string",
+        "repositoryUrl": "string"
+      }
+    },
+    "SourceProvenance": {
+      "type": "object",
+      "required": [
+        "commit",
+        "repositoryUrl"
+      ],
+      "properties": {
+        "commit": "string",
+        "repositoryUrl": "string"
+      }
+    },
+    "SourceRef": {
+      "type": "object",
+      "required": [
+        "path",
+        "repository",
+        "revision"
+      ],
+      "properties": {
+        "path": "string",
+        "repository": "string",
+        "revision": "string"
+      }
+    },
+    "Step": {
+      "type": "object",
+      "required": [
+        "actionKey",
+        "attempts",
+        "attemptsStarted",
+        "id",
+        "kind",
+        "maxAttempts",
+        "nextAttemptAt",
+        "outputs",
+        "reason",
+        "sourceCommit",
+        "status"
+      ],
+      "properties": {
+        "actionKey": "string",
+        "attempts": "array[ref:Attempt]",
+        "attemptsStarted": "integer",
+        "id": "string",
+        "kind": "string",
+        "maxAttempts": "integer",
+        "nextAttemptAt": "string/date-time?",
+        "outputs": "object?",
+        "reason": "ref:Reason",
+        "sourceCommit": "string?",
+        "status": "ref:StepStatus"
+      }
+    },
+    "StepPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Step]",
+        "nextCursor": "string?"
+      }
+    },
+    "StepStatus": {
+      "type": "string",
+      "enum": [
+        "cancelled",
+        "failed",
+        "pending",
+        "running",
+        "skipped",
+        "succeeded"
+      ]
+    },
+    "Subject": {
+      "type": "object",
+      "required": [
+        "candidateCommit",
+        "contentRevision",
+        "definitionId",
+        "deploymentConfigDigest",
+        "deploymentId",
+        "evidence",
+        "projectId",
+        "tenantId",
+        "workItemId"
+      ],
+      "properties": {
+        "candidateCommit": "ref:GitCommit",
+        "contentRevision": "ref:Version",
+        "definitionId": "ref:ID",
+        "deploymentConfigDigest": "string?",
+        "deploymentId": "string?",
+        "evidence": "array[ref:GatesEvidenceRef]",
+        "projectId": "ref:ID",
+        "tenantId": "ref:ID",
+        "workItemId": "ref:ID"
+      }
+    },
+    "Tenant": {
+      "type": "object",
+      "required": [
+        "displayName",
+        "id",
+        "key",
+        "roles"
+      ],
+      "properties": {
+        "displayName": "string",
+        "id": "ref:ID",
+        "key": "string",
+        "roles": "array[ref:Role]"
+      }
+    },
+    "TenantPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Tenant]",
+        "nextCursor": "string?"
+      }
+    },
+    "Timestamp": {
+      "type": "string"
+    },
+    "Transcript": {
+      "type": "object",
+      "required": [
+        "record"
+      ],
+      "properties": {
+        "record": "boolean"
+      }
+    },
+    "TransitionRequest": {
+      "type": "object",
+      "required": [
+        "to"
+      ],
+      "properties": {
+        "completion": "ref:CompletionClaim",
+        "reason": "string",
+        "review": "ref:ReviewClaim",
+        "to": "ref:WorkState"
+      }
+    },
+    "UpdateMembership": {
+      "type": "object",
+      "required": [
+        "role"
+      ],
+      "properties": {
+        "role": "ref:Role"
+      }
+    },
+    "UpdateProject": {
+      "type": "object",
+      "properties": {
+        "activeWipLimit": "integer",
+        "displayName": "string",
+        "roleBindings": "ref:RoleBindingsPatch",
+        "settings": "object"
+      }
+    },
+    "UpdateVariableRequest": {
+      "type": "object",
+      "properties": {
+        "description": "string",
+        "value": "ref:Scalar"
+      }
+    },
+    "UpdateWorkItem": {
+      "type": "object",
+      "properties": {
+        "acceptanceCriteria": "array[ref:AcceptanceCriterion]",
+        "assigneeId": "string?",
+        "blockedReason": "string?",
+        "evidenceLinks": "array[ref:EvidenceRef]",
+        "parentId": "string?",
+        "spec": "string",
+        "title": "string"
+      }
+    },
+    "Variable": {
+      "type": "object",
+      "required": [
+        "createdAt",
+        "deletedAt",
+        "description",
+        "id",
+        "name",
+        "type",
+        "updatedAt",
+        "value",
+        "valueVersion",
+        "version"
+      ],
+      "properties": {
+        "createdAt": "ref:Timestamp",
+        "deletedAt": "string/date-time?",
+        "description": "string",
+        "id": "ref:ID",
+        "name": "ref:VariableName",
+        "type": "ref:VariableType",
+        "updatedAt": "ref:Timestamp",
+        "value": "ref:Scalar",
+        "valueVersion": "allOf(ref:Version)",
+        "version": "allOf(ref:Version)"
+      }
+    },
+    "VariableName": {
+      "type": "string"
+    },
+    "VariablePage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:Variable]",
+        "nextCursor": "string?"
+      }
+    },
+    "VariableType": {
+      "type": "string",
+      "enum": [
+        "boolean",
+        "integer",
+        "string"
+      ]
+    },
+    "Version": {
+      "type": "integer"
+    },
+    "WorkItem": {
+      "type": "object",
+      "required": [
+        "acceptanceCriteria",
+        "assigneeId",
+        "blockedReason",
+        "completion",
+        "contentRevision",
+        "createdAt",
+        "createdBy",
+        "evidenceLinks",
+        "id",
+        "kind",
+        "parentId",
+        "reviewSubject",
+        "spec",
+        "state",
+        "title",
+        "updatedAt",
+        "version"
+      ],
+      "properties": {
+        "acceptanceCriteria": "array[ref:AcceptanceCriterion]",
+        "assigneeId": "string?",
+        "blockedReason": "string?",
+        "completion": "?allOf(ref:CompletionRecord)",
+        "contentRevision": "ref:Version",
+        "createdAt": "string/date-time",
+        "createdBy": "ref:Actor",
+        "evidenceLinks": "array[ref:EvidenceRef]",
+        "id": "ref:ID",
+        "kind": "ref:WorkKind",
+        "parentId": "string?",
+        "reviewSubject": "?allOf(ref:ReviewSubject)",
+        "spec": "string",
+        "state": "ref:WorkState",
+        "title": "string",
+        "updatedAt": "string/date-time",
+        "version": "ref:Version"
+      }
+    },
+    "WorkItemPage": {
+      "type": "object",
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "properties": {
+        "items": "array[ref:WorkItem]",
+        "nextCursor": "string?"
+      }
+    },
+    "WorkKind": {
+      "type": "string",
+      "enum": [
+        "defect",
+        "epic",
+        "story",
+        "task"
+      ]
+    },
+    "WorkState": {
+      "type": "string",
+      "enum": [
+        "active",
+        "backlog",
+        "cancelled",
+        "done",
+        "ready",
+        "review"
+      ]
+    },
+    "Workspace": {
+      "type": "object",
+      "required": [
+        "acceptedCommit",
+        "archiveRequestedAt",
+        "branch",
+        "createdAt",
+        "id",
+        "lastError",
+        "publication",
+        "repositoryId",
+        "state",
+        "updatedAt",
+        "version",
+        "workItemId",
+        "writerAttemptId"
+      ],
+      "properties": {
+        "acceptedCommit": "string?",
+        "archiveRequestedAt": "string/date-time?",
+        "branch": "string",
+        "createdAt": "string/date-time",
+        "id": "string",
+        "lastError": "string?",
+        "publication": "ref:Publication",
+        "repositoryId": "string",
+        "state": "ref:WorkspaceState",
+        "updatedAt": "string/date-time",
+        "version": "ref:Version",
+        "workItemId": "string",
+        "writerAttemptId": "string?"
+      }
+    },
+    "WorkspaceState": {
+      "type": "string",
+      "enum": [
+        "archived",
+        "available",
+        "provisioning"
+      ]
+    },
+    "Wrapper": {
+      "type": "object",
+      "required": [
+        "command",
+        "harness",
+        "id",
+        "version"
+      ],
+      "properties": {
+        "command": "array[string]",
+        "harness": "ref:Harness",
+        "id": "string",
+        "version": "string"
+      }
+    }
+  }
+}

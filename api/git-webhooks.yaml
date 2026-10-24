@@ -1,0 +1,210 @@
+openapi: 3.0.3
+info:
+  title: Kodama native Git push notifications
+  version: 1.0.0
+  description: >-
+    Receive-hook endpoint of the native Git push trigger (task T-036; specifications:
+    docs/specs/api-cli-and-integrations.md AC-07/AC-A05, docs/decisions.md O-03,
+    docs/specs/pipeline-execution.md PX-02). Shared conventions (error envelope, request
+    identifier) come from api/common.yaml. The Go contract is
+    internal/integrations/gitwebhook; the example sender is
+    internal/integrations/gitwebhook/example/post-receive.
+
+    A server-side `post-receive` hook on a Git host the installation controls sends one
+    notification per accepted ref update. Ordinary HTTPS/token Git remains the transport;
+    Kodama builds no Git server. This endpoint is not a bearer-token route: the only
+    credential is an HMAC signature under the trigger's hook secret, and the payload is
+    data, never an executable command.
+
+    ## Authentication
+
+    Headers: `Kodama-Delivery-Id` (1..128 characters of `[A-Za-z0-9._:-]`, unique per ref
+    update and reused verbatim on every retry), `Kodama-Timestamp` (Unix seconds, within
+    five minutes of the server clock) and `Kodama-Signature` = `v1=` + lowercase hex of
+    HMAC-SHA256 under the hook secret over the signing string
+
+    ```
+    kodama-git-hook-v1\n<triggerId>\n<deliveryId>\n<timestamp>\n<lowercase hex SHA-256 of the exact body bytes>
+    ```
+
+    The signature therefore cannot be replayed against another trigger, delivery,
+    timestamp or body. An unknown or disabled trigger, missing or malformed header, stale
+    timestamp, revoked secret and wrong signature are all the same `401 invalid_credential`.
+    A forged request creates no delivery record, so it cannot consume a delivery identifier.
+
+    ## Authority
+
+    The trigger record, created by an authorized project administrator, binds the tenant,
+    project, the project's configured repository, a registered pipeline definition, an
+    explicit branch filter (exact names or `prefix/*`, never all branches), the hook secret
+    reference and the installing principal. The payload never names a tenant, project, URL
+    or credential; its `repository` member is only checked against the trigger's bound
+    repository. The hook secret must be a dedicated secret, never a Git credential. Each
+    delivery re-checks that the project still uses that repository and that the installer
+    still may start runs.
+
+    ## Exact commit
+
+    After authentication, Kodama reads the remote with the project's read-only checkout
+    credential (never the publisher credential or the hook secret) and requires the named
+    branch to exist and its history to contain the announced `after` commit. The run is
+    admitted for exactly that commit under an idempotency key derived from the trigger and
+    delivery identifier; later movement of the branch cannot substitute another commit.
+
+    ## Delivery semantics
+
+    Deduplication is by (trigger, delivery identifier), claimed durably right after
+    authentication and payload validation and before any repository, filter, authority or Git
+    decision. Every terminal result of an authenticated delivery, including `ignored` and
+    refusals (foreign repository, unreachable commit, revoked installer, permanent
+    admission refusal), is recorded with its audit, and a redelivery of the same body returns
+    that recorded result with `duplicate: true` and starts nothing, even if the repository
+    configuration has since changed or is unavailable. The same identifier with a different
+    body is `409 delivery_conflict`, whatever the first result was. A dependency outage
+    leaves the delivery pending (`503`, retry with the same identifier). Once admission has
+    begun, a retry recovers the run already admitted for the delivery rather than
+    re-deciding, so later branch movement or revocation cannot lose or reject it; a retry
+    that finds no run re-validates the trigger's repository binding before creating one.
+    Admission of one delivery is exclusive: while another processor is admitting it, a
+    concurrent request is answered `503` (retry the same identifier). A refusal is decided
+    durably in admission before it is recorded on the delivery and closes admission for that
+    delivery, so a refusal and a run can never both exist, even for a processor that stalled
+    and resumes later. Updates
+    outside the filter, tag updates and branch deletions are acknowledged as `ignored`.
+servers:
+  - url: /api/v1
+security: []
+paths:
+  /git-hooks/{triggerId}:
+    parameters:
+      - name: triggerId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+    post:
+      operationId: receiveGitPush
+      summary: Receive one authenticated push notification
+      description: >-
+        Authenticated only by the signature headers; no bearer token is accepted or
+        required. The body is at most 8192 bytes.
+      security: []
+      parameters:
+        - name: Kodama-Delivery-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+        - name: Kodama-Timestamp
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9]{1,19}$'
+        - name: Kodama-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^v1=[0-9a-f]{64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushNotification'
+            example:
+              schemaVersion: 1
+              repository: repo-main
+              ref: refs/heads/main
+              before: '0000000000000000000000000000000000000000'
+              after: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      responses:
+        '202':
+          description: A run was admitted for the exact commit, or this is a duplicate of one that was.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushReceipt'
+        '200':
+          description: The update is authentic but is not a trigger event (`outcome` is `ignored`).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushReceipt'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '409':
+          description: The delivery identifier was used with a different payload (delivery_conflict).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '422':
+          description: >-
+            The delivery was authenticated, recorded and refused (foreign_repository or
+            delivery_rejected; details.reason is one of foreign_repository,
+            repository_rebound, branch_not_found, commit_not_on_branch,
+            installer_not_authorized, admission_refused).
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+components:
+  schemas:
+    PushNotification:
+      type: object
+      required: [schemaVersion, repository, ref, before, after]
+      additionalProperties: false
+      properties:
+        schemaVersion:
+          type: integer
+          enum: [1]
+        repository:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+          description: Identifier of the repository configured in the Kodama project; never a URL.
+        ref:
+          type: string
+          maxLength: 255
+          description: Full reference. Only safe `refs/heads/` branches matching the trigger filter start runs.
+        before:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+          description: Previous object name; all zeros for a new ref.
+        after:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+          description: Announced commit; all zeros deletes the ref and starts nothing.
+    PushReceipt:
+      type: object
+      required: [outcome, duplicate]
+      additionalProperties: false
+      properties:
+        outcome:
+          type: string
+          enum: [started, ignored]
+        reason:
+          type: string
+          enum: [branch_filtered, ref_not_branch, branch_deleted]
+        runId:
+          type: string
+        ref:
+          type: string
+        commit:
+          type: string
+        duplicate:
+          type: boolean

@@ -1,0 +1,259 @@
+{
+  "description": "Cases of the QA report contract. Each case applies exact string edits to the named file (every edit must match exactly once) or appends a suffix, then states the verdict of the Go decoder (valid) and of schema.json (schemaValid; null when only the strict parser can tell).",
+  "cases": [
+    {
+      "name": "the full report is valid",
+      "file": "report.json",
+      "valid": true,
+      "schemaValid": true,
+      "edits": []
+    },
+    {
+      "name": "a clean pass with no observations is valid",
+      "file": "report_clean.json",
+      "valid": true,
+      "schemaValid": true,
+      "edits": []
+    },
+    {
+      "name": "an unknown top-level field is refused (no smuggled approval)",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"format\": \"kodama/qa-report/v1\",",
+          "new": "\"format\": \"kodama/qa-report/v1\",\n  \"approved\": true,"
+        }
+      ]
+    },
+    {
+      "name": "an unknown observation field is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"severity\": \"major\",",
+          "new": "\"severity\": \"major\", \"gateDecision\": \"approved\","
+        }
+      ]
+    },
+    {
+      "name": "a differently cased field is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"summary\":",
+          "new": "\"Summary\":"
+        }
+      ]
+    },
+    {
+      "name": "an omitted nullable field is refused (explicit null required)",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"kind\": \"screenshot\", \"note\": null}\n      ]\n    }\n  ]",
+          "new": "\"kind\": \"screenshot\"}\n      ]\n    }\n  ]"
+        }
+      ]
+    },
+    {
+      "name": "an omitted required field is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "  \"summary\": \"Explored order entry on the preview deployment against the pinned acceptance criteria.\",\n",
+          "new": ""
+        }
+      ]
+    },
+    {
+      "name": "a duplicate key is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": null,
+      "edits": [
+        {
+          "old": "\"format\": \"kodama/qa-report/v1\",",
+          "new": "\"format\": \"kodama/qa-report/v1\", \"format\": \"kodama/qa-report/v1\","
+        }
+      ]
+    },
+    {
+      "name": "a floating-point revision is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": null,
+      "edits": [
+        {
+          "old": "\"contentRevision\": 2",
+          "new": "\"contentRevision\": 2.0"
+        }
+      ]
+    },
+    {
+      "name": "a wrong format identifier is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "kodama/qa-report/v1",
+          "new": "kodama/qa-report/v2"
+        }
+      ]
+    },
+    {
+      "name": "a blank title is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": null,
+      "edits": [
+        {
+          "old": "\"title\": \"Quantity accepts negative numbers\"",
+          "new": "\"title\": \"   \""
+        }
+      ]
+    },
+    {
+      "name": "an unknown severity is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"severity\": \"minor\"",
+          "new": "\"severity\": \"blocker\""
+        }
+      ]
+    },
+    {
+      "name": "a URL location with a host is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"location\": \"/orders/new\",\n      \"steps\": [\"Enter",
+          "new": "\"location\": \"https://evil.example/orders/new\",\n      \"steps\": [\"Enter"
+        }
+      ]
+    },
+    {
+      "name": "a location with a query is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"location\": \"/orders/new\",\n      \"steps\": [\"Enter",
+          "new": "\"location\": \"/orders/new?debug=1\",\n      \"steps\": [\"Enter"
+        }
+      ]
+    },
+    {
+      "name": "an observation without evidence is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"evidence\": [\n        {\"artifactId\": \"art_shot2\", \"digest\": \"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\", \"kind\": \"screenshot\", \"note\": null}\n      ]",
+          "new": "\"evidence\": []"
+        }
+      ]
+    },
+    {
+      "name": "an observation without steps is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"steps\": [\"Enter -3 as the quantity\"]",
+          "new": "\"steps\": []"
+        }
+      ]
+    },
+    {
+      "name": "an uppercase digest is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "new": "sha256:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+        }
+      ]
+    },
+    {
+      "name": "a branch is not a candidate commit",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"candidateCommit\": \"1111111111111111111111111111111111111111\"",
+          "new": "\"candidateCommit\": \"main\""
+        }
+      ]
+    },
+    {
+      "name": "an unknown evidence kind is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": false,
+      "edits": [
+        {
+          "old": "\"kind\": \"log\"",
+          "new": "\"kind\": \"video\""
+        }
+      ]
+    },
+    {
+      "name": "the same artifact cited twice in one observation is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": null,
+      "edits": [
+        {
+          "old": "\"artifactId\": \"art_log1\"",
+          "new": "\"artifactId\": \"art_shot1\""
+        }
+      ]
+    },
+    {
+      "name": "the same finding twice in one report is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": null,
+      "edits": [
+        {
+          "old": "\"title\": \"Quantity accepts negative numbers\"",
+          "new": "\"title\": \"order  form shows a BLANK page\""
+        },
+        {
+          "old": "\"criterionId\": null,\n      \"location\": \"/orders/new\",\n      \"steps\": [\"Enter",
+          "new": "\"criterionId\": \"AC-1\",\n      \"location\": \"/orders/new/\",\n      \"steps\": [\"Enter"
+        }
+      ]
+    },
+    {
+      "name": "trailing data is refused",
+      "file": "report.json",
+      "valid": false,
+      "schemaValid": null,
+      "suffix": "\n{}",
+      "edits": []
+    }
+  ]
+}

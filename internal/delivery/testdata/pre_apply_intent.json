@@ -1,0 +1,124 @@
+{
+  "fixture": "pre_apply_intent",
+  "description": "Before the first external change the script records the intended object identities (no uid, no readiness). The deployment becomes running; a repeat of the same intent is a replay.",
+  "placeholders": "Every identifier, digest, URL and timestamp is a placeholder from the t035 test resource prefix; none names a real tenant, registry or cluster.",
+  "exchanges": [
+    {
+      "name": "record the intended objects",
+      "operation": "reportRuntimeOutcome",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_deploy/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/outcome",
+        "body": {
+          "state": "applying",
+          "objects": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory"
+            },
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "inventory-worker"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "ETag": "\"2\""
+        },
+        "body": {
+          "deployment": {
+            "id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "environmentId": "env_t035_preview",
+            "configurationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "namespace": "t035-preview",
+            "source": {
+              "repositoryUrl": "https://git.t035.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111"
+            },
+            "image": {
+              "artifactId": "art_t035_image",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "producer": {
+              "attemptId": "att_t035_build",
+              "runId": "run_t035_build",
+              "stepId": "build",
+              "toolImage": "registry.t035.invalid/tools/build@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "runId": "run_t035_preview",
+            "stepId": "deploy",
+            "actionKey": "run_t035_preview:deploy",
+            "attemptId": "att_t035_deploy",
+            "status": "running",
+            "reason": "applying",
+            "outcomeUnknown": false,
+            "objects": [
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory"
+              },
+              {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "namespace": "t035-preview",
+                "name": "inventory-worker"
+              }
+            ],
+            "cleanup": {
+              "state": "none"
+            },
+            "version": 2,
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z",
+            "expiresAt": "2026-01-03T03:04:05Z"
+          },
+          "annotations": {
+            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "created": false
+        }
+      }
+    },
+    {
+      "name": "different intended objects are a conflict",
+      "operation": "reportRuntimeOutcome",
+      "request": {
+        "method": "POST",
+        "path": "/runtime/v1/attempts/att_t035_deploy/deployments/dep_cc2fd8d3e579ff0a8fc6a825869df81e/outcome",
+        "body": {
+          "state": "applying",
+          "objects": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "namespace": "t035-preview",
+              "name": "other"
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "conflict",
+            "message": "the request conflicts with the recorded state",
+            "requestId": "req_00000000000000000000000000000001",
+            "details": {}
+          }
+        }
+      }
+    }
+  ]
+}

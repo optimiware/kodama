@@ -1,0 +1,59 @@
+{
+  "tasks": "docs/tasks/T-*.md",
+  "index": "docs/tasks/README.md",
+  "base": "main",
+  "setup": "make openforge-install",
+  "check": "make check-go",
+  "mainCheck": [
+    "make lint-go",
+    "make test-go-unit",
+    "DEV_SCOPE=batchm1 DEV_STACK=services make check-go-integration PKGS=\"./test/e2e/m1/... ./test/integration/assembly-execution/...\"",
+    "DEV_SCOPE=batch DEV_STACK=cluster make check-go-integration PKGS=\"./test/e2e/m2/... ./test/integration/assembly-agent-delivery/...\""
+  ],
+  "mainCheckEvery": 5,
+  "mainCheckOnDrain": true,
+  "env": {
+    "KODAMA_TASK_ID": "{id}",
+    "KODAMA_RESOURCE_PREFIX": "{prefix}",
+    "DEV_SCOPE": "{prefix}"
+  },
+  "resources": {
+    "go": 5,
+    "integration": 1
+  },
+  "protected": [
+    "go.mod",
+    "go.sum"
+  ],
+  "context": [
+    "AGENTS.md",
+    "AGENT.md",
+    "CONTEXT.md"
+  ],
+  "roles": {
+    "planner": {
+      "model": "opencode/gpt-6-astra"
+    },
+    "implementer": {
+      "model": "opencode/claude-sonnet-5-5"
+    },
+    "fixer": {
+      "model": "opencode/claude-sonnet-5-5"
+    },
+    "reviewer": {
+      "model": "opencode/gpt-6-astra"
+    }
+  },
+  "limits": {
+    "workers": 5,
+    "repairs": 3,
+    "reviewRounds": 3,
+    "agentTimeoutSeconds": 10800,
+    "checkTimeoutSeconds": 1800,
+    "agentAttempts": 3
+  },
+  "sdkVersion": "2.1.2",
+  "operator": {
+    "decisions": "docs/decisions.md"
+  }
+}

@@ -1,0 +1,686 @@
+openapi: 3.0.3
+info:
+  title: Kodama ChatOps destinations and notification deliveries
+  version: 1.0.0
+  description: >-
+    Durable outbound ChatOps links (task T-041; specifications:
+    docs/specs/api-cli-and-integrations.md AC-08/AC-09, docs/contracts/http-api.md,
+    docs/contracts/event-catalog.md). Shared conventions (error envelope, pagination, ETag)
+    come from api/common.yaml. Types are generated into internal/integrations/chatops/http/chatops.gen.go
+    (see internal/integrations/chatops/http/generate.go).
+
+    A project configures generic JSON webhook destinations. A durable consumer of the event
+    bus records one notification per destination and event before any external call; a
+    worker then sends it with bounded retries and records every attempt. Failures are
+    visible, never roll back business state, and a failed delivery is replayed only by an
+    authorized, reason-bearing request. This is not interactive approval: a notification
+    carries a link to the current record and no authority. Possessing, forwarding or opening
+    a link approves nothing, and the target route authenticates and authorizes whoever
+    follows it against the record as it is now.
+
+    Permissions (adapter-local mapping to existing identity permissions, no new role):
+    destination configuration, its reads and manual replay need `project:settings`; the
+    sanitized delivery status and attempt history need `project:read`. Destination
+    configuration reads stay restricted to settings administrators. A foreign or hidden
+    resource is the same 404 as a missing one.
+
+    ## Outbound webhook contract
+
+    A delivery is an HTTPS POST of one `WebhookPayload` (schema below, version 1) to the
+    destination endpoint. The endpoint must be an approved `https` URL with no user-info,
+    query or fragment; credentials never travel in the URL. Redirects are never followed
+    (a 3xx response is a permanent `redirect_refused`), the environment proxy is never used,
+    and certificates are verified. Private destinations are refused unless the installation
+    supplied an exact, tenant-scoped address allowance.
+
+    Headers sent on every attempt: `Content-Type: application/json`, `Idempotency-Key`
+    (the stable notification ID, identical on every attempt and every manual replay),
+    `Kodama-Delivery-Id` (the same value), `Kodama-Event-Id`, `Kodama-Event-Type`,
+    `Kodama-Attempt` (1-based, total over replays), `User-Agent`, and, only when the
+    destination names a credential that the installation's recipient-bound credential
+    source resolved for exactly that destination, `Authorization: Bearer <token>`.
+    Incoming API tokens, cookies and caller-supplied headers are never forwarded.
+
+    Delivery is at least once. A timeout, a connection loss after the request was sent and
+    a crash after the receiver accepted the request leave the outcome unknown, and the
+    attempt is retried with the identical payload and key. A receiver that does not
+    deduplicate on `Idempotency-Key` may therefore apply a notification more than once;
+    Kodama does not claim exactly-once delivery to such a receiver.
+
+    A receiver may return a provider receipt in the response header `X-Receipt-Id` (the
+    header name is installation configuration). A single printable-ASCII value of at most
+    128 bytes is recorded next to the HTTP status; anything else is dropped. A missing
+    receipt is never invented, and response bodies are never retained.
+
+    Compatibility: receivers ignore unknown members. Members are added within schema
+    version 1 but never renamed, retyped or removed; a breaking change is a new
+    `schemaVersion` a destination would have to opt into.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /tenants/{tenantId}/projects/{projectId}/chatops-destinations:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listChatopsDestinations
+      summary: List the project's destinations
+      description: >-
+        Ordered by identifier. The cursor is bound to the tenant, project, endpoint and
+        ordering and every page is authorized again. Requires project:settings.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of destinations.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DestinationPage'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    post:
+      operationId: createChatopsDestination
+      summary: Configure a destination
+      description: >-
+        Requires project:settings. The endpoint is checked against the installation's outbound
+        policy. A destination that names a credential can be created only when the
+        installation has a credential source and, when enabled, the credential resolves for
+        exactly this endpoint; otherwise it is refused (`not_configured` or
+        `credential_unavailable`) and nothing is stored. A name used in the project is
+        `name_taken` (409); more than the installation's per-project limit is
+        `destination_limit` (422). Unknown fields are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DestinationCreate'}
+            example: {$ref: '#/components/examples/DestinationCreate/value'}
+      responses:
+        '201':
+          description: The destination at version 1.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            Location: {schema: {type: string}}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Destination'}
+              example: {$ref: '#/components/examples/Destination/value'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/NameTaken'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '501': {$ref: '#/components/responses/NotConfigured'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/chatops-destinations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/DestinationId'
+    get:
+      operationId: getChatopsDestination
+      summary: Read a destination
+      description: Requires project:settings. A foreign or hidden destination is the same 404.
+      responses:
+        '200':
+          description: The destination.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Destination'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+    patch:
+      operationId: updateChatopsDestination
+      summary: Edit or disable a destination
+      description: >-
+        Requires project:settings and `If-Match`. The version is compared inside the write.
+        Omitted members are unchanged; an empty `credential` clears the reference. Disabling
+        is `enabled: false`: no new intent is created for a disabled destination and queued
+        intents wait unchanged until it is enabled again. A change of the endpoint or the
+        credential reference advances `bindingRevision`; intents created under an earlier
+        revision are refused (`destination_changed`) instead of being silently sent to the
+        new binding, and only an authorized replay re-binds them. An edit that changes
+        nothing leaves the version alone.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DestinationEdit'}
+      responses:
+        '200':
+          description: The destination after the edit.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Destination'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/NameTaken'}
+        '412': {$ref: 'common.yaml#/components/responses/PreconditionFailed'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '428': {$ref: 'common.yaml#/components/responses/PreconditionRequired'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '501': {$ref: '#/components/responses/NotConfigured'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/chatops-deliveries:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listChatopsDeliveries
+      summary: List notification deliveries
+      description: >-
+        Sanitized status, newest first. Requires project:read. The cursor is bound to the
+        tenant, project, endpoint, filters and ordering. No endpoint, credential reference,
+        payload or receiver response is returned.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+        - name: state
+          in: query
+          required: false
+          schema: {$ref: '#/components/schemas/DeliveryState'}
+        - name: destinationId
+          in: query
+          required: false
+          schema: {$ref: 'common.yaml#/components/schemas/ID'}
+      responses:
+        '200':
+          description: One page of deliveries.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeliveryPage'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/chatops-deliveries/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/DeliveryId'
+    get:
+      operationId: getChatopsDelivery
+      summary: Read a delivery and its attempt history
+      description: >-
+        Requires project:read. Returns the state, the next retry time, the classified
+        failure, the receipt metadata and every attempt (including replays), and never the
+        endpoint, a credential reference, the payload or any receiver response.
+      responses:
+        '200':
+          description: The delivery with its attempt history.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeliveryDetail'}
+              example: {$ref: '#/components/examples/DeliveryDetail/value'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+  /tenants/{tenantId}/projects/{projectId}/chatops-deliveries/{id}/replay:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/DeliveryId'
+    post:
+      operationId: replayChatopsDelivery
+      summary: Replay a failed delivery
+      description: >-
+        Requires project:settings, `If-Match` (the delivery's current version) and a reason.
+        Only a `failed` delivery is replayed: a `delivered` one is final (422
+        `invalid_transition`) and a `pending` or `claimed` one is already moving. The replay
+        starts a new retry cycle under the destination's current binding, keeps the payload
+        and the receiver idempotency key, preserves the complete attempt history and records
+        an audit entry in the same transaction. A duplicate request finds the delivery at a
+        newer version (412) or pending (422): one replay, one history.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReplayRequest'}
+            example: {$ref: '#/components/examples/ReplayRequest/value'}
+      responses:
+        '200':
+          description: The delivery, pending again.
+          headers:
+            ETag: {$ref: 'common.yaml#/components/headers/ETag'}
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Delivery'}
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '412': {$ref: 'common.yaml#/components/responses/PreconditionFailed'}
+        '413': {$ref: 'common.yaml#/components/responses/PayloadTooLarge'}
+        '415': {$ref: 'common.yaml#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '428': {$ref: 'common.yaml#/components/responses/PreconditionRequired'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: {$ref: 'common.yaml#/components/schemas/ID'}
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: {$ref: 'common.yaml#/components/schemas/ID'}
+    DestinationId:
+      name: id
+      in: path
+      required: true
+      schema: {$ref: 'common.yaml#/components/schemas/ID'}
+    DeliveryId:
+      name: id
+      in: path
+      required: true
+      schema: {$ref: 'common.yaml#/components/schemas/ID'}
+  responses:
+    NameTaken:
+      description: name_taken (the destination name is used in the project) or conflict.
+      headers:
+        X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+      content:
+        application/json:
+          schema: {$ref: 'common.yaml#/components/schemas/ErrorEnvelope'}
+    Unprocessable:
+      description: >-
+        invalid_transition (the lifecycle forbids the change), destination_limit (the project
+        has the maximum number of destinations), destination_refused (the installation's
+        outbound policy refuses the endpoint) or credential_unavailable (the credential is
+        missing, revoked, foreign or not bound to this recipient). Nothing was written.
+      headers:
+        X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+      content:
+        application/json:
+          schema: {$ref: 'common.yaml#/components/schemas/ErrorEnvelope'}
+    NotConfigured:
+      description: not_configured. The installation has no credential source for authenticated destinations; nothing was stored.
+      headers:
+        X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+      content:
+        application/json:
+          schema: {$ref: 'common.yaml#/components/schemas/ErrorEnvelope'}
+  schemas:
+    EventType:
+      type: string
+      description: The explicit allow-list a destination selects from; nothing else is ever forwarded.
+      enum:
+        - work_item.transitioned
+        - gate.requested
+        - gate.decided
+        - gate.invalidated
+        - run.state_changed
+        - deployment.state_changed
+    DeliveryState:
+      type: string
+      enum: [pending, claimed, delivered, failed]
+    FailedReason:
+      type: string
+      description: >-
+        permanent (a classified permanent failure), exhausted (every attempt of the cycle
+        failed transiently) or refused (the destination binding changed before the send).
+      enum: [permanent, exhausted, refused]
+    FailureClass:
+      type: string
+      description: Bounded classification; never a URL, credential, response body or provider diagnostic.
+      enum:
+        - unreachable
+        - timeout
+        - connection_lost
+        - bad_response
+        - receiver_error
+        - rate_limited
+        - rejected
+        - redirect_refused
+        - policy_refused
+        - credential_unavailable
+        - credential_source_unavailable
+        - destination_changed
+        - lease_expired
+        - internal
+    AttemptResult:
+      type: string
+      description: in_flight is an attempt whose outcome has not been recorded yet.
+      enum: [in_flight, delivered, retry, failed, abandoned]
+    Receipt:
+      type: string
+      pattern: '^[\x21-\x7e]{1,128}$'
+    Destination:
+      type: object
+      additionalProperties: false
+      required: [id, name, endpoint, events, enabled, bindingRevision, version, createdAt, updatedAt]
+      properties:
+        id: {$ref: 'common.yaml#/components/schemas/ID'}
+        name: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+        endpoint:
+          type: string
+          maxLength: 2048
+          description: An https URL without user-info, query or fragment.
+        events:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: {$ref: '#/components/schemas/EventType'}
+        credential:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$'
+          description: A reference to an installation-managed credential bound to this recipient. Never a value. Absent for a credential-free receiver.
+        enabled: {type: boolean}
+        bindingRevision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Advances when the endpoint or the credential reference changes.
+        version: {$ref: 'common.yaml#/components/schemas/Version'}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    DestinationCreate:
+      type: object
+      additionalProperties: false
+      required: [name, endpoint, events]
+      properties:
+        name: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+        endpoint: {type: string, maxLength: 2048}
+        events:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: {$ref: '#/components/schemas/EventType'}
+        credential: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$'}
+        enabled:
+          type: boolean
+          default: true
+    DestinationEdit:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Omitted members are unchanged; an empty credential clears the reference.
+      properties:
+        name: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+        endpoint: {type: string, maxLength: 2048}
+        events:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: {$ref: '#/components/schemas/EventType'}
+        credential:
+          type: string
+          maxLength: 128
+        enabled: {type: boolean}
+    DestinationPage:
+      allOf:
+        - $ref: 'common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              maxItems: 200
+              items: {$ref: '#/components/schemas/Destination'}
+    Failure:
+      type: object
+      additionalProperties: false
+      required: [class, uncertain]
+      properties:
+        class: {$ref: '#/components/schemas/FailureClass'}
+        uncertain:
+          type: boolean
+          description: The receiver may have processed the request although no success was observed.
+        httpStatus:
+          type: integer
+          minimum: 100
+          maximum: 599
+    Delivery:
+      type: object
+      additionalProperties: false
+      required: [id, destinationId, eventId, eventType, state, attempts, replays, bindingRevision, version, createdAt, updatedAt]
+      properties:
+        id:
+          allOf: [{$ref: 'common.yaml#/components/schemas/ID'}]
+          description: The notification ID, also the receiver's Idempotency-Key.
+        destinationId: {$ref: 'common.yaml#/components/schemas/ID'}
+        eventId: {type: string, maxLength: 128}
+        eventType: {$ref: '#/components/schemas/EventType'}
+        state: {$ref: '#/components/schemas/DeliveryState'}
+        attempts:
+          type: integer
+          minimum: 0
+          description: Total attempts over the delivery's life, replays included.
+        replays: {type: integer, minimum: 0}
+        nextAttemptAt:
+          type: string
+          format: date-time
+          description: Present while the delivery is pending.
+        lastFailure: {$ref: '#/components/schemas/Failure'}
+        failedReason: {$ref: '#/components/schemas/FailedReason'}
+        receipt: {$ref: '#/components/schemas/Receipt'}
+        deliveredAt: {type: string, format: date-time}
+        bindingRevision: {type: integer, format: int64, minimum: 1}
+        version: {$ref: 'common.yaml#/components/schemas/Version'}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    Attempt:
+      type: object
+      additionalProperties: false
+      required: [number, result, uncertain, replay, startedAt]
+      properties:
+        number: {type: integer, minimum: 1}
+        result: {$ref: '#/components/schemas/AttemptResult'}
+        class: {$ref: '#/components/schemas/FailureClass'}
+        uncertain: {type: boolean}
+        httpStatus: {type: integer, minimum: 100, maximum: 599}
+        receipt: {$ref: '#/components/schemas/Receipt'}
+        replay:
+          type: integer
+          minimum: 0
+          description: The retry cycle the attempt belongs to; 0 before any replay.
+        startedAt: {type: string, format: date-time}
+        finishedAt: {type: string, format: date-time}
+    DeliveryDetail:
+      type: object
+      additionalProperties: false
+      description: A Delivery with its destination label and complete attempt history.
+      required: [id, destinationId, eventId, eventType, state, attempts, replays, bindingRevision, version, createdAt, updatedAt, attemptHistory]
+      properties:
+        id:
+          allOf: [{$ref: 'common.yaml#/components/schemas/ID'}]
+          description: The notification ID, also the receiver's Idempotency-Key.
+        destinationId: {$ref: 'common.yaml#/components/schemas/ID'}
+        eventId: {type: string, maxLength: 128}
+        eventType: {$ref: '#/components/schemas/EventType'}
+        state: {$ref: '#/components/schemas/DeliveryState'}
+        attempts:
+          type: integer
+          minimum: 0
+          description: Total attempts over the delivery's life, replays included.
+        replays: {type: integer, minimum: 0}
+        nextAttemptAt:
+          type: string
+          format: date-time
+          description: Present while the delivery is pending.
+        lastFailure: {$ref: '#/components/schemas/Failure'}
+        failedReason: {$ref: '#/components/schemas/FailedReason'}
+        receipt: {$ref: '#/components/schemas/Receipt'}
+        deliveredAt: {type: string, format: date-time}
+        bindingRevision: {type: integer, format: int64, minimum: 1}
+        version: {$ref: 'common.yaml#/components/schemas/Version'}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        destinationName:
+          type: string
+          description: The destination's label when it still exists.
+        attemptHistory:
+          type: array
+          description: >-
+            Complete attempt history, never truncated. The bound is the persisted lifetime
+            attempt limit (the database constrains an attempt number to 1..100000).
+          maxItems: 100000
+          items: {$ref: '#/components/schemas/Attempt'}
+    DeliveryPage:
+      allOf:
+        - $ref: 'common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              maxItems: 200
+              items: {$ref: '#/components/schemas/Delivery'}
+    ReplayRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+    WebhookPayload:
+      type: object
+      additionalProperties: false
+      description: >-
+        The generic JSON document POSTed to a destination (schemaVersion 1). A bounded
+        projection of one catalog event, never the event itself: identities, versions, a
+        short summary and a few classified attributes; never source content, transcripts,
+        credentials or free-form event data. Receivers must ignore unknown members.
+      required: [schemaVersion, notificationId, event, tenantId, projectId, resource, summary, url]
+      properties:
+        schemaVersion: {type: integer, enum: [1]}
+        notificationId:
+          type: string
+          description: The delivery identity; equal to the Idempotency-Key header.
+        event:
+          type: object
+          additionalProperties: false
+          required: [id, type, occurredAt, correlationId]
+          properties:
+            id: {type: string}
+            type: {$ref: '#/components/schemas/EventType'}
+            occurredAt: {type: string, format: date-time}
+            correlationId: {type: string}
+        tenantId: {$ref: 'common.yaml#/components/schemas/ID'}
+        projectId: {$ref: 'common.yaml#/components/schemas/ID'}
+        resource:
+          type: object
+          additionalProperties: false
+          required: [type, id, version]
+          properties:
+            type: {type: string}
+            id: {type: string}
+            version: {type: integer, format: int64}
+        summary: {type: string, maxLength: 256}
+        attributes:
+          type: object
+          maxProperties: 12
+          additionalProperties: {type: string, maxLength: 128}
+        url:
+          type: string
+          description: >-
+            The authenticated current-record URL of the resource on the installation's
+            canonical API origin, for example `.../projects/{projectId}/gates/{id}`. It has
+            no query, token or embedded decision. Following it asks the target route to
+            authenticate the follower and authorize them against the record as it is now;
+            the URL grants nothing, and a GET never approves.
+  examples:
+    DestinationCreate:
+      value:
+        name: review-channel
+        endpoint: https://hooks.example.com/kodama
+        events: [gate.decided, gate.invalidated, gate.requested]
+        enabled: true
+    Destination:
+      value:
+        id: cdst_0123456789abcdef0123456789abcdef
+        name: review-channel
+        endpoint: https://hooks.example.com/kodama
+        events: [gate.decided, gate.invalidated, gate.requested]
+        enabled: true
+        bindingRevision: 1
+        version: 1
+        createdAt: '2026-10-19T12:00:00Z'
+        updatedAt: '2026-10-19T12:00:00Z'
+    DeliveryDetail:
+      value:
+        id: cdl_0123456789abcdef0123456789abcdef
+        destinationId: cdst_0123456789abcdef0123456789abcdef
+        eventId: evt_01
+        eventType: gate.requested
+        state: delivered
+        attempts: 2
+        replays: 0
+        receipt: rcpt-77
+        deliveredAt: '2026-10-19T12:00:07Z'
+        bindingRevision: 1
+        version: 4
+        createdAt: '2026-10-19T12:00:00Z'
+        updatedAt: '2026-10-19T12:00:07Z'
+        destinationName: review-channel
+        attemptHistory:
+          - {number: 1, result: retry, class: connection_lost, uncertain: true, replay: 0, startedAt: '2026-10-19T12:00:01Z', finishedAt: '2026-10-19T12:00:02Z'}
+          - {number: 2, result: delivered, uncertain: false, httpStatus: 200, receipt: rcpt-77, replay: 0, startedAt: '2026-10-19T12:00:06Z', finishedAt: '2026-10-19T12:00:07Z'}
+    ReplayRequest:
+      value:
+        reason: Receiver endpoint was repaired; resend the missed notification.
+    WebhookPayload:
+      value:
+        schemaVersion: 1
+        notificationId: cdl_0123456789abcdef0123456789abcdef
+        event: {id: evt_01, type: gate.requested, occurredAt: '2026-10-19T10:05:00Z', correlationId: req_01}
+        tenantId: t_acme
+        projectId: p_inventory
+        resource: {type: gate, id: gate_1042, version: 1}
+        summary: 'Review requested: gate gate_1042 awaits a decision'
+        attributes:
+          contentRevision: '3'
+          deadline: '2027-01-01T00:00:00Z'
+          reviewerScope: project
+          subjectDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        url: https://api.example.com/api/v1/tenants/t_acme/projects/p_inventory/gates/gate_1042

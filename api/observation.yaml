@@ -1,0 +1,402 @@
+openapi: 3.0.3
+info:
+  title: Kodama authorized durable observation streams
+  version: 1.0.0
+  description: >-
+    Project and run observation (docs/contracts/http-api.md "Runtime and observation",
+    docs/specs/api-cli-and-integrations.md AC-04/AC-06). Owned by T-024. Shared conventions
+    (error envelope, identifiers) come from api/common.yaml. Types are generated into
+    internal/observation/http/observation.gen.go (see internal/observation/http/generate.go).
+    Every route sits under /api/v1.
+
+
+    Representations. Both routes serve two representations selected by the Accept header.
+    `Accept: text/event-stream` (also an absent header or `*/*`) selects server-sent events.
+    `Accept: application/json` returns a snapshot with a resynchronization cursor. The
+    snapshot representation is this fragment's proposal for the "snapshot read" of the HTTP
+    contract and is confirmed by the integration owner.
+
+
+    Cursor and position. The cursor is the retained event sequence of the project's event
+    scope wrapped in an opaque, authenticated token. It is bound to the tenant, project,
+    endpoint, concrete run, normalized `type` filter and the ordering `sequence`; a copied
+    token fails with 400 invalid_cursor on any other scope. A cursor is a position, never a
+    permission: current access is checked again for the snapshot, for every event and while
+    the stream is idle. NATS delivery and broker sequence are never exposed. Event frame
+    `id` fields are cursors, so `Last-Event-ID` resumes exactly after that event.
+
+
+    Delivery guarantees. A stream is at-least-once at the network boundary: after a
+    disconnect the client resumes from the last cursor it received and may see an event it
+    already processed. Event ids are stable, so clients deduplicate by `id` in the event
+    data. Events outside the observable projection (work items, runs and step attempts) are
+    never forwarded, and events the caller may not read are skipped.
+
+
+    Cursor values in the examples are format-valid placeholders, not issued tokens.
+
+
+    Frames of the stream, in order. (1) Without `Last-Event-ID`, one `snapshot` frame whose
+    data is a Snapshot taken atomically with its cursor; the event frames that follow are
+    exactly the events committed after it. (2) Zero or more frames named by the event type,
+    each with `id` set to the cursor after that event and `data` set to the event envelope
+    as retained. (3) `checkpoint` frames carrying a cursor when a stretch of events
+    was excluded by the filter, so a quiet filtered stream can resume near the head.
+    (4) Comment lines `: heartbeat` while idle. (5) `resync_required`, only as the last frame
+    and without an `id`, when retention overtook the stream; the client fetches an
+    `application/json` snapshot and resumes from its cursor.
+
+
+    Before the response is committed, failures use the common error envelope: 400
+    invalid_request or invalid_cursor, 401, 403, 404 (hidden or missing), 410 cursor_expired,
+    429, 503. After it is committed, a failure closes the stream; a client that cannot keep
+    up is disconnected rather than served with dropped events and resumes from its last
+    cursor.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/events:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: observeProjectEvents
+      summary: Observe the project's work, run and step-attempt events
+      description: >-
+        Authorized durable observation of the project's events. Requires work_item:read for work
+        events and run:read for run and step-attempt events; families the caller cannot read are
+        omitted from the snapshot and the stream, and a caller who can read none receives 403
+        (or 404 when the project is hidden).
+      parameters:
+        - $ref: '#/components/parameters/EventType'
+        - $ref: '#/components/parameters/LastEventId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Observation'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/CursorExpired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      security:
+        - bearerAuth: []
+  /tenants/{tenantId}/projects/{projectId}/runs/{id}/events:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: observeRunEvents
+      summary: Observe one run's events and its step attempts
+      description: >-
+        Same representations and cursor rules as the project stream, narrowed to the run's own
+        events (matched by the run's resource id) and its step-attempt events (matched by the typed
+        runId payload member, never by correlation id). Requires run:read. The run must exist in
+        the project; otherwise 404, identical to a hidden run.
+      parameters:
+        - $ref: '#/components/parameters/EventType'
+        - $ref: '#/components/parameters/LastEventId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Observation'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/CursorExpired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    RunId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    EventType:
+      name: type
+      in: query
+      required: false
+      description: >-
+        Repeatable event-type filter; repeated values are disjunctive. The set is normalized
+        (sorted, deduplicated) and bound into the cursor. An unsupported type is 400
+        invalid_request, never ignored. Other query members are rejected.
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/ObservableEventType'
+      style: form
+      explode: true
+    LastEventId:
+      name: Last-Event-ID
+      in: header
+      required: false
+      description: >-
+        The `id` of the last frame received (an event or checkpoint cursor). Exactly one header
+        value is accepted; only the event-stream representation resumes. A malformed, foreign or
+        ahead-of-head cursor is 400 invalid_cursor; one older than the retained history is
+        410 cursor_expired.
+      schema:
+        $ref: 'common.yaml#/components/schemas/Cursor'
+  headers:
+    CacheControl:
+      description: Always `no-store`; observation responses are never cached.
+      schema:
+        type: string
+        enum: [no-store]
+  responses:
+    Observation:
+      description: >-
+        The event stream (`text/event-stream`) or a snapshot with its cursor (`application/json`).
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        text/event-stream:
+          schema:
+            type: string
+            description: >-
+              Server-sent events. `data` of each frame is one line of JSON: Snapshot for `snapshot`,
+              ObservedEvent for event frames, Checkpoint for `checkpoint`, ResyncRequired for
+              `resync_required`.
+          examples:
+            snapshotThenEvents:
+              summary: Fresh stream, then one event, then a checkpoint
+              value: |
+                event: snapshot
+                id: AQAAAAAAAAAH.3q2kqzjXhYOq3uNBmK1U2xVZ-0RwPl8dY9M2zQe4mFg
+                data: {"cursor":"AQAAAAAAAAAH.3q2kqzjXhYOq3uNBmK1U2xVZ-0RwPl8dY9M2zQe4mFg","resources":[{"type":"work_item","id":"wi_1042","version":7,"state":"active","kind":"story"}]}
+
+                event: work_item.transitioned
+                id: AQAAAAAAAAAI.0b7Yw9r2n5Qx1kPzLdTq8uVhJc3sEaM6fWoN4yRgIt
+                data: {"id":"evt_01","schemaVersion":1,"type":"work_item.transitioned","occurredAt":"2026-10-19T10:05:00Z","tenantId":"t_acme","projectId":"p_inventory","resource":{"type":"work_item","id":"wi_1042","version":8},"actor":{"type":"user","id":"usr_engineer"},"correlationId":"req_01","causationId":null,"data":{"from":"active","to":"review","transitionId":"tr_01"}}
+
+                event: checkpoint
+                id: AQAAAAAAAAAK.8mTz1QvB5nXc2oLr7yUe4sKpJa9dHgWfI6tNqRxYbVk
+                data: {"cursor":"AQAAAAAAAAAK.8mTz1QvB5nXc2oLr7yUe4sKpJa9dHgWfI6tNqRxYbVk"}
+
+                : heartbeat
+
+            resyncRequired:
+              summary: Last frame when retention overtook the stream
+              value: |
+                event: resync_required
+                data: {"code":"cursor_expired","message":"the position is older than the retained history; fetch a snapshot and resume from its cursor"}
+
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Snapshot'
+          examples:
+            projectSnapshot:
+              summary: Snapshot of a project with its resynchronization cursor
+              value:
+                cursor: AQAAAAAAAAAH.3q2kqzjXhYOq3uNBmK1U2xVZ-0RwPl8dY9M2zQe4mFg
+                resources:
+                  - type: work_item
+                    id: wi_1042
+                    version: 7
+                    state: active
+                    kind: story
+                  - type: run
+                    id: run_88
+                    version: 3
+                    state: running
+                  - type: step_attempt
+                    id: att_5
+                    version: 2
+                    state: running
+                    runId: run_88
+                    stepId: build
+    CursorExpired:
+      description: >-
+        The cursor is older than the retained history (cursor_expired). Fetch the
+        `application/json` snapshot and resume from its cursor.
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: cursor_expired
+              message: the cursor is older than the retained history; fetch a snapshot and resume from its cursor
+              requestId: req_0123456789abcdef0123456789abcdef
+              details: {}
+    Unavailable:
+      description: >-
+        A required dependency is unavailable (unavailable), or the complete snapshot exceeds the
+        configured bound (snapshot_too_large; no cursor is issued and nothing is truncated).
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+        Retry-After:
+          $ref: 'common.yaml#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+  schemas:
+    ObservableEventType:
+      type: string
+      description: The initial observable projection; other event types are never forwarded.
+      enum:
+        - work_item.created
+        - work_item.updated
+        - work_item.transitioned
+        - run.created
+        - run.state_changed
+        - step_attempt.state_changed
+    ObservedResourceType:
+      type: string
+      enum: [work_item, run, step_attempt]
+    ObservedResource:
+      type: object
+      required: [type, id, version, state]
+      additionalProperties: false
+      description: >-
+        Narrow current state of one resource, using the event catalog's field spellings. It aligns
+        a client with the cursor; the owning module's routes serve the full resource.
+      properties:
+        type:
+          $ref: '#/components/schemas/ObservedResourceType'
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        state:
+          type: string
+        kind:
+          type: string
+          description: Work-item kind; present for work_item only.
+        runId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        stepId:
+          $ref: 'common.yaml#/components/schemas/ID'
+    Snapshot:
+      type: object
+      required: [cursor, resources]
+      additionalProperties: false
+      description: >-
+        Complete current state of the stream's projection and the cursor it is consistent with:
+        every event committed at or before the cursor is reflected and every later event is not.
+        A snapshot larger than the configured bound is refused with 503 snapshot_too_large and
+        never truncated.
+      properties:
+        cursor:
+          $ref: 'common.yaml#/components/schemas/Cursor'
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservedResource'
+    Checkpoint:
+      type: object
+      required: [cursor]
+      additionalProperties: false
+      properties:
+        cursor:
+          $ref: 'common.yaml#/components/schemas/Cursor'
+    ResyncRequired:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum: [cursor_expired]
+        message:
+          type: string
+    ObservedActor:
+      type: object
+      required: [type, id]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [user, service, workload, operator]
+        id:
+          type: string
+    ObservedResourceRef:
+      type: object
+      required: [type, id, version]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+        id:
+          type: string
+        version:
+          type: integer
+          format: int64
+    ObservedEvent:
+      type: object
+      required: [id, schemaVersion, type, occurredAt, tenantId, resource, actor, correlationId, causationId, data]
+      additionalProperties: false
+      description: >-
+        The retained event envelope of docs/contracts/event-catalog.md, unchanged. `id` is stable,
+        so a client deduplicates after a reconnect.
+      properties:
+        id:
+          type: string
+        schemaVersion:
+          type: integer
+          enum: [1]
+        type:
+          $ref: '#/components/schemas/ObservableEventType'
+        occurredAt:
+          type: string
+          format: date-time
+        tenantId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        projectId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        resource:
+          $ref: '#/components/schemas/ObservedResourceRef'
+        actor:
+          $ref: '#/components/schemas/ObservedActor'
+        correlationId:
+          type: string
+        causationId:
+          type: string
+          nullable: true
+        data:
+          type: object
+          additionalProperties: true

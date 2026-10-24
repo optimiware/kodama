@@ -1,0 +1,85 @@
+{{- /*
+The server's settings document (config.yaml), read strictly by `kodama server --assembly core`
+through KODAMA_CONFIG_FILE (internal/app ChartConfig). It carries endpoints, identifiers and the
+Kubernetes execution policy, never a credential value: secrets are files of the runtime Secret
+(/secrets) and the runtime trust roots are its runtime-ca.crt file. A variable set on the
+Deployment wins over this document; the document never selects the environment or the assembly.
+Keep the members in step with ChartConfig: an unknown member stops the server at startup.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kodama.fullname" . }}-config
+  labels:
+    {{- include "kodama.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+data:
+  config.yaml: |
+    version: 2
+    profile: {{ .Values.profile }}
+    authority: {{ .Values.authority.mode }}
+    installationId: {{ .Values.installation.id | quote }}
+    secrets:
+      adapter: {{ .Values.secrets.adapter }}
+      {{- if eq .Values.secrets.adapter "keyfile" }}
+      keyfile:
+        {{- toYaml (.Values.secrets.keyfile | default (dict "current" "v1" "files" (dict "v1" "/secrets/master-key"))) | nindent 8 }}
+      {{- else }}
+      kms:
+        provider: {{ .Values.secrets.kms.provider }}
+        kekId: {{ .Values.secrets.kms.kekId | quote }}
+        current: {{ .Values.secrets.kms.current | quote }}
+        startupTimeout: {{ .Values.secrets.kms.startupTimeout | default "10s" | quote }}
+        resources:
+          {{- toYaml .Values.secrets.kms.resources | nindent 10 }}
+        {{- if eq .Values.secrets.kms.provider "aws" }}
+        aws:
+          region: {{ .Values.secrets.kms.aws.region | quote }}
+        {{- end }}
+        {{- if eq .Values.secrets.kms.provider "scw" }}
+        scw:
+          credentialsFile: /etc/kodama/kms-credentials/secret-key
+        {{- end }}
+      {{- end }}
+    nats:
+      url: {{ .Values.config.nats.url | quote }}
+    s3:
+      endpoint: {{ .Values.config.s3.endpoint | quote }}
+      region: {{ .Values.config.s3.region | quote }}
+      bucket: {{ .Values.config.s3.bucket | quote }}
+      prefix: {{ .Values.config.s3.prefix | default "" | quote }}
+      pathStyle: {{ .Values.config.s3.pathStyle | default false }}
+      credentials: {{ .Values.config.s3.credentials }}
+    oidc:
+      issuer: {{ .Values.config.oidc.issuer | quote }}
+      audience: {{ .Values.config.oidc.audience | quote }}
+    tls:
+      customCA: {{ .Values.config.tls.customCA | default false }}
+    runtime:
+      url: {{ .Values.execution.runtime.url | quote }}
+      caFile: runtime-ca.crt
+      signingGeneration: {{ .Values.execution.runtime.signingGeneration }}
+      # Every destination a workload may reach: the callback and the network egress rules. The
+      # tenant NetworkPolicy renders the same list.
+      egress:
+        {{- toYaml (concat .Values.execution.runtime.egress .Values.execution.network.egress) | nindent 8 }}
+    execution:
+      serviceAccountName: {{ .Values.execution.serviceAccountName | quote }}
+      tenants:
+        {{- range .Values.execution.tenants }}
+        - namespace: {{ .namespace | quote }}
+          tenantId: {{ .tenantId | quote }}
+        {{- end }}
+      image: {{ include "kodama.releaseImage" . | quote }}
+      imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+      injectorCommand:
+        {{- include "kodama.injectCommand" . | nindent 8 }}
+      runAsUser: {{ .Values.execution.job.runAsUser }}
+      runAsGroup: {{ .Values.execution.job.runAsGroup }}
+      terminationGraceSeconds: {{ .Values.execution.job.terminationGracePeriodSeconds }}
+      workload:
+        {{- toYaml .Values.execution.job.resources | nindent 8 }}
+      injector:
+        {{- toYaml .Values.execution.job.injectorResources | nindent 8 }}
+      volumes:
+        {{- toYaml .Values.execution.volumes | nindent 8 }}

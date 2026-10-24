@@ -1,0 +1,1539 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kodama.invalid/contracts/runtime/v1/schema.json",
+  "title": "Kodama runtime contract v1",
+  "description": "Messages of /runtime/v1. Requests and Result are strict (no additional properties); responses tolerate compatible additions. Cross-field rules a schema cannot express live in the Go contract checks.",
+  "$defs": {
+    "ID": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "GitCommit": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "Timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+      "description": "UTC RFC 3339 with a literal Z"
+    },
+    "Name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+    },
+    "StepName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "SafeName": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "ActionKey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "ReasonCode": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "ImageRef": {
+      "type": "string",
+      "pattern": "^[^\\s@]+@sha256:[0-9a-f]{64}$"
+    },
+    "RepositoryURL": {
+      "type": "string",
+      "pattern": "^https://[^\\s@/?#]+(/[^\\s@?#]*)?$"
+    },
+    "BranchRef": {
+      "type": "string",
+      "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"
+    },
+    "SecretRef": {
+      "type": "string",
+      "pattern": "^secret://[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9-]{0,62}$"
+    },
+    "Nonce": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{22,64}$"
+    },
+    "EnvName": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+    },
+    "KubernetesName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$"
+    },
+    "UID": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "OutputPath": {
+      "type": "string",
+      "pattern": "^/kodama/outputs(/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$"
+    },
+    "Base64": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+    },
+    "AdmissionCredential": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._~+/=-]{16,512}$"
+    },
+    "TokenValue": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._~+/=-]{16,1000}$"
+    },
+    "ClientVersion": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z.+-]{1,64}$"
+    },
+    "MediaType": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}$"
+    },
+    "RegistryRef": {
+      "type": "string",
+      "pattern": "^[^\\s@]+$"
+    },
+    "UploadURL": {
+      "type": "string",
+      "pattern": "^https?://[^\\s]+$"
+    },
+    "RequirementID": {
+      "type": "string",
+      "pattern": "^[A-Z]{2,4}-A?[0-9]{2,3}$"
+    },
+    "DecisionID": {
+      "type": "string",
+      "pattern": "^[COP]-[0-9]{2}$"
+    },
+    "CheckID": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "SourcePath": {
+      "type": "string",
+      "pattern": "^(\\.?[A-Za-z0-9_-][A-Za-z0-9._-]*)(/\\.?[A-Za-z0-9_-][A-Za-z0-9._-]*)*$"
+    },
+    "Value": {
+      "description": "String, boolean or integer; artifact outputs are artifact ID strings.",
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 4096
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      ]
+    },
+    "JobIdentity": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/KubernetesName"
+        },
+        "uid": {
+          "$ref": "#/$defs/UID"
+        },
+        "podName": {
+          "$ref": "#/$defs/KubernetesName"
+        },
+        "podUid": {
+          "$ref": "#/$defs/UID"
+        }
+      },
+      "required": [
+        "name",
+        "uid",
+        "podName",
+        "podUid"
+      ],
+      "additionalProperties": false
+    },
+    "AdmitRequest": {
+      "type": "object",
+      "properties": {
+        "admissionCredential": {
+          "$ref": "#/$defs/AdmissionCredential"
+        },
+        "nonce": {
+          "$ref": "#/$defs/Nonce"
+        },
+        "clientVersion": {
+          "$ref": "#/$defs/ClientVersion"
+        },
+        "job": {
+          "$ref": "#/$defs/JobIdentity"
+        }
+      },
+      "required": [
+        "admissionCredential",
+        "nonce",
+        "clientVersion",
+        "job"
+      ],
+      "additionalProperties": false
+    },
+    "TokenInfo": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "$ref": "#/$defs/TokenValue"
+        },
+        "tokenType": {
+          "const": "Bearer"
+        },
+        "audience": {
+          "const": "kodama-runtime"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "maxExpiresAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "token",
+        "tokenType",
+        "audience",
+        "expiresAt",
+        "maxExpiresAt"
+      ]
+    },
+    "AdmitResponse": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "$ref": "#/$defs/TokenInfo"
+        },
+        "context": {
+          "$ref": "#/$defs/Context"
+        }
+      },
+      "required": [
+        "token",
+        "context"
+      ]
+    },
+    "TokenRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 0
+    },
+    "TokenResponse": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "$ref": "#/$defs/TokenInfo"
+        }
+      },
+      "required": [
+        "token"
+      ]
+    },
+    "Definition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ID"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "required": [
+        "id",
+        "digest"
+      ]
+    },
+    "AcceptanceCriterion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SafeName"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ]
+    },
+    "WorkItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ID"
+        },
+        "contentRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "spec": {
+          "type": "string"
+        },
+        "acceptanceCriteria": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AcceptanceCriterion"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "id",
+        "contentRevision",
+        "spec",
+        "acceptanceCriteria"
+      ]
+    },
+    "Profile": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Name"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "wrapperVersion": {
+          "$ref": "#/$defs/ClientVersion"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "wrapperVersion"
+      ]
+    },
+    "Command": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "$ref": "#/$defs/ImageRef"
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 256
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 256
+        },
+        "env": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/EnvName"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxProperties": 256
+        }
+      },
+      "required": [
+        "image",
+        "command",
+        "args",
+        "env"
+      ]
+    },
+    "Source": {
+      "type": "object",
+      "properties": {
+        "repositoryUrl": {
+          "$ref": "#/$defs/RepositoryURL"
+        },
+        "commit": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/BranchRef"
+            }
+          ]
+        },
+        "expectedTip": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GitCommit"
+            }
+          ]
+        }
+      },
+      "required": [
+        "repositoryUrl",
+        "commit",
+        "branch",
+        "expectedTip"
+      ]
+    },
+    "Workspace": {
+      "type": "object",
+      "properties": {
+        "access": {
+          "type": "string",
+          "enum": [
+            "none",
+            "read",
+            "write"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Source"
+            }
+          ]
+        }
+      },
+      "required": [
+        "access",
+        "source"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "access": {
+                "const": "none"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "source": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "access": {
+                "const": "read"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "branch": {
+                    "type": "null"
+                  },
+                  "expectedTip": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "access": {
+                "const": "write"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "branch": {
+                    "type": "string"
+                  },
+                  "expectedTip": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "OutputDecl": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Name"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "boolean",
+            "integer",
+            "artifact",
+            "ociArtifact"
+          ]
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/OutputPath"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "path"
+      ],
+      "if": {
+        "properties": {
+          "type": {
+            "const": "artifact"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "path": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    "SecretBinding": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/SecretRef"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "name": {
+          "$ref": "#/$defs/SafeName"
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "file",
+            "env"
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "version",
+        "name",
+        "delivery"
+      ]
+    },
+    "EnvironmentPin": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ID"
+        },
+        "configDigest": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "required": [
+        "id",
+        "configDigest"
+      ]
+    },
+    "Limits": {
+      "type": "object",
+      "properties": {
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800
+        },
+        "maxOutputBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1099511627776
+        },
+        "maxOutputFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "maxDiagnosticBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1099511627776
+        }
+      },
+      "required": [
+        "timeoutSeconds",
+        "maxOutputBytes",
+        "maxOutputFiles",
+        "maxDiagnosticBytes"
+      ]
+    },
+    "Context": {
+      "type": "object",
+      "properties": {
+        "tenantId": {
+          "$ref": "#/$defs/ID"
+        },
+        "projectId": {
+          "$ref": "#/$defs/ID"
+        },
+        "runId": {
+          "$ref": "#/$defs/ID"
+        },
+        "stepId": {
+          "$ref": "#/$defs/StepName"
+        },
+        "attemptId": {
+          "$ref": "#/$defs/ID"
+        },
+        "actionKey": {
+          "$ref": "#/$defs/ActionKey"
+        },
+        "definition": {
+          "$ref": "#/$defs/Definition"
+        },
+        "workItem": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/WorkItem"
+            }
+          ]
+        },
+        "designBaseline": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/DesignBaseline"
+            }
+          ]
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Profile"
+            }
+          ]
+        },
+        "command": {
+          "$ref": "#/$defs/Command"
+        },
+        "workspace": {
+          "$ref": "#/$defs/Workspace"
+        },
+        "inputs": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/Name"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/Value"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OutputDecl"
+          },
+          "maxItems": 64
+        },
+        "secrets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SecretBinding"
+          },
+          "maxItems": 256
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/EnvironmentPin"
+            }
+          ]
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits"
+        }
+      },
+      "required": [
+        "tenantId",
+        "projectId",
+        "runId",
+        "stepId",
+        "attemptId",
+        "actionKey",
+        "definition",
+        "workItem",
+        "designBaseline",
+        "profile",
+        "command",
+        "workspace",
+        "inputs",
+        "outputs",
+        "secrets",
+        "environment",
+        "limits"
+      ]
+    },
+    "SourceRef": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "$ref": "#/$defs/RepositoryURL"
+        },
+        "revision": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "path": {
+          "$ref": "#/$defs/SourcePath"
+        }
+      },
+      "required": [
+        "repository",
+        "revision",
+        "path"
+      ]
+    },
+    "DesignBaseline": {
+      "type": "object",
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RequirementID"
+          },
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DecisionID"
+          },
+          "minItems": 0,
+          "maxItems": 128,
+          "uniqueItems": true
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "requiredChecks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckID"
+          },
+          "minItems": 0,
+          "maxItems": 64,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "digest",
+        "requirements",
+        "decisions",
+        "sources",
+        "requiredChecks"
+      ],
+      "description": "References only. digest is SHA-256 of the canonical JSON of the other four properties. Lists are strictly sorted (requirements, decisions, requiredChecks by string; sources by repository, path, revision); sorting, duplicates and the digest are enforced by the Go contract."
+    },
+    "ConformanceCheck": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/CheckID"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "not_run"
+          ]
+        },
+        "evidenceArtifactIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          },
+          "minItems": 0,
+          "maxItems": 32,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "outcome",
+        "evidenceArtifactIds"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "passed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evidenceArtifactIds": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "Deviation": {
+      "type": "object",
+      "properties": {
+        "requirement": {
+          "$ref": "#/$defs/RequirementID"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "\\S"
+        }
+      },
+      "required": [
+        "requirement",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "ConformanceReport": {
+      "type": "object",
+      "properties": {
+        "baselineDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "candidateCommit": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RequirementID"
+          },
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConformanceCheck"
+          },
+          "minItems": 1,
+          "maxItems": 64
+        },
+        "unresolvedDeviations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Deviation"
+          },
+          "maxItems": 64
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "conforms",
+            "blocked"
+          ]
+        }
+      },
+      "required": [
+        "baselineDigest",
+        "candidateCommit",
+        "requirements",
+        "checks",
+        "unresolvedDeviations",
+        "disposition"
+      ],
+      "additionalProperties": false,
+      "description": "Candidate-bound payload of the declared conformance artifact. Disposition is derived: conforms exactly when no deviations and every check passed. Ordering, uniqueness and that rule are enforced by the Go contract.",
+      "oneOf": [
+        {
+          "properties": {
+            "disposition": {
+              "const": "conforms"
+            },
+            "unresolvedDeviations": {
+              "maxItems": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "disposition": {
+              "const": "blocked"
+            }
+          }
+        }
+      ]
+    },
+    "SecretResolveRequest": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/SecretRef"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "ref",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "SecretResolveResponse": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/SecretRef"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "name": {
+          "$ref": "#/$defs/SafeName"
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "file",
+            "env"
+          ]
+        },
+        "valueBase64": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Base64"
+            },
+            {
+              "maxLength": 1048576
+            }
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "version",
+        "name",
+        "delivery",
+        "valueBase64"
+      ]
+    },
+    "ArtifactReserveRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/SafeName"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "file",
+            "oci"
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "output",
+            "diagnostic",
+            "bundle"
+          ]
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "mediaType": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/MediaType"
+            }
+          ]
+        },
+        "sizeBytes": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1099511627776
+            }
+          ]
+        },
+        "registry": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/RegistryRef"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "role",
+        "digest",
+        "mediaType",
+        "sizeBytes",
+        "registry"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "file"
+            },
+            "mediaType": {
+              "type": "string"
+            },
+            "sizeBytes": {
+              "type": "integer"
+            },
+            "registry": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "oci"
+            },
+            "role": {
+              "const": "output"
+            },
+            "mediaType": {
+              "type": "null"
+            },
+            "sizeBytes": {
+              "type": "null"
+            },
+            "registry": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Upload": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "PUT"
+        },
+        "url": {
+          "$ref": "#/$defs/UploadURL"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 32
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "method",
+        "url",
+        "headers",
+        "expiresAt"
+      ]
+    },
+    "ArtifactReserveResponse": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ID"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "reserved",
+            "registered"
+          ]
+        },
+        "upload": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Upload"
+            }
+          ]
+        }
+      },
+      "required": [
+        "artifactId",
+        "state",
+        "upload"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "state": {
+              "const": "reserved"
+            },
+            "upload": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "registered"
+            },
+            "upload": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactCompleteRequest": {
+      "type": "object",
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        }
+      },
+      "required": [
+        "digest",
+        "sizeBytes"
+      ],
+      "additionalProperties": false
+    },
+    "ArtifactCompleteResponse": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ID"
+        },
+        "state": {
+          "const": "usable"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        }
+      },
+      "required": [
+        "artifactId",
+        "state",
+        "digest",
+        "sizeBytes"
+      ]
+    },
+    "SourceProposalRequest": {
+      "type": "object",
+      "properties": {
+        "commit": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "expectedTip": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "bundleArtifactId": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "commit",
+        "expectedTip",
+        "bundleArtifactId"
+      ],
+      "additionalProperties": false
+    },
+    "SourceProposalResponse": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "pending"
+          ]
+        },
+        "commit": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "acceptedCommit": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GitCommit"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "commit",
+        "acceptedCommit"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "status": {
+              "const": "accepted"
+            },
+            "acceptedCommit": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "pending"
+            },
+            "acceptedCommit": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "Result": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "failed",
+            "needs_input"
+          ]
+        },
+        "exitCode": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ReasonCode"
+            }
+          ]
+        },
+        "question": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "pattern": "\\S"
+            }
+          ]
+        },
+        "sourceCommit": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GitCommit"
+            }
+          ]
+        },
+        "outputs": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/Name"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/Value"
+          },
+          "maxProperties": 64
+        },
+        "diagnosticArtifactIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          },
+          "maxItems": 32,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "outcome",
+        "exitCode",
+        "reason",
+        "question",
+        "sourceCommit",
+        "outputs",
+        "diagnosticArtifactIds"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "outcome": {
+              "const": "completed"
+            },
+            "exitCode": {
+              "const": 0
+            },
+            "reason": {
+              "type": "null"
+            },
+            "question": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "properties": {
+            "outcome": {
+              "const": "failed"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "question": {
+              "type": "null"
+            },
+            "sourceCommit": {
+              "type": "null"
+            },
+            "outputs": {
+              "maxProperties": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "outcome": {
+              "const": "needs_input"
+            },
+            "question": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "null"
+            },
+            "sourceCommit": {
+              "type": "null"
+            },
+            "outputs": {
+              "maxProperties": 0
+            }
+          }
+        }
+      ]
+    },
+    "ResultRequest": {
+      "type": "object",
+      "properties": {
+        "resultHash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "result": {
+          "$ref": "#/$defs/Result"
+        }
+      },
+      "required": [
+        "resultHash",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    "ResultResponse": {
+      "type": "object",
+      "properties": {
+        "attemptId": {
+          "$ref": "#/$defs/ID"
+        },
+        "resultHash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "attemptStatus": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "acceptedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "attemptId",
+        "resultHash",
+        "attemptStatus",
+        "acceptedAt"
+      ]
+    },
+    "ErrorBody": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "details": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "requestId",
+        "details"
+      ]
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/ErrorBody"
+        }
+      },
+      "required": [
+        "error"
+      ]
+    }
+  }
+}

@@ -1,0 +1,996 @@
+[
+  {
+    "name": "happy_path",
+    "requirements": [
+      "PX-10",
+      "AR-06"
+    ],
+    "steps": [
+      {
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-01",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+            "podName": "kodama-att-01-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60"
+          }
+        },
+        "status": 200,
+        "body": {
+          "token": {
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer",
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-19T10:15:00Z",
+            "maxExpiresAt": "2026-10-19T12:00:00Z"
+          },
+          "context": {
+            "tenantId": "t_acme",
+            "projectId": "p_inventory",
+            "runId": "run_01",
+            "stepId": "test",
+            "attemptId": "att_01",
+            "actionKey": "run_01.test",
+            "definition": {
+              "id": "pd_01",
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "workItem": {
+              "id": "wi_1042",
+              "contentRevision": 2,
+              "spec": "# Plan\nAdd a scoped review flow.",
+              "acceptanceCriteria": [
+                {
+                  "id": "AC-1",
+                  "text": "A reviewer resolves an exception with an audit record."
+                }
+              ]
+            },
+            "designBaseline": null,
+            "profile": null,
+            "command": {
+              "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "args": [
+                "go test ./..."
+              ],
+              "env": {
+                "CI": "true"
+              }
+            },
+            "workspace": {
+              "access": "read",
+              "source": {
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+                "commit": "1111111111111111111111111111111111111111",
+                "branch": null,
+                "expectedTip": null
+              }
+            },
+            "inputs": {
+              "target": "unit",
+              "verbose": false,
+              "shards": 4
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "type": "artifact",
+                "path": "/kodama/outputs/tests.json"
+              }
+            ],
+            "secrets": [
+              {
+                "ref": "secret://project/erp-token",
+                "version": 2,
+                "name": "erp-token",
+                "delivery": "file"
+              }
+            ],
+            "environment": null,
+            "limits": {
+              "timeoutSeconds": 600,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "maxDiagnosticBytes": 10485760
+            }
+          }
+        }
+      },
+      {
+        "op": "getContext",
+        "request": null,
+        "status": 200,
+        "body": {
+          "tenantId": "t_acme",
+          "projectId": "p_inventory",
+          "runId": "run_01",
+          "stepId": "test",
+          "attemptId": "att_01",
+          "actionKey": "run_01.test",
+          "definition": {
+            "id": "pd_01",
+            "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "workItem": {
+            "id": "wi_1042",
+            "contentRevision": 2,
+            "spec": "# Plan\nAdd a scoped review flow.",
+            "acceptanceCriteria": [
+              {
+                "id": "AC-1",
+                "text": "A reviewer resolves an exception with an audit record."
+              }
+            ]
+          },
+          "designBaseline": null,
+          "profile": null,
+          "command": {
+            "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "command": [
+              "/bin/sh",
+              "-ec"
+            ],
+            "args": [
+              "go test ./..."
+            ],
+            "env": {
+              "CI": "true"
+            }
+          },
+          "workspace": {
+            "access": "read",
+            "source": {
+              "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+              "commit": "1111111111111111111111111111111111111111",
+              "branch": null,
+              "expectedTip": null
+            }
+          },
+          "inputs": {
+            "target": "unit",
+            "verbose": false,
+            "shards": 4
+          },
+          "outputs": [
+            {
+              "name": "report",
+              "type": "artifact",
+              "path": "/kodama/outputs/tests.json"
+            }
+          ],
+          "secrets": [
+            {
+              "ref": "secret://project/erp-token",
+              "version": 2,
+              "name": "erp-token",
+              "delivery": "file"
+            }
+          ],
+          "environment": null,
+          "limits": {
+            "timeoutSeconds": 600,
+            "maxOutputBytes": 104857600,
+            "maxOutputFiles": 100,
+            "maxDiagnosticBytes": 10485760
+          }
+        }
+      },
+      {
+        "op": "reserveArtifact",
+        "request": {
+          "name": "tests.json",
+          "kind": "file",
+          "role": "output",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "mediaType": "application/json",
+          "sizeBytes": 2048,
+          "registry": null
+        },
+        "status": 201,
+        "body": {
+          "artifactId": "art_tests",
+          "state": "reserved",
+          "upload": {
+            "method": "PUT",
+            "url": "https://s3.example.invalid/bucket/key?sig=x",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "expiresAt": "2026-10-19T10:15:00Z"
+          }
+        }
+      },
+      {
+        "op": "completeArtifact",
+        "request": {
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes": 2048
+        },
+        "status": 200,
+        "body": {
+          "artifactId": "art_tests",
+          "state": "usable",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes": 2048
+        },
+        "artifactId": "art_tests"
+      },
+      {
+        "op": "submitResult",
+        "request": {
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "result": {
+            "outcome": "completed",
+            "exitCode": 0,
+            "reason": null,
+            "question": null,
+            "sourceCommit": null,
+            "outputs": {
+              "report": "art_tests"
+            },
+            "diagnosticArtifactIds": [
+              "art_log"
+            ]
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_01",
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "attemptStatus": "succeeded",
+          "acceptedAt": "2026-10-19T10:05:00Z"
+        }
+      }
+    ]
+  },
+  {
+    "name": "admission_replay_same_nonce_then_new_nonce",
+    "requirements": [
+      "IT-06"
+    ],
+    "steps": [
+      {
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-01",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+            "podName": "kodama-att-01-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60"
+          }
+        },
+        "status": 200,
+        "body": {
+          "token": {
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer",
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-19T10:15:00Z",
+            "maxExpiresAt": "2026-10-19T12:00:00Z"
+          },
+          "context": {
+            "tenantId": "t_acme",
+            "projectId": "p_inventory",
+            "runId": "run_01",
+            "stepId": "test",
+            "attemptId": "att_01",
+            "actionKey": "run_01.test",
+            "definition": {
+              "id": "pd_01",
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "workItem": {
+              "id": "wi_1042",
+              "contentRevision": 2,
+              "spec": "# Plan\nAdd a scoped review flow.",
+              "acceptanceCriteria": [
+                {
+                  "id": "AC-1",
+                  "text": "A reviewer resolves an exception with an audit record."
+                }
+              ]
+            },
+            "designBaseline": null,
+            "profile": null,
+            "command": {
+              "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "args": [
+                "go test ./..."
+              ],
+              "env": {
+                "CI": "true"
+              }
+            },
+            "workspace": {
+              "access": "read",
+              "source": {
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+                "commit": "1111111111111111111111111111111111111111",
+                "branch": null,
+                "expectedTip": null
+              }
+            },
+            "inputs": {
+              "target": "unit",
+              "verbose": false,
+              "shards": 4
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "type": "artifact",
+                "path": "/kodama/outputs/tests.json"
+              }
+            ],
+            "secrets": [
+              {
+                "ref": "secret://project/erp-token",
+                "version": 2,
+                "name": "erp-token",
+                "delivery": "file"
+              }
+            ],
+            "environment": null,
+            "limits": {
+              "timeoutSeconds": 600,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "maxDiagnosticBytes": 10485760
+            }
+          }
+        }
+      },
+      {
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-01",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+            "podName": "kodama-att-01-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60"
+          }
+        },
+        "status": 200,
+        "body": {
+          "token": {
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer",
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-19T10:15:00Z",
+            "maxExpiresAt": "2026-10-19T12:00:00Z"
+          },
+          "context": {
+            "tenantId": "t_acme",
+            "projectId": "p_inventory",
+            "runId": "run_01",
+            "stepId": "test",
+            "attemptId": "att_01",
+            "actionKey": "run_01.test",
+            "definition": {
+              "id": "pd_01",
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "workItem": {
+              "id": "wi_1042",
+              "contentRevision": 2,
+              "spec": "# Plan\nAdd a scoped review flow.",
+              "acceptanceCriteria": [
+                {
+                  "id": "AC-1",
+                  "text": "A reviewer resolves an exception with an audit record."
+                }
+              ]
+            },
+            "designBaseline": null,
+            "profile": null,
+            "command": {
+              "image": "registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "args": [
+                "go test ./..."
+              ],
+              "env": {
+                "CI": "true"
+              }
+            },
+            "workspace": {
+              "access": "read",
+              "source": {
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+                "commit": "1111111111111111111111111111111111111111",
+                "branch": null,
+                "expectedTip": null
+              }
+            },
+            "inputs": {
+              "target": "unit",
+              "verbose": false,
+              "shards": 4
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "type": "artifact",
+                "path": "/kodama/outputs/tests.json"
+              }
+            ],
+            "secrets": [
+              {
+                "ref": "secret://project/erp-token",
+                "version": 2,
+                "name": "erp-token",
+                "delivery": "file"
+              }
+            ],
+            "environment": null,
+            "limits": {
+              "timeoutSeconds": 600,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "maxDiagnosticBytes": 10485760
+            }
+          }
+        }
+      },
+      {
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "nonce": "mmmmmmmmmmmmmmmmmmmmmm",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-01",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+            "podName": "kodama-att-01-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60"
+          }
+        },
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "admission_consumed",
+            "message": "Admission was already consumed.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "cancelled_admission",
+    "requirements": [
+      "IT-06",
+      "PX-08"
+    ],
+    "steps": [
+      {
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-01",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+            "podName": "kodama-att-01-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60"
+          }
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "attempt_revoked",
+            "message": "The attempt was cancelled.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "wrong_job",
+    "requirements": [
+      "IT-06",
+      "IT-08"
+    ],
+    "steps": [
+      {
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-01",
+            "uid": "8b3e3f40-5c6d-4e7f-8ab1-2c3d4e5f6071",
+            "podName": "kodama-att-01-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60"
+          }
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Job identity does not match the attempt.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "wrong_audience",
+    "requirements": [
+      "IT-06"
+    ],
+    "steps": [
+      {
+        "op": "getContext",
+        "request": null,
+        "status": 401,
+        "body": {
+          "error": {
+            "code": "invalid_credential",
+            "message": "Token audience is not accepted.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "refresh_after_revoke",
+    "requirements": [
+      "IT-06",
+      "PX-08"
+    ],
+    "steps": [
+      {
+        "op": "renewToken",
+        "request": {},
+        "status": 200,
+        "body": {
+          "token": {
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer",
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-19T10:15:00Z",
+            "maxExpiresAt": "2026-10-19T12:00:00Z"
+          }
+        }
+      },
+      {
+        "op": "renewToken",
+        "request": {},
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "attempt_revoked",
+            "message": "The attempt is no longer authorized.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "incompatible_wrapper_profile",
+    "requirements": [
+      "AR-02"
+    ],
+    "steps": [
+      {
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn",
+          "clientVersion": "0.1.0",
+          "job": {
+            "name": "kodama-att-01",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f",
+            "podName": "kodama-att-01-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60"
+          }
+        },
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "profile_unsupported",
+            "message": "Wrapper version is not supported by this profile.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "duplicate_result",
+    "requirements": [
+      "PX-10",
+      "AC-12"
+    ],
+    "steps": [
+      {
+        "op": "submitResult",
+        "request": {
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "result": {
+            "outcome": "completed",
+            "exitCode": 0,
+            "reason": null,
+            "question": null,
+            "sourceCommit": null,
+            "outputs": {
+              "report": "art_tests"
+            },
+            "diagnosticArtifactIds": [
+              "art_log"
+            ]
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_01",
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "attemptStatus": "succeeded",
+          "acceptedAt": "2026-10-19T10:05:00Z"
+        }
+      },
+      {
+        "op": "submitResult",
+        "request": {
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "result": {
+            "outcome": "completed",
+            "exitCode": 0,
+            "reason": null,
+            "question": null,
+            "sourceCommit": null,
+            "outputs": {
+              "report": "art_tests"
+            },
+            "diagnosticArtifactIds": [
+              "art_log"
+            ]
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_01",
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "attemptStatus": "succeeded",
+          "acceptedAt": "2026-10-19T10:05:00Z"
+        }
+      }
+    ]
+  },
+  {
+    "name": "conflicting_result",
+    "requirements": [
+      "PX-10"
+    ],
+    "steps": [
+      {
+        "op": "submitResult",
+        "request": {
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "result": {
+            "outcome": "completed",
+            "exitCode": 0,
+            "reason": null,
+            "question": null,
+            "sourceCommit": null,
+            "outputs": {
+              "report": "art_tests"
+            },
+            "diagnosticArtifactIds": [
+              "art_log"
+            ]
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_01",
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "attemptStatus": "succeeded",
+          "acceptedAt": "2026-10-19T10:05:00Z"
+        }
+      },
+      {
+        "op": "submitResult",
+        "request": {
+          "resultHash": "sha256:b92b8d243c1f7c13015b1750e175f823501a14eb9040ffbf0331e8bad91b9583",
+          "result": {
+            "outcome": "completed",
+            "exitCode": 0,
+            "reason": null,
+            "question": null,
+            "sourceCommit": null,
+            "outputs": {
+              "report": "art_tests2"
+            },
+            "diagnosticArtifactIds": [
+              "art_log"
+            ]
+          }
+        },
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "result_conflict",
+            "message": "A different result has already been accepted.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "late_result_after_revocation",
+    "requirements": [
+      "PX-08",
+      "IT-06"
+    ],
+    "steps": [
+      {
+        "op": "submitResult",
+        "request": {
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "result": {
+            "outcome": "completed",
+            "exitCode": 0,
+            "reason": null,
+            "question": null,
+            "sourceCommit": null,
+            "outputs": {
+              "report": "art_tests"
+            },
+            "diagnosticArtifactIds": [
+              "art_log"
+            ]
+          }
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "attempt_revoked",
+            "message": "The attempt is no longer authorized.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "foreign_artifact_in_result",
+    "requirements": [
+      "IT-11",
+      "PX-10"
+    ],
+    "steps": [
+      {
+        "op": "submitResult",
+        "request": {
+          "resultHash": "sha256:8b4dfe3a77f7ac272c23611ca5ebdb123d6e96b77a5f2405d6f1b2a2582c3028",
+          "result": {
+            "outcome": "completed",
+            "exitCode": 0,
+            "reason": null,
+            "question": null,
+            "sourceCommit": null,
+            "outputs": {
+              "report": "art_tests"
+            },
+            "diagnosticArtifactIds": [
+              "art_log"
+            ]
+          }
+        },
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Artifact not found.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "missing_output",
+    "requirements": [
+      "PX-10",
+      "AR-06"
+    ],
+    "steps": [
+      {
+        "op": "submitResult",
+        "request": {
+          "resultHash": "sha256:8d815957c8766f4fb3f71bd070e7b4038f92eaf0d9b77b706bfb8a6bc09814ad",
+          "result": {
+            "outcome": "completed",
+            "exitCode": 0,
+            "reason": null,
+            "question": null,
+            "sourceCommit": null,
+            "outputs": {},
+            "diagnosticArtifactIds": [
+              "art_log"
+            ]
+          }
+        },
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "output_invalid",
+            "message": "Missing declared output \"report\".",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "incomplete_and_mismatched_upload",
+    "requirements": [
+      "PX-10"
+    ],
+    "steps": [
+      {
+        "op": "completeArtifact",
+        "request": {
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes": 2048
+        },
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "artifact_incomplete",
+            "message": "The object has not been uploaded.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        },
+        "artifactId": "art_tests"
+      },
+      {
+        "op": "completeArtifact",
+        "request": {
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "sizeBytes": 2048
+        },
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "digest_mismatch",
+            "message": "The object digest differs.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        },
+        "artifactId": "art_tests"
+      }
+    ]
+  },
+  {
+    "name": "publication_conflict",
+    "requirements": [
+      "WS-04",
+      "WS-06"
+    ],
+    "steps": [
+      {
+        "op": "proposeSource",
+        "request": {
+          "commit": "2222222222222222222222222222222222222222",
+          "expectedTip": "1111111111111111111111111111111111111111",
+          "bundleArtifactId": "art_bundle"
+        },
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "publication_conflict",
+            "message": "The branch tip moved.",
+            "requestId": "req_01",
+            "details": {
+              "observedTip": "3333333333333333333333333333333333333333"
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "publication_response_loss",
+    "requirements": [
+      "WS-06",
+      "WS-11"
+    ],
+    "steps": [
+      {
+        "op": "proposeSource",
+        "request": {
+          "commit": "2222222222222222222222222222222222222222",
+          "expectedTip": "1111111111111111111111111111111111111111",
+          "bundleArtifactId": "art_bundle"
+        },
+        "status": 202,
+        "body": {
+          "status": "pending",
+          "commit": "2222222222222222222222222222222222222222",
+          "acceptedCommit": null
+        }
+      },
+      {
+        "op": "proposeSource",
+        "request": {
+          "commit": "2222222222222222222222222222222222222222",
+          "expectedTip": "1111111111111111111111111111111111111111",
+          "bundleArtifactId": "art_bundle"
+        },
+        "status": 200,
+        "body": {
+          "status": "accepted",
+          "commit": "2222222222222222222222222222222222222222",
+          "acceptedCommit": "2222222222222222222222222222222222222222"
+        }
+      }
+    ]
+  },
+  {
+    "name": "undeclared_secret",
+    "requirements": [
+      "VS-03"
+    ],
+    "steps": [
+      {
+        "op": "resolveSecret",
+        "request": {
+          "ref": "secret://project/other",
+          "version": 1
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "message": "Secret is not declared for this attempt.",
+            "requestId": "req_01",
+            "details": {}
+          }
+        }
+      }
+    ]
+  }
+]

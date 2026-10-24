@@ -1,0 +1,28 @@
+{
+  "name": "@kodama/openforge",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "scripts": {
+    "openforge": "bun src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src test",
+    "format": "biome check --write src test",
+    "test": "bun test test",
+    "test:sdk": "bun test test/sdk.integration.test.ts"
+  },
+  "dependencies": {
+    "@opencode/client": "2.1.2",
+    "@opencode/core": "2.1.2",
+    "@opencode/plugin": "2.1.2",
+    "@opencode/sdk": "2.1.2",
+    "@opencode/server": "2.1.2",
+    "effect": "4.0.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.2",
+    "@types/bun": "1.4.3",
+    "typescript": "7.0.2"
+  }
+}

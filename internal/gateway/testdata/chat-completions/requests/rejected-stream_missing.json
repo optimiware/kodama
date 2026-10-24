@@ -1,0 +1,9 @@
+{
+  "model": "gpt-a",
+  "messages": [
+    {
+      "role": "user",
+      "content": "x"
+    }
+  ]
+}

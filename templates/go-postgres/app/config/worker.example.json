@@ -1,0 +1,17 @@
+{
+  "database": {"urlFile": "/run/secrets/inventory/database-url", "maxConns": 4},
+  "tenant": "11111111-1111-4111-8111-111111111111",
+  "serviceId": "svc-inventory-worker-acme",
+  "erp": {
+    "baseUrl": "https://erp.example.invalid",
+    "timeoutSeconds": 10,
+    "allowInsecure": false,
+    "scopes": ["inventory:adjust", "inventory:read"],
+    "credentialFiles": {"11111111-1111-4111-8111-111111111111": "/run/secrets/inventory/erp-token"}
+  },
+  "pollInterval": "2s",
+  "lease": "30s",
+  "maxAttempts": 8,
+  "retryBase": "5s",
+  "retryMax": "10m"
+}

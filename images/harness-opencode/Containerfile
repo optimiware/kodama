@@ -1,0 +1,54 @@
+# Kodama headless OpenCode wrapper image (task T-031).
+#
+# Reproducible inputs, all pinned:
+#   * base: debian bookworm-slim by digest (the digest of the locally observed
+#     image; its own apt sources are the 2026-08-24 snapshot);
+#   * packages: installed from snapshot.debian.org at SNAPSHOT, so a rebuild sees
+#     the same package set (the installed versions are recorded by build.sh);
+#   * OpenCode: a binary copied from the build context and verified against
+#     OPENCODE_SHA256 inside the build (the 200 MB binary is never committed);
+#   * the wrapper: built from this repository by build.sh.
+#
+# No ENTRYPOINT/CMD: the step entrypoint (injected by the executor) is PID 1 and
+# runs the wrapper as the profile's command.
+FROM docker.io/library/debian@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867
+
+ARG SNAPSHOT=20260824T000000Z
+ARG OPENCODE_SHA256
+
+RUN set -eu; \
+    printf 'Types: deb\nURIs: http://snapshot.debian.org/archive/debian/%s/\nSuites: bookworm bookworm-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\nTypes: deb\nURIs: http://snapshot.debian.org/archive/debian-security/%s/\nSuites: bookworm-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' "$SNAPSHOT" "$SNAPSHOT" > /etc/apt/sources.list.d/debian.sources; \
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends git ca-certificates ripgrep; \
+    dpkg-query -W -f='${Package}=${Version}\n' git ca-certificates ripgrep bash coreutils libc6 > /opt-packages.txt; \
+    rm -rf /var/lib/apt/lists/*
+
+# Prerequisite shim (see README): in a Kubernetes Job the workspace emptyDir mount
+# is owned by root while the entrypoint's Git runs as an unprivileged user, so
+# Git's ownership check ("dubious ownership") refuses the very first command of the
+# checkout. The entrypoint runs Git with no system or global configuration, so the
+# only place an exception can live is the command line. This shim, first on PATH,
+# adds exactly `safe.directory=/workspace`; it grants nothing else. It is removed
+# once the entrypoint or the Job recipe owns the fix.
+RUN printf '#!/bin/sh\nexec /usr/bin/git -c safe.directory=/workspace "$@"\n' > /usr/local/bin/git && chmod 0755 /usr/local/bin/git
+
+COPY opencode /opt/kodama/bin/opencode
+RUN echo "${OPENCODE_SHA256}  /opt/kodama/bin/opencode" | sha256sum -c - && chmod 0755 /opt/kodama/bin/opencode
+COPY kodama-opencode-wrapper /opt/kodama/bin/kodama-opencode-wrapper
+COPY opencode-system.json /etc/opencode/opencode.json
+RUN chmod 0755 /opt/kodama/bin/kodama-opencode-wrapper && chmod 0644 /etc/opencode/opencode.json && mv /opt-packages.txt /opt/kodama/packages.txt
+
+LABEL io.kodama.task="T-031" \
+      io.kodama.wrapper="kodama-opencode" \
+      io.kodama.wrapper.version="0.1.0" \
+      io.kodama.harness="opencode" \
+      io.kodama.harness.version="2.1.2"
+# Defaults that match the Kubernetes Job recipe (internal/kube/template.go): the
+# bootstrap Secret mounts the platform CA at /kodama/bootstrap/ca.crt and the
+# entrypoint writes the renewing token to /kodama/identity/token. Git checkout
+# trust comes from the Job's --git-ca-file delivery, not the environment.
+# The platform origin (KODAMA_PLATFORM_URL) is not defaulted: the step supplies it.
+ENV KODAMA_CA_FILE=/kodama/bootstrap/ca.crt \
+    KODAMA_TOKEN_FILE=/kodama/identity/token
+USER 65532:65532

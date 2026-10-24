@@ -1,0 +1,112 @@
+# External-dependency profile: PostgreSQL, NATS JetStream, S3-compatible storage, Git HTTPS, OCI
+# registry, OIDC and a cloud KMS that the operator already runs. The chart bundles none of them.
+#
+# Every host name, ARN, key name and digest below is a PLACEHOLDER (example.invalid, all-1 digests).
+# Override them (for example with a private values file) before a real install:
+#   helm template kodama deploy/helm/kodama -n kodama-system \
+#     -f deploy/helm/kodama/values-external.yaml \
+#     --set image.repository=... --set image.digest=sha256:<64 hex>
+#
+# KMS: exactly one provider, selected by `secrets.kms.provider`.
+# This file selects AWS KMS. To switch, set secrets.kms.aws: null and provider:
+#   gcp: set resources.v1 to projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>
+#        (application-default workload credentials; no gcp block).
+#   scw: set resources.v1 to fr-par/<key-uuid> and scw.credentialsSecret to an
+#        existing Secret containing secret-key. Only fr-par is supported.
+# Selecting zero or several providers, or the development keyfile, fails schema validation.
+
+profile: external
+
+installation:
+  id: kodama-example
+
+image:
+  repository: registry.example.invalid/optimi/kodama
+  tag: "0.0.0-placeholder"
+  digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  pullPolicy: IfNotPresent
+
+# Workload identity for the control plane (no static cloud credentials). Examples:
+#   AWS IRSA:  eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/kodama-server
+#   GCP WI:    iam.gke.io/gcp-service-account: kodama-server@project.iam.gserviceaccount.com
+serviceAccounts:
+  server:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/kodama-server
+
+secrets:
+  adapter: kms
+  keyfile: null
+  kms:
+    provider: aws
+    kekId: kodama-example
+    current: v1
+    resources:
+      v1: arn:aws:kms:eu-west-1:123456789012:key/11111111-1111-4111-8111-111111111111
+    startupTimeout: 10s
+    aws:
+      region: eu-west-1
+  runtime:
+    existingSecret: kodama-runtime
+  migration:
+    existingSecret: kodama-migration
+
+ingress:
+  enabled: true
+  className: nginx
+  host: kodama.example.invalid
+  tls:
+    enabled: true
+    secretName: kodama-tls
+
+config:
+  nats:
+    url: "tls://nats.example.invalid:4222"
+  s3:
+    endpoint: "https://s3.eu-west-1.amazonaws.com"
+    region: eu-west-1
+    bucket: kodama-artifacts-example
+    prefix: "kodama/"
+    pathStyle: false
+    credentials: workloadIdentity
+  git:
+    url: "https://git.example.invalid/org/kodama-source.git"
+  registry:
+    url: "https://registry.example.invalid"
+  oidc:
+    issuer: "https://issuer.example.invalid"
+    audience: "https://kodama.example.invalid/api"
+    cliClientId: kodama-cli
+    redirectUri: "http://127.0.0.1:18999/callback"
+  tls:
+    customCA: false
+
+execution:
+  tenants:
+    - namespace: kodama-tenant-acme
+      tenantId: t_acme
+    - namespace: kodama-tenant-globex
+      tenantId: t_globex
+  # The https origin workloads reach the runtime API at (the ingress host; TLS terminates there)
+  # and the only destination they may reach for it. PLACEHOLDERS. The trust roots are the
+  # runtime-ca.crt file of the runtime Secret.
+  runtime:
+    url: "https://kodama.example.invalid"
+    signingGeneration: 1
+    egress:
+      - name: runtime-callback
+        cidr: 203.0.113.10/32
+        ports: [{port: 443}]
+  network:
+    # Explicit egress for Git, S3 and registry only. Placeholder documentation ranges: replace
+    # with the real egress ranges. Database (5432) and NATS (4222) ports are schema-rejected.
+    egress:
+      - name: git
+        cidr: 203.0.113.0/24
+        ports: [{port: 443}]
+      - name: object-storage
+        cidr: 198.51.100.0/24
+        ports: [{port: 443}]
+      - name: registry
+        cidr: 192.0.2.0/24
+        ports: [{port: 443}]

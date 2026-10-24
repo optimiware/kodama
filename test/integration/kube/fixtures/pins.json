@@ -1,0 +1,13 @@
+{
+  "base_image": "docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8",
+  "cluster": {
+    "kind": "0.33.0 (dev/versions.lock.json)",
+    "node_image": "docker.io/kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5 (dev/versions.lock.json)",
+    "cni": "docker.io/kindest/kindnetd:v20260820-69b56db7 (kind default; nftables NetworkPolicy controller, enforcement probed by Test_restricted_job)"
+  },
+  "image_pinning": "locally built images are loaded into the node's containerd and referenced as <repo>@sha256:<sha256 of the oci-archive index.json>",
+  "image_repositories": {
+    "workload": "t021.local/workload",
+    "injector": "t021.local/injector"
+  }
+}

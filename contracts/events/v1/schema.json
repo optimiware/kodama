@@ -1,0 +1,1073 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kodama.invalid/contracts/events/v1/schema.json",
+  "title": "Kodama domain event envelope v1",
+  "description": "Envelope and per-type payloads of docs/contracts/event-catalog.md. Additional members are allowed (compatible optional additions); cross-cutting limits and strict parsing (duplicate keys, size, depth) live in the Go contract.",
+  "type": "object",
+  "required": [
+    "id",
+    "schemaVersion",
+    "type",
+    "occurredAt",
+    "tenantId",
+    "resource",
+    "actor",
+    "correlationId",
+    "causationId",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/ID"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "type": {
+      "type": "string"
+    },
+    "occurredAt": {
+      "$ref": "#/$defs/Timestamp"
+    },
+    "tenantId": {
+      "$ref": "#/$defs/ID"
+    },
+    "projectId": {
+      "$ref": "#/$defs/ID"
+    },
+    "resource": {
+      "$ref": "#/$defs/Resource"
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor"
+    },
+    "correlationId": {
+      "$ref": "#/$defs/FreeText"
+    },
+    "causationId": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ID"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "work_item.created"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "work_item"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.work_item.created"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "work_item.updated"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "work_item"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.work_item.updated"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "work_item.transitioned"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "work_item"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.work_item.transitioned"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "workspace.state_changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "workspace"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.workspace.state_changed"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "workspace.checkpoint_created"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "workspace"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.workspace.checkpoint_created"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "run.created"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "run"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.run.created"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "run.state_changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "run"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.run.state_changed"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "step_attempt.state_changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "step_attempt"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.step_attempt.state_changed"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "gate.requested"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "gate"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.gate.requested"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "gate.decided"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "gate"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.gate.decided"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "gate.invalidated"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "gate"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.gate.invalidated"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "deployment.state_changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "deployment"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.deployment.state_changed"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "membership.changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "membership"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.membership.changed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "project.settings_changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "project"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.project.settings_changed"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "configuration.changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "configuration"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.configuration.changed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "usage.recorded"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "usage_record"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.usage.recorded"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "not": {
+              "enum": [
+                "configuration.changed",
+                "deployment.state_changed",
+                "gate.decided",
+                "gate.invalidated",
+                "gate.requested",
+                "membership.changed",
+                "project.settings_changed",
+                "run.created",
+                "run.state_changed",
+                "step_attempt.state_changed",
+                "usage.recorded",
+                "work_item.created",
+                "work_item.transitioned",
+                "work_item.updated",
+                "workspace.checkpoint_created",
+                "workspace.state_changed"
+              ]
+            }
+          }
+        }
+      },
+      "then": false
+    }
+  ],
+  "$defs": {
+    "ID": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "GitCommit": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "Timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+      "description": "UTC RFC 3339 with a literal Z"
+    },
+    "Code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "FieldName": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"
+    },
+    "Revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "FreeText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\p{Cc}]*$"
+    },
+    "Actor": {
+      "type": "object",
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "user",
+            "service",
+            "workload",
+            "operator"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/FreeText"
+        }
+      }
+    },
+    "Resource": {
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "version"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/ID"
+        },
+        "version": {
+          "$ref": "#/$defs/Revision"
+        }
+      }
+    },
+    "data.work_item.created": {
+      "type": "object",
+      "required": [
+        "kind",
+        "state"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Code"
+        },
+        "state": {
+          "$ref": "#/$defs/Code"
+        }
+      }
+    },
+    "data.work_item.updated": {
+      "type": "object",
+      "required": [
+        "changedFields"
+      ],
+      "properties": {
+        "changedFields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/FieldName"
+          }
+        },
+        "contentRevision": {
+          "$ref": "#/$defs/Revision"
+        }
+      }
+    },
+    "data.work_item.transitioned": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "transitionId"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/Code"
+        },
+        "to": {
+          "$ref": "#/$defs/Code"
+        },
+        "transitionId": {
+          "$ref": "#/$defs/ID"
+        }
+      }
+    },
+    "data.workspace.state_changed": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "reason"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/Code"
+        },
+        "to": {
+          "$ref": "#/$defs/Code"
+        },
+        "reason": {
+          "$ref": "#/$defs/Code"
+        }
+      }
+    },
+    "data.workspace.checkpoint_created": {
+      "type": "object",
+      "required": [
+        "repository",
+        "newCommit"
+      ],
+      "properties": {
+        "repository": {
+          "$ref": "#/$defs/ID"
+        },
+        "previousCommit": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/GitCommit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "newCommit": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "publishingAttemptId": {
+          "$ref": "#/$defs/ID"
+        },
+        "humanSynchronization": {
+          "type": "boolean"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "publishingAttemptId"
+          ],
+          "not": {
+            "required": [
+              "humanSynchronization"
+            ]
+          }
+        },
+        {
+          "required": [
+            "humanSynchronization"
+          ],
+          "properties": {
+            "humanSynchronization": {
+              "const": true
+            }
+          },
+          "not": {
+            "required": [
+              "publishingAttemptId"
+            ]
+          }
+        }
+      ]
+    },
+    "data.run.created": {
+      "type": "object",
+      "required": [
+        "workItemId",
+        "definitionId",
+        "inputSnapshotDigest"
+      ],
+      "properties": {
+        "workItemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "definitionId": {
+          "$ref": "#/$defs/ID"
+        },
+        "inputSnapshotDigest": {
+          "$ref": "#/$defs/Digest"
+        }
+      }
+    },
+    "data.run.state_changed": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "reason"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/Code"
+        },
+        "to": {
+          "$ref": "#/$defs/Code"
+        },
+        "reason": {
+          "$ref": "#/$defs/Code"
+        }
+      }
+    },
+    "data.step_attempt.state_changed": {
+      "type": "object",
+      "required": [
+        "runId",
+        "stepId",
+        "from",
+        "to",
+        "reason"
+      ],
+      "properties": {
+        "runId": {
+          "$ref": "#/$defs/ID"
+        },
+        "stepId": {
+          "$ref": "#/$defs/ID"
+        },
+        "from": {
+          "$ref": "#/$defs/Code"
+        },
+        "to": {
+          "$ref": "#/$defs/Code"
+        },
+        "reason": {
+          "$ref": "#/$defs/Code"
+        }
+      }
+    },
+    "data.gate.requested": {
+      "type": "object",
+      "required": [
+        "subjectDigest",
+        "contentRevision",
+        "reviewerScope",
+        "deadline"
+      ],
+      "properties": {
+        "subjectDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "contentRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "reviewerScope": {
+          "$ref": "#/$defs/Code"
+        },
+        "deadline": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "data.gate.decided": {
+      "type": "object",
+      "required": [
+        "decidedBy",
+        "decision",
+        "state",
+        "subjectDigest"
+      ],
+      "properties": {
+        "decidedBy": {
+          "$ref": "#/$defs/Actor"
+        },
+        "decision": {
+          "enum": [
+            "approved",
+            "rejected"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/Code"
+        },
+        "subjectDigest": {
+          "$ref": "#/$defs/Digest"
+        }
+      }
+    },
+    "data.gate.invalidated": {
+      "type": "object",
+      "required": [
+        "subjectDigest",
+        "reason"
+      ],
+      "properties": {
+        "subjectDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "reason": {
+          "$ref": "#/$defs/Code"
+        },
+        "supersedingCommit": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "supersedingRevision": {
+          "$ref": "#/$defs/Revision"
+        }
+      }
+    },
+    "data.deployment.state_changed": {
+      "type": "object",
+      "required": [
+        "environmentId",
+        "from",
+        "to"
+      ],
+      "properties": {
+        "environmentId": {
+          "$ref": "#/$defs/ID"
+        },
+        "from": {
+          "$ref": "#/$defs/Code"
+        },
+        "to": {
+          "$ref": "#/$defs/Code"
+        },
+        "sourceCommit": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "artifactIds": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/ID"
+          }
+        },
+        "imageDigest": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "sourceCommit"
+          ]
+        },
+        {
+          "required": [
+            "imageDigest"
+          ]
+        },
+        {
+          "required": [
+            "artifactIds"
+          ],
+          "properties": {
+            "artifactIds": {
+              "minItems": 1
+            }
+          }
+        }
+      ]
+    },
+    "data.membership.changed": {
+      "type": "object",
+      "required": [
+        "userId",
+        "bindingIds",
+        "effectiveVersion"
+      ],
+      "properties": {
+        "userId": {
+          "$ref": "#/$defs/ID"
+        },
+        "bindingIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/ID"
+          }
+        },
+        "effectiveVersion": {
+          "$ref": "#/$defs/Revision"
+        }
+      }
+    },
+    "data.project.settings_changed": {
+      "type": "object",
+      "required": [
+        "changedSettings",
+        "version"
+      ],
+      "properties": {
+        "changedSettings": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/FieldName"
+          }
+        },
+        "version": {
+          "$ref": "#/$defs/Revision"
+        }
+      }
+    },
+    "data.configuration.changed": {
+      "type": "object",
+      "required": [
+        "kind",
+        "version",
+        "change",
+        "scope"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "variable",
+            "secret"
+          ]
+        },
+        "version": {
+          "$ref": "#/$defs/Revision"
+        },
+        "change": {
+          "enum": [
+            "created",
+            "updated",
+            "deleted",
+            "rotated"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "tenant",
+            "project",
+            "environment"
+          ]
+        }
+      }
+    },
+    "data.usage.recorded": {
+      "type": "object",
+      "required": [
+        "runId",
+        "attemptId",
+        "model",
+        "basis",
+        "uncertainty"
+      ],
+      "properties": {
+        "runId": {
+          "$ref": "#/$defs/ID"
+        },
+        "attemptId": {
+          "$ref": "#/$defs/ID"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[^\\p{Cc}]*$"
+        },
+        "basis": {
+          "enum": [
+            "observed",
+            "estimated"
+          ]
+        },
+        "uncertainty": {
+          "$ref": "#/$defs/Code"
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    }
+  }
+}

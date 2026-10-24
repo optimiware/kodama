@@ -1,0 +1,33 @@
+Kodama {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Profile:       {{ .Values.profile }}   (execution trust: {{ .Values.execution.trustProfile }}; authority: {{ .Values.authority.mode }})
+KMS provider:  {{ include "kodama.kmsProvider" . }}
+Server:        1 replica, image {{ include "kodama.releaseImage" . }}
+Tenant namespaces: {{ range .Values.execution.tenants }}{{ .namespace }} {{ else }}(none){{ end }}
+
+{{- if eq .Values.image.digest "sha256:0000000000000000000000000000000000000000000000000000000000000000" }}
+
+WARNING: image.digest is the all-zero PLACEHOLDER. This chart has no published image yet; override
+image.repository, image.tag and image.digest before relying on this installation.
+{{- end }}
+{{- if eq .Values.secrets.adapter "keyfile" }}
+
+WARNING: the development keyfile KEK is selected. It is not a production KMS provider, and the
+server runs in the production environment, which refuses it: the server will stop at startup.
+{{- end }}
+
+Trust profile: trusted-engineer only. This is NOT an isolation boundary for mutually untrusted
+tenant code, and the chart bundles no production database, operator or CRDs.
+
+Jobs are created by the Kodama server at runtime inside the tenant namespaces; Helm does not
+create them. A rendered example lives in ConfigMap "{{ include "kodama.fullname" . }}-execution" (job-example.yaml);
+the server's execution policy is the `execution` section of ConfigMap "{{ include "kodama.fullname" . }}-config" (config.yaml).
+
+Required Secrets (must already exist; the chart never creates credentials):
+  {{ .Release.Namespace }}/{{ .Values.secrets.runtime.existingSecret }}    runtime role, NATS, Git, S3, signing keys and CA files
+  {{ .Release.Namespace }}/{{ .Values.secrets.migration.existingSecret }}  database-migration-url
+
+Uninstall keeps tenant namespaces and their guardrails, and never deletes databases, Git refs, KMS
+keys, artifacts or external deployments. See README.md ("Retention-aware uninstall").
+
+Next steps: kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "kodama.fullname" . }}

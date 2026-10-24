@@ -1,0 +1,73 @@
+# Promote the same verified image digest to stage, test the deployment actually
+# inspected, add exploratory QA evidence, then wait for a human business review.
+# Start the run from the successful candidate commit with the image artifact,
+# digest and repository recorded by the build, the stage environment snapshot and
+# the identity of the deployment under test (docs/operations.md).
+apiVersion: kodama/v1alpha1
+kind: Pipeline
+metadata:
+  name: inventory-stage
+spec:
+  inputs:
+    image: {type: artifact, required: true}
+    image_digest: {type: string, required: true}
+    image_repository: {type: string, required: true}
+    environment_snapshot: {type: string, required: true}
+    configuration_digest: {type: string, required: true}
+    source_commit: {type: string, required: true}
+    e2e_tenant: {type: string, required: true}
+    e2e_other_tenant: {type: string, required: true}
+  steps:
+    - id: stage
+      kind: container
+      environment: "@@STAGE_ENVIRONMENT_ID@@"
+      image: "@@TOOLS_IMAGE@@"
+      workspace: {access: read, from: run}
+      command: [/bin/sh, -ec]
+      args: ["cd /workspace && ./ci/deploy-stage.sh"]
+      env:
+        KODAMA_RUNTIME_URL: "@@RUNTIME_URL@@"
+        KODAMA_RUNTIME_TOKEN_FILE: /kodama/identity/token
+        REGISTRY_INSECURE: "@@REGISTRY_INSECURE@@"
+      timeoutSeconds: 900
+      outputs:
+        deployment_id: {type: string}
+        app_url: {type: string}
+        evidence: {type: artifact, path: /kodama/outputs/deployment.json}
+    - id: e2e
+      kind: container
+      needs: [stage]
+      image: "@@TOOLS_IMAGE@@"
+      workspace: {access: read, from: run}
+      command: [/bin/sh, -ec]
+      args: ["cd /workspace && ./ci/e2e.sh"]
+      env:
+        DEPLOYMENT_ID: ${{ steps.stage.outputs.deployment_id }}
+        APP_URL: ${{ steps.stage.outputs.app_url }}
+        CONFIGURATION_DIGEST: ${{ inputs.configuration_digest }}
+        IMAGE_DIGEST: ${{ inputs.image_digest }}
+        SOURCE_COMMIT: ${{ inputs.source_commit }}
+        E2E_TENANT: ${{ inputs.e2e_tenant }}
+        E2E_OTHER_TENANT: ${{ inputs.e2e_other_tenant }}
+      secretFiles:
+        E2E_TOKEN_REVIEWER: "secret://project/e2e-token-reviewer"
+        E2E_TOKEN_OUTSIDER: "secret://project/e2e-token-outsider"
+      timeoutSeconds: 600
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/e2e.json}
+    - id: exploratory-qa
+      kind: agent
+      needs: [e2e]
+      agent: {profile: "@@QA_PROFILE@@"}
+      workspace: {access: none}
+      timeoutSeconds: 1800
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/qa.json}
+    - id: business-review
+      kind: gate
+      needs: [exploratory-qa]
+      gate:
+        deploymentId: ${{ steps.stage.outputs.deployment_id }}
+        evidence:
+          - "${{ steps.e2e.outputs.report }}"
+          - "${{ steps.exploratory-qa.outputs.report }}"

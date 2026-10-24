@@ -1,0 +1,9 @@
+# Types-only generation: no router, client, server or embedded spec, so the
+# generated file needs only the standard library. Unreferenced common schemas
+# are retained for the modules that reference them.
+package: httpapi
+output: common.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true

@@ -1,0 +1,1224 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "wp.profile.positive.pinned-payload",
+      "requirements": [
+        "AR-01",
+        "AR-02",
+        "AR-A01"
+      ],
+      "sourceRefs": [
+        "kodama-agents",
+        "kodama-runtime-contract",
+        "kodama-decisions"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/agents/payload.go",
+          "selector": "WrapperConfig, Args, DecodeArgs"
+        },
+        {
+          "path": "internal/agents/catalogue.go",
+          "selector": "Catalogue exact tuple"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=context_reader"
+        }
+      ],
+      "input": {
+        "image": "registry.example/kodama/wrapper-synthetic@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "command": [
+          "/opt/wrapper/run",
+          "kodama.agent-config/v1",
+          "<canonical payload base64url, 3072-char chunks>"
+        ],
+        "payload": {
+          "version": 1,
+          "profile": {
+            "name": "synthetic-dev",
+            "version": 1,
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "content": "<pinned profile content>"
+        },
+        "catalogueTuple": {
+          "image": "registry.example/kodama/wrapper-synthetic@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "wrapper": "synthetic-wrapper@1",
+          "harness": "opencode@2.1.2-candidate"
+        }
+      },
+      "expected": {
+        "decode": "accepted",
+        "digestRecomputesToPin": true,
+        "commandAndImageEqualFrozenContext": true,
+        "tupleQualified": "only when a catalogue entry with evidence exists for the exact tuple",
+        "note": "2.1.2 is a candidate; this case claims no real catalogue entry",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.profile.negative.unknown-tuple-or-control",
+      "requirements": [
+        "AR-02",
+        "GM-12",
+        "AR-A01"
+      ],
+      "sourceRefs": [
+        "kodama-agents",
+        "kodama-decisions"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/agents/catalogue.go",
+          "selector": "NewCatalogue, Qualify; empty catalogue qualifies nothing"
+        },
+        {
+          "path": "internal/agents/values.go",
+          "selector": "Controls: model requests tokens tool_calls tool_allowlist transcript"
+        }
+      ],
+      "input": {
+        "tuple": {
+          "harness": "opencode@2.1.3-unlisted"
+        },
+        "claimedControls": [
+          "tokens",
+          "wall_time",
+          "continuation"
+        ]
+      },
+      "expected": {
+        "registration": "rejected before anything is written",
+        "reasons": [
+          "tuple not in the injected catalogue",
+          "wall_time and continuation are not catalogue controls",
+          "tokens only when gateway enforcement is evidenced for the exact tuple"
+        ],
+        "emptyCatalogueQualifies": "nothing",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.profile.negative.payload-tamper",
+      "requirements": [
+        "AR-01",
+        "AR-02"
+      ],
+      "sourceRefs": [
+        "kodama-agents"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/agents/payload.go",
+          "selector": "DecodeArgs: canonical chunking, strict base64url, unknown fields, trailing data, digest check"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=context_baseline_digest_mismatch"
+        }
+      ],
+      "input": {
+        "mutations": [
+          "pin.digest altered after encoding",
+          "first chunk shorter than 3072 characters",
+          "unknown member in content",
+          "trailing bytes after the JSON",
+          "padding added to the base64url text"
+        ]
+      },
+      "expected": {
+        "decode": "rejected for every mutation",
+        "wrapperProceeds": false,
+        "outcome": "failed attempt; the wrapper never starts OpenCode",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 preparation"
+    },
+    {
+      "id": "wp.profile.negative.command-or-alias-mismatch",
+      "requirements": [
+        "AR-01",
+        "AR-02"
+      ],
+      "sourceRefs": [
+        "kodama-agents",
+        "kodama-runtime-contract"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/agents/README.md",
+          "selector": "Planner; bare profile name is a moving alias"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=context_mutable_image_tag"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/scenarios.json",
+          "selector": "name=incompatible_wrapper_profile"
+        }
+      ],
+      "input": {
+        "cases": [
+          {
+            "profileReference": "synthetic-dev"
+          },
+          {
+            "arguments": "payload for another image/command than the frozen attempt context"
+          },
+          {
+            "image": "registry.example/kodama/wrapper-synthetic:latest"
+          },
+          {
+            "clientVersion": "wrapper-outside-profile-range"
+          }
+        ]
+      },
+      "expected": {
+        "bareName": "rejected",
+        "mismatchedCommandOrImage": "refused at admission",
+        "mutableImageTag": "invalid context",
+        "incompatibleWrapper": "422 profile_unsupported; entrypoint exit 10, command never launched",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.completion.positive.manifest-to-result",
+      "requirements": [
+        "AR-06",
+        "AR-A04",
+        "AR-11"
+      ],
+      "sourceRefs": [
+        "kodama-entrypoint",
+        "kodama-runtime-contract",
+        "oc-meas-ndjson"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/entrypoint/README.md",
+          "selector": "Results manifest"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=result_completed_reader"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/checks.json",
+          "selector": "name=completed_reader"
+        },
+        {
+          "path": "contracts/runtime/README.md",
+          "selector": "Canonical result hash"
+        }
+      ],
+      "input": {
+        "openCodeEvidence": "synthetic: validated by the wrapper, not an OpenCode schema",
+        "wrapperManifest": {
+          "outcome": "completed",
+          "outputs": {
+            "summary": "synthetic text"
+          }
+        },
+        "declaredOutputs": {
+          "summary": "string",
+          "conformance": "file /kodama/outputs/conformance.json"
+        }
+      },
+      "expected": {
+        "entrypointNormalization": {
+          "outcome": "completed",
+          "exitCode": 0,
+          "reason": null,
+          "question": null,
+          "sourceCommit": null,
+          "outputs": {
+            "summary": "synthetic text",
+            "conformance": "<artifact id>"
+          },
+          "diagnosticArtifactIds": [
+            "<command log id>"
+          ]
+        },
+        "serverRecomputesResultHash": true,
+        "serverDerivesAttemptStatus": "cancellation or timeout can still supersede completed",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.completion.negative.exit-zero-or-prose-only",
+      "requirements": [
+        "AR-06",
+        "AR-A04"
+      ],
+      "sourceRefs": [
+        "kodama-entrypoint",
+        "kodama-runtime-contract",
+        "oc-meas-ndjson",
+        "wp-gap-structured-completion"
+      ],
+      "contractRefs": [
+        {
+          "path": "contracts/runtime/v1/fixtures/checks.json",
+          "selector": "name=exit_zero_missing_output"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/checks.json",
+          "selector": "name=undeclared_output"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/checks.json",
+          "selector": "name=output_wrong_type"
+        },
+        {
+          "path": "internal/entrypoint/README.md",
+          "selector": "Exit zero alone never completes"
+        }
+      ],
+      "input": {
+        "wrapperExit": 0,
+        "stdoutText": "All tasks completed successfully.",
+        "lastStepFinishReason": "stop",
+        "resultsManifest": "absent",
+        "declaredOutputs": {
+          "conformance": "file /kodama/outputs/conformance.json"
+        }
+      },
+      "expected": {
+        "result": {
+          "outcome": "failed",
+          "reason": "output_invalid",
+          "exitCode": 0,
+          "outputs": {}
+        },
+        "completed": false,
+        "wrapperRule": "when no output is declared an absent manifest would default to completed, so the wrapper must always write an explicit manifest and write a failed outcome when OpenCode output cannot be validated",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 preparation"
+    },
+    {
+      "id": "wp.completion.negative.malformed-manifest",
+      "requirements": [
+        "AR-06",
+        "AR-A04"
+      ],
+      "sourceRefs": [
+        "kodama-entrypoint",
+        "kodama-runtime-contract"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/entrypoint/README.md",
+          "selector": "Results manifest: strict JSON, no duplicate keys, no floats, no unknown fields, at most 1 MiB"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=raw_duplicate_key"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=result_unknown_outcome"
+        }
+      ],
+      "input": {
+        "rawManifests": [
+          "{\"outcome\":\"completed\",\"outcome\":\"failed\"}",
+          "{\"outcome\":\"completed\",\"outputs\":{\"count\":1.5}}",
+          "{\"outcome\":\"success\"}",
+          "{\"outcome\":\"completed\",\"outputs\":{\"report\":\"x\"}"
+        ]
+      },
+      "expected": {
+        "each": "output_invalid failed result",
+        "unknownOutcomeIsSuccess": false,
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 preparation"
+    },
+    {
+      "id": "wp.input-needed.positive.question-retained",
+      "requirements": [
+        "AR-13",
+        "AR-A05",
+        "AR-10"
+      ],
+      "sourceRefs": [
+        "kodama-spec-agent-runtime",
+        "kodama-entrypoint",
+        "kodama-agents"
+      ],
+      "contractRefs": [
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=result_needs_input"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/checks.json",
+          "selector": "name=needs_input_keeps_diagnostics"
+        },
+        {
+          "path": "internal/agents/README.md",
+          "selector": "Limits, results and metadata"
+        }
+      ],
+      "input": {
+        "wrapperManifest": {
+          "outcome": "needs_input",
+          "question": "Which environment holds the synthetic data?"
+        }
+      },
+      "expected": {
+        "result": {
+          "outcome": "needs_input",
+          "exitCode": 0,
+          "reason": null,
+          "question": "Which environment holds the synthetic data?",
+          "sourceCommit": null,
+          "outputs": {}
+        },
+        "attemptStatus": "failed",
+        "question": "retained",
+        "diagnostics": "retained for authorized readers",
+        "candidate": "none published",
+        "successfulDescendantsConsumeOutputs": false,
+        "retry": "none; revised intent is a new run",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.input-needed.negative.no-wait-or-success",
+      "requirements": [
+        "AR-13",
+        "AR-05",
+        "AR-A05"
+      ],
+      "sourceRefs": [
+        "kodama-spec-agent-runtime",
+        "kodama-runtime-contract",
+        "wp-gap-noninteractive"
+      ],
+      "contractRefs": [
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=result_needs_input_blank_question"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=result_needs_input_null_question"
+        },
+        {
+          "path": "internal/entrypoint/README.md",
+          "selector": "needs_input: question at most 4096 characters, no outputs, no reason"
+        }
+      ],
+      "input": {
+        "openCodePrompt": "a permission or question request is open with stdin closed",
+        "badManifests": [
+          {
+            "outcome": "needs_input",
+            "question": "   "
+          },
+          {
+            "outcome": "needs_input",
+            "question": "ok?",
+            "outputs": {
+              "summary": "x"
+            }
+          },
+          {
+            "outcome": "needs_input",
+            "question": "ok?",
+            "reason": "waiting"
+          }
+        ]
+      },
+      "expected": {
+        "wrapper": "never waits for a human or continuation, never auto-approves to proceed",
+        "blankQuestionOrOutputsOrReason": "invalid",
+        "successOutputsFromNeedsInput": false,
+        "unmeasuredBehavior": "if OpenCode would hang or auto-approve under run, qualification is blocked (U-03)",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 preparation"
+    },
+    {
+      "id": "wp.conformance.positive.baseline-bound-report",
+      "requirements": [
+        "AR-14",
+        "AR-06",
+        "AR-A08"
+      ],
+      "sourceRefs": [
+        "kodama-runtime-contract",
+        "kodama-conformance-procedure"
+      ],
+      "contractRefs": [
+        {
+          "path": "contracts/runtime/v1/fixtures/design.json",
+          "selector": "checks name=conforming_report"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/design.json",
+          "selector": "cases name=report_conforms"
+        },
+        {
+          "path": "contracts/runtime/README.md",
+          "selector": "Design baseline and conformance report"
+        }
+      ],
+      "input": {
+        "baselineDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "candidateCommit": "2222222222222222222222222222222222222222",
+        "artifact": "declared output conformance.json (ordinary artifact)",
+        "checks": [
+          {
+            "id": "module-boundaries",
+            "outcome": "passed",
+            "evidenceArtifactIds": [
+              "art_review"
+            ]
+          }
+        ],
+        "unresolvedDeviations": []
+      },
+      "expected": {
+        "CheckConformance": "accepted",
+        "disposition": "conforms (derived, never chosen)",
+        "reportIsAnOrdinaryDeclaredArtifact": true,
+        "authorshipByAgentSatisfiesHumanReview": false,
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.conformance.negative.moving-stale-or-blocked",
+      "requirements": [
+        "AR-14",
+        "AR-A08"
+      ],
+      "sourceRefs": [
+        "kodama-runtime-contract",
+        "kodama-conformance-procedure"
+      ],
+      "contractRefs": [
+        {
+          "path": "contracts/runtime/v1/fixtures/design.json",
+          "selector": "cases name=baseline_branch_instead_of_commit"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/design.json",
+          "selector": "cases name=baseline_digest_ignores_nothing_else"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/design.json",
+          "selector": "cases name=report_blocked_by_deviation"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/design.json",
+          "selector": "cases name=report_conforms_with_deviation"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/design.json",
+          "selector": "checks name=stale_baseline"
+        }
+      ],
+      "input": {
+        "cases": [
+          {
+            "baselineSourceRevision": "main"
+          },
+          {
+            "reportBaselineDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "contextBaselineDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "reportCandidate": "3333333333333333333333333333333333333333",
+            "actualCandidate": "2222222222222222222222222222222222222222"
+          },
+          {
+            "unresolvedDeviations": [
+              {
+                "requirement": "AR-14",
+                "reason": "synthetic conflict"
+              }
+            ],
+            "disposition": "conforms"
+          }
+        ]
+      },
+      "expected": {
+        "branchOrTagRevision": "invalid baseline",
+        "staleDigest": "conformance_baseline_mismatch",
+        "wrongCandidate": "conformance_candidate_mismatch",
+        "deviationClaimedAsConforms": "invalid; a real deviation yields blocked and cannot be conforming evidence",
+        "proseOnlySuccess": false,
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.cancel.positive.process-group-and-access",
+      "requirements": [
+        "AR-09",
+        "AR-A06",
+        "GM-06"
+      ],
+      "sourceRefs": [
+        "kodama-entrypoint",
+        "kodama-gateway",
+        "kodama-mcpproxy",
+        "wp-gap-process-lifetime"
+      ],
+      "contractRefs": [
+        {
+          "path": "test/integration/entrypoint",
+          "selector": "Test_cancel_child_tree"
+        },
+        {
+          "path": "internal/gateway/integration",
+          "selector": "Test_pre_forward_cancellation"
+        },
+        {
+          "path": "internal/mcpproxy/integration",
+          "selector": "Test_revoked_attempt"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/scenarios.json",
+          "selector": "name=cancelled_admission"
+        }
+      ],
+      "input": {
+        "event": "attempt cancelled or timed out while OpenCode, a shell child and an in-flight model stream exist"
+      },
+      "expected": {
+        "entrypoint": "SIGTERM to the process group, SIGKILL after --kill-grace, strays killed after the leader exits",
+        "gateway": "upstream request cancelled; charge stays conservative; no new request admitted",
+        "mcp": "in-flight call cancelled; credential erased before cancellation; dispatched call recorded unknown",
+        "publication": "no source proposal or result is finalized after revoked authority",
+        "requiresPrivateOpenCodeProcessesInsideTheGroup": true,
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.cancel.negative.late-or-surviving-access",
+      "requirements": [
+        "AR-09",
+        "AR-05",
+        "GM-01"
+      ],
+      "sourceRefs": [
+        "kodama-runtime-contract",
+        "kodama-entrypoint",
+        "kodama-mcpproxy",
+        "oc-doc-openapi",
+        "wp-gap-process-lifetime"
+      ],
+      "contractRefs": [
+        {
+          "path": "contracts/runtime/v1/fixtures/scenarios.json",
+          "selector": "name=late_result_after_revocation"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/scenarios.json",
+          "selector": "name=refresh_after_revoke"
+        },
+        {
+          "path": "internal/mcpproxy/README.md",
+          "selector": "Session: copied/expired/closed sessions are the same not-found"
+        }
+      ],
+      "input": {
+        "after": "attempt revoked",
+        "attempts": [
+          "POST /source",
+          "POST /result",
+          "token refresh",
+          "gateway request with the old token",
+          "MCP call on the old proxy session",
+          "HTTP interrupt only, OpenCode child still running"
+        ]
+      },
+      "expected": {
+        "allRuntimeAndAccessCalls": "denied (attempt_revoked / not found)",
+        "httpInterruptRouteAlone": "is not evidence that the process tree stopped",
+        "lateResult": "refused; nothing finalized",
+        "sessionOrTokenReuse": "denied",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.gateway.positive.accepted-subset",
+      "requirements": [
+        "GM-12",
+        "AR-04",
+        "GM-A03"
+      ],
+      "sourceRefs": [
+        "kodama-gateway",
+        "wp-gap-provider-config"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "accepted/rejected file=requests/minimal.json"
+        },
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "accepted/rejected file=requests/tool_loop.json"
+        },
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "streams file=streams/text.sse"
+        },
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "streams file=streams/tool_calls.sse"
+        },
+        {
+          "path": "internal/gateway/protocol.md",
+          "selector": "Request, Stream"
+        }
+      ],
+      "input": {
+        "requestFixtures": [
+          "requests/minimal.json",
+          "requests/tool_loop.json"
+        ],
+        "streamFixtures": [
+          "streams/text.sse",
+          "streams/tool_calls.sse"
+        ],
+        "protocolRevision": "chat-completions-stream/1"
+      },
+      "expected": {
+        "requests": "accepted",
+        "streams": "complete with [DONE] and valid usage",
+        "usageBasis": "observed",
+        "scope": "the module implements the subset; says nothing about what OpenCode 2.1.2 actually sends",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-032 owner"
+    },
+    {
+      "id": "wp.gateway.negative.unsupported-request-member",
+      "requirements": [
+        "GM-12",
+        "GM-01"
+      ],
+      "sourceRefs": [
+        "kodama-gateway",
+        "wp-gap-provider-config"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "accepted/rejected file=requests/rejected-not_streaming.json"
+        },
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "accepted/rejected file=requests/rejected-unknown_member.json"
+        },
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "accepted/rejected file=requests/rejected-logprobs.json"
+        },
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "accepted/rejected file=requests/rejected-multimodal_content.json"
+        },
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "accepted/rejected file=requests/rejected-stream_options_unknown.json"
+        }
+      ],
+      "input": {
+        "synthetic requests": [
+          "stream false",
+          "an unlisted top-level member",
+          "logprobs",
+          "image content part",
+          "stream_options other than include_usage"
+        ]
+      },
+      "expected": {
+        "status": "400 invalid_request",
+        "forwardedToProvider": false,
+        "wrapperResult": "failed; no silent member stripping or fallback model",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-032 owner"
+    },
+    {
+      "id": "wp.gateway.negative.stream-failure-or-limit",
+      "requirements": [
+        "GM-05",
+        "GM-A03",
+        "GM-04",
+        "AR-A03"
+      ],
+      "sourceRefs": [
+        "kodama-gateway"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "streams file=streams/truncated.sse"
+        },
+        {
+          "path": "internal/gateway/testdata/chat-completions/manifest.json",
+          "selector": "streams file=streams/malformed_event.sse"
+        },
+        {
+          "path": "internal/gateway/integration",
+          "selector": "Test_partial_stream"
+        },
+        {
+          "path": "internal/gateway/protocol.md",
+          "selector": "Failure semantics, Retry"
+        }
+      ],
+      "input": {
+        "streams": [
+          "truncated after content",
+          "malformed event"
+        ],
+        "limit": "request allowance exhausted before a request"
+      },
+      "expected": {
+        "afterBytesDelivered": "one in-stream error event, no [DONE], aborted body; request becomes unknown with a conservative charge",
+        "streamReplaced": false,
+        "gatewayRetry": false,
+        "limitExceeded": "403 limit_exceeded (not 429), so a client rate-limit retry does not apply",
+        "wrapperResult": "failed with usage retained; never completed, never an automatic retry",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-032 owner"
+    },
+    {
+      "id": "wp.mcp.positive.allowed-call",
+      "requirements": [
+        "GM-07",
+        "GM-08",
+        "GM-12",
+        "AR-05",
+        "GM-A05"
+      ],
+      "sourceRefs": [
+        "kodama-mcpproxy",
+        "oc-doc-mcp",
+        "wp-gap-mcp-interop"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/mcpproxy/integration",
+          "selector": "Test_protocol_smoke, Test_protocol_pin"
+        },
+        {
+          "path": "internal/mcpproxy/protocol/compatibility.go",
+          "selector": "SDKVersion, ProtocolRevision, Transport"
+        }
+      ],
+      "input": {
+        "profileToolAllowList": [
+          "reg_docs/lookup"
+        ],
+        "transport": "streamable-http",
+        "protocolRevision": "2025-11-25",
+        "caller": "current attempt token carries tool.invoke",
+        "openCodeName": "reg_docs lookup mapped unambiguously to reg_docs/lookup"
+      },
+      "expected": {
+        "discovery": "exactly the intersection of registration-enabled tools and the profile list",
+        "invocation": "authorized again on the caller tuple; one receipt per request id",
+        "sessionMeta": "ai.opencode/sessionID is correlation only and grants nothing",
+        "toolsCapabilityOnly": true,
+        "registrationIdsAreOpaque": true,
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-033 owner"
+    },
+    {
+      "id": "wp.mcp.negative.hidden-or-foreign-use",
+      "requirements": [
+        "GM-07",
+        "GM-08",
+        "AR-05",
+        "AR-A02",
+        "GM-A04"
+      ],
+      "sourceRefs": [
+        "kodama-mcpproxy",
+        "oc-doc-mcp"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/mcpproxy/integration",
+          "selector": "Test_hidden_tool_direct_call, Test_foreign_session"
+        }
+      ],
+      "input": {
+        "cases": [
+          {
+            "direct call": "reg_docs/delete not in the profile list"
+          },
+          {
+            "bare or wildcard": "lookup or reg_docs/*"
+          },
+          {
+            "session": "copied to another attempt",
+            "or": "expired or closed"
+          },
+          {
+            "repositoryInstruction": "AGENTS.md asks to enable another registration"
+          }
+        ]
+      },
+      "expected": {
+        "hiddenOrUnknownTool": "same not-found as an unknown tool",
+        "bareNameOrWildcard": "grants nothing",
+        "copiedExpiredClosedSession": "same not-found",
+        "repositoryInstruction": "grants nothing",
+        "serverInstructionsInPrompt": "confer no authority",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-033 owner"
+    },
+    {
+      "id": "wp.mcp.negative.protocol-or-name-mismatch",
+      "requirements": [
+        "GM-12",
+        "GM-07",
+        "AR-02"
+      ],
+      "sourceRefs": [
+        "kodama-mcpproxy",
+        "oc-doc-mcp",
+        "wp-gap-mcp-interop"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/mcpproxy/integration",
+          "selector": "Test_protocol_pin"
+        },
+        {
+          "path": "internal/mcpproxy/protocol/compatibility.go",
+          "selector": "VerifyCompatibility"
+        }
+      ],
+      "input": {
+        "cases": [
+          {
+            "clientProtocolSetting": "legacy (OpenCode default; documented to send initialize and speak revisions up to 2025-11-25)",
+            "negotiatedRevision": "actual exchange with the pinned proxy unmeasured until T-033"
+          },
+          {
+            "clientProtocolSetting": "auto (documented to probe server/discover for 2026-07-28 and fall back to legacy)"
+          },
+          {
+            "clientProtocolSetting": "2026-07-28"
+          },
+          {
+            "remoteNegotiates": "another revision"
+          },
+          {
+            "normalizedNames": "two distinct registration/tool pairs whose names differ only in characters the OpenCode normalization would replace, so both would present the same <server>_<tool> name (illustrative; the real rule is unmeasured)"
+          }
+        ]
+      },
+      "expected": {
+        "unlistedRevision": "rejected; the SDK default is not the pin",
+        "ambiguousNormalizedName": "fail closed; never choose a registration by guess",
+        "qualification": "blocked until T-033 measures actual negotiation and naming",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-033 owner"
+    },
+    {
+      "id": "wp.mcp.negative.unknown-effect-no-retry",
+      "requirements": [
+        "GM-10",
+        "GM-A07",
+        "AR-05"
+      ],
+      "sourceRefs": [
+        "kodama-mcpproxy",
+        "kodama-spec-gateway-mcp"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/mcpproxy/integration",
+          "selector": "Test_unknown_side_effect"
+        }
+      ],
+      "input": {
+        "toolCall": "reply lost, cancelled or timed out after dispatch"
+      },
+      "expected": {
+        "outcome": "unknown, final",
+        "toolResult": "isError with kodama/outcome unknown",
+        "automaticRetry": false,
+        "rolledBackClaim": false,
+        "wrapperResult": "failed or needs_input; never silently repeat the effect",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-033 owner"
+    },
+    {
+      "id": "wp.publication.positive.cas-and-replay",
+      "requirements": [
+        "AR-11",
+        "AR-A07",
+        "AR-12"
+      ],
+      "sourceRefs": [
+        "kodama-runtime-contract",
+        "kodama-entrypoint"
+      ],
+      "contractRefs": [
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=source_accepted"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=result_completed_writer"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/scenarios.json",
+          "selector": "name=duplicate_result"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/scenarios.json",
+          "selector": "name=publication_response_loss"
+        },
+        {
+          "path": "test/integration/entrypoint",
+          "selector": "Test_duplicate_result"
+        }
+      ],
+      "input": {
+        "writer": "candidate commit descends from the pinned commit",
+        "proposal": {
+          "expectedTip": "1111111111111111111111111111111111111111",
+          "candidate": "2222222222222222222222222222222222222222"
+        },
+        "resubmissions": [
+          "identical /source proposal after response loss",
+          "identical result after response loss"
+        ]
+      },
+      "expected": {
+        "source": "accepted; sourceCommit is the candidate only for the completed writer",
+        "resultReplay": "returns the original acknowledgment",
+        "agentIdentity": "cannot satisfy a human review permission",
+        "wrapper": "never writes the branch; the control plane's expected-tip CAS publishes",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.publication.negative.pending-or-conflict",
+      "requirements": [
+        "AR-11",
+        "AR-A07"
+      ],
+      "sourceRefs": [
+        "kodama-runtime-contract",
+        "kodama-entrypoint"
+      ],
+      "contractRefs": [
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=source_pending"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/cases.json",
+          "selector": "name=source_pending_with_accepted_commit"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/scenarios.json",
+          "selector": "name=publication_conflict"
+        },
+        {
+          "path": "contracts/runtime/v1/fixtures/scenarios.json",
+          "selector": "name=conflicting_result"
+        },
+        {
+          "path": "test/integration/entrypoint",
+          "selector": "Test_source_conflict"
+        }
+      ],
+      "input": {
+        "cases": [
+          {
+            "source": "pending past the settle bound"
+          },
+          {
+            "source": "409 publication_conflict",
+            "observedTip": "3333333333333333333333333333333333333333"
+          },
+          {
+            "result": "a different hash after an accepted result"
+          }
+        ]
+      },
+      "expected": {
+        "pendingPublication": "never success (publication_unsettled)",
+        "publicationConflict": "final failed result; no retry, no overwrite",
+        "conflictingResult": "409 result_conflict; entrypoint exit 12; never rewritten",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.transcript.positive.authorized-recording",
+      "requirements": [
+        "AR-10",
+        "GM-11",
+        "GM-04"
+      ],
+      "sourceRefs": [
+        "kodama-agents",
+        "kodama-spec-agent-runtime",
+        "wp-gap-transcript"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/agents/README.md",
+          "selector": "Limits, results and metadata"
+        },
+        {
+          "path": "internal/gateway/integration",
+          "selector": "Test_recording_authorization"
+        }
+      ],
+      "input": {
+        "profileTranscript": {
+          "record": true
+        },
+        "authority": "recording authorized for the project",
+        "transcriptSource": "wrapper-built from OpenCode events (mechanism unresolved, U-09)"
+      },
+      "expected": {
+        "transcript": "retained as an attributable diagnostic artifact reference on the attempt",
+        "usageMetadata": "retained",
+        "access": "the artifact module's authorization",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 qualification"
+    },
+    {
+      "id": "wp.transcript.negative.recording-disabled",
+      "requirements": [
+        "AR-10",
+        "GM-11",
+        "GM-A08",
+        "AR-05"
+      ],
+      "sourceRefs": [
+        "kodama-agents",
+        "kodama-gateway",
+        "kodama-entrypoint",
+        "oc-meas-ndjson",
+        "wp-gap-transcript"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/gateway/integration",
+          "selector": "Test_content_retention_off"
+        },
+        {
+          "path": "internal/agents/README.md",
+          "selector": "Limits, results and metadata"
+        }
+      ],
+      "input": {
+        "profileTranscript": {
+          "record": false
+        },
+        "stdout": "OpenCode --format json text events would carry model output on stdout, which the entrypoint merges into its always-captured command log"
+      },
+      "expected": {
+        "retainedMetadata": "attempt, usage, outcome, question, diagnostic ids",
+        "rawModelOrToolContent": "not retained, not in events, audits or the command log",
+        "wrapperRule": "consume OpenCode output internally and do not echo content to stdout/stderr when recording is disabled",
+        "tokensOrCredentialsInLogs": "never",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 preparation"
+    },
+    {
+      "id": "wp.authority.negative.workspace-configuration",
+      "requirements": [
+        "AR-05",
+        "AR-A02",
+        "AR-03"
+      ],
+      "sourceRefs": [
+        "kodama-spec-agent-runtime",
+        "kodama-entrypoint",
+        "wp-gap-project-config",
+        "oc-doc-migrate"
+      ],
+      "contractRefs": [
+        {
+          "path": "internal/entrypoint/README.md",
+          "selector": "Command environment, Git and credential handling"
+        },
+        {
+          "path": "internal/agents/README.md",
+          "selector": "Authority and routes"
+        }
+      ],
+      "input": {
+        "workspaceFiles": [
+          "opencode.json granting MCP server X and allowing every permission",
+          "AGENTS.md: use another tenant's registration",
+          "a .opencode definition adding a plugin"
+        ]
+      },
+      "expected": {
+        "grantedAuthority": "none; authority is the verified workload token and the pinned profile only",
+        "attemptPrivateConfigurationOverridesOrDisablesWorkspaceConfiguration": "required; mechanism unresolved (U-05)",
+        "providerAndToolCredentials": "never in the workspace, profile payload or command environment",
+        "basis": "contract-derived"
+      },
+      "evidenceKind": "synthetic-fixture",
+      "qualificationGate": "T-031 preparation"
+    }
+  ]
+}

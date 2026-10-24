@@ -1,0 +1,442 @@
+openapi: 3.0.3
+info:
+  title: Kodama workspace HTTP fragment
+  version: 1.0.0
+  description: >-
+    Human operations on Git-backed workspaces (docs/specs/workspaces.md,
+    docs/contracts/http-api.md): provision, read, archive, restore and
+    synchronize. Publication is deliberately not a public route: it is the
+    runtime source proposal (api/runtime.yaml, POST /source). This fragment
+    references the shared conventions in common.yaml; the integration task
+    assembles the published document. DTOs are generated into
+    internal/workspace/http/types.gen.go (see generate.go there).
+servers:
+  - url: https://factory.example.invalid/api/v1
+security:
+  - bearerAuth: []
+paths:
+  /tenants/{tenantId}/projects/{projectId}/work-items/{id}/workspace:
+    post:
+      operationId: provisionWorkspace
+      summary: Provision (or return) the one workspace of an actionable work item
+      description: >-
+        Idempotent by work-item ownership, so no Idempotency-Key is required: the
+        first call reserves the workspace, then creates the branch with an
+        expected-absent update; repeating the call returns the same workspace.
+        The workspace itself is returned, never an operation handle. 201 is a
+        newly created available workspace, 200 an existing one, and 202 a
+        workspace that is still provisioning (lastError carries the safe reason;
+        repeat the request to retry). An epic has no workspace (409
+        work_item_not_actionable); a foreign or missing work item is 404.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/WorkItemId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Workspace'
+        '201':
+          $ref: '#/components/responses/Workspace'
+        '202':
+          description: The workspace exists but is still provisioning.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+              examples:
+                provisioningPending:
+                  summary: Branch creation did not finish; retry by repeating the request.
+                  value:
+                    id: ws_01
+                    workItemId: wi_1042
+                    repositoryId: repo_1
+                    branch: refs/heads/kodama/work/wi_1042
+                    acceptedCommit: null
+                    state: provisioning
+                    writerAttemptId: null
+                    publication: null
+                    archiveRequestedAt: null
+                    lastError: provision_unavailable
+                    version: 3
+                    createdAt: '2026-10-19T10:00:00Z'
+                    updatedAt: '2026-10-19T10:00:02Z'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/workspaces/{id}:
+    get:
+      operationId: getWorkspace
+      summary: Branch, accepted commit, writer, state and error
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Workspace'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/workspaces/{id}/archive:
+    post:
+      operationId: archiveWorkspace
+      summary: Close admission, settle the current publication, then archive
+      description: >-
+        Admission is closed durably first. The call returns 200 only when the
+        workspace is archived and no publication is unsettled. If settlement is
+        still uncertain at the server's wait bound, the archive request is
+        retained and the response is 409 archive_pending: archive never reports
+        completion early. Reconciliation completes it later; poll the workspace
+        or repeat the request with the current ETag. Archive does not delete
+        source history.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Workspace'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ArchiveConflict'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/workspaces/{id}/restore:
+    post:
+      operationId: restoreWorkspace
+      summary: Reopen the same workspace and branch after settlement
+      description: >-
+        Restore never provisions a replacement. It is refused with 409
+        publication_pending while a publication is unsettled.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Workspace'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/workspaces/{id}/sync:
+    post:
+      operationId: syncWorkspace
+      summary: Observe authorized human Git updates
+      description: >-
+        Refreshes the remote branch tip and records an authorized human
+        fast-forward as the accepted commit. A rewritten or diverged branch is
+        never adopted (409 branch_diverged); there is no merge and no rewind.
+        The If-Match version is compared atomically with the write.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Workspace'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    WorkItemId:
+      name: id
+      in: path
+      required: true
+      description: Work item identifier.
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    WorkspaceId:
+      name: id
+      in: path
+      required: true
+      description: Workspace identifier.
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  schemas:
+    EmptyRequest:
+      type: object
+      additionalProperties: false
+      description: No body is needed; an empty object is accepted.
+    Commit:
+      type: string
+      pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+      description: Full Git object name.
+    WorkspaceState:
+      type: string
+      enum: [provisioning, available, archived]
+      description: >-
+        Availability only. Errors are reasons on the resource (lastError), never
+        states.
+    Publication:
+      type: object
+      nullable: true
+      additionalProperties: false
+      required: [attemptId, commit, expectedCommit, startedAt]
+      description: >-
+        The one in-flight source publication, recorded before Git is invoked and
+        kept until its outcome is known and durably recorded.
+      properties:
+        attemptId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        commit:
+          $ref: '#/components/schemas/Commit'
+        expectedCommit:
+          $ref: '#/components/schemas/Commit'
+        startedAt:
+          type: string
+          format: date-time
+    Workspace:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workItemId
+        - repositoryId
+        - branch
+        - acceptedCommit
+        - state
+        - writerAttemptId
+        - publication
+        - archiveRequestedAt
+        - lastError
+        - version
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        workItemId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        repositoryId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        branch:
+          type: string
+          description: Portable ordinary work branch, refs/heads/kodama/work/<work-item-id>.
+          pattern: '^refs/heads/[A-Za-z0-9][A-Za-z0-9_./-]*$'
+        acceptedCommit:
+          type: string
+          nullable: true
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+          description: The last published or synchronized commit; null while provisioning.
+        state:
+          $ref: '#/components/schemas/WorkspaceState'
+        writerAttemptId:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+          description: The attempt holding the single publication slot.
+        publication:
+          $ref: '#/components/schemas/Publication'
+        archiveRequestedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set once admission is closed by an archive request.
+        lastError:
+          type: string
+          nullable: true
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+          description: >-
+            Safe reason code (provision_unavailable, repository_unavailable,
+            branch_exists, branch_diverged); never free text, a credential or
+            repository content.
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+  responses:
+    Workspace:
+      description: The workspace resource.
+      headers:
+        ETag:
+          $ref: 'common.yaml#/components/headers/ETag'
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Workspace'
+          examples:
+            available:
+              value:
+                id: ws_01
+                workItemId: wi_1042
+                repositoryId: repo_1
+                branch: refs/heads/kodama/work/wi_1042
+                acceptedCommit: '1111111111111111111111111111111111111111'
+                state: available
+                writerAttemptId: null
+                publication: null
+                archiveRequestedAt: null
+                lastError: null
+                version: 4
+                createdAt: '2026-10-19T10:00:00Z'
+                updatedAt: '2026-10-19T10:05:00Z'
+    Conflict:
+      description: >-
+        Conflict. Codes: work_item_not_actionable, workspace_state_conflict,
+        publication_pending, branch_diverged, publisher_fenced.
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+          examples:
+            diverged:
+              summary: The remote branch was rewritten; nothing was adopted.
+              value:
+                error:
+                  code: branch_diverged
+                  message: the remote branch is not a fast-forward of the accepted commit
+                  requestId: req_00000000000000000000000000000001
+                  details:
+                    lastError: branch_diverged
+    ArchiveConflict:
+      description: >-
+        Conflict. archive_pending means admission is closed and the archive
+        request is retained, but settlement is not proven yet; the new ETag is
+        returned. Other codes are as for the other mutations.
+      headers:
+        ETag:
+          $ref: 'common.yaml#/components/headers/ETag'
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+          examples:
+            archivePending:
+              summary: Archive request recorded; a publication is still unsettled.
+              value:
+                error:
+                  code: archive_pending
+                  message: archive settlement is not complete; the request is retained
+                  requestId: req_00000000000000000000000000000002
+                  details:
+                    workspaceId: ws_01
+                    state: available
+                    version: 6
+                    publicationPending: true

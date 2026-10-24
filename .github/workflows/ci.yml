@@ -1,0 +1,75 @@
+name: Go unit checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make lint test build
+      - run: go mod verify
+      - name: Check public API generation drift
+        run: make api-check
+      - name: M1 composition, contract consistency and generated client
+        run: make test-m1
+      - name: M2 composition and contract compatibility
+        run: make test-m2
+      - name: M3 composition and contract compatibility (dependencies, flow summaries, QA mapping, ChatOps)
+        run: make test-m3
+      - name: Chart join (render, configuration and preflight compatibility)
+        run: make test-chart
+      - name: Publish the public OpenAPI document
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openapi
+          path: api/openapi.yaml
+          if-no-files-found: error
+      - name: Check dependency lock drift
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+  scaffold:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DEV_PROVIDER: docker
+      DEV_SCOPE: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - run: make openforge-install
+      - name: Fresh setup and Pod-reachable protocols
+        run: make scaffold-smoke
+      - name: Scoped teardown preserves a foreign cluster
+        run: make dev-teardown-check
+      - name: Failure diagnostics
+        if: failure()
+        run: make dev-diagnostics
+      - name: Cleanup
+        if: always()
+        run: make dev-down
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: scaffold-diagnostics
+          path: dev/.state/reports/
+          include-hidden-files: true
+          if-no-files-found: ignore

@@ -1,0 +1,23 @@
+# Tools image for the ordinary delivery steps (quality, build, deploy, e2e).
+# Daemonless: ko builds and pushes OCI images, so no Docker socket is needed.
+#
+# Build (the context is this directory; run fetch.sh first so the build needs no network):
+#   sh deploy/tools/fetch.sh && podman build -f deploy/tools/Containerfile -t tools deploy/tools
+#
+# Pins: the base image by digest (it carries the Go toolchain, git and CA roots),
+# ko and kubectl by version and SHA-256 (lock.env, verified by fetch.sh). Record the
+# resulting image digest in the installation's rendered pipelines.
+FROM docker.io/library/golang:1.27.2@sha256:820153096fda4de6ac1b7194d12e416b7dd8f4e9a33d17e0345b111b945162d8
+
+COPY bin/ /opt/tools/
+RUN set -eu; \
+    case "$(uname -m)" in x86_64) d=amd64 ;; aarch64) d=arm64 ;; *) echo "unsupported architecture" >&2; exit 1 ;; esac; \
+    install -m 0755 "/opt/tools/$d/ko" /usr/local/bin/ko; \
+    install -m 0755 "/opt/tools/$d/kubectl" /usr/local/bin/kubectl; \
+    rm -rf /opt/tools; \
+    useradd --uid 65532 --create-home --home-dir /home/ci --shell /bin/sh ci; \
+    mkdir -p /workspace && chown 65532:65532 /workspace
+
+USER 65532:65532
+ENV HOME=/home/ci GOTOOLCHAIN=local GOFLAGS=-mod=readonly CGO_ENABLED=0 GOPATH=/tmp/go GOCACHE=/tmp/gocache
+WORKDIR /workspace

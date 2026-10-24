@@ -1,0 +1,9 @@
+FROM docker.io/alpine/git:2.49.1@sha256:c0280cf9572316299b08544065d3bf35db65043d5e3963982ec50647d2746e26
+RUN --mount=type=bind,source=git-daemon.apk,target=/tmp/git-daemon.apk apk add --no-network /tmp/git-daemon.apk \
+ && mkdir /data && chown 65532:65532 /data
+COPY --chmod=0755 kodama probe gitserver /usr/local/bin/
+USER 65532:65532
+ENV HOME=/tmp
+WORKDIR /tmp
+ENTRYPOINT ["/usr/local/bin/kodama"]
+CMD ["server"]

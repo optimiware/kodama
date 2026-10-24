@@ -1,0 +1,39 @@
+{
+  "format": "kodama/qa-report/v1",
+  "subject": {"workItemId": "wi_1042", "contentRevision": 2},
+  "deployment": {
+    "id": "dep_0123456789abcdef0123456789abcdef",
+    "environmentId": "env_preview",
+    "configDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidateCommit": "1111111111111111111111111111111111111111",
+    "imageDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "summary": "Explored order entry on the preview deployment against the pinned acceptance criteria.",
+  "observations": [
+    {
+      "title": "Order form shows a blank page",
+      "severity": "major",
+      "criterionId": "AC-1",
+      "location": "/orders/new",
+      "steps": ["Open /orders/new", "Fill in every required field", "Press Save"],
+      "expected": "The order is saved and a confirmation is shown.",
+      "actual": "A blank page is shown and nothing is saved.",
+      "evidence": [
+        {"artifactId": "art_shot1", "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "kind": "screenshot", "note": "after pressing Save"},
+        {"artifactId": "art_log1", "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "kind": "log", "note": null}
+      ]
+    },
+    {
+      "title": "Quantity accepts negative numbers",
+      "severity": "minor",
+      "criterionId": null,
+      "location": "/orders/new",
+      "steps": ["Enter -3 as the quantity"],
+      "expected": "A validation message rejects the quantity.",
+      "actual": "The negative quantity is accepted.",
+      "evidence": [
+        {"artifactId": "art_shot2", "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "kind": "screenshot", "note": null}
+      ]
+    }
+  ]
+}

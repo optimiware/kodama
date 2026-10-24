@@ -1,0 +1,226 @@
+openapi: 3.0.3
+info:
+  title: Kodama run log API
+  version: 1.0.0
+  description: >-
+    Bounded live and retained log retrieval for one attempt of a run (task
+    T-023; specification: docs/operations/observability-and-audit.md, route:
+    docs/contracts/http-api.md `GET P/runs/{id}/logs`). This fragment defines the
+    representation the HTTP contract leaves open; it adds only that route.
+
+    The caller names the run and, when the run has several attempts, the
+    attempt. Namespace, Pod, container, label or field selectors and backend URLs
+    are never accepted: the server resolves the workload from persisted
+    execution state and verifies its ownership before reading. Unknown and
+    repeated query parameters are rejected. Every call is authorized against
+    current membership (run:read and evidence:read) before any content is read,
+    including every reconnect.
+
+    The body is bounded NDJSON (`application/x-ndjson`, one JSON object per
+    line): first a `meta` record, then `chunk` records (one log line each), then
+    a `summary` record. A response that ends without a `summary` was
+    interrupted. Errors found before the first record use the standard error
+    envelope and status; after the first record only a `summary` with a
+    classified `stop` can report a failure, and never carries provider text.
+    This is not the durable event stream: there is no cursor and no resumability
+    guarantee, and a reconnect starts a new bounded read.
+
+    Completeness is explicit and separate from command outcome and from
+    truncation by query bounds. `meta.completeness` describes a retained
+    capture: `complete` only for a wrapper capture that read its whole bounded
+    log, `partial` when output is known to be missing, `unknown` when it cannot
+    be established (a legacy log without metadata, any controller capture, any
+    live read). Node deletion can lose log tails, so Kodama never claims
+    completeness it cannot establish. Shared conventions (error envelope) come
+    from api/common.yaml. Paths are relative to the /api/v1 base URL.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/runs/{id}/logs:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: getRunLogs
+      summary: Stream the bounded log of one attempt
+      description: >-
+        `source=auto` (the default) serves the live log of a running attempt and
+        the retained log of a finished one, falling back to the other when the
+        first is unavailable. `follow=true` keeps a live stream open until the
+        attempt's log ends, the server's duration bound passes or the caller's
+        access changes; it is rejected for a finished attempt and for retained
+        sources. Output is bounded in lines, bytes, line length and duration; a
+        bound that cuts the output is reported in `summary`. Known injected
+        secret values are replaced with `[REDACTED]` before emission or
+        storage; arbitrary tenant output still requires access control.
+      parameters:
+        - name: attemptId
+          in: query
+          required: false
+          description: >-
+            The attempt of the run. Required when the run has more than one
+            attempt; an ambiguous selection is 400 invalid_request.
+          schema:
+            $ref: 'common.yaml#/components/schemas/ID'
+        - name: tail
+          in: query
+          required: false
+          description: >-
+            Number of trailing lines. Values outside 1..the server maximum are
+            rejected, never clamped. The default is a conservative 100.
+          schema:
+            type: integer
+            minimum: 1
+            default: 100
+        - name: follow
+          in: query
+          required: false
+          description: Keep a live stream open (live source only).
+          schema:
+            type: boolean
+            default: false
+        - name: source
+          in: query
+          required: false
+          description: >-
+            Where to read from: the live Kubernetes log, or the retained capture
+            of one producer. Captures of different sources are never merged.
+          schema:
+            $ref: '#/components/schemas/LogSource'
+      responses:
+        '200':
+          description: >-
+            A bounded NDJSON stream of `meta`, `chunk` and `summary` records.
+          headers:
+            X-Request-ID: {$ref: 'common.yaml#/components/headers/RequestId'}
+            Cache-Control:
+              description: Always `no-store`.
+              schema: {type: string, enum: [no-store]}
+            X-Content-Type-Options:
+              description: Always `nosniff`.
+              schema: {type: string, enum: [nosniff]}
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: '#/components/schemas/LogRecord'
+        '400': {$ref: 'common.yaml#/components/responses/BadRequest'}
+        '401': {$ref: 'common.yaml#/components/responses/Unauthorized'}
+        '403': {$ref: 'common.yaml#/components/responses/Forbidden'}
+        '404': {$ref: 'common.yaml#/components/responses/NotFound'}
+        '429': {$ref: 'common.yaml#/components/responses/TooManyRequests'}
+        '500': {$ref: 'common.yaml#/components/responses/InternalError'}
+        '503': {$ref: 'common.yaml#/components/responses/Unavailable'}
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    RunId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  schemas:
+    LogSource:
+      type: string
+      enum: [auto, live, wrapper, controller]
+      default: auto
+    LogOrigin:
+      type: string
+      enum: [live, wrapper, controller]
+      description: Where the served bytes came from.
+    LogCompleteness:
+      type: string
+      enum: [complete, partial, unknown]
+    LogReason:
+      type: string
+      enum: [truncated, interrupted, upload_failed, workload_missing, rotated, controller_capture, unverified]
+      description: Classified explanation of a non-complete capture.
+    LogStop:
+      type: string
+      enum: [end, byte_limit, line_limit, duration_limit, scan_limit, interrupted, authorization_changed, unavailable]
+      description: >-
+        Why the read ended. `end` is the end of the source; the `*_limit` values
+        are server bounds; `interrupted` and `unavailable` are upstream or
+        dependency failures; `authorization_changed` is a revoked or lapsed
+        permission during a follow.
+    LogLimits:
+      type: object
+      required: [maxBytes, maxLines, maxLineBytes, maxDurationSeconds]
+      additionalProperties: false
+      properties:
+        maxBytes: {type: integer, minimum: 1}
+        maxLines: {type: integer, minimum: 1}
+        maxLineBytes: {type: integer, minimum: 1}
+        maxDurationSeconds: {type: integer, minimum: 1}
+    LogMeta:
+      type: object
+      required: [type, runId, attemptId, stepId, origin, completeness, reasons, tail, follow, terminal, limits]
+      additionalProperties: false
+      properties:
+        type: {type: string, enum: [meta]}
+        runId: {$ref: 'common.yaml#/components/schemas/ID'}
+        attemptId: {$ref: 'common.yaml#/components/schemas/ID'}
+        stepId: {type: string, minLength: 1, maxLength: 128}
+        origin: {$ref: '#/components/schemas/LogOrigin'}
+        completeness: {$ref: '#/components/schemas/LogCompleteness'}
+        reasons:
+          type: array
+          maxItems: 8
+          items: {$ref: '#/components/schemas/LogReason'}
+        tail: {type: integer, minimum: 1}
+        follow: {type: boolean}
+        terminal:
+          type: boolean
+          description: The attempt had finished when the read began.
+        limits: {$ref: '#/components/schemas/LogLimits'}
+    LogChunk:
+      type: object
+      required: [type, text, lineTruncated]
+      additionalProperties: false
+      properties:
+        type: {type: string, enum: [chunk]}
+        text:
+          type: string
+          description: One log line without its newline; invalid UTF-8 is replaced.
+        lineTruncated:
+          type: boolean
+          description: The line was cut at the line-length bound.
+    LogSummary:
+      type: object
+      required: [type, lines, bytes, truncated, stop]
+      additionalProperties: false
+      properties:
+        type: {type: string, enum: [summary]}
+        lines: {type: integer, minimum: 0}
+        bytes: {type: integer, minimum: 0}
+        truncated:
+          type: boolean
+          description: A server bound, not the end of the source, cut the output.
+        stop: {$ref: '#/components/schemas/LogStop'}
+    LogRecord:
+      type: object
+      required: [type]
+      description: >-
+        One line of the NDJSON body. `type` selects the record's schema:
+        `meta` is LogMeta, `chunk` is LogChunk and `summary` is LogSummary. The
+        union is documented rather than generated so the module adds no runtime
+        dependency.
+      properties:
+        type:
+          type: string
+          enum: [meta, chunk, summary]

@@ -1,0 +1,13 @@
+{
+  "format": "kodama/qa-report/v1",
+  "subject": {"workItemId": "wi_1042", "contentRevision": 2},
+  "deployment": {
+    "id": "dep_0123456789abcdef0123456789abcdef",
+    "environmentId": "env_preview",
+    "configDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidateCommit": "1111111111111111111111111111111111111111",
+    "imageDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "summary": "Explored order entry; no deviation from the pinned acceptance criteria was observed.",
+  "observations": []
+}

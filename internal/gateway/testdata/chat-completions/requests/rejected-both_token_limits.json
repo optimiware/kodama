@@ -1,0 +1,12 @@
+{
+  "model": "gpt-a",
+  "stream": true,
+  "max_tokens": 5,
+  "max_completion_tokens": 5,
+  "messages": [
+    {
+      "role": "user",
+      "content": "x"
+    }
+  ]
+}

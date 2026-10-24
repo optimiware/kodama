@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "the request body is too large",
+    "requestId": "req_fedcba9876543210fedcba9876543210",
+    "details": {"maxBytes": 1048576}
+  }
+}

@@ -1,0 +1,187 @@
+openapi: 3.0.3
+info:
+  title: Inventory exceptions
+  version: 1.0.0
+  description: >-
+    The application's own API. Identity is a bearer token from the application's OIDC
+    provider; authority is the caller's current membership in the requested application
+    tenant. Tenant or role claims in the token and tenant/role headers are never trusted.
+    Every error has the envelope {"error": {"code", "message", "retry", "requestId"}}.
+    `retry` is `none` (do not repeat unchanged), `refresh` (read the current state first),
+    or `same` (repeat the identical request; commands carry an Idempotency-Key so a repeat
+    observes the original outcome instead of producing a second effect).
+servers:
+  - url: /
+paths:
+  /healthz:
+    get:
+      operationId: liveness
+      summary: Process liveness. Independent of every dependency.
+      responses:
+        '200': {description: The process is running.}
+  /readyz:
+    get:
+      operationId: readiness
+      summary: Readiness of the application's own dependencies (database, schema version, identity provider).
+      responses:
+        '200': {description: Ready.}
+        '503': {description: A required dependency is unavailable.}
+  /version:
+    get:
+      operationId: version
+      summary: Nonsecret identity of what is running (deployment, configuration digest, image digest, source commit).
+      responses:
+        '200': {description: The build identity.}
+  /api/v1/tenants/{tenantId}/exceptions:
+    parameters:
+      - {name: tenantId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: createException
+      summary: Open an inventory exception. Requires the reviewer or admin role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExceptionCreate'}
+      responses:
+        '201': {description: Created. Carries ETag and Location., content: {application/json: {schema: {$ref: '#/components/schemas/Exception'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+    get:
+      operationId: listExceptions
+      summary: List exceptions of the tenant with a bounded, tenant-bound cursor.
+      parameters:
+        - {name: state, in: query, required: false, schema: {$ref: '#/components/schemas/State'}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: cursor, in: query, required: false, schema: {type: string}, description: Opaque; valid only for the tenant and filter that produced it.}
+      responses:
+        '200': {description: One page., content: {application/json: {schema: {$ref: '#/components/schemas/ExceptionPage'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v1/tenants/{tenantId}/exceptions/{id}:
+    parameters:
+      - {name: tenantId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getException
+      summary: Read one exception. A foreign or unknown id is the same 404.
+      responses:
+        '200': {description: The exception. Carries ETag with its version., content: {application/json: {schema: {$ref: '#/components/schemas/Exception'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v1/tenants/{tenantId}/exceptions/{id}/history:
+    parameters:
+      - {name: tenantId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getExceptionHistory
+      summary: The append-only, attributable audit trail of the exception.
+      responses:
+        '200': {description: Audit entries in order.}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v1/tenants/{tenantId}/exceptions/{id}/resolution:
+    parameters:
+      - {name: tenantId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: resolveException
+      summary: Request the ERP adjustment that resolves the exception.
+      description: >-
+        Requires the reviewer or admin role, `Idempotency-Key` and `If-Match` (the version the
+        reviewer saw). The command is accepted as durable pending work (202, state `pending`);
+        it never reports `resolved`. Only the ERP's acknowledgment, recorded by the worker,
+        moves the exception to `resolved`; a rejection moves it to `failed`; an outcome that
+        cannot be established is `unknown` and stays visible. Repeating the identical request
+        returns the existing operation (`Idempotent-Replayed: true`). The same key with a
+        different payload is `idempotency_conflict`. A 5xx or timeout means the outcome may be
+        unknown to the caller: repeat the identical request with the same key.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+        - {name: If-Match, in: header, required: true, schema: {type: string}, description: 'The expected version, for example "3".'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Resolution'}
+      responses:
+        '202': {description: Accepted as pending ERP work., content: {application/json: {schema: {$ref: '#/components/schemas/Exception'}}}}
+        '200': {description: Replay of an operation that has since settled (resolved, failed or unknown)., content: {application/json: {schema: {$ref: '#/components/schemas/Exception'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {description: invalid_state or idempotency_conflict., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '412': {description: version_conflict. Read the exception again., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '428': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer}
+  responses:
+    Error:
+      description: A machine-readable error.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  schemas:
+    State: {type: string, enum: [open, pending, resolved, failed, unknown]}
+    ExceptionCreate:
+      type: object
+      additionalProperties: false
+      required: [erpRef, erpQuantity, countedQuantity]
+      properties:
+        erpRef: {type: string, maxLength: 128}
+        description: {type: string, maxLength: 1000}
+        erpQuantity: {type: integer, minimum: 0, maximum: 1000000000}
+        countedQuantity: {type: integer, minimum: 0, maximum: 1000000000}
+    Resolution:
+      type: object
+      additionalProperties: false
+      required: [adjustedQuantity, reason]
+      properties:
+        adjustedQuantity: {type: integer, minimum: 0, maximum: 1000000000}
+        reason: {type: string, minLength: 1, maxLength: 500}
+    Exception:
+      type: object
+      required: [id, tenantId, erpRef, state, version, resolution]
+      properties:
+        id: {type: string, format: uuid}
+        tenantId: {type: string, format: uuid}
+        erpRef: {type: string}
+        description: {type: string}
+        erpQuantity: {type: integer}
+        countedQuantity: {type: integer}
+        state: {$ref: '#/components/schemas/State'}
+        version: {type: integer, minimum: 1}
+        createdBy: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        resolution:
+          nullable: true
+          type: object
+          properties:
+            operationKey: {type: string}
+            adjustedQuantity: {type: integer}
+            reason: {type: string}
+            requestedBy: {type: string}
+            erpReference: {type: string, description: Present only after the ERP acknowledged.}
+            detail: {type: string, description: Why the outcome failed or is unknown.}
+    ExceptionPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Exception'}}
+        nextCursor: {type: string, nullable: true}
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retry, requestId]
+          properties:
+            code:
+              type: string
+              enum: [unauthenticated, forbidden, tenant_not_found, not_found, invalid_request, precondition_required, version_conflict, invalid_state, idempotency_conflict, unavailable, internal]
+            message: {type: string}
+            retry: {type: string, enum: [none, refresh, same]}
+            requestId: {type: string}

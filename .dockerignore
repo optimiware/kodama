@@ -1,0 +1,14 @@
+.git
+.github
+.work
+.harness
+.opencode
+dev
+docs
+images
+scripts
+templates
+test
+**/*_test.go
+**/testdata
+**/*.md

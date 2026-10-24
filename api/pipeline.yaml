@@ -1,0 +1,372 @@
+openapi: 3.0.3
+info:
+  title: Kodama pipeline definitions
+  version: 1.0.0
+  description: >-
+    Registration and retrieval of immutable pipeline definition versions
+    (docs/contracts/pipeline-format.md, docs/contracts/http-api.md). Owned by T-014.
+    Shared conventions (error envelope, pagination, ETag) come from api/common.yaml.
+    Types are generated into internal/pipeline/http/pipeline.gen.go (see
+    internal/pipeline/http/generate.go). The structural contract of the submitted
+    document is contracts/pipeline/v1/schema.json; graph, reference, source and
+    capability rules are enforced by the shared validator in internal/pipeline, which
+    the local CLI uses as well. There is no validation-only, update or delete route:
+    a registration either returns an immutable version or an error.
+    Every route sits under /api/v1/tenants/{tenantId}/projects/{projectId}.
+paths:
+  /tenants/{tenantId}/projects/{projectId}/pipeline-definitions:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listPipelineDefinitions
+      summary: List registered pipeline definition versions
+      description: >-
+        Ordered by (created_at, id); the identifier is the unique tie-breaker. The optional
+        name filter restricts the list to one pipeline name. A cursor is bound to the tenant,
+        project, filter and ordering that issued it, and every page is authorized again.
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/PipelineName'
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of definitions.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineDefinitionPage'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    post:
+      operationId: registerPipelineDefinition
+      summary: Register a pipeline definition version
+      description: >-
+        The request body is one JSON Pipeline document. The server authorizes the caller,
+        parses and validates the document, and registers it as an immutable version. Content
+        that is canonically identical to an existing definition of the project returns that
+        definition with 200 and creates nothing; any other content under a name creates the
+        next version of that name with 201. Neither If-Match nor Idempotency-Key is required
+        because registration is content-addressed: a retry after a lost response converges
+        on the same definition. A 503 may mean the outcome is unknown; retrying is safe.
+        Only step kinds the installation enables are accepted. The schema describes the
+        planned agent and gate shapes, but an installation that does not enable them rejects
+        such documents with kind_disabled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineDocument'
+            example:
+              apiVersion: kodama/v1alpha1
+              kind: Pipeline
+              metadata:
+                name: unit-tests
+              spec:
+                steps:
+                  - id: test
+                    kind: container
+                    image: registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111
+                    command: [/bin/sh, -ec, go test ./...]
+                    timeoutSeconds: 600
+                    workspace:
+                      access: read
+                      from: run
+      responses:
+        '200':
+          description: >-
+            An identical definition was already registered; it is returned unchanged and
+            nothing was created.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            Location:
+              schema:
+                type: string
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineDefinition'
+              example:
+                $ref: '#/components/examples/RegisteredDefinition/value'
+        '201':
+          description: A new immutable version was created. The ETag is the version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            Location:
+              schema:
+                type: string
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineDefinition'
+              example:
+                $ref: '#/components/examples/RegisteredDefinition/value'
+        '400':
+          description: >-
+            The body is not one well-formed document of the contract's shape (invalid_request,
+            with details.diagnostics), or another common request failure.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: >-
+            definition_conflict: stored state contradicts the registration (for example a digest
+            match with different content). A retry does not help; an operator must investigate.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+        '413':
+          $ref: 'common.yaml#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/InvalidDefinition'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/pipeline-definitions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/DefinitionId'
+    get:
+      operationId: getPipelineDefinition
+      summary: Read a registered pipeline definition version
+      responses:
+        '200':
+          description: The immutable definition; the ETag is its version.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineDefinition'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: 'common.yaml#/components/securitySchemes/bearerAuth'
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    DefinitionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  responses:
+    InvalidDefinition:
+      description: >-
+        invalid_definition: the document is well formed but violates a definition rule (graph,
+        reference, type, source, capability or policy). details.diagnostics lists stable codes
+        such as cycle, unknown_output, parallel_writers, conditional_gate, mutable_image and
+        kind_disabled with their document paths.
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: invalid_definition
+              message: the pipeline definition violates one or more rules
+              requestId: req_00000000000000000000000000000001
+              details:
+                truncated: false
+                diagnostics:
+                  - code: mutable_image
+                    path: spec.steps[0].image
+                    message: the image must be pinned by digest
+  examples:
+    RegisteredDefinition:
+      value:
+        id: pd_0123456789abcdef0123456789abcdef
+        name: unit-tests
+        version: 1
+        digest: sha256:2222222222222222222222222222222222222222222222222222222222222222
+        definition:
+          apiVersion: kodama/v1alpha1
+          kind: Pipeline
+          metadata:
+            name: unit-tests
+          spec:
+            inputs: {}
+            steps:
+              - id: test
+                kind: container
+                image: registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111
+                command: [/bin/sh, -ec, go test ./...]
+                timeoutSeconds: 600
+                workspace:
+                  access: read
+                  from: run
+        createdBy:
+          type: user
+          id: usr_engineer
+        createdAt: '2026-10-19T10:05:00Z'
+  schemas:
+    PipelineName:
+      type: string
+      pattern: '^[a-z][a-z0-9-]{0,62}$'
+    ActorType:
+      type: string
+      enum: [user, service, workload, operator]
+    Actor:
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          $ref: '#/components/schemas/ActorType'
+        id:
+          type: string
+          minLength: 1
+          maxLength: 256
+    PipelineDocument:
+      type: object
+      description: >-
+        One pipeline document of apiVersion kodama/v1alpha1. The authoritative structural
+        schema is contracts/pipeline/v1/schema.json; it is not duplicated here. Unknown
+        fields, duplicate keys, YAML-only constructs and mutable image references are rejected.
+      additionalProperties: true
+      x-go-type: rawjson.RawMessage
+      x-go-type-import:
+        name: rawjson
+        path: encoding/json
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion:
+          type: string
+          enum: [kodama/v1alpha1]
+        kind:
+          type: string
+          enum: [Pipeline]
+        metadata:
+          type: object
+          additionalProperties: true
+          required: [name]
+          properties:
+            name:
+              $ref: '#/components/schemas/PipelineName'
+        spec:
+          type: object
+          additionalProperties: true
+          required: [steps]
+          properties:
+            inputs:
+              type: object
+              additionalProperties: true
+            steps:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: true
+    CanonicalDefinition:
+      type: object
+      description: >-
+        The canonical form of the registered document (sorted keys, documented defaults
+        applied, integers preserved). Its SHA-256 is the digest.
+      additionalProperties: true
+      x-go-type: rawjson.RawMessage
+      x-go-type-import:
+        name: rawjson
+        path: encoding/json
+    PipelineDefinition:
+      type: object
+      additionalProperties: false
+      required: [id, name, version, digest, definition, createdBy, createdAt]
+      properties:
+        id:
+          $ref: 'common.yaml#/components/schemas/ID'
+        name:
+          $ref: '#/components/schemas/PipelineName'
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        digest:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+        definition:
+          $ref: '#/components/schemas/CanonicalDefinition'
+        createdBy:
+          $ref: '#/components/schemas/Actor'
+        createdAt:
+          type: string
+          format: date-time
+    PipelineDefinitionPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/PipelineDefinition'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
