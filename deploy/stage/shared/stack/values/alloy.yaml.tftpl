@@ -4,6 +4,10 @@
 controller:
   type: deployment
   replicas: 1
+  volumes:
+    extra:
+      - name: tmp
+        emptyDir: {}
 
 alloy:
   securityContext:
@@ -17,6 +21,9 @@ alloy:
   mounts:
     varlog: false
     dockercontainers: false
+    extra:
+      - name: tmp
+        mountPath: /tmp
   configMap:
     create: true
     content: |

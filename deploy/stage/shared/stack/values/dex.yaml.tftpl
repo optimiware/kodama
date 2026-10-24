@@ -72,6 +72,13 @@ securityContext:
   capabilities:
     drop: ["ALL"]
 
+volumes:
+  - name: tmp
+    emptyDir: {}
+volumeMounts:
+  - name: tmp
+    mountPath: /tmp
+
 ingress:
   enabled: true
   className: nginx
