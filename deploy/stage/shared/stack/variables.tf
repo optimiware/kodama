@@ -112,27 +112,27 @@ variable "example_workload_image" {
 }
 
 variable "git_url" {
-  description = "HTTPS Git repository endpoint."
+  description = "HTTPS Git repository endpoint (defaults to https://git.<ingress_host>/optimi/kodama-source.git)."
   type        = string
-  default     = "https://git.stage.example.invalid/optimi/kodama-source.git"
+  default     = ""
 }
 
 variable "registry_url" {
-  description = "HTTPS OCI registry endpoint."
+  description = "HTTPS OCI registry endpoint (defaults to https://registry.<ingress_host>)."
   type        = string
-  default     = "https://registry.stage.example.invalid"
+  default     = ""
 }
 
 variable "oidc_issuer" {
-  description = "HTTPS OIDC issuer URL."
+  description = "HTTPS OIDC issuer URL (defaults to https://auth.<ingress_host>)."
   type        = string
-  default     = "https://auth.stage.example.invalid"
+  default     = ""
 }
 
 variable "oidc_audience" {
-  description = "Expected OIDC access-token audience for Kodama API."
+  description = "Expected OIDC access-token audience for Kodama API (defaults to https://<ingress_host>/api)."
   type        = string
-  default     = "https://kodama.stage.example.invalid/api"
+  default     = ""
 }
 
 variable "custom_ca" {

@@ -10,7 +10,6 @@ WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kodama-stage-tests.XXXXXX")"
 chmod 0700 "${WORK_DIR}"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 
-# Non-placeholder image digests for realistic gate tests
 export KODAMA_IMAGE_DIGEST="sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
 export KODAMA_WORKLOAD_IMAGE_DIGEST="sha256:b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1"
 
@@ -53,7 +52,7 @@ for dir in "${STAGE_DIR}/aws" "${STAGE_DIR}/gcp" "${STAGE_DIR}/scw" "${STAGE_DIR
   tofu -chdir="${dir}" fmt -check
 done
 
-log_info "3. Validate-only deploy check + template rendering for aws, gcp, scw"
+log_info "3. Validate-only deploy check + shared/stack tfvars equivalence for aws, gcp, scw"
 for cloud in aws gcp scw; do
   "${STAGE_DIR}/scripts/deploy.sh" \
     --cloud "${cloud}" \
@@ -61,33 +60,56 @@ for cloud in aws gcp scw; do
     --values-out "${WORK_DIR}/values-${cloud}.yaml" \
     --validate-only
 
+  # Verify that shared/stack's local.kodama_values expression with stack.tfvars.json produces byte-identical YAML
   RENDER_DIR="${WORK_DIR}/tofu-render-${cloud}"
   mkdir -p "${RENDER_DIR}"
+  cp "${STAGE_DIR}/shared/stack/variables.tf" "${RENDER_DIR}/variables.tf"
+  write_stack_tfvars "${WORK_DIR}/contract-${cloud}.json" "${RENDER_DIR}/terraform.tfvars.json" "/tmp/kubeconfig"
   cat >"${RENDER_DIR}/main.tf" <<EOF
 locals {
-  contract = jsondecode(file("${WORK_DIR}/contract-${cloud}.json"))
+  nats_url = "tls://kodama-nats.\${var.control_plane_namespace}.svc.cluster.local:4222"
+  loki_url = "http://kodama-loki.\${var.observability_namespace}.svc.cluster.local:3100"
+  prom_url = "http://kodama-prometheus-server.\${var.observability_namespace}.svc.cluster.local:80"
+  monitored_namespaces = concat([var.control_plane_namespace], [for t in var.stage_contract.tenants : t.namespace])
+
+  kodama_values = templatefile("${STAGE_DIR}/shared/stack/values/kodama.yaml.tftpl", {
+    contract       = var.stage_contract
+    nats_url       = local.nats_url
+    kodama_image   = var.kodama_image
+    workload_image = var.example_workload_image
+    git_url        = coalesce(var.git_url, "https://git.\${var.stage_contract.network.ingress_host}/optimi/kodama-source.git")
+    registry_url   = coalesce(var.registry_url, "https://registry.\${var.stage_contract.network.ingress_host}")
+    oidc_issuer    = coalesce(var.oidc_issuer, "https://auth.\${var.stage_contract.network.ingress_host}")
+    oidc_audience  = coalesce(var.oidc_audience, "https://\${var.stage_contract.network.ingress_host}/api")
+    custom_ca      = var.custom_ca
+  })
   nats = templatefile("${STAGE_DIR}/shared/stack/values/nats.yaml.tftpl", {
-    namespace = "kodama-system"
+    namespace = var.control_plane_namespace
   })
   loki = templatefile("${STAGE_DIR}/shared/stack/values/loki.yaml.tftpl", {
-    object_storage = local.contract.object_storage
-    sa_annotations = local.contract.identities.loki_sa_annotations
+    object_storage = var.stage_contract.object_storage
+    sa_annotations = var.stage_contract.identities.loki_sa_annotations
   })
   alloy = templatefile("${STAGE_DIR}/shared/stack/values/alloy.yaml.tftpl", {
-    loki_push_url        = "http://kodama-loki.kodama-observability.svc.cluster.local:3100/loki/api/v1/push"
-    monitored_namespaces = ["kodama-system", "kodama-tenant-stage"]
+    loki_push_url        = "\${local.loki_url}/loki/api/v1/push"
+    monitored_namespaces = local.monitored_namespaces
   })
   prometheus = templatefile("${STAGE_DIR}/shared/stack/values/prometheus.yaml.tftpl", {
-    control_plane_namespace = "kodama-system"
-    observability_namespace = "kodama-observability"
+    control_plane_namespace = var.control_plane_namespace
+    observability_namespace = var.observability_namespace
   })
   grafana = templatefile("${STAGE_DIR}/shared/stack/values/grafana.yaml.tftpl", {
-    loki_url     = "http://kodama-loki.kodama-observability.svc.cluster.local:3100"
-    prom_url     = "http://kodama-prometheus-server.kodama-observability.svc.cluster.local:80"
-    ingress_host = "grafana.kodama.stage.${cloud}.optimi.dev"
+    loki_url     = local.loki_url
+    prom_url     = local.prom_url
+    ingress_host = "grafana.\${var.stage_contract.network.ingress_host}"
   })
 }
 EOF
+  tofu -chdir="${RENDER_DIR}" console <<<"jsonencode(local.kodama_values)" \
+    | python3 -c 'import json,sys; sys.stdout.write(json.loads(json.loads(sys.stdin.read().strip())))' >"${RENDER_DIR}/stack-kodama.yaml"
+  cmp -s "${WORK_DIR}/values-${cloud}.yaml" "${RENDER_DIR}/stack-kodama.yaml" \
+    || die "rendered values from lib.sh differ from shared/stack Kodama values for ${cloud}"
+
   for tpl in nats loki alloy prometheus grafana; do
     tofu -chdir="${RENDER_DIR}" console <<<"jsonencode(local.${tpl})" \
       | python3 -c 'import json,sys; sys.stdout.write(json.loads(json.loads(sys.stdin.read().strip())))' >"${RENDER_DIR}/${tpl}.yaml"
@@ -96,7 +118,7 @@ EOF
   helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
 done
 
-log_info "4. Bootstrap leaf TLS SANs, psql execution and idempotent Secret reuse across consecutive runs"
+log_info "4. Bootstrap leaf TLS SANs, psql execution, Secret reuse & failure injection (Forbidden / incomplete Secret)"
 MOCK_BIN="${WORK_DIR}/mock-bin"
 MOCK_STATE="${WORK_DIR}/mock-state"
 mkdir -p "${MOCK_BIN}" "${MOCK_STATE}"
@@ -134,15 +156,23 @@ while i < len(args):
     i += 1
 args = clean
 
+if args[:3] == ["config", "view", "--minify"]:
+    sys.stdout.write(os.environ.get("MOCK_CLUSTER_SERVER", "https://k8s.aws.stage.optimi.dev"))
+    sys.exit(0)
+
 ns = "default"
 if len(args) >= 2 and args[0] == "-n":
     ns = args[1]
     args = args[2:]
 
 if len(args) >= 4 and args[0] == "get" and args[1] == "secret":
+    if os.environ.get("MOCK_KUBE_FORBIDDEN") == "1":
+        sys.stderr.write("Error from server (Forbidden): secrets is forbidden\n")
+        sys.exit(1)
     name = args[2]
     p = state_dir / f"{ns}__{name}.json"
     if not p.is_file():
+        sys.stderr.write(f'Error from server (NotFound): secrets "{name}" not found\n')
         sys.exit(1)
     sys.stdout.write(p.read_text(encoding="utf-8"))
     sys.exit(0)
@@ -210,16 +240,23 @@ cat >"${WORK_DIR}/boot-secrets.json" <<'EOF'
 }
 EOF
 
+# 4a. Forbidden Secret read must abort with exit code 75 BEFORE calling psql
+set +e
+PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" MOCK_KUBE_FORBIDDEN="1" \
+  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${WORK_DIR}/boot-forbidden" 2>/dev/null
+forb_rc=$?
+set -e
+[[ "${forb_rc}" -eq 75 ]] || die "expected Forbidden Secret read to exit 75, got ${forb_rc}"
+[[ ! -f "${MOCK_STATE}/psql.calls" ]] || die "psql must not be called when Secret inspection fails"
+
 BOOT_DIR1="${WORK_DIR}/boot-run1"
 BOOT_DIR2="${WORK_DIR}/boot-run2"
 PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
   "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${BOOT_DIR1}"
 
-# Verify psql actually executed roles.sql
 [[ -s "${MOCK_STATE}/psql.calls" ]] || die "bootstrap.sh did not invoke psql"
 grep -q "CREATE ROLE kodama_migration" "${MOCK_STATE}/psql.sql" || die "roles.sql was not executed by psql"
 
-# Verify leaf TLS certificate is CA:FALSE, serverAuth, and carries NATS DNS SAN
 openssl verify -CAfile "${BOOT_DIR1}/ca.crt" "${BOOT_DIR1}/nats-tls.crt" >/dev/null
 openssl x509 -in "${BOOT_DIR1}/nats-tls.crt" -noout -text | grep -q "CA:FALSE" || die "nats-tls.crt must be CA:FALSE"
 openssl x509 -in "${BOOT_DIR1}/nats-tls.crt" -noout -text | grep -q "DNS:kodama-nats.kodama-system.svc.cluster.local" || die "nats-tls.crt missing NATS service DNS SAN"
@@ -239,7 +276,20 @@ for preserved in \
   cmp -s "${BOOT_DIR1}/${preserved}" "${BOOT_DIR2}/${preserved}" || die "bootstrap rerun did not preserve ${preserved}"
 done
 
-log_info "5. Negative contract and values provenance checks"
+# 4b. Corrupting an existing Secret (removing cursor-key) must fail closed on rerun
+python3 - "${MOCK_STATE}/kodama-system__kodama-runtime.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+doc = json.load(open(p))
+doc["data"].pop("cursor-key", None)
+json.dump(doc, open(p, "w"))
+PY
+if PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
+  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${WORK_DIR}/boot-corrupt" 2>/dev/null; then
+  die "expected incomplete existing Secret to abort bootstrap"
+fi
+
+log_info "5. Negative contract, values provenance, and kubeconfig cluster-mismatch checks"
 python3 - "${WORK_DIR}/contract-aws.json" "${WORK_DIR}/bad-kms.json" <<'PY'
 import json, sys
 c = json.load(open(sys.argv[1]))
@@ -260,112 +310,124 @@ if (validate_stage_contract "${WORK_DIR}/bad-scw-region.json") 2>/dev/null; then
   die "expected Scaleway region != fr-par to fail validation"
 fi
 
-# Placeholder digest must be rejected by verify_values_provenance
 sed 's/a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90/1111111111111111111111111111111111111111111111111111111111111111/g' \
   "${WORK_DIR}/values-aws.yaml" >"${WORK_DIR}/placeholder-values.yaml"
 if (verify_values_provenance "${WORK_DIR}/placeholder-values.yaml") 2>/dev/null; then
   die "expected placeholder image digest to be rejected by verify_values_provenance"
 fi
 
-log_info "6. Gate failure-path checks (missing prerequisite, skipped test, infra_pause=75, rerun invalidation, tampered receipt, staging DB rejected by T-029)"
+# Verify run_stage_go_suite rejects a KUBECONFIG pointing at a different cluster endpoint
+touch "${WORK_DIR}/dummy.kubeconfig"
+if PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" MOCK_CLUSTER_SERVER="https://wrong-cluster.example.com" \
+  KUBECONFIG="${WORK_DIR}/dummy.kubeconfig" \
+  run_stage_go_suite "${WORK_DIR}/contract-aws.json" "${WORK_DIR}/values-aws.yaml" "${WORK_DIR}/mismatch-results.json" ./internal/domain/... 2>/dev/null; then
+  die "expected run_stage_go_suite to fail when KUBECONFIG cluster server mismatches stage_contract"
+fi
+
+log_info "6. Gate failure-path checks (missing provenance, suite_passed=false, skipped test, infra_pause=75, rerun invalidation, staging DB rejected by T-029)"
 RESULTS_DIR="${WORK_DIR}/results"
 EVIDENCE_ROOT="${WORK_DIR}/evidence"
 mkdir -p "${RESULTS_DIR}" "${EVIDENCE_ROOT}"
 
-cat >"${RESULTS_DIR}/readiness.json" <<'EOF'
+GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD)"
+
+# Helper to write a provenance-bound FORGE_RESULTS file for a contract + values pair
+write_bound_results() {
+  local contract_file="$1"
+  local values_file="$2"
+  local out_file="$3"
+  shift 3
+  local tests=("$@")
+  local c_sha v_sha
+  c_sha="$(sha256_digest "${contract_file}")"
+  v_sha="$(sha256_digest "${values_file}")"
+
+  python3 - "${contract_file}" "${c_sha}" "${v_sha}" "${GIT_SHA}" "${out_file}" "${tests[@]}" <<'PY'
+import json, sys
+c = json.load(open(sys.argv[1]))
+c_sha, v_sha, git_sha, out_file = sys.argv[2:6]
+tests = sys.argv[6:]
+doc = {
+    "passed": tests,
+    "failed": [],
+    "skipped": [],
+    "provenance": {
+        "cloud": c["cloud"],
+        "installation_id": c["installation_id"],
+        "git_commit": git_sha,
+        "contract_sha256": c_sha,
+        "values_sha256": v_sha,
+        "cluster_endpoint": c["cluster"]["endpoint"],
+        "suite_passed": True,
+    },
+}
+json.dump(doc, open(out_file, "w"), indent=2)
+PY
+}
+
+prepare_results_for_contract() {
+  local c_file="$1"
+  local v_file="$2"
+  write_bound_results "${c_file}" "${v_file}" "${RESULTS_DIR}/readiness.json" \
+    kube_chart_install kube_m1_roundtrip kube_cancel_restart kube_secrets_kms \
+    execution_assembly_roundtrip execution_assembly_cancel_restart execution_assembly_result_guard
+  write_bound_results "${c_file}" "${v_file}" "${RESULTS_DIR}/staging.json" \
+    stage_clean_install stage_e2e_roundtrip stage_restart_reconcile \
+    stage_loki_log_search stage_dev_adapter_refused stage_retention_uninstall
+  write_bound_results "${c_file}" "${v_file}" "${RESULTS_DIR}/recovery.json" \
+    restore_full_factory stale_publisher_after_restore missing_retained_object old_token_denied
+  write_bound_results "${c_file}" "${v_file}" "${RESULTS_DIR}/platform.json" \
+    core_tenant_authority core_unavailable_no_fallback core_pinned_credentials \
+    core_tool_audience_and_entitlement core_unknown_outcome core_data_egress \
+    core_agent_delivery_slice core_disable_restore
+  write_bound_results "${c_file}" "${v_file}" "${RESULTS_DIR}/release.json" \
+    production_upgrade tenant_offboarding reference_load profile_install_restore hosted_core_compatibility
+}
+
+prepare_results_for_contract "${WORK_DIR}/contract-aws.json" "${WORK_DIR}/values-aws.yaml"
+
+# 6a. Results without provenance must be rejected even when all required test names are present
+cat >"${WORK_DIR}/no-prov.json" <<'EOF'
 {
   "passed": [
-    "kube_chart_install",
-    "kube_m1_roundtrip",
-    "kube_cancel_restart",
-    "kube_secrets_kms",
-    "execution_assembly_roundtrip",
-    "execution_assembly_cancel_restart",
-    "execution_assembly_result_guard"
+    "kube_chart_install", "kube_m1_roundtrip", "kube_cancel_restart", "kube_secrets_kms",
+    "execution_assembly_roundtrip", "execution_assembly_cancel_restart", "execution_assembly_result_guard"
   ],
   "failed": [],
   "skipped": []
 }
 EOF
-
-cat >"${RESULTS_DIR}/staging.json" <<'EOF'
-{
-  "passed": [
-    "stage_clean_install",
-    "stage_e2e_roundtrip",
-    "stage_restart_reconcile",
-    "stage_loki_log_search",
-    "stage_dev_adapter_refused",
-    "stage_retention_uninstall"
-  ],
-  "failed": [],
-  "skipped": []
-}
-EOF
-
-cat >"${RESULTS_DIR}/recovery.json" <<'EOF'
-{
-  "passed": [
-    "restore_full_factory",
-    "stale_publisher_after_restore",
-    "missing_retained_object",
-    "old_token_denied"
-  ],
-  "failed": [],
-  "skipped": []
-}
-EOF
-
-cat >"${RESULTS_DIR}/platform.json" <<'EOF'
-{
-  "passed": [
-    "core_tenant_authority",
-    "core_unavailable_no_fallback",
-    "core_pinned_credentials",
-    "core_tool_audience_and_entitlement",
-    "core_unknown_outcome",
-    "core_data_egress",
-    "core_agent_delivery_slice",
-    "core_disable_restore"
-  ],
-  "failed": [],
-  "skipped": []
-}
-EOF
-
-cat >"${RESULTS_DIR}/release.json" <<'EOF'
-{
-  "passed": [
-    "production_upgrade",
-    "tenant_offboarding",
-    "reference_load",
-    "profile_install_restore",
-    "hosted_core_compatibility"
-  ],
-  "failed": [],
-  "skipped": []
-}
-EOF
-
-# 6a. T-090 staging must fail before T-104 readiness has passed
-if "${STAGE_DIR}/scripts/gate.sh" \
-  --gate staging --cloud aws --contract "${WORK_DIR}/contract-aws.json" --values "${WORK_DIR}/values-aws.yaml" \
-  --results-dir "${RESULTS_DIR}" --evidence-root "${EVIDENCE_ROOT}" 2>/dev/null; then
-  die "expected staging gate to fail when readiness receipt is missing"
+if "${STAGE_DIR}/scripts/checks/readiness.sh" \
+  --cloud aws --contract "${WORK_DIR}/contract-aws.json" --values "${WORK_DIR}/values-aws.yaml" \
+  --results "${WORK_DIR}/no-prov.json" --evidence-root "${EVIDENCE_ROOT}" 2>/dev/null; then
+  die "expected FORGE_RESULTS without provenance to be rejected"
 fi
 
-# 6b. Pass readiness, then run a failing readiness and confirm the prior receipt is invalidated and blocks staging
+# 6b. Results with suite_passed=false (package/TestMain failure after tests pass) must be rejected
+python3 - "${RESULTS_DIR}/readiness.json" "${WORK_DIR}/suite-failed.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["provenance"]["suite_passed"] = False
+json.dump(d, open(sys.argv[2], "w"))
+PY
+if "${STAGE_DIR}/scripts/checks/readiness.sh" \
+  --cloud aws --contract "${WORK_DIR}/contract-aws.json" --values "${WORK_DIR}/values-aws.yaml" \
+  --results "${WORK_DIR}/suite-failed.json" --evidence-root "${EVIDENCE_ROOT}" 2>/dev/null; then
+  die "expected FORGE_RESULTS with suite_passed=false to be rejected"
+fi
+
+# 6c. Pass readiness, then run a failing readiness and confirm the prior receipt is invalidated and blocks staging
 "${STAGE_DIR}/scripts/gate.sh" \
   --gate readiness --cloud aws --contract "${WORK_DIR}/contract-aws.json" --values "${WORK_DIR}/values-aws.yaml" \
   --results-dir "${RESULTS_DIR}" --evidence-root "${EVIDENCE_ROOT}"
 
-cat >"${WORK_DIR}/skipped-readiness.json" <<'EOF'
-{
-  "passed": ["kube_chart_install", "kube_m1_roundtrip", "kube_cancel_restart"],
-  "failed": [],
-  "skipped": ["kube_secrets_kms"]
-}
-EOF
+python3 - "${RESULTS_DIR}/readiness.json" "${WORK_DIR}/skipped-readiness.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["passed"].remove("kube_secrets_kms")
+d["skipped"] = ["kube_secrets_kms"]
+json.dump(d, open(sys.argv[2], "w"))
+PY
 if "${STAGE_DIR}/scripts/checks/readiness.sh" \
   --cloud aws --contract "${WORK_DIR}/contract-aws.json" --values "${WORK_DIR}/values-aws.yaml" \
   --results "${WORK_DIR}/skipped-readiness.json" --evidence-root "${EVIDENCE_ROOT}" 2>/dev/null; then
@@ -377,7 +439,7 @@ if "${STAGE_DIR}/scripts/gate.sh" \
   die "expected failed readiness rerun to invalidate prior receipt and block staging"
 fi
 
-# 6c. infra_pause must exit 75 (EX_TEMPFAIL)
+# 6d. infra_pause must exit 75 (EX_TEMPFAIL)
 cat >"${WORK_DIR}/paused.json" <<'EOF'
 {
   "infra_pause": "cluster unreachable",
@@ -394,7 +456,7 @@ pause_rc=$?
 set -e
 [[ "${pause_rc}" -eq 75 ]] || die "expected infra_pause to exit 75, got ${pause_rc}"
 
-# 6d. Re-pass readiness + staging on staging contract, and verify T-029 recovery refuses lower staging backup retention
+# 6e. Re-pass readiness + staging on staging contract, and verify T-029 recovery refuses lower staging backup retention
 "${STAGE_DIR}/scripts/gate.sh" \
   --gate readiness --cloud aws --contract "${WORK_DIR}/contract-aws.json" --values "${WORK_DIR}/values-aws.yaml" \
   --results-dir "${RESULTS_DIR}" --evidence-root "${EVIDENCE_ROOT}"
@@ -408,7 +470,7 @@ if "${STAGE_DIR}/scripts/gate.sh" \
   die "expected recovery gate (T-029) to refuse lower staging backup retention (qualifies_o11_pitr=false)"
 fi
 
-# 6e. Verify contract drift / tampered bundle detection on prerequisite receipts
+# 6f. Verify contract drift detection on prerequisite receipts
 python3 - "${WORK_DIR}/contract-aws.json" "${WORK_DIR}/drifted-contract.json" <<'PY'
 import json, sys
 c = json.load(open(sys.argv[1]))
@@ -431,6 +493,8 @@ c["postgres"]["rpo_minutes_estimate"] = 5
 c["postgres"]["qualifies_o11_pitr"] = True
 json.dump(c, open(sys.argv[2], "w"), indent=2)
 PY
+
+prepare_results_for_contract "${WORK_DIR}/contract-aws-prod.json" "${WORK_DIR}/values-aws.yaml"
 
 "${STAGE_DIR}/scripts/gate.sh" \
   --gate critical-path --cloud aws --contract "${WORK_DIR}/contract-aws-prod.json" --values "${WORK_DIR}/values-aws.yaml" \

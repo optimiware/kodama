@@ -68,6 +68,7 @@ if not rec.get("postgres_backup", {}).get("qualifies_o11_pitr", False):
     raise SystemExit("T-056 prerequisite 'recovery' receipt did not qualify O-11 30-day PITR")
 PY
 
+suite_rc=0
 if [[ -z "${RESULTS_FILE}" ]]; then
   if [[ ! -d "${REPO_ROOT}/test/e2e/production" ]]; then
     die_infra "T-056 suite directory test/e2e/production is not yet scheduled/implemented"
@@ -97,7 +98,7 @@ set -e
 
 if [[ "${rc}" -eq "${EX_TEMPFAIL}" ]]; then
   exit "${EX_TEMPFAIL}"
-elif [[ "${rc}" -ne 0 ]]; then
+elif [[ "${suite_rc}" -ne 0 || "${rc}" -ne 0 ]]; then
   "${STAGE_DIR}/scripts/evidence.sh" \
     --gate release --cloud "${CLOUD}" --contract "${CONTRACT_FILE}" --values "${VALUES_FILE}" \
     --results "${RESULTS_FILE}" --status failed --evidence-root "${EVIDENCE_ROOT}" \

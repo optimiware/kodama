@@ -162,7 +162,8 @@ tofu -chdir="${CLOUD_DIR}" output -json stage_bootstrap_secrets >"${SECRETS_FILE
 chmod 0600 "${SECRETS_FILE}"
 
 VALUES_FILE="${VALUES_OUT:-${WORK_DIR}/kodama-values.yaml}"
-render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}"
+STACK_TFVARS="${WORK_DIR}/stack.tfvars.json"
+render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}" "${STACK_TFVARS}"
 verify_values_provenance "${VALUES_FILE}"
 helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
 
@@ -171,12 +172,14 @@ helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/n
 tofu -chdir="${STACK_DIR}" init -input=false
 tofu -chdir="${STACK_DIR}" validate
 tofu -chdir="${STACK_DIR}" apply -input=false -auto-approve \
-  -var="kubeconfig_path=${KUBECONFIG:-${HOME}/.kube/config}" \
-  -var="stage_contract=$(cat "${CONTRACT_FILE}")"
+  -var-file="${STACK_TFVARS}"
+
+APPLIED_VALUES="${WORK_DIR}/applied-kodama-values.yaml"
+tofu -chdir="${STACK_DIR}" output -raw rendered_kodama_values >"${APPLIED_VALUES}"
+cmp -s "${VALUES_FILE}" "${APPLIED_VALUES}" || die "applied stack Kodama values differ from validated values file"
 
 if [[ -n "${VALUES_OUT}" ]]; then
-  tofu -chdir="${STACK_DIR}" output -raw rendered_kodama_values >"${VALUES_OUT}"
-  verify_values_provenance "${VALUES_OUT}"
+  cp "${APPLIED_VALUES}" "${VALUES_OUT}"
 fi
 
 log_info "deployment complete for cloud=${CLOUD}"

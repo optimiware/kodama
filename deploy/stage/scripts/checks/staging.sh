@@ -47,6 +47,7 @@ verify_values_provenance "${VALUES_FILE}"
 # Enforce prerequisite: T-104 readiness receipt + artifact hash integrity + matching topology/values.
 verify_prerequisite_receipt "${EVIDENCE_ROOT}" "readiness" "${CLOUD}" "${CONTRACT_FILE}" "${VALUES_FILE}"
 
+suite_rc=0
 if [[ -z "${RESULTS_FILE}" ]]; then
   if [[ ! -d "${REPO_ROOT}/test/e2e/staging" ]]; then
     die_infra "T-090 suite directory test/e2e/staging is not yet scheduled/implemented"
@@ -77,7 +78,7 @@ set -e
 
 if [[ "${rc}" -eq "${EX_TEMPFAIL}" ]]; then
   exit "${EX_TEMPFAIL}"
-elif [[ "${rc}" -ne 0 ]]; then
+elif [[ "${suite_rc}" -ne 0 || "${rc}" -ne 0 ]]; then
   "${STAGE_DIR}/scripts/evidence.sh" \
     --gate staging --cloud "${CLOUD}" --contract "${CONTRACT_FILE}" --values "${VALUES_FILE}" \
     --results "${RESULTS_FILE}" --status failed --evidence-root "${EVIDENCE_ROOT}" \

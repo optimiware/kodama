@@ -6,14 +6,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 usage() {
   cat <<'EOF'
-Usage: deploy/stage/scripts/bootstrap.sh --contract <stage_contract.json> [--secrets <bootstrap_secrets.json>] [--work-dir <dir>] [--rotate] [--dry-run]
+Usage: deploy/stage/scripts/bootstrap.sh --contract <stage_contract.json> [--secrets <bootstrap_secrets.json>] [--work-dir <dir>] [--dry-run]
 
 Idempotently prepares:
-  1. Distinct PostgreSQL roles (kodama_migration schema owner and kodama_runtime non-superuser NOBYPASSRLS role)
+  1. Existing Kubernetes Secrets in kodama-system and kodama-observability are inspected first.
+     Only confirmed NotFound is treated as absent; Forbidden, timeouts, or incomplete existing Secrets
+     abort before any database or cluster mutation.
+  2. Distinct PostgreSQL roles (kodama_migration schema owner and kodama_runtime non-superuser NOBYPASSRLS role)
      executed against the cloud PostgreSQL database via psql before publishing Secrets.
-  2. Existing Kubernetes Secrets in kodama-system and kodama-observability are inspected and reused on re-run
-     (unless --rotate is set), preserving active database passwords, runtime-signing-key, cursor-key,
-     idempotency-hash-key, NATS token and CA certificates across redeployments.
   3. Leaf TLS certificates signed by the installation CA:
      - nats-tls.crt (CA:FALSE, serverAuth, SAN: kodama-nats.kodama-system.svc.cluster.local)
      - runtime-tls.crt (CA:FALSE, serverAuth, SAN: <ingress_host>)
@@ -23,7 +23,6 @@ EOF
 CONTRACT_FILE=""
 SECRETS_FILE=""
 DRY_RUN=0
-ROTATE=0
 WORK_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -31,7 +30,6 @@ while [[ $# -gt 0 ]]; do
     --contract) CONTRACT_FILE="$2"; shift 2 ;;
     --secrets) SECRETS_FILE="$2"; shift 2 ;;
     --work-dir) WORK_DIR="$2"; shift 2 ;;
-    --rotate) ROTATE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
@@ -61,12 +59,15 @@ kube() {
   fi
 }
 
-# Fetch existing Kubernetes Secrets when running against a cluster (unless --rotate is requested)
-# so redeployments preserve existing credentials and signing keys.
+# Fetch existing Kubernetes Secrets when running against a cluster so redeployments preserve
+# existing credentials and signing keys. Only confirmed NotFound is treated as absence; any
+# transport, authorization, or schema failure aborts before mutating PostgreSQL or Secrets.
 EXISTING_JSON="${WORK_DIR}/existing-secrets.json"
 printf '{}\n' >"${EXISTING_JSON}"
-if [[ "${DRY_RUN}" -eq 0 && "${ROTATE}" -eq 0 ]] && command -v kubectl >/dev/null 2>&1; then
+if [[ "${DRY_RUN}" -eq 0 ]]; then
+  require_cmd psql kubectl
   python3 - "${EXISTING_JSON}" "${KUBECONFIG:-}" <<'PY'
+import base64
 import json
 import subprocess
 import sys
@@ -75,18 +76,52 @@ out_path = sys.argv[1]
 kubeconfig = sys.argv[2]
 kube_args = ["--kubeconfig", kubeconfig] if kubeconfig else []
 
+REQUIRED_KEYS = {
+    "kodama-runtime": [
+        "database-runtime-url", "nats-token", "git-read-token", "git-write-token",
+        "git-credentials.json", "cursor-key", "idempotency-hash-key",
+        "runtime-signing-key", "runtime-ca.crt", "ca.crt", "s3-access-key", "s3-secret-key",
+    ],
+    "kodama-migration": ["database-migration-url", "ca.crt"],
+    "kodama-nats-tls": ["ca.crt", "ca.key", "tls.crt", "tls.key", "runtime-tls.crt", "runtime-tls.key"],
+    "kodama-grafana-admin": ["admin-user", "admin-password"],
+}
+
 def get_secret(ns: str, name: str) -> dict:
     res = subprocess.run(
         ["kubectl", *kube_args, "-n", ns, "get", "secret", name, "-o", "json"],
         capture_output=True, text=True,
     )
     if res.returncode != 0:
-        return {}
+        err = (res.stderr or res.stdout or "").strip()
+        low = err.lower()
+        if "notfound" in low or "not found" in low:
+            return {}
+        sys.stderr.write(f"[stage][ERROR] failed reading existing Secret {ns}/{name}: {err}\n")
+        sys.exit(75)
     try:
         doc = json.loads(res.stdout)
-        return doc.get("data") or {}
-    except Exception:
-        return {}
+    except Exception as exc:
+        sys.stderr.write(f"[stage][ERROR] malformed JSON reading Secret {ns}/{name}: {exc}\n")
+        sys.exit(1)
+    data = doc.get("data")
+    if not isinstance(data, dict):
+        sys.stderr.write(f"[stage][ERROR] existing Secret {ns}/{name} has no data map\n")
+        sys.exit(1)
+    for req in REQUIRED_KEYS.get(name, []):
+        val = data.get(req)
+        if not isinstance(val, str) or not val:
+            sys.stderr.write(f"[stage][ERROR] existing Secret {ns}/{name} is missing required key {req!r}\n")
+            sys.exit(1)
+        try:
+            decoded = base64.b64decode(val, validate=True)
+        except Exception as exc:
+            sys.stderr.write(f"[stage][ERROR] existing Secret {ns}/{name} key {req!r} has invalid base64: {exc}\n")
+            sys.exit(1)
+        if len(decoded) == 0:
+            sys.stderr.write(f"[stage][ERROR] existing Secret {ns}/{name} key {req!r} is empty\n")
+            sys.exit(1)
+    return data
 
 data = {
     "kodama-runtime": get_secret("kodama-system", "kodama-runtime"),
@@ -94,12 +129,20 @@ data = {
     "kodama-nats-tls": get_secret("kodama-system", "kodama-nats-tls"),
     "kodama-grafana-admin": get_secret("kodama-observability", "kodama-grafana-admin"),
 }
+present = [k for k, v in data.items() if v]
+if present and len(present) != len(data):
+    sys.stderr.write(
+        f"[stage][ERROR] partial existing Secret set detected ({present}); "
+        "refusing to partially regenerate installation credentials\n"
+    )
+    sys.exit(1)
+
 with open(out_path, "w", encoding="utf-8") as fh:
     json.dump(data, fh)
 PY
 fi
 
-python3 - "${CONTRACT_FILE}" "${SECRETS_FILE}" "${WORK_DIR}" "${EXISTING_JSON}" "${ROTATE}" <<'PY'
+python3 - "${CONTRACT_FILE}" "${SECRETS_FILE}" "${WORK_DIR}" "${EXISTING_JSON}" <<'PY'
 import base64
 import json
 import os
@@ -109,8 +152,8 @@ import subprocess
 import sys
 from urllib.parse import urlparse
 
-contract_path, secrets_path, work_dir, existing_path, rotate_flag = (
-    sys.argv[1], sys.argv[2], Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5] == "1"
+contract_path, secrets_path, work_dir, existing_path = (
+    sys.argv[1], sys.argv[2], Path(sys.argv[3]), Path(sys.argv[4])
 )
 with open(contract_path, "r", encoding="utf-8") as fh:
     c = json.load(fh)
@@ -127,11 +170,10 @@ ex_tls = existing.get("kodama-nats-tls") or {}
 ex_graf = existing.get("kodama-grafana-admin") or {}
 
 def existing_bytes(secret_map: dict, key: str, local_path: Path):
-    if not rotate_flag:
-        if key in secret_map:
-            return base64.b64decode(secret_map[key])
-        if local_path.is_file():
-            return local_path.read_bytes()
+    if key in secret_map:
+        return base64.b64decode(secret_map[key])
+    if local_path.is_file():
+        return local_path.read_bytes()
     return None
 
 def password_from_url(raw_bytes) -> str:
@@ -176,13 +218,13 @@ git_write = (
     or secrets.token_hex(24)
 )
 s3_ak = (
-    boot.get("artifacts_s3_access_key")
-    or (existing_bytes(ex_rt, "s3-access-key", rt_dir / "s3-access-key") or b"").decode("utf-8")
+    (existing_bytes(ex_rt, "s3-access-key", rt_dir / "s3-access-key") or b"").decode("utf-8")
+    or boot.get("artifacts_s3_access_key")
     or "STAGE_ARTIFACTS_ACCESS_KEY"
 )
 s3_sk = (
-    boot.get("artifacts_s3_secret_key")
-    or (existing_bytes(ex_rt, "s3-secret-key", rt_dir / "s3-secret-key") or b"").decode("utf-8")
+    (existing_bytes(ex_rt, "s3-secret-key", rt_dir / "s3-secret-key") or b"").decode("utf-8")
+    or boot.get("artifacts_s3_secret_key")
     or secrets.token_hex(24)
 )
 logs_ak = boot.get("logs_s3_access_key") or "STAGE_LOGS_ACCESS_KEY"
@@ -437,8 +479,6 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   log_info "dry-run bootstrap materials prepared in ${WORK_DIR}"
   exit 0
 fi
-
-require_cmd psql kubectl
 
 # Execute roles.sql against the cloud PostgreSQL database before publishing Kubernetes Secrets.
 ADMIN_DSN="$(python3 - "${CONTRACT_FILE}" "${SECRETS_FILE}" <<'PY'

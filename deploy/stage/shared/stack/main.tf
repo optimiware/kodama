@@ -13,10 +13,10 @@ locals {
     nats_url       = local.nats_url
     kodama_image   = var.kodama_image
     workload_image = var.example_workload_image
-    git_url        = var.git_url
-    registry_url   = var.registry_url
-    oidc_issuer    = var.oidc_issuer
-    oidc_audience  = var.oidc_audience
+    git_url        = coalesce(var.git_url, "https://git.${var.stage_contract.network.ingress_host}/optimi/kodama-source.git")
+    registry_url   = coalesce(var.registry_url, "https://registry.${var.stage_contract.network.ingress_host}")
+    oidc_issuer    = coalesce(var.oidc_issuer, "https://auth.${var.stage_contract.network.ingress_host}")
+    oidc_audience  = coalesce(var.oidc_audience, "https://${var.stage_contract.network.ingress_host}/api")
     custom_ca      = var.custom_ca
   })
 

@@ -113,52 +113,80 @@ for t in tenants:
 PY
 }
 
+# write_stack_tfvars writes a single canonical tfvars.json file consumed by both offline rendering
+# and `tofu -chdir=deploy/stage/shared/stack apply`, guaranteeing that the values validated,
+# applied, and exported into evidence are identical.
+write_stack_tfvars() {
+  local contract_file="$1"
+  local tfvars_out="$2"
+  local kubeconfig_path="${3:-${KUBECONFIG:-${HOME}/.kube/config}}"
+  validate_stage_contract "${contract_file}"
+
+  python3 - "${contract_file}" "${tfvars_out}" "${kubeconfig_path}" <<'PY'
+import json
+import os
+import sys
+
+contract_path, tfvars_out, kubeconfig_path = sys.argv[1:4]
+c = json.load(open(contract_path, "r", encoding="utf-8"))
+host = c["network"]["ingress_host"]
+
+tfvars = {
+    "kubeconfig_path": kubeconfig_path,
+    "stage_contract": c,
+    "control_plane_namespace": "kodama-system",
+    "observability_namespace": "kodama-observability",
+    "kodama_image": {
+        "repository": os.environ.get("KODAMA_IMAGE_REPOSITORY", "ghcr.io/optimiware/kodama"),
+        "tag": os.environ.get("KODAMA_IMAGE_TAG", "0.0.1"),
+        "digest": os.environ.get("KODAMA_IMAGE_DIGEST", "sha256:" + "1" * 64),
+    },
+    "example_workload_image": {
+        "repository": os.environ.get("KODAMA_WORKLOAD_IMAGE_REPOSITORY", "ghcr.io/optimiware/kodama-workload"),
+        "tag": os.environ.get("KODAMA_WORKLOAD_IMAGE_TAG", "0.0.1"),
+        "digest": os.environ.get("KODAMA_WORKLOAD_IMAGE_DIGEST", "sha256:" + "2" * 64),
+    },
+    "git_url": os.environ.get("KODAMA_GIT_URL") or f"https://git.{host}/optimi/kodama-source.git",
+    "registry_url": os.environ.get("KODAMA_REGISTRY_URL") or f"https://registry.{host}",
+    "oidc_issuer": os.environ.get("KODAMA_OIDC_ISSUER") or f"https://auth.{host}",
+    "oidc_audience": os.environ.get("KODAMA_OIDC_AUDIENCE") or f"https://{host}/api",
+    "custom_ca": True,
+}
+with open(tfvars_out, "w", encoding="utf-8") as fh:
+    json.dump(tfvars, fh, indent=2)
+    fh.write("\n")
+PY
+}
+
 # render_kodama_values_from_contract renders deploy/stage/shared/stack/values/kodama.yaml.tftpl
-# directly with `tofu console`, honoring explicit image/endpoint overrides.
+# directly with `tofu console` from the canonical stack_tfvars JSON.
 render_kodama_values_from_contract() {
   local contract_file="$1"
   local out_file="$2"
+  local tfvars_out="${3:-}"
   validate_stage_contract "${contract_file}"
   require_cmd tofu python3
 
-  local abs_contract
-  abs_contract="$(cd "$(dirname "${contract_file}")" && pwd)/$(basename "${contract_file}")"
   local render_dir
   render_dir="$(mktemp -d "${TMPDIR:-/tmp}/kodama-tofu-render.XXXXXX")"
-
-  local img_repo="${KODAMA_IMAGE_REPOSITORY:-ghcr.io/optimiware/kodama}"
-  local img_tag="${KODAMA_IMAGE_TAG:-0.0.1}"
-  local img_digest="${KODAMA_IMAGE_DIGEST:-sha256:1111111111111111111111111111111111111111111111111111111111111111}"
-  local wl_repo="${KODAMA_WORKLOAD_IMAGE_REPOSITORY:-ghcr.io/optimiware/kodama-workload}"
-  local wl_tag="${KODAMA_WORKLOAD_IMAGE_TAG:-0.0.1}"
-  local wl_digest="${KODAMA_WORKLOAD_IMAGE_DIGEST:-sha256:2222222222222222222222222222222222222222222222222222222222222222}"
-
-  local git_url_override="${KODAMA_GIT_URL:-}"
-  local reg_url_override="${KODAMA_REGISTRY_URL:-}"
-  local oidc_iss_override="${KODAMA_OIDC_ISSUER:-}"
-  local oidc_aud_override="${KODAMA_OIDC_AUDIENCE:-}"
+  local tfvars_file="${tfvars_out:-${render_dir}/stack.tfvars.json}"
+  write_stack_tfvars "${contract_file}" "${tfvars_file}"
+  local abs_tfvars
+  abs_tfvars="$(cd "$(dirname "${tfvars_file}")" && pwd)/$(basename "${tfvars_file}")"
 
   cat >"${render_dir}/main.tf" <<EOF
 locals {
-  contract = jsondecode(file("${abs_contract}"))
+  v = jsondecode(file("${abs_tfvars}"))
   rendered = templatefile("${STAGE_DIR}/shared/stack/values/kodama.yaml.tftpl", {
-    contract = local.contract
-    nats_url = "tls://kodama-nats.kodama-system.svc.cluster.local:4222"
-    kodama_image = {
-      repository = "${img_repo}"
-      tag        = "${img_tag}"
-      digest     = "${img_digest}"
-    }
-    workload_image = {
-      repository = "${wl_repo}"
-      tag        = "${wl_tag}"
-      digest     = "${wl_digest}"
-    }
-    git_url       = coalesce("${git_url_override}", "https://git.\${local.contract.network.ingress_host}/optimi/kodama-source.git")
-    registry_url  = coalesce("${reg_url_override}", "https://registry.\${local.contract.network.ingress_host}")
-    oidc_issuer   = coalesce("${oidc_iss_override}", "https://auth.\${local.contract.network.ingress_host}")
-    oidc_audience = coalesce("${oidc_aud_override}", "https://\${local.contract.network.ingress_host}/api")
-    custom_ca     = true
+    contract       = local.v.stage_contract
+    nats_url       = "tls://kodama-nats.\${local.v.control_plane_namespace}.svc.cluster.local:4222"
+    kodama_image   = local.v.kodama_image
+    workload_image = local.v.example_workload_image
+    git_url        = local.v.git_url
+    registry_url   = local.v.registry_url
+    oidc_issuer    = local.v.oidc_issuer
+    oidc_audience  = local.v.oidc_audience
+    custom_ca      = local.v.custom_ca
   })
 }
 EOF
@@ -176,7 +204,7 @@ verify_values_provenance() {
     return 0
   fi
   python3 - "${values_file}" <<'PY'
-import pathlib, re, sys
+import pathlib, sys
 
 text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 bad_digests = (
@@ -198,8 +226,10 @@ if ".example.invalid" in text:
 PY
 }
 
-# run_stage_go_suite runs Go integration/e2e packages directly against the stage contract and values,
-# without calling scripts/dev/go_results.py (which clears service env vars and loads a local DEV_SCOPE).
+# run_stage_go_suite runs Go integration/e2e packages directly against the verified stage cluster,
+# contract and values. It strips inherited local DEV_SCOPE variables, verifies that KUBECONFIG's
+# active cluster endpoint matches stage_contract.cluster.endpoint, sets both KODAMA_KUBECONFIG and
+# KODAMA_TEST_KUBECONFIG, and records package/suite completion plus full provenance.
 run_stage_go_suite() {
   local contract_file="$1"
   local values_file="$2"
@@ -207,12 +237,13 @@ run_stage_go_suite() {
   shift 3
   local pkgs=("$@")
 
-  require_cmd go python3
-  local contract_sha values_sha
+  require_cmd go kubectl python3
+  local contract_sha values_sha git_sha
   contract_sha="$(sha256_digest "${contract_file}")"
   values_sha="$(sha256_digest "${values_file}")"
+  git_sha="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")"
 
-  python3 - "${REPO_ROOT}" "${contract_file}" "${values_file}" "${contract_sha}" "${values_sha}" "${results_out}" "${pkgs[@]}" <<'PY'
+  python3 - "${REPO_ROOT}" "${contract_file}" "${values_file}" "${contract_sha}" "${values_sha}" "${git_sha}" "${results_out}" "${pkgs[@]}" <<'PY'
 import json
 import os
 from pathlib import Path
@@ -221,14 +252,71 @@ import subprocess
 import sys
 
 repo_root = Path(sys.argv[1])
-contract_path, values_path, contract_sha, values_sha, results_out = sys.argv[2:7]
-pkgs = sys.argv[7:]
+contract_path, values_path, contract_sha, values_sha, git_sha, results_out = sys.argv[2:8]
+pkgs = sys.argv[8:]
 
 c = json.load(open(contract_path, "r", encoding="utf-8"))
+prov = {
+    "cloud": c["cloud"],
+    "installation_id": c["installation_id"],
+    "git_commit": git_sha,
+    "contract_sha256": contract_sha,
+    "values_sha256": values_sha,
+    "cluster_endpoint": c["cluster"]["endpoint"],
+    "suite_passed": False,
+}
+
 env = dict(os.environ)
+kubeconfig = env.get("KUBECONFIG") or env.get("KODAMA_KUBECONFIG") or ""
+if not kubeconfig or not Path(kubeconfig).is_file():
+    out = {
+        "infra_pause": "KUBECONFIG is unset or unreadable for stage suite execution",
+        "passed": [], "failed": [], "skipped": [],
+        "provenance": prov,
+    }
+    Path(results_out).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    sys.exit(75)
+
+# Verify that the kubeconfig's selected cluster server matches stage_contract.cluster.endpoint
+srv_res = subprocess.run(
+    ["kubectl", "--kubeconfig", kubeconfig, "config", "view", "--minify", "-o", "jsonpath={.clusters[0].cluster.server}"],
+    capture_output=True, text=True,
+)
+actual_srv = srv_res.stdout.strip().rstrip("/")
+expected_srv = str(c["cluster"]["endpoint"]).strip().rstrip("/")
+if srv_res.returncode != 0 or not actual_srv:
+    out = {
+        "infra_pause": f"unable to resolve cluster endpoint from KUBECONFIG {kubeconfig}",
+        "passed": [], "failed": [], "skipped": [],
+        "provenance": prov,
+    }
+    Path(results_out).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    sys.exit(75)
+
+if actual_srv != expected_srv:
+    out = {
+        "passed": [], "failed": ["cluster_target_mismatch"], "skipped": [],
+        "provenance": prov,
+    }
+    Path(results_out).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    sys.stderr.write(f"[gate-fail] KUBECONFIG cluster server {actual_srv!r} != stage_contract {expected_srv!r}\n")
+    sys.exit(1)
+
+# Clear inherited local-scope environment variables so tests never fall back to a local Podman/kind fixture.
+for stale_var in (
+    "DEV_SCOPE", "KODAMA_TEST_SCOPE", "KODAMA_RESOURCE_PREFIX",
+    "KODAMA_TEST_POSTGRES_ADMIN_URL", "KODAMA_NATS_URL", "KODAMA_REGISTRY_URL",
+    "KODAMA_GIT_URL", "KODAMA_SECRETS_DIR",
+):
+    env.pop(stale_var, None)
+
+abs_kc = str(Path(kubeconfig).resolve())
 env.update({
     "KODAMA_AUTO_PROVISION": "0",
     "KODAMA_REQUIRE_KUBERNETES": "1",
+    "KUBECONFIG": abs_kc,
+    "KODAMA_KUBECONFIG": abs_kc,
+    "KODAMA_TEST_KUBECONFIG": abs_kc,
     "KODAMA_STAGE_CONTRACT": str(Path(contract_path).resolve()),
     "KODAMA_STAGE_VALUES": str(Path(values_path).resolve()),
     "KODAMA_CLOUD": c["cloud"],
@@ -239,23 +327,6 @@ env.update({
     "KODAMA_S3_PREFIX": c["object_storage"]["artifacts_prefix"],
 })
 
-kubeconfig = env.get("KUBECONFIG") or env.get("KODAMA_KUBECONFIG") or ""
-if not kubeconfig or not Path(kubeconfig).is_file():
-    out = {
-        "infra_pause": "KUBECONFIG is unset or unreadable for stage suite execution",
-        "passed": [], "failed": [], "skipped": [],
-        "provenance": {
-            "cloud": c["cloud"],
-            "installation_id": c["installation_id"],
-            "contract_sha256": contract_sha,
-            "values_sha256": values_sha,
-        },
-    }
-    Path(results_out).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
-    sys.exit(75)
-
-env["KODAMA_KUBECONFIG"] = kubeconfig
-
 def norm(name: str) -> str:
     s = re.sub(r"[^a-z0-9]", "", name.lower())
     return s[4:] if s.startswith("test") else s
@@ -265,6 +336,7 @@ proc = subprocess.Popen(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, std
 assert proc.stdout is not None
 
 passed, failed, skipped = set(), set(), set()
+pkg_actions = {}
 for raw in proc.stdout:
     line = raw.strip()
     if not line.startswith("{"):
@@ -277,6 +349,7 @@ for raw in proc.stdout:
         continue
     if ev.get("Action") == "output" and isinstance(ev.get("Output"), str):
         sys.stdout.write(ev["Output"])
+    pkg = ev.get("Package")
     test = ev.get("Test")
     action = ev.get("Action")
     if isinstance(test, str) and test:
@@ -290,28 +363,28 @@ for raw in proc.stdout:
             elif action == "skip":
                 skipped.add(part)
                 skipped.add(norm(part))
+    elif isinstance(pkg, str) and action in ("pass", "fail", "skip"):
+        pkg_actions[pkg] = action
 
 rc = proc.wait()
+pkg_ok = bool(pkg_actions) and all(a == "pass" for a in pkg_actions.values())
+prov["suite_passed"] = (rc == 0 and pkg_ok and not failed)
 passed -= failed | skipped
 out = {
     "passed": sorted(passed),
     "failed": sorted(failed),
     "skipped": sorted(skipped),
-    "provenance": {
-        "cloud": c["cloud"],
-        "installation_id": c["installation_id"],
-        "contract_sha256": contract_sha,
-        "values_sha256": values_sha,
-    },
+    "provenance": prov,
 }
 Path(results_out).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
-sys.exit(0 if rc == 0 else 1)
+sys.exit(0 if prov["suite_passed"] else 1)
 PY
 }
 
 # verify_forge_results checks a FORGE_RESULTS JSON file against required acceptance test names
-# and verifies target provenance when present.
-# Exit 75 (EX_TEMPFAIL) on infra_pause, exit 1 if any required test is missing, failed, or skipped.
+# and requires complete, matching target provenance (cloud, installation_id, git_commit,
+# contract_sha256, values_sha256, cluster_endpoint, suite_passed == true).
+# Exit 75 (EX_TEMPFAIL) on infra_pause, exit 1 on any missing/mismatched provenance or failed/skipped test.
 verify_forge_results() {
   local results_file="$1"
   local contract_file="$2"
@@ -321,17 +394,18 @@ verify_forge_results() {
 
   [[ -f "${results_file}" ]] || die "FORGE_RESULTS file missing: ${results_file}"
 
-  local contract_sha values_sha
+  local contract_sha values_sha git_sha
   contract_sha="$(sha256_digest "${contract_file}")"
   values_sha="$(sha256_digest "${values_file}")"
+  git_sha="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")"
 
-  python3 - "${results_file}" "${contract_file}" "${contract_sha}" "${values_sha}" "${required[@]}" <<'PY'
+  python3 - "${results_file}" "${contract_file}" "${contract_sha}" "${values_sha}" "${git_sha}" "${required[@]}" <<'PY'
 import json
 import re
 import sys
 
-results_path, contract_path, contract_sha, values_sha = sys.argv[1:5]
-required = sys.argv[5:]
+results_path, contract_path, contract_sha, values_sha, git_sha = sys.argv[1:6]
+required = sys.argv[6:]
 
 def norm(name: str) -> str:
     s = re.sub(r"[^a-z0-9]", "", name.lower())
@@ -348,19 +422,27 @@ if isinstance(infra_pause, str) and infra_pause.strip():
     sys.exit(75)
 
 prov = data.get("provenance")
-if isinstance(prov, dict):
-    if prov.get("cloud") and prov["cloud"] != contract["cloud"]:
-        sys.stderr.write(f"[gate-fail] results provenance cloud {prov['cloud']!r} != {contract['cloud']!r}\n")
+if not isinstance(prov, dict):
+    sys.stderr.write("[gate-fail] FORGE_RESULTS is missing required 'provenance' object\n")
+    sys.exit(1)
+
+expected_prov = {
+    "cloud": contract["cloud"],
+    "installation_id": contract["installation_id"],
+    "git_commit": git_sha,
+    "contract_sha256": contract_sha,
+    "values_sha256": values_sha,
+    "cluster_endpoint": contract["cluster"]["endpoint"],
+}
+for k, want in expected_prov.items():
+    got = prov.get(k)
+    if not got or got != want:
+        sys.stderr.write(f"[gate-fail] provenance.{k} = {got!r}, want {want!r}\n")
         sys.exit(1)
-    if prov.get("installation_id") and prov["installation_id"] != contract["installation_id"]:
-        sys.stderr.write(f"[gate-fail] results provenance installation_id {prov['installation_id']!r} != {contract['installation_id']!r}\n")
-        sys.exit(1)
-    if prov.get("contract_sha256") and prov["contract_sha256"] != contract_sha:
-        sys.stderr.write("[gate-fail] results provenance contract_sha256 does not match stage_contract\n")
-        sys.exit(1)
-    if prov.get("values_sha256") and prov["values_sha256"] != values_sha:
-        sys.stderr.write("[gate-fail] results provenance values_sha256 does not match kodama-values.yaml\n")
-        sys.exit(1)
+
+if prov.get("suite_passed") is not True:
+    sys.stderr.write("[gate-fail] provenance.suite_passed is not true (package or runner failure)\n")
+    sys.exit(1)
 
 passed = {norm(x) for x in data.get("passed", [])} | set(data.get("passed", []))
 failed = {norm(x) for x in data.get("failed", [])} | set(data.get("failed", []))
@@ -385,7 +467,7 @@ PY
 
 # verify_prerequisite_receipt validates a prerequisite gate's latest receipt, re-hashes its
 # stored bundle artifacts to detect tampering, and verifies that its topology and deployed values
-# digest match the current deployment. Allows environment_tier/backup_retention promotion from staging -> production.
+# digest match the current deployment.
 verify_prerequisite_receipt() {
   local evidence_root="$1"
   local prereq_gate="$2"
@@ -449,7 +531,7 @@ for pg_key in ("host", "port", "database", "migration_role", "runtime_role", "ss
 PY
 }
 
-# invalidate_gate_receipt removes or marks any existing latest-<gate>-<cloud>.json before a gate run starts.
+# invalidate_gate_receipt removes any existing latest-<gate>-<cloud>.json before a gate run starts.
 invalidate_gate_receipt() {
   local evidence_root="$1"
   local gate="$2"

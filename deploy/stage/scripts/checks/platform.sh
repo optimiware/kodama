@@ -45,6 +45,7 @@ if [[ -z "${VALUES_FILE}" ]]; then
 fi
 verify_values_provenance "${VALUES_FILE}"
 
+suite_rc=0
 if [[ -z "${RESULTS_FILE}" ]]; then
   if [[ ! -d "${REPO_ROOT}/test/e2e/platform-integration" ]]; then
     die_infra "T-061 suite directory test/e2e/platform-integration is not yet scheduled/implemented"
@@ -77,7 +78,7 @@ set -e
 
 if [[ "${rc}" -eq "${EX_TEMPFAIL}" ]]; then
   exit "${EX_TEMPFAIL}"
-elif [[ "${rc}" -ne 0 ]]; then
+elif [[ "${suite_rc}" -ne 0 || "${rc}" -ne 0 ]]; then
   "${STAGE_DIR}/scripts/evidence.sh" \
     --gate platform --cloud "${CLOUD}" --contract "${CONTRACT_FILE}" --values "${VALUES_FILE}" \
     --results "${RESULTS_FILE}" --status failed --evidence-root "${EVIDENCE_ROOT}" \

@@ -61,6 +61,7 @@ if int(pg.get("backup_retention_days", 0)) < 30 or int(pg.get("rpo_minutes_estim
     raise SystemExit("T-029 recovery gate requires backup_retention_days >= 30 and rpo_minutes_estimate <= 15")
 PY
 
+suite_rc=0
 if [[ -z "${RESULTS_FILE}" ]]; then
   if [[ ! -d "${REPO_ROOT}/test/e2e/recovery" ]]; then
     die_infra "T-029 suite directory test/e2e/recovery is not yet scheduled/implemented"
@@ -89,7 +90,7 @@ set -e
 
 if [[ "${rc}" -eq "${EX_TEMPFAIL}" ]]; then
   exit "${EX_TEMPFAIL}"
-elif [[ "${rc}" -ne 0 ]]; then
+elif [[ "${suite_rc}" -ne 0 || "${rc}" -ne 0 ]]; then
   "${STAGE_DIR}/scripts/evidence.sh" \
     --gate recovery --cloud "${CLOUD}" --contract "${CONTRACT_FILE}" --values "${VALUES_FILE}" \
     --results "${RESULTS_FILE}" --status failed --evidence-root "${EVIDENCE_ROOT}" \
