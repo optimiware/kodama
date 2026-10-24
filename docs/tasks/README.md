@@ -4,7 +4,7 @@ This backlog contains **100 tasks**, including merged history and explicitly def
 
 <!-- harness:summary:start -->
 
-**Ready now:** none.
+**Ready now:** [T-104](T-104-kubernetes-full-readiness.md).
 
 **Done:** [T-000](T-000-kiss-baseline.md), [T-001](T-001-scaffold.md), [T-002](T-002-database.md), [T-003](T-003-shared-contracts.md), [T-004](T-004-http-foundation.md), [T-005](T-005-event-bus.md), [T-010](T-010-identity.md), [T-011](T-011-work-items.md), [T-012](T-012-secrets-variables.md), [T-013](T-013-git-workspaces.md), [T-014](T-014-pipeline-definitions.md), [T-015](T-015-artifacts.md), [T-016](T-016-step-entrypoint.md), [T-017](T-017-cli-foundation.md), [T-018](T-018-helm.md), [T-019](T-019-attempt-identity.md), [T-020](T-020-run-orchestration.md), [T-021](T-021-kubernetes-executor.md), [T-022](T-022-result-finalization.md), [T-023](T-023-logs.md), [T-024](T-024-event-streams.md), [T-025](T-025-core-cli.md), [T-026](T-026-m1-acceptance.md), [T-027](T-027-m1-integration.md), [T-028](T-028-production-kms.md), [T-030](T-030-agent-profiles.md), [T-031](T-031-opencode-harness.md), [T-032](T-032-ai-gateway.md), [T-033](T-033-mcp-proxy.md), [T-034](T-034-human-gates.md), [T-035](T-035-deployments.md), [T-036](T-036-git-webhooks.md), [T-037](T-037-delivery-cli.md), [T-038](T-038-m2-acceptance.md), [T-039](T-039-m2-integration.md), [T-040](T-040-exploratory-qa.md), [T-041](T-041-chatops.md), [T-042](T-042-flow-metrics.md), [T-043](T-043-go-blueprint.md), [T-044](T-044-m3-acceptance.md), [T-045](T-045-work-dependencies.md), [T-046](T-046-m3-integration.md), [T-062](T-062-execution-transaction-composition.md), [T-063](T-063-entrypoint-log-upload.md), [T-064](T-064-log-qualification.md), [T-065](T-065-deployment-tools.md), [T-066](T-066-deployment-cleanup.md), [T-067](T-067-deployment-qualification.md), [T-068](T-068-profile-gate-cli.md), [T-070](T-070-core-assembly.md), [T-071](T-071-execution-assembly.md), [T-072](T-072-agent-delivery-assembly.md), [T-073](T-073-gate-transaction-qualification.md), [T-074](T-074-wrapper-protocol-checkpoint.md), [T-075](T-075-business-loop-assembly.md), [T-076](T-076-environment-pinning.md), [T-077](T-077-environment-pinning-qualification.md), [T-078](T-078-entrypoint-log-mirror.md), [T-079](T-079-job-checkout-credential.md), [T-080](T-080-execution-unit-core.md), [T-081](T-081-result-log-unit-core.md), [T-082](T-082-entrypoint-unit-core.md), [T-083](T-083-agent-gateway-unit-core.md), [T-084](T-084-gate-tool-unit-core.md), [T-086](T-086-runtime-ports-adapters.md), [T-087](T-087-memory-kernel.md), [T-088](T-088-foundation-memory-adapters.md), [T-089](T-089-kubernetes-conformance.md), [T-091](T-091-test-stack.md), [T-092](T-092-cleanup-deployment-input.md), [T-093](T-093-delivery-effect-reconciler.md), [T-094](T-094-execution-claim-workspace-shape.md), [T-095](T-095-kube-runtime-contract-conformance.md), [T-096](T-096-runtime-action-ceiling.md), [T-097](T-097-delivery-production-joins.md), [T-098](T-098-podman-checkout.md), [T-099](T-099-entrypoint-artifact-naming.md), [T-100](T-100-git-trigger-production-adapters.md), [T-101](T-101-m2-production-assembly.md), [T-102](T-102-runtime-launch-evidence.md), [T-103](T-103-m1-acceptance-cleanup.md), [T-105](T-105-secrets-startup.md).
 
@@ -178,7 +178,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-087 In-memory transaction kernel](T-087-memory-kernel.md) | T-003 | done |
 | [T-088 Foundation memory adapters and contracts](T-088-foundation-memory-adapters.md) | T-087, T-005, T-011, T-012, T-013, T-015, T-019 | done |
 | [T-089 Kubernetes runtime and chart conformance](T-089-kubernetes-conformance.md) | T-026, T-018, T-021, T-064, T-086, T-095, T-102 | done |
-| [T-090 Trusted-engineer staging deployment](T-090-staging-deployment.md) | T-089, T-044, T-028, T-104 | deferred |
+| [T-090 Trusted-engineer staging deployment](T-090-staging-deployment.md) | T-089, T-044, T-028, T-104 | planned |
 | [T-091 Cluster-free test stack](T-091-test-stack.md) | T-001, T-002, T-086 | done |
 | [T-092 Cleanup-run deployment input handoff](T-092-cleanup-deployment-input.md) | T-065, T-066, T-077 | done |
 | [T-093 Delivery effect reconciliation adapter](T-093-delivery-effect-reconciler.md) | T-035, T-065, T-077, T-080 | done |
@@ -192,7 +192,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-101 M2 production assembly joins](T-101-m2-production-assembly.md) | T-075, T-096, T-097, T-098, T-099, T-100 | done |
 | [T-102 Runtime launch-evidence capability](T-102-runtime-launch-evidence.md) | T-086, T-095 | done |
 | [T-103 Remaining M1 acceptance cleanup](T-103-m1-acceptance-cleanup.md) | T-026, T-099, T-101 | done |
-| [T-104 Full Kubernetes installation readiness](T-104-kubernetes-full-readiness.md) | T-089, T-105, T-103 | deferred |
+| [T-104 Full Kubernetes installation readiness](T-104-kubernetes-full-readiness.md) | T-089, T-105, T-103 | planned |
 | [T-105 Secrets startup wiring](T-105-secrets-startup.md) | T-028, T-044, T-103 | done |
 
 ## Verification and scope

@@ -1,13 +1,13 @@
 ---
 id: T-104
 milestone: production
-status: deferred
+status: planned
 depends_on: [T-089, T-105, T-103]
 decision_blockers: []
 owns: [test/e2e/kube-full/, test/integration/assembly-execution/, docs/acceptance/kube-full.md]
-check: DEV_STACK=cluster make check-go-integration PKGS="./test/e2e/kube-full/... ./test/integration/assembly-execution/..."
+check: deploy/stage/scripts/gate.sh --gate readiness --cloud scw --contract "$KODAMA_STAGE_CONTRACT" --values "$KODAMA_STAGE_VALUES"
 resources: [go, integration]
-acceptance: [kube_chart_install, kube_m1_roundtrip, kube_cancel_restart, kube_secrets_kms]
+acceptance: [kube_chart_install, kube_m1_roundtrip, kube_cancel_restart, kube_secrets_kms, execution_assembly_roundtrip, execution_assembly_cancel_restart, execution_assembly_result_guard]
 ---
 # T-104 — Full Kubernetes installation readiness
 
@@ -26,6 +26,9 @@ Full chart readiness check, backend-parameterized assembled roundtrips and a rep
 `kube_secrets_kms` runs the [real-provider procedure](../../test/integration/kms-production/README.md#real-provider-procedure-per-cloud) with the deployed workload identity: actual secret use, restart/decryption, new-current/retained-key rotation, controlled denial/outage and restored access. Record the cloud actually qualified. A local startup test alone does not satisfy it.
 
 `kube_chart_install` retains T-089's original obligation: install the chart from a clean scope and reach actual readiness with supported configuration; expected startup refusal cannot satisfy it. `kube_m1_roundtrip` covers the assembled entrypoint/source/result/log path and result guards; `kube_cancel_restart` covers assembled cancellation, replay and recovery, retaining PX-A02/PX-A06/IT-A05. Include original `execution_assembly_*` evidence in the report. Missing credentials/services/cluster, skipped cases or zero matching tests never establish acceptance.
+
+## Check contract (scheduled 2026-10-24)
+The qualified target is the Kodama-owned standalone stage cluster `kodama-stage-scw` (Scaleway Kapsule, `fr-par`, Kubernetes 1.37, Scaleway Key Manager) provisioned by `deploy/stage/scw`, not a kind scope: a live cloud KMS cannot be qualified on kind, and `KODAMA_ENV=production` refuses its fixtures. The check is the evidence-bound `readiness` gate, which runs `./test/e2e/kube-full/... ./test/integration/assembly-execution/...` with `go test -race -count=1` against the verified cluster endpoint and records provenance (commit, contract and values digests, cluster endpoint). `KODAMA_STAGE_CONTRACT` is the `stage_contract` output and `KODAMA_STAGE_VALUES` the deployed Helm values; the deployment, bootstrap and gate scripts live under `deploy/stage/` (owned by T-090) and are consumed unchanged. Missing cluster, credentials or images exit 75 (infrastructure pause), never a pass. Podman coverage of the `execution_assembly_*` suite is retained, not replaced.
 
 ## Out of scope
 Deploying to Platform stage, hosted Platform integration, live-agent qualification or supported-release/recovery claims beyond the consumed T-029 evidence. Scheduling this task and its deferred prerequisites still requires explicit approval.

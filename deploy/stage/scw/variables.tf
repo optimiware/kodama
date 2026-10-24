@@ -42,7 +42,7 @@ variable "private_network_cidr" {
 variable "kubernetes_version" {
   description = "Pinned Scaleway Kapsule Kubernetes patch version (x.y.z; Kapsule rejects a bare minor without auto-upgrade)."
   type        = string
-  default     = "1.35.9"
+  default     = "1.37.1"
 }
 
 variable "node_type" {
