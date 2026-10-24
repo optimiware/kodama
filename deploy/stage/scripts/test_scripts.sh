@@ -169,9 +169,15 @@ if len(args) >= 4 and args[0] == "get" and args[1] == "secret":
     if os.environ.get("MOCK_KUBE_FORBIDDEN") == "1":
         sys.stderr.write("Error from server (Forbidden): secrets is forbidden\n")
         sys.exit(1)
+    if os.environ.get("MOCK_KUBE_EXEC_NOT_FOUND") == "1":
+        sys.stderr.write("Unable to connect to the server: getting credentials: exec: executable aws not found\n")
+        sys.exit(1)
     name = args[2]
+    ignore_missing = "--ignore-not-found" in args
     p = state_dir / f"{ns}__{name}.json"
     if not p.is_file():
+        if ignore_missing:
+            sys.exit(0)
         sys.stderr.write(f'Error from server (NotFound): secrets "{name}" not found\n')
         sys.exit(1)
     sys.stdout.write(p.read_text(encoding="utf-8"))
@@ -240,33 +246,50 @@ cat >"${WORK_DIR}/boot-secrets.json" <<'EOF'
 }
 EOF
 
-# 4a. Forbidden Secret read must abort with exit code 75 BEFORE calling psql
+# 4a. Forbidden or exec-plugin-not-found Secret read must abort with exit code 75 BEFORE calling psql
 set +e
 PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" MOCK_KUBE_FORBIDDEN="1" \
   "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${WORK_DIR}/boot-forbidden" 2>/dev/null
 forb_rc=$?
+PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" MOCK_KUBE_EXEC_NOT_FOUND="1" \
+  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${WORK_DIR}/boot-exec-nf" 2>/dev/null
+exec_nf_rc=$?
 set -e
 [[ "${forb_rc}" -eq 75 ]] || die "expected Forbidden Secret read to exit 75, got ${forb_rc}"
+[[ "${exec_nf_rc}" -eq 75 ]] || die "expected exec-plugin-not-found Secret read to exit 75, got ${exec_nf_rc}"
 [[ ! -f "${MOCK_STATE}/psql.calls" ]] || die "psql must not be called when Secret inspection fails"
 
 BOOT_DIR1="${WORK_DIR}/boot-run1"
 BOOT_DIR2="${WORK_DIR}/boot-run2"
-PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
+KODAMA_GIT_URL="https://git.external.optimi.dev:8443/org/kodama-source.git" \
+  PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
   "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${BOOT_DIR1}"
 
 [[ -s "${MOCK_STATE}/psql.calls" ]] || die "bootstrap.sh did not invoke psql"
 grep -q "CREATE ROLE kodama_migration" "${MOCK_STATE}/psql.sql" || die "roles.sql was not executed by psql"
+
+# Verify external Git URL override is reflected in git-credentials.json urlPrefix
+python3 - "${BOOT_DIR1}/kodama-runtime/git-credentials.json" <<'PY'
+import json, sys
+creds = json.load(open(sys.argv[1]))
+assert len(creds) == 2, creds
+for entry in creds:
+    assert entry["urlPrefix"] == "https://git.external.optimi.dev:8443/", entry
+    assert entry["tenants"] == ["t_stage"], entry
+PY
 
 openssl verify -CAfile "${BOOT_DIR1}/ca.crt" "${BOOT_DIR1}/nats-tls.crt" >/dev/null
 openssl x509 -in "${BOOT_DIR1}/nats-tls.crt" -noout -text | grep -q "CA:FALSE" || die "nats-tls.crt must be CA:FALSE"
 openssl x509 -in "${BOOT_DIR1}/nats-tls.crt" -noout -text | grep -q "DNS:kodama-nats.kodama-system.svc.cluster.local" || die "nats-tls.crt missing NATS service DNS SAN"
 
 # Run bootstrap a second time into a fresh work-dir and verify existing Secrets in cluster are preserved!
-PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
+KODAMA_GIT_URL="https://git.external.optimi.dev:8443/org/kodama-source.git" \
+  PATH="${MOCK_BIN}:${PATH}" MOCK_KUBE_STATE="${MOCK_STATE}" \
   "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${WORK_DIR}/contract-aws.json" --secrets "${WORK_DIR}/boot-secrets.json" --work-dir "${BOOT_DIR2}"
 
 for preserved in \
   "kodama-runtime/database-runtime-url" \
+  "kodama-runtime/git-credentials.json" \
   "kodama-runtime/runtime-signing-key" \
   "kodama-runtime/cursor-key" \
   "kodama-runtime/idempotency-hash-key" \

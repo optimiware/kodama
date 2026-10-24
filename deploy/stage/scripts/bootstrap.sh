@@ -6,12 +6,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 usage() {
   cat <<'EOF'
-Usage: deploy/stage/scripts/bootstrap.sh --contract <stage_contract.json> [--secrets <bootstrap_secrets.json>] [--work-dir <dir>] [--dry-run]
+Usage: deploy/stage/scripts/bootstrap.sh --contract <stage_contract.json> [--stack-tfvars <stack.tfvars.json>] [--secrets <bootstrap_secrets.json>] [--work-dir <dir>] [--dry-run]
 
 Idempotently prepares:
-  1. Existing Kubernetes Secrets in kodama-system and kodama-observability are inspected first.
-     Only confirmed NotFound is treated as absent; Forbidden, timeouts, or incomplete existing Secrets
-     abort before any database or cluster mutation.
+  1. Existing Kubernetes Secrets in kodama-system and kodama-observability are inspected first
+     using `kubectl get --ignore-not-found -o json`. Only a 0-exit empty response is treated as
+     absence; every non-zero exit (including exec-plugin "not found", Forbidden, or timeouts)
+     aborts before any database or cluster mutation.
   2. Distinct PostgreSQL roles (kodama_migration schema owner and kodama_runtime non-superuser NOBYPASSRLS role)
      executed against the cloud PostgreSQL database via psql before publishing Secrets.
   3. Leaf TLS certificates signed by the installation CA:
@@ -21,6 +22,7 @@ EOF
 }
 
 CONTRACT_FILE=""
+STACK_TFVARS=""
 SECRETS_FILE=""
 DRY_RUN=0
 WORK_DIR=""
@@ -28,6 +30,7 @@ WORK_DIR=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --contract) CONTRACT_FILE="$2"; shift 2 ;;
+    --stack-tfvars) STACK_TFVARS="$2"; shift 2 ;;
     --secrets) SECRETS_FILE="$2"; shift 2 ;;
     --work-dir) WORK_DIR="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -49,6 +52,11 @@ if [[ -z "${WORK_DIR}" ]]; then
 else
   mkdir -p "${WORK_DIR}"
   chmod 0700 "${WORK_DIR}"
+fi
+
+if [[ -z "${STACK_TFVARS}" ]]; then
+  STACK_TFVARS="${WORK_DIR}/stack.tfvars.json"
+  write_stack_tfvars "${CONTRACT_FILE}" "${STACK_TFVARS}"
 fi
 
 kube() {
@@ -89,18 +97,18 @@ REQUIRED_KEYS = {
 
 def get_secret(ns: str, name: str) -> dict:
     res = subprocess.run(
-        ["kubectl", *kube_args, "-n", ns, "get", "secret", name, "-o", "json"],
+        ["kubectl", *kube_args, "-n", ns, "get", "secret", name, "--ignore-not-found", "-o", "json"],
         capture_output=True, text=True,
     )
     if res.returncode != 0:
         err = (res.stderr or res.stdout or "").strip()
-        low = err.lower()
-        if "notfound" in low or "not found" in low:
-            return {}
         sys.stderr.write(f"[stage][ERROR] failed reading existing Secret {ns}/{name}: {err}\n")
         sys.exit(75)
+    raw = res.stdout.strip()
+    if not raw:
+        return {}
     try:
-        doc = json.loads(res.stdout)
+        doc = json.loads(raw)
     except Exception as exc:
         sys.stderr.write(f"[stage][ERROR] malformed JSON reading Secret {ns}/{name}: {exc}\n")
         sys.exit(1)
@@ -142,7 +150,7 @@ with open(out_path, "w", encoding="utf-8") as fh:
 PY
 fi
 
-python3 - "${CONTRACT_FILE}" "${SECRETS_FILE}" "${WORK_DIR}" "${EXISTING_JSON}" <<'PY'
+python3 - "${CONTRACT_FILE}" "${STACK_TFVARS}" "${SECRETS_FILE}" "${WORK_DIR}" "${EXISTING_JSON}" <<'PY'
 import base64
 import json
 import os
@@ -152,11 +160,13 @@ import subprocess
 import sys
 from urllib.parse import urlparse
 
-contract_path, secrets_path, work_dir, existing_path = (
-    sys.argv[1], sys.argv[2], Path(sys.argv[3]), Path(sys.argv[4])
+contract_path, tfvars_path, secrets_path, work_dir, existing_path = (
+    sys.argv[1], sys.argv[2], sys.argv[3], Path(sys.argv[4]), Path(sys.argv[5])
 )
 with open(contract_path, "r", encoding="utf-8") as fh:
     c = json.load(fh)
+with open(tfvars_path, "r", encoding="utf-8") as fh:
+    stack_tfvars = json.load(fh)
 
 boot = {}
 if secrets_path and os.path.isfile(secrets_path):
@@ -384,23 +394,43 @@ sslmode = pg["ssl_mode"]
 (rt_dir / "git-write-token").write_text(git_write, encoding="utf-8")
 
 tenant_ids = [t["tenant_id"] for t in c["tenants"]]
-git_origin = f"https://git.{ingress_host}/"
-git_creds = [
-    {
-        "ref": "secret://installation/checkout",
-        "username": "git",
-        "passwordFile": "git-read-token",
-        "urlPrefix": git_origin,
-        "tenants": tenant_ids,
-    },
-    {
-        "ref": "secret://installation/publisher",
-        "username": "git",
-        "passwordFile": "git-write-token",
-        "urlPrefix": git_origin,
-        "tenants": tenant_ids,
-    },
-]
+configured_git_url = str(stack_tfvars.get("git_url") or f"https://git.{ingress_host}/optimi/kodama-source.git")
+parsed_git = urlparse(configured_git_url)
+if parsed_git.scheme != "https" or not parsed_git.netloc:
+    raise SystemExit(f"configured git_url {configured_git_url!r} must be an https:// URL")
+git_origin = f"https://{parsed_git.netloc}/"
+
+prev_git_creds_raw = existing_bytes(ex_rt, "git-credentials.json", rt_dir / "git-credentials.json")
+git_creds = None
+if prev_git_creds_raw:
+    try:
+        loaded = json.loads(prev_git_creds_raw.decode("utf-8"))
+        if (
+            isinstance(loaded, list)
+            and len(loaded) == 2
+            and all(isinstance(x, dict) and configured_git_url.startswith(str(x.get("urlPrefix", ""))) and x.get("tenants") == tenant_ids for x in loaded)
+        ):
+            git_creds = loaded
+    except Exception:
+        git_creds = None
+
+if git_creds is None:
+    git_creds = [
+        {
+            "ref": "secret://installation/checkout",
+            "username": "git",
+            "passwordFile": "git-read-token",
+            "urlPrefix": git_origin,
+            "tenants": tenant_ids,
+        },
+        {
+            "ref": "secret://installation/publisher",
+            "username": "git",
+            "passwordFile": "git-write-token",
+            "urlPrefix": git_origin,
+            "tenants": tenant_ids,
+        },
+    ]
 (rt_dir / "git-credentials.json").write_text(json.dumps(git_creds), encoding="utf-8")
 (rt_dir / "cursor-key").write_bytes(cursor_bytes)
 (rt_dir / "idempotency-hash-key").write_bytes(idem_bytes)

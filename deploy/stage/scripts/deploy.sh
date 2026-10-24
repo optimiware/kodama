@@ -143,10 +143,11 @@ with open(out_path, "w", encoding="utf-8") as fh:
 PY
 
   VALUES_FILE="${VALUES_OUT:-${WORK_DIR}/kodama-values.${CLOUD}.yaml}"
-  render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}"
+  STACK_TFVARS="${WORK_DIR}/stack.tfvars.json"
+  render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}" "${STACK_TFVARS}"
   helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
   helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${VALUES_FILE}" >/dev/null
-  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${CONTRACT_FILE}" --work-dir "${WORK_DIR}/boot" --dry-run
+  "${STAGE_DIR}/scripts/bootstrap.sh" --contract "${CONTRACT_FILE}" --stack-tfvars "${STACK_TFVARS}" --work-dir "${WORK_DIR}/boot" --dry-run
   log_info "validate-only succeeded for cloud=${CLOUD}"
   exit 0
 fi
@@ -167,7 +168,7 @@ render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}" "${STACK_
 verify_values_provenance "${VALUES_FILE}"
 helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
 
-"${STAGE_DIR}/scripts/bootstrap.sh" --contract "${CONTRACT_FILE}" --secrets "${SECRETS_FILE}"
+"${STAGE_DIR}/scripts/bootstrap.sh" --contract "${CONTRACT_FILE}" --stack-tfvars "${STACK_TFVARS}" --secrets "${SECRETS_FILE}"
 
 tofu -chdir="${STACK_DIR}" init -input=false
 tofu -chdir="${STACK_DIR}" validate
