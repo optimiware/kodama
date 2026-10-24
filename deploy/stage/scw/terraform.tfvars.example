@@ -1,0 +1,19 @@
+project_id                = "11111111-1111-4111-8111-111111111111"
+installation_id           = "kodama-stage-scw"
+region                    = "fr-par"
+environment_tier          = "staging"
+kubernetes_version        = "1.31"
+node_type                 = "DEV1-L"
+node_count                = 2
+db_node_type              = "DB-DEV-S"
+db_backup_frequency_hours = 24
+db_backup_retention_days  = 7
+ingress_host              = "kodama.stage.scw.example.invalid"
+runtime_callback_cidrs    = ["172.16.40.0/22"]
+
+tenants = [
+  {
+    namespace = "kodama-tenant-stage"
+    tenant_id = "t_stage"
+  }
+]

@@ -1,0 +1,41 @@
+# Minimal Prometheus server values for infrastructure & service metrics (NATS, Loki, Alloy, Kubernetes).
+# High-cardinality tenant/work/run/attempt labels are dropped per docs/operations/observability-and-audit.md.
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+
+server:
+  replicaCount: 1
+  retention: "15d"
+  persistentVolume:
+    enabled: true
+    size: 10Gi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    fsGroup: 65534
+
+serverFiles:
+  prometheus.yml:
+    scrape_configs:
+      - job_name: nats-jetstream
+        static_configs:
+          - targets:
+              - "kodama-nats.${control_plane_namespace}.svc.cluster.local:7777"
+      - job_name: loki
+        static_configs:
+          - targets:
+              - "kodama-loki.${observability_namespace}.svc.cluster.local:3100"
+      - job_name: alloy
+        static_configs:
+          - targets:
+              - "kodama-alloy.${observability_namespace}.svc.cluster.local:12345"
+        metric_relabel_configs:
+          - action: labeldrop
+            regex: "(tenant_id|work_item_id|workspace_id|run_id|step_id|attempt_id)"

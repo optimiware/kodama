@@ -1,0 +1,67 @@
+# Operator-only Grafana with pre-provisioned Loki (pipeline log search) and Prometheus datasources.
+replicas: 1
+
+admin:
+  existingSecret: kodama-grafana-admin
+  userKey: admin-user
+  passwordKey: admin-password
+
+grafana.ini:
+  auth.anonymous:
+    enabled: false
+  users:
+    allow_sign_up: false
+  security:
+    disable_gravatar: true
+    cookie_secure: true
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 472
+  runAsGroup: 472
+  fsGroup: 472
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hosts:
+    - ${jsonencode(ingress_host)}
+  tls:
+    - secretName: kodama-grafana-tls
+      hosts:
+        - ${jsonencode(ingress_host)}
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        uid: kodama-loki
+        type: loki
+        access: proxy
+        url: ${jsonencode(loki_url)}
+        isDefault: true
+        jsonData:
+          maxLines: 2000
+      - name: Prometheus
+        uid: kodama-prometheus
+        type: prometheus
+        access: proxy
+        url: ${jsonencode(prom_url)}
+        isDefault: false
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: kodama
+        orgId: 1
+        folder: Kodama
+        type: file
+        disableDeletion: true
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards/kodama
+
+dashboardsConfigMaps:
+  kodama: kodama-grafana-dashboards
