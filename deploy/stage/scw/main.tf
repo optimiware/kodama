@@ -36,8 +36,8 @@ resource "scaleway_k8s_pool" "workers" {
   name                = "${local.name_prefix}-workers"
   node_type           = var.node_type
   size                = var.node_count
-  min_size            = 1
-  max_size            = max(var.node_count + 2, 4)
+  min_size            = var.node_min_count
+  max_size            = var.node_max_count
   autoscaling         = true
   autohealing         = true
   wait_for_pool_ready = true

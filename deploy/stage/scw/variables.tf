@@ -52,9 +52,25 @@ variable "node_type" {
 }
 
 variable "node_count" {
-  description = "Worker node count."
+  description = "Initial worker node count; the autoscaler then keeps the pool within node_min_count..node_max_count."
   type        = number
-  default     = 2
+  default     = 4
+}
+
+variable "node_min_count" {
+  description = "Autoscaler lower bound for the worker pool."
+  type        = number
+  default     = 4
+}
+
+variable "node_max_count" {
+  description = "Autoscaler upper bound for the worker pool."
+  type        = number
+  default     = 8
+  validation {
+    condition     = var.node_min_count >= 1 && var.node_min_count <= var.node_count && var.node_count <= var.node_max_count
+    error_message = "node_min_count <= node_count <= node_max_count and node_min_count >= 1 are required."
+  }
 }
 
 variable "db_node_type" {
