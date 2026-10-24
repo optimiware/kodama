@@ -212,7 +212,7 @@ resource "scaleway_iam_policy" "artifacts_s3" {
 
   rule {
     project_ids          = [var.project_id]
-    permission_set_names = ["ObjectStorageObjectsRead", "ObjectStorageObjectsWrite", "ObjectStorageObjectsDelete"]
+    permission_set_names = ["ObjectStorageBucketsRead", "ObjectStorageObjectsRead", "ObjectStorageObjectsWrite", "ObjectStorageObjectsDelete"]
   }
 }
 
@@ -267,7 +267,7 @@ resource "scaleway_iam_policy" "logs_s3" {
 
   rule {
     project_ids          = [var.project_id]
-    permission_set_names = ["ObjectStorageObjectsRead", "ObjectStorageObjectsWrite", "ObjectStorageObjectsDelete"]
+    permission_set_names = ["ObjectStorageBucketsRead", "ObjectStorageObjectsRead", "ObjectStorageObjectsWrite", "ObjectStorageObjectsDelete"]
   }
 }
 

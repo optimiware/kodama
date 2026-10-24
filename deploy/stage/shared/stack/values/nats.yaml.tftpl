@@ -17,7 +17,9 @@ config:
       ca: ca.crt
   merge:
     authorization:
-      token: $NATS_AUTH_TOKEN
+      # `<< >>` renders the value unquoted, so NATS expands the environment variable; a quoted
+      # "$NATS_AUTH_TOKEN" would make that literal text the token.
+      token: "<< $NATS_AUTH_TOKEN >>"
 
 container:
   env:
