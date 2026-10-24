@@ -1,8 +1,17 @@
 # Scaleway Load Balancer in front of the stage ingress. Not the default IngressClass: every
 # stage Ingress selects `nginx` explicitly.
+#
+# PROXY protocol v2 preserves the client address through the L4 load balancer (without it ingress-nginx
+# sees a node or pod address, which makes source allowlists meaningless). `use-hostname` makes the Service
+# publish the load balancer hostname instead of its IP, so in-cluster clients of the public names go through
+# the real load balancer (and receive the PROXY header) instead of being short-circuited to the Pods.
 controller:
   ingressClassResource:
     default: false
+  config:
+    use-proxy-protocol: "true"
   service:
     annotations:
       service.beta.kubernetes.io/scw-loadbalancer-type: LB-S
+      service.beta.kubernetes.io/scw-loadbalancer-proxy-protocol-v2: "*"
+      service.beta.kubernetes.io/scw-loadbalancer-use-hostname: "true"

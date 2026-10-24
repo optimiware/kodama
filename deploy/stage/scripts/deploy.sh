@@ -164,14 +164,15 @@ tofu -chdir="${CLOUD_DIR}" apply -input=false -auto-approve
 
 [[ -n "${KODAMA_ACME_EMAIL:-}" ]] || die "KODAMA_ACME_EMAIL (Let's Encrypt account contact) is required for a real deployment"
 
-# The persona OIDC issuer is a fixture: its token-issuing paths are reachable only from these networks (pod
-# addresses are always allowed). Default to this machine's public address; set the variable to override.
+# The persona OIDC issuer is a fixture: its token-issuing paths are reachable only from these networks.
+# Default to this machine's current public address; set the variable (comma-separated CIDRs) to override,
+# for example when the machine egresses through several addresses.
 if [[ -z "${KODAMA_ISSUER_ALLOWED_CIDRS:-}" ]]; then
   operator_ip="$(curl -fsS -m 10 https://api.ipify.org 2>/dev/null || true)"
   [[ "${operator_ip}" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] ||
     die "set KODAMA_ISSUER_ALLOWED_CIDRS (comma-separated CIDRs allowed to log in to the stage issuer); the public address could not be detected"
   export KODAMA_ISSUER_ALLOWED_CIDRS="${operator_ip}/32"
-  log_info "issuer login allowlist: ${KODAMA_ISSUER_ALLOWED_CIDRS} (plus pod addresses)"
+  log_info "issuer login allowlist: ${KODAMA_ISSUER_ALLOWED_CIDRS}"
 fi
 CONTRACT_FILE="${CONTRACT_OUT:-${WORK_DIR}/stage_contract.json}"
 SECRETS_FILE="${WORK_DIR}/stage_bootstrap_secrets.json"

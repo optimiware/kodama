@@ -2,7 +2,7 @@
 # local checkpoints use), pinned by digest. It is a development/test fixture: persona selection replaces
 # authentication, so anyone who completes its authorize flow can act as any persona. The stage therefore
 #   - gates the authorize flow with a long random access code (OAUTHSONAS_ACCESS_CODE, from a Secret),
-#   - restricts /oauth2, /userinfo and /logout to an allowlist at the ingress (discovery and JWKS stay open
+#   - restricts /oauth2, /userinfo and /logout to operator CIDRs at the ingress (discovery and JWKS stay open
 #     because the server and every client must fetch them), and
 #   - runs one replica with Recreate (all state, including the signing key, is in memory).
 # Recorded as O-27; hosted authority (T-061) and T-106 replace it.
@@ -45,8 +45,9 @@ locals {
     }]
   })
 
-  # Pod addresses (the server and in-cluster test runners) plus the operator's networks.
-  issuer_allowlist = join(",", concat(["100.64.0.0/10"], var.issuer_allowed_cidrs))
+  # The operator networks allowed to reach the token-issuing paths. The ingress sees real client addresses
+  # (PROXY protocol); in-cluster callers appear as node addresses and use the Service directly instead.
+  issuer_allowlist = join(",", var.issuer_allowed_cidrs)
 }
 
 resource "random_password" "oauthsonas_access_code" {

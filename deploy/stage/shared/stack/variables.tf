@@ -117,9 +117,12 @@ variable "nats_tls" {
 }
 
 variable "issuer_allowed_cidrs" {
-  description = "Operator networks (CIDRs) allowed to reach the OIDC issuer's token-issuing paths (/oauth2, /userinfo, /logout) from outside the cluster. Pod addresses are always allowed."
+  description = "Operator networks (CIDRs) allowed to reach the OIDC issuer's token-issuing paths (/oauth2, /userinfo, /logout). Required: the issuer is a persona fixture and must never be reachable from everywhere."
   type        = list(string)
-  default     = []
+  validation {
+    condition     = length(var.issuer_allowed_cidrs) > 0 && alltrue([for c in var.issuer_allowed_cidrs : can(cidrnetmask(c))])
+    error_message = "issuer_allowed_cidrs needs at least one valid IPv4 CIDR."
+  }
 }
 
 variable "oauthsonas_image" {

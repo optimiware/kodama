@@ -97,9 +97,11 @@ uses a publicly trusted (Let's Encrypt) certificate.
 digest. It is a development/test fixture: persona selection replaces authentication, so anyone who completes its
 authorize flow can act as any persona (a persona token for `admin` becomes the tenant administrator). The stage
 therefore gates the authorize flow with a random access code (Secret `kodama-oauthsonas-access` in `kodama-deps`),
-restricts `/oauth2`, `/userinfo` and `/logout` at the ingress to `issuer_allowed_cidrs` plus pod addresses
-(`KODAMA_ISSUER_ALLOWED_CIDRS`; `deploy.sh` defaults it to the operator's public address), and leaves discovery and
-JWKS open. It runs as one replica with all state in memory, so a restart invalidates every token. Do not treat it
+restricts `/oauth2`, `/userinfo` and `/logout` at the ingress to the operator CIDRs in
+`KODAMA_ISSUER_ALLOWED_CIDRS` (`deploy.sh` defaults it to this machine's current public address; list every
+egress address if you have several), and leaves discovery and JWKS open. The ingress sees real client addresses
+because ingress-nginx and the Scaleway load balancer use PROXY protocol v2; in-cluster callers appear as node
+addresses. It runs as one replica with all state in memory, so a restart invalidates every token. Do not treat it
 as an identity system; hosted authority (T-061) replaces it.
 
 Run critical-path qualification gates and emit evidence bundles:

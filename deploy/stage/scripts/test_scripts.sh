@@ -12,6 +12,7 @@ trap 'rm -rf "${WORK_DIR}"' EXIT
 
 export KODAMA_IMAGE_DIGEST="sha256:a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
 export KODAMA_ACME_EMAIL="ops@stage-tests.local"
+export KODAMA_ISSUER_ALLOWED_CIDRS="192.0.2.10/32"
 export KODAMA_WORKLOAD_IMAGE_DIGEST="sha256:b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1"
 
 log_info "1. ShellCheck on all stage scripts and Markdown link/fence check on deploy/stage/README.md"
