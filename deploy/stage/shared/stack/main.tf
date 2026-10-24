@@ -47,6 +47,11 @@ locals {
     tls_secret = "kodama-gitea-tls"
   })
 
+  # The Helm provider does not notice edits inside a local chart directory, so the release description
+  # carries a digest of every chart file: a chart change always produces an upgrade.
+  kodama_chart_dir    = "${path.module}/../../../helm/kodama"
+  kodama_chart_digest = substr(sha256(join("", [for f in sort(tolist(fileset(local.kodama_chart_dir, "**"))) : "${f}:${filesha256("${local.kodama_chart_dir}/${f}")}" if !endswith(f, "_test.go")])), 0, 16)
+
   grafana_values = templatefile("${path.module}/values/grafana.yaml.tftpl", {
     loki_url     = local.loki_url
     prom_url     = local.prom_url
@@ -126,7 +131,8 @@ resource "helm_release" "grafana" {
 
 resource "helm_release" "kodama" {
   name             = "kodama"
-  chart            = "${path.module}/../../../helm/kodama"
+  chart            = local.kodama_chart_dir
+  description      = "kodama chart ${local.kodama_chart_digest}"
   namespace        = var.control_plane_namespace
   create_namespace = false
   atomic           = true
