@@ -113,13 +113,14 @@ func (e *Environment) Network() string {
 // WorkloadEnv is the endpoint inventory for code running inside the stack.
 func (e *Environment) WorkloadEnv() map[string]string {
 	values := ProbeEnv(e.Scope, e.WorkloadHost)
-	// The server under test runs on the host in the services stack.
-	delete(values, "KODAMA_SERVER_URL")
-	if e.Stack == StackServices {
-		values["KODAMA_POSTGRES_URL"] = fmt.Sprintf("postgres://%s:5432/%s", e.WorkloadHost("postgres"), e.Database())
-		values["KODAMA_PODMAN_NETWORK"] = e.State.Network
-		values["KODAMA_SERVER_CALLBACK_HOST"] = CallbackHosts[e.Provider]
+	if e.Stack != StackServices {
+		return values
 	}
+	// The server under test runs on the host, not as a Service in this stack.
+	delete(values, "KODAMA_SERVER_URL")
+	values["KODAMA_POSTGRES_URL"] = fmt.Sprintf("postgres://%s:5432/%s", e.WorkloadHost("postgres"), e.Database())
+	values["KODAMA_PODMAN_NETWORK"] = e.State.Network
+	values["KODAMA_SERVER_CALLBACK_HOST"] = CallbackHosts[e.Provider]
 	return values
 }
 

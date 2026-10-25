@@ -39,6 +39,42 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
+  # Docker is preinstalled on the runner. This is the stack qualification:
+  # dependency containers, the probe, and scoped teardown. It does not qualify
+  # the Podman runtime adapter.
+  docker:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      DEV_PROVIDER: docker
+      DEV_STACK: cluster
+      DEV_SCOPE: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Fresh cluster scope and dependency probe
+        run: make dev-smoke
+      - name: Scoped teardown preserves a foreign cluster
+        run: make dev-teardown-check
+      - name: Failure diagnostics
+        if: failure()
+        run: make dev-diagnostics
+      - name: Cleanup
+        if: always()
+        run: make dev-down
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: docker-diagnostics
+          path: dev/.state/reports/
+          include-hidden-files: true
+          if-no-files-found: ignore
+  # Opt-in: GitHub runners do not ship Podman. This qualifies the runtime
+  # adapter and the services stack, not the assembled product suites.
   podman:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
@@ -60,10 +96,11 @@ jobs:
           podman info
       - name: Podman runtime contract
         run: make test-podman
-      - name: Fresh services scope and real product suites
+      - name: Services stack probe
         run: |
           make dev-up
-          make test-integration
+          make dev-integration
+          make dev-runtime
       - name: Scoped teardown preserves a foreign network
         run: make dev-teardown-check
       - name: Failure diagnostics

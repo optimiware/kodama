@@ -342,6 +342,13 @@ func TestUnitStackSelection(t *testing.T) {
 		if cluster.Network() != "kind" {
 			t.Fatalf("cluster network = %q", cluster.Network())
 		}
+		workload, err := readStringMap(filepath.Join(cluster.Dir, "endpoints.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if workload["KODAMA_SERVER_URL"] != "http://kodama.kodama-deps.svc.cluster.local:8080" {
+			t.Fatalf("cluster workload env dropped the server URL: %v", workload)
+		}
 		if len(clusterHost.verbs("kind", "create")) != 1 {
 			t.Fatalf("kind create calls = %v", clusterHost.verbs("kind", "create"))
 		}
