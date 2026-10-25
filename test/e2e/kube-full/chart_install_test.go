@@ -16,9 +16,10 @@ func TestKubeChartInstall(t *testing.T) {
 	i := stage.New(t)
 	ctx := i.Context(12 * time.Minute)
 	if i.Installed(ctx) {
-		if err := i.Uninstall(ctx); err != nil {
-			t.Fatalf("uninstall: %v", err)
-		}
+		t.Fatal("clean-install acceptance needs a newly prepared qualification session, not an existing release")
+	}
+	if n := i.OwnerCount(`SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='tenants'`); n != 0 {
+		t.Fatal("clean-install acceptance needs a fresh session database; retained schema is upgrade evidence only")
 	}
 	if err := i.Install(ctx); err != nil {
 		t.Fatalf("install: %v", err)

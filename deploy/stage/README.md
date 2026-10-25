@@ -95,7 +95,7 @@ Kubernetes before any chart installs, so they are stable across applies and live
 certificates (Kodama, Dex, Gitea, Grafana) are issued and renewed by cert-manager from Let's Encrypt over HTTP-01
 (`KODAMA_ACME_EMAIL` is required; the nip.io hostnames share that domain's Let's Encrypt rate limits, so a real
 domain is a one-line change of `ingress_host`). There is no installation CA in the stage. State is kept
-outside the checkout (`$STAGE_STATE_DIR`, default `~/.kube/kodama-stage/state`, mode 0700 and 0600 files): it holds
+outside the checkout (`$STAGE_STATE_DIR`, default `~/kodama-stage/state`, mode 0700 and 0600 files): it holds
 database, API-key and signing material, so protect it like a credential store. Image coordinates come from
 `$KODAMA_IMAGES_FILE` (JSON with `kodama` and `workload` repository/tag/digest) or the `KODAMA_IMAGE_*` and
 `KODAMA_WORKLOAD_IMAGE_*` variables; placeholder digests are refused by the gates.
@@ -120,6 +120,121 @@ egress address if you have several), and leaves discovery and JWKS open. The ing
 because ingress-nginx and the Scaleway load balancer use PROXY protocol v2; in-cluster callers appear as node
 addresses. It runs as one replica with all state in memory, so a restart invalidates every token. Do not treat it
 as an identity system; hosted authority (T-061) replaces it.
+
+## Repeatable readiness workflow
+
+Qualification remains on the task worktree, **before merge**. Finish edits and scoped checks, review the candidate,
+and commit before starting a gate. The gate refuses a dirty checkout and fails if HEAD, tracked/untracked source,
+contract or values change during the run. Do not commit a report while the gate is running. A later report commit
+does not retarget a historical receipt; downstream gates still require matching candidate/configuration provenance.
+
+### Build once from committed source
+
+The product image uses the root `Containerfile`. A separate **test-only** helper image uses
+`test/support/stage/probe/Containerfile`; it contains the HTTPS Kubernetes fault proxy and in-cluster KMS procedure,
+not a different product server. Both accept the existing OCI `REVISION` build argument. Set `KODAMA_STAGE_IMAGE_TAG`
+and `KODAMA_STAGE_PROBE_TAG` to operator-selected registry tags before these commands:
+
+```sh
+test -z "$(git status --porcelain)"
+candidate="$(git rev-parse HEAD)"
+podman build -f Containerfile --build-arg "REVISION=$candidate" -t "$KODAMA_STAGE_IMAGE_TAG" .
+podman build --ignorefile test/support/stage/probe/build.ignore \
+  -f test/support/stage/probe/Containerfile --build-arg "REVISION=$candidate" -t "$KODAMA_STAGE_PROBE_TAG" .
+```
+
+Publish those images to the authorized stage registry and record registry manifest digests, not local image IDs.
+Keep credentials in the operator's registry auth store. Put the product digest in the external `KODAMA_IMAGES_FILE`
+before preparing the session; set `KODAMA_STAGE_PROBE_IMAGE=repository@sha256:...` to the helper's published digest.
+Tags alone are rejected. These instructions do not authorize a Git push or publication to the main release channel.
+
+### Preflight, then one full run
+
+Use one state root: qualification resolves `KODAMA_QUAL_STATE_DIR`, then `STAGE_STATE_DIR`, then
+`~/kodama-stage/state`. Existing state in the old `~/.kube/` location is not moved: select it explicitly if needed.
+Set both root variables consistently when deploying and qualifying. Keep kubeconfig, tfvars, Terraform state, registry
+auth and provider credentials outside the checkout. Set `SCW_DEFAULT_PROJECT_ID` and operator `SCW_*` credentials;
+the probe itself mounts only the deployment's KMS credential, not the operator's. IAM administration is needed to
+create and remove a throwaway denied application/API key with **no policy**; missing permission is a blocker, not
+a reason to substitute a fabricated token or treat `KeyUnavailable` as a successful denial.
+
+Prepare a **fresh session** for each final clean-install attempt. `TestKubeChartInstall` refuses an existing release
+or migrated database rather than mislabeling an upgrade as a clean install. Use `qualify.sh prepare --session ...
+--contract ...` with the original base stage contract, not another session's derived contract. Keep session `kb`
+until a passing gate, as instructed by the owner. Focused debugging may reuse an installed session, but its results
+are not combined into the final receipt.
+
+Set `KODAMA_STAGE_CONTRACT` and `KODAMA_STAGE_VALUES` to that session's `contract.json` and `values.yaml`, and
+`KODAMA_QUAL_SESSION` to its name. The gate checks byte equality against session inputs, installation identity,
+namespace reachability and the selected cluster endpoint; it holds a per-session lock while running.
+
+```sh
+deploy/stage/scripts/gate.sh --gate readiness --cloud scw \
+  --contract "$KODAMA_STAGE_CONTRACT" --values "$KODAMA_STAGE_VALUES" --preflight
+KODAMA_GO_TEST_TIMEOUT=60m deploy/stage/scripts/gate.sh --gate readiness --cloud scw \
+  --contract "$KODAMA_STAGE_CONTRACT" --values "$KODAMA_STAGE_VALUES"
+```
+
+Preflight issues **no receipt**. A full invocation runs chart installation first, then the remaining scenarios,
+sequentially on that session, and requires all seven exact package/test/backend matches plus the mandatory child
+cases in `scripts/readiness-cases.json`. No cross-run stitching or automatic retry-to-green. Skips, missing package
+completion, required-child skips, process failures and source/configuration drift cannot pass. Output is streamed
+unbuffered and ends with the runner exit, elapsed time and suite outcome; evidence records the helper image,
+chart tree, contract/values digests and actual fault configuration. O-27 and scheduled-only backups remain deviations.
+
+For agents, execute the **entire** long-running shell command with the harness's background option and await its
+completion notification. Do not add `nohup`, shell `&`, a detached child, or `pgrep` polling: these can report shell
+completion before tests finish or match the waiter's own command. Never pipe checks into `tail` without preserving
+the original exit status. Run local unit/lint checks before freezing the candidate, not commits during qualification.
+
+### Focused checks and Podman regression
+
+Offline hardening checks do not use stage credentials:
+
+```sh
+go test -race -count=1 ./test/support/stage/...
+go test -race -count=1 -run 'TestKeyCleanup|TestCreateKey' ./test/e2e/kube-full/
+python3 -B deploy/stage/scripts/test_runner.py
+deploy/stage/scripts/test_scripts.sh
+make lint test docs-check
+```
+
+The Podman regression needs the **services**, not cluster, stack. Keep the backend variable unset and use an
+isolated scope; cleanup is in the same shell command so a test failure still removes only its resources:
+
+```bash
+set -euo pipefail
+trap 'make dev-down DEV_SCOPE=t-104-local' EXIT
+make dev-up DEV_SCOPE=t-104-local DEV_STACK=services
+env -u KODAMA_ASSEMBLY_BACKEND make test-integration DEV_SCOPE=t-104-local \
+  INTEGRATION_PKGS=./test/integration/assembly-execution/...
+```
+
+### Fault boundaries and cleanup
+
+PX-A02 is explicitly **fault-instrumented**: the helper listens on loopback HTTPS, trusts the real cluster CA
+upstream and receives the server's forwarded service-account token. An ephemeral loopback certificate is projected
+through a temporary Secret and `KODAMA_KUBE_CA_FILE`; neither TLS hop uses insecure verification. Only the armed
+Job create is intercepted. Its successful acknowledgment and read-back are withheld; Pod creation is held to prevent
+callbacks confirming dispatch before the server crashes. A forced Pod replacement starts a transparent helper,
+and the server must confirm the original Job UID, retain one attempt/grant/Pod, then finish. The original Pod template
+and admission policies are restored even after failure. The historical HTTP helper must not be reapplied.
+
+KMS acceptance includes real project-secret consumption, a server crash/restart and consumption of the persisted
+encrypted secret. An isolated Job, using the deployment's service account and mounted KMS credential, then checks
+roundtrip, context/ciphertext/version tampering, retained-key rotation, a fresh executable restoring an old envelope,
+genuine permission denial, bounded startup/runtime outage and recovery. Transport fault injection is confined to
+the probe executable. Retained installation keys/mappings are untouched. Throwaway keys request `unprotected:true`
+(the response must have `protected:false`), get unique names and immediate checked cleanup. The protected historical
+probe key stays untouched unless the owner separately authorizes removal.
+
+After a passing gate, retain the safe evidence bundle before `qualify.sh destroy --session ... --contract ...`
+(use the original base stage contract). Remove `kb` and only this task's qualification sessions. Verify namespace
+and session-labeled admission-policy absence; never delete another task's objects. Credentials, private keys, secret
+values, wrapped bytes and provider response bodies must not be printed or copied into evidence. A failed cleanup is
+a visible failure, not a silent success. Test failures run registered cleanup; forcibly killing the test process
+can leave fixtures behind, so inspect the exact session's labeled resources before retrying. Independent review
+remains required before merge; do not push Git changes.
 
 Run critical-path qualification gates and emit evidence bundles:
 

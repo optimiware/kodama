@@ -28,7 +28,8 @@ func roundtripKube(t *testing.T) {
 	item := w.WorkItem("Roundtrip", "# roundtrip")
 	w.Provision(item.Id)
 	def := w.Definition("roundtrip", stage.Step{
-		Script:    `echo "roundtrip log line"; echo "artifact bytes" > /kodama/outputs/report; printf '{"outcome":"completed","outputs":{"v":"ok"}}' > "$KODAMA_RESULTS_FILE"`,
+		Script:    stage.CommandBarrier + `echo "roundtrip log line"; echo "artifact bytes" > /kodama/outputs/report; printf '{"outcome":"completed","outputs":{"v":"ok"}}' > "$KODAMA_RESULTS_FILE"`,
+		Timeout:   600,
 		Outputs:   []string{"v"},
 		Artifacts: map[string]string{"report": "/kodama/outputs/report"},
 	})
@@ -47,6 +48,8 @@ func roundtripKube(t *testing.T) {
 	}
 	pod := i.WaitPod(ns, job.Name, time.Minute)
 	i.WaitLaunched(ns, pod.Name)
+	i.WaitCommandBarrier(ns, pod.Name)
+	i.ReleaseCommand(ns, pod.Name)
 
 	final := w.WaitRun(run.Id, 4*time.Minute)
 	if final.Status != client.RunStatusSucceeded {
@@ -138,6 +141,11 @@ func roundtripKube(t *testing.T) {
 	if second.Id == run.Id {
 		t.Fatal("a rerun reused the run")
 	}
+	secondAttempt := w.WaitAttempt(second.Id, time.Minute)
+	secondJob := i.WaitJob(ns, secondAttempt, true, 2*time.Minute)
+	secondPod := i.WaitPod(ns, secondJob.Name, time.Minute)
+	i.WaitCommandBarrier(ns, secondPod.Name)
+	i.ReleaseCommand(ns, secondPod.Name)
 	if w.WaitRun(second.Id, 4*time.Minute).Status != client.RunStatusSucceeded {
 		t.Fatalf("rerun %s", w.GetRun(second.Id).Status)
 	}
@@ -163,7 +171,7 @@ func cancelRestartKube(t *testing.T) {
 		w := i.Seed()
 		item := w.WorkItem("Cancel then restart", "# c")
 		w.Provision(item.Id)
-		def := w.Definition("sleeper", stage.Step{Script: `sleep 300`})
+		def := w.Definition("sleeper", stage.Step{Script: `sleep 900`, Timeout: 900})
 		ns := w.Namespace(w.TenantA)
 		hold := i.HoldJobs(i.Context(2*time.Minute), ns, "DELETE")
 		run := w.Run("cancel-then-restart", item, def.Id)
@@ -177,7 +185,9 @@ func cancelRestartKube(t *testing.T) {
 			t.Fatalf("cancel: %d", r.StatusCode())
 		}
 		// The cancellation is committed. The server cannot delete the Job while the hold stands.
-		time.Sleep(8 * time.Second)
+		stage.WaitFor(t, "committed cancellation and token revocation", time.Minute, func() bool {
+			return i.OwnerCount(`SELECT count(*) FROM attempt_controls WHERE attempt_id = $1 AND revoked_at IS NOT NULL`, attempt) == 1
+		})
 		if len(i.JobsOfAttempt(ns, attempt)) != 1 {
 			t.Fatal("the held delete removed the Job")
 		}
@@ -192,7 +202,7 @@ func cancelRestartKube(t *testing.T) {
 		if n := i.OwnerCount(`SELECT count(*) FROM attempt_controls WHERE attempt_id = $1 AND revoked_at IS NOT NULL`, attempt); n != 1 {
 			t.Fatal("the attempt kept its authority")
 		}
-		if code := kubeLateResult(t, i, attempt, token); code < 400 {
+		if code := kubeLateResult(t, i, attempt, token); code != http.StatusUnauthorized && code != http.StatusForbidden && code != http.StatusConflict {
 			t.Fatalf("a late result was accepted: HTTP %d", code)
 		}
 		if got := w.GetRun(run.Id); got.Status != client.RunStatusCancelled {
@@ -208,7 +218,7 @@ func cancelRestartKube(t *testing.T) {
 		w := i.Seed()
 		item := w.WorkItem("Restart then cancel", "# c")
 		w.Provision(item.Id)
-		def := w.Definition("sleeper", stage.Step{Script: `sleep 300`})
+		def := w.Definition("sleeper", stage.Step{Script: `sleep 900`, Timeout: 900})
 		ns := w.Namespace(w.TenantA)
 		run := w.Run("restart-then-cancel", item, def.Id)
 		attempt := w.WaitAttempt(run.Id, time.Minute)
@@ -218,14 +228,7 @@ func cancelRestartKube(t *testing.T) {
 		uid := job.UID
 		// A graceful scale-down can reconcile the workload away. Kill the process
 		// so the next one has to adopt the Job the dead process left behind.
-		crashCtx := i.Context(2 * time.Minute)
-		if _, err := i.Kube.Run(crashCtx, "-n", i.S.Namespace, "delete", "pod", "-l", "app.kubernetes.io/component=server", "--force", "--grace-period=0"); err != nil {
-			t.Fatalf("crash the server: %v", err)
-		}
-		if _, err := i.Kube.Run(i.Context(5*time.Minute), "-n", i.S.Namespace, "rollout", "status", "deploy/"+i.Deployment(), "--timeout=4m"); err != nil {
-			t.Fatalf("server rollout: %v", err)
-		}
-		i.WaitReady(i.Context(3 * time.Minute))
+		i.Crash(i.Context(6 * time.Minute))
 		stage.WaitFor(t, "the restarted process to adopt "+uid, 90*time.Second, func() bool {
 			again := i.JobsOfAttempt(ns, attempt)
 			return len(again) == 1 && again[0].UID == uid
@@ -269,9 +272,9 @@ func cancelRestartKube(t *testing.T) {
 			if err != nil {
 				return false
 			}
-			return strings.Contains(logs, attempt) && strings.Contains(logs, `"error":"conflict"`)
+			return stage.HasEvent(logs, map[string]string{"attempt": attempt, "error": "conflict"})
 		})
-		if st, ok := w.RunStatus(run.Id); ok && st == string(client.RunStatusSucceeded) {
+		if st, _ := w.RunStatus(run.Id); st == string(client.RunStatusSucceeded) {
 			t.Fatal("the server reported success for a foreign Job")
 		}
 		gotUID, gotSpec := jobIdentity(t, i, ns, name)
@@ -295,11 +298,11 @@ func resultGuardKube(t *testing.T) {
 	w.WaitRun(other.Id, 4*time.Minute)
 	w.WaitLogs("engineer", other.Id)
 	var foreign string
-	i.MustScan(&foreign, `SELECT id FROM artifacts WHERE tenant_id = $1 ORDER BY created_at LIMIT 1`, w.TenantA)
+	i.MustScan(&foreign, `SELECT id FROM artifacts WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3 ORDER BY created_at LIMIT 1`, w.TenantA, w.Project, other.Id)
 
 	item := w.WorkItem("Guarded", "# guard")
 	w.Provision(item.Id)
-	def := w.Definition("guarded", stage.Step{Script: `sleep 300`, Outputs: []string{"v"}})
+	def := w.Definition("guarded", stage.Step{Script: `sleep 900`, Timeout: 900, Outputs: []string{"v"}})
 	ns := w.Namespace(w.TenantA)
 	run := w.Run("guard-run", item, def.Id)
 	attempt := w.WaitAttempt(run.Id, time.Minute)
@@ -475,6 +478,13 @@ func runtimeOps(t *testing.T, i *stage.Installation, attempt string) map[string]
 
 func createForeignJob(t *testing.T, i *stage.Installation, ns, name string) (uid, spec string) {
 	t.Helper()
+	t.Cleanup(func() {
+		c, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if _, err := i.Kube.Run(c, "-n", ns, "delete", "job", name, "--ignore-not-found", "--wait=false"); err != nil {
+			t.Errorf("cleanup foreign Job: %v", err)
+		}
+	})
 	manifest := `apiVersion: batch/v1
 kind: Job
 metadata: {name: ` + name + `, namespace: ` + ns + `}
@@ -491,7 +501,7 @@ spec:
           command: ["sleep", "600"]
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
 `
-	if _, err := i.Kube.RunInput(context.Background(), []byte(manifest), "apply", "-f", "-"); err != nil {
+	if _, err := i.Kube.RunInput(context.Background(), []byte(manifest), "create", "-f", "-"); err != nil {
 		t.Fatalf("foreign job: %v", err)
 	}
 	return jobIdentity(t, i, ns, name)

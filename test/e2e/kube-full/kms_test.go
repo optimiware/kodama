@@ -4,238 +4,236 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/domain"
-	"github.com/optimiware/kodama/internal/secrets"
-	"github.com/optimiware/kodama/internal/secrets/kms/production"
+	"github.com/optimiware/kodama/api/client"
 	"github.com/optimiware/kodama/test/support/stage"
+	"github.com/optimiware/kodama/test/support/stage/probe"
 )
 
-// TestKubeSecretsKMS is kube_secrets_kms: the real-provider procedure with the deployed workload
-// identity and throwaway Key Manager keys. Plaintext and ciphertext are never logged. Only the
-// throwaway keys are deleted, and only after use.
+// Both subcases are required by the gate. Provider construction on the operator machine is
+// deliberately not acceptance: secret consumption must pass through the installed server.
 func TestKubeSecretsKMS(t *testing.T) {
-	if os.Getenv("KODAMA_KMS_OUTAGE_CHILD") == "1" {
-		outageChild()
-		return
-	}
+	t.Run("installed_secret_restart", installedSecretRestart)
+	t.Run("workload_provider_procedure", workloadProviderProcedure)
+}
+
+func installedSecretRestart(t *testing.T) {
 	i := stage.New(t)
-	ctx := i.Context(8 * time.Minute)
-	token := workloadToken(t, i)
-	op := operatorToken(t)
+	w := i.Seed()
+	ctx := i.Context(12 * time.Minute)
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		t.Fatal("entropy failed")
+	}
+	value = []byte(hex.EncodeToString(value))
+	defer clear(value)
+	name := "kms-" + runSuffix(t)
+	r, err := i.API("admin").CreateSecretWithResponse(ctx, w.TenantA, w.Project, &client.CreateSecretParams{IdempotencyKey: client.IdempotencyKey(name)}, client.CreateSecretRequest{Kind: client.SecretKindGeneric, Name: client.SecretName(name), Value: &value})
+	if err != nil || r.StatusCode() != http.StatusCreated || r.JSON201 == nil {
+		t.Fatal("create installed encrypted secret failed (body suppressed)")
+	}
+	// Compare a digest inside the command. The random value is never in the script, output,
+	// Pod specification or evidence. The real runtime injects the pinned secret just in time.
+	hash := sha256.Sum256(value)
+	script := fmt.Sprintf(`actual=$(printf '%%s' "$KMS_VALUE" | sha256sum); test "${actual%%%% *}" = %s; echo secret-consumed`, hex.EncodeToString(hash[:]))
+	def := w.Definition("kms-consumer", stage.Step{Script: script, Env: map[string]string{"KMS_VALUE": "secret://project/" + name}})
+	consume := func(label string) {
+		item := w.WorkItem(label, "# encrypted secret use")
+		w.Provision(item.Id)
+		run := w.Run(label, item, def.Id)
+		if final := w.WaitRun(run.Id, 4*time.Minute); final.Status != client.RunStatusSucceeded {
+			t.Fatalf("%s failed: %s (%s)", label, final.Status, final.Reason)
+		}
+		w.WaitRemoved(w.Attempts(run.Id)[0].Id)
+		logs := strings.Join(w.WaitLogs("engineer", run.Id), "\n")
+		if strings.Contains(logs, string(value)) || !strings.Contains(logs, "secret-consumed") {
+			t.Fatal("secret use evidence missing or plaintext leaked")
+		}
+	}
+	consume("before-kms-restart")
+	i.Crash(i.Context(6 * time.Minute))
+	consume("after-kms-restart")
+}
+
+func workloadProviderProcedure(t *testing.T) {
+	i := stage.New(t)
+	i.EnsureReady(i.Context(5 * time.Minute))
+	_ = i.ProbeImage() // Fail before creating any cloud resources.
+	op := newOperator(t)
+	project := os.Getenv("SCW_DEFAULT_PROJECT_ID")
+	if !cloudID.MatchString(project) {
+		t.Fatal("SCW_DEFAULT_PROJECT_ID must identify the stage project")
+	}
 	suffix := runSuffix(t)
-	a := createKey(t, op, "t028-a-"+i.S.Name+"-"+suffix)
-	b := createKey(t, op, "t028-b-"+i.S.Name+"-"+suffix)
-	t.Cleanup(func() {
-		c, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-		deleteKey(c, op, a)
-		deleteKey(c, op, b)
-	})
-	t.Logf("throwaway keys created provider=scw region=fr-par")
-
-	install := i.S.InstallationID
-	wc := secrets.WrapContext{InstallationID: install, TenantID: domain.TenantID(i.S.TenantA().TenantID), Generation: 1, KeyID: "sk_t104"}
-	cfg := production.Config{Provider: production.Scaleway, KEKID: "t104-throwaway", Current: "v1", Resources: map[string]string{"v1": a}, ProbeTimeout: 20 * time.Second}
-	p, err := production.New(ctx, cfg, production.Clients{ScalewayToken: token})
-	if err != nil {
-		t.Fatalf("startup probe: %v", err)
-	}
-	material := make([]byte, 32)
-	if _, err := rand.Read(material); err != nil {
-		t.Fatal(err)
-	}
-	wrapped, err := p.Wrap(ctx, wc, material)
-	if err != nil {
-		t.Fatalf("wrap: %v", err)
-	}
-	got, err := p.Unwrap(ctx, wc, wrapped)
-	if err != nil || !bytes.Equal(got, material) {
-		t.Fatal("round trip failed")
-	}
-
-	both := production.Config{Provider: production.Scaleway, KEKID: cfg.KEKID, Current: "v1", Resources: map[string]string{"v1": a, "v2": b}, ProbeTimeout: 20 * time.Second}
-	p2, err := production.New(ctx, both, production.Clients{ScalewayToken: token})
-	if err != nil {
-		t.Fatalf("both keys: %v", err)
-	}
-	for _, mutate := range []func(*secrets.WrapContext){
-		func(w *secrets.WrapContext) { w.InstallationID = "other" },
-		func(w *secrets.WrapContext) { w.TenantID = "t_other" },
-		func(w *secrets.WrapContext) { w.KeyID = "sk_other" },
-		func(w *secrets.WrapContext) { w.Generation = 9 },
-	} {
-		bad := wc
-		mutate(&bad)
-		if _, err := p2.Unwrap(ctx, bad, wrapped); keyClass(err) != secrets.KeyCorrupt {
-			t.Fatalf("tamper class %v, want corrupt", err)
-		}
-	}
-	flipped := wrapped
-	flipped.Bytes = append([]byte(nil), wrapped.Bytes...)
-	if len(flipped.Bytes) == 0 {
-		t.Fatal("wrap produced no bytes")
-	}
-	flipped.Bytes[0] ^= 0xff
-	if _, err := p2.Unwrap(ctx, wc, flipped); keyClass(err) != secrets.KeyCorrupt {
-		t.Fatal("flipped ciphertext was not corrupt")
-	}
-
-	rot := production.Config{Provider: production.Scaleway, KEKID: cfg.KEKID, Current: "v2", Resources: map[string]string{"v1": a, "v2": b}, ProbeTimeout: 20 * time.Second}
-	p3, err := production.New(ctx, rot, production.Clients{ScalewayToken: token})
-	if err != nil {
-		t.Fatalf("rotation: %v", err)
-	}
-	if recovered, err := p3.Unwrap(ctx, wc, wrapped); err != nil || !bytes.Equal(recovered, material) {
-		t.Fatal("retained v1 unwrap failed")
-	}
-	again, err := p3.Wrap(ctx, wc, material)
-	if err != nil || again.KEK.Version != "v2" {
-		t.Fatal("new wraps must record v2")
-	}
-
-	fresh, err := production.New(ctx, rot, production.Clients{ScalewayToken: token})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fresh.Unwrap(ctx, wc, wrapped); err != nil {
-		t.Fatal("fresh process could not unwrap the retained wrap")
-	}
-	dropped := production.Config{Provider: production.Scaleway, KEKID: cfg.KEKID, Current: "v2", Resources: map[string]string{"v2": b}, ProbeTimeout: 20 * time.Second}
-	p4, err := production.New(ctx, dropped, production.Clients{ScalewayToken: token})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p4.Unwrap(ctx, wc, wrapped); keyClass(err) != secrets.KeyNotFound {
-		t.Fatal("removing v1 was not KeyNotFound")
-	}
-
-	if _, err := production.New(ctx, cfg, production.Clients{ScalewayToken: "00000000-0000-4000-8000-000000000000"}); keyClass(err) != secrets.KeyDenied && keyClass(err) != secrets.KeyUnavailable {
-		t.Fatalf("denied identity class %v", err)
-	}
-
-	cmd := exec.Command(os.Args[0], "-test.run", "^TestKubeSecretsKMS$", "-test.count=1")
-	cmd.Env = append(os.Environ(), "KODAMA_KMS_OUTAGE_CHILD=1", "HTTPS_PROXY=http://127.0.0.1:1", "HTTP_PROXY=http://127.0.0.1:1", "KODAMA_KMS_KEY="+a, "KODAMA_KMS_TOKEN="+token, "KODAMA_KMS_INSTALL="+install)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("outage child: %v %s", err, redact(out))
-	}
-	t.Log("kms procedure passed provider=scw")
-}
-
-func outageChild() {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	cfg := production.Config{Provider: production.Scaleway, KEKID: "t104-throwaway", Current: "v1", Resources: map[string]string{"v1": os.Getenv("KODAMA_KMS_KEY")}, ProbeTimeout: 5 * time.Second}
-	_, err := production.New(ctx, cfg, production.Clients{ScalewayToken: os.Getenv("KODAMA_KMS_TOKEN")})
-	if keyClass(err) == secrets.KeyUnavailable {
-		os.Exit(0)
-	}
-	os.Exit(1)
-}
-
-func workloadToken(t *testing.T, i *stage.Installation) string {
-	t.Helper()
-	// The workload Key Manager credential is the session's kodama-kms-scw secret, not the probe URL.
-	secret := "kodama-kms-scw"
-	val, err := i.Kube.SecretValue(i.Context(time.Minute), i.S.Namespace, secret, "secret-key")
-	if err != nil || val == "" {
-		t.Fatal("workload key manager credential is not mounted")
-	}
-	return strings.TrimSpace(val)
-}
-
-func operatorToken(t *testing.T) string {
-	t.Helper()
-	raw, err := os.ReadFile(os.Getenv("KUBECONFIG"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "token:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "token:"))
-		}
-	}
-	t.Fatal("operator credential is not in the kubeconfig")
-	return ""
-}
-
-func createKey(t *testing.T, token, name string) string {
-	t.Helper()
-	body, _ := json.Marshal(map[string]any{
-		"name": name, "project_id": "943031a5-cc3c-4202-aea1-697e4e55863c",
-		"usage": map[string]string{"symmetric_encryption": "aes_256_gcm"}, "protected": false,
-	})
-	req, _ := http.NewRequest(http.MethodPost, "https://api.scaleway.com/key-manager/v1alpha1/regions/fr-par/keys", bytes.NewReader(body))
-	req.Header.Set("X-Auth-Token", token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var out struct {
-		ID string `json:"id"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&out)
-	if resp.StatusCode >= 300 || out.ID == "" {
-		t.Fatalf("create throwaway key: HTTP %d", resp.StatusCode)
-	}
-	return out.ID
+	a := createKey(t, op, project, "t028-a-"+i.S.Name+"-"+suffix)
+	b := createKey(t, op, project, "t028-b-"+i.S.Name+"-"+suffix)
+	denied := createDeniedIdentity(t, op, project, "t028-denied-"+i.S.Name+"-"+suffix)
+	i.RunKMSProbe(i.Context(8*time.Minute), probe.KMSConfig{A: a, B: b, Installation: i.S.InstallationID, Tenant: i.S.TenantA().TenantID}, denied)
 }
 
 func runSuffix(t *testing.T) string {
 	t.Helper()
-	raw := make([]byte, 4)
+	raw := make([]byte, 8)
 	if _, err := rand.Read(raw); err != nil {
-		t.Fatal(err)
+		t.Fatal("entropy failed")
 	}
 	return hex.EncodeToString(raw)
 }
 
-// deleteKey removes a throwaway key. Key Manager may keep a key protected regardless of the
-// create request, so it is unprotected first; only keys this test created reach here.
-func deleteKey(ctx context.Context, token, id string) {
-	const base = "https://api.scaleway.com/key-manager/v1alpha1/regions/fr-par/keys/"
-	un, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+id+"/unprotect", strings.NewReader("{}"))
-	un.Header.Set("X-Auth-Token", token)
-	un.Header.Set("Content-Type", "application/json")
-	if resp, err := http.DefaultClient.Do(un); err == nil {
-		resp.Body.Close()
-	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, "https://api.scaleway.com/key-manager/v1alpha1/regions/fr-par/keys/"+id, nil)
-	req.Header.Set("X-Auth-Token", token)
-	resp, err := http.DefaultClient.Do(req)
-	if err == nil {
-		resp.Body.Close()
-	}
+type operator struct {
+	token  string
+	base   string
+	client *http.Client
 }
 
-func keyClass(err error) secrets.KeyErrorClass {
-	var ke *secrets.KeyError
-	if errors.As(err, &ke) {
-		return ke.Class
+func newOperator(t *testing.T) operator {
+	t.Helper()
+	token := os.Getenv("SCW_SECRET_KEY")
+	if token == "" {
+		// Resolve the selected user through kubectl, not by taking the first token in a YAML file.
+		ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, "kubectl", "config", "view", "--minify", "--raw", "-o", "jsonpath={.users[0].user.token}").Output()
+		if err != nil {
+			t.Fatal("operator credential unavailable")
+		}
+		token = strings.TrimSpace(string(out))
 	}
-	return ""
+	if token == "" {
+		t.Fatal("SCW_SECRET_KEY or an operator kubeconfig token is required")
+	}
+	return operator{token: token, base: "https://api.scaleway.com", client: &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
-func redact(b []byte) string {
-	s := string(b)
-	if i := strings.Index(s, "KODAMA_KMS_TOKEN"); i >= 0 {
-		s = s[:i] + "[redacted]"
+// call returns status and decodes only into an allowlisted caller struct. No bodies/credentials
+// enter errors or test logs, including transport and JSON decode failures.
+func (o operator) call(ctx context.Context, method, path string, body, out any) (int, error) {
+	var input io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return 0, fmt.Errorf("encode operator request")
+		}
+		input = bytes.NewReader(data)
 	}
-	if len(s) > 400 {
-		s = s[:400]
+	r, err := http.NewRequestWithContext(ctx, method, o.base+path, input)
+	if err != nil {
+		return 0, fmt.Errorf("construct operator request")
 	}
-	return s
+	r.Header.Set("X-Auth-Token", o.token)
+	r.Header.Set("Content-Type", "application/json")
+	resp, err := o.client.Do(r)
+	if err != nil {
+		return 0, fmt.Errorf("operator transport failed")
+	}
+	defer resp.Body.Close()
+	if out != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out) != nil {
+			return resp.StatusCode, fmt.Errorf("decode operator response")
+		}
+	}
+	return resp.StatusCode, nil
+}
+
+const keyPath = "/key-manager/v1alpha1/regions/fr-par/keys"
+
+var cloudID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+func createKey(t *testing.T, o operator, project, name string) string {
+	t.Helper()
+	var out struct {
+		ID        string `json:"id"`
+		Protected *bool  `json:"protected"`
+	}
+	// protected is response metadata; unprotected is the provider's create field.
+	body := map[string]any{"name": name, "project_id": project, "usage": map[string]string{"symmetric_encryption": "aes_256_gcm"}, "unprotected": true}
+	code, err := o.call(t.Context(), http.MethodPost, keyPath, body, &out)
+	if cloudID.MatchString(out.ID) {
+		// Register immediately: a later create or a response-validation failure must not leak A.
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			if err := deleteKey(ctx, o, out.ID); err != nil {
+				t.Errorf("cleanup throwaway key %s: %v", out.ID, err)
+			}
+		})
+	}
+	if err != nil || code != http.StatusOK && code != http.StatusCreated || !cloudID.MatchString(out.ID) {
+		t.Fatalf("create throwaway key: HTTP %d (details suppressed)", code)
+	}
+	if out.Protected == nil || *out.Protected {
+		t.Fatal("provider created a protected throwaway key despite unprotected:true")
+	}
+	return out.ID
+}
+
+func deleteKey(ctx context.Context, o operator, id string) error {
+	code, err := o.call(ctx, http.MethodPost, keyPath+"/"+id+"/unprotect", map[string]any{}, nil)
+	if code == http.StatusNotFound {
+		return nil
+	}
+	if err != nil || code != http.StatusOK {
+		return fmt.Errorf("unprotect: HTTP %d", code)
+	}
+	code, err = o.call(ctx, http.MethodDelete, keyPath+"/"+id, nil, nil)
+	if err != nil || code != http.StatusNoContent && code != http.StatusNotFound {
+		return fmt.Errorf("delete: HTTP %d", code)
+	}
+	return nil
+}
+
+func createDeniedIdentity(t *testing.T, o operator, project, name string) string {
+	t.Helper()
+	var p struct {
+		OrganizationID string `json:"organization_id"`
+	}
+	code, err := o.call(t.Context(), http.MethodGet, "/account/v3/projects/"+project, nil, &p)
+	if err != nil || code != http.StatusOK || !cloudID.MatchString(p.OrganizationID) {
+		t.Fatalf("read stage project: HTTP %d", code)
+	}
+	var app struct {
+		ID string `json:"id"`
+	}
+	code, err = o.call(t.Context(), http.MethodPost, "/iam/v1alpha1/applications", map[string]string{"name": name, "organization_id": p.OrganizationID}, &app)
+	if cloudID.MatchString(app.ID) {
+		t.Cleanup(func() { cleanupCloud(t, o, "/iam/v1alpha1/applications/"+app.ID) })
+	}
+	if err != nil || code != http.StatusOK && code != http.StatusCreated || !cloudID.MatchString(app.ID) {
+		t.Fatalf("create denied application: HTTP %d", code)
+	}
+	// No IAM policy is attached: this credential is valid, but cannot decrypt or administer keys.
+	var key struct {
+		Access string `json:"access_key"`
+		Secret string `json:"secret_key"`
+	}
+	code, err = o.call(t.Context(), http.MethodPost, "/iam/v1alpha1/api-keys", map[string]any{"application_id": app.ID, "default_project_id": project, "description": name, "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}, &key)
+	if key.Access != "" {
+		t.Cleanup(func() { cleanupCloud(t, o, "/iam/v1alpha1/api-keys/"+key.Access) })
+	}
+	if err != nil || code != http.StatusOK && code != http.StatusCreated || key.Access == "" || key.Secret == "" {
+		t.Fatalf("create denied credential: HTTP %d", code)
+	}
+	return key.Secret
+}
+
+func cleanupCloud(t *testing.T, o operator, path string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	code, err := o.call(ctx, http.MethodDelete, path, nil, nil)
+	if err != nil || code != http.StatusNoContent && code != http.StatusNotFound {
+		t.Errorf("cleanup throwaway IAM resource: HTTP %d", code)
+	}
 }

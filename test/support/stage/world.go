@@ -499,7 +499,7 @@ func (w *World) WaitLogs(persona, run string) []string {
 	WaitFor(t, "the retained log of "+run, 2*time.Minute, func() bool {
 		code, l := w.Logs(persona, run)
 		lines = l
-		return code == http.StatusOK
+		return code == http.StatusOK && len(l) > 0
 	})
 	return lines
 }
@@ -555,7 +555,8 @@ func (w *World) ProjectEvents() string {
 // OpenEvents opens an event stream as the persona.
 func (i *Installation) OpenEvents(persona, path, lastEventID string) *Stream {
 	i.T.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	i.T.Cleanup(cancel)
 	req, err := http.NewRequestWithContext(ctx, "GET", i.S.URL+path, nil)
 	if err != nil {
 		cancel()
@@ -576,7 +577,6 @@ func (i *Installation) OpenEvents(persona, path, lastEventID string) *Stream {
 		resp.Body.Close()
 		return st
 	}
-	i.T.Cleanup(cancel)
 	go func() {
 		defer resp.Body.Close()
 		defer close(st.Frames)

@@ -53,13 +53,15 @@ func (i *Installation) NewRepo(ctx context.Context, prefix string) *Repo {
 	r.URL = fmt.Sprintf("%s/%s/%s.git", strings.TrimRight(u.String(), "/"), gitOwner, r.Name)
 
 	body, _ := json.Marshal(map[string]any{"name": r.Name, "private": true, "auto_init": true, "default_branch": "main", "readme": "Default", "description": "Kodama qualification fixture"})
-	if code, out := r.call(ctx, http.MethodPost, "/admin/users/"+gitOwner+"/repos", body); code != http.StatusCreated {
-		i.T.Fatalf("create repository: HTTP %d: %s", code, out)
+	if code, _ := r.call(ctx, http.MethodPost, "/admin/users/"+gitOwner+"/repos", body); code != http.StatusCreated {
+		i.T.Fatalf("create repository: HTTP %d (provider body suppressed)", code)
 	}
 	i.T.Cleanup(func() {
 		c, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		r.call(c, http.MethodDelete, "/repos/"+gitOwner+"/"+r.Name, nil)
+		if code, _ := r.call(c, http.MethodDelete, "/repos/"+gitOwner+"/"+r.Name, nil); code != http.StatusNoContent && code != http.StatusNotFound {
+			i.T.Errorf("cleanup test repository: HTTP %d", code)
+		}
 	})
 	r.Initial = r.Commit(ctx, "main")
 	return r

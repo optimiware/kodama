@@ -52,9 +52,10 @@ PY
 # validate_stage_contract verifies that a stage_contract JSON file satisfies C-18/O-05/O-26 invariants.
 validate_stage_contract() {
   local contract_file="$1"
+  local expected_cloud="${2:-}"
   [[ -f "${contract_file}" ]] || die "stage_contract file not found: ${contract_file}"
 
-  python3 - "${contract_file}" <<'PY'
+  python3 - "${contract_file}" "${expected_cloud}" <<'PY'
 import json
 import sys
 
@@ -71,6 +72,8 @@ for key in required_top:
         raise SystemExit(f"stage_contract missing key: {key}")
 
 cloud = c["cloud"]
+if sys.argv[2] and cloud != sys.argv[2]:
+    raise SystemExit("--cloud does not match the stage contract")
 if cloud not in ("aws", "gcp", "scw"):
     raise SystemExit(f"invalid cloud: {cloud}")
 
@@ -257,13 +260,16 @@ run_stage_go_suite() {
   values_sha="$(sha256_digest "${values_file}")"
   git_sha="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")"
 
-  python3 - "${REPO_ROOT}" "${contract_file}" "${values_file}" "${contract_sha}" "${values_sha}" "${git_sha}" "${results_out}" "${pkgs[@]}" <<'PY'
+  PYTHONUNBUFFERED=1 python3 - "${REPO_ROOT}" "${contract_file}" "${values_file}" "${contract_sha}" "${values_sha}" "${git_sha}" "${results_out}" "${pkgs[@]}" <<'PY'
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import hashlib
+import time
+import fcntl
 
 repo_root = Path(sys.argv[1])
 contract_path, values_path, contract_sha, values_sha, git_sha, results_out = sys.argv[2:8]
@@ -279,6 +285,7 @@ prov = {
     "cluster_endpoint": c["cluster"]["endpoint"],
     "suite_passed": False,
 }
+Path(results_out).write_text(json.dumps({"passed": [], "failed": [], "skipped": [], "failure_phase": "preflight", "provenance": prov}) + "\n")
 
 env = dict(os.environ)
 kubeconfig = env.get("KUBECONFIG") or env.get("KODAMA_KUBECONFIG") or ""
@@ -316,6 +323,47 @@ if actual_srv != expected_srv:
     sys.stderr.write(f"[gate-fail] KUBECONFIG cluster server {actual_srv!r} != stage_contract {expected_srv!r}\n")
     sys.exit(1)
 
+# Refuse mutable candidates and mismatched session inputs before expensive work begins.
+def clean_candidate():
+    return not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"], cwd=repo_root, text=True).strip()
+
+if not clean_candidate():
+    sys.exit("[gate-fail] commit all changes before qualification; candidate must remain clean")
+state = Path(env.get("KODAMA_QUAL_STATE_DIR") or env.get("STAGE_STATE_DIR") or str(Path.home() / "kodama-stage/state"))
+session = env.get("KODAMA_QUAL_SESSION", "")
+if not re.fullmatch(r"[a-z][a-z0-9]{0,9}", session):
+    sys.exit("[gate-fail] KODAMA_QUAL_SESSION must identify a prepared session")
+sd = state / "qualification" / session
+try:
+    session_lock = (sd / "qualification.lock").open("a")
+    fcntl.flock(session_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    handle = json.loads((sd / "session.json").read_text())
+    consistent = (handle["name"] == session and handle["namespace"] == "kodama-q-" + session and handle["installation_id"] == c["installation_id"]
+                  and handle["url"] == c["network"]["runtime_url"] and handle["tenants"] == c["tenants"]
+                  and (sd / "contract.json").read_bytes() == Path(contract_path).read_bytes()
+                  and (sd / "values.yaml").read_bytes() == Path(values_path).read_bytes())
+except BlockingIOError:
+    sys.exit("[gate-fail] qualification session is already locked by another gate")
+except (OSError, ValueError, KeyError):
+    sys.exit("[gate-fail] prepared session is missing or invalid")
+if not consistent:
+    sys.exit("[gate-fail] session, contract and values do not identify the same installation")
+target = subprocess.run(["kubectl", "--kubeconfig", kubeconfig, "--request-timeout=15s", "get", "namespace", handle["namespace"], "-o", "jsonpath={.metadata.name}"], capture_output=True, text=True)
+if target.returncode != 0 or target.stdout.strip() != handle["namespace"]:
+    Path(results_out).write_text(json.dumps({"infra_pause": "qualification namespace is missing or unreachable", "passed": [], "failed": [], "skipped": [], "provenance": prov}) + "\n")
+    sys.exit(75)
+probe_image = env.get("KODAMA_STAGE_PROBE_IMAGE", "")
+readiness = "./test/e2e/kube-full/..." in pkgs
+if readiness and not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", probe_image):
+    sys.exit("[gate-fail] KODAMA_STAGE_PROBE_IMAGE must pin the test-only helper by digest")
+if readiness and c["cloud"] == "scw" and not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", env.get("SCW_DEFAULT_PROJECT_ID", "")):
+    sys.exit("[gate-fail] SCW_DEFAULT_PROJECT_ID must identify the qualification project")
+print(f"[stage] candidate={git_sha} session={session} inputs verified", flush=True)
+if env.get("KODAMA_STAGE_PREFLIGHT_ONLY") == "1":
+    sys.exit(0)
+started = time.monotonic()
+chart_tree = subprocess.check_output(["git", "rev-parse", "HEAD:deploy/helm/kodama"], cwd=repo_root, text=True).strip()
+
 # Clear inherited local-scope environment variables so tests never fall back to a local Podman/kind fixture.
 for stale_var in (
     "DEV_SCOPE", "KODAMA_TEST_SCOPE", "KODAMA_RESOURCE_PREFIX",
@@ -343,36 +391,29 @@ env.update({
     "KODAMA_S3_PREFIX": c["object_storage"]["artifacts_prefix"],
 })
 
-ACCEPTANCE = {
-    "kube_chart_install": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeChartInstall", ""),
-    "kube_m1_roundtrip": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeM1Roundtrip", ""),
-    "kube_cancel_restart": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeCancelRestart", ""),
-    "kube_secrets_kms": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeSecretsKMS", ""),
-    "execution_assembly_roundtrip": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyRoundtrip/kube", "kube"),
-    "execution_assembly_cancel_restart": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyCancelRestart/kube", "kube"),
-    "execution_assembly_result_guard": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyResultGuard/kube", "kube"),
-}
+ACCEPTANCE = json.loads((repo_root / "deploy/stage/scripts/readiness-cases.json").read_text())
 
 cmd = ["go", "test", "-json", "-p", "1", "-race", "-count=1", "-timeout", env.get("KODAMA_GO_TEST_TIMEOUT", "45m"), *pkgs]
-proc = subprocess.Popen(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-assert proc.stdout is not None
-
 passed, failed, skipped = set(), set(), set()
 last = {}
 pkg_actions = {}
 saw_pkg_end = set()
-for raw in proc.stdout:
+incomplete_phases = []
+fault_observed = []
+def consume(raw):
     line = raw.strip()
     if not line.startswith("{"):
         sys.stdout.write(raw)
-        continue
+        return
     try:
         ev = json.loads(line)
     except json.JSONDecodeError:
         sys.stdout.write(raw)
-        continue
+        return
     if ev.get("Action") == "output" and isinstance(ev.get("Output"), str):
         sys.stdout.write(ev["Output"])
+        if "FAULT_CONFIG PX-A02 HTTPS loopback proxy; both TLS hops verified; test-owned only" in ev["Output"]:
+            fault_observed.append(True)
     pkg = ev.get("Package")
     test = ev.get("Test")
     action = ev.get("Action")
@@ -388,10 +429,39 @@ for raw in proc.stdout:
         pkg_actions[pkg] = action
         saw_pkg_end.add(pkg)
 
-rc = proc.wait()
-truncated = not saw_pkg_end
+def run(args, patterns):
+    saw_pkg_end.clear()
+    expected = subprocess.check_output(["go", "list", *patterns], cwd=repo_root, env=env, text=True).split()
+    proc = subprocess.Popen(args, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for raw in proc.stdout:
+        consume(raw)
+    rc = proc.wait()
+    if not expected or set(expected) - saw_pkg_end:
+        incomplete_phases.append(True)
+    return rc
+
+# Install first explicitly: Go's lexical/source test order is not an installation dependency.
+base = cmd[:cmd.index(pkgs[0])]
+if readiness:
+    print("[stage] phase=chart-install", flush=True)
+    rc = run([*base, "-run", "^TestKubeChartInstall$", "./test/e2e/kube-full/..."], ["./test/e2e/kube-full/..."])
+else:
+    rc = 0
+if rc == 0:
+    print("[stage] phase=scenarios", flush=True)
+    rc = run([*base, "-skip", "^TestKubeChartInstall$", *pkgs], pkgs)
+runner_exit = rc
+current = subprocess.check_output(["git", "rev-parse", "--short=12", "HEAD"], cwd=repo_root, text=True).strip()
+inputs_stable = all("sha256:" + hashlib.sha256(Path(p).read_bytes()).hexdigest() == digest
+                    for p, digest in ((contract_path, contract_sha), (values_path, values_sha)))
+stable = current == git_sha and clean_candidate() and inputs_stable
+if not stable:
+    print("[gate-fail] candidate or inputs changed during qualification", flush=True)
+    rc = 1
+truncated = bool(incomplete_phases)
 acceptances = []
-for name, (want_pkg, want_test, backend) in ACCEPTANCE.items():
+for name, spec in ACCEPTANCE.items():
+    want_pkg, want_test, backend = spec["package"], spec["test"], spec["backend"]
     status = last.get((want_pkg, want_test), "")
     acceptances.append({
         "name": name,
@@ -399,11 +469,21 @@ for name, (want_pkg, want_test, backend) in ACCEPTANCE.items():
         "test": want_test,
         "backend": backend,
         "status": status or "missing",
+        "cases": {case: last.get((want_pkg, want_test + "/" + case), "missing") for case in spec["cases"]},
     })
 pkg_ok = bool(pkg_actions) and all(a == "pass" for a in pkg_actions.values())
-prov["suite_passed"] = (rc == 0 and pkg_ok and not failed and not truncated)
+cases_ok = not readiness or all(a["status"] == "pass" and all(v == "pass" for v in a["cases"].values()) for a in acceptances)
+prov["suite_passed"] = (rc == 0 and pkg_ok and not failed and not truncated and cases_ok)
 prov["session"] = env.get("KODAMA_QUAL_SESSION", "")
-prov["fault_config"] = "PX-A02 loopback proxy sidecar is applied only inside TestKubeCancelRestart and rolled back; it is not the chart install"
+prov["fault_config"] = {
+    "mechanism": "test_owned_https_loopback_proxy",
+    "applied": bool(fault_observed),
+    "case_status": last.get((ACCEPTANCE["kube_cancel_restart"]["package"], "TestKubeCancelRestart/lost_create_acknowledgment"), "missing"),
+    "chart_install_instrumented": False,
+}
+prov["probe_image"] = probe_image
+prov["chart_tree"] = chart_tree
+prov["candidate_stable"] = stable
 passed -= failed | skipped
 out = {
     "passed": sorted(passed),
@@ -411,11 +491,14 @@ out = {
     "skipped": sorted(skipped),
     "acceptances": acceptances,
     "packages": [{"package": p, "action": a} for p, a in sorted(pkg_actions.items())],
-    "runner_exit": rc,
+    "runner_exit": runner_exit,
+    "qualification_exit": rc,
+    "elapsed_seconds": round(time.monotonic() - started, 2),
     "truncated": truncated,
     "provenance": prov,
 }
 Path(results_out).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+print(f"[stage] finished runner_exit={runner_exit} qualification_exit={rc} elapsed={out['elapsed_seconds']}s suite_passed={prov['suite_passed']}", flush=True)
 sys.exit(0 if prov["suite_passed"] else 1)
 PY
 }
@@ -438,13 +521,13 @@ verify_forge_results() {
   values_sha="$(sha256_digest "${values_file}")"
   git_sha="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")"
 
-  python3 - "${results_file}" "${contract_file}" "${contract_sha}" "${values_sha}" "${git_sha}" "${required[@]}" <<'PY'
+  python3 - "${STAGE_DIR}/scripts/readiness-cases.json" "${results_file}" "${contract_file}" "${contract_sha}" "${values_sha}" "${git_sha}" "${required[@]}" <<'PY'
 import json
 import re
 import sys
 
-results_path, contract_path, contract_sha, values_sha, git_sha = sys.argv[1:6]
-required = sys.argv[6:]
+cases_path, results_path, contract_path, contract_sha, values_sha, git_sha = sys.argv[1:7]
+required = sys.argv[7:]
 
 def norm(name: str) -> str:
     s = re.sub(r"[^a-z0-9]", "", name.lower())
@@ -483,15 +566,7 @@ if prov.get("suite_passed") is not True:
     sys.stderr.write("[gate-fail] provenance.suite_passed is not true (package or runner failure)\n")
     sys.exit(1)
 
-ACCEPTANCE = {
-    "kube_chart_install": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeChartInstall", ""),
-    "kube_m1_roundtrip": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeM1Roundtrip", ""),
-    "kube_cancel_restart": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeCancelRestart", ""),
-    "kube_secrets_kms": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeSecretsKMS", ""),
-    "execution_assembly_roundtrip": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyRoundtrip/kube", "kube"),
-    "execution_assembly_cancel_restart": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyCancelRestart/kube", "kube"),
-    "execution_assembly_result_guard": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyResultGuard/kube", "kube"),
-}
+ACCEPTANCE = json.load(open(cases_path))
 
 passed = {norm(x) for x in data.get("passed", [])} | set(data.get("passed", []))
 failed = {norm(x) for x in data.get("failed", [])} | set(data.get("failed", []))
@@ -512,7 +587,7 @@ for req in required:
         elif req not in passed and key not in passed:
             problems.append(f"required acceptance '{req}' did not run or pass")
         continue
-    want_pkg, want_test, want_backend = spec
+    want_pkg, want_test, want_backend = spec["package"], spec["test"], spec["backend"]
     matches = [r for r in records if isinstance(r, dict) and r.get("name") == req]
     if not matches:
         problems.append(f"required acceptance '{req}' had zero matches")
@@ -525,6 +600,9 @@ for req in required:
         problems.append(f"required acceptance '{req}' was SKIPPED (a parent pass does not count)")
     elif not any(r.get("status") == "pass" for r in exact):
         problems.append(f"required acceptance '{req}' did not run or pass")
+    for case in spec["cases"]:
+        if not exact or any(r.get("cases", {}).get(case) != "pass" for r in exact):
+            problems.append(f"required acceptance '{req}/{case}' did not run or pass")
 
 if problems:
     for p in problems:

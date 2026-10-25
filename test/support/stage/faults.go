@@ -119,6 +119,55 @@ spec:
 func (h *Hold) Release() {
 	c, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	_, _ = h.i.Kube.Run(c, "delete", "validatingadmissionpolicybinding", h.name, "--ignore-not-found")
-	_, _ = h.i.Kube.Run(c, "delete", "validatingadmissionpolicy", h.name, "--ignore-not-found")
+	for _, kind := range []string{"validatingadmissionpolicybinding", "validatingadmissionpolicy"} {
+		if _, err := h.i.Kube.Run(c, "delete", kind, h.name, "--ignore-not-found"); err != nil {
+			h.i.T.Errorf("restore admission policy %s: %v", h.name, err)
+		}
+	}
+}
+
+// HoldPods prevents the Job controller from starting Pods while a lost-create response is
+// injected. It prevents callbacks from confirming dispatch before the original server crashes.
+func (i *Installation) HoldPods(ctx context.Context, namespace string) *Hold {
+	i.T.Helper()
+	h := &Hold{i: i, name: "kq-" + i.S.Name + "-pods-" + random(3)}
+	policy := fmt.Sprintf(`apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: %[1]s
+  labels: {kodama.optimi.com/qualification-session: %[2]q}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  validations:
+    - expression: "false"
+      message: "kodama qualification hold: Pod admission"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: %[1]s
+  labels: {kodama.optimi.com/qualification-session: %[2]q}
+spec:
+  policyName: %[1]s
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels: {kubernetes.io/metadata.name: %[3]q}
+`, h.name, i.S.Name, namespace)
+	i.T.Cleanup(h.Release)
+	if _, err := i.Kube.RunInput(ctx, []byte(policy), "apply", "-f", "-"); err != nil {
+		i.T.Fatalf("Pod hold: %v", err)
+	}
+	manifest := fmt.Sprintf(`{"apiVersion":"v1","kind":"Pod","metadata":{"name":"kq-probe","namespace":%q},"spec":{"restartPolicy":"Never","securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"probe","image":%q,"command":["true"],"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}`, namespace, i.WorkloadImage())
+	WaitForEvery(i.T, "Pod admission hold to take effect", time.Minute, time.Second, func() bool {
+		_, err := i.Kube.RunInput(ctx, []byte(manifest), "create", "--dry-run=server", "-f", "-")
+		return err != nil && strings.Contains(err.Error(), "qualification hold")
+	})
+	return h
 }

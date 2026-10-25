@@ -1,0 +1,17 @@
+# An explicit helper build context; the product .dockerignore excludes test/ entirely.
+*
+!go.mod
+!go.sum
+!internal
+!contracts
+!pkg
+!test
+test/*
+!test/support
+test/support/*
+!test/support/stage
+test/support/stage/*
+!test/support/stage/probe
+**/*_test.go
+**/testdata
+**/*.md

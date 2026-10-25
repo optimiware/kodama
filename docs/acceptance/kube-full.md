@@ -1,6 +1,6 @@
 # Full Kubernetes installation readiness (T-104) — running report
 
-**Status: in progress, not qualified.** Six of the seven readiness acceptances have passed live, individually or inside one gate run. The readiness gate has not passed: `kube_secrets_kms` failed in that run (Key Manager HTTP 409, throwaway key name already taken), so `suite_passed` is false and the receipt was not issued. This file is the handoff, not a qualification claim.
+**Status: in progress, not qualified.** A subsequent run passed all seven top-level tests but was rejected because HEAD changed during execution (`c1bff5cfeb51` → `90f813df67c4`). There is no passing gate receipt. Coverage hardening below adds new mandatory subcases; historical passes do not qualify those new cases. The live loop remains paused.
 
 ## Target and provenance
 
@@ -30,13 +30,13 @@
 | 5 | Scaleway object storage: `HeadBucket` (used by the readiness probe) needs the bucket-read permission set, not only object permissions. | Fixed in the stage IAM policy. |
 | 6 | NATS `$VAR` interpolation: a quoted token in the rendered JSON config makes the literal text the token. | Fixed in the stage NATS values (`<< >>` unquoted form). |
 | 7 | Scaleway's managed admin user cannot grant on the platform-owned database. | Roles and privileges are created through the platform API. |
-| 8 | The server's cluster-scoped Role could not create `SubjectAccessReview`s, which the tenant preflight posts before every dispatch (it asks the API server what the tenant's execution service account may do). On a real chart installation every dispatch therefore failed with an unclassified `unavailable` and no Job was ever created; the run stayed `queued`. Found by the first real run on a qualification session (2026-10-25). | Fixed in `deploy/helm/kodama/templates/rbac.yaml` (`authorization.k8s.io` `subjectaccessreviews` `create`, nothing else) with regression test `Test_helm_preflight_access_review_rbac`; owner review requested together with finding 1. Not yet rolled out to a live session. |
+| 8 | The server's cluster-scoped Role could not create `SubjectAccessReview`s, which the tenant preflight posts before every dispatch. No Job was created and the run stayed `queued`. | Fixed in the chart with `Test_helm_preflight_access_review_rbac` and exercised in the historical stage runs. Review still required. |
 | 9 | The server logs an unclassified `unavailable` for a refused dispatch (`execution: dispatch error=unavailable`) without naming the failing dependency or call. Finding 8 needed code reading to diagnose. | Observation for the execution owner: log the classified cause (preflight reason, API operation and status). |
 | 10 | The tenant Role granted Secrets `create, get, list, delete` but not `update`. The workload record is an annotation on the admission Secret, replaced with PUT as the attempt advances. Every dispatch died `unavailable` after creating that Secret. | Fixed in `deploy/helm/kodama/templates/rbac.yaml`; `Test_helm_secret_management_rbac` now requires `update`. |
 | 11 | Cilium with kube-proxy replacement does not honour a ClusterIP `ipBlock` for CoreDNS. Workloads could not resolve the callback hostname and died at the execution deadline. | Chart always renders a kube-dns pod-selector egress (port 53). `internal/kube/preflight.go` allows only that peer. |
 | 12 | `customCA: false` left `KODAMA_GIT_CA_FILE` unset. Source checkout refuses an empty Git CA, so every reader/writer dispatch was `unavailable` (logged that way even when the cause is `ErrCheckoutDenied`). | Chart sets `KODAMA_GIT_CA_FILE` to `/secrets/runtime-ca.crt` unless a private CA is configured. Stage `runtime-ca.crt` is the ISRG roots. |
 | 13 | The workspace volume is owned by the kubelet, not uid 65532. Git refuses the checkout (`dubious ownership in repository at '/workspace'`). Restricted Pod Security forbids a chown. | Entrypoint git sets `safe.directory=*`; the step environment sets `safe.directory` to the workspace unless the step already configures git. Requires the image built after this change. |
-| 14 | PX-A02 cannot use the planned loopback HTTP sidecar. `logs/kubernetes` refuses a non-HTTPS API endpoint, and that refusal crashes the server (`core assembly failed to start`). A sidecar was applied once and rolled back by deleting the Deployment and upgrading the chart. | Not qualified. Installed evidence is crash-restart adoption of a live Job, not a lost-create acknowledgment. Do not reapply an HTTP proxy sidecar. |
+| 14 | `logs/kubernetes` refuses a non-HTTPS API endpoint; the earlier HTTP fault sidecar crashed the server. | HTTP helper removed. A test-owned HTTPS loopback proxy with explicit trust on both hops is now implemented, but not live-qualified. Historical evidence is crash-restart adoption, not a lost acknowledgment. |
 
 ## Work state and handoff (2026-10-25)
 
@@ -44,21 +44,21 @@ Branch `task/T-104-kube-full` (worktree `.work/T-104-kube-full`). Not pushed. No
 
 ### What passed live (session `kb`, 2026-10-25)
 
-One readiness gate run (`gate.sh --gate readiness --cloud scw`, session contract and values) executed the suites. Results:
+Historical runs against session `kb` (before the new mandatory coverage):
 
-| Acceptance | Result in that run |
-| --- | --- |
-| `kube_chart_install` | passed (`TestKubeChartInstall`) |
-| `kube_m1_roundtrip` | passed (`TestKubeM1Roundtrip`) |
-| `kube_cancel_restart` | passed (`TestKubeCancelRestart`, including crash-restart adoption) |
-| `kube_secrets_kms` | **failed**: `create throwaway key: HTTP 409` (`t028-a-kb` / `t028-b-kb` already exist). This failed the package, so the gate rejected the run. |
-| `execution_assembly_roundtrip` | passed (`TestExecutionAssemblyRoundtrip/kube`) |
-| `execution_assembly_cancel_restart` | passed (`TestExecutionAssemblyCancelRestart/kube`) |
-| `execution_assembly_result_guard` | passed (`TestExecutionAssemblyResultGuard/kube`) |
+| Acceptance | First run | Subsequent run at `c1bff5cfeb51` |
+| --- | --- | --- |
+| `kube_chart_install` | passed | passed |
+| `kube_m1_roundtrip` | passed | passed |
+| `kube_cancel_restart` | passed (crash-restart only) | passed (crash-restart only) |
+| `kube_secrets_kms` | failed (409 key collision) | passed (operator-host provider procedure only) |
+| `execution_assembly_roundtrip` | passed | passed |
+| `execution_assembly_cancel_restart` | passed | passed |
+| `execution_assembly_result_guard` | passed | passed |
 
-`TestM1PostgresContractSuites` was skipped on purpose (`KODAMA_ASSEMBLY_BACKEND=kube`). That skip is not an acceptance. Podman was not re-run in this session. `make lint`, `make test`, and `make docs-check` were not run. `deploy/stage/scripts/test_scripts.sh` passed (needs `shellcheck` on `PATH`; a copy lives in `/tmp/opencode/kodama-stage-tools`).
+`TestM1PostgresContractSuites` was correctly skipped on Kubernetes. The later **Podman** regression at `90f813df` passed all three assembly scenarios and the PostgreSQL contracts (210.921s, exit 0); scope `t-104-local` was removed. `make lint`, `make test`, `make docs-check` and the stage script checks passed on the earlier candidate. These are historical results, not validation of the subsequent hardening changes.
 
-Do not treat the six passes as a gate receipt. The gate requires all seven in one run with `suite_passed=true`.
+The rejected gate took about 500 seconds of test execution. An additional hour was wasted by an operator wait whose `pgrep` pattern matched itself; the tests were already finished. Detached shells and buffered runner output obscured completion. Do not repeat that wait pattern or commit while qualification runs.
 
 ### Session still live — do not destroy until the gate passes or the owner says so
 
@@ -69,7 +69,7 @@ Do not treat the six passes as a gate receipt. The gate requires all seven in on
 | Namespaces | `kodama-q-kb`, `kodama-q-kb-a`, `kodama-q-kb-b` |
 | Kubeconfig | `~/kodama-stage/scw.yaml` (not `~/.kube/kodama-stage/`) |
 | State dir | `~/kodama-stage/state` (`STAGE_STATE_DIR` / `KODAMA_QUAL_STATE_DIR`) |
-| Contract / values the gate should use | `~/kodama-stage/state/qualification/kb/contract.json` and `values.yaml` |
+| Historical contract / values | `~/kodama-stage/state/qualification/kb/contract.json` and `values.yaml`; a fresh session is required for the next clean-install gate |
 | Image under test | `rg.fr-par.scw.cloud/kodama-stage-scw/kodama:0.0.2-stage-b0c4fdca4c0c-3@sha256:30d79c1d43ff87ea60fbd38bbe89904de755efee165d7a3e78ce8fd6ba595f04` |
 | Workload image | unchanged `sha256:24cff5ad7765e56c3242014e64e2d911ca02053b92ab9c14f2beeb6519d929ea` |
 | Tools | `/tmp/opencode/kodama-stage-tools` (`tofu` 1.13.2, `helm` 4.3.1, `shellcheck` 0.10.0) |
@@ -80,7 +80,7 @@ Session `ka` is gone. Do not reapply the HTTP kube-proxy sidecar. A graceful `sc
 
 ### PX-A02
 
-Not run. Preferred loopback HTTP proxy is incompatible with `logs/kubernetes` (HTTPS required) and crashed the server when tried. Report must say the installed evidence is crash-restart adoption, not a lost-create acknowledgment. Do not claim PX-A02.
+Not live-qualified. The new `lost_create_acknowledgment` subcase uses a test-owned HTTPS loopback proxy via `KODAMA_KUBE_API`, with a temporary trust root through `KODAMA_KUBE_CA_FILE`; it does not weaken TLS checks or the product binary. Job creation commits upstream, its response and subsequent read-back are withheld, and Pod admission is held so callbacks cannot confirm dispatch. A forced server-Pod replacement resets the fault; the replacement must confirm the same Job UID and complete with one attempt/grant/Pod. The original chart Pod template is restored afterwards. Offline proxy tests are not installed-server acceptance. Continue to describe historical evidence as crash-restart adoption until this subcase passes live.
 
 ### O-27 (name these; do not gloss)
 
@@ -88,13 +88,40 @@ Chart `profile: development` (plaintext token-authenticated NATS) with `KODAMA_E
 
 ### Leftover Key Manager key
 
-`t028-probe-kb` (`35b06b3f-e8ce-4b87-bb84-b81bea48d9f7`) was created protected and could not be deleted (HTTP 412). Later creates must set `protected: false`. The 409 on the gate run is a name collision on `t028-a-<session>` / `t028-b-<session>`, not that protected key. List `t028-*` keys, delete unprotected ones, and give each test run a unique name.
+`t028-probe-kb` (`35b06b3f-e8ce-4b87-bb84-b81bea48d9f7`) remains protected and untouched per the owner's instruction. The old `t028-a-kb` / `t028-b-kb` were unprotected and deleted successfully. Scaleway's create field is **`unprotected:true`**, not the response-only `protected:false`; the earlier request used the wrong field. New creates request an unprotected key, require `protected:false` in the response, use random per-run names, register cleanup immediately for each key and check unprotect/delete statuses. No retained installation key is modified.
+
+### Hardening baseline and disposition
+
+Baseline: `90f813df67c4`, specifications `docs/specs/pipeline-execution.md` (PX-03/PX-04/PX-08, PX-A02/PX-A06), `docs/specs/variables-and-secrets.md` (VS-03/VS-06/VS-07/VS-09), T-104 and `test/integration/kms-production/README.md`; O-24/O-26/O-27 remain unchanged. Bounded shared-path extension: stage gate/evidence scripts, their offline tests and stage runbook; no T-090 product behavior, Alloy or staging suite changes. Disposition: implementation strengthens the existing acceptance contract; live conformance and review remain pending.
+
+- The gate runs clean chart installation first, then all remaining scenarios as **one gate invocation**, with one candidate/contract/values binding and checked required child cases. It refuses dirty candidates, input/session mismatch and mid-run drift; a per-session lock prevents concurrent gate mutations. `--preflight` checks inputs without issuing a receipt.
+- The test-only `stageprobe` image runs the HTTPS fault proxy and the real-provider KMS procedure. It must be built from the committed candidate and supplied as `KODAMA_STAGE_PROBE_IMAGE=repository@sha256:...`. It is not the product image.
+- KMS acceptance now requires both installed secret consumption across a real server restart and the provider procedure in an in-cluster Job with the deployment's credential/service account. The provider procedure requires rotation, configured-version tamper rejection, a genuinely fresh process, a valid identity with no decrypt permission, a retryable bounded outage and successful restored access. The denied identity has no IAM policy and is deleted with the throwaway keys.
+- Fault cleanup restores database relays, server replicas, admission policies and the exact pre-fault Pod template. Command errors omit arguments/provider bodies, calls are bounded, and failed cluster queries cannot establish workload absence.
+- Publication conflicts use a post-checkout barrier instead of a 25-second guess. Long fault workloads have explicit 900-second budgets. Required authorization denials no longer accept server errors, and foreign-job refusal must match one structured event.
+
+### Hardening verification (2026-10-25)
+
+| Check | Result |
+| --- | --- |
+| `make lint test docs-check` | Passed; final support-only guard changes were rechecked with the scoped tests below and `make lint docs-check`. |
+| `go test -race -count=1 ./test/support/stage/...` | Passed: cleanup registration on mutation failure, API-error/absence distinction, session-input binding, bounded commands, log-field matching, loopback certificate trust, HTTP/1.1 and HTTP/2 lost responses, read-back refusal, replacement proxy, streaming, untrusted upstream rejection, and offline KMS procedure/denial/outage regressions. |
+| `go test -race -count=1 -run 'TestKeyCleanup\|TestCreateKey' ./test/e2e/kube-full/` | Passed offline: create fields, immediate per-key cleanup and checked provider statuses; no live keys created. |
+| `python3 -B deploy/stage/scripts/test_runner.py` | Eight offline runner tests passed: phases, exact required cases, skip refusal, dirty/changed candidates, commit drift with preserved process exit, changed values, truncated packages, busy session and preflight/input mismatch. |
+| `deploy/stage/scripts/test_scripts.sh` | Passed: the runner tests plus OpenTofu, Helm, ShellCheck, cloud/input mismatch and receipt/required-case failure paths. Its synthetic gate receipts are **not live qualification**. |
+| `make test-integration DEV_SCOPE=t-104-hardening INTEGRATION_PKGS=./test/integration/assembly-execution/...` | Passed with `KODAMA_ASSEMBLY_BACKEND` unset, on `DEV_STACK=services`: all three Podman assembly scenarios and PostgreSQL contracts (215.602s). Scope teardown passed. Final helper transport/session checks do not execute on the Podman path. |
+| `KODAMA_ASSEMBLY_BACKEND=kube go test -run '^$' ./test/integration/assembly-execution/` | Compilation/TestMain selection passed; no Kubernetes scenarios executed. |
+| `go build -o /tmp/opencode/t104-stageprobe ./test/support/stage/probe/cmd/stageprobe` | Passed. A scratch-image COPY audit with the helper's explicit `build.ignore` also passed; the audit image was removed. The product `.dockerignore` excludes `test/`, so the helper build must use that ignore-file override. |
+
+No new product/probe image has been published, no new qualification session prepared, and no new live gate run.
+The HTTPS fault and in-cluster KMS cases still need live qualification; their offline checks do not close that gap.
+Session `kb` and the protected historical probe key were not changed. Independent review remains pending.
 
 ### Remaining
 
-1. Make `TestKubeSecretsKMS` use a unique key name (and delete unprotected `t028-a-kb` / `t028-b-kb` if they are still there). Re-run only that test, then the readiness gate end to end.
-2. `make lint test docs-check`. Podman regression (`make test-podman` or the assembly package with `KODAMA_ASSEMBLY_BACKEND` unset).
-3. Finish the report with image/chart/contract/values digests, O-27, Scaleway KMS, backup/PITR, and the PX-A02 gap. Independent review before merge. Do not push unless the owner says so.
-4. After a passing gate, `qualify.sh destroy --session kb` and confirm no `kodama-q-*` namespaces remain.
+1. Validate and commit hardening changes; build digest-pinned product and probe images from that committed source. No main merge or Git push is needed for qualification. The old dirty-build image is historical evidence only.
+2. Prepare a **fresh** qualification session/database for clean chart installation; keep `kb` until a passing gate. Use focused KMS/fault debugging in a separate prepared session if needed, never stitch its results into the final gate.
+3. Follow the [repeatable qualification workflow](../../deploy/stage/README.md#repeatable-readiness-workflow). Run all seven acceptances and required child cases in one invocation at an unchanged clean candidate. Record receipt/image/chart/contract/values digests, O-27, Scaleway KMS, backup/PITR and the actual PX-A02 result.
+4. Obtain independent review before merge. Do not push unless the owner says so. After a passing gate, destroy `kb` and the qualification session, then confirm no owned `kodama-q-*` namespaces or admission policies remain. Never remove another task's resources.
 
 Alloy `attemptId` normalization and `docs/operations/staging.md` stay T-090.

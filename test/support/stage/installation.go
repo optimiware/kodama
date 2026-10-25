@@ -36,6 +36,11 @@ func New(t testing.TB) *Installation {
 	k := Kube{Kubeconfig: s.Kubeconfig}
 	i := &Installation{T: t, S: s, Kube: k, Auth: NewAuth(k, s.Issuer)}
 	t.Cleanup(i.close)
+	t.Cleanup(func() {
+		if t.Failed() {
+			i.Diagnose()
+		}
+	})
 	return i
 }
 
@@ -78,16 +83,20 @@ type Values struct {
 
 // Values reads the rendered values the release is installed with.
 func (i *Installation) Values() Values {
+	var v Values
+	i.ReadValues(&v)
+	return v
+}
+
+func (i *Installation) ReadValues(v any) {
 	i.T.Helper()
 	data, err := os.ReadFile(i.S.ValuesFile())
 	if err != nil {
 		i.T.Fatal(err)
 	}
-	var v Values
-	if err := yaml.Unmarshal(data, &v); err != nil {
+	if err := yaml.Unmarshal(data, v); err != nil {
 		i.T.Fatalf("values: %v", err)
 	}
-	return v
 }
 
 // ServerImage is the digest-pinned release image under test.
@@ -184,9 +193,17 @@ func (i *Installation) Scale(ctx context.Context, replicas int) error {
 	return err
 }
 
-// Stop stops the server process (workloads keep running). Start starts it again.
+// Stop gracefully drains the server. Workload preservation is not guaranteed; use Crash when
+// testing adoption after abrupt process loss. Start starts the server again.
 func (i *Installation) Stop(ctx context.Context) {
 	i.T.Helper()
+	i.T.Cleanup(func() {
+		c, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+		defer cancel()
+		if err := i.Scale(c, 1); err != nil {
+			i.T.Errorf("restore server after stop: %v", err)
+		}
+	})
 	if err := i.Scale(ctx, 0); err != nil {
 		i.T.Fatalf("stop the server: %v", err)
 	}
@@ -212,6 +229,13 @@ func (i *Installation) Restart(ctx context.Context) {
 // The database itself and the test's own inspection path are untouched.
 func (i *Installation) RelayDown(ctx context.Context) {
 	i.T.Helper()
+	i.T.Cleanup(func() {
+		c, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		if err := i.setRelay(c, 1); err != nil {
+			i.T.Errorf("restore database relay: %v", err)
+		}
+	})
 	i.scaleRelay(ctx, 0)
 }
 
@@ -223,18 +247,25 @@ func (i *Installation) RelayUp(ctx context.Context) {
 
 func (i *Installation) scaleRelay(ctx context.Context, n int) {
 	i.T.Helper()
+	if err := i.setRelay(ctx, n); err != nil {
+		i.T.Fatalf("database relay: %v", err)
+	}
+}
+
+func (i *Installation) setRelay(ctx context.Context, n int) error {
 	if _, err := i.Kube.Run(ctx, "-n", i.S.Namespace, "scale", "deployment/"+i.S.RelayService, fmt.Sprintf("--replicas=%d", n)); err != nil {
-		i.T.Fatalf("scale the database relay: %v", err)
+		return err
 	}
 	if n == 0 {
 		if _, err := i.Kube.Run(ctx, "-n", i.S.Namespace, "wait", "--for=delete", "pod", "-l", "app.kubernetes.io/name="+i.S.RelayService, "--timeout=2m"); err != nil {
-			i.T.Fatalf("the database relay did not stop: %v", err)
+			return err
 		}
-		return
+		return nil
 	}
 	if _, err := i.Kube.Run(ctx, "-n", i.S.Namespace, "rollout", "status", "deployment/"+i.S.RelayService, "--timeout=2m"); err != nil {
-		i.T.Fatalf("the database relay did not start: %v", err)
+		return err
 	}
+	return nil
 }
 
 // ---- bootstrap -----------------------------------------------------------------------------------------------
@@ -249,7 +280,8 @@ func (i *Installation) Bootstrap(ctx context.Context, tenant Tenant, key, person
 	ns := i.S.Namespace
 	name := "kq-bootstrap-" + random(4)
 	secret := name + "-token"
-	if _, err := i.Kube.Run(ctx, "-n", ns, "create", "secret", "generic", secret, "--from-literal=token="+tok); err != nil {
+	manifestSecret, _ := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]string{"name": secret, "namespace": ns}, "data": map[string][]byte{"token": []byte(tok)}})
+	if _, err := i.Kube.RunInput(ctx, manifestSecret, "create", "-f", "-"); err != nil {
 		return "", err
 	}
 	defer func() {
@@ -298,7 +330,7 @@ func (i *Installation) Bootstrap(ctx context.Context, tenant Tenant, key, person
 	}
 	logs, _ := i.Kube.Run(ctx, "-n", ns, "logs", name)
 	if phase != "Succeeded" {
-		return logs, fmt.Errorf("bootstrap Pod ended %q: %s", phase, strings.TrimSpace(logs))
+		return "", fmt.Errorf("bootstrap Pod ended %q (logs suppressed)", phase)
 	}
 	return logs, nil
 }

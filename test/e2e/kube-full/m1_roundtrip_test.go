@@ -85,7 +85,7 @@ func TestKubeM1Roundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if foreign.StatusCode() < 400 {
+	if foreign.StatusCode() != 403 && foreign.StatusCode() != 404 {
 		t.Fatalf("a foreign tenant read the run: HTTP %d", foreign.StatusCode())
 	}
 
@@ -94,19 +94,26 @@ func TestKubeM1Roundtrip(t *testing.T) {
 	raceItem := w.WorkItem("Conflict", "# conflict")
 	raceWS := w.Provision(raceItem.Id)
 	raceDef := w.Definition("racer", stage.Step{
-		ID: "race", Access: "write", Timeout: 180,
-		Script:  `sleep 25; echo raced > raced.txt; printf '{"outcome":"completed","outputs":{"v":"raced"}}' > "$KODAMA_RESULTS_FILE"`,
+		ID: "race", Access: "write", Timeout: 600,
+		Script:  stage.CommandBarrier + `echo raced > raced.txt; printf '{"outcome":"completed","outputs":{"v":"raced"}}' > "$KODAMA_RESULTS_FILE"`,
 		Outputs: []string{"v"},
 	})
 	rr := w.Run("race-run", raceItem, raceDef.Id)
 	att := w.WaitAttempt(rr.Id, 2*time.Minute)
-	_ = i.WaitJob(w.Namespace(w.TenantA), att, true, 2*time.Minute)
+	ns := w.Namespace(w.TenantA)
+	job := i.WaitJob(ns, att, true, 2*time.Minute)
+	pod := i.WaitPod(ns, job.Name, 2*time.Minute)
+	i.WaitCommandBarrier(ns, pod.Name)
 	if moved := w.Repo.PutFileOn(ctx, raceWS.Branch, "human.txt", "human push\n", "human push"); moved == "" {
 		t.Fatal("the human push did not move the work branch")
 	}
+	i.ReleaseCommand(ns, pod.Name)
 	rf := w.WaitRun(rr.Id, 5*time.Minute)
-	if rf.Status == client.RunStatusSucceeded {
-		t.Fatal("a publication that raced a human push reported success")
+	if rf.Status != client.RunStatusFailed {
+		t.Fatalf("publication conflict: run %s (%s), want failed", rf.Status, rf.Reason)
+	}
+	if atts := w.Attempts(rr.Id); len(atts) != 1 || atts[0].Reason != "publication_conflict" {
+		t.Fatalf("run failed for a different reason than publication conflict: %+v", atts)
 	}
 }
 

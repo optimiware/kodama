@@ -13,11 +13,13 @@
 package stage
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -89,7 +91,10 @@ func LoadSession(t testing.TB) *Session {
 		if err != nil {
 			t.Fatal(err)
 		}
-		state = filepath.Join(home, ".kube", "kodama-stage", "state")
+		state = os.Getenv("STAGE_STATE_DIR")
+		if state == "" {
+			state = filepath.Join(home, "kodama-stage", "state")
+		}
 	}
 	dir := filepath.Join(state, "qualification", name)
 	data, err := os.ReadFile(filepath.Join(dir, "session.json"))
@@ -100,7 +105,31 @@ func LoadSession(t testing.TB) *Session {
 	if err := json.Unmarshal(data, &s); err != nil || len(s.Tenants) != 2 || s.Namespace == "" {
 		t.Fatalf("session %q handle is invalid: %v", name, err)
 	}
+	if s.Name != name || s.Namespace != "kodama-q-"+name || s.Release != "kodama" {
+		t.Fatal("session handle does not identify its isolated qualification namespace/release")
+	}
 	s.Dir, s.Kubeconfig = dir, kc
+	// The gate and the fixture must consume the same input bytes, not merely similar paths.
+	for env, file := range map[string]string{"KODAMA_STAGE_CONTRACT": "contract.json", "KODAMA_STAGE_VALUES": "values.yaml"} {
+		if path := os.Getenv(env); path != "" {
+			got, err := os.ReadFile(path)
+			want, wantErr := os.ReadFile(filepath.Join(dir, file))
+			if err != nil || wantErr != nil || !bytes.Equal(got, want) {
+				t.Fatalf("%s differs from session %s %s", env, name, file)
+			}
+		}
+	}
+	var contract struct {
+		Installation string `json:"installation_id"`
+		Network      struct {
+			URL string `json:"runtime_url"`
+		} `json:"network"`
+		Tenants []Tenant `json:"tenants"`
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "contract.json"))
+	if err != nil || json.Unmarshal(raw, &contract) != nil || contract.Installation != s.InstallationID || contract.Network.URL != s.URL || !reflect.DeepEqual(contract.Tenants, s.Tenants) {
+		t.Fatal("session handle and contract identify different installations")
+	}
 	out, err := exec.Command("go", "env", "GOMOD").Output()
 	if err != nil {
 		t.Fatal(err)

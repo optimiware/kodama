@@ -16,7 +16,7 @@ Usage: deploy/stage/scripts/qualify.sh <command> --session <name> [--contract <s
             removes its database. The session's state is removed with it.
   show      Prints the session handle.
 
-State lives outside the checkout (STAGE_STATE_DIR, default ~/.kube/kodama-stage/state).
+State lives outside the checkout (KODAMA_QUAL_STATE_DIR, then STAGE_STATE_DIR, default ~/kodama-stage/state).
 prepare and destroy need KUBECONFIG, KODAMA_IMAGES_FILE and the operator's Scaleway credentials (SCW_*).
 USAGE
 }
@@ -36,7 +36,7 @@ done
 [[ "${CMD}" =~ ^(prepare|destroy|show)$ ]] || { usage >&2; die "unknown command '${CMD}'"; }
 [[ "${SESSION}" =~ ^[a-z][a-z0-9]{0,9}$ ]] || die "--session must be 1-10 lowercase letters or digits, starting with a letter"
 
-STATE_ROOT="${STAGE_STATE_DIR:-${HOME}/.kube/kodama-stage/state}"
+STATE_ROOT="${KODAMA_QUAL_STATE_DIR:-${STAGE_STATE_DIR:-${HOME}/kodama-stage/state}}"
 SESSION_DIR="${STATE_ROOT}/qualification/${SESSION}"
 QUAL_DIR="${STAGE_DIR}/qualification"
 

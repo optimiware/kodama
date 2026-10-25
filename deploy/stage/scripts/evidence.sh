@@ -51,14 +51,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 validate_cloud "${CLOUD}"
-validate_stage_contract "${CONTRACT_FILE}"
+validate_stage_contract "${CONTRACT_FILE}" "${CLOUD}"
 [[ -f "${VALUES_FILE}" ]] || die "values file missing: ${VALUES_FILE}"
 [[ -f "${RESULTS_FILE}" ]] || die "results file missing: ${RESULTS_FILE}"
 verify_values_provenance "${VALUES_FILE}"
 
 GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-BUNDLE_DIR="${EVIDENCE_ROOT}/${GATE}/${TIMESTAMP}-${CLOUD}-${GIT_SHA}"
+BUNDLE_DIR="${EVIDENCE_ROOT}/${GATE}/${TIMESTAMP}-${CLOUD}-${GIT_SHA}-$(python3 -c 'import uuid; print(uuid.uuid4().hex[:12])')"
 mkdir -p "${BUNDLE_DIR}"
 
 cp "${CONTRACT_FILE}" "${BUNDLE_DIR}/stage_contract.json"
@@ -72,6 +72,8 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import subprocess
+import os
 
 bundle_dir = Path(sys.argv[1]).resolve()
 gate, cloud, git_sha, ts, status, notes, root_dir = sys.argv[2:9]
@@ -82,6 +84,21 @@ def sha256_file(p: Path) -> str:
 contract = json.loads((bundle_dir / "stage_contract.json").read_text(encoding="utf-8"))
 results = json.loads((bundle_dir / "forge_results.json").read_text(encoding="utf-8"))
 pg = contract["postgres"]
+provenance = results.get("provenance") or {}
+if status == "passed":
+    for field, expected in {
+        "git_commit": git_sha,
+        "contract_sha256": sha256_file(bundle_dir / "stage_contract.json"),
+        "values_sha256": sha256_file(bundle_dir / "kodama-values.yaml"),
+    }.items():
+        if provenance.get(field) != expected:
+            raise SystemExit(f"refusing passed evidence: {field} changed before publication")
+    if provenance.get("suite_passed") is not True:
+        raise SystemExit("refusing passed evidence: suite did not pass")
+    if provenance.get("candidate_stable") is True:
+        dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"], cwd=os.environ["REPO_ROOT"], text=True).strip()
+        if dirty:
+            raise SystemExit("refusing passed evidence: candidate became dirty before publication")
 
 manifest = {
     "schema_version": 1,
@@ -111,6 +128,8 @@ manifest = {
     "failed_tests": results.get("failed", []),
     "skipped_tests": results.get("skipped", []),
     "notes": notes,
+    "suite_provenance": provenance,
+    "acceptances": results.get("acceptances", []),
 }
 
 manifest_path = bundle_dir / "manifest.json"
