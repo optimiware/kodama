@@ -46,8 +46,12 @@ func completed(outputs map[string]runtimev1.Value) runtimev1.Result {
 // different one conflicts and never rewrites it (AC-12, PX-12); and the attempt
 // that delivered it is settled and its workload removed (PX-16, IT-06).
 func TestExecutionAssemblyResultGuard(t *testing.T) {
-	for _, b := range backends {
+	for _, b := range backends(t) {
 		t.Run(b.Name, func(t *testing.T) {
+			if b.Name == "kube" {
+				resultGuardKube(t)
+				return
+			}
 			s := kit.New(t, kit.Options{})
 			s.Start()
 			s.WaitReady()

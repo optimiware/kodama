@@ -241,7 +241,7 @@ func TestGitEnvIsHardened(t *testing.T) {
 		}
 	}
 	args := strings.Join(g.base(), " ")
-	for _, want := range []string{"core.hooksPath=/dev/null", "submodule.recurse=false", "credential.helper="} {
+	for _, want := range []string{"safe.directory=*", "core.hooksPath=/dev/null", "submodule.recurse=false", "credential.helper="} {
 		if !strings.Contains(args, want) {
 			t.Errorf("args lack %s", want)
 		}

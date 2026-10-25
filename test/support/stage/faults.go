@@ -50,10 +50,10 @@ spec:
     resourceRules:
       - apiGroups: ["batch"]
         apiVersions: ["v1"]
-        operations: [%[2]q]
+        operations: ["%[2]s"]
         resources: ["jobs"]
   validations:
-    - expression: "request.userInfo.username != %[3]q"
+    - expression: "request.userInfo.username != '%[3]s'"
       message: "kodama qualification hold: the control plane may not %[4]s Jobs now"
       reason: Forbidden
 ---

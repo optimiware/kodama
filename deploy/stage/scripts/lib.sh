@@ -328,6 +328,8 @@ abs_kc = str(Path(kubeconfig).resolve())
 env.update({
     "KODAMA_AUTO_PROVISION": "0",
     "KODAMA_REQUIRE_KUBERNETES": "1",
+    "KODAMA_ASSEMBLY_BACKEND": "kube",
+    "KODAMA_QUAL_STATE_DIR": env.get("KODAMA_QUAL_STATE_DIR") or env.get("STAGE_STATE_DIR") or str(Path.home() / "kodama-stage" / "state"),
     "KUBECONFIG": abs_kc,
     "KODAMA_KUBECONFIG": abs_kc,
     "KODAMA_TEST_KUBECONFIG": abs_kc,
@@ -341,16 +343,24 @@ env.update({
     "KODAMA_S3_PREFIX": c["object_storage"]["artifacts_prefix"],
 })
 
-def norm(name: str) -> str:
-    s = re.sub(r"[^a-z0-9]", "", name.lower())
-    return s[4:] if s.startswith("test") else s
+ACCEPTANCE = {
+    "kube_chart_install": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeChartInstall", ""),
+    "kube_m1_roundtrip": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeM1Roundtrip", ""),
+    "kube_cancel_restart": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeCancelRestart", ""),
+    "kube_secrets_kms": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeSecretsKMS", ""),
+    "execution_assembly_roundtrip": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyRoundtrip/kube", "kube"),
+    "execution_assembly_cancel_restart": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyCancelRestart/kube", "kube"),
+    "execution_assembly_result_guard": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyResultGuard/kube", "kube"),
+}
 
-cmd = ["go", "test", "-json", "-race", "-count=1", "-timeout", env.get("KODAMA_GO_TEST_TIMEOUT", "30m"), *pkgs]
+cmd = ["go", "test", "-json", "-p", "1", "-race", "-count=1", "-timeout", env.get("KODAMA_GO_TEST_TIMEOUT", "45m"), *pkgs]
 proc = subprocess.Popen(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 assert proc.stdout is not None
 
 passed, failed, skipped = set(), set(), set()
+last = {}
 pkg_actions = {}
+saw_pkg_end = set()
 for raw in proc.stdout:
     line = raw.strip()
     if not line.startswith("{"):
@@ -366,28 +376,43 @@ for raw in proc.stdout:
     pkg = ev.get("Package")
     test = ev.get("Test")
     action = ev.get("Action")
-    if isinstance(test, str) and test:
-        for part in test.split("/"):
-            if action == "pass":
-                passed.add(part)
-                passed.add(norm(part))
-            elif action == "fail":
-                failed.add(part)
-                failed.add(norm(part))
-            elif action == "skip":
-                skipped.add(part)
-                skipped.add(norm(part))
-    elif isinstance(pkg, str) and action in ("pass", "fail", "skip"):
+    if isinstance(test, str) and test and action in ("pass", "fail", "skip"):
+        last[(pkg, test)] = action
+        if action == "pass":
+            passed.add(test)
+        elif action == "fail":
+            failed.add(test)
+        elif action == "skip":
+            skipped.add(test)
+    elif isinstance(pkg, str) and not test and action in ("pass", "fail", "skip"):
         pkg_actions[pkg] = action
+        saw_pkg_end.add(pkg)
 
 rc = proc.wait()
+truncated = not saw_pkg_end
+acceptances = []
+for name, (want_pkg, want_test, backend) in ACCEPTANCE.items():
+    status = last.get((want_pkg, want_test), "")
+    acceptances.append({
+        "name": name,
+        "package": want_pkg,
+        "test": want_test,
+        "backend": backend,
+        "status": status or "missing",
+    })
 pkg_ok = bool(pkg_actions) and all(a == "pass" for a in pkg_actions.values())
-prov["suite_passed"] = (rc == 0 and pkg_ok and not failed)
+prov["suite_passed"] = (rc == 0 and pkg_ok and not failed and not truncated)
+prov["session"] = env.get("KODAMA_QUAL_SESSION", "")
+prov["fault_config"] = "PX-A02 loopback proxy sidecar is applied only inside TestKubeCancelRestart and rolled back; it is not the chart install"
 passed -= failed | skipped
 out = {
     "passed": sorted(passed),
     "failed": sorted(failed),
     "skipped": sorted(skipped),
+    "acceptances": acceptances,
+    "packages": [{"package": p, "action": a} for p, a in sorted(pkg_actions.items())],
+    "runner_exit": rc,
+    "truncated": truncated,
     "provenance": prov,
 }
 Path(results_out).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
@@ -458,18 +483,47 @@ if prov.get("suite_passed") is not True:
     sys.stderr.write("[gate-fail] provenance.suite_passed is not true (package or runner failure)\n")
     sys.exit(1)
 
+ACCEPTANCE = {
+    "kube_chart_install": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeChartInstall", ""),
+    "kube_m1_roundtrip": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeM1Roundtrip", ""),
+    "kube_cancel_restart": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeCancelRestart", ""),
+    "kube_secrets_kms": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeSecretsKMS", ""),
+    "execution_assembly_roundtrip": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyRoundtrip/kube", "kube"),
+    "execution_assembly_cancel_restart": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyCancelRestart/kube", "kube"),
+    "execution_assembly_result_guard": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyResultGuard/kube", "kube"),
+}
+
 passed = {norm(x) for x in data.get("passed", [])} | set(data.get("passed", []))
 failed = {norm(x) for x in data.get("failed", [])} | set(data.get("failed", []))
 skipped = {norm(x) for x in data.get("skipped", [])} | set(data.get("skipped", []))
+records = data.get("acceptances") or []
 
 problems = []
+if data.get("truncated") is True:
+    problems.append("test output was truncated; package completion was not observed")
 for req in required:
-    key = norm(req)
-    if req in failed or key in failed:
-        problems.append(f"required acceptance '{req}' FAILED")
-    elif req in skipped or key in skipped:
-        problems.append(f"required acceptance '{req}' was SKIPPED (never satisfies gate)")
-    elif req not in passed and key not in passed:
+    spec = ACCEPTANCE.get(req)
+    if spec is None:
+        key = norm(req)
+        if req in failed or key in failed:
+            problems.append(f"required acceptance '{req}' FAILED")
+        elif req in skipped or key in skipped:
+            problems.append(f"required acceptance '{req}' was SKIPPED (never satisfies gate)")
+        elif req not in passed and key not in passed:
+            problems.append(f"required acceptance '{req}' did not run or pass")
+        continue
+    want_pkg, want_test, want_backend = spec
+    matches = [r for r in records if isinstance(r, dict) and r.get("name") == req]
+    if not matches:
+        problems.append(f"required acceptance '{req}' had zero matches")
+        continue
+    wrong = [r for r in matches if r.get("package") != want_pkg or r.get("test") != want_test or r.get("backend") != want_backend]
+    if wrong:
+        problems.append(f"required acceptance '{req}' matched the wrong package, test path or backend")
+    exact = [r for r in matches if r.get("package") == want_pkg and r.get("test") == want_test and r.get("backend") == want_backend]
+    if any(r.get("status") == "skip" for r in exact) or want_test in skipped or req in skipped:
+        problems.append(f"required acceptance '{req}' was SKIPPED (a parent pass does not count)")
+    elif not any(r.get("status") == "pass" for r in exact):
         problems.append(f"required acceptance '{req}' did not run or pass")
 
 if problems:

@@ -262,6 +262,9 @@ func checkNetwork(pols []kubernetes.NetworkPolicy, allowed []EgressRule) error {
 			return deny("a network policy admits ingress to workload Pods")
 		}
 		for _, rule := range pol.Spec.Egress {
+			if clusterDNS(rule) {
+				continue
+			}
 			if err := egressCovered(rule, allowed); err != nil {
 				return err
 			}
@@ -285,6 +288,43 @@ func portNumber(p any) (int32, bool) {
 		return int32(v), true
 	}
 	return 0, false // named ports and wildcards are not accepted
+}
+
+// clusterDNS is the one non-address peer the baseline allows: name resolution of the
+// callback and of declared egress destinations. It is exactly kube-system's kube-dns
+// on port 53, and nothing else. A ClusterIP ipBlock does not reach CoreDNS under
+// Cilium's kube-proxy replacement, so the peer has to be the Service's Pods.
+func clusterDNS(r kubernetes.NetworkEgress) bool {
+	if len(r.To) != 1 || len(r.Ports) == 0 {
+		return false
+	}
+	peer := r.To[0]
+	if peer.IPBlock != nil || peer.NamespaceSelector == nil || peer.PodSelector == nil {
+		return false
+	}
+	if len(peer.NamespaceSelector.MatchExpressions) != 0 || len(peer.PodSelector.MatchExpressions) != 0 {
+		return false
+	}
+	if peer.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"] != "kube-system" || len(peer.NamespaceSelector.MatchLabels) != 1 {
+		return false
+	}
+	if peer.PodSelector.MatchLabels["k8s-app"] != "kube-dns" || len(peer.PodSelector.MatchLabels) != 1 {
+		return false
+	}
+	for _, port := range r.Ports {
+		n, ok := portNumber(port.Port)
+		if !ok || n != 53 || port.EndPort != nil {
+			return false
+		}
+		proto := port.Protocol
+		if proto == "" {
+			proto = "TCP"
+		}
+		if proto != "UDP" && proto != "TCP" {
+			return false
+		}
+	}
+	return true
 }
 
 // egressCovered requires an egress rule to name explicit destinations and ports,

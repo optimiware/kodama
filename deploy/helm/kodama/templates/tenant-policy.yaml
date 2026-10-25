@@ -103,4 +103,18 @@ spec:
           port: {{ .port }}
         {{- end }}
     {{- end }}
+    # Cluster DNS. A ClusterIP ipBlock does not reach CoreDNS when the CNI replaces kube-proxy
+    # (Cilium on the stage cluster); the peer is the kube-dns Pods. Preflight allows only this peer.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
 {{- end }}

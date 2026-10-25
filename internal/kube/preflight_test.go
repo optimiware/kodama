@@ -220,6 +220,22 @@ func Test_namespace_preflight(t *testing.T) {
 			}
 		})
 	}
+	t.Run("cluster DNS to kube-dns is allowed", func(t *testing.T) {
+		err := check(t, func(e *env, ns string) {
+			p := egress(kubernetes.NetworkEgress{
+				To: []kubernetes.NetworkPeer{{
+					NamespaceSelector: &kubernetes.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "kube-system"}},
+					PodSelector:       &kubernetes.LabelSelector{MatchLabels: map[string]string{"k8s-app": "kube-dns"}},
+				}},
+				Ports: []kubernetes.NetworkPort{{Protocol: "UDP", Port: float64(53)}, {Protocol: "TCP", Port: float64(53)}},
+			})
+			p.Spec.PodSelector = kubernetes.LabelSelector{}
+			addPolicy(e, ns, p)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("a policy for other pods is ignored", func(t *testing.T) {
 		err := check(t, func(e *env, ns string) {
 			p := egress(kubernetes.NetworkEgress{})

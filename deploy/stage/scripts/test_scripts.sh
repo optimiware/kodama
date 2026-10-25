@@ -245,10 +245,26 @@ import json, sys
 c = json.load(open(sys.argv[1]))
 c_sha, v_sha, git_sha, out_file = sys.argv[2:6]
 tests = sys.argv[6:]
+ACCEPTANCE = {
+    "kube_chart_install": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeChartInstall", ""),
+    "kube_m1_roundtrip": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeM1Roundtrip", ""),
+    "kube_cancel_restart": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeCancelRestart", ""),
+    "kube_secrets_kms": ("github.com/optimiware/kodama/test/e2e/kube-full", "TestKubeSecretsKMS", ""),
+    "execution_assembly_roundtrip": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyRoundtrip/kube", "kube"),
+    "execution_assembly_cancel_restart": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyCancelRestart/kube", "kube"),
+    "execution_assembly_result_guard": ("github.com/optimiware/kodama/test/integration/assembly-execution", "TestExecutionAssemblyResultGuard/kube", "kube"),
+}
+acceptances = []
+for name in tests:
+    spec = ACCEPTANCE.get(name)
+    if spec:
+        acceptances.append({"name": name, "package": spec[0], "test": spec[1], "backend": spec[2], "status": "pass"})
 doc = {
     "passed": tests,
     "failed": [],
     "skipped": [],
+    "acceptances": acceptances,
+    "truncated": False,
     "provenance": {
         "cloud": c["cloud"],
         "installation_id": c["installation_id"],

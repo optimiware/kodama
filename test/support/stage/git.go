@@ -3,6 +3,7 @@ package stage
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -62,6 +63,36 @@ func (i *Installation) NewRepo(ctx context.Context, prefix string) *Repo {
 	})
 	r.Initial = r.Commit(ctx, "main")
 	return r
+}
+
+// PutFile commits a file on main through the Git server API and returns the new tip.
+// It is the human push a publication conflict is raced against. Credentials are not logged.
+func (r *Repo) PutFile(ctx context.Context, path, content, message string) string {
+	return r.PutFileOn(ctx, "main", path, content, message)
+}
+
+// PutFileOn commits a file on branch (a short name or a refs/heads/... ref) and returns the new tip.
+func (r *Repo) PutFileOn(ctx context.Context, branch, path, content, message string) string {
+	branch = strings.TrimPrefix(branch, "refs/heads/")
+	encoded, err := json.Marshal(map[string]any{
+		"content": base64.StdEncoding.EncodeToString([]byte(content)), "message": message, "branch": branch,
+	})
+	if err != nil {
+		return ""
+	}
+	code, out := r.call(ctx, http.MethodPost, "/repos/"+gitOwner+"/"+r.Name+"/contents/"+url.PathEscape(path), encoded)
+	if code != http.StatusCreated && code != http.StatusOK {
+		return ""
+	}
+	var created struct {
+		Commit struct {
+			SHA string `json:"sha"`
+		} `json:"commit"`
+	}
+	if json.Unmarshal([]byte(out), &created) == nil && created.Commit.SHA != "" {
+		return created.Commit.SHA
+	}
+	return r.Commit(ctx, branch)
 }
 
 // Commit returns the commit a branch (or ref) of the repository points at, or "" when it does not exist.

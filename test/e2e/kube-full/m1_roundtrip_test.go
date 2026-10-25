@@ -1,0 +1,121 @@
+package kube_full_test
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/optimiware/kodama/api/client"
+	"github.com/optimiware/kodama/test/support/stage"
+)
+
+// TestKubeM1Roundtrip is kube_m1_roundtrip: a reader, a writer that publishes a commit, and a
+// downstream reader of that commit, on the installed server. A foreign tenant is denied. A human
+// push that moves the tip must not be reported as a successful publication.
+func TestKubeM1Roundtrip(t *testing.T) {
+	i := stage.New(t)
+	w := i.Seed()
+	ctx := i.Context(8 * time.Minute)
+	before := w.Repo.Commit(ctx, "main")
+	if before == "" {
+		t.Fatal("the repository has no base commit")
+	}
+
+	item := w.WorkItem("Reader", "# read")
+	w.Provision(item.Id)
+	read := w.Definition("reader", stage.Step{
+		ID: "read", Access: "read",
+		Script:  `test -n "$(git rev-parse HEAD)" && printf '{"outcome":"completed","outputs":{"v":"read"}}' > "$KODAMA_RESULTS_FILE"`,
+		Outputs: []string{"v"},
+	})
+	run := w.Run("reader-run", item, read.Id)
+	final := w.WaitRun(run.Id, 5*time.Minute)
+	if final.Status != client.RunStatusSucceeded {
+		t.Fatalf("reader %s (%s)", final.Status, final.Reason)
+	}
+	if got := w.Repo.Commit(ctx, "main"); got != before {
+		t.Fatalf("a reader moved the remote tip")
+	}
+	if final.InputSnapshot.Digest == "" {
+		t.Fatal("the run has no immutable input snapshot")
+	}
+	digest := final.InputSnapshot.Digest
+	if lines := w.WaitLogs("engineer", run.Id); len(lines) == 0 {
+		t.Fatal("the reader retained no logs")
+	}
+
+	writeItem := w.WorkItem("Writer", "# write")
+	ws := w.Provision(writeItem.Id)
+	writer := w.RegisterDefinition("engineer", "writer", []any{
+		w.StepDocument(stage.Step{
+			ID: "write", Access: "write",
+			Script:  `echo published-by-kodama > published.txt; printf '{"outcome":"completed","outputs":{"v":"wrote"}}' > "$KODAMA_RESULTS_FILE"`,
+			Outputs: []string{"v"},
+		}),
+		w.StepDocument(stage.Step{
+			ID: "follow", Access: "read", From: "write", Needs: []string{"write"},
+			Script:  `grep -q published-by-kodama published.txt && printf '{"outcome":"completed","outputs":{"v":"followed"}}' > "$KODAMA_RESULTS_FILE"`,
+			Outputs: []string{"v"},
+		}),
+	})
+	wrun := w.Run("writer-run", writeItem, writer.Id)
+	wf := w.WaitRun(wrun.Id, 8*time.Minute)
+	if wf.Status != client.RunStatusSucceeded {
+		t.Fatalf("writer %s (%s)", wf.Status, wf.Reason)
+	}
+	// Publication lands on the work branch, not the repository's base ref.
+	tip := refSHA(w.Repo.Refs(ctx), ws.Branch)
+	if tip == "" || tip == before {
+		t.Fatalf("the writer did not publish %s (refs %v)", ws.Branch, w.Repo.Refs(ctx))
+	}
+	if body, ok := w.Repo.File(ctx, tip, "published.txt"); !ok || !strings.Contains(body, "published-by-kodama") {
+		t.Fatal("the published file is not on the remote work branch")
+	}
+	if got := w.Repo.Commit(ctx, "main"); got != before {
+		t.Fatal("publication moved the base ref")
+	}
+	if got := w.GetRun(run.Id); got.InputSnapshot.Digest != digest {
+		t.Fatal("the reader's immutable inputs changed after a later publication")
+	}
+	if st := w.Steps(wrun.Id); len(st) < 2 || st[1].Status != client.StepStatusSucceeded {
+		t.Fatalf("downstream step did not succeed: %+v", st)
+	}
+
+	foreign, err := i.API("analyst").GetRunWithResponse(ctx, w.TenantA, w.Project, run.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foreign.StatusCode() < 400 {
+		t.Fatalf("a foreign tenant read the run: HTTP %d", foreign.StatusCode())
+	}
+
+	// Publication conflict: a writer that has started, then a human push of its work branch,
+	// must not report success.
+	raceItem := w.WorkItem("Conflict", "# conflict")
+	raceWS := w.Provision(raceItem.Id)
+	raceDef := w.Definition("racer", stage.Step{
+		ID: "race", Access: "write", Timeout: 180,
+		Script:  `sleep 25; echo raced > raced.txt; printf '{"outcome":"completed","outputs":{"v":"raced"}}' > "$KODAMA_RESULTS_FILE"`,
+		Outputs: []string{"v"},
+	})
+	rr := w.Run("race-run", raceItem, raceDef.Id)
+	att := w.WaitAttempt(rr.Id, 2*time.Minute)
+	_ = i.WaitJob(w.Namespace(w.TenantA), att, true, 2*time.Minute)
+	if moved := w.Repo.PutFileOn(ctx, raceWS.Branch, "human.txt", "human push\n", "human push"); moved == "" {
+		t.Fatal("the human push did not move the work branch")
+	}
+	rf := w.WaitRun(rr.Id, 5*time.Minute)
+	if rf.Status == client.RunStatusSucceeded {
+		t.Fatal("a publication that raced a human push reported success")
+	}
+}
+
+func refSHA(refs []string, name string) string {
+	for _, ref := range refs {
+		got, sha, ok := strings.Cut(ref, " ")
+		if ok && (got == name || got == "refs/heads/"+strings.TrimPrefix(name, "refs/heads/")) {
+			return sha
+		}
+	}
+	return ""
+}

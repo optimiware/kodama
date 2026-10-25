@@ -356,6 +356,7 @@ func TestChildEnvLayering(t *testing.T) {
 		"KODAMA_WORKSPACE": u.cfg.WorkspaceDir, "KODAMA_OUTPUTS_DIR": u.cfg.OutputsDir, "KODAMA_RESULTS_FILE": u.cfg.ResultsFile,
 		"KODAMA_SECRETS_DIR": u.cfg.SecretsDir, "KODAMA_INPUT_MY_NAME": "x y", "KODAMA_INPUT_COUNT": "5", "KODAMA_INPUT_FLAG": "true",
 		"PATH": "/override", "CUSTOM": "from-secret", "DB_PASS": "p", "HOME": u.cfg.ChildEnv["HOME"],
+		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": u.cfg.WorkspaceDir,
 	}
 	for k, v := range want {
 		if got[k] != v {

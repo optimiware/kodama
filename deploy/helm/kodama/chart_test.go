@@ -473,7 +473,7 @@ var (
 	// Everything else reaches the core assembly through the settings document and the Secret.
 	frozenEnv = map[string]bool{
 		"KODAMA_HTTP_ADDR": true, "KODAMA_LOG_LEVEL": true, "KODAMA_SHUTDOWN_TIMEOUT": true,
-		"KODAMA_ENV": true, "KODAMA_CONFIG_FILE": true,
+		"KODAMA_ENV": true, "KODAMA_CONFIG_FILE": true, "KODAMA_GIT_CA_FILE": true,
 	}
 	credentialKey = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[-_]?key|private[-_]?key|access[-_]?key)`)
 	userinfoURL   = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.-]*://[^/\s@]+:[^/\s@]*@`)
@@ -635,6 +635,9 @@ func assertServerConfiguration(t *testing.T, pods []podSpec) {
 	}
 	if got := env["KODAMA_CONFIG_FILE"]; got != "/etc/kodama/config/config.yaml" {
 		t.Errorf("KODAMA_CONFIG_FILE = %q, want the mounted settings document", got)
+	}
+	if got := env["KODAMA_GIT_CA_FILE"]; got != "/secrets/ca.crt" && got != "/secrets/runtime-ca.crt" {
+		t.Errorf("KODAMA_GIT_CA_FILE = %q, want the private CA or the public runtime roots", got)
 	}
 	if got := str(dig(c, "livenessProbe", "httpGet", "path")); got != "/healthz" {
 		t.Errorf("liveness path = %q, want /healthz", got)
@@ -1171,10 +1174,23 @@ func Test_helm_empty_egress_still_renders_policy(t *testing.T) {
 			continue
 		}
 		found++
-		// Only the runtime callback destination remains (execution.runtime.egress has one rule
-		// in values-external.yaml): emptying network.egress removes every other rule in place.
-		if n := len(asList(dig(np, "spec", "egress"))); n != 1 {
-			t.Errorf("%s: want only the runtime callback rule, got %d rules", namespaceOf(np), n)
+		// The runtime callback remains, plus the fixed cluster-DNS peer. Emptying network.egress
+		// removes every operator rule in place; DNS is not an operator rule.
+		rules := asList(dig(np, "spec", "egress"))
+		if len(rules) != 2 {
+			t.Errorf("%s: want the runtime callback and cluster DNS, got %d rules", namespaceOf(np), len(rules))
+		}
+		var dns bool
+		for _, r := range rules {
+			for _, dest := range asList(asMap(r)["to"]) {
+				labels := asMap(asMap(dest)["podSelector"])["matchLabels"]
+				if asMap(labels)["k8s-app"] == "kube-dns" {
+					dns = true
+				}
+			}
+		}
+		if !dns {
+			t.Errorf("%s: cluster DNS peer is missing", namespaceOf(np))
 		}
 		if got := asList(dig(np, "spec", "policyTypes")); len(got) != 1 || got[0] != "Egress" {
 			t.Errorf("%s: policyTypes = %v, want [Egress] so an empty rule list denies egress", namespaceOf(np), got)
@@ -1188,7 +1204,9 @@ func Test_helm_empty_egress_still_renders_policy(t *testing.T) {
 // Test_helm_secret_management_rbac guards the opt-in Secret rule of the tenant Roles: the server's
 // reconciler lists the managed admission Secrets of every tenant namespace, so `list` must be granted
 // with the verbs that create and remove them (a Role without it left a freshly installed server unable
-// to finish a reconcile pass), and nothing broader.
+// to finish a reconcile pass). `update` must be granted too: the workload record lives in an annotation
+// of that Secret and is replaced as the attempt advances, and a Role without it leaves every dispatch
+// unable to save the record. Nothing broader.
 func Test_helm_secret_management_rbac(t *testing.T) {
 	args := []string{"template", releaseName, ".", "--namespace", releaseNamespace, "--set", "execution.rbac.manageSecrets=true"}
 	stdout, stderr, err := helm(t, args...)
@@ -1196,7 +1214,7 @@ func Test_helm_secret_management_rbac(t *testing.T) {
 		t.Fatalf("helm %s failed: %v\n%s", strings.Join(args, " "), err, stderr)
 	}
 	docs := parseDocuments(t, stdout)
-	want := []string{"create", "delete", "get", "list"}
+	want := []string{"create", "delete", "get", "list", "update"}
 	found := 0
 	for _, role := range ofKind(docs, "Role") {
 		for _, r := range asList(role["rules"]) {

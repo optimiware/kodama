@@ -23,8 +23,12 @@ import (
 // workload's authority ends with the attempt (IT-03, IT-06); the stored responses
 // replay (AC-06, AC-12).
 func TestExecutionAssemblyRoundtrip(t *testing.T) {
-	for _, b := range backends {
+	for _, b := range backends(t) {
 		t.Run(b.Name, func(t *testing.T) {
+			if b.Name == "kube" {
+				roundtripKube(t)
+				return
+			}
 			s := kit.New(t, kit.Options{})
 			s.Start()
 			s.WaitReady()

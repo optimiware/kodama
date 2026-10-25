@@ -1,6 +1,6 @@
 # Full Kubernetes installation readiness (T-104) — running report
 
-**Status: in progress.** No acceptance check has passed yet; this file records what the first real installation on the Scaleway stage cluster (`kodama-stage-scw`) established, the defects it found, and the recorded deviations. It becomes the T-104 report when the `kube-full` suite exists and passes.
+**Status: in progress, not qualified.** Six of the seven readiness acceptances have passed live, individually or inside one gate run. The readiness gate has not passed: `kube_secrets_kms` failed in that run (Key Manager HTTP 409, throwaway key name already taken), so `suite_passed` is false and the receipt was not issued. This file is the handoff, not a qualification claim.
 
 ## Target and provenance
 
@@ -32,22 +32,69 @@
 | 7 | Scaleway's managed admin user cannot grant on the platform-owned database. | Roles and privileges are created through the platform API. |
 | 8 | The server's cluster-scoped Role could not create `SubjectAccessReview`s, which the tenant preflight posts before every dispatch (it asks the API server what the tenant's execution service account may do). On a real chart installation every dispatch therefore failed with an unclassified `unavailable` and no Job was ever created; the run stayed `queued`. Found by the first real run on a qualification session (2026-10-25). | Fixed in `deploy/helm/kodama/templates/rbac.yaml` (`authorization.k8s.io` `subjectaccessreviews` `create`, nothing else) with regression test `Test_helm_preflight_access_review_rbac`; owner review requested together with finding 1. Not yet rolled out to a live session. |
 | 9 | The server logs an unclassified `unavailable` for a refused dispatch (`execution: dispatch error=unavailable`) without naming the failing dependency or call. Finding 8 needed code reading to diagnose. | Observation for the execution owner: log the classified cause (preflight reason, API operation and status). |
+| 10 | The tenant Role granted Secrets `create, get, list, delete` but not `update`. The workload record is an annotation on the admission Secret, replaced with PUT as the attempt advances. Every dispatch died `unavailable` after creating that Secret. | Fixed in `deploy/helm/kodama/templates/rbac.yaml`; `Test_helm_secret_management_rbac` now requires `update`. |
+| 11 | Cilium with kube-proxy replacement does not honour a ClusterIP `ipBlock` for CoreDNS. Workloads could not resolve the callback hostname and died at the execution deadline. | Chart always renders a kube-dns pod-selector egress (port 53). `internal/kube/preflight.go` allows only that peer. |
+| 12 | `customCA: false` left `KODAMA_GIT_CA_FILE` unset. Source checkout refuses an empty Git CA, so every reader/writer dispatch was `unavailable` (logged that way even when the cause is `ErrCheckoutDenied`). | Chart sets `KODAMA_GIT_CA_FILE` to `/secrets/runtime-ca.crt` unless a private CA is configured. Stage `runtime-ca.crt` is the ISRG roots. |
+| 13 | The workspace volume is owned by the kubelet, not uid 65532. Git refuses the checkout (`dubious ownership in repository at '/workspace'`). Restricted Pod Security forbids a chown. | Entrypoint git sets `safe.directory=*`; the step environment sets `safe.directory` to the workspace unless the step already configures git. Requires the image built after this change. |
+| 14 | PX-A02 cannot use the planned loopback HTTP sidecar. `logs/kubernetes` refuses a non-HTTPS API endpoint, and that refusal crashes the server (`core assembly failed to start`). A sidecar was applied once and rolled back by deleting the Deployment and upgrading the chart. | Not qualified. Installed evidence is crash-restart adoption of a live Job, not a lost-create acknowledgment. Do not reapply an HTTP proxy sidecar. |
 
-## Work state and handoff (2026-10-25)
+## Work state and handoff (2026-10-25, end of this run)
 
-Nothing has been qualified: no acceptance check has passed and no gate has run. What exists:
+Branch `task/T-104-kube-full` (worktree `.work/T-104-kube-full`). Not pushed. Not reviewed. Not merged.
 
-- **Stage installation** (`deploy.sh`): ready, bootstrap done, `/api/v1/me` works through the persona issuer.
-- **Qualification sessions** (`deploy/stage/qualification`, `qualify.sh`; see `deploy/stage/README.md`): `prepare` was run for session `ka` and works end to end in about two minutes; `helm upgrade --install` of the committed chart into it takes about a minute and reaches readiness with a Let's Encrypt certificate. Session `ka` is still live on the stage cluster (namespaces `kodama-q-ka*`, database `kodama_q_ka`, log level DEBUG); it runs the chart **without** the finding-8 fix. Remove it with `qualify.sh destroy --session ka --contract ~/.kube/kodama-stage/stage_contract.json` (needs `KUBECONFIG`, `KODAMA_IMAGES_FILE`, `SCW_*`), or `helm upgrade` it with the fixed chart to continue.
-- **Fixture** (`test/support/stage`): session handle, kubectl/helm/port-forward wrappers, `oauthsonas` login (access-code gate, S256 PKCE), install/uninstall/restart/stop/start, database relay outage (`RelayDown`/`RelayUp`), `kodama bootstrap` as a Pod, owner/runtime database inspection through the probe relay, a per-test Gitea repository, the seeded two-tenant world and the API helpers (adapted from the M1 kit), Job/Pod inspection, runtime-token extraction, and admission-policy holds (`HoldJobs` CREATE/DELETE for the server's service account only). Verified live: login, `/me`, bootstrap, `Seed` (tenants, personas, project, memberships), workspace provisioning and run admission. The first pipeline run stopped at finding 8.
-- **Not started**: the backend interface in `test/integration/assembly-execution` (it still hard-codes Podman through `kit`), `test/e2e/kube-full`, `test/e2e/staging`, the exact acceptance map in `lib.sh` (the current parser drops package and backend identity), the Alloy `attemptId` normalization (the control plane logs `attemptId`, Alloy extracts `attempt`) and `docs/operations/staging.md`.
+### What passed live (session `kb`, 2026-10-25)
 
-Resuming from a fresh checkout: the operator-local inputs live outside the repository in `~/.kube/kodama-stage/` (`scw.yaml` kubeconfig, `stage_contract.json`, `kodama-values.yaml`, `images.json`, `scw.tfvars`, `state/` with the OpenTofu states). Copy `scw.tfvars` to `deploy/stage/scw/terraform.tfvars` (git-ignored) before running `deploy.sh`; `qualify.sh` takes the project from `SCW_DEFAULT_PROJECT_ID` or that file. The deploy command is in `deploy/stage/README.md`; the issuer allowlist needs `KODAMA_ISSUER_ALLOWED_CIDRS` (the operator machine egresses through several addresses). The stage cluster and its database keep billing until scaled down or destroyed.
+One readiness gate run (`gate.sh --gate readiness --cloud scw`, session contract and values) executed the suites. Results:
 
-Decisions taken against the earlier plan: the tests run on the operator machine (as the gate already does) and reach the private database through the `kq-pgprobe` relay and a port forward, so no in-cluster runner image is needed; deterministic delete/create windows use ValidatingAdmissionPolicies scoped to the server's service account instead of a sidecar proxy. Lost-create-response (PX-A02) cannot be made deterministic that way; a loopback Kubernetes API proxy sidecar (`KODAMA_KUBE_API` accepts loopback http) remains the planned means, and a relay-timed variant must be reported as such if used instead.
+| Acceptance | Result in that run |
+| --- | --- |
+| `kube_chart_install` | passed (`TestKubeChartInstall`) |
+| `kube_m1_roundtrip` | passed (`TestKubeM1Roundtrip`) |
+| `kube_cancel_restart` | passed (`TestKubeCancelRestart`, including crash-restart adoption) |
+| `kube_secrets_kms` | **failed**: `create throwaway key: HTTP 409` (`t028-a-kb` / `t028-b-kb` already exist). This failed the package, so the gate rejected the run. |
+| `execution_assembly_roundtrip` | passed (`TestExecutionAssemblyRoundtrip/kube`) |
+| `execution_assembly_cancel_restart` | passed (`TestExecutionAssemblyCancelRestart/kube`) |
+| `execution_assembly_result_guard` | passed (`TestExecutionAssemblyResultGuard/kube`) |
 
-Fixture facts learned: `baseRef` of a project repository must be a full `refs/heads/...` ref; tenant namespaces must start with `kodama-`; the generated client's base is `<url>/api/v1`; project repository credentials are matched by URL prefix and tenant list (`git-credentials.json`).
+`TestM1PostgresContractSuites` was skipped on purpose (`KODAMA_ASSEMBLY_BACKEND=kube`). That skip is not an acceptance. Podman was not re-run in this session. `make lint`, `make test`, and `make docs-check` were not run. `deploy/stage/scripts/test_scripts.sh` passed (needs `shellcheck` on `PATH`; a copy lives in `/tmp/opencode/kodama-stage-tools`).
 
-## Remaining for T-104
+Do not treat the six passes as a gate receipt. The gate requires all seven in one run with `suite_passed=true`.
 
-Everything below runs against a prepared session after the chart fix is installed in it: the backend-parameterized `execution_assembly_*` scenarios on Kubernetes (with the Podman backend kept), `test/e2e/kube-full` (`kube_chart_install`, `kube_m1_roundtrip`, `kube_cancel_restart`, `kube_secrets_kms` with throwaway Key Manager keys and the live procedure of `test/integration/kms-production/README.md`), exact package/backend evidence matching, and the readiness gate receipt. Until they pass, T-104 and T-090 stay open.
+### Session still live — do not destroy until the gate passes or the owner says so
+
+| Item | Value |
+| --- | --- |
+| Session | `kb` (`~/kodama-stage/state/qualification/kb`) |
+| URL | `https://kb.195-154-68-111.nip.io` |
+| Namespaces | `kodama-q-kb`, `kodama-q-kb-a`, `kodama-q-kb-b` |
+| Kubeconfig | `~/kodama-stage/scw.yaml` (not `~/.kube/kodama-stage/`) |
+| State dir | `~/kodama-stage/state` (`STAGE_STATE_DIR` / `KODAMA_QUAL_STATE_DIR`) |
+| Contract / values the gate should use | `~/kodama-stage/state/qualification/kb/contract.json` and `values.yaml` |
+| Image under test | `rg.fr-par.scw.cloud/kodama-stage-scw/kodama:0.0.2-stage-b0c4fdca4c0c-3@sha256:30d79c1d43ff87ea60fbd38bbe89904de755efee165d7a3e78ce8fd6ba595f04` |
+| Workload image | unchanged `sha256:24cff5ad7765e56c3242014e64e2d911ca02053b92ab9c14f2beeb6519d929ea` |
+| Tools | `/tmp/opencode/kodama-stage-tools` (`tofu` 1.13.2, `helm` 4.3.1, `shellcheck` 0.10.0) |
+| Issuer allowlist | live annotation on `kodama-deps/kodama-oauthsonas-restricted` includes `151.115.90.46/32` plus the three addresses from the stage deploy. A later stack apply can drop `151.115.90.46`. |
+| Operator API | kubeconfig token is a Scaleway secret key (`SCW_SECRET_KEY`). Access key for the provider is in `/tmp/opencode/scw-access-key` (do not print it). Project `943031a5-cc3c-4202-aea1-697e4e55863c`. |
+
+Session `ka` is gone. Do not reapply the HTTP kube-proxy sidecar. A graceful `scale` to 0 can reconcile a running Job away; adoption tests crash the server pod (`--force --grace-period=0`) and wait for the Deployment to recreate it.
+
+### PX-A02
+
+Not run. Preferred loopback HTTP proxy is incompatible with `logs/kubernetes` (HTTPS required) and crashed the server when tried. Report must say the installed evidence is crash-restart adoption, not a lost-create acknowledgment. Do not claim PX-A02.
+
+### O-27 (name these; do not gloss)
+
+Chart `profile: development` (plaintext token-authenticated NATS) with `KODAMA_ENV=production`. Issuer is the oauthsonas persona fixture behind an access code and ingress allowlist. No NATS TLS or authentication-strength qualification. Backup posture: scheduled backups only, `qualifies_o11_pitr=false`.
+
+### Leftover Key Manager key
+
+`t028-probe-kb` (`35b06b3f-e8ce-4b87-bb84-b81bea48d9f7`) was created protected and could not be deleted (HTTP 412). Later creates must set `protected: false`. The 409 on the gate run is a name collision on `t028-a-<session>` / `t028-b-<session>`, not that protected key. List `t028-*` keys, delete unprotected ones, and give each test run a unique name.
+
+### Remaining
+
+1. Make `TestKubeSecretsKMS` use a unique key name (and delete unprotected `t028-a-kb` / `t028-b-kb` if they are still there). Re-run only that test, then the readiness gate end to end.
+2. `make lint test docs-check`. Podman regression (`make test-podman` or the assembly package with `KODAMA_ASSEMBLY_BACKEND` unset).
+3. Finish the report with image/chart/contract/values digests, O-27, Scaleway KMS, backup/PITR, and the PX-A02 gap. Independent review before merge. Do not push unless the owner says so.
+4. After a passing gate, `qualify.sh destroy --session kb` and confirm no `kodama-q-*` namespaces remain.
+
+Alloy `attemptId` normalization and `docs/operations/staging.md` stay T-090.

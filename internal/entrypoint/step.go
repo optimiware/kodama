@@ -457,6 +457,13 @@ func (a *attempt) childEnv(secrets *secretSet) []string {
 	for k, v := range secrets.env {
 		env[k] = v
 	}
+	// The same volume-ownership exception the entrypoint's own git uses. A step
+	// that already configures git through the environment keeps its own values.
+	if _, ok := env["GIT_CONFIG_COUNT"]; !ok && cfg.WorkspaceDir != "" {
+		env["GIT_CONFIG_COUNT"] = "1"
+		env["GIT_CONFIG_KEY_0"] = "safe.directory"
+		env["GIT_CONFIG_VALUE_0"] = cfg.WorkspaceDir
+	}
 	out := make([]string, 0, len(env))
 	for k, v := range env {
 		out = append(out, k+"="+v)

@@ -52,6 +52,11 @@ type git struct {
 
 func (g *git) base() []string {
 	return []string{
+		// The workspace volume is owned by the kubelet, not the non-root step, and
+		// restricted Pod Security forbids a chown. Hooks and global config are
+		// already disabled, so the ownership check would only refuse the step's
+		// own checkout.
+		"-c", "safe.directory=*",
 		"-c", "core.hooksPath=/dev/null",
 		"-c", "core.fsmonitor=false",
 		"-c", "protocol.version=2",

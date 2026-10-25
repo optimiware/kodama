@@ -68,6 +68,11 @@ spec:
               value: {{ .Values.server.logLevel | quote }}
             - name: KODAMA_SHUTDOWN_TIMEOUT
               value: {{ .Values.server.shutdownTimeout | quote }}
+            # Source checkout requires a PEM Git CA. A private CA is ca.crt (config.tls.customCA).
+            # Otherwise the installation's public roots (runtime-ca.crt, already required for the
+            # callback) are the Git trust store: an empty CA refuses every source-consuming dispatch.
+            - name: KODAMA_GIT_CA_FILE
+              value: {{ if .Values.config.tls.customCA }}/secrets/ca.crt{{ else }}/secrets/runtime-ca.crt{{ end }}
           ports:
             - name: http
               containerPort: {{ .Values.server.port }}
