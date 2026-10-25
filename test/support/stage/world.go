@@ -265,6 +265,8 @@ type Step struct {
 	From string
 	// Env binds environment variables to secret references.
 	Env map[string]string
+	// Environment pins the step to a project deployment environment (and the credentials it names).
+	Environment string
 }
 
 // StepDocument renders the step of a pipeline definition.
@@ -299,6 +301,9 @@ func (w *World) StepDocument(st Step) map[string]any {
 			env[k] = map[string]any{"secretRef": ref}
 		}
 		step["env"] = env
+	}
+	if st.Environment != "" {
+		step["environment"] = st.Environment
 	}
 	if len(st.Outputs) > 0 || len(st.Artifacts) > 0 {
 		outs := map[string]any{}

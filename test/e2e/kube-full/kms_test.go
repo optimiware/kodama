@@ -40,15 +40,34 @@ func installedSecretRestart(t *testing.T) {
 	value = []byte(hex.EncodeToString(value))
 	defer clear(value)
 	name := "kms-" + runSuffix(t)
+	var envID string
 	r, err := i.API("admin").CreateSecretWithResponse(ctx, w.TenantA, w.Project, &client.CreateSecretParams{IdempotencyKey: client.IdempotencyKey(name)}, client.CreateSecretRequest{Kind: client.SecretKindGeneric, Name: client.SecretName(name), Value: &value})
 	if err != nil || r.StatusCode() != http.StatusCreated || r.JSON201 == nil {
 		t.Fatal("create installed encrypted secret failed (body suppressed)")
 	}
+	// The installed server delivers a project secret to a step only through a pinned deployment
+	// environment that names it (a bare step secret is refused or answered 403). The environment
+	// needs a kubeconfig-kind credential that is never used to connect: it holds a placeholder.
+	kubeName := "kubeconfig-" + runSuffix(t)
+	placeholder := []byte("placeholder-kubeconfig-never-used-" + runSuffix(t))
+	if r, err := i.API("admin").CreateSecretWithResponse(ctx, w.TenantA, w.Project, &client.CreateSecretParams{IdempotencyKey: client.IdempotencyKey(kubeName)}, client.CreateSecretRequest{Kind: client.SecretKindKubeconfig, Name: client.SecretName(kubeName), Value: &placeholder}); err != nil || r.StatusCode() != http.StatusCreated {
+		t.Fatal("create placeholder deployment credential failed (body suppressed)")
+	}
+	envName := "kms-" + runSuffix(t)
+	if r, err := i.API("engineer").CreateEnvironmentWithResponse(ctx, w.TenantA, w.Project, client.EnvironmentCreate{
+		Kind: client.Preview, Name: envName, Target: "kms-restart", Namespace: "kms-restart",
+		Kubeconfig: client.CredentialBinding{Name: "KUBECONFIG", Ref: "secret://project/" + kubeName, Delivery: client.File},
+		Secrets:    &[]client.CredentialBinding{{Name: "kms-value", Ref: "secret://project/" + name, Delivery: client.File}},
+	}); err != nil || r.StatusCode() != http.StatusCreated || r.JSON201 == nil {
+		t.Fatalf("create environment failed: HTTP %d", statusOf(r, err))
+	} else {
+		envID = string(r.JSON201.Id)
+	}
 	// Compare a digest inside the command. The random value is never in the script, output,
 	// Pod specification or evidence. The real runtime injects the pinned secret just in time.
 	hash := sha256.Sum256(value)
-	script := fmt.Sprintf(`actual=$(printf '%%s' "$KMS_VALUE" | sha256sum); test "${actual%%%% *}" = %s; echo secret-consumed`, hex.EncodeToString(hash[:]))
-	def := w.Definition("kms-consumer", stage.Step{Script: script, Env: map[string]string{"KMS_VALUE": "secret://project/" + name}})
+	script := fmt.Sprintf(`f=$(echo /kodama/secrets/*/kms-value); test -f "$f"; actual=$(sha256sum < "$f"); test "${actual%%%% *}" = %s; echo secret-consumed`, hex.EncodeToString(hash[:]))
+	def := w.Definition("kms-consumer", stage.Step{Script: script, Environment: envID})
 	consume := func(label string) {
 		item := w.WorkItem(label, "# encrypted secret use")
 		w.Provision(item.Id)
@@ -236,4 +255,11 @@ func cleanupCloud(t *testing.T, o operator, path string) {
 	if err != nil || code != http.StatusNoContent && code != http.StatusNotFound {
 		t.Errorf("cleanup throwaway IAM resource: HTTP %d", code)
 	}
+}
+
+func statusOf(r *client.CreateEnvironmentResponse, err error) int {
+	if err != nil || r == nil {
+		return 0
+	}
+	return r.StatusCode()
 }

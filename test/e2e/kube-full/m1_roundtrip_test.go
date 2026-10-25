@@ -104,7 +104,8 @@ func TestKubeM1Roundtrip(t *testing.T) {
 	job := i.WaitJob(ns, att, true, 2*time.Minute)
 	pod := i.WaitPod(ns, job.Name, 2*time.Minute)
 	i.WaitCommandBarrier(ns, pod.Name)
-	if moved := w.Repo.PutFileOn(ctx, raceWS.Branch, "human.txt", "human push\n", "human push"); moved == "" {
+	moved := w.Repo.PutFileOn(ctx, raceWS.Branch, "human.txt", "human push\n", "human push")
+	if moved == "" {
 		t.Fatal("the human push did not move the work branch")
 	}
 	i.ReleaseCommand(ns, pod.Name)
@@ -112,8 +113,20 @@ func TestKubeM1Roundtrip(t *testing.T) {
 	if rf.Status != client.RunStatusFailed {
 		t.Fatalf("publication conflict: run %s (%s), want failed", rf.Status, rf.Reason)
 	}
-	if atts := w.Attempts(rr.Id); len(atts) != 1 || atts[0].Reason != "publication_conflict" {
-		t.Fatalf("run failed for a different reason than publication conflict: %+v", atts)
+	// The attempt reason is the generic command_failed (execution keeps a specific reason only for
+	// output failures); the conflict itself is the recorded publication outcome and an untouched branch.
+	atts := w.Attempts(rr.Id)
+	if len(atts) != 1 {
+		t.Fatalf("attempts=%d, want 1", len(atts))
+	}
+	if n := i.OwnerCount(`SELECT count(*) FROM workspace_publications WHERE attempt_id=$1 AND status='conflict' AND conflict_reason='tip_moved' AND outcome='failed'`, atts[0].Id); n != 1 {
+		t.Fatalf("recorded publication conflicts=%d, want 1", n)
+	}
+	if n := i.OwnerCount(`SELECT count(*) FROM workspace_publications WHERE attempt_id=$1 AND status='published'`, atts[0].Id); n != 0 {
+		t.Fatal("a conflicted publication was also recorded as published")
+	}
+	if tip := w.Repo.Commit(ctx, strings.TrimPrefix(raceWS.Branch, "refs/heads/")); tip != moved {
+		t.Fatal("the human's commit on the work branch was overwritten")
 	}
 }
 
