@@ -1,2 +1,0 @@
-import { LocationServiceMap } from "@opencode/core/location-service-map";
-export declare const LocationHandler: import("effect/Layer").Layer<import("effect/http-api/HttpApiGroup").Service<"server", "server.location">, never, import("@opencode/protocol/middleware/authorization").Authorization | import("../location").LocationMiddleware | import("@opencode/protocol/middleware/schema-error").SchemaErrorMiddleware | LocationServiceMap.Service>;

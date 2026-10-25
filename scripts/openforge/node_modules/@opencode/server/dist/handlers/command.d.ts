@@ -1,1 +1,0 @@
-export declare const CommandHandler: import("effect/Layer").Layer<import("effect/http-api/HttpApiGroup").Service<"server", "server.command">, never, import("@opencode/protocol/middleware/authorization").Authorization | import("../location").LocationMiddleware | import("@opencode/protocol/middleware/schema-error").SchemaErrorMiddleware>;
