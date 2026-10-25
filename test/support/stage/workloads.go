@@ -62,9 +62,18 @@ func (i *Installation) Jobs(ctx context.Context, namespace string) ([]Job, error
 
 // JobsOfAttempt lists the Jobs of a namespace that carry the attempt.
 func (i *Installation) JobsOfAttempt(namespace, attempt string) []Job {
+	jobs, err := i.TryJobsOfAttempt(namespace, attempt)
+	if err != nil {
+		i.T.Fatalf("list workload Jobs: %v", err)
+	}
+	return jobs
+}
+
+// TryJobsOfAttempt preserves query failures: an unreachable API is never evidence of absence.
+func (i *Installation) TryJobsOfAttempt(namespace, attempt string) ([]Job, error) {
 	jobs, err := i.Jobs(context.Background(), namespace)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var out []Job
 	for _, j := range jobs {
@@ -72,7 +81,7 @@ func (i *Installation) JobsOfAttempt(namespace, attempt string) []Job {
 			out = append(out, j)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // WaitJob waits until a Job of the attempt exists (and, with running, has an active Pod).
@@ -80,8 +89,12 @@ func (i *Installation) WaitJob(namespace, attempt string, running bool, within t
 	i.T.Helper()
 	var found Job
 	WaitForEvery(i.T, "the Job of "+attempt, within, time.Second, func() bool {
-		for _, j := range i.JobsOfAttempt(namespace, attempt) {
-			if !running || j.Active > 0 {
+		jobs, err := i.TryJobsOfAttempt(namespace, attempt)
+		if err != nil {
+			return false
+		}
+		for _, j := range jobs {
+			if !running || j.Active > 0 || j.Succeeded > 0 || j.Failed > 0 {
 				found = j
 				return true
 			}
@@ -140,7 +153,8 @@ func (w *World) WaitRemoved(attempt string) {
 	t.Helper()
 	ns := w.Namespace(w.TenantA)
 	WaitForEvery(t, "the workload of "+attempt+" to be removed", 3*time.Minute, time.Second, func() bool {
-		if len(w.I.JobsOfAttempt(ns, attempt)) != 0 {
+		jobs, err := w.I.TryJobsOfAttempt(ns, attempt)
+		if err != nil || len(jobs) != 0 {
 			return false
 		}
 		n, err := w.I.TryOwnerCount(`SELECT count(*) FROM attempt_controls WHERE attempt_id = $1 AND workload_removed_at IS NOT NULL`, attempt)
@@ -194,7 +208,7 @@ func (i *Installation) WaitPod(namespace, job string, within time.Duration) Pod 
 			return false
 		}
 		for _, p := range pods {
-			if p.Phase == "Running" {
+			if p.Phase == "Running" || p.Phase == "Succeeded" {
 				found = p
 				return true
 			}

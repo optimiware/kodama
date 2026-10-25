@@ -37,7 +37,8 @@ validate_cloud "${CLOUD}"
 require_cmd tofu helm python3
 
 # Operator-owned directory for OpenTofu state (database/API-key secrets never live in the checkout).
-STATE_DIR="${STAGE_STATE_DIR:-${HOME}/.kube/kodama-stage/state}"
+STATE_DIR="${STAGE_STATE_DIR:-${HOME}/kodama-stage/state}"
+refuse_legacy_state_dir "${STATE_DIR}"
 CLOUD_DIR="${STAGE_DIR}/${CLOUD}"
 STACK_DIR="${STAGE_DIR}/shared/stack"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kodama-stage-deploy.XXXXXX")"

@@ -42,6 +42,9 @@ var contractSuites = []contractSuite{
 // the real adapter. The summary is the record docs/acceptance/m1.md refers to.
 // (T-087's memdb is the memory adapter itself; its twins are these suites.)
 func TestM1PostgresContractSuites(t *testing.T) {
+	if os.Getenv("KODAMA_ASSEMBLY_BACKEND") == "kube" {
+		t.Skip("the PostgreSQL contract suites stay on the Podman checkpoint; they are not Kubernetes acceptance")
+	}
 	root := repoRoot(t)
 	record := os.Getenv("KODAMA_M1_CONTRACT_RECORD")
 	var summary []string

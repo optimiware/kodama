@@ -265,6 +265,8 @@ type Step struct {
 	From string
 	// Env binds environment variables to secret references.
 	Env map[string]string
+	// Environment pins the step to a project deployment environment (and the credentials it names).
+	Environment string
 }
 
 // StepDocument renders the step of a pipeline definition.
@@ -299,6 +301,9 @@ func (w *World) StepDocument(st Step) map[string]any {
 			env[k] = map[string]any{"secretRef": ref}
 		}
 		step["env"] = env
+	}
+	if st.Environment != "" {
+		step["environment"] = st.Environment
 	}
 	if len(st.Outputs) > 0 || len(st.Artifacts) > 0 {
 		outs := map[string]any{}
@@ -491,6 +496,60 @@ func (w *World) Logs(persona, id string) (int, []string) {
 	return resp.StatusCode, lines
 }
 
+// WaitLogComplete waits until the run's retained log is terminal and complete and returns its chunk lines,
+// which are legitimately none for a command that printed nothing.
+func (w *World) WaitLogComplete(persona, run string) []string {
+	t := w.I.T
+	t.Helper()
+	var lines []string
+	WaitFor(t, "the complete retained log of "+run, 2*time.Minute, func() bool {
+		resp, body := w.I.Raw("GET", "/api/v1/tenants/"+w.TenantA+"/projects/"+w.Project+"/runs/"+run+"/logs?tail=200", w.I.Token(persona), nil, nil)
+		if resp.StatusCode != http.StatusOK {
+			return false
+		}
+		complete := false
+		lines = nil
+		sc := bufio.NewScanner(strings.NewReader(string(body)))
+		sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
+		for sc.Scan() {
+			var rec struct {
+				Type         string `json:"type"`
+				Text         string `json:"text"`
+				Completeness string `json:"completeness"`
+				Terminal     bool   `json:"terminal"`
+			}
+			if json.Unmarshal(sc.Bytes(), &rec) != nil {
+				return false
+			}
+			switch rec.Type {
+			case "meta":
+				complete = rec.Terminal && rec.Completeness == "complete"
+			case "chunk":
+				lines = append(lines, rec.Text)
+			}
+		}
+		return complete
+	})
+	return lines
+}
+
+// DiagnosticNames returns the names of the usable diagnostic artifacts the attempt retained.
+func (w *World) DiagnosticNames(attempt client.Attempt) []string {
+	t := w.I.T
+	t.Helper()
+	var names []string
+	for _, id := range attempt.DiagnosticArtifactIds {
+		r, err := w.I.API("engineer").GetArtifactWithResponse(context.Background(), w.TenantA, w.Project, id, &client.GetArtifactParams{})
+		if err != nil || r.StatusCode() != http.StatusOK || r.JSON200 == nil {
+			t.Fatalf("read diagnostic artifact %s: %v", id, err)
+		}
+		if r.JSON200.Role == client.Diagnostic {
+			names = append(names, r.JSON200.Name)
+		}
+	}
+	return names
+}
+
 // WaitLogs waits for the retained log of the run's attempt and returns its lines.
 func (w *World) WaitLogs(persona, run string) []string {
 	t := w.I.T
@@ -499,7 +558,7 @@ func (w *World) WaitLogs(persona, run string) []string {
 	WaitFor(t, "the retained log of "+run, 2*time.Minute, func() bool {
 		code, l := w.Logs(persona, run)
 		lines = l
-		return code == http.StatusOK
+		return code == http.StatusOK && len(l) > 0
 	})
 	return lines
 }
@@ -555,7 +614,8 @@ func (w *World) ProjectEvents() string {
 // OpenEvents opens an event stream as the persona.
 func (i *Installation) OpenEvents(persona, path, lastEventID string) *Stream {
 	i.T.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	i.T.Cleanup(cancel)
 	req, err := http.NewRequestWithContext(ctx, "GET", i.S.URL+path, nil)
 	if err != nil {
 		cancel()
@@ -576,7 +636,6 @@ func (i *Installation) OpenEvents(persona, path, lastEventID string) *Stream {
 		resp.Body.Close()
 		return st
 	}
-	i.T.Cleanup(cancel)
 	go func() {
 		defer resp.Body.Close()
 		defer close(st.Frames)

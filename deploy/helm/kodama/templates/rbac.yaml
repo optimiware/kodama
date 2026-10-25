@@ -37,7 +37,10 @@ rules:
   {{- if $.Values.execution.rbac.manageSecrets }}
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["create", "get", "list", "delete"]
+    # update is required: the admission Secret's workload annotation is replaced as the attempt moves
+    # (credentialed -> registered -> create issued -> owned). create/get/list/delete alone leave every
+    # dispatch unable to save that record.
+    verbs: ["create", "get", "list", "update", "delete"]
   {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1

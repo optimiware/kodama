@@ -1,0 +1,16 @@
+# Test-only helper, never the product release image. Build from the repository root with
+# --ignorefile test/support/stage/probe/build.ignore (the product context excludes test/).
+FROM docker.io/library/golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -mod=readonly -trimpath -buildvcs=false -o /out/stageprobe ./test/support/stage/probe/cmd/stageprobe
+FROM docker.io/library/debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/stageprobe /usr/local/bin/stageprobe
+ARG REVISION=unknown
+LABEL org.opencontainers.image.revision="${REVISION}"
+ENV HOME=/tmp
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/stageprobe"]

@@ -18,7 +18,19 @@ import (
 	"github.com/optimiware/kodama/test/e2e/m1/kit"
 )
 
-func TestMain(m *testing.M) { os.Exit(kit.Main(m)) }
+func TestMain(m *testing.M) {
+	switch os.Getenv("KODAMA_ASSEMBLY_BACKEND") {
+	case "", "podman":
+		os.Exit(kit.Main(m))
+	case "kube":
+		// The Kubernetes run reaches a prepared qualification session. kit.Main
+		// requires Podman and must not run.
+		os.Exit(m.Run())
+	default:
+		os.Stderr.WriteString("KODAMA_ASSEMBLY_BACKEND must be podman or kube\n")
+		os.Exit(2)
+	}
+}
 
 // backend is one workload runtime under test.
 type backend struct {
@@ -26,8 +38,20 @@ type backend struct {
 	Name string
 }
 
-// backends lists the runtimes the scenarios run against.
-var backends = []backend{{Name: "podman"}}
+// backends is the runtime selected by KODAMA_ASSEMBLY_BACKEND. The default is
+// Podman. The readiness gate sets kube. An unknown value fails the test.
+func backends(t *testing.T) []backend {
+	t.Helper()
+	switch os.Getenv("KODAMA_ASSEMBLY_BACKEND") {
+	case "", "podman":
+		return []backend{{Name: "podman"}}
+	case "kube":
+		return []backend{{Name: "kube"}}
+	default:
+		t.Fatalf("KODAMA_ASSEMBLY_BACKEND=%q is not podman or kube", os.Getenv("KODAMA_ASSEMBLY_BACKEND"))
+		return nil
+	}
+}
 
 func mustJSON(t testing.TB, data []byte, v any) {
 	t.Helper()

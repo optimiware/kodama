@@ -41,12 +41,12 @@ func (i *Installation) DB() *DB {
 		}
 		u, err := url.Parse(dsn)
 		if err != nil {
-			i.T.Fatal(err)
+			i.T.Fatal("invalid probe connection URL (details suppressed)")
 		}
 		u.Host = fmt.Sprintf("127.0.0.1:%d", fwd.Port)
 		cfg, err := pgxpool.ParseConfig(u.String())
 		if err != nil {
-			i.T.Fatal(err)
+			i.T.Fatal("invalid probe connection configuration (details suppressed)")
 		}
 		cfg.MaxConns = conns
 		p, err := pgxpool.NewWithConfig(context.Background(), cfg)
@@ -70,7 +70,9 @@ func (d *DB) Close() {
 func (i *Installation) OwnerCount(sql string, args ...any) int {
 	i.T.Helper()
 	var n int
-	if err := i.DB().Owner.QueryRow(context.Background(), sql, args...).Scan(&n); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := i.DB().Owner.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
 		i.T.Fatalf("count: %v\n%s", err, sql)
 	}
 	return n
@@ -79,14 +81,39 @@ func (i *Installation) OwnerCount(sql string, args ...any) int {
 // TryOwnerCount is OwnerCount for polling: a transient failure is reported, not fatal.
 func (i *Installation) TryOwnerCount(sql string, args ...any) (int, error) {
 	var n int
-	err := i.DB().Owner.QueryRow(context.Background(), sql, args...).Scan(&n)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	err := i.DB().Owner.QueryRow(ctx, sql, args...).Scan(&n)
 	return n, err
+}
+
+// DispatchState reports an attempt's dispatch bookkeeping as safe status metadata (no ids or secrets).
+func (i *Installation) DispatchState(attempt string) string {
+	var confirmed, claimed, revoked bool
+	var claimSeconds *float64
+	var status string
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	err := i.DB().Owner.QueryRow(ctx, `SELECT c.dispatch_confirmed_at IS NOT NULL, c.claim_token IS NOT NULL, c.revoked_at IS NOT NULL,
+		extract(epoch FROM c.claim_until - now())::float8, a.status
+		FROM attempt_controls c JOIN step_attempts a ON a.tenant_id=c.tenant_id AND a.project_id=c.project_id AND a.id=c.attempt_id
+		WHERE c.attempt_id=$1`, attempt).Scan(&confirmed, &claimed, &revoked, &claimSeconds, &status)
+	if err != nil {
+		return "dispatch state unavailable"
+	}
+	lease := "none"
+	if claimSeconds != nil {
+		lease = fmt.Sprintf("%.0fs", *claimSeconds)
+	}
+	return fmt.Sprintf("attempt=%s confirmed=%t claimed=%t revoked=%t claim_expires_in=%s", status, confirmed, claimed, revoked, lease)
 }
 
 // MustScan scans one owner-role row.
 func (i *Installation) MustScan(dst any, sql string, args ...any) {
 	i.T.Helper()
-	if err := i.DB().Owner.QueryRow(context.Background(), sql, args...).Scan(dst); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := i.DB().Owner.QueryRow(ctx, sql, args...).Scan(dst); err != nil {
 		i.T.Fatalf("query: %v\n%s", err, sql)
 	}
 }
@@ -94,7 +121,9 @@ func (i *Installation) MustScan(dst any, sql string, args ...any) {
 // OwnerExec runs a statement as the owner role.
 func (i *Installation) OwnerExec(sql string, args ...any) {
 	i.T.Helper()
-	if _, err := i.DB().Owner.Exec(context.Background(), sql, args...); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := i.DB().Owner.Exec(ctx, sql, args...); err != nil {
 		i.T.Fatalf("exec: %v\n%s", err, sql)
 	}
 }
@@ -103,7 +132,9 @@ func (i *Installation) OwnerExec(sql string, args ...any) {
 func (i *Installation) TenantCount(tenant string, sql string, args ...any) int {
 	i.T.Helper()
 	var n int
-	err := storage.WithTenant(context.Background(), i.DB().Runtime, domain.TenantID(tenant), func(ctx context.Context, tx pgx.Tx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	err := storage.WithTenant(ctx, i.DB().Runtime, domain.TenantID(tenant), func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, sql, args...).Scan(&n)
 	})
 	if err != nil {
@@ -116,7 +147,9 @@ func (i *Installation) TenantCount(tenant string, sql string, args ...any) int {
 func (i *Installation) TenantStrings(tenant string, sql string, args ...any) []string {
 	i.T.Helper()
 	var out []string
-	err := storage.WithTenant(context.Background(), i.DB().Runtime, domain.TenantID(tenant), func(ctx context.Context, tx pgx.Tx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	err := storage.WithTenant(ctx, i.DB().Runtime, domain.TenantID(tenant), func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, sql, args...)
 		if err != nil {
 			return err

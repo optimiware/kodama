@@ -6,6 +6,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 require_cmd tofu helm shellcheck python3 openssl
 
+python3 -B "${STAGE_DIR}/scripts/test_runner.py"
+
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kodama-stage-tests.XXXXXX")"
 chmod 0700 "${WORK_DIR}"
 trap 'rm -rf "${WORK_DIR}"' EXIT
@@ -188,6 +190,9 @@ if not re.search(r'variable "oauthsonas_image".*?@sha256:[0-9a-f]{64}', variable
 PY
 
 log_info "5. Negative contract, values provenance, and kubeconfig cluster-mismatch checks"
+if (validate_stage_contract "${WORK_DIR}/contract-scw.json" aws) 2>/dev/null; then
+  die "expected --cloud and contract mismatch to fail validation"
+fi
 python3 - "${WORK_DIR}/contract-aws.json" "${WORK_DIR}/bad-kms.json" <<'PY'
 import json, sys
 c = json.load(open(sys.argv[1]))
@@ -241,14 +246,23 @@ write_bound_results() {
   v_sha="$(sha256_digest "${values_file}")"
 
   python3 - "${contract_file}" "${c_sha}" "${v_sha}" "${GIT_SHA}" "${out_file}" "${tests[@]}" <<'PY'
-import json, sys
+import json, subprocess, sys
 c = json.load(open(sys.argv[1]))
 c_sha, v_sha, git_sha, out_file = sys.argv[2:6]
 tests = sys.argv[6:]
+import os
+ACCEPTANCE = json.load(open(os.environ["STAGE_DIR"] + "/scripts/readiness-cases.json"))
+acceptances = []
+for name in tests:
+    spec = ACCEPTANCE.get(name)
+    if spec:
+        acceptances.append({"name": name, "package": spec["package"], "test": spec["test"], "backend": spec["backend"], "status": "pass", "cases": {case: "pass" for case in spec["cases"]}})
 doc = {
     "passed": tests,
     "failed": [],
     "skipped": [],
+    "acceptances": acceptances,
+    "truncated": False,
     "provenance": {
         "cloud": c["cloud"],
         "installation_id": c["installation_id"],
@@ -259,6 +273,13 @@ doc = {
         "suite_passed": True,
     },
 }
+if "kube_chart_install" in tests:
+    head = subprocess.check_output(["git", "-C", os.environ["STAGE_DIR"], "rev-parse", "HEAD"], text=True).strip()
+    probe = "registry.invalid/probe@sha256:" + "a" * 64
+    doc["provenance"].update({
+        "candidate_stable": True, "probe_image": probe, "fault_config": {"applied": True},
+        "image_revisions": [{"image": "registry.invalid/kodama@sha256:" + "b" * 64, "revision": head}, {"image": probe, "revision": head}],
+    })
 json.dump(doc, open(out_file, "w"), indent=2)
 PY
 }
@@ -315,6 +336,25 @@ if "${STAGE_DIR}/scripts/checks/readiness.sh" \
 fi
 
 # 6c. Pass readiness, then run a failing readiness and confirm the prior receipt is invalidated and blocks staging
+for mutation in child_skip child_missing wrong_backend missing_package_case; do
+  python3 - "${RESULTS_DIR}/readiness.json" "${WORK_DIR}/mutated-results.json" "${mutation}" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+mutation = sys.argv[3]
+for case in d["acceptances"]:
+    if case["name"] == "kube_cancel_restart":
+        if mutation == "child_skip": case["cases"]["lost_create_acknowledgment"] = "skip"
+        if mutation == "child_missing": case["cases"].pop("lost_create_acknowledgment")
+        if mutation == "missing_package_case": case["package"] = "wrong/package"
+    if case["name"] == "execution_assembly_roundtrip" and mutation == "wrong_backend": case["backend"] = "podman"
+json.dump(d, open(sys.argv[2], "w"))
+PY
+  if verify_forge_results "${WORK_DIR}/mutated-results.json" "${WORK_DIR}/contract-aws.json" "${WORK_DIR}/values-aws.yaml" \
+    kube_cancel_restart execution_assembly_roundtrip 2>/dev/null; then
+    die "expected ${mutation} to be rejected despite passing parent tests"
+  fi
+done
+
 "${STAGE_DIR}/scripts/gate.sh" \
   --gate readiness --cloud aws --contract "${WORK_DIR}/contract-aws.json" --values "${WORK_DIR}/values-aws.yaml" \
   --results-dir "${RESULTS_DIR}" --evidence-root "${EVIDENCE_ROOT}"

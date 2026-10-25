@@ -12,7 +12,8 @@ Usage: deploy/stage/scripts/gate.sh \
   --contract <stage_contract.json> \
   [--values <kodama-values.yaml>] \
   [--results-dir <dir>] \
-  [--evidence-root <dir>]
+  [--evidence-root <dir>] \
+  [--preflight]
 
 Runs the critical-path qualification gate(s) in topological order:
   1. readiness (T-104) — Full Kubernetes installation readiness & live KMS
@@ -29,6 +30,7 @@ CONTRACT_FILE=""
 VALUES_FILE=""
 RESULTS_DIR=""
 EVIDENCE_ROOT="${STAGE_EVIDENCE_ROOT:-${STAGE_DIR}/.evidence}"
+PREFLIGHT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --values) VALUES_FILE="$2"; shift 2 ;;
     --results-dir) RESULTS_DIR="$2"; shift 2 ;;
     --evidence-root) EVIDENCE_ROOT="$2"; shift 2 ;;
+    --preflight) PREFLIGHT=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -45,7 +48,7 @@ done
 
 validate_cloud "${CLOUD}"
 [[ -n "${CONTRACT_FILE}" ]] || die "--contract <stage_contract.json> is required"
-validate_stage_contract "${CONTRACT_FILE}"
+validate_stage_contract "${CONTRACT_FILE}" "${CLOUD}"
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kodama-gate-runner.XXXXXX")"
 trap 'rm -rf "${WORK_DIR}"' EXIT
@@ -55,6 +58,16 @@ if [[ -z "${VALUES_FILE}" ]]; then
   render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}"
 fi
 verify_values_provenance "${VALUES_FILE}"
+
+if [[ "${PREFLIGHT}" == 1 ]]; then
+  [[ "${GATE}" == readiness ]] || die "--preflight is supported for readiness only"
+  require_cmd helm
+  helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
+  KODAMA_STAGE_PREFLIGHT_ONLY=1 run_stage_go_suite "${CONTRACT_FILE}" "${VALUES_FILE}" "${WORK_DIR}/preflight.json" \
+    ./test/e2e/kube-full/... ./test/integration/assembly-execution/...
+  log_info "PASS preflight only; no acceptance run or receipt issued"
+  exit 0
+fi
 
 run_single_gate() {
   local g="$1"

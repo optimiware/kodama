@@ -16,14 +16,14 @@ Verified by acceptance suites that run the real server against PostgreSQL, NATS 
 | Agent steps, human gates, environments and deployments | Working with deterministic test agents ([M2 report](acceptance/m2.md)) |
 | Native Git push trigger | Working |
 | Dependencies between work items, flow metrics, ChatOps notifications | Working ([M3 report](acceptance/m3.md)); a human cannot yet move an item from review to done through the assembled server |
-| Kubernetes Job runtime and Helm chart | Component conformance on a local kind cluster ([report](acceptance/kube.md)) |
+| Kubernetes Job runtime and Helm chart | Component conformance on a local kind cluster ([report](acceptance/kube.md)); installed-server readiness on the stage cluster is under "Not yet" until reviewed |
 
 ## Not yet
 
 | Area | Where it stands |
 | --- | --- |
-| Production profile | Startup is deliberately refused until production key custody is qualified |
-| Installed server on Kubernetes | Not yet shown ready end to end |
+| Production profile | `KODAMA_ENV=production` runs on the stage installation with live Scaleway KMS custody (T-104). A supported production profile is not claimed: TLS hardening (O-27), recovery and PITR, and hosted authority remain |
+| Installed server on Kubernetes | Shown on the Scaleway stage cluster by the T-104 readiness gate (qualified at `e6660bca8488` and merged on the owner's approval; [report](acceptance/kube-full.md)). Plaintext NATS and a fixture issuer (O-27), scheduled-only backups, and secret delivery only through deployment environments ([T-107](tasks/T-107-direct-secret-delivery.md)) remain. Not a supported production profile |
 | Source, data and key recovery drills | Planned |
 | Live model and coding-agent qualification | Agents are tested with scripted responses only |
 | Optimi Platform (hosted) integration | Design target; standalone identity works today |

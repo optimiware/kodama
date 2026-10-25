@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 validate_cloud "${CLOUD}"
-validate_stage_contract "${CONTRACT_FILE}"
+validate_stage_contract "${CONTRACT_FILE}" "${CLOUD}"
 require_cmd helm python3
 
 # Immediately invalidate any previous receipt before running so a failed rerun cannot leave a stale pass.

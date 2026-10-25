@@ -600,10 +600,13 @@ exit 0`, cred))
 			t.Fatalf("the environment output was not uploaded: %v", u.timeline())
 		}
 		jcNoLeak(t, "the command's environment", envOut, forms)
-		for _, name := range []string{"GIT_CONFIG_COUNT", "GIT_CONFIG_KEY", "GIT_CONFIG_VALUE", "GIT_SSL_CAINFO", "KODAMA_CHECKOUT_CREDENTIAL", "KODAMA_STEP_SERVER_URL", "KODAMA_STEP_CHECKOUT", "extraHeader"} {
+		for _, name := range []string{"GIT_SSL_CAINFO", "KODAMA_CHECKOUT_CREDENTIAL", "KODAMA_STEP_SERVER_URL", "KODAMA_STEP_CHECKOUT", "extraHeader"} {
 			if strings.Contains(string(envOut), name) {
 				t.Errorf("the command inherited %s", name)
 			}
+		}
+		for _, name := range gitKnobLeaks(envOut, u.cfg.WorkspaceDir) {
+			t.Errorf("the command inherited %s", name)
 		}
 
 		// The retained command log is the redacted output of a command that

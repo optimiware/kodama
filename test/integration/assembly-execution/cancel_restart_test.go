@@ -22,8 +22,12 @@ import (
 // container that merely holds the workload's name is never adopted, stopped or
 // removed. PX-A06, PX-08, PX-03, PX-A02, PX-16, IT-06.
 func TestExecutionAssemblyCancelRestart(t *testing.T) {
-	for _, b := range backends {
+	for _, b := range backends(t) {
 		t.Run(b.Name, func(t *testing.T) {
+			if b.Name == "kube" {
+				cancelRestartKube(t)
+				return
+			}
 			t.Run("cancel, then the process stops before it finishes", func(t *testing.T) {
 				s := kit.New(t, kit.Options{})
 				s.Start()
