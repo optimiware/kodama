@@ -1,6 +1,47 @@
 # Full Kubernetes installation readiness (T-104) — running report
 
-**Status: in progress, not qualified.** A subsequent run passed all seven top-level tests but was rejected because HEAD changed during execution (`c1bff5cfeb51` → `90f813df67c4`). There is no passing gate receipt. Coverage hardening below adds new mandatory subcases; historical passes do not qualify those new cases. The live loop remains paused.
+**Status: qualified at candidate `5aee4af54e2e` only; independent review and merge are pending.** One `readiness` gate invocation passed all seven acceptances and every required child case on a fresh session (receipt below). Earlier evidence in this report (`b0c4fdca4c0c`, `c1bff5cfeb51`, `90f813df67c4`, `3002bebb`) predates the final repairs and does not qualify that commit or any later one; a documentation commit after the receipt does not retarget it.
+
+## Readiness receipt (candidate `5aee4af54e2e`, 2026-10-25)
+
+| Item | Value |
+| --- | --- |
+| Gate | `deploy/stage/scripts/gate.sh --gate readiness --cloud scw`, one invocation, exit 0, `suite_passed=true`, `candidate_stable=true`, 643.18s runner time |
+| Qualified commit | `5aee4af54e2e` (`5aee4af54e2e11285b7a156f50c323f430f37c3b`), clean checkout, no edit, commit or values change during the run |
+| Session | `ke` (installation `kodama-stage-scw-q-ke`), prepared fresh from the original base stage contract; chart installed by the gate |
+| Product image | `rg.fr-par.scw.cloud/kodama-stage-scw/kodama:0.0.2-stage-5aee4af54e2e@sha256:0c3b7859dc1787c78fd171daae11574b4ae6945a69640769b6d38b908978791b`, built from the candidate with `REVISION` |
+| Workload image | `rg.fr-par.scw.cloud/kodama-stage-scw/workload:1@sha256:24cff5ad7765e56c3242014e64e2d911ca02053b92ab9c14f2beeb6519d929ea` (unchanged) |
+| Test-only helper | `rg.fr-par.scw.cloud/kodama-stage-scw/stageprobe@sha256:091cd647816f299fdf10506d7b04a2ecb4b2b61713a3131f375052d7a16e47f1`, built from the candidate with `--ignorefile test/support/stage/probe/build.ignore -f test/support/stage/probe/Containerfile` |
+| Chart tree | `14436ec71a4c143328fbbda9a2265cef94487138` (`deploy/helm/kodama`) |
+| Contract / values digests | `sha256:ae8f9f9514fe0f2fb9f300dbbf258a4e1d053e6dde61d139158be8554997c5ca` / `sha256:24cee247583e2b9ca9f9e0ab10dc7fde0c275e1054b83476abd1787c1e1dbf6b` |
+| Receipt | `~/kodama-stage/evidence/T-104-readiness-5aee4af54e2e/` (read-only, `SHA256SUMS`); original bundle `deploy/stage/.evidence/readiness/20261025T182850Z-scw-5aee4af54e2e-5f375c691593` (git-ignored) |
+| Cluster | Scaleway Kapsule `kodama-stage-scw`, `fr-par`, Kubernetes 1.37.1, Cilium; KMS provider `scw`, current label `v1` |
+
+| Acceptance | Outcome | Required child cases |
+| --- | --- | --- |
+| `kube_chart_install` | pass | clean install, readiness reached |
+| `kube_m1_roundtrip` | pass | reader/writer/follow-up roundtrip, publication conflict recorded as `conflict`/`tip_moved` with the human commit intact |
+| `kube_cancel_restart` | pass | `lost_create_acknowledgment` (PX-A02), `cancel_committed_while_delete_is_refused`, `restart_adopts_the_running_Job`: all pass |
+| `kube_secrets_kms` | pass | `installed_secret_restart`, `workload_provider_procedure`: both pass |
+| `execution_assembly_roundtrip` | pass | |
+| `execution_assembly_cancel_restart` | pass | three child cases pass |
+| `execution_assembly_result_guard` | pass | |
+
+`TestM1PostgresContractSuites` was skipped on Kubernetes by design. The Podman assembly regression last ran during hardening (before `3002bebb`); it was **not** rerun after the final test-only repairs, which do not touch the Podman path or the default backend.
+
+### What each live case proved, and its limits
+
+- **PX-A02:** the test-owned HTTPS loopback proxy (both TLS hops verified, no insecure mode) committed the Job create, withheld the response and read-backs; the server was force-replaced 2s later and the replacement confirmed the same Job UID with one attempt, grant and Pod. The Pod hold is lifted when the replacement is ready (the Job controller's exponential backoff under a refused Pod create otherwise exceeds the product's 60s startup deadline), so the replacement's confirmation may come from either redrive adoption or observation of the started Pod. The receipt records `fault_config.applied=true`, `case_status=pass`.
+- **KMS, installed:** the secret was encrypted and decrypted by the installed server's Scaleway KMS provider and consumed by a step before and after a forced server restart, through **environment-bound delivery** (placeholder kubeconfig credential, never used to connect). A bare project secret cannot be delivered by the installed server today (ENV bindings are refused at registration; a file binding gets 403 without a pinned environment), so VS-A10's ENV binding is **not qualified**; this is a product limitation for the owner (T-097/T-101/T-105), not closed by this receipt.
+- **KMS, provider procedure:** in-cluster Job with the deployment's service account and credential: roundtrip, tamper rejection, rotation with a retained key, a fresh process, a valid identity with no policy returning a genuine `KeyDenied`, a bounded outage and restored access. Throwaway keys used `unprotected:true` with `protected:false` in the response and were deleted; a post-run key listing shows only the installation KEKs and the protected `t028-probe-kb`.
+
+### Limitations that remain
+
+- **O-27:** chart `profile: development` (plaintext token-authenticated NATS) with `KODAMA_ENV=production`; the issuer is the `oauthsonas` persona fixture behind an access code and ingress allowlist. No NATS TLS and no authentication-strength claim.
+- **Backups:** scheduled only, retention 7 days, `qualifies_o11_pitr=false`.
+- Retained diagnostics: every workload logged `diagnostic upload failed … unexpected HTTP 405` for its `command.log` artifact upload (non-fatal; not investigated here, for the log/artifact owner).
+- One `execution_timeout` of a trivial writer step occurred once across six focused `TestKubeM1Roundtrip` runs on a reused disposable session; it did not recur and did not occur in the gate. It was not diagnosed.
+- Independent review and owner approval are outstanding; nothing is pushed or merged.
 
 ## Target and provenance
 
@@ -130,9 +171,10 @@ Product image `rg.fr-par.scw.cloud/kodama-stage-scw/kodama@sha256:3070e33c…e17
 
 ### Remaining
 
-1. Validate and commit hardening changes; build digest-pinned product and probe images from that committed source. No main merge or Git push is needed for qualification. The old dirty-build image is historical evidence only.
-2. Prepare a **fresh** qualification session/database for clean chart installation; keep `kb` until a passing gate. Use focused KMS/fault debugging in a separate prepared session if needed, never stitch its results into the final gate.
-3. Follow the [repeatable qualification workflow](../../deploy/stage/README.md#repeatable-readiness-workflow). Run all seven acceptances and required child cases in one invocation at an unchanged clean candidate. Record receipt/image/chart/contract/values digests, O-27, Scaleway KMS, backup/PITR and the actual PX-A02 result.
-4. Obtain independent review before merge. Do not push unless the owner says so. After a passing gate, destroy `kb` and the qualification session, then confirm no owned `kodama-q-*` namespaces or admission policies remain. Never remove another task's resources.
+1. Independent review of `task/T-104-kube-full` (commits `c0fdf77e` and `5aee4af5` on top of `3002bebb`) with the receipt above; nothing is pushed or merged.
+2. Owner follow-ups outside this task: plain step secret delivery (VS-A10 ENV binding), the `command.log` upload 405 warning, and T-106 (NATS/issuer TLS) for O-27.
+3. A later commit that changes product, chart or stage inputs needs a new fresh session and a new gate run.
+
+Qualification sessions `kb`, `kc`, `kd` and `ke` were destroyed with the original base contract after the receipt was preserved; the protected `t028-probe-kb` key was not touched. After destruction no `kodama-q-*` namespace, session admission policy or throwaway Key Manager key remains. A stale local state directory for the long-gone session `ka` is left: its `qualify.sh destroy` fails because the state names a database (`kodama_q_ka`) that no longer exists; nothing of `ka` is live, and its state was not hand-edited.
 
 Alloy `attemptId` normalization and `docs/operations/staging.md` stay T-090.
