@@ -18,7 +18,7 @@ Work climbs three environments ([ADR 0009](../adr/0009-environments.md), [enviro
 
 | Phase | Work | Environment | Merge evidence |
 | --- | --- | --- | --- |
-| Full Kubernetes readiness | T-104 | `production` (stage cluster `kodama-stage-scw`, live KMS) | Explicitly scheduled; qualified at `e6660bca8488`, independent owner review pending ([report](../acceptance/kube-full.md)); live KMS acceptance, ready chart and original assembled M1 roundtrips retained from T-089 |
+| Full Kubernetes readiness | T-104 | `production` (stage cluster `kodama-stage-scw`, live KMS) | Explicitly scheduled; qualified at `e6660bca8488`, merged on the owner's approval ([report](../acceptance/kube-full.md)); live KMS acceptance, ready chart and original assembled M1 roundtrips retained from T-089 |
 | Staging | T-104 → T-090 trusted-engineer deployment to the stage cluster | `production` (stage cluster) | Explicitly scheduled; full-readiness prerequisite, its own handoff and smoke evidence |
 | After M3, explicitly scheduled | T-047 Supabase, T-059 chassis, T-069 browser QA, T-085 live agent/wrapper, other M4 and production tasks | `production` | Their separately declared integration/release evidence |
 

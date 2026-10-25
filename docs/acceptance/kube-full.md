@@ -1,6 +1,6 @@
 # Full Kubernetes installation readiness (T-104) — running report
 
-**Status: qualified at candidate `e6660bca8488` only; independent owner review and merge are pending.** One `readiness` gate invocation passed all seven acceptances and every required child case on a fresh session, with both images verified at the registry as labelled with that commit. The earlier functional pass at `5aee4af54e2e` is superseded (below). Evidence for any other commit (`b0c4fdca4c0c`, `c1bff5cfeb51`, `90f813df67c4`, `3002bebb`, `5aee4af54e2e`) qualifies nothing later, and a documentation commit after the receipt does not retarget it.
+**Status: qualified at candidate `e6660bca8488` only; merged to `main` on the owner's approval (2026-10-25).** One `readiness` gate invocation passed all seven acceptances and every required child case on a fresh session, with both images verified at the registry as labelled with that commit. The earlier functional pass at `5aee4af54e2e` is superseded (below). Evidence for any other commit (`b0c4fdca4c0c`, `c1bff5cfeb51`, `90f813df67c4`, `3002bebb`, `5aee4af54e2e`) qualifies nothing later, and a documentation commit after the receipt does not retarget it.
 
 ## Readiness receipt (candidate `e6660bca8488`, 2026-10-25)
 
@@ -44,7 +44,7 @@
 - **Operability:** the failed-result acknowledgment races workload termination and failure logs are unclassified; one trivial writer step timed out once across six focused runs and was not diagnosed ([T-108](../tasks/T-108-execution-finalization-diagnostics.md)).
 - **Tenant boundary notes from review:** the tenant NetworkPolicy now always allows egress to kube-dns on port 53 (a DNS exfiltration channel the earlier empty-egress shape did not have); the entrypoint's Git runs with `safe.directory=*` for the kubelet-owned workspace (narrowing to the workspace path, or `fsGroup`, is a follow-up); `KODAMA_GIT_CA_FILE` falls back to the callback CA bundle, so Git hosts signed by other public CAs need a private-CA setting; the tenant Role can `update` Secrets in its namespace (documented, regression-tested).
 - **Operator tooling:** `qualify.sh destroy` swallows Helm and namespace deletion failures with `|| true` and cannot reconcile state naming a database that is already gone (stale session `ka` state remains for that reason); it does not delete a session's `qualification/<session>/` object prefix (this task removed its own prefixes by hand); the image label check is declared, not attested.
-- Independent owner review and approval are outstanding; nothing is pushed or merged.
+- Review: the branch had an independent read-only review (dispositions below) and the owner then approved the merge. Nothing is pushed.
 
 ### Review of the first receipt and its disposition
 
@@ -103,7 +103,7 @@ An independent read-only review of the branch (on the candidate before `e6660bca
 
 ## Work state and handoff (2026-10-25)
 
-Branch `task/T-104-kube-full` (worktree `.work/T-104-kube-full`). Not pushed. Not reviewed by the owner. Not merged. Everything below this line is history or reference; the current result is the receipt above.
+Branch `task/T-104-kube-full` merged to `main` on the owner's approval (2026-10-25); its worktree and branch were removed after the merge. Not pushed. Everything below this line is history or reference; the current result is the receipt above.
 
 ### Historical runs against session `kb` (before the hardening, now destroyed)
 
@@ -140,7 +140,7 @@ Scaleway's create field is **`unprotected:true`**, not the response-only `protec
 
 ### Hardening baseline and disposition
 
-Baseline: `90f813df67c4`, specifications `docs/specs/pipeline-execution.md` (PX-03/PX-04/PX-08, PX-A02/PX-A06), `docs/specs/variables-and-secrets.md` (VS-03/VS-06/VS-07/VS-09), T-104 and `test/integration/kms-production/README.md`; O-24/O-26/O-27 unchanged. Bounded shared-path extension: stage gate/evidence scripts, their offline tests and stage runbook; no T-090 product behavior, Alloy or staging suite changes. Disposition: implementation strengthens the existing acceptance contract and is live-qualified at `e6660bca8488`; owner review pending.
+Baseline: `90f813df67c4`, specifications `docs/specs/pipeline-execution.md` (PX-03/PX-04/PX-08, PX-A02/PX-A06), `docs/specs/variables-and-secrets.md` (VS-03/VS-06/VS-07/VS-09), T-104 and `test/integration/kms-production/README.md`; O-24/O-26/O-27 unchanged. Bounded shared-path extension: stage gate/evidence scripts, their offline tests and stage runbook; no T-090 product behavior, Alloy or staging suite changes. Disposition: implementation strengthens the existing acceptance contract and is live-qualified at `e6660bca8488`; owner approved the merge.
 
 - The gate runs clean chart installation first, then all remaining scenarios as one invocation with one candidate/contract/values binding and checked required child cases. It refuses dirty candidates, input/session mismatch, mislabelled images and mid-run drift; a per-session lock prevents concurrent gate mutations; `--preflight` checks inputs without issuing a receipt.
 - The test-only `stageprobe` image runs the HTTPS fault proxy and the real-provider KMS procedure; it is built from the committed candidate and supplied as `KODAMA_STAGE_PROBE_IMAGE=repository@sha256:...`. It is not the product image.
@@ -149,7 +149,7 @@ Baseline: `90f813df67c4`, specifications `docs/specs/pipeline-execution.md` (PX-
 
 ### Remaining
 
-1. Independent owner review of `task/T-104-kube-full` against the receipt above; nothing is pushed or merged. Do not merge before approval.
+1. Merged locally to `main` on the owner's approval; nothing is pushed.
 2. Follow-ups outside this task: [T-107](../tasks/T-107-direct-secret-delivery.md) (direct secret delivery), [T-108](../tasks/T-108-execution-finalization-diagnostics.md) (acknowledgment ordering, classified logs, the unexplained timeout), [T-106](../tasks/T-106-production-tls-hardening.md) (O-27), narrowing the entrypoint's `safe.directory=*`, and `qualify.sh destroy` robustness (T-090).
 3. Any later commit that changes product, chart or stage inputs needs a new fresh session and a new gate run.
 
