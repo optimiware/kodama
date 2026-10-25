@@ -398,6 +398,21 @@ func TestUploadSendsHeadersBodyAndNoBearer(t *testing.T) {
 	}
 }
 
+func TestUploadOfNothingIsSentWithAnExplicitZeroLength(t *testing.T) {
+	var gotLen int64
+	var gotEncoding []string
+	c, srv := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotLen, gotEncoding = r.ContentLength, r.TransferEncoding
+		w.WriteHeader(200)
+	}), fastRetry)
+	if err := c.Upload(context.Background(), runtimev1.Upload{Method: "PUT", URL: srv.URL + "/empty", Headers: map[string]string{}}, bytes.NewReader(nil), 0); err != nil {
+		t.Fatal(err)
+	}
+	if gotLen != 0 || len(gotEncoding) != 0 {
+		t.Fatalf("an empty upload was sent with length %d and transfer encoding %v; a signed zero-length PUT needs Content-Length: 0", gotLen, gotEncoding)
+	}
+}
+
 func TestUploadRetriesTransientAndRestartsBody(t *testing.T) {
 	payload := []byte("0123456789")
 	var calls atomic.Int32

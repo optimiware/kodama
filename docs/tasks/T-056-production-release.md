@@ -2,7 +2,7 @@
 id: T-056
 milestone: production
 status: deferred
-depends_on: [T-029, T-061, T-090]
+depends_on: [T-029, T-061, T-090, T-106]
 decision_blockers: []
 owns: [deploy/helm/kodama/, internal/lifecycle/, internal/app/production-lifecycle.go, internal/app/run.go, api/lifecycle.yaml, test/e2e/production/, docs/operations/installation-and-configuration.md, docs/releases/, README.md, LICENSE, CHANGELOG.md]
 ---
@@ -32,6 +32,9 @@ Retention/offboarding coordinator and scoped tenant disable/delete interface, it
 
 ## Out of scope
 Inventing license terms, promising unmeasured SLOs, or silently adding commercial features.
+
+## Gaps recorded by T-104 that block a supported claim
+Resolve or explicitly scope out before any supported-production statement: private-CA TLS and a real issuer ([T-106](T-106-production-tls-hardening.md), O-27); direct project-secret delivery ([T-107](T-107-direct-secret-delivery.md)); finalization/diagnostic signals ([T-108](T-108-execution-finalization-diagnostics.md)); recovery and PITR ([T-029](T-029-recovery-qualification.md)). A T-104 or T-090 receipt is bound to its commit, contract and values and does not carry to a later release candidate.
 
 ## Future shaping after release decisions
 Before scheduling, consider separate lifecycle/offboarding component, release packaging/version reconciliation, capacity qualification and final install/restore join. Record exact paths and dependencies first, serializing chart/root-file owners after T-029/T-044/T-061. Retain all named acceptance against the selected O-01/O-02/O-10 baseline; T-055 follows this trusted-engineer release. T-061 must qualify the supported upstream contracts under resolved O-18/O-19; later adapter/caller/credential splits cannot be treated as done from local fixtures.

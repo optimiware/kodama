@@ -28,5 +28,8 @@ Target the first real integration at Kodama's separate namespace in Platform sta
 
 `core_tenant_authority` also covers IT-13/IT-A09: reject missing/malformed/foreign UUID tenant claims and untrusted role/tenant headers. `core_pinned_credentials` also covers VS-13/VS-A10: proxies operate without disclosing provider secrets to agents, and an explicitly declared script ENV binding receives only its authorized pinned value in the child environment; revocation blocks new delivery and no plaintext appears in Pod manifests, management responses or captured fixtures.
 
+## Prerequisite recorded by T-104
+The installed standalone server delivers a project secret to a step only through a pinned deployment environment (ENV bindings are refused at registration; a file binding gets 403 without an environment pin), so the ENV binding described above is not implemented there. [T-107](T-107-direct-secret-delivery.md) holds that prerequisite; T-104's environment-bound KMS evidence does not satisfy `core_pinned_credentials`.
+
 ## Out of scope
 Implementing upstream platform capabilities without their owner contract, copying the core directory/secret store, broad machine credentials, or claiming untrusted-execution isolation from OAuth/RLS qualification. The current slice runs with trusted-engineer regular containers under O-07; T-055's later security extension is independent. No live customer or production mutation is required for the test slice.

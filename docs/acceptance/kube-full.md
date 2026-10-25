@@ -1,8 +1,10 @@
 # Full Kubernetes installation readiness (T-104) — running report
 
-**Status: qualified at candidate `5aee4af54e2e` only; independent review and merge are pending.** One `readiness` gate invocation passed all seven acceptances and every required child case on a fresh session (receipt below). Earlier evidence in this report (`b0c4fdca4c0c`, `c1bff5cfeb51`, `90f813df67c4`, `3002bebb`) predates the final repairs and does not qualify that commit or any later one; a documentation commit after the receipt does not retarget it.
+**Status: not qualified; a functional gate pass at `5aee4af54e2e` is superseded, requalification and independent review are pending.** That gate passed all seven acceptances, but review found its helper image labelled `dirty-debug` in the registry (so the PX-A02 fault proxy and KMS procedure ran from an image of unproven origin) and the product image carried a zero-byte log-upload defect. Both are repaired in later commits; the receipt below is history, not a qualification. Earlier evidence (`b0c4fdca4c0c`, `c1bff5cfeb51`, `90f813df67c4`, `3002bebb`) qualifies no later commit.
 
-## Readiness receipt (candidate `5aee4af54e2e`, 2026-10-25)
+## Superseded readiness receipt (candidate `5aee4af54e2e`, 2026-10-25)
+
+**Superseded, not qualifying.** Kept as history: it passed functionally but its helper image's registry revision label is `dirty-debug` (`verify_image_revision.py` refuses it) and its product image has the zero-byte upload defect fixed afterwards.
 
 | Item | Value |
 | --- | --- |
@@ -11,7 +13,7 @@
 | Session | `ke` (installation `kodama-stage-scw-q-ke`), prepared fresh from the original base stage contract; chart installed by the gate |
 | Product image | `rg.fr-par.scw.cloud/kodama-stage-scw/kodama:0.0.2-stage-5aee4af54e2e@sha256:0c3b7859dc1787c78fd171daae11574b4ae6945a69640769b6d38b908978791b`, built from the candidate with `REVISION` |
 | Workload image | `rg.fr-par.scw.cloud/kodama-stage-scw/workload:1@sha256:24cff5ad7765e56c3242014e64e2d911ca02053b92ab9c14f2beeb6519d929ea` (unchanged) |
-| Test-only helper | `rg.fr-par.scw.cloud/kodama-stage-scw/stageprobe@sha256:091cd647816f299fdf10506d7b04a2ecb4b2b61713a3131f375052d7a16e47f1`, built from the candidate with `--ignorefile test/support/stage/probe/build.ignore -f test/support/stage/probe/Containerfile` |
+| Test-only helper | `rg.fr-par.scw.cloud/kodama-stage-scw/stageprobe@sha256:091cd647816f299fdf10506d7b04a2ecb4b2b61713a3131f375052d7a16e47f1`: **registry revision label `dirty-debug`, not the candidate** (a cached label layer from an uncommitted debug build was reused), so its origin is not established |
 | Chart tree | `14436ec71a4c143328fbbda9a2265cef94487138` (`deploy/helm/kodama`) |
 | Contract / values digests | `sha256:ae8f9f9514fe0f2fb9f300dbbf258a4e1d053e6dde61d139158be8554997c5ca` / `sha256:24cee247583e2b9ca9f9e0ab10dc7fde0c275e1054b83476abd1787c1e1dbf6b` |
 | Receipt | `~/kodama-stage/evidence/T-104-readiness-5aee4af54e2e/` (read-only, `SHA256SUMS`); original bundle `deploy/stage/.evidence/readiness/20261025T182850Z-scw-5aee4af54e2e-5f375c691593` (git-ignored) |
@@ -39,7 +41,7 @@
 
 - **O-27:** chart `profile: development` (plaintext token-authenticated NATS) with `KODAMA_ENV=production`; the issuer is the `oauthsonas` persona fixture behind an access code and ingress allowlist. No NATS TLS and no authentication-strength claim.
 - **Backups:** scheduled only, retention 7 days, `qualifies_o11_pitr=false`.
-- Retained diagnostics: every workload logged `diagnostic upload failed … unexpected HTTP 405` for its `command.log` artifact upload (non-fatal; not investigated here, for the log/artifact owner).
+- Retained diagnostics: workloads of no-output steps logged `diagnostic upload failed … unexpected HTTP 405` for `command.log`. Root cause found afterwards: a zero-byte upload went out chunked (Go sends `ContentLength: 0` with a non-nil body as unknown length), which the signed zero-length presigned PUT refuses. Fixed in `internal/entrypoint/client.go` with a unit test, and proven live (an unfixed image retains no `command.log` for a quiet step; the fixed one does). This receipt predates the fix.
 - One `execution_timeout` of a trivial writer step occurred once across six focused `TestKubeM1Roundtrip` runs on a reused disposable session; it did not recur and did not occur in the gate. It was not diagnosed.
 - Independent review and owner approval are outstanding; nothing is pushed or merged.
 

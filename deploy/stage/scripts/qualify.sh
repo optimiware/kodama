@@ -37,6 +37,7 @@ done
 [[ "${SESSION}" =~ ^[a-z][a-z0-9]{0,9}$ ]] || die "--session must be 1-10 lowercase letters or digits, starting with a letter"
 
 STATE_ROOT="${KODAMA_QUAL_STATE_DIR:-${STAGE_STATE_DIR:-${HOME}/kodama-stage/state}}"
+refuse_legacy_state_dir "${STATE_ROOT}"
 SESSION_DIR="${STATE_ROOT}/qualification/${SESSION}"
 QUAL_DIR="${STAGE_DIR}/qualification"
 

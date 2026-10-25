@@ -27,7 +27,7 @@ deploy/stage/
   scripts/
     lib.sh                # Contract validator, Helm renderer, FORGE_RESULTS verifier & secret-leak scanner
     deploy.sh             # Cloud apply/validate -> Helm lint -> shared stack apply (secrets first, then charts)
-    qualify.sh            # prepare/destroy/show a qualification session (state: ~/.kube/kodama-stage/state/qualification/<session>/)
+    qualify.sh            # prepare/destroy/show a qualification session (state: ~/kodama-stage/state/qualification/<session>/)
     deps-init.sh          # Seeds Gitea (owner, repository, scoped read/write tokens) during the stack apply
     gate.sh               # Critical-path gate runner (readiness -> staging -> recovery -> platform -> release)
     evidence.sh           # Tamper-evident evidence bundle emitter (manifest.json + SUMMARY.md)
@@ -138,10 +138,32 @@ and `KODAMA_STAGE_PROBE_TAG` to operator-selected registry tags before these com
 ```sh
 test -z "$(git status --porcelain)"
 candidate="$(git rev-parse HEAD)"
-podman build -f Containerfile --build-arg "REVISION=$candidate" -t "$KODAMA_STAGE_IMAGE_TAG" .
+podman build -f Containerfile --build-arg "REVISION=$candidate" \
+  --label "org.opencontainers.image.revision=$candidate" -t "$KODAMA_STAGE_IMAGE_TAG" .
 podman build --ignorefile test/support/stage/probe/build.ignore \
-  -f test/support/stage/probe/Containerfile --build-arg "REVISION=$candidate" -t "$KODAMA_STAGE_PROBE_TAG" .
+  -f test/support/stage/probe/Containerfile --build-arg "REVISION=$candidate" \
+  --label "org.opencontainers.image.revision=$candidate" -t "$KODAMA_STAGE_PROBE_TAG" .
 ```
+
+The explicit `--label` is required, not decoration: build-arg values are not part of the layer cache key, so a
+rebuild of unchanged binaries reuses the earlier image's `LABEL` layer and silently keeps its revision (a
+helper built from a dirty tree once reached a gate labelled `dirty-debug`). The gate refuses that: its preflight
+runs `scripts/verify_image_revision.py`, which reads the **registry's** manifest and config for the release image in
+the values file and for `KODAMA_STAGE_PROBE_IMAGE`, checks both digests, and requires
+`org.opencontainers.image.revision` to equal the full candidate commit. Run it yourself after publishing:
+
+```sh
+deploy/stage/scripts/verify_image_revision.py --commit "$(git rev-parse HEAD)" --values "$KODAMA_STAGE_VALUES" "$KODAMA_STAGE_PROBE_IMAGE"
+```
+
+This is a **declared** revision, not an attestation: it proves the registry image was labelled with the candidate,
+not that the label is true. What makes it trustworthy is the rule that the candidate was clean when built, the
+build commands above, and the evidence that records the registry digests. A build-time attestation (or a
+rebuild-and-compare-digest step) would be a stronger control and is not implemented.
+
+The verified revisions are recorded in the receipt (`suite_provenance.image_revisions`). The workload image is a
+separate artifact and is not rebuilt per candidate. The registry is read anonymously (public-read namespace); a
+private registry would need a documented credentialed path first.
 
 Publish those images to the authorized stage registry and record registry manifest digests, not local image IDs.
 Keep credentials in the operator's registry auth store. Put the product digest in the external `KODAMA_IMAGES_FILE`

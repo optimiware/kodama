@@ -382,6 +382,12 @@ func (c *Client) uploadOnce(ctx context.Context, target runtimev1.Upload, body i
 	}
 	req.ContentLength = size
 	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(io.NewSectionReader(body, 0, size)), nil }
+	if size == 0 {
+		// A zero ContentLength with a non-nil body is "unknown" to net/http and is sent chunked, which a
+		// presigned PUT signed for Content-Length: 0 refuses (observed as HTTP 405 on Scaleway storage).
+		req.Body = http.NoBody
+		req.GetBody = func() (io.ReadCloser, error) { return http.NoBody, nil }
+	}
 	for k, v := range target.Headers {
 		if strings.EqualFold(k, "Content-Length") || strings.EqualFold(k, "Host") {
 			continue

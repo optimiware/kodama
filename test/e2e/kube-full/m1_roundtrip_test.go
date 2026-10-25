@@ -40,8 +40,23 @@ func TestKubeM1Roundtrip(t *testing.T) {
 		t.Fatal("the run has no immutable input snapshot")
 	}
 	digest := final.InputSnapshot.Digest
-	if lines := w.WaitLogs("engineer", run.Id); len(lines) == 0 {
-		t.Fatal("the reader retained no logs")
+	// The reader prints nothing, so its retained log is complete and has no command lines.
+	if lines := w.WaitLogComplete("engineer", run.Id); len(lines) != 0 {
+		t.Fatalf("the quiet reader's retained log has %d command lines", len(lines))
+	}
+	// The reader prints nothing: its zero-byte command.log must still be uploaded (a chunked zero-length
+	// presigned PUT was refused by the object store with HTTP 405).
+	readerAttempts := w.Attempts(run.Id)
+	if len(readerAttempts) != 1 {
+		t.Fatalf("reader attempts=%d, want 1", len(readerAttempts))
+	}
+	diagnostics := w.DiagnosticNames(readerAttempts[0])
+	hasLog := false
+	for _, name := range diagnostics {
+		hasLog = hasLog || name == "command.log"
+	}
+	if !hasLog {
+		t.Fatalf("the quiet reader retained no command.log diagnostic (saw %v)", diagnostics)
 	}
 
 	writeItem := w.WorkItem("Writer", "# write")

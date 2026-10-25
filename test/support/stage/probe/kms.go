@@ -133,6 +133,19 @@ func runKMS(ctx context.Context, cfg KMSConfig, clients production.Clients, deni
 	if !classified(err, secrets.KeyDenied, false) {
 		return fmt.Errorf("kms: identity without decrypt was not non-retryable denied class=%s", keyClass(err))
 	}
+	// The provider adapter classifies both 401 and 403 as a denial. Only 403 proves a valid identity that lacks
+	// permission; 401 would be an invalid or not yet propagated credential, which is not the required denial.
+	deniedReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.scaleway.com/key-manager/v1alpha1/regions/fr-par/keys/"+cfg.A+"/decrypt", strings.NewReader(`{"ciphertext":"AAAA"}`))
+	deniedReq.Header.Set("X-Auth-Token", denied)
+	deniedReq.Header.Set("Content-Type", "application/json")
+	deniedResp, err := (&http.Client{Timeout: 15 * time.Second}).Do(deniedReq)
+	if err != nil {
+		return fmt.Errorf("kms: denial status unavailable")
+	}
+	deniedResp.Body.Close()
+	if deniedResp.StatusCode != http.StatusForbidden {
+		return fmt.Errorf("kms: the identity without decrypt must be a valid identity refused with HTTP 403, got HTTP %d", deniedResp.StatusCode)
+	}
 	// Prove the deployment credential has no key administration authority, on this test's key only.
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.scaleway.com/key-manager/v1alpha1/regions/fr-par/keys/"+cfg.A+"/unprotect", strings.NewReader("{}"))
 	req.Header.Set("X-Auth-Token", clients.ScalewayToken)

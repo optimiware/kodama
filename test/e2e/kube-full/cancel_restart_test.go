@@ -138,6 +138,12 @@ func lostCreateAcknowledgment(t *testing.T) {
 	if len(jobs) != 1 || jobs[0].UID != uid {
 		t.Fatal("recovery replaced the Job")
 	}
+	// The attempt's recorded workload must be the original Job (bound by redrive adoption or by observation of
+	// its Pod): a second Job, or a binding to another UID, would not satisfy PX-A02.
+	stage.WaitFor(t, "the attempt records the original Job's UID", time.Minute, func() bool {
+		atts := w.Attempts(run.Id)
+		return len(atts) == 1 && atts[0].ObservedJobUid != nil && *atts[0].ObservedJobUid == uid
+	})
 	pod := i.WaitPod(ns, name, 2*time.Minute)
 	i.WaitCommandBarrier(ns, pod.Name)
 	if n := i.OwnerCount(`SELECT count(*) FROM step_attempts WHERE run_id=$1`, run.Id); n != 1 {

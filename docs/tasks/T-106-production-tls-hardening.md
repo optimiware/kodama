@@ -31,5 +31,13 @@ Bring the `production` profile to verified TLS between every internal component 
 ## Provisional acceptance (to be defined when scheduled)
 Candidate checks, not yet contractual: an installation with NATS TLS reaches readiness under `profile: external`; a Pod with a wrong or expired certificate is refused; certificate rotation completes without losing committed events; OIDC and NATS clients fail closed on an untrusted CA; PostgreSQL verifies its server certificate; the stage deviation (O-27) is removed.
 
+## Exit criteria for the stage deviation (O-27)
+Evidence from the T-104 qualification of the Scaleway stage cluster fixes what must change before O-27 can be retired:
+- NATS reaches readiness under chart `profile: external` with `tls://`, and a wrong/expired certificate is refused (today: plaintext `nats://` with a shared token under `profile: development`).
+- The server's NATS and OIDC clients honour the installation CA (today only the system store; `config.tls.customCA` covers Git).
+- PostgreSQL uses `verify-full` (today `sslmode=require`: encrypted, server not verified).
+- The issuer is a real authority rather than the `oauthsonas` persona fixture behind an access code and ingress allowlist.
+- The readiness gate is rerun on the changed installation; a T-104 receipt for the plaintext profile never counts as TLS qualification.
+
 ## Out of scope
 Public certificate issuance, untrusted-code isolation (T-055), and recovery drills (T-029).

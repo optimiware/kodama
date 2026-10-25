@@ -20,6 +20,9 @@ Consume T-105's production KMS startup wiring. Deliver Git retention/mirror test
 ## Acceptance
 `restore_full_factory`, `stale_publisher_after_restore`, `missing_retained_object`, and `old_token_denied` verify VS-10, WS-04/WS-08/WS-12, IT-06, PX-07.
 
+## Evidence boundary from T-104
+The T-104 readiness gate qualified live Scaleway Key Manager startup, rotation with retained keys, tamper rejection, genuine permission denial and outage recovery on the stage installation. It did not exercise backup restore, PITR, mirror lag, registry restore or old-controller fencing, and the Scaleway database has scheduled backups only (`qualifies_o11_pitr=false`), which cannot meet the O-11 30-day PITR objective. None of those objectives is evidenced by a readiness receipt.
+
 ## Out of scope
 Treating a successful database import or key rotation alone as complete recovery.
 

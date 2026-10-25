@@ -6,7 +6,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -21,8 +20,9 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 
 // These wire tests are offline procedure regressions, not live-provider qualification.
 func TestKMSProcedureRequiresDenialAndRecoversFromOutage(t *testing.T) {
-	for _, wrongDenial := range []bool{false, true} {
-		t.Run(fmt.Sprintf("wrong_denial_%v", wrongDenial), func(t *testing.T) {
+	for _, mode := range []string{"genuine_denial", "server_error", "invalid_credential"} {
+		wrongDenial := mode != "genuine_denial"
+		t.Run(mode, func(t *testing.T) {
 			old := http.DefaultTransport
 			defer func() { http.DefaultTransport = old }()
 			keys := map[string]cipher.AEAD{}
@@ -40,8 +40,11 @@ func TestKMSProcedureRequiresDenialAndRecoversFromOutage(t *testing.T) {
 					return &http.Response{StatusCode: code, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(raw)))}, nil
 				}
 				if r.Header.Get("X-Auth-Token") == "denied-fixture" {
-					if wrongDenial {
+					switch mode {
+					case "server_error":
 						return respond(503, map[string]string{"message": "provider-body-must-not-leak"})
+					case "invalid_credential":
+						return respond(401, nil)
 					}
 					return respond(403, nil)
 				}

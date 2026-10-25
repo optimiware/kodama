@@ -358,6 +358,14 @@ if readiness and not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", probe_image):
     sys.exit("[gate-fail] KODAMA_STAGE_PROBE_IMAGE must pin the test-only helper by digest")
 if readiness and c["cloud"] == "scw" and not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", env.get("SCW_DEFAULT_PROJECT_ID", "")):
     sys.exit("[gate-fail] SCW_DEFAULT_PROJECT_ID must identify the qualification project")
+image_revisions = []
+if readiness:
+    # The images under test must be the ones built from this very commit: the registry's own labels decide.
+    full_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_root, text=True).strip()
+    verdict = subprocess.run([sys.executable, str(repo_root / "deploy/stage/scripts/verify_image_revision.py"), "--commit", full_commit, "--values", values_path, probe_image], capture_output=True, text=True)
+    if verdict.returncode != 0:
+        sys.exit(verdict.stderr.strip() or "[gate-fail] image provenance could not be established")
+    image_revisions = [json.loads(line) for line in verdict.stdout.splitlines() if line.startswith("{")]
 print(f"[stage] candidate={git_sha} session={session} inputs verified", flush=True)
 if env.get("KODAMA_STAGE_PREFLIGHT_ONLY") == "1":
     sys.exit(0)
@@ -482,6 +490,7 @@ prov["fault_config"] = {
     "chart_install_instrumented": False,
 }
 prov["probe_image"] = probe_image
+prov["image_revisions"] = image_revisions
 prov["chart_tree"] = chart_tree
 prov["candidate_stable"] = stable
 passed -= failed | skipped
@@ -567,6 +576,27 @@ if prov.get("suite_passed") is not True:
     sys.exit(1)
 
 ACCEPTANCE = json.load(open(cases_path))
+
+if "kube_chart_install" in required:
+    # A readiness receipt must carry the runner's own proof, so a hand-written results file cannot stand in for a run:
+    # an unchanged candidate, the fault actually applied, and registry images labelled with this exact commit.
+    import pathlib, subprocess
+    repo = pathlib.Path(cases_path).resolve().parents[3]
+    full_commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    images = prov.get("image_revisions")
+    flaws = []
+    if prov.get("candidate_stable") is not True:
+        flaws.append("provenance.candidate_stable is not true")
+    if not isinstance(prov.get("fault_config"), dict) or prov["fault_config"].get("applied") is not True:
+        flaws.append("provenance.fault_config.applied is not true (the PX-A02 fault was not observed)")
+    if not isinstance(images, list) or len(images) < 2 or any(not isinstance(i, dict) or i.get("revision") != full_commit for i in images):
+        flaws.append("provenance.image_revisions does not show every candidate image labelled with commit " + full_commit)
+    elif prov.get("probe_image") not in {i.get("image") for i in images}:
+        flaws.append("provenance.probe_image was not among the verified images")
+    for flaw in flaws:
+        sys.stderr.write(f"[gate-fail] {flaw}\n")
+    if flaws:
+        sys.exit(1)
 
 passed = {norm(x) for x in data.get("passed", [])} | set(data.get("passed", []))
 failed = {norm(x) for x in data.get("failed", [])} | set(data.get("failed", []))
@@ -690,5 +720,15 @@ scan_no_plaintext_secrets() {
   local target_dir="$1"
   if grep -R -E -n '(BEGIN (EC |RSA )?PRIVATE KEY|postgres_admin_password|s3_secret_key|scw_kms_secret_key|AKIA[0-9A-Z]{16})' "${target_dir}" >/dev/null 2>&1; then
     die "sensitive credential or private key pattern detected inside ${target_dir}"
+  fi
+}
+
+# refuse_legacy_state_dir stops an operator whose OpenTofu state still lives in the former default location
+# (~/.kube/kodama-stage/state) from silently starting over with an empty state in the new default.
+refuse_legacy_state_dir() {
+  local chosen="$1"
+  local legacy="${HOME}/.kube/kodama-stage/state"
+  if [[ -z "${STAGE_STATE_DIR:-}${KODAMA_QUAL_STATE_DIR:-}" && -d "${legacy}" && ! -d "${chosen}" ]]; then
+    die "OpenTofu state exists in the former default ${legacy} but not in ${chosen}: move it, or set STAGE_STATE_DIR (and KODAMA_QUAL_STATE_DIR) explicitly"
   fi
 }

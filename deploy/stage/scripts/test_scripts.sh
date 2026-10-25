@@ -246,7 +246,7 @@ write_bound_results() {
   v_sha="$(sha256_digest "${values_file}")"
 
   python3 - "${contract_file}" "${c_sha}" "${v_sha}" "${GIT_SHA}" "${out_file}" "${tests[@]}" <<'PY'
-import json, sys
+import json, subprocess, sys
 c = json.load(open(sys.argv[1]))
 c_sha, v_sha, git_sha, out_file = sys.argv[2:6]
 tests = sys.argv[6:]
@@ -273,6 +273,13 @@ doc = {
         "suite_passed": True,
     },
 }
+if "kube_chart_install" in tests:
+    head = subprocess.check_output(["git", "-C", os.environ["STAGE_DIR"], "rev-parse", "HEAD"], text=True).strip()
+    probe = "registry.invalid/probe@sha256:" + "a" * 64
+    doc["provenance"].update({
+        "candidate_stable": True, "probe_image": probe, "fault_config": {"applied": True},
+        "image_revisions": [{"image": "registry.invalid/kodama@sha256:" + "b" * 64, "revision": head}, {"image": probe, "revision": head}],
+    })
 json.dump(doc, open(out_file, "w"), indent=2)
 PY
 }
