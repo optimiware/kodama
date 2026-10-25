@@ -38,7 +38,7 @@
 | 13 | The workspace volume is owned by the kubelet, not uid 65532. Git refuses the checkout (`dubious ownership in repository at '/workspace'`). Restricted Pod Security forbids a chown. | Entrypoint git sets `safe.directory=*`; the step environment sets `safe.directory` to the workspace unless the step already configures git. Requires the image built after this change. |
 | 14 | PX-A02 cannot use the planned loopback HTTP sidecar. `logs/kubernetes` refuses a non-HTTPS API endpoint, and that refusal crashes the server (`core assembly failed to start`). A sidecar was applied once and rolled back by deleting the Deployment and upgrading the chart. | Not qualified. Installed evidence is crash-restart adoption of a live Job, not a lost-create acknowledgment. Do not reapply an HTTP proxy sidecar. |
 
-## Work state and handoff (2026-10-25, end of this run)
+## Work state and handoff (2026-10-25)
 
 Branch `task/T-104-kube-full` (worktree `.work/T-104-kube-full`). Not pushed. Not reviewed. Not merged.
 

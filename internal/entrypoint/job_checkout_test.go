@@ -457,6 +457,26 @@ func jcForms(user, pass string) []string {
 	return []string{pass, user + ":" + pass, b64, "Basic " + b64}
 }
 
+// gitKnobLeaks names the GIT_CONFIG_* variables in a captured command environment other than the
+// one safe.directory entry the step receives for the kubelet-owned workspace. Anything else could
+// carry the checkout credential or its CA into the command.
+func gitKnobLeaks(env []byte, workspace string) []string {
+	var out []string
+	for _, line := range strings.Split(string(env), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "GIT_CONFIG_") {
+			continue
+		}
+		switch line {
+		case "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=" + workspace:
+			continue
+		}
+		name, _, _ := strings.Cut(line, "=")
+		out = append(out, name)
+	}
+	return out
+}
+
 func jcNoLeak(t *testing.T, where string, data []byte, forms []string) {
 	t.Helper()
 	for _, f := range forms {
@@ -544,10 +564,13 @@ func Test_job_checkout_credential(t *testing.T) {
 			t.Fatal("the command's environment was not uploaded")
 		}
 		jcNoLeak(t, "the command environment and .git/config", env, forms)
-		for _, name := range []string{"KODAMA_CHECKOUT_CREDENTIAL_FILE", "KODAMA_GIT_CA_FILE", "GIT_SSL_CAINFO", "GIT_CONFIG_VALUE_0"} {
+		for _, name := range []string{"KODAMA_CHECKOUT_CREDENTIAL_FILE", "KODAMA_GIT_CA_FILE", "GIT_SSL_CAINFO", "extraHeader"} {
 			if strings.Contains(string(env), name) {
 				t.Errorf("the command inherited %s", name)
 			}
+		}
+		for _, name := range gitKnobLeaks(env, p.dir("workspace")) {
+			t.Errorf("the command inherited %s", name)
 		}
 		// The provider was asked once, for this attempt's committed workspace.
 		if n := len(p.provider.calls); n != 1 {
