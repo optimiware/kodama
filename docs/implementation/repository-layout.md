@@ -39,7 +39,7 @@ api/                       # module-owned OpenAPI fragments
 contracts/runtime/         # shared runtime JSON schemas/fixtures
 deploy/helm/kodama/         # chart
 dev/                       # Compose dependencies, fixtures, probes, locks
-scripts/dev/               # Compose services and kind harness, stack chosen by DEV_STACK (Python, stdlib only)
+dev/internal/, dev/cmd/    # scoped Compose/kind environment and repository checks, stack chosen by DEV_STACK (Go, stdlib only)
 test/e2e/                  # milestone-specific suites
 templates/                 # application blueprint templates
 ```

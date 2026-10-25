@@ -2,7 +2,7 @@
 id: T-056
 milestone: production
 status: deferred
-depends_on: [T-029, T-044, T-061, T-090]
+depends_on: [T-029, T-061, T-090]
 decision_blockers: []
 owns: [deploy/helm/kodama/, internal/lifecycle/, internal/app/production-lifecycle.go, internal/app/run.go, api/lifecycle.yaml, test/e2e/production/, docs/operations/installation-and-configuration.md, docs/releases/, README.md, LICENSE, CHANGELOG.md]
 ---

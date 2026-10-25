@@ -1,0 +1,1 @@
+export declare const SkillHandler: import("effect/Layer").Layer<import("effect/http-api/HttpApiGroup").Service<"server", "server.skill">, never, import("@opencode/protocol/middleware/authorization").Authorization | import("../location").LocationMiddleware | import("@opencode/protocol/middleware/schema-error").SchemaErrorMiddleware>;

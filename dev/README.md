@@ -1,10 +1,10 @@
 # Foundation development environment
 
-This is the T-001 scaffold (a Go process, real dependency fixtures, and named acceptance checks) with the T-091 stack split: `DEV_STACK=services` builds the dependencies without a cluster. The [task](../docs/tasks/T-001-scaffold.md) is merged; Docker/Linux CI qualification is pending its first run.
+This is the T-001 scaffold (a Go process, real dependency fixtures, and named acceptance checks) with the T-091 stack split: `DEV_STACK=services` builds the dependencies without a cluster. The task is merged; Docker/Linux CI qualification is pending its first run.
 
 ## Prerequisites
 
-- Go **1.27.2**, Bun **1.4.2**, GNU Make **3.81 or later**, Python **3.9 or later**, and Git.
+- Go **1.27.2**, GNU Make **3.81 or later**, and Git. Bun **1.4.2** is only needed for OpenForge commands; the development tooling is Go.
 - macOS ARM64: a running Podman machine. The initial acceptance environment uses Podman **6.1.4**, an AppleHV VM with 8 CPUs / 8 GiB, and its existing rootful connection.
 - Linux AMD64: Podman locally by default; explicitly select `DEV_PROVIDER=docker` for Docker/CI. Local Podman results do not qualify Docker.
 - Compose: `podman compose` (Podman's compose provider, such as podman-compose 1.6) locally, or the Docker Compose v2 plugin (`docker compose`) in CI. Compose runs the dependency containers; kind provides the cluster whose Pods reach them.
@@ -12,7 +12,7 @@ This is the T-001 scaffold (a Go process, real dependency fixtures, and named ac
 
 `make tools` installs kind and kubectl into this worktree's `dev/.tools/`, verifying the checked-in SHA-256 checksums. It does not install a container engine or start/change a Podman VM. Select an existing Podman connection before setup if necessary.
 
-Dependency images are pinned to multi-architecture index digests in [compose.yaml](compose.yaml); the Git fixture base is pinned in the [Containerfile](images/Containerfile) and the kind node image in [versions.lock.json](versions.lock.json), together with Go, kind, kubectl, and the Git HTTP-backend package. Go clients and actionlint are pinned through [go.mod](../go.mod) and [go.sum](../go.sum). The Git HTTP backend is installed from a versioned, checksum-verified APK without network access during image assembly. LocalStack 4.14.0 and oauthsonas 1.4.0 are development fixture pins, not production support declarations. The Python harness lives in `scripts/dev/`; see the [verification record](review.md#dependency-refresh) for the one dependency held below its latest release.
+Dependency images are pinned to multi-architecture index digests in [compose.yaml](compose.yaml); the Git fixture base is pinned in the [Containerfile](images/Containerfile) and the kind node image in [versions.lock.json](versions.lock.json), together with Go, kind, kubectl, and the Git HTTP-backend package. Go clients and actionlint are pinned through [go.mod](../go.mod) and [go.sum](../go.sum). The Git HTTP backend is installed from a versioned, checksum-verified APK without network access during image assembly. LocalStack 4.14.0 and oauthsonas 1.4.0 are development fixture pins, not production support declarations. The development tooling is Go and lives in `dev/cmd/` and `dev/internal/`; see the [verification record](review.md#dependency-refresh) for the one dependency held below its latest release.
 
 ## Stacks
 
@@ -33,6 +33,10 @@ make dev-down DEV_STACK=services DEV_SCOPE=t026
 
 `services` starts in seconds (about 25 s on a warm image cache, including building the Git/probe image) where `cluster` takes about 90 s on the same machine.
 
+## Tooling
+
+The environment is Go, not Python. `make dev-up`, `dev-down`, `dev-preflight`, `dev-diagnostics`, `dev-integration`, `dev-runtime` and `dev-smoke` run `go run ./dev/cmd/devctl`; `make fmt-check`, `docs-check`, `config-check` and `check-go` run `go run ./dev/cmd/repoctl`. Both commands use the standard library only and follow `DEV_STACK`. `make test-podman` runs the real runtime contract against the engine without a scope; `make test-integration` runs the assembled product suites under `DEV_STACK=services`. `make check-devtools` formats, vets and tests the tooling itself.
+
 ### Endpoint files by stack
 
 Two files describe each scope in `dev/.state/environments/<scope>/`:
@@ -46,7 +50,7 @@ Both record `DEV_STACK` in `host-env.json`. Nothing in `services` creates a kube
 
 To start a workload that reaches the services, give the Podman runtime `Network` = `KODAMA_TEST_PODMAN_NETWORK` ([`podman.Config.Network`](../internal/runtime/podman/podman.go)). The workload resolves services by the hostnames in `endpoints.json` and reaches the server callback the host listens on through `KODAMA_TEST_SERVER_CALLBACK_HOST` (`host.containers.internal` for Podman, `host.docker.internal` for Docker, which also needs `--add-host host.docker.internal:host-gateway`). Database credentials stay in the scope's `fixtures/` directory (`database-runtime-url` is the full workload URL).
 
-`make test-integration` (and `make scaffold-smoke`) run the dependency probe: as a restricted Job in `cluster`, and in `services` as a labelled Podman container on the scoped network, with the same PostgreSQL, JetStream, S3, Git, OIDC and registry checks but no server or kubelet-pull checks (`KODAMA_PROBE_CHECKS`).
+`make dev-integration` (and `make dev-smoke` on a fresh scope) run the dependency probe: as a restricted Job in `cluster`, and in `services` as a labelled Podman container on the scoped network, with the same PostgreSQL, JetStream, S3, Git, OIDC and registry checks but no server or kubelet-pull checks (`KODAMA_PROBE_CHECKS`). `make test-integration` instead runs the assembled product suites against the services scope.
 
 ### Template databases
 
@@ -62,17 +66,17 @@ Measured on one shared 8-core Xeon E5-1410 v2 (load average about 10, so absolut
 
 The clone clears the three-times bar for the core manifest on the scope's PostgreSQL (4.0× here, 3.8× in an earlier run) and not for the base schema, so the clone is for suites that migrate large manifests and `New` stays right for a base-only schema.
 
-The embedded comparison is a native binary, not a container with changed settings: `python3 scripts/dev/embedded_benchmark.py` downloads the pinned (SHA-256 checked) zonky.io `embedded-postgres-binaries` 17.6.0 archive that embedded-PostgreSQL libraries use, runs `initdb` into a temporary directory, starts `postgres` on a free loopback port, runs the same benchmark against it, stops it with `pg_ctl -m immediate` and deletes the directory. It adds no Go dependency. Besides the rows above, each embedded instance costs 1.4–1.6 s of `initdb` and about 0.11 s to start, which the scope container already paid at `dev-up`. An embedded binary does not remove the cost the clone removes: per-test migration of the core manifest still takes about 610 ms natively, 3–4× the container's clone time. Clones on an embedded instance are fast only with durability off, which the scope's PostgreSQL does not need to match for tests that examine persistence. No embedded binary is adopted; adopting one needs a recorded decision.
+The embedded comparison is a native binary, not a container with changed settings: a one-off script (removed after the measurement; see Git history) downloaded the pinned (SHA-256 checked) zonky.io `embedded-postgres-binaries` 17.6.0 archive that embedded-PostgreSQL libraries use, ran `initdb` into a temporary directory, started `postgres` on a free loopback port, ran the same benchmark against it, stopped it with `pg_ctl -m immediate` and deleted the directory. It added no Go dependency. Besides the rows above, each embedded instance costs 1.4–1.6 s of `initdb` and about 0.11 s to start, which the scope container already paid at `dev-up`. An embedded binary does not remove the cost the clone removes: per-test migration of the core manifest still takes about 610 ms natively, 3–4× the container's clone time. Clones on an embedded instance are fast only with durability off, which the scope's PostgreSQL does not need to match for tests that examine persistence. No embedded binary is adopted; adopting one needs a recorded decision.
 
 ### Podman runtime acceptance
 
 `make dev-up DEV_STACK=services` is accepted against the real runtime adapter, separately from the dependency probe:
 
 ```sh
-python3 scripts/dev/environment.py runtime --scope t026 --provider podman   # DEV_STACK=services scope
+make dev-runtime DEV_SCOPE=t026 DEV_PROVIDER=podman DEV_STACK=services
 ```
 
-This runs `dev/runtimeacceptance`, which loads `host-env.json` and `endpoints.json`, builds `internal/runtime/podman` with `Network` taken from `KODAMA_PODMAN_NETWORK`, and starts workloads through `execution.Runtime`: one runs the probe's PostgreSQL check using the workload URL in the endpoint file (`KODAMA_POSTGRES_URL` host, which the scope's database URLs also use), and one calls an HTTP listener on the host through `KODAMA_SERVER_CALLBACK_HOST`. Each test asserts the workload joined only the scoped network and that `Remove` leaves no container behind. The harness pulls the pinned scope image from the plain-HTTP scope registry once, because the runtime's own `--pull=missing` uses HTTPS. The tests skip without `KODAMA_DEV_SCOPE_DIR`.
+`make dev-runtime` runs `dev/runtimeacceptance`, which loads `host-env.json` and `endpoints.json`, builds `internal/runtime/podman` with `Network` taken from `KODAMA_PODMAN_NETWORK`, and starts workloads through `execution.Runtime`: one runs the probe's PostgreSQL check using the workload URL in the endpoint file (`KODAMA_POSTGRES_URL` host, which the scope's database URLs also use), and one calls an HTTP listener on the host through `KODAMA_SERVER_CALLBACK_HOST`. Each test asserts the workload joined only the scoped network and that `Remove` leaves no container behind. The harness pulls the pinned scope image from the plain-HTTP scope registry once, because the runtime's own `--pull=missing` uses HTTPS. The tests skip without `KODAMA_DEV_SCOPE_DIR`.
 
 ## Quickstart
 
@@ -82,11 +86,12 @@ Run from the assigned task worktree:
 make openforge-install
 make tools
 make lint test build
-make dev-up DEV_PROVIDER=podman DEV_SCOPE=t-001-local
-make test-integration DEV_PROVIDER=podman DEV_SCOPE=t-001-local
+make dev-up DEV_PROVIDER=podman DEV_SCOPE=t-001-local DEV_STACK=services
+make test-podman
+make test-integration
 ```
 
-Linux CI uses the same targets with `DEV_PROVIDER=docker`. `DEV_SCOPE` accepts 2–31 lowercase letters, digits, and hyphens, beginning with a letter and ending with a letter or digit. Assign a different scope to each concurrent test session. The random owner suffix also separates identical scope names in different worktrees.
+Docker remains selectable for the dependency stack (`DEV_PROVIDER=docker`), but the Podman runtime suites need a Podman engine. `DEV_SCOPE` accepts 2–31 lowercase letters, digits, and hyphens, beginning with a letter and ending with a letter or digit. Assign a different scope to each concurrent test session. The random owner suffix also separates identical scope names in different worktrees.
 
 `make build` writes the host binary to `dev/.state/bin/kodama`. It supports:
 
@@ -96,7 +101,7 @@ dev/.state/bin/kodama server --help
 dev/.state/bin/kodama server --http-addr=127.0.0.1:8080
 ```
 
-The in-cluster server runs one replica in kind. Its [OpenAPI probe contract](contracts/health.openapi.json) describes `/healthz` and `/readyz`; readiness currently reflects only process startup/draining. Use `test-integration` to verify dependency protocols.
+The in-cluster server runs one replica in kind. Its [OpenAPI probe contract](contracts/health.openapi.json) describes `/healthz` and `/readyz`; readiness currently reflects only process startup/draining. Use `make dev-integration` for the dependency probe and `make test-integration` for the assembled product suites.
 
 ## Environment layout
 
@@ -150,12 +155,12 @@ This scaffold has no host-browser OIDC login command. T-017 must configure a con
 
 ## Acceptance
 
-### scaffold_smoke
+### dev_smoke
 
 Use a fresh scope:
 
 ```sh
-make scaffold-smoke DEV_PROVIDER=podman DEV_SCOPE=t-001-acceptance
+make dev-smoke DEV_PROVIDER=podman DEV_SCOPE=t-001-acceptance DEV_STACK=cluster
 ```
 
 This builds the host and Linux binaries, creates the cluster, starts the Compose dependencies, deploys the server, and runs a restricted probe Job with one primary container, `backoffLimit: 0`, a deadline, and no service-account token. It checks:
@@ -173,7 +178,7 @@ These checks support PX-04 and AC-12; they do not implement factory attempt disp
 ### dev_teardown
 
 ```sh
-make dev-teardown-check DEV_PROVIDER=podman DEV_SCOPE=t-001-acceptance
+make dev-teardown-check DEV_PROVIDER=podman DEV_SCOPE=t-001-acceptance DEV_STACK=cluster
 ```
 
 In the `services` stack the sentinels are an independent Podman network and container and the guard is the network ownership label; the checks are otherwise the same. The test creates an independent sentinel cluster, verifies a mismatched node ID is rejected, removes one owned container to simulate partial cleanup, tears down the selected scope twice, and proves the sentinel cluster/ConfigMap and the user's kubeconfig remain unchanged. The harness then removes its sentinel cluster.
@@ -184,7 +189,7 @@ For ordinary cleanup:
 make dev-down DEV_PROVIDER=podman DEV_SCOPE=t-001-local
 ```
 
-`scaffold-smoke` keeps its environment for inspection or teardown acceptance. Setup failures also retain the journal. `dev-up` can resume after a recoverable failure; `dev-down` handles recorded partial resources. A missing runtime, a failed inventory command, or changed resource identity stops cleanup rather than guessing ownership. Scope teardown preserves shared runtime networks, cached images/tools, and reports.
+`dev-smoke` keeps its environment for inspection or teardown acceptance. Setup failures also retain the journal. `dev-up` can resume after a recoverable failure; `dev-down` handles recorded partial resources. A missing runtime, a failed inventory command, or changed resource identity stops cleanup rather than guessing ownership. Scope teardown preserves shared runtime networks, cached images/tools, and reports.
 
 ## Diagnostics and review
 
@@ -194,4 +199,4 @@ make dev-diagnostics DEV_PROVIDER=podman DEV_SCOPE=t-001-local
 
 Reports under `dev/.state/reports/<scope>/` include Pod summaries, events, Git/OIDC/NATS/LocalStack container logs, server Pod logs, and probe logs. The collector excludes Secret objects, local credential files, and PostgreSQL startup SQL logs. CI uploads only this report directory and always attempts scoped cleanup.
 
-The [CI workflow](../.github/workflows/ci.yml) runs formatting, vet, actionlint, unit/race tests, documentation/configuration checks, module verification/drift checks, build, and Docker-backed kind acceptance. The [configuration contract](configuration.md) and [review handoff](review.md) record the interface and verification boundary. Keep the branch/worktree pending review; task status changes only after an authorized merge.
+The [CI workflow](../.github/workflows/ci.yml) runs formatting, vet, unit/race tests, module verification and the in-memory compositions on every change. Two manually dispatched jobs qualify containers: Docker runs the cluster stack probe and teardown (Docker is what the runner provides), and Podman runs the runtime contract plus the services-stack probe. Neither is a production qualification. The assembled product suites stay `make test-integration` on a prepared scope. The [configuration contract](configuration.md) and [review handoff](review.md) record the interface and verification boundary. Keep the branch/worktree pending review; task status changes only after an authorized merge.

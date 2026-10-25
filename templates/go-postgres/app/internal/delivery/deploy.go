@@ -13,9 +13,9 @@ import (
 // Annotation names the factory puts on every receipt. Names are installation
 // configuration; these are the published defaults.
 const (
-	AnnotationDeploymentID = "kodama.optimi.io/deployment-id"
-	AnnotationActionKey    = "kodama.optimi.io/action-key"
-	AnnotationConfigDigest = "kodama.optimi.io/configuration-digest"
+	AnnotationDeploymentID = "kodama.optimi.com/deployment-id"
+	AnnotationActionKey    = "kodama.optimi.com/action-key"
+	AnnotationConfigDigest = "kodama.optimi.com/configuration-digest"
 )
 
 // Factory is the consumer-owned port to the factory's runtime callbacks.

@@ -1,0 +1,47 @@
+{
+  "name": "bun-ffi-structs",
+  "description": "Type-safe C-style struct packing and unpacking for Bun and Node.js FFI",
+  "version": "0.3.1",
+  "module": "./dist/index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anomalyco/bun-ffi-structs.git"
+  },
+  "homepage": "https://github.com/anomalyco/bun-ffi-structs#readme",
+  "bugs": "https://github.com/anomalyco/bun-ffi-structs/issues",
+  "scripts": {
+    "test": "bun test",
+    "bench": "bun run bench/structs.bench.ts",
+    "bench:quick": "bun run bench/structs.bench.ts --profile quick",
+    "bench:full": "bun run bench/structs.bench.ts --profile full",
+    "bench:strict": "bun run bench/structs.bench.ts --profile full --strict-rme",
+    "prettier:check": "bun prettier --check .",
+    "prettier:write": "bun prettier --write .",
+    "build": "./scripts/build.sh"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prettier": "3.6.2",
+    "tinybench": "6.0.2"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "prettier": {
+    "semi": false,
+    "printWidth": 120
+  }
+}

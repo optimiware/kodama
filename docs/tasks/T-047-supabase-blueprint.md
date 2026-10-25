@@ -2,7 +2,7 @@
 id: T-047
 milestone: M3
 status: deferred
-depends_on: [T-014, T-030]
+depends_on: []
 decision_blockers: []
 owns: [templates/supabase-hono-vite/, docs/examples/blueprints/supabase-hono-vite.md]
 ---

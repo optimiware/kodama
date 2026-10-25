@@ -2,7 +2,7 @@
 id: T-104
 milestone: production
 status: planned
-depends_on: [T-089, T-105, T-103]
+depends_on: []
 decision_blockers: []
 owns: [test/e2e/kube-full/, test/integration/assembly-execution/, test/support/stage/, docs/acceptance/kube-full.md]
 check: deploy/stage/scripts/gate.sh --gate readiness --cloud scw --contract "$KODAMA_STAGE_CONTRACT" --values "$KODAMA_STAGE_VALUES"

@@ -48,12 +48,12 @@ alloy:
         }
 
         rule {
-          source_labels = ["__meta_kubernetes_pod_label_kodama_optimi_dev_managed_by"]
+          source_labels = ["__meta_kubernetes_pod_label_kodama_optimi_com_managed_by"]
           target_label  = "managed_by"
         }
 
         rule {
-          source_labels = ["__meta_kubernetes_pod_label_kodama_optimi_dev_job"]
+          source_labels = ["__meta_kubernetes_pod_label_kodama_optimi_com_job"]
           target_label  = "job_name"
         }
 

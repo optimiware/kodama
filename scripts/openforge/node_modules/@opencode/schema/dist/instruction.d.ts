@@ -1,0 +1,13 @@
+export * as Instruction from "./instruction.js";
+import { Schema } from "effect";
+export declare const Key: Schema.brand<Schema.String, "Instruction.Key">;
+export type Key = typeof Key.Type;
+export declare const Hash: Schema.brand<Schema.String, "Instruction.Hash">;
+export type Hash = typeof Hash.Type;
+export declare const Values: Schema.$Record<Schema.brand<Schema.String, "Instruction.Key">, Schema.brand<Schema.String, "Instruction.Hash">>;
+export type Values = Readonly<Record<string, Hash>>;
+export declare const Removed: Schema.Literal<"removed">;
+export type Removed = typeof Removed.Type;
+export declare const removed: "removed";
+export declare const Delta: Schema.$Record<Schema.String, Schema.Union<readonly [Schema.brand<Schema.String, "Instruction.Hash">, Schema.Literal<"removed">]>>;
+export type Delta = typeof Delta.Type;

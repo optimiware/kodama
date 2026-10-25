@@ -201,7 +201,7 @@ func assertHardened(t *testing.T, s *kit.Stack, c kit.Container) {
 	if len(netw) != 1 {
 		t.Errorf("the container joined %d networks: %v", len(netw), netw)
 	}
-	if c.Labels["kodama.optimi.dev/tenant"] != kit.TenantA {
-		t.Errorf("tenant label %q", c.Labels["kodama.optimi.dev/tenant"])
+	if c.Labels["kodama.optimi.com/tenant"] != kit.TenantA {
+		t.Errorf("tenant label %q", c.Labels["kodama.optimi.com/tenant"])
 	}
 }

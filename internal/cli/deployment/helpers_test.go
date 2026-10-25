@@ -388,9 +388,9 @@ func receipt(rec *record, created bool) map[string]any {
 	return map[string]any{
 		"created": created,
 		"annotations": map[string]any{
-			"kodama.optimi.io/deployment-id":        rec.id,
-			"kodama.optimi.io/action-key":           rec.actionKey,
-			"kodama.optimi.io/configuration-digest": digest2,
+			"kodama.optimi.com/deployment-id":        rec.id,
+			"kodama.optimi.com/action-key":           rec.actionKey,
+			"kodama.optimi.com/configuration-digest": digest2,
 		},
 		"deployment": rec.json(),
 	}

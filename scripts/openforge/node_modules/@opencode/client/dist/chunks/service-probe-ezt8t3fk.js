@@ -1,0 +1,37 @@
+// src/promise/generated/types.ts
+var isInvalidRequestError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "InvalidRequestError";
+var isUnauthorizedError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "UnauthorizedError";
+var isLocationNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "LocationNotFoundError";
+var isServiceUnavailableError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "ServiceUnavailableError";
+var isAgentNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "AgentNotFoundError";
+var isInvalidCursorError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "InvalidCursorError";
+var isSessionNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "SessionNotFoundError";
+var isConflictError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "ConflictError";
+var isUnknownError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "UnknownError";
+var isMessageNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "MessageNotFoundError";
+var isCommandNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "CommandNotFoundError";
+var isCommandExecutionError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "CommandExecutionError";
+var isSkillNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "SkillNotFoundError";
+var isSessionBusyError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "SessionBusyError";
+var isInstructionEntryValueTooLargeError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "InstructionEntryValueTooLargeError";
+var isFormNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "FormNotFoundError";
+var isFormInvalidAnswerError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "FormInvalidAnswerError";
+var isFormAlreadySettledError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "FormAlreadySettledError";
+var isProviderNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "ProviderNotFoundError";
+var isIntegrationNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "IntegrationNotFoundError";
+var isIntegrationAttemptNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "IntegrationAttemptNotFoundError";
+var isIntegrationMethodNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "IntegrationMethodNotFoundError";
+var isMcpServerNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "McpServerNotFoundError";
+var isProjectNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "ProjectNotFoundError";
+var isPermissionSavedNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "PermissionSavedNotFoundError";
+var isPermissionNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "PermissionNotFoundError";
+var isFileNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "FileNotFoundError";
+var isRpcError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "RpcError";
+var isRpcInternalError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "RpcInternalError";
+var isPtyNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "PtyNotFoundError";
+var isForbiddenError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "ForbiddenError";
+var isShellNotFoundError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "ShellNotFoundError";
+var isWorktreeError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "WorktreeError";
+var isVcsInitNotSupportedError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "VcsInitNotSupportedError";
+
+export { isInvalidRequestError2, isUnauthorizedError2, isLocationNotFoundError2, isServiceUnavailableError2, isAgentNotFoundError2, isInvalidCursorError2, isSessionNotFoundError2, isConflictError2, isUnknownError2, isMessageNotFoundError2, isCommandNotFoundError2, isCommandExecutionError2, isSkillNotFoundError2, isSessionBusyError2, isInstructionEntryValueTooLargeError2, isFormNotFoundError2, isFormInvalidAnswerError2, isFormAlreadySettledError2, isProviderNotFoundError2, isIntegrationNotFoundError2, isIntegrationAttemptNotFoundError2, isIntegrationMethodNotFoundError2, isMcpServerNotFoundError2, isProjectNotFoundError2, isPermissionSavedNotFoundError2, isPermissionNotFoundError2, isFileNotFoundError2, isRpcError2, isRpcInternalError2, isPtyNotFoundError2, isForbiddenError2, isShellNotFoundError2, isWorktreeError2, isVcsInitNotSupportedError2 };

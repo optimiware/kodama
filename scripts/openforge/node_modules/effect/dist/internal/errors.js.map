@@ -1,0 +1,1 @@
+{"version":3,"file":"errors.js","names":[],"sources":["../../src/internal/errors.ts"],"sourcesContent":[null],"mappings":"AAAA,SAAS,UAAU,QAAQ,iBAAiB;AAE5C;AACA,OAAM,SAAU,aAAa,CAAC,OAAe,EAAE,IAAgC;EAC7E,IAAI,IAAI,CAAC,MAAM,GAAG,CAAC,EAAE;IACnB,OAAO,IAAI,UAAU,UAAU,CAAC,IAAI,CAAC,EAAE;EACzC;EACA,OAAO,IAAI,KAAK,CAAC,OAAO,CAAC;AAC3B","ignoreList":[]}

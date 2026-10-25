@@ -11,7 +11,7 @@
 // New creates one database per call, named t002_<random>, owned by a fresh
 // migration role, plus a fresh runtime role (NOSUPERUSER NOBYPASSRLS), both
 // named after the database so concurrent tests and packages never collide.
-// The layout mirrors scripts/dev/environment.py: the migration role owns the
+// The layout mirrors dev/internal/devenv: the migration role owns the
 // database and public schema, PUBLIC cannot create in public, and the runtime
 // role only has USAGE on it; schema grants for tables come from migrations.
 // t.Cleanup closes every pool handed out, drops the database and both roles.

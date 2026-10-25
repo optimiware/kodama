@@ -2,7 +2,7 @@
 id: T-054
 milestone: M4
 status: deferred
-depends_on: [T-038]
+depends_on: []
 decision_blockers: []
 owns: [images/harness-codex/, test/integration/harness-codex/]
 ---

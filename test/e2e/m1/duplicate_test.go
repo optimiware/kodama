@@ -45,7 +45,7 @@ func TestM1DuplicateEventJob(t *testing.T) {
 		}
 		// Podman's own event log: one container was created per attempt, never two.
 		out, err := exec.Command("podman", "events", "--since", started.Format(time.RFC3339), "--until", "0s", "--stream=false",
-			"--filter", "event=create", "--filter", "label=kodama.optimi.dev/tenant="+kit.TenantA, "--format", "{{.Name}}").Output()
+			"--filter", "event=create", "--filter", "label=kodama.optimi.com/tenant="+kit.TenantA, "--format", "{{.Name}}").Output()
 		if err != nil {
 			t.Fatalf("podman events: %v", err)
 		}

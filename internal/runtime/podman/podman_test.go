@@ -17,6 +17,16 @@ import (
 	podmantest "github.com/optimiware/kodama/test/support/podman"
 )
 
+// commandStderr is the error text of a failed podman command. Stdout is kept
+// separate: a platform warning on stderr must not be parsed as a container ID.
+func commandStderr(err error) string {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return string(exit.Stderr)
+	}
+	return ""
+}
+
 func newRuntime(t *testing.T, dir string) *podman.Runtime {
 	t.Helper()
 	r, err := podman.New(podman.Config{Program: podman.DeclaredCommand{}, StateDir: dir, StopTimeout: time.Second})
@@ -70,9 +80,9 @@ func Test_podman_durable_identity(t *testing.T) {
 	t.Run("a foreign container at the name is never adopted or touched", func(t *testing.T) {
 		s := runtimetest.Spec(t, runtimetest.NewAttemptID(t), podmantest.Image, "exec sleep 60")
 		out, err := exec.Command("podman", "create", "--name", s.WorkloadName, "--label", podman.LabelManagedBy+"="+podman.ValueManagedBy,
-			"--label", podman.LabelAttempt+"="+string(s.AttemptID), podmantest.Image, "sleep", "60").CombinedOutput()
+			"--label", podman.LabelAttempt+"="+string(s.AttemptID), podmantest.Image, "sleep", "60").Output()
 		if err != nil {
-			t.Fatalf("%v: %s", err, out)
+			t.Fatalf("%v: %s", err, commandStderr(err))
 		}
 		foreign := strings.TrimSpace(string(out))
 		t.Cleanup(func() { _ = exec.Command("podman", "rm", "--force", "--time", "0", foreign).Run() })
@@ -102,9 +112,9 @@ func Test_podman_durable_identity(t *testing.T) {
 		if out, err := exec.Command("podman", "rm", "--force", "--time", "0", s.WorkloadName).CombinedOutput(); err != nil {
 			t.Fatalf("%v: %s", err, out)
 		}
-		out, err := exec.Command("podman", "run", "--detach", "--name", s.WorkloadName, "--label", podman.LabelUID+"="+w.UID, podmantest.Image, "sleep", "60").CombinedOutput()
+		out, err := exec.Command("podman", "run", "--detach", "--name", s.WorkloadName, "--label", podman.LabelUID+"="+w.UID, podmantest.Image, "sleep", "60").Output()
 		if err != nil {
-			t.Fatalf("%v: %s", err, out)
+			t.Fatalf("%v: %s", err, commandStderr(err))
 		}
 		replacement := strings.TrimSpace(string(out))
 		t.Cleanup(func() { _ = exec.Command("podman", "rm", "--force", "--time", "0", replacement).Run() })

@@ -126,9 +126,9 @@
             "expiresAt": "2026-01-03T03:04:05Z"
           },
           "annotations": {
-            "kodama.optimi.io/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
-            "kodama.optimi.io/action-key": "run_t035_preview:deploy",
-            "kodama.optimi.io/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            "kodama.optimi.com/deployment-id": "dep_cc2fd8d3e579ff0a8fc6a825869df81e",
+            "kodama.optimi.com/action-key": "run_t035_preview:deploy",
+            "kodama.optimi.com/configuration-digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
           },
           "created": false
         }

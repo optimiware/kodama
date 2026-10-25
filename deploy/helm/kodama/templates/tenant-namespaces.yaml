@@ -23,7 +23,7 @@ metadata:
     helm.sh/resource-policy: keep
     # Binds the namespace to its tenant: the server's namespace preflight refuses a namespace
     # that does not carry its tenant (kube.AnnNamespaceTenant).
-    kodama.optimi.dev/tenant: {{ .tenantId | quote }}
+    kodama.optimi.com/tenant: {{ .tenantId | quote }}
 ---
 apiVersion: v1
 kind: ServiceAccount

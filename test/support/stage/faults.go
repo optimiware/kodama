@@ -43,7 +43,7 @@ func (i *Installation) HoldJobs(ctx context.Context, namespace, op string) *Hold
 kind: ValidatingAdmissionPolicy
 metadata:
   name: %[1]s
-  labels: {kodama.optimi.dev/qualification-session: %[5]q}
+  labels: {kodama.optimi.com/qualification-session: %[5]q}
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -61,7 +61,7 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
   name: %[1]s
-  labels: {kodama.optimi.dev/qualification-session: %[5]q}
+  labels: {kodama.optimi.com/qualification-session: %[5]q}
 spec:
   policyName: %[1]s
   validationActions: [Deny]

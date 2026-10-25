@@ -1,6 +1,6 @@
 # Kodama Helm chart
 
-**Task:** [T-018](../../../docs/tasks/T-018-helm.md). **Status:** chart renders and passes schema and policy checks (`helm lint`, `helm template`, Go structural assertions). The chart is joined to the composed server (T-027): it selects the core assembly and the production environment, renders the server's settings document and execution policy, and projects the secret files the core assembly reads; a no-cluster render/configuration test in `internal/app` (`TestChart*`) feeds the rendered objects to the server's own configuration loader and namespace preflight. It has **not** been installed on a cluster: the installed round trip and restricted baseline on kind are T-089 (T-056 for the untrusted profile). Statements below about runtime behavior describe the design the chart is built for; the chart tests verify rendered manifests only.
+**Task:** T-018. **Status:** chart renders and passes schema and policy checks (`helm lint`, `helm template`, Go structural assertions). The chart is joined to the composed server (T-027): it selects the core assembly and the production environment, renders the server's settings document and execution policy, and projects the secret files the core assembly reads; a no-cluster render/configuration test in `internal/app` (`TestChart*`) feeds the rendered objects to the server's own configuration loader and namespace preflight. It has **not** been installed on a cluster: the installed round trip and restricted baseline on kind are T-089 (T-056 for the untrusted profile). Statements below about runtime behavior describe the design the chart is built for; the chart tests verify rendered manifests only.
 
 ## Trust profile
 
@@ -199,7 +199,7 @@ The command is `kodama migrate`. It applies the declared module order as the own
 For every `execution.tenants[].namespace` the chart renders:
 
 - **Namespace** with `pod-security.kubernetes.io/{enforce,audit,warn}: restricted` (versions `latest`).
-- **Namespace annotation** `kodama.optimi.dev/tenant: <tenantId>`; the server's namespace preflight refuses a namespace not bound to its tenant.
+- **Namespace annotation** `kodama.optimi.com/tenant: <tenantId>`; the server's namespace preflight refuses a namespace not bound to its tenant.
 - **ServiceAccount** `kodama-execution` (configurable) with `automountServiceAccountToken: false`, distinct from the server and migration accounts.
 - **ResourceQuota** and **LimitRange** (`execution.quota`, `execution.limitRange`).
 - **NetworkPolicies:** `default-deny` (ingress and egress) and `allow-external-egress` with explicit `ipBlock` rules only: the runtime callback destination (`execution.runtime.egress`) and the Git, S3 and registry rules (`execution.network.egress`). These are exactly the destinations of the server's execution policy, and the server's namespace preflight refuses any other egress shape, so there is no DNS rule and no Pod or namespace selector peer: workloads reach destinations by address. The policy is always rendered; the callback rule is always present. There is **no rule for PostgreSQL or NATS**, the schema rejects their ports, and tenant Pods carry no control-plane database or broker credentials.

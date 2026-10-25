@@ -1,0 +1,1 @@
+{"version":3,"file":"NodeCrypto.d.ts","sourceRoot":"","sources":["../src/NodeCrypto.ts"],"names":[],"mappings":"AAAA;;;;;;;;;GASG;AACH,OAAO,KAAK,YAAY,MAAM,eAAe,CAAA;AAE7C,OAAO,KAAK,KAAK,MAAM,cAAc,CAAA;AA8BrC;;;;;GAKG;AACH,eAAO,MAAM,IAAI,EAAE,YAAY,CAAC,MAG9B,CAAA;AAEF;;;;;GAKG;AACH,eAAO,MAAM,KAAK,EAAE,KAAK,CAAC,KAAK,CAAC,YAAY,CAAC,MAAM,CAA4C,CAAA"}

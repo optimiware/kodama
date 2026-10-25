@@ -46,4 +46,4 @@ Placeholders such as `sha256:aaaa…`, commit `1111…` and `<…>` are not real
 
 ## Checks
 
-These files are checked for JSON syntax by `python3 scripts/dev/check.py config` (all JSON under `contracts/`) and for links and fences by `make docs-check`. Neither validates the semantics or executes a case; the semantic review is recorded in the protocol document. They are not Go tests and do not satisfy `opencode_real_smoke`.
+These files are checked for JSON syntax by `make config-check` (all JSON under `contracts/`) and for links and fences by `make docs-check`. Neither validates the semantics or executes a case; the semantic review is recorded in the protocol document. They are not Go tests and do not satisfy `opencode_real_smoke`.

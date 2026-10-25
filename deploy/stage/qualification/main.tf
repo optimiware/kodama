@@ -113,7 +113,7 @@ resource "scaleway_rdb_privilege" "runtime" {
 resource "kubernetes_namespace_v1" "control_plane" {
   metadata {
     name   = local.ns
-    labels = { "kodama.optimi.dev/qualification-session" = local.s }
+    labels = { "kodama.optimi.com/qualification-session" = local.s }
   }
 }
 

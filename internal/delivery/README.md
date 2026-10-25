@@ -69,7 +69,7 @@ snapshot. Nothing ever reads the environment's current settings.
    object identities — **before** the first external change.
 3. Apply the objects with the annotations (names are adapter-configured;
    `delivery.DefaultAnnotations` is the published fixture configuration:
-   `kodama.optimi.io/deployment-id`, `…/action-key`, `…/configuration-digest`).
+   `kodama.optimi.com/deployment-id`, `…/action-key`, `…/configuration-digest`).
 4. `POST …/outcome` with `state: succeeded` and every object's observed `uid` and
    `ready: true` (structured readiness; exit status and output text are not
    evidence), or `failed` with a reason code, or `unknown`.

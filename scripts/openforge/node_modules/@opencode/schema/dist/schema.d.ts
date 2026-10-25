@@ -1,0 +1,11 @@
+import { Schema } from "effect";
+export declare const PositiveInt: Schema.Int;
+export declare const NonNegativeInt: Schema.Int;
+export declare const RelativePath: Schema.brand<Schema.String, "RelativePath">;
+export type RelativePath = typeof RelativePath.Type;
+export declare const AbsolutePath: Schema.brand<Schema.String, "AbsolutePath">;
+export type AbsolutePath = typeof AbsolutePath.Type;
+export declare const optional: <S extends Schema.Top>(schema: S) => Schema.decodeTo<Schema.optional<Schema.toType<S>>, Schema.optionalKey<S>, never, never>;
+export declare const withStatics: <S extends object, M extends Record<string, unknown>>(schema: S, methods: M) => S & M;
+export declare const statics: <S extends object, M extends Record<string, unknown>>(methods: (schema: S) => M) => (schema: S) => S & M;
+export declare const DateTimeUtcFromMillis: Schema.decodeTo<Schema.DateTimeUtc, Schema.Finite, never, never>;

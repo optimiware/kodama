@@ -2,7 +2,7 @@
 id: T-050
 milestone: M4
 status: deferred
-depends_on: [T-044, T-061]
+depends_on: [T-061]
 decision_blockers: []
 owns: [docs/user/workbench.md, docs/implementation/platform-workbench-handoff.md, test/e2e/platform-workbench/]
 ---

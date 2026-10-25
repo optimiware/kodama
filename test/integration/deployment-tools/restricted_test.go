@@ -202,7 +202,7 @@ echo "jq=$(jq --version) curl=$(curl --version | head -n1 | cut -d' ' -f1-2) git
 		// The Deployment was taken over by another deployment (its annotation
 		// changed); the ConfigMap was replaced by a new object with the same name
 		// that copied our annotations (different uid).
-		w.ns.admin(t, "annotate", "deployment", "inventory", "--overwrite", "kodama.optimi.io/deployment-id=dep_someone_else")
+		w.ns.admin(t, "annotate", "deployment", "inventory", "--overwrite", "kodama.optimi.com/deployment-id=dep_someone_else")
 		oldUID := uidOf(w.ns.object(t, "configmap", "inventory-config"))
 		w.ns.admin(t, "delete", "configmap", "inventory-config")
 		w.ns.admin(t, "create", "configmap", "inventory-config", "--from-literal=impostor=1")
@@ -342,7 +342,7 @@ echo "jq=$(jq --version) curl=$(curl --version | head -n1 | cut -d' ' -f1-2) git
 		args, env, h := w.hookDeletes(func(n int, url string) {
 			switch {
 			case strings.HasSuffix(url, deployURL):
-				if _, err := w.ns.adminTry("annotate", "deployment", "inventory", "--overwrite", "kodama.optimi.io/deployment-id=dep_someone_else"); err != nil {
+				if _, err := w.ns.adminTry("annotate", "deployment", "inventory", "--overwrite", "kodama.optimi.com/deployment-id=dep_someone_else"); err != nil {
 					t.Errorf("takeover: %v", err)
 				}
 			case strings.HasSuffix(url, cmURL):
@@ -370,7 +370,7 @@ echo "jq=$(jq --version) curl=$(curl --version | head -n1 | cut -d' ' -f1-2) git
 		}
 		dep := w.ns.object(t, "deployment", "inventory")
 		cm := w.ns.object(t, "configmap", "inventory-config")
-		if dep == nil || uidOf(dep) != oldDep || annotationsOf(dep)["kodama.optimi.io/deployment-id"] != "dep_someone_else" {
+		if dep == nil || uidOf(dep) != oldDep || annotationsOf(dep)["kodama.optimi.com/deployment-id"] != "dep_someone_else" {
 			t.Errorf("the Deployment that changed hands was deleted or altered: %v", annotationsOf(dep))
 		}
 		if cm == nil || uidOf(cm) == oldCM || uidOf(cm) == "" {

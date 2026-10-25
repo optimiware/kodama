@@ -1,0 +1,648 @@
+/**
+ * Parses and edits platform `URL` values.
+ *
+ * The HTTP modules use the standard `URL` object as their URL representation.
+ * This module adds safe parsing and helpers that return updated copies when
+ * changing credentials, host, path, protocol, query, or hash parts. Query
+ * strings can also be read or updated through `UrlParams`.
+ *
+ * @stability unstable
+ * @since 4.0.0
+ */
+import * as Cause from "../Cause.ts";
+import * as Redacted from "../Redacted.ts";
+import * as Result from "../Result.ts";
+import * as UrlParams from "./UrlParams.ts";
+declare const UrlError_base: new <A extends Record<string, any> = {}>(args: import("../Types.ts").VoidIfEmpty<{ readonly [P in keyof A as P extends "_tag" ? never : P]: A[P]; }>) => Cause.YieldableError & {
+    readonly _tag: "UrlError";
+} & Readonly<A>;
+/**
+ * Error returned when constructing a `URL` fails.
+ *
+ * @stability unstable
+ * @category errors
+ * @since 4.0.0
+ */
+export declare class UrlError extends UrlError_base<{
+    readonly cause: unknown;
+}> {
+}
+/**
+ * Creates a `URL` safely by appending `UrlParams` and an optional hash to a URL string.
+ *
+ * **Details**
+ *
+ * Returns a `Result` that fails with `UrlError` if the URL cannot be constructed.
+ *
+ * @stability unstable
+ * @category constructors
+ * @since 4.0.0
+ */
+export declare const make: (url: string, params: UrlParams.UrlParams, hash: string | undefined) => Result.Result<URL, UrlError>;
+/**
+ * Parses a URL string safely into a `URL` object, returning a `Result` type for
+ * error handling.
+ *
+ * **Details**
+ *
+ * This function converts a string into a `URL` object, enabling safe URL
+ * parsing with built-in error handling. If the string is invalid or fails to
+ * parse, this function does not throw an error; instead, it wraps the error in
+ * a `IllegalArgumentError` and returns it as the `Failure` value of an
+ * `Result`. The `Success` value contains the successfully parsed `URL`.
+ *
+ * An optional `base` parameter can be provided to resolve relative URLs. If
+ * specified, the function interprets the input `url` as relative to this
+ * `base`. This is especially useful when dealing with URLs that might not be
+ * fully qualified.
+ *
+ * **Example** (Parsing absolute and relative URLs)
+ *
+ * ```ts import.meta.vitest
+ * import { Result } from "effect"
+ * import { Url } from "effect/http"
+ *
+ * // Parse an absolute URL
+ * //
+ * //      ┌─── Result<URL, IllegalArgumentError>
+ * //      ▼
+ * const parsed = Url.fromString("https://example.com/path")
+ *
+ * Result.map(parsed, (url) => url.toString()) // => Result.succeed("https://example.com/path")
+ *
+ * // Parse a relative URL with a base
+ * const relativeParsed = Url.fromString("/relative-path", "https://example.com")
+ *
+ * Result.map(relativeParsed, (url) => url.toString()) // => Result.succeed("https://example.com/relative-path")
+ * ```
+ *
+ * @stability unstable
+ * @category constructors
+ * @since 4.0.0
+ */
+export declare const fromString: {
+    /**
+     * Parses a URL string safely into a `URL` object, returning a `Result` type for
+     * error handling.
+     *
+     * **Details**
+     *
+     * This function converts a string into a `URL` object, enabling safe URL
+     * parsing with built-in error handling. If the string is invalid or fails to
+     * parse, this function does not throw an error; instead, it wraps the error in
+     * a `IllegalArgumentError` and returns it as the `Failure` value of an
+     * `Result`. The `Success` value contains the successfully parsed `URL`.
+     *
+     * An optional `base` parameter can be provided to resolve relative URLs. If
+     * specified, the function interprets the input `url` as relative to this
+     * `base`. This is especially useful when dealing with URLs that might not be
+     * fully qualified.
+     *
+     * **Example** (Parsing absolute and relative URLs)
+     *
+     * ```ts import.meta.vitest
+     * import { Result } from "effect"
+     * import { Url } from "effect/http"
+     *
+     * // Parse an absolute URL
+     * //
+     * //      ┌─── Result<URL, IllegalArgumentError>
+     * //      ▼
+     * const parsed = Url.fromString("https://example.com/path")
+     *
+     * Result.map(parsed, (url) => url.toString()) // => Result.succeed("https://example.com/path")
+     *
+     * // Parse a relative URL with a base
+     * const relativeParsed = Url.fromString("/relative-path", "https://example.com")
+     *
+     * Result.map(relativeParsed, (url) => url.toString()) // => Result.succeed("https://example.com/relative-path")
+     * ```
+     *
+     * @stability unstable
+     * @category constructors
+     * @since 4.0.0
+     */
+    (url: string, base?: string | URL | undefined): Result.Result<URL, Cause.IllegalArgumentError>;
+};
+/**
+ * Updates a cloned `URL` with a callback, allowing multiple changes at once.
+ *
+ * **Example** (Mutating URL credentials)
+ *
+ * ```ts import.meta.vitest
+ * import { Url } from "effect/http"
+ *
+ * const myUrl = new URL("https://example.com")
+ *
+ * const mutatedUrl = Url.mutate(myUrl, (url) => {
+ *   url.username = "user"
+ *   url.password = "pass"
+ * })
+ *
+ * mutatedUrl.toString() // => "https://user:pass@example.com/"
+ * ```
+ *
+ * @stability unstable
+ * @category transforming
+ * @since 4.0.0
+ */
+export declare const mutate: {
+    /**
+     * Updates a cloned `URL` with a callback, allowing multiple changes at once.
+     *
+     * **Example** (Mutating URL credentials)
+     *
+     * ```ts import.meta.vitest
+     * import { Url } from "effect/http"
+     *
+     * const myUrl = new URL("https://example.com")
+     *
+     * const mutatedUrl = Url.mutate(myUrl, (url) => {
+     *   url.username = "user"
+     *   url.password = "pass"
+     * })
+     *
+     * mutatedUrl.toString() // => "https://user:pass@example.com/"
+     * ```
+     *
+     * @stability unstable
+     * @category transforming
+     * @since 4.0.0
+     */
+    (f: (url: URL) => void): (self: URL) => URL;
+    /**
+     * Updates a cloned `URL` with a callback, allowing multiple changes at once.
+     *
+     * **Example** (Mutating URL credentials)
+     *
+     * ```ts import.meta.vitest
+     * import { Url } from "effect/http"
+     *
+     * const myUrl = new URL("https://example.com")
+     *
+     * const mutatedUrl = Url.mutate(myUrl, (url) => {
+     *   url.username = "user"
+     *   url.password = "pass"
+     * })
+     *
+     * mutatedUrl.toString() // => "https://user:pass@example.com/"
+     * ```
+     *
+     * @stability unstable
+     * @category transforming
+     * @since 4.0.0
+     */
+    (self: URL, f: (url: URL) => void): URL;
+};
+/**
+ * Updates the hash fragment of the URL.
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setHash: {
+    /**
+     * Updates the hash fragment of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (hash: string): (url: URL) => URL;
+    /**
+     * Updates the hash fragment of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, hash: string): URL;
+};
+/**
+ * Updates the host (domain and port) of the URL.
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setHost: {
+    /**
+     * Updates the host (domain and port) of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (host: string): (url: URL) => URL;
+    /**
+     * Updates the host (domain and port) of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, host: string): URL;
+};
+/**
+ * Updates the domain of the URL without modifying the port.
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setHostname: {
+    /**
+     * Updates the domain of the URL without modifying the port.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (hostname: string): (url: URL) => URL;
+    /**
+     * Updates the domain of the URL without modifying the port.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, hostname: string): URL;
+};
+/**
+ * Replaces the entire URL string.
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setHref: {
+    /**
+     * Replaces the entire URL string.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (href: string): (url: URL) => URL;
+    /**
+     * Replaces the entire URL string.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, href: string): URL;
+};
+/**
+ * Updates the password used for authentication.
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setPassword: {
+    /**
+     * Updates the password used for authentication.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (password: string | Redacted.Redacted): (url: URL) => URL;
+    /**
+     * Updates the password used for authentication.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, password: string | Redacted.Redacted): URL;
+};
+/**
+ * Updates the path of the URL.
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setPathname: {
+    /**
+     * Updates the path of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (pathname: string): (url: URL) => URL;
+    /**
+     * Updates the path of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, pathname: string): URL;
+};
+/**
+ * Updates the port of the URL.
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setPort: {
+    /**
+     * Updates the port of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (port: string | number): (url: URL) => URL;
+    /**
+     * Updates the port of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, port: string | number): URL;
+};
+/**
+ * Updates the protocol (e.g., `http`, `https`).
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setProtocol: {
+    /**
+     * Updates the protocol (e.g., `http`, `https`).
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (protocol: string): (url: URL) => URL;
+    /**
+     * Updates the protocol (e.g., `http`, `https`).
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, protocol: string): URL;
+};
+/**
+ * Updates the query string of the URL.
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setSearch: {
+    /**
+     * Updates the query string of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (search: string): (url: URL) => URL;
+    /**
+     * Updates the query string of the URL.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, search: string): URL;
+};
+/**
+ * Updates the username used for authentication.
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setUsername: {
+    /**
+     * Updates the username used for authentication.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (username: string): (url: URL) => URL;
+    /**
+     * Updates the username used for authentication.
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, username: string): URL;
+};
+/**
+ * Updates the query parameters of a URL.
+ *
+ * **Details**
+ *
+ * This function allows you to set or replace the query parameters of a `URL`
+ * object using the provided `UrlParams`. It creates a new `URL` object with the
+ * updated parameters, leaving the original object unchanged.
+ *
+ * **Example** (Replacing query parameters)
+ *
+ * ```ts import.meta.vitest
+ * import { Url, UrlParams } from "effect/http"
+ *
+ * const myUrl = new URL("https://example.com?foo=bar")
+ *
+ * // Write parameters
+ * const updatedUrl = Url.setUrlParams(
+ *   myUrl,
+ *   UrlParams.fromInput([["key", "value"]])
+ * )
+ *
+ * updatedUrl.toString() // => "https://example.com/?key=value"
+ * ```
+ *
+ * @stability unstable
+ * @category setters
+ * @since 4.0.0
+ */
+export declare const setUrlParams: {
+    /**
+     * Updates the query parameters of a URL.
+     *
+     * **Details**
+     *
+     * This function allows you to set or replace the query parameters of a `URL`
+     * object using the provided `UrlParams`. It creates a new `URL` object with the
+     * updated parameters, leaving the original object unchanged.
+     *
+     * **Example** (Replacing query parameters)
+     *
+     * ```ts import.meta.vitest
+     * import { Url, UrlParams } from "effect/http"
+     *
+     * const myUrl = new URL("https://example.com?foo=bar")
+     *
+     * // Write parameters
+     * const updatedUrl = Url.setUrlParams(
+     *   myUrl,
+     *   UrlParams.fromInput([["key", "value"]])
+     * )
+     *
+     * updatedUrl.toString() // => "https://example.com/?key=value"
+     * ```
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (urlParams: UrlParams.Input): (url: URL) => URL;
+    /**
+     * Updates the query parameters of a URL.
+     *
+     * **Details**
+     *
+     * This function allows you to set or replace the query parameters of a `URL`
+     * object using the provided `UrlParams`. It creates a new `URL` object with the
+     * updated parameters, leaving the original object unchanged.
+     *
+     * **Example** (Replacing query parameters)
+     *
+     * ```ts import.meta.vitest
+     * import { Url, UrlParams } from "effect/http"
+     *
+     * const myUrl = new URL("https://example.com?foo=bar")
+     *
+     * // Write parameters
+     * const updatedUrl = Url.setUrlParams(
+     *   myUrl,
+     *   UrlParams.fromInput([["key", "value"]])
+     * )
+     *
+     * updatedUrl.toString() // => "https://example.com/?key=value"
+     * ```
+     *
+     * @stability unstable
+     * @category setters
+     * @since 4.0.0
+     */
+    (url: URL, urlParams: UrlParams.Input): URL;
+};
+/**
+ * Retrieves the query parameters from a URL.
+ *
+ * **Details**
+ *
+ * This function extracts the query parameters from a `URL` object and returns
+ * them as `UrlParams`. The resulting structure can be easily manipulated or
+ * inspected.
+ *
+ * **Example** (Reading query parameters)
+ *
+ * ```ts import.meta.vitest
+ * import { Url, UrlParams } from "effect/http"
+ *
+ * const myUrl = new URL("https://example.com?foo=bar")
+ *
+ * // Read parameters
+ * const params = Url.urlParams(myUrl)
+ *
+ * UrlParams.toString(params) // => "foo=bar"
+ * ```
+ *
+ * @stability unstable
+ * @category getters
+ * @since 4.0.0
+ */
+export declare const urlParams: (url: URL) => UrlParams.UrlParams;
+/**
+ * Reads the query parameters of a URL, modifies them, and updates the URL.
+ *
+ * **Details**
+ *
+ * This function provides a functional way to interact with query parameters by
+ * reading the current parameters, applying a transformation function, and then
+ * writing the updated parameters back to the URL. It returns a new `URL` object
+ * with the modified parameters, ensuring immutability.
+ *
+ * **Example** (Modifying query parameters)
+ *
+ * ```ts import.meta.vitest
+ * import { Url, UrlParams } from "effect/http"
+ *
+ * const myUrl = new URL("https://example.com?foo=bar")
+ *
+ * const changedUrl = Url.modifyUrlParams(myUrl, UrlParams.append("key", "value"))
+ *
+ * changedUrl.toString() // => "https://example.com/?foo=bar&key=value"
+ * ```
+ *
+ * @stability unstable
+ * @category transforming
+ * @since 4.0.0
+ */
+export declare const modifyUrlParams: {
+    /**
+     * Reads the query parameters of a URL, modifies them, and updates the URL.
+     *
+     * **Details**
+     *
+     * This function provides a functional way to interact with query parameters by
+     * reading the current parameters, applying a transformation function, and then
+     * writing the updated parameters back to the URL. It returns a new `URL` object
+     * with the modified parameters, ensuring immutability.
+     *
+     * **Example** (Modifying query parameters)
+     *
+     * ```ts import.meta.vitest
+     * import { Url, UrlParams } from "effect/http"
+     *
+     * const myUrl = new URL("https://example.com?foo=bar")
+     *
+     * const changedUrl = Url.modifyUrlParams(myUrl, UrlParams.append("key", "value"))
+     *
+     * changedUrl.toString() // => "https://example.com/?foo=bar&key=value"
+     * ```
+     *
+     * @stability unstable
+     * @category transforming
+     * @since 4.0.0
+     */
+    (f: (urlParams: UrlParams.UrlParams) => UrlParams.Input): (url: URL) => URL;
+    /**
+     * Reads the query parameters of a URL, modifies them, and updates the URL.
+     *
+     * **Details**
+     *
+     * This function provides a functional way to interact with query parameters by
+     * reading the current parameters, applying a transformation function, and then
+     * writing the updated parameters back to the URL. It returns a new `URL` object
+     * with the modified parameters, ensuring immutability.
+     *
+     * **Example** (Modifying query parameters)
+     *
+     * ```ts import.meta.vitest
+     * import { Url, UrlParams } from "effect/http"
+     *
+     * const myUrl = new URL("https://example.com?foo=bar")
+     *
+     * const changedUrl = Url.modifyUrlParams(myUrl, UrlParams.append("key", "value"))
+     *
+     * changedUrl.toString() // => "https://example.com/?foo=bar&key=value"
+     * ```
+     *
+     * @stability unstable
+     * @category transforming
+     * @since 4.0.0
+     */
+    (url: URL, f: (urlParams: UrlParams.UrlParams) => UrlParams.Input): URL;
+};
+export {};
+//# sourceMappingURL=Url.d.ts.map

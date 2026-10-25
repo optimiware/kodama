@@ -2,7 +2,7 @@
 id: T-106
 milestone: production
 status: deferred
-depends_on: [T-104, T-090, T-105]
+depends_on: [T-104, T-090]
 decision_blockers: []
 owns: [docs/operations/tls-hardening.md]
 ---

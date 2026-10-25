@@ -2,7 +2,7 @@
 id: T-029
 milestone: production
 status: deferred
-depends_on: [T-028, T-044, T-105]
+depends_on: []
 decision_blockers: []
 owns: [test/e2e/recovery/, internal/app/recovery.go, docs/operations/upgrades-backup-and-recovery.md]
 ---

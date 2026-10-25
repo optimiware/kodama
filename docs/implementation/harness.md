@@ -1,22 +1,22 @@
 # OpenForge autonomous task harness
 
-OpenForge (`scripts/openforge/`) is a project-agnostic Bun/TypeScript SDLC harness embedding `@opencode/sdk` **2.1.2**. All project-specific commands, environment variables, resource limits, and protected paths live in the root [`openforge.json`](../../openforge.json), `Makefile`, and `.opencode/agents/`.
+OpenForge (`../openforge/` (a separate project)) is a project-agnostic Bun/TypeScript SDLC harness embedding `@opencode/sdk` **2.1.2**. All project-specific commands, environment variables, resource limits, and protected paths live in the root [`openforge.json`](../../openforge.json), `Makefile`, and `.opencode/agents/`.
 
 ## Commands
 
 ```sh
 make openforge-install
-bun scripts/openforge/src/cli.ts validate
-bun scripts/openforge/src/cli.ts ready
-bun scripts/openforge/src/cli.ts run --dry-run
-bun scripts/openforge/src/cli.ts run --workers 5
-bun scripts/openforge/src/cli.ts check-task T-080
-bun scripts/openforge/src/cli.ts status --json
-bun scripts/openforge/src/cli.ts batch
-bun scripts/openforge/src/cli.ts batch --retry
-bun scripts/openforge/src/cli.ts unpark T-080
-bun scripts/openforge/src/cli.ts doctor
-bun scripts/openforge/src/cli.ts telegram
+bun ../openforge/src/cli.ts validate
+bun ../openforge/src/cli.ts ready
+bun ../openforge/src/cli.ts run --dry-run
+bun ../openforge/src/cli.ts run --workers 5
+bun ../openforge/src/cli.ts check-task T-080
+bun ../openforge/src/cli.ts status --json
+bun ../openforge/src/cli.ts batch
+bun ../openforge/src/cli.ts batch --retry
+bun ../openforge/src/cli.ts unpark T-080
+bun ../openforge/src/cli.ts doctor
+bun ../openforge/src/cli.ts telegram
 ```
 
 ## Task flow
@@ -51,14 +51,14 @@ Three generic gates govern every task:
 
 1. **Scope gate:** Every changed file must fall under `owns`. Files listed in `openforge.json` `protected` (`go.mod`, `go.sum`) cannot be modified unless explicitly owned by the task.
 2. **Check & acceptance gate:** The task's `check` command runs under the in-process resource semaphores configured in `openforge.json` (`resources`).
-   - **Exit `0`:** Passes. When `acceptance` is non-empty, the harness passes `FORGE_RESULTS=<wt>/.harness/results.json` and verifies that every declared acceptance test name appears in `passed` (and not in `failed` or `skipped`). For Go tasks, `scripts/dev/go_results.py` parses `go test -json` output and writes `FORGE_RESULTS`.
+   - **Exit `0`:** Passes. When `acceptance` is non-empty, the harness passes `FORGE_RESULTS=<wt>/.harness/results.json` and verifies that every declared acceptance test name appears in `passed` (and not in `failed` or `skipped`). For Go tasks, `make check-go` (`dev/cmd/repoctl`) parses `go test -json` output and writes `FORGE_RESULTS`; a missing scope exits `75`.
    - **Exit `75` (`EX_TEMPFAIL`) or timeout (`124`):** Pauses the task for unavailable infrastructure without charging a repair attempt.
    - **Any other non-zero exit:** Sends the failure log tail to the `fixer` (up to `limits.repairs`).
 3. **Review gate:** Requires an `approve` verdict with zero blocking findings (`p1`, `blocker`, `major`) bound to the candidate fingerprint and qualification context. Tasks with `review: human` park for human review after passing checks, including when that policy changes while a task is stopped.
 
 ## Periodic main check
 
-After `mainCheckEvery` merges (default `5`) and at queue drain (`mainCheckOnDrain`), OpenForge runs `mainCheck` (`make lint-go`, `make test-go-unit`) on `main` and records the state in `.work/.harness/main.json`. A failing `mainCheck` blocks landing while allowing tasks to continue implementing, checking, and reviewing in parallel; repair `main` and run `bun scripts/openforge/src/cli.ts batch --retry`.
+After `mainCheckEvery` merges (default `5`) and at queue drain (`mainCheckOnDrain`), OpenForge runs `mainCheck` (`make lint-go`, `make test-go-unit`) on `main` and records the state in `.work/.harness/main.json`. A failing `mainCheck` blocks landing while allowing tasks to continue implementing, checking, and reviewing in parallel; repair `main` and run `bun ../openforge/src/cli.ts batch --retry`.
 
 Before and after each command, the primary checkout must be clean on the configured base branch at the captured commit. Wrong-branch, dirty-tree, or commit-drift results block publication and cannot mark the captured commit green.
 
@@ -70,11 +70,11 @@ Unexpected worker failures cancel peer work and wait for all active workers and 
 
 ## Orchestrating a factory
 
-The orchestrator playbook (start and loop, triage of parked, paused and stalled tasks, prerequisite tasks, asynchronous decisions, throughput levers) is the repository skill [`orchestrate-factory`](../../.agents/skills/orchestrate-factory/SKILL.md), with read-only status, stuck, metrics and progress reports in `.agents/skills/orchestrate-factory/scripts/factory_report.py`.
+The orchestrator playbook (start and loop, triage of parked, paused and stalled tasks, prerequisite tasks, asynchronous decisions, throughput levers) is the repository skill [`orchestrate-factory`](../../.agents/skills/orchestrate-factory/SKILL.md).
 
 ## Telegram operator
 
-`bun scripts/openforge/src/cli.ts telegram` (or `make openforge-telegram`) runs a private conversational operator beside the queue. It long-polls the Bot API, so the host does not need a public webhook. Configure it in the primary checkout `.env` or the process environment:
+`bun ../openforge/src/cli.ts telegram` (or `make openforge-telegram`) runs a private conversational operator beside the queue. It long-polls the Bot API, so the host does not need a public webhook. Configure it in the primary checkout `.env` or the process environment:
 
 ```sh
 TELEGRAM_BOT_TOKEN=replace-with-botfather-token
@@ -87,4 +87,4 @@ Only that numeric owner, in a private chat, can read factory state or invoke an 
 
 The operator can halt and resume the queue, unpark a task, retry the main check, and prepare a task or decision on an operation branch. Preparation validates the task graph. Publication fast-forwards a clean base checkout only after the owner presses Publish or sends `/publish <id>`. It does not count as a task landing and does not bypass a dirty checkout or an in-progress publication lock. Tokens and credential-named environment values are redacted from replies, and the operator cannot pass provider keys into task agent shells.
 
-A launchd agent can keep the process up across login. Point `WorkingDirectory` at the primary checkout, invoke `bun scripts/openforge/src/cli.ts telegram`, and keep the token in `.env` rather than in the plist. Stop it with SIGTERM; that does not halt the queue. Create `.work/.harness/HALT`, or send `/halt`, to stop workers.
+A launchd agent can keep the process up across login. Point `WorkingDirectory` at the primary checkout, invoke `bun ../openforge/src/cli.ts telegram`, and keep the token in `.env` rather than in the plist. Stop it with SIGTERM; that does not halt the queue. Create `.work/.harness/HALT`, or send `/halt`, to stop workers.

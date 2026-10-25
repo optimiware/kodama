@@ -2,7 +2,7 @@
 id: T-090
 milestone: production
 status: planned
-depends_on: [T-089, T-044, T-028, T-104]
+depends_on: [T-104]
 decision_blockers: []
 owns: [deploy/stage/, test/e2e/staging/, docs/operations/staging.md]
 check: deploy/stage/scripts/gate.sh --gate staging --cloud scw --contract "$KODAMA_STAGE_CONTRACT" --values "$KODAMA_STAGE_VALUES"

@@ -136,7 +136,7 @@ unavailability (`ErrUnavailable`). It checks:
   executor Pods and admits ingress or egress beyond the declared runtime destinations. Egress must
   name explicit IP blocks and single numbered ports (named ports, wildcards and **port ranges**
   (`endPort`) are refused). A policy selects executor Pods when its `matchLabels` use only the
-  fixed `kodama.optimi.dev/managed-by` label or the per-Job labels (`kodama.optimi.dev/job`, the
+  fixed `kodama.optimi.com/managed-by` label or the per-Job labels (`kodama.optimi.com/job`, the
   Job controller's `batch.kubernetes.io/job-name` / `batch.kubernetes.io/controller-uid` and the
   legacy `job-name` / `controller-uid`), whose values are unknown to a namespace-level check and
   therefore treated as possibly matching. A selector with any other label key, or a different

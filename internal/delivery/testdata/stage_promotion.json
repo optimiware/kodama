@@ -114,9 +114,9 @@
             "updatedAt": "2026-01-02T03:04:05Z"
           },
           "annotations": {
-            "kodama.optimi.io/deployment-id": "dep_d7dc2822d7fde320ee64583d999dca47",
-            "kodama.optimi.io/action-key": "run_t035_stage:deploy",
-            "kodama.optimi.io/configuration-digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            "kodama.optimi.com/deployment-id": "dep_d7dc2822d7fde320ee64583d999dca47",
+            "kodama.optimi.com/action-key": "run_t035_stage:deploy",
+            "kodama.optimi.com/configuration-digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
           },
           "created": true
         }
@@ -185,9 +185,9 @@
             "updatedAt": "2026-01-02T03:04:05Z"
           },
           "annotations": {
-            "kodama.optimi.io/deployment-id": "dep_d7dc2822d7fde320ee64583d999dca47",
-            "kodama.optimi.io/action-key": "run_t035_stage:deploy",
-            "kodama.optimi.io/configuration-digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            "kodama.optimi.com/deployment-id": "dep_d7dc2822d7fde320ee64583d999dca47",
+            "kodama.optimi.com/action-key": "run_t035_stage:deploy",
+            "kodama.optimi.com/configuration-digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
           },
           "created": true
         }
@@ -290,9 +290,9 @@
             "updatedAt": "2026-01-02T03:04:05Z"
           },
           "annotations": {
-            "kodama.optimi.io/deployment-id": "dep_d7dc2822d7fde320ee64583d999dca47",
-            "kodama.optimi.io/action-key": "run_t035_stage:deploy",
-            "kodama.optimi.io/configuration-digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            "kodama.optimi.com/deployment-id": "dep_d7dc2822d7fde320ee64583d999dca47",
+            "kodama.optimi.com/action-key": "run_t035_stage:deploy",
+            "kodama.optimi.com/configuration-digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
           },
           "created": false
         }
