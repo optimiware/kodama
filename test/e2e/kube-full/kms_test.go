@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -31,8 +32,9 @@ func TestKubeSecretsKMS(t *testing.T) {
 	ctx := i.Context(8 * time.Minute)
 	token := workloadToken(t, i)
 	op := operatorToken(t)
-	a := createKey(t, op, "t028-a-"+i.S.Name)
-	b := createKey(t, op, "t028-b-"+i.S.Name)
+	suffix := runSuffix(t)
+	a := createKey(t, op, "t028-a-"+i.S.Name+"-"+suffix)
+	b := createKey(t, op, "t028-b-"+i.S.Name+"-"+suffix)
 	t.Cleanup(func() {
 		c, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
@@ -143,8 +145,6 @@ func outageChild() {
 
 func workloadToken(t *testing.T, i *stage.Installation) string {
 	t.Helper()
-	tok, err := i.Kube.SecretValue(i.Context(time.Minute), i.S.Namespace, i.S.ProbeSecret, "owner-url")
-	_ = tok
 	// The workload Key Manager credential is the session's kodama-kms-scw secret, not the probe URL.
 	secret := "kodama-kms-scw"
 	val, err := i.Kube.SecretValue(i.Context(time.Minute), i.S.Namespace, secret, "secret-key")
@@ -194,7 +194,25 @@ func createKey(t *testing.T, token, name string) string {
 	return out.ID
 }
 
+func runSuffix(t *testing.T) string {
+	t.Helper()
+	raw := make([]byte, 4)
+	if _, err := rand.Read(raw); err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(raw)
+}
+
+// deleteKey removes a throwaway key. Key Manager may keep a key protected regardless of the
+// create request, so it is unprotected first; only keys this test created reach here.
 func deleteKey(ctx context.Context, token, id string) {
+	const base = "https://api.scaleway.com/key-manager/v1alpha1/regions/fr-par/keys/"
+	un, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+id+"/unprotect", strings.NewReader("{}"))
+	un.Header.Set("X-Auth-Token", token)
+	un.Header.Set("Content-Type", "application/json")
+	if resp, err := http.DefaultClient.Do(un); err == nil {
+		resp.Body.Close()
+	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, "https://api.scaleway.com/key-manager/v1alpha1/regions/fr-par/keys/"+id, nil)
 	req.Header.Set("X-Auth-Token", token)
 	resp, err := http.DefaultClient.Do(req)
