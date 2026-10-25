@@ -1,7 +1,7 @@
 {{- /*
 Control-plane RBAC, scoped to the configured tenant execution namespaces. Namespaced Roles only;
 no cluster-admin, no wildcards. The one ClusterRole can only `get` the named tenant namespaces
-(to verify Pod Security labels). Secrets access is off unless execution.rbac.manageSecrets=true.
+(to verify Pod Security labels) and create SubjectAccessReviews (the preflight of the tenant service account). Secrets access is off unless execution.rbac.manageSecrets=true.
 */ -}}
 {{- range .Values.execution.tenants }}
 ---
@@ -74,6 +74,11 @@ rules:
       {{- range .Values.execution.tenants }}
       - {{ .namespace }}
       {{- end }}
+  # The tenant preflight asks the API server what the tenant's execution service account may do
+  # (SubjectAccessReview records nothing and grants nothing); without it every dispatch is refused.
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

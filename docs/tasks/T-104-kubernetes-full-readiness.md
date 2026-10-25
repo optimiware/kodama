@@ -4,7 +4,7 @@ milestone: production
 status: planned
 depends_on: [T-089, T-105, T-103]
 decision_blockers: []
-owns: [test/e2e/kube-full/, test/integration/assembly-execution/, docs/acceptance/kube-full.md]
+owns: [test/e2e/kube-full/, test/integration/assembly-execution/, test/support/stage/, docs/acceptance/kube-full.md]
 check: deploy/stage/scripts/gate.sh --gate readiness --cloud scw --contract "$KODAMA_STAGE_CONTRACT" --values "$KODAMA_STAGE_VALUES"
 resources: [go, integration]
 acceptance: [kube_chart_install, kube_m1_roundtrip, kube_cancel_restart, kube_secrets_kms, execution_assembly_roundtrip, execution_assembly_cancel_restart, execution_assembly_result_guard]
@@ -34,3 +34,6 @@ The qualified target is the Kodama-owned standalone stage cluster `kodama-stage-
 
 ## Out of scope
 Deploying to Platform stage, hosted Platform integration, live-agent qualification or supported-release/recovery claims beyond the consumed T-029 evidence. Scheduling this task and its deferred prerequisites still requires explicit approval.
+
+## Progress (2026-10-25)
+Not complete; no acceptance has passed. The stage installation, the per-session qualification infrastructure (`deploy/stage/qualification`, `qualify.sh`) and the shared fixture `test/support/stage/` exist and were exercised live; the first real run found a chart RBAC defect (fixed on `task/stage-scw-deploy`, review requested). The suites, the Kubernetes backend of `assembly-execution`, the exact acceptance-to-package evidence map and the readiness receipt remain. Work state, decisions and next steps: [docs/acceptance/kube-full.md](../acceptance/kube-full.md#work-state-and-handoff-2026-10-25). Bounded ownership extension: `test/support/stage/` (shared with T-090, which depends on this task).

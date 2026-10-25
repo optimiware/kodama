@@ -22,16 +22,33 @@ deploy/stage/
         grafana.yaml.tftpl    # Operator-authenticated Grafana with Loki/Prometheus & pipeline log search dashboard
         gitea.yaml.tftpl      # Gitea Git HTTPS server (SQLite, no SSH, no registration)
         ingress-nginx.yaml    # Ingress controller behind a Scaleway Load Balancer
+  qualification/          # One qualification session of the stage: its own database, namespace, keys, Secrets, NATS and DB relays
   images/workload/        # Stage workload image (shell, Git, CA certificates)
   scripts/
     lib.sh                # Contract validator, Helm renderer, FORGE_RESULTS verifier & secret-leak scanner
     deploy.sh             # Cloud apply/validate -> Helm lint -> shared stack apply (secrets first, then charts)
+    qualify.sh            # prepare/destroy/show a qualification session (state: ~/.kube/kodama-stage/state/qualification/<session>/)
     deps-init.sh          # Seeds Gitea (owner, repository, scoped read/write tokens) during the stack apply
     gate.sh               # Critical-path gate runner (readiness -> staging -> recovery -> platform -> release)
     evidence.sh           # Tamper-evident evidence bundle emitter (manifest.json + SUMMARY.md)
     checks/               # Individual gate checks for T-104, T-090, T-029, T-061 and T-056
     test_scripts.sh       # Offline verification suite for OpenTofu, Helm, ShellCheck and gate failure paths
 ```
+
+## Qualification sessions
+
+The qualification suites (`test/e2e/kube-full`, `test/e2e/staging`, the Kubernetes backend of
+`test/integration/assembly-execution`) never run against the stage's own release. `qualify.sh prepare --session <name>
+--contract <stage_contract.json>` (needs `KUBECONFIG`, `KODAMA_IMAGES_FILE` and the operator's `SCW_*`) creates an isolated
+installation of the same chart and images: a database on the stage PostgreSQL instance (same roles, granted on that database
+only), namespace `kodama-q-<name>` and tenant namespaces `kodama-q-<name>-a` / `-b`, generated keys and Secrets pushed before
+any chart installs, a dedicated NATS server, and two database relays. `kq-pgrelay` is the server's database path (scaling it to
+zero is a real outage with the database untouched); `kq-pgprobe` is the test process's inspection path (a port forward). Git
+tokens, object-store and Key Manager credentials are copied from the stage; the ingress host is `<name>.<ip>.nip.io` with a
+Let's Encrypt certificate; the OIDC issuer and audience are the stage's. The session's Helm values and derived contract are
+written next to its state; the tests install, upgrade and uninstall the release themselves. `qualify.sh destroy` removes the
+release, tenant namespaces, database and all session resources. The test process runs on the operator machine
+(`KODAMA_QUAL_SESSION=<name>`, `KUBECONFIG`) through `test/support/stage`.
 
 ## Cloud Infrastructure & Staging vs. Production Retention
 

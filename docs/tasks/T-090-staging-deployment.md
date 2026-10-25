@@ -32,3 +32,6 @@ The first stage target is the Kodama-owned standalone cluster `kodama-stage-scw`
 
 ## Out of scope
 Production release and support claims (T-056), hosted Platform authority (T-061), measured capacity, recovery drills (T-029) and stronger isolation (T-055).
+
+## Progress (2026-10-25)
+Not started beyond the infrastructure it owns: `deploy/stage/` now includes the qualification root and `qualify.sh` (isolated per-session installations used by both gates) and the stage deploy with the `oauthsonas` issuer. `test/e2e/staging/`, the Alloy attempt-ID normalization needed by `stage_loki_log_search` and `docs/operations/staging.md` remain; the `staging` gate requires the T-104 readiness receipt first. See [docs/acceptance/kube-full.md](../acceptance/kube-full.md#work-state-and-handoff-2026-10-25).

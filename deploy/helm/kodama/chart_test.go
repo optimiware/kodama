@@ -749,8 +749,13 @@ func assertRBAC(t *testing.T, docs []object, pods []podSpec) {
 			if kind == "ClusterRole" {
 				for _, rule := range asList(r["rules"]) {
 					m := asMap(rule)
+					// The one other cluster-scoped rule is the preflight's access review (create only;
+					// Test_helm_preflight_access_review_rbac pins its exact shape).
+					if slices.Equal(strList(m["resources"]), []string{"subjectaccessreviews"}) {
+						continue
+					}
 					if got := strList(m["resources"]); len(got) != 1 || got[0] != "namespaces" || len(strList(m["verbs"])) != 1 || strList(m["verbs"])[0] != "get" || len(asList(m["resourceNames"])) == 0 {
-						t.Errorf("ClusterRole %s must only get named tenant namespaces, got %v", nameOf(r), m)
+						t.Errorf("ClusterRole %s must only get named tenant namespaces (and create access reviews), got %v", nameOf(r), m)
 					}
 				}
 			}
@@ -1211,5 +1216,28 @@ func Test_helm_secret_management_rbac(t *testing.T) {
 	}
 	if found == 0 {
 		t.Fatal("manageSecrets=true rendered no Secret rule")
+	}
+}
+
+// Test_helm_preflight_access_review_rbac guards the cluster-scoped rule the tenant preflight needs: the server
+// asks the API server (SubjectAccessReview) what each tenant's execution service account may do, and a chart
+// that does not allow it leaves every dispatch refused on a real installation.
+func Test_helm_preflight_access_review_rbac(t *testing.T) {
+	docs := render(t, profile{name: "default", tenants: 1, kms: "keyfile"})
+	found := false
+	for _, role := range ofKind(docs, "ClusterRole") {
+		for _, r := range asList(role["rules"]) {
+			rule := asMap(r)
+			if !slices.Contains(strList(rule["resources"]), "subjectaccessreviews") {
+				continue
+			}
+			found = true
+			if got := strList(rule["verbs"]); len(got) != 1 || got[0] != "create" || !slices.Equal(strList(rule["apiGroups"]), []string{"authorization.k8s.io"}) {
+				t.Errorf("ClusterRole %s grants %v on subjectaccessreviews in %v, want exactly create in authorization.k8s.io", nameOf(role), got, strList(rule["apiGroups"]))
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no ClusterRole lets the server create SubjectAccessReviews: the tenant preflight would refuse every dispatch")
 	}
 }

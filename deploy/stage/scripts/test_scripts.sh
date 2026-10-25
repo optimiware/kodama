@@ -20,6 +20,7 @@ shellcheck -x \
   "${STAGE_DIR}/scripts/lib.sh" \
   "${STAGE_DIR}/scripts/deps-init.sh" \
   "${STAGE_DIR}/scripts/deploy.sh" \
+  "${STAGE_DIR}/scripts/qualify.sh" \
   "${STAGE_DIR}/scripts/gate.sh" \
   "${STAGE_DIR}/scripts/evidence.sh" \
   "${STAGE_DIR}/scripts/test_scripts.sh" \
@@ -50,7 +51,7 @@ for link in re.findall(r"\[[^\]]*\]\(([^ )]+)(?: [^)]*)?\)", without_code):
 PY
 
 log_info "2. OpenTofu fmt check across aws, gcp, scw and shared/stack"
-for dir in "${STAGE_DIR}/aws" "${STAGE_DIR}/gcp" "${STAGE_DIR}/scw" "${STAGE_DIR}/shared/stack"; do
+for dir in "${STAGE_DIR}/aws" "${STAGE_DIR}/gcp" "${STAGE_DIR}/scw" "${STAGE_DIR}/shared/stack" "${STAGE_DIR}/qualification"; do
   tofu -chdir="${dir}" fmt -check
 done
 
@@ -141,6 +142,8 @@ mkdir -p "${MOCK_STATE}"
 
 tofu -chdir="${STAGE_DIR}/shared/stack" init -input=false -backend=false >/dev/null
 tofu -chdir="${STAGE_DIR}/shared/stack" validate >/dev/null
+tofu -chdir="${STAGE_DIR}/qualification" init -input=false -backend=false >/dev/null
+tofu -chdir="${STAGE_DIR}/qualification" validate >/dev/null
 
 helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${WORK_DIR}/values-scw.yaml" >"${WORK_DIR}/chart-scw.yaml"
 python3 - "${WORK_DIR}/chart-scw.yaml" "${STAGE_DIR}/shared/stack/secrets.tf" <<'PY'
