@@ -117,6 +117,16 @@ No new product/probe image has been published, no new qualification session prep
 The HTTPS fault and in-cluster KMS cases still need live qualification; their offline checks do not close that gap.
 Session `kb` and the protected historical probe key were not changed. Independent review remains pending.
 
+### Live qualification attempt on candidate `3002bebb` (2026-10-25, not a gate run)
+
+Product image `rg.fr-par.scw.cloud/kodama-stage-scw/kodama@sha256:3070e33c…e17e`, helper `…/stageprobe@sha256:c9068772…8e3e`, both built from committed `3002bebbbcd9`. Preflight passed on fresh session `kc` (kept unused for the final gate). Focused debugging used disposable session `kd`; its results are not part of any receipt.
+
+| Case | Classification | Finding / disposition |
+| --- | --- | --- |
+| `kube_cancel_restart/lost_create_acknowledgment` | fixture defect (fixed) | The lost create happened on the redrive, 30s after dispatch intent, because the Job-create hold consumed the first dispatch. The redrive re-claimed the 30s lease, so the replacement could not redrive before the product's 60s startup deadline (`startup_timeout`). The fault is now armed for the first Job create in the tenant namespace before the run starts (name-less arming; the withheld create must be the attempt's Job), and the Pod hold ends when the replacement is ready, because the Job controller's exponential backoff under a refused Pod create otherwise also exceeds the deadline. The same Job UID is confirmed with one attempt/grant/Pod. Passed live on `kd` once with these changes. |
+| `kube_secrets_kms/workload_provider_procedure` | passed live on `kd` (not yet in a gate) | |
+| `kube_secrets_kms/installed_secret_restart` | **product gap, owner decision needed** | Registering a step with `env: {secretRef}` is refused (`secret_denied`): `pipelineReferences.CheckSecret` allows only `secretFiles`, although the variables-and-secrets spec and VS-A10 describe ENV bindings. A `secretFiles` project secret registers, but `resolveSecret` answers 403 at run time: `SecretRoute` resolves only bindings named by a pinned deployment environment snapshot (`pin == nil` yields no bindings). No plain project-secret consumption through the installed server is possible today. |
+
 ### Remaining
 
 1. Validate and commit hardening changes; build digest-pinned product and probe images from that committed source. No main merge or Git push is needed for qualification. The old dirty-build image is historical evidence only.

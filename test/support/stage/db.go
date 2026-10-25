@@ -87,6 +87,27 @@ func (i *Installation) TryOwnerCount(sql string, args ...any) (int, error) {
 	return n, err
 }
 
+// DispatchState reports an attempt's dispatch bookkeeping as safe status metadata (no ids or secrets).
+func (i *Installation) DispatchState(attempt string) string {
+	var confirmed, claimed, revoked bool
+	var claimSeconds *float64
+	var status string
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	err := i.DB().Owner.QueryRow(ctx, `SELECT c.dispatch_confirmed_at IS NOT NULL, c.claim_token IS NOT NULL, c.revoked_at IS NOT NULL,
+		extract(epoch FROM c.claim_until - now())::float8, a.status
+		FROM attempt_controls c JOIN step_attempts a ON a.tenant_id=c.tenant_id AND a.project_id=c.project_id AND a.id=c.attempt_id
+		WHERE c.attempt_id=$1`, attempt).Scan(&confirmed, &claimed, &revoked, &claimSeconds, &status)
+	if err != nil {
+		return "dispatch state unavailable"
+	}
+	lease := "none"
+	if claimSeconds != nil {
+		lease = fmt.Sprintf("%.0fs", *claimSeconds)
+	}
+	return fmt.Sprintf("attempt=%s confirmed=%t claimed=%t revoked=%t claim_expires_in=%s", status, confirmed, claimed, revoked, lease)
+}
+
 // MustScan scans one owner-role row.
 func (i *Installation) MustScan(dst any, sql string, args ...any) {
 	i.T.Helper()

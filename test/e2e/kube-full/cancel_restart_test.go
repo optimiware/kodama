@@ -80,15 +80,21 @@ func TestKubeCancelRestart(t *testing.T) {
 func lostCreateAcknowledgment(t *testing.T) {
 	i := stage.New(t)
 	w := i.Seed()
+	// The startup deadline (60s) and redrive lease (30s) are product policy: the replacement must
+	// confirm within them, so everything slow is done before the create is armed.
+	i.DB()
 	fault := i.InstallCreateFault(i.Context(10 * time.Minute))
 	item := w.WorkItem("Lost create acknowledgment", "# recovery")
 	w.Provision(item.Id)
 	def := w.Definition("lost-create", stage.Step{Script: stage.CommandBarrier + `echo recovered`, Timeout: 900})
 	ns := w.Namespace(w.TenantA)
 	pods := i.HoldPods(i.Context(2*time.Minute), ns)
-	create := i.HoldJobs(i.Context(2*time.Minute), ns, "CREATE")
+	// The first dispatch is the faulted create: a later redrive would re-claim the dispatch lease and
+	// leave the replacement no time before the startup deadline. Nothing else creates Jobs here.
+	fault.Arm(ns, "")
 	run := w.Run("lost-create-run", item, def.Id)
 	attempt := w.WaitAttempt(run.Id, time.Minute)
+	dispatched := time.Now()
 	var name string
 	stage.WaitFor(t, "persisted Job identity", time.Minute, func() bool {
 		atts := w.Attempts(run.Id)
@@ -98,8 +104,6 @@ func lostCreateAcknowledgment(t *testing.T) {
 		name = atts[0].JobName
 		return name != ""
 	})
-	fault.Arm(ns, name)
-	create.Release()
 	var uid string
 	stage.WaitForEvery(t, "committed create with acknowledgment withheld", 2*time.Minute, time.Second, func() bool {
 		s := fault.Status()
@@ -109,19 +113,31 @@ func lostCreateAcknowledgment(t *testing.T) {
 	if i.OwnerCount(`SELECT count(*) FROM attempt_controls WHERE attempt_id=$1 AND dispatch_confirmed_at IS NULL`, attempt) != 1 {
 		t.Fatal("fault did not preserve an unconfirmed dispatch")
 	}
+	if st := fault.Status(); st.Target.Name != name {
+		t.Fatal("the withheld create was not the attempt's Job")
+	}
 	jobs := i.JobsOfAttempt(ns, attempt)
 	if len(jobs) != 1 || jobs[0].UID != uid {
 		t.Fatal("upstream Job not committed exactly once")
 	}
+	t.Logf("crashing the server %s after dispatch intent", time.Since(dispatched).Round(time.Second))
 	i.Crash(i.Context(6 * time.Minute))
+	t.Logf("replacement ready %s after dispatch intent", time.Since(dispatched).Round(time.Second))
+	// The Job controller backs off exponentially while Pod creation is refused, and the 60s startup
+	// deadline is product policy, so the hold ends as soon as the original server is gone. The replacement
+	// must still confirm the original Job, whichever of its adoption paths (redrive or observation) runs.
+	pods.Release()
+	polls := 0
 	stage.WaitFor(t, "replacement process confirms the original Job", 2*time.Minute, func() bool {
+		if polls++; polls%40 == 1 {
+			t.Logf("recovery state: %s", i.DispatchState(attempt))
+		}
 		return i.OwnerCount(`SELECT count(*) FROM attempt_controls WHERE attempt_id=$1 AND dispatch_confirmed_at IS NOT NULL`, attempt) == 1
 	})
 	jobs = i.JobsOfAttempt(ns, attempt)
 	if len(jobs) != 1 || jobs[0].UID != uid {
 		t.Fatal("recovery replaced the Job")
 	}
-	pods.Release()
 	pod := i.WaitPod(ns, name, 2*time.Minute)
 	i.WaitCommandBarrier(ns, pod.Name)
 	if n := i.OwnerCount(`SELECT count(*) FROM step_attempts WHERE run_id=$1`, run.Id); n != 1 {

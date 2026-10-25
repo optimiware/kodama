@@ -155,3 +155,51 @@ func TestProxyLosesHTTP2Acknowledgment(t *testing.T) {
 		t.Fatal("HTTP/2 create did not commit upstream")
 	}
 }
+
+func TestProxyArmedWithoutNameWithholdsOnlyTheFirstJobCreate(t *testing.T) {
+	var creates atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			n := creates.Add(1)
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprintf(w, `{"metadata":{"name":"job-%d","uid":"uid-%d"}}`, n, n)
+			return
+		}
+		fmt.Fprint(w, `{}`)
+	}))
+	defer up.Close()
+	origin, _ := url.Parse(up.URL)
+	srv := httptest.NewTLSServer(&Proxy{Origin: origin, Client: up.Client()})
+	defer srv.Close()
+	call := func(method, path, body string) (*http.Response, error) {
+		r, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+		return srv.Client().Do(r)
+	}
+	r, err := call(http.MethodPost, "/__fault/arm", `{"namespace":"kodama-q-fixture-a"}`)
+	if err != nil || r.StatusCode != 200 {
+		t.Fatalf("arm without a name: %v", err)
+	}
+	r.Body.Close()
+	if r, err := call(http.MethodPost, "/__fault/arm", `{"namespace":"kodama-q-fixture-a"}`); err != nil || r.StatusCode != http.StatusBadRequest {
+		t.Fatal("an armed proxy accepted a second arming")
+	}
+	if r, err := call(http.MethodPost, "/apis/batch/v1/namespaces/kodama-q-other/jobs", `{}`); err != nil || r.StatusCode != http.StatusCreated {
+		t.Fatal("another namespace was intercepted")
+	}
+	if r, err := call(http.MethodPost, "/apis/batch/v1/namespaces/kodama-q-fixture-a/jobs", `{}`); err == nil {
+		r.Body.Close()
+		t.Fatal("create acknowledgment was not lost")
+	}
+	r, err = call(http.MethodGet, "/__fault/status", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var status FaultStatus
+	if json.NewDecoder(r.Body).Decode(&status) != nil {
+		t.Fatal("invalid fault status")
+	}
+	r.Body.Close()
+	if !status.Lost || status.Target.Name != "job-2" || status.UID != "uid-2" || status.Creates != 1 {
+		t.Fatalf("status=%+v", status)
+	}
+}

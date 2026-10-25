@@ -24,7 +24,9 @@ type FaultStatus struct {
 	Creates int    `json:"creates"`
 }
 
-// Proxy forwards the real Kubernetes API. Only an explicitly armed Job create is intercepted.
+// Proxy forwards the real Kubernetes API. Only an explicitly armed Job create is intercepted: the
+// named Job, or, when the name is empty, the first Job created in the armed namespace (the
+// controller's first dispatch happens before its Job name could be known to the test).
 // Its successful upstream response is withheld, then read-back is refused until the Pod is
 // replaced. State is intentionally in memory: a replacement sidecar is transparent again.
 type Proxy struct {
@@ -65,7 +67,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	if s.Target.Name != "" && !s.Lost && r.Method == http.MethodPost && r.URL.Path == jobs && resp.StatusCode == http.StatusCreated {
+	if s.Target.Namespace != "" && !s.Lost && r.Method == http.MethodPost && r.URL.Path == jobs && resp.StatusCode == http.StatusCreated {
 		// Inspect safe metadata only. Do not print request/response bodies or credentials.
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		var job struct{ Metadata struct{ Name, UID string } }
@@ -73,9 +75,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadGateway)
 			return
 		}
-		if job.Metadata.Name == s.Target.Name {
+		if s.Target.Name == "" || job.Metadata.Name == s.Target.Name {
 			p.mu.Lock()
-			p.status.UID, p.status.Lost = job.Metadata.UID, true
+			p.status.Target.Name, p.status.UID, p.status.Lost = job.Metadata.Name, job.Metadata.UID, true
 			p.status.Creates++
 			p.mu.Unlock()
 			// No HTTP response reaches the original controller, even though create committed.
@@ -137,7 +139,7 @@ func (p *Proxy) admin(w http.ResponseWriter, r *http.Request) {
 		var target Target
 		dec := json.NewDecoder(io.LimitReader(r.Body, 2048))
 		dec.DisallowUnknownFields()
-		if dec.Decode(&target) != nil || !objectName.MatchString(target.Name) || !objectName.MatchString(target.Namespace) || !strings.HasPrefix(target.Namespace, "kodama-q-") || p.status.Target.Name != "" {
+		if dec.Decode(&target) != nil || (target.Name != "" && !objectName.MatchString(target.Name)) || !objectName.MatchString(target.Namespace) || !strings.HasPrefix(target.Namespace, "kodama-q-") || p.status.Target.Namespace != "" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
