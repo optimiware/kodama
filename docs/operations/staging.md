@@ -117,35 +117,48 @@ them read-only, with checksums, outside the checkout before removing a worktree.
 
 ## Qualification record
 
-**Qualified at candidate `8448adc623b5` (`8448adc623b5d8901cead7b7843aae5f3ad58cf0`), 2026-10-26.** One `readiness` gate
-(828.62s) and one `staging` gate (202.7s) passed on the same fresh session `kj`, the same frozen clean commit, the same
+**Qualified at candidate `0a905ef5989d` (`0a905ef5989db6d1088a9eb1134132fbae94d111`), 2026-10-26.** One `readiness` gate
+(857.37s) and one `staging` gate (194.46s) passed on the same fresh session `kl`, the same frozen clean commit, the same
 contract and the same values; the `staging` gate verified the readiness receipt's digests before running.
 
 | Item | Value |
 | --- | --- |
-| Release image | `rg.fr-par.scw.cloud/kodama-stage-scw/kodama@sha256:2e937d6cb3c3b5f6e3085040420b98128ad056e377a144142134a293046d4421`, registry revision label = the full commit (verified at the registry by both gates) |
-| Test-only helper (readiness only) | `.../stageprobe@sha256:2e9b3488306be77b9621fe495e8ecb8273c721d04b2aff9f849c8a58be87ec1b`, same label check |
+| Release image | `rg.fr-par.scw.cloud/kodama-stage-scw/kodama@sha256:ddffa673eff974017894b2cba832563ff73ba07e6fa51b347a999026e0fa46bd`, registry revision label = the full commit (verified at the registry by both gates) |
+| Test-only helper (readiness only) | `.../stageprobe@sha256:a9961a48dc4c6a9790d799b03b33019448e528fec178508d2da78db824b7d7d9`, same label check |
 | Workload image | `.../workload:1@sha256:24cff5ad7765e56c3242014e64e2d911ca02053b92ab9c14f2beeb6519d929ea` (not rebuilt per candidate, not label-verified) |
 | Chart tree | `14436ec71a4c143328fbbda9a2265cef94487138` |
-| Contract / values | `sha256:b31cfe0c8c927452970c1684ce6615816e6494002a7831f098028f58249c59ea` / `sha256:5b469858a002eb3ad5ad84d15d759bc3c95fe6d462a8ff2f80c1ae0291731453` |
-| Receipts | `~/kodama-stage/evidence/T-090-qualification-8448adc623b5/{readiness,staging}` (read-only, `SHA256SUMS`) |
+| Contract / values | `sha256:a8ae6475be12fdbe30ac060662b5161bfb99463f907931f002cc741d546c4533` / `sha256:7a217477c8ec656e269eeb4c622cc5cf5db3058e227a4b4fd29034893d5e9e68` |
+| Receipts | `~/kodama-stage/evidence/T-090-qualification-0a905ef5989d/{readiness,staging}` (read-only, `SHA256SUMS`) |
 | Stage deployment | the stage's own release in `kodama-system` runs this image and chart; Alloy tails the control plane, the contract's tenant namespaces and `kodama-q-*` |
 
 Readiness: all seven acceptances and every child case passed, including `kube_secrets_kms/direct_secret_delivery`
-([T-107](../tasks/T-107-direct-secret-delivery.md)). Staging: `stage_clean_install`, `stage_e2e_roundtrip`,
-`stage_restart_reconcile`, `stage_loki_log_search`, `stage_dev_adapter_refused` (four selections, each refused with the
-adapter named) and `stage_retention_uninstall` passed; nothing was skipped. Podman regression of the entrypoint change:
-all three assembly scenarios and the PostgreSQL contracts passed before the candidate was built.
+([T-107](../tasks/T-107-direct-secret-delivery.md)) and the conflicted writer's Job being removed after its result.
+Staging: `stage_clean_install`, `stage_e2e_roundtrip`, `stage_restart_reconcile`, `stage_loki_log_search`,
+`stage_dev_adapter_refused` (four selections, each a required child case, each refused with the adapter named) and
+`stage_retention_uninstall` passed; nothing was skipped. The staging receipt carries the runner's own completion
+evidence (`runner_exit=0`, the staging package finished with pass) and the release image's registry label. The full unit
+loop and the Podman regression (all three assembly scenarios and the PostgreSQL contracts) passed on the product code
+before the candidate was built; the final commit changed only stage scripts and their tests.
 
-### What the first staging attempt found
+### What the earlier attempts found
 
-An earlier candidate (`4daa4516f044`) passed readiness but failed `stage_loki_log_search`: a trivial step ended
-`execution_timeout`. The control plane's new `attempt deadline missed` log and Loki showed the command had run and
-printed its output, then the entrypoint went silent until the deadline aborted it. The entrypoint's HTTP client had no
-per-request deadline, so one stalled request waited out the whole five-minute finalization budget, longer than the step's
-own deadline. Every request is now bounded and the finalization phases are logged ([T-108](../tasks/T-108-execution-finalization-diagnostics.md));
-the cause is inferred from that evidence, not observed. The failed attempt's evidence is kept with the receipts' sibling
-`T-090-superseded-4daa4516f044`. It was an intermittent product defect, which is why the gate was not simply rerun.
+Three candidates were qualified before this one, and each exposed something real:
+
+- `4daa4516f044` passed readiness but failed `stage_loki_log_search`: a trivial step ended `execution_timeout`. The control
+  plane's new `attempt deadline missed` log and Loki showed the command had run and printed its output, then the
+  entrypoint went silent until the deadline aborted it. The entrypoint's HTTP client had no per-request deadline, so one
+  stalled request waited out the whole five-minute finalization budget, longer than the step's own deadline. Every
+  request is now bounded and the finalization phases are logged ([T-108](../tasks/T-108-execution-finalization-diagnostics.md)).
+  The stalled request is inferred from that evidence, not observed. It was an intermittent product defect, which is why
+  the gate was not simply rerun.
+- `8448adc623b5` passed both gates, but review then showed the acknowledgment-ordering change of the same task would have
+  left the Job of every run that the result itself made terminal (the reconciler no longer scans such a run), plus a
+  versioned-bucket purge gap, a hand-written-results gap and weak assertions. Those were repaired, so that receipt does
+  not cover the merged code.
+- `403e8a42e49d` passed all six staging tests but the gate's own runner crashed afterwards (a case-table lookup made
+  readiness-only by the review fixes), so the gate failed. The runner's staging path now has an offline test.
+
+The superseded attempts' evidence is kept next to the receipts as `T-090-superseded-*`.
 
 ### Limits of this qualification
 
@@ -156,10 +169,11 @@ the cause is inferred from that evidence, not observed. The failed attempt's evi
   the bounds shorten a stall but do not separate the two budgets.
 - A writer step that declares a secret cannot publish source yet, and a step that pins an environment and declares its own
   secrets receives only the environment's ([T-107](../tasks/T-107-direct-secret-delivery.md)).
+- Receipts are bound to a commit, a contract and a values file and carry self-declared provenance the runner writes; they
+  are evidence for an honest operator, not tamper-proof against a malicious one.
 - Staging qualifies the Kubernetes appliance on regular containers for trusted engineers; untrusted-code isolation,
   hosted authority and supported-release claims are not made.
-- The receipts bind this exact commit, contract and values; any later change to product, chart or stage inputs needs new
-  receipts.
+- Any later change to product, chart or stage inputs needs new receipts.
 
 ## Known limitations
 

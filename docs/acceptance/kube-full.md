@@ -61,16 +61,19 @@ An independent read-only review of the branch (on the candidate before `e6660bca
 | State directory default changed silently | `deploy.sh` and `qualify.sh` refuse when the old directory exists and the new one does not |
 | Tenant-boundary notes (`safe.directory=*`, kube-dns egress, Git CA fallback, Secret `update`) | Recorded above; narrowing `safe.directory` is a follow-up |
 
-## Later receipt: candidate `8448adc623b5` (2026-10-26, with T-090)
+## Later receipt: candidate `0a905ef5989d` (2026-10-26, with T-090)
 
-The readiness gate was requalified at `8448adc623b5` on session `kj`, together with the `staging` gate (see
+The readiness gate was requalified at `0a905ef5989d` on session `kl`, together with the `staging` gate (see
 [the staging record](../operations/staging.md#qualification-record)): all seven acceptances and every child case passed,
 now including `kube_secrets_kms/direct_secret_delivery` (ENV and file delivery of declared project secrets without a
 deployment environment, before and after a server restart, never in the Job or Pod objects), a `kube_m1_roundtrip`
-check that the conflicted writer's result is logged accepted and never unavailable, and per-request bounds in the
-entrypoint. Receipt: `~/kodama-stage/evidence/T-090-qualification-8448adc623b5/readiness`, contract
-`sha256:b31cfe0c…59ea`, values `sha256:5b469858…1453`, release image `sha256:2e937d6c…4421`, helper `sha256:2e9b3488306be77b9621fe495e8ecb8273c721d04b2aff9f849c8a58be87ec1b`, both labelled with the commit at
-the registry. It qualifies that commit only; the `e6660bca8488` receipt above stays valid for that commit.
+check that the conflicted writer's result is logged accepted, never unavailable, and its Job removed, and per-request
+bounds in the entrypoint. Receipt: `~/kodama-stage/evidence/T-090-qualification-0a905ef5989d/readiness`, contract
+`sha256:a8ae6475be12fdbe30ac060662b5161bfb99463f907931f002cc741d546c4533`, values
+`sha256:7a217477c8ec656e269eeb4c622cc5cf5db3058e227a4b4fd29034893d5e9e68`, release image
+`sha256:ddffa673eff974017894b2cba832563ff73ba07e6fa51b347a999026e0fa46bd`, helper
+`sha256:a9961a48dc4c6a9790d799b03b33019448e528fec178508d2da78db824b7d7d9`, both labelled with the commit at the registry.
+It qualifies that commit only; the `e6660bca8488` receipt above stays valid for that commit.
 
 ## Superseded readiness receipt (candidate `5aee4af54e2e`, 2026-10-25)
 
