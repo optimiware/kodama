@@ -125,10 +125,18 @@ func Test_unit_run_resource_event_contract(t *testing.T) {
 		if a == b || a != "rr-3663490fc4e1bf2c0f3faf91b34b72faf2ee1a3e" || b != "rr-13c688e63e9c74df3a118b68637202e3be2de8ec" {
 			t.Fatalf("framed IDs alias or drifted: %s %s", a, b)
 		}
-		// Run and key of different resources never alias.
-		c1, _ := RunResourceID(testTenant, testProject, "run_x", "service.db")
+		// Run/key boundary: joining with "_" and replacing the key's dot with "_"
+		// makes (run_x, service.network) and (run_x_service, network) both spell
+		// "run_x_service_network"; the framed IDs differ.
+		flat := func(run, key string) string {
+			return run + "_" + strings.ReplaceAll(key, ".", "_")
+		}
+		if flat("run_x", "service.network") != flat("run_x_service", "network") {
+			t.Fatal("counterexample is not a collision under underscore flattening")
+		}
+		c1, _ := RunResourceID(testTenant, testProject, "run_x", "service.network")
 		c2, _ := RunResourceID(testTenant, testProject, "run_x_service", "network")
-		if c1 == c2 {
+		if c1 == c2 || c1 == "" || c2 == "" {
 			t.Fatal("run/key boundary aliases")
 		}
 	})
@@ -149,7 +157,7 @@ func Test_unit_run_resource_event_contract(t *testing.T) {
 						for _, uid := range []bool{false, true} {
 							raw := marshalTree(t, rrEnvelope(t, kind, key, from, to, uid))
 							_, err := Decode(raw)
-							want := from != to && (to != RunResourcePhaseReady || uid)
+							want := to != RunResourcePhaseReady || uid
 							if (err == nil) != want {
 								t.Errorf("%s/%s %s->%s uidBound=%v: accepted=%v (%v), want %v", kind, key, from, to, uid, err == nil, err, want)
 							}
@@ -162,7 +170,8 @@ func Test_unit_run_resource_event_contract(t *testing.T) {
 				}
 			}
 		}
-		// 7 from-phases x 6 to-phases x 2 uidBound values x 7 keys.
+		// 7 from-phases x 6 to-phases x 2 uidBound values x 7 keys; an unchanged
+		// phase is valid (reason, binding or evidence may differ).
 		if want := 7 * 6 * 2 * 7; n != want {
 			t.Fatalf("checked %d combinations, want %d", n, want)
 		}
@@ -215,7 +224,6 @@ func Test_unit_run_resource_event_contract(t *testing.T) {
 			{"to unknown", d("to", "gone"), false},
 			{"to uppercase", d("to", "Ready"), false},
 			{"to missing", drop("to"), false},
-			{"same phase", d("from", "ready"), false},
 			{"reason missing", drop("reason"), false},
 			{"reason null", d("reason", nil), false},
 			{"reason empty", d("reason", ""), false},

@@ -128,9 +128,6 @@ func (v *RunResourceStateChanged) validate() error {
 		oneOf("to", v.To, runResourcePhase...), matchCode("reason", v.Reason), matchDigest("specFingerprint", v.SpecFingerprint)); err != nil {
 		return err
 	}
-	if v.From == v.To {
-		return invalidf("from and to are the same phase %q", v.To)
-	}
 	if v.To == RunResourcePhaseReady && !v.UIDBound {
 		return invalidf("a ready resource has a bound identity (uidBound must be true)")
 	}
