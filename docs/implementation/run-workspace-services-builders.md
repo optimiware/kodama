@@ -44,6 +44,8 @@ The source design is commit `0b12febef5b9e092982af74e2c951afe2dd80c19`; executab
 
 **Progress:** P0 is complete: T-118's reviewed version fence is merged at `16a5d0df`, T-109's normative specifications at the checkpoint above, and T-110's reviewed executable schema/parser/wire fixtures at `6343b9e5f75b20e41e28b62b418069bb1811950f`. Coordinator checks passed all 26 named acceptances plus six review regressions and docs-check (121 files). New-format registration remains off by default and the current executor refuses it. T-111/P1 and T-112/P2 are ready independently; no shared-workspace/service runtime, real SQL/CSI/CNI or builder qualification is implied. The last integrated infrastructure-free lint/unit batch passed at `73404c51`; the subsequent executable checkpoint has scoped evidence, not a retargeted batch receipt.
 
+**P2 review prerequisite:** [T-119](../tasks/T-119-run-resource-event-contract.md) freezes the missing resource event and domain-valid identity encoding before T-112 can emit it transactionally. T-112's initial candidate is not approved; its review repairs include source-free lifecycle and adversarial recovery/fencing schedules. A narrowly ordered migration-manifest contribution is pulled forward from P6 to T-112 solely to preserve legacy PostgreSQL compatibility; public API fragments and new-feature composition remain with P6. P1 has not yet supplied final real qualification evidence.
+
 ## Contract decisions to freeze
 
 1. **Versioning:** `kodama/v1alpha2` plus a new runtime context version for incompatible source/layout semantics. Preserve old canonical bytes/result hashes. Serve historical records, drain old runs under their original semantics, and reject new old-format runs after documented cutover.

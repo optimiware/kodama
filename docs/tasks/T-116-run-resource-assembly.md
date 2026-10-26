@@ -4,7 +4,7 @@ milestone: production
 status: planned
 depends_on: [T-113, T-114, T-115]
 decision_blockers: []
-owns: [internal/app/, internal/cli/, api/pipeline.yaml, api/runtime.yaml, api/openapi.yaml, api/client/, deploy/helm/kodama/, go.mod, go.sum, docs/operations/, docs/implementation/assembly-status.md]
+owns: [internal/app/, internal/cli/, api/pipeline.yaml, api/runtime.yaml, api/execution.yaml, api/openapi.yaml, api/client/, deploy/helm/kodama/, go.mod, go.sum, docs/operations/, docs/implementation/assembly-status.md]
 check: make check-go PKGS='./internal/app/... ./internal/cli/... ./api/client/... ./deploy/helm/kodama/...'
 resources: [go]
 acceptance: []
@@ -28,3 +28,5 @@ Scoped check, `make test-chart`, `make api-check`, `make test-m1 test-m2 test-m3
 
 ## Out of scope
 Other deferred release/hosted/TLS work and unapproved stage installation mutation; T-117 owns integrated rollout.
+
+The ordered T-112 prerequisite owns only the bounded append-only migration-manifest join in `internal/app/migrate.go` and its regression test so legacy PostgreSQL execution remains usable before P6. It does not wire shared resources or enable the new format. P6 retains every broader composition/API/client responsibility, including `api/execution.yaml` source integration, and consumes the already-merged T-119 event contract rather than deferring atomic resource events until this phase.
