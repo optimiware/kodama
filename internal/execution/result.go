@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"errors"
+	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/domain"
@@ -130,8 +131,10 @@ func (s *Service) CommitResult(ctx context.Context, in ResultCommit) (ResultAck,
 	}
 	// An accepted result is acknowledged before its workload is stopped. The entrypoint is still waiting for
 	// the answer; stopping first killed it mid-acknowledgment, so the same outcome read as a finalization
-	// failure at the pod and an unavailable result at the server. The durable termination request is carried
-	// out by the next reconciliation pass (a few seconds), which also covers a lost or failed stop.
+	// failure at the pod and an unavailable result at the server. The stop follows after a short delay. It is
+	// not left to the reconciler: a run that this very result made terminal is no longer scanned, so only this
+	// call can still stop its workload (as before, a stop lost to a crash in between is not retried there).
+	s.terminateAfterAcknowledgment(ctx, agg)
 	return out.ack, nil
 }
 
@@ -169,4 +172,22 @@ func firstOf(errs ...error) error {
 		}
 	}
 	return nil
+}
+
+// terminateAfterAcknowledgment stops the workloads revoked by an accepted result once the acknowledgment has had
+// time to reach the entrypoint. The stop runs detached from the request, which has ended by then.
+func (s *Service) terminateAfterAcknowledgment(ctx context.Context, agg *Aggregate) {
+	if agg == nil || len(agg.Revoked) == 0 || s.d.Runtime == nil {
+		return
+	}
+	if s.o.TerminationDelay < 0 {
+		s.terminateRevoked(ctx, agg)
+		return
+	}
+	detached := context.WithoutCancel(ctx)
+	time.AfterFunc(s.o.TerminationDelay, func() {
+		stopCtx, cancel := context.WithTimeout(detached, time.Minute)
+		defer cancel()
+		s.terminateRevoked(stopCtx, agg)
+	})
 }

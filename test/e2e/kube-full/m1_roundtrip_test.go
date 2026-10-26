@@ -164,6 +164,9 @@ func TestKubeM1Roundtrip(t *testing.T) {
 	if !accepted {
 		t.Fatal("the server log does not show the conflicted writer's result accepted")
 	}
+	// The run this result made terminal is no longer scanned by the reconciler, so the stop that follows the
+	// acknowledgment is the only thing that can remove the workload.
+	w.WaitRemoved(atts[0].Id)
 }
 
 func refSHA(refs []string, name string) string {
