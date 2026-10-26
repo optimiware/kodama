@@ -273,7 +273,9 @@ func (a *attempt) execute() (verdict, *abortError) {
 	timeout := time.Duration(c.Limits.TimeoutSeconds) * time.Second
 	childCtx, cancelChild := context.WithTimeoutCause(a.runCtx, timeout, errTimeout)
 	a.s.log.Info("launching command", "argv0", argv[0], "timeoutSeconds", c.Limits.TimeoutSeconds)
+	launched := time.Now()
 	res := runProcess(childCtx, procSpec{argv: argv, dir: cfg.WorkspaceDir, env: a.childEnv(secrets), out: out, grace: cfg.KillGrace})
+	a.s.log.Info("command finished", "durationMs", time.Since(launched).Milliseconds())
 	cause := context.Cause(childCtx)
 	cancelChild()
 	if mir != nil {

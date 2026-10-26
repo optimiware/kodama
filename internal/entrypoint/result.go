@@ -43,6 +43,7 @@ func (a *attempt) resultRequest(v verdict) (runtimev1.ResultRequest, error) {
 // accepted result is never rewritten.
 func (a *attempt) finalize(v verdict) int {
 	log := a.s.log
+	log.Info("finalizing")
 	if a.authorityLost() {
 		// Revoked: nothing is uploaded, proposed or submitted any more.
 		log.Error("authority lost; not finalizing", "error", context.Cause(a.runCtx).Error())

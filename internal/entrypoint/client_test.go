@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -410,6 +411,44 @@ func TestUploadOfNothingIsSentWithAnExplicitZeroLength(t *testing.T) {
 	}
 	if gotLen != 0 || len(gotEncoding) != 0 {
 		t.Fatalf("an empty upload was sent with length %d and transfer encoding %v; a signed zero-length PUT needs Content-Length: 0", gotLen, gotEncoding)
+	}
+}
+
+// A request that stalls after the connection is up must not hold the attempt until its finalization budget:
+// each try is bounded, the stalled try is retried, and the operation is logged.
+func TestAStalledRequestIsBoundedAndRetried(t *testing.T) {
+	var calls atomic.Int32
+	release := make(chan struct{})
+	defer close(release)
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			_, _ = io.Copy(io.Discard, r.Body) // the server notices a disconnect only after the body is read
+			select {                           // the first try never answers
+			case <-release:
+			case <-r.Context().Done():
+			case <-time.After(5 * time.Second):
+			}
+			return
+		}
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+	retry := RetryPolicy{MaxAttempts: 3, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, RequestTimeout: 150 * time.Millisecond, UploadTimeout: 150 * time.Millisecond}
+	c, err := NewClient(srv.URL, "att_01", "", retry, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if err := c.Upload(context.Background(), runtimev1.Upload{Method: "PUT", URL: srv.URL + "/obj", Headers: map[string]string{}}, bytes.NewReader([]byte("x")), 1); err != nil {
+		t.Fatalf("the retry after the stalled try did not succeed: %v", err)
+	}
+	if calls.Load() != 2 || time.Since(start) > 3*time.Second {
+		t.Fatalf("calls=%d after %s: the stalled try was not bounded", calls.Load(), time.Since(start))
+	}
+	if !strings.Contains(logs.String(), "runtime request timed out") || !strings.Contains(logs.String(), "op=upload") {
+		t.Fatalf("the timeout was not logged: %s", logs.String())
 	}
 }
 
