@@ -452,6 +452,25 @@ func TestAStalledRequestIsBoundedAndRetried(t *testing.T) {
 	}
 }
 
+func TestRequestBoundsSurviveDefaultRetriesAndProposalsGetLongerOnes(t *testing.T) {
+	c, err := NewClient("https://runtime.example.test", "att_01", "", RetryPolicy{RequestTimeout: 7 * time.Second, UploadTimeout: 9 * time.Second}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.retry.MaxAttempts != DefaultRetry.MaxAttempts || c.retry.RequestTimeout != 7*time.Second || c.retry.UploadTimeout != 9*time.Second {
+		t.Fatalf("a policy without MaxAttempts lost its bounds: %+v", c.retry)
+	}
+	if got := c.retry.boundFor("getContext"); got != 7*time.Second {
+		t.Fatalf("ordinary bound %s", got)
+	}
+	if got := c.retry.boundFor("proposeSource"); got < 2*time.Minute {
+		t.Fatalf("a source proposal publishes while the request waits; its bound is %s", got)
+	}
+	if got := c.retry.uploadBound(5 << 20); got != 14*time.Second {
+		t.Fatalf("upload bound for 5 MiB: %s", got)
+	}
+}
+
 func TestUploadRetriesTransientAndRestartsBody(t *testing.T) {
 	payload := []byte("0123456789")
 	var calls atomic.Int32

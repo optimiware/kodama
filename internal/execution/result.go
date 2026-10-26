@@ -134,7 +134,7 @@ func (s *Service) CommitResult(ctx context.Context, in ResultCommit) (ResultAck,
 	// failure at the pod and an unavailable result at the server. The stop follows after a short delay. It is
 	// not left to the reconciler: a run that this very result made terminal is no longer scanned, so only this
 	// call can still stop its workload (as before, a stop lost to a crash in between is not retried there).
-	s.terminateAfterAcknowledgment(ctx, agg)
+	s.terminateAfterAcknowledgment(ctx, agg, in.AttemptID)
 	return out.ack, nil
 }
 
@@ -174,20 +174,38 @@ func firstOf(errs ...error) error {
 	return nil
 }
 
-// terminateAfterAcknowledgment stops the workloads revoked by an accepted result once the acknowledgment has had
-// time to reach the entrypoint. The stop runs detached from the request, which has ended by then.
-func (s *Service) terminateAfterAcknowledgment(ctx context.Context, agg *Aggregate) {
+// terminateAfterAcknowledgment stops the workloads revoked by an accepted result. Only the attempt whose
+// result was just acknowledged waits for the acknowledgment window; siblings cancelled by the failure drain have
+// no acknowledgment to protect and stop at once. The delayed stop runs detached from the request, which has ended
+// by then, and a panic in a runtime must not take the server down with it.
+func (s *Service) terminateAfterAcknowledgment(ctx context.Context, agg *Aggregate, acknowledged domain.AttemptID) {
 	if agg == nil || len(agg.Revoked) == 0 || s.d.Runtime == nil {
 		return
 	}
-	if s.o.TerminationDelay < 0 {
-		s.terminateRevoked(ctx, agg)
+	var now, later []*Attempt
+	for _, at := range agg.Revoked {
+		if at.ID == acknowledged && s.o.TerminationDelay > 0 {
+			later = append(later, at)
+		} else {
+			now = append(now, at)
+		}
+	}
+	if len(now) > 0 {
+		s.terminateRevoked(ctx, &Aggregate{Run: agg.Run, Revoked: now})
+	}
+	if len(later) == 0 {
 		return
 	}
 	detached := context.WithoutCancel(ctx)
+	delayed := &Aggregate{Run: agg.Run, Revoked: later}
 	time.AfterFunc(s.o.TerminationDelay, func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.log(detached, "terminate after acknowledgment", ErrUnavailable, "panic", true)
+			}
+		}()
 		stopCtx, cancel := context.WithTimeout(detached, time.Minute)
 		defer cancel()
-		s.terminateRevoked(stopCtx, agg)
+		s.terminateRevoked(stopCtx, delayed)
 	})
 }
