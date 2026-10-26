@@ -4,9 +4,9 @@ This backlog holds the **18 planned and deferred tasks**. Completed work is not 
 
 <!-- harness:summary:start -->
 
-**Ready now:** [T-104](T-104-kubernetes-full-readiness.md).
+**Ready now:** [T-104](T-104-kubernetes-full-readiness.md), [T-107](T-107-direct-secret-delivery.md), [T-108](T-108-execution-finalization-diagnostics.md).
 
-**Deferred:** [T-029](T-029-recovery-qualification.md), [T-047](T-047-supabase-blueprint.md), [T-050](T-050-engineer-workbench.md), [T-051](T-051-analyst-interface.md), [T-052](T-052-native-harness.md), [T-053](T-053-claude-harness.md), [T-054](T-054-codex-harness.md), [T-055](T-055-hosted-isolation.md), [T-056](T-056-production-release.md), [T-057](T-057-operator-assessment.md), [T-058](T-058-operator.md), [T-059](T-059-chassis-assessment.md), [T-060](T-060-m4-integration.md), [T-061](T-061-platform-integration.md), [T-069](T-069-qa-profile-qualification.md), [T-085](T-085-live-agent-qualification.md), [T-090](T-090-staging-deployment.md), [T-104](T-104-kubernetes-full-readiness.md), [T-107](T-107-direct-secret-delivery.md), [T-108](T-108-execution-finalization-diagnostics.md).
+**Deferred:** [T-029](T-029-recovery-qualification.md), [T-047](T-047-supabase-blueprint.md), [T-050](T-050-engineer-workbench.md), [T-051](T-051-analyst-interface.md), [T-052](T-052-native-harness.md), [T-053](T-053-claude-harness.md), [T-054](T-054-codex-harness.md), [T-055](T-055-hosted-isolation.md), [T-056](T-056-production-release.md), [T-057](T-057-operator-assessment.md), [T-058](T-058-operator.md), [T-059](T-059-chassis-assessment.md), [T-060](T-060-m4-integration.md), [T-061](T-061-platform-integration.md), [T-069](T-069-qa-profile-qualification.md), [T-085](T-085-live-agent-qualification.md), [T-090](T-090-staging-deployment.md), [T-104](T-104-kubernetes-full-readiness.md).
 
 Generated from task frontmatter by `bun ../openforge/src/cli.ts index --write`; do not edit by hand.
 
@@ -18,7 +18,7 @@ Work climbs three environments ([ADR 0009](../adr/0009-environments.md), [enviro
 
 | Phase | Work | Environment | Merge evidence |
 | --- | --- | --- | --- |
-| Full Kubernetes readiness | T-104 | `production` (stage cluster `kodama-stage-scw`, live KMS) | Explicitly scheduled; qualified at `e6660bca8488`, merged on the owner's approval ([report](../acceptance/kube-full.md)); live KMS acceptance, ready chart and original assembled M1 roundtrips retained from T-089 |
+| Full Kubernetes readiness | T-104 | `production` (stage cluster `kodama-stage-scw`, live KMS) | Explicitly scheduled; readiness requalified at `0a905ef5989d` with the staging gate ([report](../acceptance/kube-full.md)); live KMS acceptance, ready chart and original assembled M1 roundtrips retained from T-089 |
 | Staging | T-104 → T-090 trusted-engineer deployment to the stage cluster | `production` (stage cluster) | Explicitly scheduled; full-readiness prerequisite, its own handoff and smoke evidence |
 | After M3, explicitly scheduled | T-047 Supabase, T-059 chassis, T-069 browser QA, T-085 live agent/wrapper, other M4 and production tasks | `production` | Their separately declared integration/release evidence |
 
@@ -91,8 +91,8 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-090 Trusted-engineer staging deployment](T-090-staging-deployment.md) | T-104 | planned |
 | [T-104 Full Kubernetes installation readiness](T-104-kubernetes-full-readiness.md) | — | planned |
 | [T-106 Production TLS hardening with a private CA](T-106-production-tls-hardening.md) | T-104, T-090 | deferred |
-| [T-107 Direct project-secret delivery to ordinary steps](T-107-direct-secret-delivery.md) | T-104 | deferred |
-| [T-108 Result finalization ordering and actionable dispatch diagnostics](T-108-execution-finalization-diagnostics.md) | T-104 | deferred |
+| [T-107 Direct project-secret delivery to ordinary steps](T-107-direct-secret-delivery.md) | T-104 | planned |
+| [T-108 Result finalization ordering and actionable dispatch diagnostics](T-108-execution-finalization-diagnostics.md) | T-104 | planned |
 
 ## Verification and scope
 

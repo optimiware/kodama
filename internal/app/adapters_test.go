@@ -67,15 +67,18 @@ func (c fakeCatalog) CurrentVersion(context.Context, domain.Scope, string) (int6
 	return 3, c.err
 }
 
-func TestPipelineReferencesAreFileOnlyAndExisting(t *testing.T) {
+func TestPipelineReferencesAdmitDeclaredFormsAndExistingSecrets(t *testing.T) {
 	ctx := context.Background()
 	actor := pipeline.Actor{ID: "u_1", Type: pipeline.ActorUser}
 	ok := pipelineReferences{authority: &fakeAuthority{}, catalog: fakeCatalog{}}
 	if err := ok.CheckSecret(ctx, scopeA, actor, "token", pipeline.SecretUseFile); err != nil {
 		t.Fatal(err)
 	}
-	if err := ok.CheckSecret(ctx, scopeA, actor, "token", pipeline.SecretUseEnv); !errors.Is(err, pipeline.ErrReferenceDenied) {
-		t.Fatalf("environment delivery is not permitted in the core installation: %v", err)
+	if err := ok.CheckSecret(ctx, scopeA, actor, "token", pipeline.SecretUseEnv); err != nil {
+		t.Fatalf("an ENV binding is a declared form of delivery: %v", err)
+	}
+	if err := ok.CheckSecret(ctx, scopeA, actor, "token", pipeline.SecretUse("argv")); !errors.Is(err, pipeline.ErrReferenceDenied) {
+		t.Fatalf("an unknown form of delivery must be refused: %v", err)
 	}
 	for name, tc := range map[string]struct {
 		r    pipelineReferences

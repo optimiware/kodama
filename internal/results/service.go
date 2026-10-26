@@ -8,6 +8,7 @@ import (
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	"github.com/optimiware/kodama/internal/diag"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -211,6 +212,9 @@ func (s *Service) log(ctx context.Context, op string, attempt domain.AttemptID, 
 		}
 	}
 	attrs := []slog.Attr{slog.String("op", op), slog.String("outcome", outcome)}
+	if detail := diag.Describe(err); detail != "" {
+		attrs = append(attrs, slog.String("detail", detail))
+	}
 	if attempt.Validate() == nil {
 		attrs = append(attrs, slog.String("attemptId", string(attempt)))
 	}

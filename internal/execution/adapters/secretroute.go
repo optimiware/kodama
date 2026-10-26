@@ -184,13 +184,19 @@ func (a routeAuthority) check(ctx context.Context) (secrets.AttemptGrant, error)
 	if err != nil {
 		return secrets.AttemptGrant{}, err
 	}
-	// The snapshot is immutable and is read after the authority check, outside
-	// the grant transaction (it makes its own scoped read). An attempt that pins
-	// no environment has no environment credentials to resolve.
+	// An attempt that pins no environment resolves the bindings its own step
+	// declared. Admission validated each reference (a project secret the actor may
+	// read, with a current version) and pinned its version in the grant's
+	// immutable, digest-checked context, so the declared list is the whole of what
+	// the step may receive: an undeclared reference or another version is refused
+	// by the resolver, and a revoked or finished attempt by the authority check.
 	if pin == nil {
-		out.Bindings = []runtimev1.SecretBinding{}
+		out.Bindings = append([]runtimev1.SecretBinding{}, declared...)
 		return out, nil
 	}
+	// The snapshot is immutable and is read after the authority check, outside
+	// the grant transaction (it makes its own scoped read). An attempt that pins
+	// an environment resolves that environment's own credentials.
 	bindings, err := a.environmentBindings(ctx, out.Scope, *pin, declared)
 	if err != nil {
 		return secrets.AttemptGrant{}, err

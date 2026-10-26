@@ -265,6 +265,8 @@ type Step struct {
 	From string
 	// Env binds environment variables to secret references.
 	Env map[string]string
+	// SecretFiles binds file names (mounted under /kodama/secrets) to secret references.
+	SecretFiles map[string]string
 	// Environment pins the step to a project deployment environment (and the credentials it names).
 	Environment string
 }
@@ -301,6 +303,9 @@ func (w *World) StepDocument(st Step) map[string]any {
 			env[k] = map[string]any{"secretRef": ref}
 		}
 		step["env"] = env
+	}
+	if len(st.SecretFiles) > 0 {
+		step["secretFiles"] = st.SecretFiles
 	}
 	if st.Environment != "" {
 		step["environment"] = st.Environment

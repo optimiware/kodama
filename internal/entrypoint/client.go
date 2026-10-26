@@ -31,6 +31,45 @@ type RetryPolicy struct {
 	MaxAttempts int           // total tries per request, at least 1
 	BaseDelay   time.Duration // first backoff
 	MaxDelay    time.Duration // backoff and Retry-After cap
+	// RequestTimeout bounds one API request, response body included (default 30s). Without it a request that
+	// stalls after the connection is up waits for the whole finalization budget, longer than the step's own
+	// execution deadline, so a command that succeeded is failed as a timeout.
+	RequestTimeout time.Duration
+	// UploadTimeout is the base bound of one object upload; one more second is allowed per MiB (default 60s).
+	UploadTimeout time.Duration
+}
+
+const (
+	defaultRequestTimeout = 30 * time.Second
+	defaultUploadTimeout  = 60 * time.Second
+	maxUploadTimeout      = 10 * time.Minute
+)
+
+// uploadBound is the bound of one upload attempt of size bytes.
+func (p RetryPolicy) uploadBound(size int64) time.Duration {
+	base := p.UploadTimeout
+	if base <= 0 {
+		base = defaultUploadTimeout
+	}
+	return min(base+time.Duration(size>>20)*time.Second, maxUploadTimeout)
+}
+
+func (p RetryPolicy) requestBound() time.Duration {
+	if p.RequestTimeout <= 0 {
+		return defaultRequestTimeout
+	}
+	return p.RequestTimeout
+}
+
+// proposalBound is the bound of a source proposal: the server publishes to Git while the request waits, which
+// can take longer than an ordinary call, so it is never shorter than two minutes.
+func (p RetryPolicy) proposalBound() time.Duration { return max(p.requestBound(), 2*time.Minute) }
+
+func (p RetryPolicy) boundFor(op string) time.Duration {
+	if op == "proposeSource" {
+		return p.proposalBound()
+	}
+	return p.requestBound()
 }
 
 // DefaultRetry is used when a Config leaves the policy zero.
@@ -57,7 +96,9 @@ func NewClient(serverURL string, attemptID domain.AttemptID, caFile string, retr
 		return nil, err
 	}
 	if retry.MaxAttempts < 1 {
+		bounds := retry
 		retry = DefaultRetry
+		retry.RequestTimeout, retry.UploadTimeout = bounds.RequestTimeout, bounds.UploadTimeout
 	}
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -84,6 +125,14 @@ func NewClient(serverURL string, attemptID domain.AttemptID, caFile string, retr
 		log:   log,
 	}
 	return c, nil
+}
+
+// noteTimeout logs a request that ended because its own bound passed while the attempt was still running; the
+// request is retried like any transient failure. Only the operation and the bound are logged.
+func (c *Client) noteTimeout(parent, req context.Context, op string, bound time.Duration) {
+	if parent.Err() == nil && errors.Is(req.Err(), context.DeadlineExceeded) {
+		c.log.Warn("runtime request timed out; will retry", "op", op, "bound", bound.String())
+	}
 }
 
 func (c *Client) setToken(t string) {
@@ -207,7 +256,9 @@ func doOnce[Resp any, P interface {
 	if payload != nil {
 		rdr = bytes.NewReader(payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, rdr)
+	reqCtx, cancelReq := context.WithTimeout(ctx, c.retry.boundFor(op))
+	defer cancelReq()
+	req, err := http.NewRequestWithContext(reqCtx, method, c.base+path, rdr)
 	if err != nil {
 		return zero, 0, &ProtocolError{Op: op, Err: err}
 	}
@@ -224,11 +275,13 @@ func doOnce[Resp any, P interface {
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
+		c.noteTimeout(ctx, reqCtx, op, c.retry.boundFor(op))
 		return zero, 0, &transient{err: scrubURLError(op, err)}
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
+		c.noteTimeout(ctx, reqCtx, op, c.retry.boundFor(op))
 		return zero, 0, &transient{err: fmt.Errorf("%s: read response: %w", op, err)}
 	}
 	if len(data) > maxResponseBytes {
@@ -376,7 +429,10 @@ func (c *Client) Upload(ctx context.Context, target runtimev1.Upload, body io.Re
 
 func (c *Client) uploadOnce(ctx context.Context, target runtimev1.Upload, body io.ReaderAt, size int64) error {
 	const op = "upload"
-	req, err := http.NewRequestWithContext(ctx, target.Method, target.URL, io.NewSectionReader(body, 0, size))
+	bound := c.retry.uploadBound(size)
+	reqCtx, cancelReq := context.WithTimeout(ctx, bound)
+	defer cancelReq()
+	req, err := http.NewRequestWithContext(reqCtx, target.Method, target.URL, io.NewSectionReader(body, 0, size))
 	if err != nil {
 		return &ProtocolError{Op: op, Err: errors.New("invalid upload instructions")}
 	}
@@ -396,6 +452,7 @@ func (c *Client) uploadOnce(ctx context.Context, target runtimev1.Upload, body i
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
+		c.noteTimeout(ctx, reqCtx, op, bound)
 		return &transient{err: scrubURLError(op, err)}
 	}
 	defer resp.Body.Close()

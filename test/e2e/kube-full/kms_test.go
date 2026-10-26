@@ -22,10 +22,11 @@ import (
 	"github.com/optimiware/kodama/test/support/stage/probe"
 )
 
-// Both subcases are required by the gate. Provider construction on the operator machine is
+// All subcases are required by the gate. Provider construction on the operator machine is
 // deliberately not acceptance: secret consumption must pass through the installed server.
 func TestKubeSecretsKMS(t *testing.T) {
 	t.Run("installed_secret_restart", installedSecretRestart)
+	t.Run("direct_secret_delivery", directSecretDelivery)
 	t.Run("workload_provider_procedure", workloadProviderProcedure)
 }
 

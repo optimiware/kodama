@@ -7,6 +7,9 @@ locals {
     [var.control_plane_namespace],
     [for t in var.stage_contract.tenants : t.namespace]
   )
+  # Alloy keeps these namespaces (the relabel regex is fully anchored): the control plane, the contract's tenant
+  # namespaces and the qualification sessions' namespaces.
+  monitored_namespace_regex = join("|", concat(local.monitored_namespaces, ["kodama-q-[a-z0-9]+(-[a-z0-9]+)?"]))
 
   kodama_values = templatefile("${path.module}/values/kodama.yaml.tftpl", {
     contract       = var.stage_contract
@@ -31,8 +34,8 @@ locals {
   })
 
   alloy_values = templatefile("${path.module}/values/alloy.yaml.tftpl", {
-    loki_push_url        = "${local.loki_url}/loki/api/v1/push"
-    monitored_namespaces = local.monitored_namespaces
+    loki_push_url             = "${local.loki_url}/loki/api/v1/push"
+    monitored_namespace_regex = local.monitored_namespace_regex
   })
 
   prometheus_values = templatefile("${path.module}/values/prometheus.yaml.tftpl", {

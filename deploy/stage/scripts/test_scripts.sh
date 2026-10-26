@@ -76,6 +76,7 @@ locals {
   loki_url = "http://kodama-loki.\${var.observability_namespace}.svc.cluster.local:3100"
   prom_url = "http://kodama-prometheus-server.\${var.observability_namespace}.svc.cluster.local:80"
   monitored_namespaces = concat([var.control_plane_namespace], [for t in var.stage_contract.tenants : t.namespace])
+  monitored_namespace_regex = join("|", concat(local.monitored_namespaces, ["kodama-q-[a-z0-9]+(-[a-z0-9]+)?"]))
 
   kodama_values = templatefile("${STAGE_DIR}/shared/stack/values/kodama.yaml.tftpl", {
     contract       = var.stage_contract
@@ -98,7 +99,7 @@ locals {
   })
   alloy = templatefile("${STAGE_DIR}/shared/stack/values/alloy.yaml.tftpl", {
     loki_push_url        = "\${local.loki_url}/loki/api/v1/push"
-    monitored_namespaces = local.monitored_namespaces
+    monitored_namespace_regex = local.monitored_namespace_regex
   })
   prometheus = templatefile("${STAGE_DIR}/shared/stack/values/prometheus.yaml.tftpl", {
     control_plane_namespace = var.control_plane_namespace
@@ -280,6 +281,12 @@ if "kube_chart_install" in tests:
         "candidate_stable": True, "probe_image": probe, "fault_config": {"applied": True},
         "image_revisions": [{"image": "registry.invalid/kodama@sha256:" + "b" * 64, "revision": head}, {"image": probe, "revision": head}],
     })
+if "kube_chart_install" in tests or "stage_clean_install" in tests:
+    doc["runner_exit"] = 0
+    doc["packages"] = [{"package": p, "action": "pass"} for p in sorted({ACCEPTANCE[n]["package"] for n in tests if n in ACCEPTANCE})]
+if "stage_clean_install" in tests:
+    head = subprocess.check_output(["git", "-C", os.environ["STAGE_DIR"], "rev-parse", "HEAD"], text=True).strip()
+    doc["provenance"].update({"candidate_stable": True, "image_revisions": [{"image": "registry.invalid/kodama@sha256:" + "b" * 64, "revision": head}]})
 json.dump(doc, open(out_file, "w"), indent=2)
 PY
 }

@@ -359,10 +359,12 @@ if readiness and not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", probe_image):
 if readiness and c["cloud"] == "scw" and not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", env.get("SCW_DEFAULT_PROJECT_ID", "")):
     sys.exit("[gate-fail] SCW_DEFAULT_PROJECT_ID must identify the qualification project")
 image_revisions = []
-if readiness:
+staging = "./test/e2e/staging/..." in pkgs
+if readiness or staging:
     # The images under test must be the ones built from this very commit: the registry's own labels decide.
+    # Readiness also uses the test-only helper; staging runs the release image alone.
     full_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_root, text=True).strip()
-    verdict = subprocess.run([sys.executable, str(repo_root / "deploy/stage/scripts/verify_image_revision.py"), "--commit", full_commit, "--values", values_path, probe_image], capture_output=True, text=True)
+    verdict = subprocess.run([sys.executable, str(repo_root / "deploy/stage/scripts/verify_image_revision.py"), "--commit", full_commit, "--values", values_path, *([probe_image] if readiness else [])], capture_output=True, text=True)
     if verdict.returncode != 0:
         sys.exit(verdict.stderr.strip() or "[gate-fail] image provenance could not be established")
     image_revisions = [json.loads(line) for line in verdict.stdout.splitlines() if line.startswith("{")]
@@ -399,7 +401,9 @@ env.update({
     "KODAMA_S3_PREFIX": c["object_storage"]["artifacts_prefix"],
 })
 
-ACCEPTANCE = json.loads((repo_root / "deploy/stage/scripts/readiness-cases.json").read_text())
+# The case file lists the acceptances of both gates; each run is judged against its own.
+ACCEPTANCE = {k: v for k, v in json.loads((repo_root / "deploy/stage/scripts/readiness-cases.json").read_text()).items()
+              if v.get("gate", "readiness") == ("staging" if staging else "readiness")}
 
 cmd = ["go", "test", "-json", "-p", "1", "-race", "-count=1", "-timeout", env.get("KODAMA_GO_TEST_TIMEOUT", "45m"), *pkgs]
 passed, failed, skipped = set(), set(), set()
@@ -480,15 +484,17 @@ for name, spec in ACCEPTANCE.items():
         "cases": {case: last.get((want_pkg, want_test + "/" + case), "missing") for case in spec["cases"]},
     })
 pkg_ok = bool(pkg_actions) and all(a == "pass" for a in pkg_actions.values())
-cases_ok = not readiness or all(a["status"] == "pass" and all(v == "pass" for v in a["cases"].values()) for a in acceptances)
+cases_ok = all(a["status"] == "pass" and all(v == "pass" for v in a["cases"].values()) for a in acceptances) if (readiness or staging) else True
 prov["suite_passed"] = (rc == 0 and pkg_ok and not failed and not truncated and cases_ok)
 prov["session"] = env.get("KODAMA_QUAL_SESSION", "")
-prov["fault_config"] = {
-    "mechanism": "test_owned_https_loopback_proxy",
-    "applied": bool(fault_observed),
-    "case_status": last.get((ACCEPTANCE["kube_cancel_restart"]["package"], "TestKubeCancelRestart/lost_create_acknowledgment"), "missing"),
-    "chart_install_instrumented": False,
-}
+if readiness:
+    # Only the readiness run instruments the Kubernetes API (the PX-A02 fault); a staging run has none.
+    prov["fault_config"] = {
+        "mechanism": "test_owned_https_loopback_proxy",
+        "applied": bool(fault_observed),
+        "case_status": last.get((ACCEPTANCE["kube_cancel_restart"]["package"], "TestKubeCancelRestart/lost_create_acknowledgment"), "missing"),
+        "chart_install_instrumented": False,
+    }
 prov["probe_image"] = probe_image
 prov["image_revisions"] = image_revisions
 prov["chart_tree"] = chart_tree
@@ -577,6 +583,35 @@ if prov.get("suite_passed") is not True:
 
 ACCEPTANCE = json.load(open(cases_path))
 
+def runner_flaws():
+    # The runner's own completion evidence: a clean exit and every required package finished with pass.
+    flaws = []
+    if data.get("runner_exit") != 0:
+        flaws.append("runner_exit is not 0")
+    done = {p.get("package"): p.get("action") for p in data.get("packages", []) if isinstance(p, dict)}
+    for req in required:
+        spec = ACCEPTANCE.get(req)
+        if spec and done.get(spec["package"]) != "pass":
+            flaws.append(f"package {spec['package']} did not complete with pass")
+    return flaws
+
+if "stage_clean_install" in required:
+    # A staging receipt carries the runner's own proof too: an unchanged candidate and the release image
+    # labelled with this exact commit in the registry.
+    import pathlib, subprocess
+    repo = pathlib.Path(cases_path).resolve().parents[3]
+    full_commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    images = prov.get("image_revisions")
+    flaws = runner_flaws()
+    if prov.get("candidate_stable") is not True:
+        flaws.append("provenance.candidate_stable is not true")
+    if not isinstance(images, list) or len(images) < 1 or any(not isinstance(i, dict) or i.get("revision") != full_commit for i in images):
+        flaws.append("provenance.image_revisions does not show the release image labelled with commit " + full_commit)
+    for flaw in flaws:
+        sys.stderr.write(f"[gate-fail] {flaw}\n")
+    if flaws:
+        sys.exit(1)
+
 if "kube_chart_install" in required:
     # A readiness receipt must carry the runner's own proof, so a hand-written results file cannot stand in for a run:
     # an unchanged candidate, the fault actually applied, and registry images labelled with this exact commit.
@@ -584,7 +619,7 @@ if "kube_chart_install" in required:
     repo = pathlib.Path(cases_path).resolve().parents[3]
     full_commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     images = prov.get("image_revisions")
-    flaws = []
+    flaws = runner_flaws()
     if prov.get("candidate_stable") is not True:
         flaws.append("provenance.candidate_stable is not true")
     if not isinstance(prov.get("fault_config"), dict) or prov["fault_config"].get("applied") is not True:

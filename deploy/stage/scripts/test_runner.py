@@ -122,7 +122,8 @@ class RunnerBase(unittest.TestCase):
         self.fake(bin_dir / "kubectl", "import sys\nprint('https://cluster.invalid' if 'config' in sys.argv else 'kodama-q-fixture', end='')\n")
         self.fake(bin_dir / "go", '''import json, os, pathlib, subprocess, sys
 args = sys.argv[1:]
-mapping = json.loads(pathlib.Path('deploy/stage/scripts/readiness-cases.json').read_text())
+gate = 'staging' if any('test/e2e/staging' in a for a in args) else 'readiness'
+mapping = {k: v for k, v in json.loads(pathlib.Path('deploy/stage/scripts/readiness-cases.json').read_text()).items() if v.get('gate', 'readiness') == gate}
 pkgs = sorted(set(x['package'] for x in mapping.values()))
 chart = '-run' in args
 if args[0] == 'list':
@@ -174,6 +175,37 @@ sys.exit(int(os.environ.get('MOCK_RUNNER_EXIT', '0')))
         ], env=self.env, cwd=self.repo, capture_output=True, text=True, timeout=20)
 
 class RunnerTests(RunnerBase):
+    def run_staging(self, **extra):
+        return subprocess.run([
+            "bash", "-c", 'source "$1/lib.sh"; run_stage_go_suite "$2/contract.json" "$2/values.yaml" "$3" ./test/e2e/staging/...',
+            "fixture", str(self.scripts), str(self.session), str(self.results),
+        ], env=self.env | extra, cwd=self.repo, text=True, capture_output=True, timeout=20)
+
+    def verify_staging(self):
+        names = [n for n, spec in json.loads((SOURCE / "readiness-cases.json").read_text()).items() if spec.get("gate") == "staging"]
+        return subprocess.run([
+            "bash", "-c", 'source "$1/lib.sh"; verify_forge_results "$3" "$2/contract.json" "$2/values.yaml" ' + " ".join(names),
+            "fixture", str(self.scripts), str(self.session), str(self.results),
+        ], env=self.env, cwd=self.repo, capture_output=True, text=True, timeout=20)
+
+    def test_a_staging_run_ends_in_a_receipt_the_gate_accepts(self):
+        # The staging path of the runner itself (not only the verifier): no chart phase, the release image checked
+        # at the registry, no readiness-only evidence, and a results file the staging gate verifies.
+        result = self.run_staging()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("phase=chart-install", result.stdout)
+        data = json.loads(self.results.read_text())
+        self.assertTrue(data["provenance"]["suite_passed"])
+        self.assertEqual([i["revision"] for i in data["provenance"]["image_revisions"]], [self.head])
+        self.assertEqual(self.verify_staging().returncode, 0)
+        self.assertEqual(len(data["acceptances"]), 6)
+
+    def test_a_staging_run_with_a_stale_release_image_is_refused_before_tests(self):
+        (self.session / "values.yaml").write_text(self.values_text.replace(self.registry.refs["kodama"], "sha256:" + "0" * 64))
+        result = self.run_staging()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("phase=scenarios", result.stdout)
+
     def test_pass_has_chart_first_and_exact_cases(self):
         result = self.run_suite()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -210,6 +242,36 @@ class RunnerTests(RunnerBase):
                 self.assertNotEqual(self.verify().returncode, 0)
         self.results.write_text(json.dumps(good))
         self.assertEqual(self.verify().returncode, 0)
+
+    def test_staging_receipt_needs_the_runners_proof(self):
+        cases = json.loads((SOURCE / "readiness-cases.json").read_text())
+        names = [n for n, spec in cases.items() if spec.get("gate") == "staging"]
+        self.assertEqual(len(names), 6)
+        contract = self.contract
+        sha = lambda p: "sha256:" + hashlib.sha256(Path(p).read_bytes()).hexdigest()
+        records = [{"name": n, "package": cases[n]["package"], "test": cases[n]["test"], "backend": cases[n]["backend"], "status": "pass",
+                    "cases": {c: "pass" for c in cases[n]["cases"]}} for n in names]
+        prov = {
+            "cloud": contract["cloud"], "installation_id": contract["installation_id"], "git_commit": self.head[:12],
+            "contract_sha256": sha(self.session / "contract.json"), "values_sha256": sha(self.session / "values.yaml"),
+            "cluster_endpoint": contract["cluster"]["endpoint"], "suite_passed": True, "candidate_stable": True,
+            "image_revisions": [{"image": self.registry.ref("kodama"), "revision": self.head}],
+        }
+        base = {"passed": [cases[n]["test"] for n in names], "failed": [], "skipped": [], "acceptances": records, "truncated": False,
+                "runner_exit": 0, "packages": [{"package": cases[names[0]]["package"], "action": "pass"}], "provenance": prov}
+        def check(mutate):
+            doc = json.loads(json.dumps(base))
+            mutate(doc)
+            self.results.write_text(json.dumps(doc))
+            return subprocess.run(["bash", "-c", 'source "$1/lib.sh"; verify_forge_results "$3" "$2/contract.json" "$2/values.yaml" ' + " ".join(names), "fixture", str(self.scripts), str(self.session), str(self.results)],
+                                  env=self.env, cwd=self.repo, capture_output=True, text=True, timeout=20).returncode
+        self.assertEqual(check(lambda d: None), 0)
+        self.assertNotEqual(check(lambda d: d["provenance"].update(candidate_stable=False)), 0)
+        self.assertNotEqual(check(lambda d: d["provenance"].pop("image_revisions")), 0)
+        self.assertNotEqual(check(lambda d: d["provenance"]["image_revisions"][0].update(revision="dirty-debug")), 0)
+        self.assertNotEqual(check(lambda d: d.update(runner_exit=1)), 0)
+        self.assertNotEqual(check(lambda d: d.update(packages=[])), 0)
+        self.assertNotEqual(check(lambda d: d["acceptances"][4]["cases"].update({"Process/Podman_runtime": "missing"})), 0)
 
     def test_skipped_required_child_never_counts_as_parent_pass(self):
         self.run_suite(MOCK_SKIP_CASE="lost_create_acknowledgment")

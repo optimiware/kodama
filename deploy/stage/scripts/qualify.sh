@@ -17,7 +17,8 @@ Usage: deploy/stage/scripts/qualify.sh <command> --session <name> [--contract <s
   show      Prints the session handle.
 
 State lives outside the checkout (KODAMA_QUAL_STATE_DIR, then STAGE_STATE_DIR, default ~/kodama-stage/state).
-prepare and destroy need KUBECONFIG, KODAMA_IMAGES_FILE and the operator's Scaleway credentials (SCW_*).
+prepare and destroy need KUBECONFIG, KODAMA_IMAGES_FILE and the operator's Scaleway credentials (SCW_*); destroy
+also needs go (it purges the session's qualification/<session>/ objects).
 USAGE
 }
 
@@ -97,6 +98,18 @@ tf init -input=false -backend-config="path=${SESSION_DIR}/qualification.tfstate"
 
 json_field() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.argv[2]])' "$1" "$2"; }
 
+# purge_session_objects removes the session's object prefix (qualification/<session>/) from the artifacts bucket.
+# The installation's own data and other sessions are untouchable by construction (see the tool).
+purge_session_objects() {
+  local session="$1" contract="$2" endpoint region bucket access secret
+  read -r endpoint region bucket < <(python3 -c 'import json,sys; o=json.load(open(sys.argv[1]))["object_storage"]; print(o["endpoint"], o["region"], o["artifacts_bucket"])' "${contract}")
+  access="$(kubectl -n kodama-system get secret kodama-runtime -o jsonpath='{.data.s3-access-key}' | base64 -d)"
+  secret="$(kubectl -n kodama-system get secret kodama-runtime -o jsonpath='{.data.s3-secret-key}' | base64 -d)"
+  [[ -n "${access}" && -n "${secret}" ]] || die "the stage object-store credential is unavailable; session ${session}'s objects were not purged"
+  PURGE_ACCESS_KEY="${access}" PURGE_SECRET_KEY="${secret}" \
+    go run "${REPO_ROOT}/deploy/stage/cmd/purge-session-objects" --endpoint "${endpoint}" --region "${region}" --bucket "${bucket}" --session "${session}"
+}
+
 case "${CMD}" in
   prepare)
     tf apply -input=false -auto-approve -var-file="${VARS}"
@@ -109,12 +122,22 @@ case "${CMD}" in
   destroy)
     if [[ -f "${SESSION_DIR}/session.json" ]]; then
       ns="$(json_field "${SESSION_DIR}/session.json" namespace)"
-      helm uninstall kodama -n "${ns}" --wait --timeout 5m >/dev/null 2>&1 || true
+      # Only "already gone" is tolerated; any other failure stops the teardown with the session state intact.
+      uninstall_out="$(helm uninstall kodama -n "${ns}" --wait --timeout 5m 2>&1)" || {
+        grep -qiE 'release: not found|not found' <<<"${uninstall_out}" || die "helm uninstall failed for session ${SESSION}: ${uninstall_out}"
+      }
       for tenant_ns in $(python3 -c 'import json,sys; print(" ".join(t["namespace"] for t in json.load(open(sys.argv[1]))["tenants"]))' "${SESSION_DIR}/session.json"); do
-        kubectl delete namespace "${tenant_ns}" --ignore-not-found --wait=true --timeout=5m >/dev/null 2>&1 || true
+        kubectl delete namespace "${tenant_ns}" --ignore-not-found --wait=true --timeout=5m >/dev/null ||
+          die "could not delete tenant namespace ${tenant_ns} of session ${SESSION}"
       done
     fi
-    tf destroy -input=false -auto-approve -var-file="${VARS}"
+    if ! tf destroy -input=false -auto-approve -var-file="${VARS}"; then
+      # State can name a resource that no longer exists (a session torn down by hand), which makes the refresh
+      # fail. Destroy again from the recorded state without refreshing; a real failure still fails here.
+      log_info "WARNING: destroy failed after a refresh; retrying from the recorded state without refreshing"
+      tf destroy -input=false -auto-approve -refresh=false -var-file="${VARS}"
+    fi
+    purge_session_objects "${SESSION}" "${CONTRACT_FILE}"
     rm -rf "${SESSION_DIR}"
     log_info "session ${SESSION} destroyed"
     ;;

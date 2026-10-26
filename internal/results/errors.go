@@ -57,6 +57,9 @@ func (e *classified) Error() string        { return e.kind.Error() + ": " + e.ms
 func (e *classified) Is(target error) bool { return target == e.kind }
 func (e *classified) Unwrap() error        { return e.cause }
 
+// SafeDiagnostic implements diag.Safe: the class and its fixed message, never the cause.
+func (e *classified) SafeDiagnostic() string { return e.Error() }
+
 // Fail builds a classified error with a fixed message. cause is kept for the
 // caller's own diagnostics (errors.Is/As) and is never rendered.
 func Fail(kind error, cause error, format string, args ...any) error {
