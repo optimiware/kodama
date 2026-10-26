@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	pipelinev1 "github.com/optimiware/kodama/contracts/pipeline/v1"
+	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -85,6 +86,12 @@ type Config struct {
 	Capabilities Capabilities
 	Profiles     ProfileLookup
 	References   ReferencePolicy
+	// EnableV1Alpha2 opts the validator (and so registration) in to the
+	// kodama/v1alpha2 run_shared document format. The zero value keeps every
+	// installation on kodama/v1alpha1 only: a v1alpha2 document is then rejected
+	// with format_disabled. Enabling it states only that registration accepts
+	// the format; it is never evidence that run admission supports it.
+	EnableV1Alpha2 bool
 }
 
 // Validator is the one structural and semantic validation library. The API and
@@ -96,6 +103,7 @@ type Validator struct {
 	caps   Capabilities
 	prof   ProfileLookup
 	refs   ReferencePolicy
+	v2     bool
 }
 
 // NewValidator validates cfg.
@@ -107,7 +115,20 @@ func NewValidator(cfg Config) (*Validator, error) {
 	if l.MaxSteps > maxStepsCeiling {
 		return nil, fmt.Errorf("pipeline: MaxSteps must not exceed %d", maxStepsCeiling)
 	}
-	return &Validator{parse: cfg.Parse.withDefaults(), limits: l, caps: cfg.Capabilities, prof: cfg.Profiles, refs: cfg.References}, nil
+	return &Validator{parse: cfg.Parse.withDefaults(), limits: l, caps: cfg.Capabilities, prof: cfg.Profiles, refs: cfg.References, v2: cfg.EnableV1Alpha2}, nil
+}
+
+// FormatEnabled reports whether this validator registers documents of the given
+// apiVersion. kodama/v1alpha1 is always enabled; kodama/v1alpha2 only when
+// Config.EnableV1Alpha2 was set.
+func (v *Validator) FormatEnabled(apiVersion string) bool {
+	switch apiVersion {
+	case pipelinev1.APIVersion:
+		return true
+	case pipelinev1alpha2.APIVersion:
+		return v.v2
+	}
+	return false
 }
 
 // ParseYAML parses one YAML document with this validator's bounds.
@@ -159,7 +180,13 @@ func (v *Validator) Validate(ctx context.Context, scope domain.Scope, actor Acto
 	if err := actor.Validate(); err != nil {
 		return Validated{}, err
 	}
+	if doc.APIVersion == pipelinev1alpha2.APIVersion {
+		return v.validateV2(ctx, scope, actor, doc)
+	}
 	var d diagnostics
+	if path, ok := doc.hasV2Fields(); ok {
+		d.add(CodeUnknownField, path, "the field is not part of this pipeline format version")
+	}
 	v.checkForbidden(doc, &d)
 	n := normalize(doc)
 	v.checkDocument(n, &d)
@@ -374,7 +401,7 @@ func (v *Validator) checkContainer(i int, s Step, r *resolver) {
 	for k, a := range s.Args {
 		ap := p + ".args[" + strconv.Itoa(k) + "]"
 		v.checkString(ap, a, d)
-		r.check(refSite{path: ap, consumer: i, allowed: scalarTypes}, a)
+		r.check(refSite{path: ap, consumer: i, allowed: scalarTypes, endpoints: true}, a)
 		v.noSecretLiteral(ap, a, d)
 	}
 	if len(s.Env) > v.limits.MaxEnv {
@@ -397,7 +424,7 @@ func (v *Validator) checkContainer(i int, s Step, r *resolver) {
 			}
 		case val.Scalar.Type == TypeString:
 			v.checkString(ep, val.Scalar.Str, d)
-			r.check(refSite{path: ep, consumer: i, allowed: scalarTypes}, val.Scalar.Str)
+			r.check(refSite{path: ep, consumer: i, allowed: scalarTypes, endpoints: true}, val.Scalar.Str)
 			v.noSecretLiteral(ep, val.Scalar.Str, d)
 		case val.Scalar.Type == TypeInteger && (val.Scalar.Int < -domain.MaxSafeInteger || val.Scalar.Int > domain.MaxSafeInteger):
 			d.add(CodeInvalidValue, ep, "integers must be within +/-%d", int64(domain.MaxSafeInteger))
@@ -434,7 +461,18 @@ func (v *Validator) checkExecutable(i int, s Step, doc Document, r *resolver) {
 	if s.TimeoutSeconds < 1 || s.TimeoutSeconds > v.limits.MaxTimeoutSeconds {
 		d.add(CodeInvalidTimeout, p+".timeoutSeconds", "timeoutSeconds must be between 1 and %d", v.limits.MaxTimeoutSeconds)
 	}
-	rt := s.Retry
+	v.checkRetry(p, s.Retry, d)
+
+	if s.Workspace != nil {
+		v.checkString(p+".workspace.from", s.Workspace.From, d)
+		r.noExpression(p+".workspace.from", s.Workspace.From)
+	}
+	v.checkOutputs(i, s, d)
+}
+
+// checkRetry validates a normalized retry policy at the step path p. The
+// kodama/v1alpha1 and kodama/v1alpha2 validators share it.
+func (v *Validator) checkRetry(p string, rt *Retry, d *diagnostics) {
 	if rt.MaxAttempts < 1 || rt.MaxAttempts > v.limits.MaxRetryAttempts {
 		d.add(CodeInvalidRetry, p+".retry.maxAttempts", "maxAttempts counts the first attempt and must be between 1 and %d", v.limits.MaxRetryAttempts)
 	}
@@ -454,12 +492,6 @@ func (v *Validator) checkExecutable(i int, s Step, doc Document, r *resolver) {
 	if rt.MaxAttempts > 1 && len(rt.On) == 0 {
 		d.add(CodeInvalidRetry, p+".retry.on", "retries need at least one retry class")
 	}
-
-	if s.Workspace != nil {
-		v.checkString(p+".workspace.from", s.Workspace.From, d)
-		r.noExpression(p+".workspace.from", s.Workspace.From)
-	}
-	v.checkOutputs(i, s, d)
 }
 
 func (v *Validator) checkOutputs(i int, s Step, d *diagnostics) {

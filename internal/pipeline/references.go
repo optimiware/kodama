@@ -47,6 +47,9 @@ type refSite struct {
 	allowed []ValueType
 	// requireRef rejects a literal: the site only accepts a reference.
 	requireRef bool
+	// endpoints marks a site where a kodama/v1alpha2 service endpoint reference
+	// is allowed. It has no effect on kodama/v1alpha1 documents.
+	endpoints bool
 }
 
 func (s refSite) accepts(t ValueType) bool {
@@ -65,6 +68,9 @@ type resolver struct {
 	doc   Document
 	graph *graph
 	d     *diagnostics
+	// v2 enables the kodama/v1alpha2 endpoint expressions. It stays false for
+	// kodama/v1alpha1 documents, where the same text is an interpolation error.
+	v2 bool
 }
 
 // noExpression rejects the expression marker in a string that is not an
@@ -78,6 +84,12 @@ func (r *resolver) noExpression(path, s string) {
 // check validates a string at an expression site. A literal passes unless the
 // site requires a reference.
 func (r *resolver) check(site refSite, s string) {
+	if r.v2 {
+		if ep, ok := parseEndpoint(s); ok {
+			r.checkEndpoint(site, ep)
+			return
+		}
+	}
 	ref, isExpr, valid := parseReference(s)
 	if !isExpr {
 		if site.requireRef {

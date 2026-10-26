@@ -1,0 +1,62 @@
+apiVersion: kodama/v1alpha2
+kind: Pipeline
+metadata:
+  name: integration-build
+spec:
+  timeoutSeconds: 3600
+  runWorkspace: {sizeMiB: 4096}
+  inputs: {}
+  services:
+    db:
+      image: registry.example.invalid/postgres-rootless@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      env:
+        POSTGRES_USER: kodama
+        POSTGRES_DB: app
+        POSTGRES_PASSWORD_FILE: /kodama/secrets/postgres-password
+      secretFiles:
+        postgres-password: "secret://project/test-db-password"
+      command: ["/usr/local/bin/docker-entrypoint.sh", "postgres"]
+      ports:
+        sql: {port: 5432}
+      resources: {cpuMillis: 500, memoryMiB: 512, ephemeralMiB: 256}
+      storage:
+        - {path: /var/lib/postgresql/data, sizeMiB: 1024}
+      readiness:
+        exec: ["pg_isready", "-U", "kodama", "-d", "app"]
+        timeoutSeconds: 60
+    browser:
+      image: registry.example.invalid/headless-browser@sha256:2222222222222222222222222222222222222222222222222222222222222222
+      ports:
+        devtools: {port: 3000}
+      resources: {cpuMillis: 1000, memoryMiB: 1024, ephemeralMiB: 512, shmMiB: 512}
+      egress: [preview]
+      readiness:
+        http: {port: devtools, path: /json/version}
+        timeoutSeconds: 60
+  network:
+    edges: []
+  steps:
+    - id: generate
+      kind: container
+      image: registry.example.invalid/go-tools@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      workspace: {access: write}
+      command: ["/bin/sh", "-ec"]
+      args: ["cd /workspace && go generate ./..."]
+      timeoutSeconds: 600
+    - id: integration
+      kind: container
+      needs: [generate]
+      image: registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444
+      env:
+        PGHOST: "${{ services.db.host }}"
+        PGPORT: "${{ services.db.ports.sql }}"
+        PGUSER: kodama
+        PGDATABASE: app
+        PGPASSWORD: {secretRef: "secret://project/test-db-password"}
+        BROWSER_HOST: "${{ services.browser.host }}"
+        BROWSER_PORT: "${{ services.browser.ports.devtools }}"
+      command: ["/bin/sh", "-ec"]
+      args: ["cd /workspace && go test ./..."]
+      timeoutSeconds: 1200
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/tests.json}

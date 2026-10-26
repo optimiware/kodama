@@ -16,6 +16,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	pipelinev1 "github.com/optimiware/kodama/contracts/pipeline/v1"
+	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -488,7 +489,16 @@ func (p *jsonParser) number(path string) (any, bool) {
 // fromTree validates a generic tree against the contract schema and decodes it
 // into a typed Document.
 func fromTree(tree any) (Document, error) {
-	sch, err := pipelinev1.Schema()
+	// The schema is selected by the document's own apiVersion. Reading a
+	// kodama/v1alpha2 document is independent of whether an installation
+	// enabled the format: stored definitions stay readable, and enabling is a
+	// registration decision of the Validator.
+	v2 := isV1Alpha2Tree(tree)
+	schema := pipelinev1.Schema
+	if v2 {
+		schema = pipelinev1alpha2.Schema
+	}
+	sch, err := schema()
 	if err != nil {
 		return Document{}, fmt.Errorf("pipeline: %w", err)
 	}
@@ -521,6 +531,16 @@ func fromTree(tree any) (Document, error) {
 		d.add(CodeInvalidDocument, "$", "the document does not match the pipeline schema")
 		return Document{}, d.err(StageSyntax)
 	}
+	if v2 {
+		// Cross-structure rules the schema cannot state (port and edge
+		// references, overlaps, probe ranges) are still part of the document's
+		// shape and fail at the syntax stage.
+		var d diagnostics
+		checkShapeV2(normalize(doc), &d)
+		if d.any() {
+			return Document{}, d.err(StageSyntax)
+		}
+	}
 	return doc, nil
 }
 
@@ -534,6 +554,7 @@ var gateForbidden = map[string]bool{
 // stable codes. Messages are fixed text; the offending values are never echoed.
 func mapSchemaError(d *diagnostics, ve *jsonschema.ValidationError, tree any) {
 	type finding struct{ code, path, msg string }
+	v2 := isV1Alpha2Tree(tree)
 	var found []finding
 	seen := map[string]bool{}
 	add := func(code, path, msg string) {
@@ -555,11 +576,20 @@ func mapSchemaError(d *diagnostics, ve *jsonschema.ValidationError, tree any) {
 			parent := lookup(tree, e.InstanceLocation)
 			for _, prop := range k.Properties {
 				code, msg := CodeUnknownField, "the field is not part of the pipeline format"
-				if m, ok := parent.(map[string]any); ok && m["kind"] == "gate" && gateForbidden[prop] {
+				if m, ok := parent.(map[string]any); ok && m["kind"] == "gate" && (gateForbidden[prop] || (v2 && prop == "egress")) {
 					code, msg = CodeGateField, "gates have no executable fields"
 					if prop == "when" {
 						code, msg = CodeConditionalGate, "gates are unconditional and cannot have a when condition"
 					}
+				}
+				if v2 && reNameKeyed.MatchString(path) {
+					// The kodama/v1alpha2 schema states key syntax with
+					// patternProperties, so a badly spelled name surfaces as an
+					// additional property of its map.
+					code, msg = CodeInvalidFormat, "the name does not have the required format"
+				}
+				if v2 && prop == "from" && strings.HasSuffix(path, ".workspace") {
+					code, msg = CodeWorkspaceFromRemoved, "workspace.from is not part of this pipeline format"
 				}
 				add(code, childPath(path, prop), msg)
 			}
@@ -582,6 +612,10 @@ func mapSchemaError(d *diagnostics, ve *jsonschema.ValidationError, tree any) {
 			return
 		}
 		if kw == "anyOf" || kw == "oneOf" {
+			if code, ok := v2SchemaCode(v2, path, kw); ok {
+				add(code, path, v2Message(code))
+				return
+			}
 			add(CodeInvalidType, path, "the value has an unsupported type")
 			return
 		}
@@ -589,6 +623,10 @@ func mapSchemaError(d *diagnostics, ve *jsonschema.ValidationError, tree any) {
 			for _, c := range e.Causes {
 				walk(c)
 			}
+			return
+		}
+		if code, ok := v2SchemaCode(v2, path, kw); ok {
+			add(code, path, v2Message(code))
 			return
 		}
 		switch kw {

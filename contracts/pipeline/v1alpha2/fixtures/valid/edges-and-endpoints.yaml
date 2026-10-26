@@ -1,0 +1,51 @@
+apiVersion: kodama/v1alpha2
+kind: Pipeline
+metadata: {name: edges-and-endpoints}
+spec:
+  timeoutSeconds: 3600
+  runWorkspace: {sizeMiB: 512}
+  inputs:
+    region: {type: string, default: eu}
+  services:
+    app:
+      image: registry.example.invalid/app@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      command: ["/usr/bin/app"]
+      env:
+        DB_HOST: "${{ services.db.host }}"
+        DB_PORT: "${{ services.db.ports.sql }}"
+        REGION: "${{ inputs.region }}"
+        PLAIN: literal
+      ports: {http: {port: 8080}, admin: {port: 9090, protocol: TCP}}
+      resources: {cpuMillis: 250, memoryMiB: 256, ephemeralMiB: 128, shmMiB: 0}
+      readiness: {http: {port: http, path: /healthz}, timeoutSeconds: 60, periodSeconds: 5, probeTimeoutSeconds: 3, lossSeconds: 20}
+      egress: [registry]
+    db:
+      image: registry.example.invalid/db@sha256:2222222222222222222222222222222222222222222222222222222222222222
+      ports: {sql: {port: 5432}}
+      resources: {cpuMillis: 500, memoryMiB: 512, ephemeralMiB: 256}
+      storage: [{path: /var/lib/db, sizeMiB: 128}, {path: /var/cache/db, sizeMiB: 64}]
+      readiness: {exec: ["pg_isready", "-U", "kodama"], timeoutSeconds: 60}
+    buildkit:
+      image: registry.example.invalid/buildkit@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      role: builder
+      command: ["/usr/bin/buildkitd"]
+      ports: {grpc: {port: 1234}}
+      resources: {cpuMillis: 2000, memoryMiB: 2048, ephemeralMiB: 1024}
+      readiness: {tcp: grpc, timeoutSeconds: 120}
+  network:
+    edges:
+      - {from: app, to: db, ports: [sql]}
+      - {from: db, to: app, ports: [http, admin]}
+  steps:
+    - id: smoke
+      kind: container
+      image: registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      workspace: {access: read}
+      command: ["/bin/sh", "-ec"]
+      args: ["curl -fsS \"http://$APP_HOST:$APP_PORT/\" >/dev/null"]
+      env:
+        APP_HOST: "${{ services.app.host }}"
+        APP_PORT: "${{ services.app.ports.http }}"
+        REGION: "${{ inputs.region }}"
+      egress: [registry, preview]
+      timeoutSeconds: 300

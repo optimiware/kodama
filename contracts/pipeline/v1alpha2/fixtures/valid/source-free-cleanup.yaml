@@ -1,0 +1,22 @@
+apiVersion: kodama/v1alpha2
+kind: Pipeline
+metadata: {name: source-free-cleanup}
+spec:
+  timeoutSeconds: 900
+  inputs:
+    deployment_id: {type: string, required: true}
+  steps:
+    - id: teardown
+      kind: container
+      image: registry.example.invalid/ops@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      workspace: {access: none}
+      command: ["/opt/kodama/delete.sh"]
+      args: ["${{ inputs.deployment_id }}"]
+      timeoutSeconds: 600
+    - id: verify
+      kind: container
+      needs: [teardown]
+      image: registry.example.invalid/ops@sha256:2222222222222222222222222222222222222222222222222222222222222222
+      command: ["/bin/sh", "-ec"]
+      args: ["test -s /workspace/teardown.log"]
+      timeoutSeconds: 60

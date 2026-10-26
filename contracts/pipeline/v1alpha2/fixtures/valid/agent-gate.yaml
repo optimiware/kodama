@@ -1,0 +1,9 @@
+apiVersion: kodama/v1alpha2
+kind: Pipeline
+metadata: {name: agent-gate}
+spec:
+  timeoutSeconds: 7200
+  steps:
+    - {id: implement, kind: agent, agent: {profile: coding-v1}, workspace: {access: write}, timeoutSeconds: 1800}
+    - {id: review, kind: gate, needs: [implement]}
+    - {id: ship, kind: container, needs: [review], image: registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111, command: [/bin/true], timeoutSeconds: 60}

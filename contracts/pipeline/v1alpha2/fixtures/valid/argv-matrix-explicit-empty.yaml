@@ -1,0 +1,38 @@
+apiVersion: kodama/v1alpha2
+kind: Pipeline
+metadata: {name: argv-matrix}
+spec:
+  timeoutSeconds: 600
+  services:
+    defaults:
+      args: []
+      image: registry.example.invalid/svc-defaults@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      ports: {p: {port: 8080}}
+      resources: {cpuMillis: 100, memoryMiB: 64, ephemeralMiB: 64}
+      readiness: {tcp: p, timeoutSeconds: 30}
+    argsonly:
+      image: registry.example.invalid/svc-argsonly@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      args: ["--serve", "--quiet"]
+      ports: {p: {port: 8080}}
+      resources: {cpuMillis: 100, memoryMiB: 64, ephemeralMiB: 64}
+      readiness: {tcp: p, timeoutSeconds: 30}
+    commandonly:
+      image: registry.example.invalid/svc-commandonly@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      command: ["/usr/bin/serve"]
+      args: []
+      ports: {p: {port: 8080}}
+      resources: {cpuMillis: 100, memoryMiB: 64, ephemeralMiB: 64}
+      readiness: {tcp: p, timeoutSeconds: 30}
+    both:
+      image: registry.example.invalid/svc-both@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      command: ["/usr/bin/serve"]
+      args: ["--quiet"]
+      ports: {p: {port: 8080}}
+      resources: {cpuMillis: 100, memoryMiB: 64, ephemeralMiB: 64}
+      readiness: {tcp: p, timeoutSeconds: 30}
+  steps:
+    - id: test
+      kind: container
+      image: registry.example.invalid/tools@sha256:2222222222222222222222222222222222222222222222222222222222222222
+      command: ["/bin/true"]
+      timeoutSeconds: 60
