@@ -94,7 +94,7 @@ The owner approved `secrets.adapter: keyfile | kms` with cloud providers `aws`, 
 
 ## Run workspace and builders — 2026-10-26 (O-28)
 
-The owner requested one shared disposable run workspace, declared support services, and enough of a relaxation of the tenant execution baseline to run rootless ko, Buildah, and BuildKit. [ADR 0010](adr/0010-run-workspace-services-builders.md) records the proposed design, including serialized workspace handoff, run-scoped service lifecycle, and the builder profile. The [implementation plan](implementation/run-workspace-services-builders.md) sequences the contract and runtime work. Neither document changes current behavior or schedules implementation. Existing private-attempt checkout, restricted-container, publication, and isolation contracts remain in force.
+**Resolved direction and scheduling — owner requested implementation on 2026-10-26.** Implement one shared disposable run workspace, declared support services, and a versioned rootless-builder baseline following [ADR 0010](adr/0010-run-workspace-services-builders.md) and the [implementation plan](implementation/run-workspace-services-builders.md). T-109/T-110 form P0, then T-111–T-117 own P1–P7. This authorizes the intentional contract change, not a claim of runtime delivery or platform qualification. T-109 reconciles the authoritative specifications before dependent implementation; the existing private-attempt/restricted profile remains the executable baseline until versioned admission, real qualification, migration and rollout pass. No failed rootless build may silently widen privilege. Unrelated deferred work remains deferred.
 
 ## Asynchronous decisions
 

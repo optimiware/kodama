@@ -24,6 +24,10 @@ Work climbs three environments ([ADR 0009](../adr/0009-environments.md), [enviro
 
 Package completion is not milestone acceptance. No real SQL/RLS/transaction/provider behavior is certified by a mock. It is deliberately qualified later, before the corresponding checkpoint is accepted. The [roadmap](../book/07-delivery-roadmap.md) describes the product scope.
 
+### Shared run workspace implementation (owner scheduled 2026-10-26)
+
+[O-28](../decisions.md#run-workspace-and-builders--2026-10-26-o-28) schedules the [P0–P7 plan](../implementation/run-workspace-services-builders.md). T-109 updates the owning contracts; T-110 implements their wire/parser checkpoint. T-111 (real profile qualification) and T-112 (lifecycle) follow independently; T-113/T-114/T-115 wait for both, followed by T-116 assembly and T-117 acceptance. Other deferred tasks are not promoted. The generated summary above has not been regenerated: the separate OpenForge checkout is unavailable. The task frontmatter and this explicit scheduling notice govern these new tasks until `index --write` and `validate` can run.
+
 ## Task contract
 
 Scheduled (`planned` or `blocked`) tasks declare `owns`, `check`, optional `resources`, and `acceptance`:

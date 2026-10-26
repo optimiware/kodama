@@ -1,7 +1,7 @@
 # Implementation plan: run workspace, support services, and builders
 
 **Date:** 2026-10-26  
-**Status:** proposed implementation plan for the owner-requested change.  
+**Status:** implementation scheduled by the owner on 2026-10-26; contract and qualification checkpoints pending.
 **Design:** [ADR 0010](../adr/0010-run-workspace-services-builders.md).  
 **Register:** [O-28](../decisions.md#run-workspace-and-builders--2026-10-26-o-28).  
 **Baseline:** `main` at `7a66d3493f2bc69d197406f757841e603efbb0c1`.
@@ -23,7 +23,22 @@ This is an intentional change to today's private-attempt checkout and fixed `res
 | Delivery/gates | DQ-01–DQ-05, DQ-07, DQ-14; candidate/evidence provenance |
 | Design/assembly | SD-04, SD-06–SD-15; repository-layout seam contracts |
 
-These documents record the proposed contract. They do not change current specification or runtime behavior. Implementation starts in its own task worktree from the agreed integration branch. Allocate task IDs through the coordinator; the phases below are work packages, not scheduled backlog records. Obtain exact-candidate review and scoped checks before merge.
+These documents record the design baseline, not delivered runtime behavior. The owner subsequently requested implementation; the coordinator allocated the tasks below. T-109 updates the owning specifications before dependent implementation. Each task starts in its own worktree from `main` and requires exact-candidate review and scoped checks before merge.
+
+### Scheduled implementation
+
+| Phase | Task | Checkpoint |
+| --- | --- | --- |
+| P0 | [T-109](../tasks/T-109-run-resource-contracts.md), [T-110](../tasks/T-110-run-resource-wire-contracts.md) | Owning specifications, then executable versioned wire/parser fixtures |
+| P1 | [T-111](../tasks/T-111-rootless-profile-qualification.md) | Real deployable builder/storage/network profile |
+| P2 | [T-112](../tasks/T-112-run-resource-lifecycle.md) | Execution-owned resources, persistence and frozen companion seam |
+| P3 | [T-113](../tasks/T-113-run-workspace-authority.md) | Preparation, authority, cumulative publication and provenance |
+| P4 | [T-114](../tasks/T-114-kubernetes-run-resources.md) | Kubernetes resources and verified policy |
+| P5 | [T-115](../tasks/T-115-local-run-resources.md) | Podman/Process lifecycle and real Podman evidence |
+| P6 | [T-116](../tasks/T-116-run-resource-assembly.md) | Sole assembly/client/chart/migration owner |
+| P7 | [T-117](../tasks/T-117-run-resource-acceptance.md) | Integrated qualification and staged rollout |
+
+The source design is commit `0b12febef5b9e092982af74e2c951afe2dd80c19`; executable baseline remains the commit above. OpenForge bootstrap is currently unavailable because the separate checkout is absent. Manual isolated workers and independent candidate review may prepare changes; automated queue/index validation and batch receipts must not be claimed until the harness is available.
 
 ## Contract decisions to freeze
 
