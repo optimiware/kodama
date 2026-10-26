@@ -76,6 +76,7 @@ locals {
   loki_url = "http://kodama-loki.\${var.observability_namespace}.svc.cluster.local:3100"
   prom_url = "http://kodama-prometheus-server.\${var.observability_namespace}.svc.cluster.local:80"
   monitored_namespaces = concat([var.control_plane_namespace], [for t in var.stage_contract.tenants : t.namespace])
+  monitored_namespace_regex = join("|", concat(local.monitored_namespaces, ["kodama-q-[a-z0-9]+(-[a-z0-9]+)?"]))
 
   kodama_values = templatefile("${STAGE_DIR}/shared/stack/values/kodama.yaml.tftpl", {
     contract       = var.stage_contract
@@ -98,7 +99,7 @@ locals {
   })
   alloy = templatefile("${STAGE_DIR}/shared/stack/values/alloy.yaml.tftpl", {
     loki_push_url        = "\${local.loki_url}/loki/api/v1/push"
-    monitored_namespaces = local.monitored_namespaces
+    monitored_namespace_regex = local.monitored_namespace_regex
   })
   prometheus = templatefile("${STAGE_DIR}/shared/stack/values/prometheus.yaml.tftpl", {
     control_plane_namespace = var.control_plane_namespace
