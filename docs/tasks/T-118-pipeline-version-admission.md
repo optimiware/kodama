@@ -1,7 +1,7 @@
 ---
 id: T-118
 milestone: production
-status: planned
+status: done
 depends_on: []
 decision_blockers: []
 owns: [internal/execution/admission.go, internal/execution/pipeline_version_test.go]
@@ -27,3 +27,6 @@ Executable baseline `7a66d3493f2bc69d197406f757841e603efbb0c1`; ADR 0008/C-21 ca
 
 ## Out of scope
 New-format contracts/parser, run resources, authority/publication changes, API/client, task metadata, other deferred work and deployment.
+
+## Completion evidence
+Merged locally as `16a5d0df877097c182952f5553c929c54a503181` after independent exact-candidate approval (review session `ses_e86485bf1ffeEZPjBcLOF52Mp8`, zero findings) and passing `make check-go PKGS='./internal/execution/...'` by worker and coordinator. `Test_unit_pipeline_version_guard` passed, including content-free classified rejection. Real SQL tests are deliberately skipped in the unit layer; no SQL/runtime-resource qualification is claimed. The finished worktree/branch were removed; nothing was pushed. T-110 retains actual-v2 ordinary/cleanup regression ownership.
