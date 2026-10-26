@@ -29,3 +29,5 @@ Kubernetes does not advertise the capability: absence of its Secret, Job and Pod
 Every backend still rejects a subsequent start after stop/removal, protects foreign instances, and reports `Stopped` only when no workload or pending launch can run. Unknown launch evidence does not authorize automatic retry or release of an uncertain effect's writer barrier; the owning lifecycle must reconcile it. Preserve lost-Secret and in-flight-create regression coverage. Additional durable fence objects were considered and not selected.
 
 Outside Kubernetes, one workload instance stands for both the Job and the Pod in the runtime admission identity. The wire contract is unchanged. The Podman runtime does not yet issue source-checkout credentials, so it runs only workspace-free attempts until checkout support is added.
+
+[ADR 0010](0010-run-workspace-services-builders.md) proposes a companion run-resource seam and a builder-capable execution profile. This accepted port and the current restricted baseline remain in force until that proposal is accepted.
