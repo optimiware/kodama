@@ -63,7 +63,7 @@ Pin the release's supported dependency/schema/client versions. Verify a usable b
 | NATS outage/loss | Preserve outbox, recover broker, deduplicate/reconcile replay |
 | Node loss | Recover from accepted Git commit; report uncommitted loss and possible unknown effects |
 | Scratch or service lost mid-run (`run_shared`) | The run fails with an explicit reason once resources are verified stopped; rerun with new resources. No empty replacement under the same run |
-| Stuck resource cleanup | Visible `cleanup_pending`; retried; capacity stays reserved until verified removal; operator resolves the backend object, never a foreign one |
+| Stuck resource cleanup | The run stays nonterminal with visible `resource_stop_unconfirmed`/`cleanup_pending`; retried; capacity stays reserved until verified removal; operator resolves the backend object, never a foreign one |
 | Unknown deployment | Observe recorded target objects/action identity before repeating |
 | KMS failure | Recover key/provider access; never substitute plaintext or destroy retained envelopes |
 

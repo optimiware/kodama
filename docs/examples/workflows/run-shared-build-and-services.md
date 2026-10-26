@@ -183,6 +183,32 @@ spec:
 
 Run as an internal `purpose=cleanup` run, `workspace` resolves to `none`: empty scratch, no checkout credential, no preparation workload. The same definition submitted as a work run resolves to `read` and gets a prepared checkout; explicit `workspace: {access: none}` would be refused for a work run (`workspace_none_source_backed`).
 
+### Source-free, two steps sharing scratch
+
+```yaml
+apiVersion: kodama/v1alpha2
+kind: Pipeline
+metadata:
+  name: cleanup-two-step
+spec:
+  timeoutSeconds: 900
+  steps:
+    - id: collect
+      kind: container
+      image: registry.example.invalid/cleanup-tools@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      command: ["/bin/sh", "-ec"]
+      args: ["/usr/local/bin/list-owned-objects > /workspace/objects.txt"]
+      timeoutSeconds: 300
+    - id: delete
+      kind: container
+      needs: [collect]
+      image: registry.example.invalid/cleanup-tools@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      command: ["/usr/local/bin/delete-listed", "/workspace/objects.txt"]
+      timeoutSeconds: 300
+```
+
+The scratch is empty only when `collect` starts; `delete` verifies the same bound writable mount without clearing it and reads the file `collect` wrote. Both attempts begin with `workspace: null` and record `workspaceState: none`; `delete`'s context lineage holds one explicit source-free entry for `collect`.
+
 ## 5. Execution-policy excerpt: registry and preview egress
 
 The installation, not the pipeline, authorizes destinations. Only workloads naming a profile receive it; the database in example 2 gets none.
