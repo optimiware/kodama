@@ -487,12 +487,14 @@ pkg_ok = bool(pkg_actions) and all(a == "pass" for a in pkg_actions.values())
 cases_ok = all(a["status"] == "pass" and all(v == "pass" for v in a["cases"].values()) for a in acceptances) if (readiness or staging) else True
 prov["suite_passed"] = (rc == 0 and pkg_ok and not failed and not truncated and cases_ok)
 prov["session"] = env.get("KODAMA_QUAL_SESSION", "")
-prov["fault_config"] = {
-    "mechanism": "test_owned_https_loopback_proxy",
-    "applied": bool(fault_observed),
-    "case_status": last.get((ACCEPTANCE["kube_cancel_restart"]["package"], "TestKubeCancelRestart/lost_create_acknowledgment"), "missing"),
-    "chart_install_instrumented": False,
-}
+if readiness:
+    # Only the readiness run instruments the Kubernetes API (the PX-A02 fault); a staging run has none.
+    prov["fault_config"] = {
+        "mechanism": "test_owned_https_loopback_proxy",
+        "applied": bool(fault_observed),
+        "case_status": last.get((ACCEPTANCE["kube_cancel_restart"]["package"], "TestKubeCancelRestart/lost_create_acknowledgment"), "missing"),
+        "chart_install_instrumented": False,
+    }
 prov["probe_image"] = probe_image
 prov["image_revisions"] = image_revisions
 prov["chart_tree"] = chart_tree
