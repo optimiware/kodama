@@ -1,7 +1,7 @@
 ---
 id: T-119
 milestone: production
-status: planned
+status: done
 depends_on: [T-110]
 decision_blockers: []
 owns: [contracts/events/v1/, docs/contracts/event-catalog.md, docs/contracts/run-resources.md]
@@ -28,3 +28,6 @@ Declared scoped check and `make docs-check`, independent exact-candidate review.
 
 ## Out of scope
 Execution producer/adapters, business lifecycle changes, API/client, deployment and real profile qualification. T-112 consumes the event after this prerequisite merges.
+
+## Completion evidence
+Merged locally as `b75dca7411bdc556f84ab7b674ce5d2f81da8841` after independent review of the complete exact-candidate diff (`ses_e85d1ad01ffeC9FH063EtAjtzl`, approve, zero findings) and coordinator scoped check, named event acceptance, docs-check (122 files) and diff-check pass. The initial candidate's unrequested unequal-phase constraint was removed: same-phase reason/intent/evidence observations are valid; execution decides whether to emit them. Historical 16 event fixture digests are unchanged. `RunResourceID(tenant, project, run, key)` and `CheckRunResourceKey(kind, key)` are the checked helper APIs. The finished worktree/branch were removed; nothing was pushed. This is contract evidence only; T-112 still owes transactional outbox, rollback and replay on both stores.

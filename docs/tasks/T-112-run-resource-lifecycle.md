@@ -17,6 +17,8 @@ Implement [P2](../implementation/run-workspace-services-builders.md#p2--run-reso
 ## Contract
 ADR 0010/O-28, normative T-109 checkpoint `9db322ffd37a4279f8a7ac1a404a06e46533527d` and executable T-110 checkpoint `6343b9e5f75b20e41e28b62b418069bb1811950f`. Keep the existing six-method attempt runtime port; add the reviewed `run_resources` marker without overflowing the existing six-used-bit `uint8`, and keep finer resource capabilities in a separate named set. Optional launch-history proof stays separate. Provider types remain adapter-private. Preserve quota/work → run/attempt → authority → workspace → event lock order and audit/outbox atomicity.
 
+The reviewed event/identity clarification checkpoint is T-119 at `b75dca7411bdc556f84ab7b674ce5d2f81da8841`: consume `eventsv1.RunResourceStateChanged` and `RunResourceID(tenant, project, run, key)` for domain-valid scoped audit/event IDs. Same-phase intent/evidence/reason updates are valid. The owning contract now fixes the 4-byte big-endian framing; no underscore-flattened identity remains. These are dependencies for the held candidate's repair, not a claim that its missing producer or lifecycle findings are resolved.
+
 ## Deliverables
 - Run-resource DTOs/ensure-observe-logs-stop-remove port and memory/PostgreSQL persistence of pre-effect intent, immutable scope/backend/policy/spec identity, UID, preparation/readiness, deadlines, stop/removal evidence and safe reasons; no plaintext/scratch persistence.
 - Transactional ordered workspace-holder admission separate from logical writer admission; readiness/preparation barrier; reserve service/active-attempt/PVC capacity atomically and release only after verified settlement.

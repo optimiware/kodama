@@ -30,7 +30,7 @@ Package completion is not milestone acceptance. No real SQL/RLS/transaction/prov
 
 T-118 is reviewed, unit-tested and merged locally at `16a5d0df`; T-109's reviewed specification checkpoint is merged at `9db322ff`; T-110's reviewed executable schema/parser checkpoint is merged at `6343b9e5`. P0 is complete; T-111 (real profile qualification) and T-112 (execution lifecycle/persistence) are ready independently. New-format registration stays off by default and the current executor refuses it: no shared-workspace/service runtime or builder qualification is enabled by P0.
 
-T-112's first candidate is held for material review repairs; [T-119](T-119-run-resource-event-contract.md) supplies its missing event-contract prerequisite. The bounded T-112 migration-manifest exception preserves the existing PostgreSQL assembly without enabling shared runs. T-111 qualification continues independently; no passing P1 report has been recorded.
+T-112's first candidate is held for material review repairs. [T-119](T-119-run-resource-event-contract.md) is reviewed, checked and merged at `b75dca74`, so T-112 can now repair against the complete event contract. The bounded T-112 migration-manifest exception preserves the existing PostgreSQL assembly without enabling shared runs. T-111 qualification continues independently; no passing P1 report has been recorded.
 
 ## Task contract
 
