@@ -61,6 +61,17 @@ func (p RetryPolicy) requestBound() time.Duration {
 	return p.RequestTimeout
 }
 
+// proposalBound is the bound of a source proposal: the server publishes to Git while the request waits, which
+// can take longer than an ordinary call, so it is never shorter than two minutes.
+func (p RetryPolicy) proposalBound() time.Duration { return max(p.requestBound(), 2*time.Minute) }
+
+func (p RetryPolicy) boundFor(op string) time.Duration {
+	if op == "proposeSource" {
+		return p.proposalBound()
+	}
+	return p.requestBound()
+}
+
 // DefaultRetry is used when a Config leaves the policy zero.
 var DefaultRetry = RetryPolicy{MaxAttempts: 5, BaseDelay: 250 * time.Millisecond, MaxDelay: 5 * time.Second}
 
@@ -85,7 +96,9 @@ func NewClient(serverURL string, attemptID domain.AttemptID, caFile string, retr
 		return nil, err
 	}
 	if retry.MaxAttempts < 1 {
+		bounds := retry
 		retry = DefaultRetry
+		retry.RequestTimeout, retry.UploadTimeout = bounds.RequestTimeout, bounds.UploadTimeout
 	}
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -243,7 +256,7 @@ func doOnce[Resp any, P interface {
 	if payload != nil {
 		rdr = bytes.NewReader(payload)
 	}
-	reqCtx, cancelReq := context.WithTimeout(ctx, c.retry.requestBound())
+	reqCtx, cancelReq := context.WithTimeout(ctx, c.retry.boundFor(op))
 	defer cancelReq()
 	req, err := http.NewRequestWithContext(reqCtx, method, c.base+path, rdr)
 	if err != nil {
@@ -262,13 +275,13 @@ func doOnce[Resp any, P interface {
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		c.noteTimeout(ctx, reqCtx, op, c.retry.requestBound())
+		c.noteTimeout(ctx, reqCtx, op, c.retry.boundFor(op))
 		return zero, 0, &transient{err: scrubURLError(op, err)}
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		c.noteTimeout(ctx, reqCtx, op, c.retry.requestBound())
+		c.noteTimeout(ctx, reqCtx, op, c.retry.boundFor(op))
 		return zero, 0, &transient{err: fmt.Errorf("%s: read response: %w", op, err)}
 	}
 	if len(data) > maxResponseBytes {
