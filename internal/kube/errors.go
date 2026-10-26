@@ -39,10 +39,36 @@ var (
 	ErrInvalidTransition = errors.New("kube: invalid workload transition")
 )
 
+// diagError is an executor failure: a class, fixed text and an optional cause. Its text is fixed by this
+// package (see the contract above), so it may appear in operator logs; the cause is described only by what
+// it vouches for itself.
+type diagError struct {
+	kind  error
+	msg   string
+	cause error
+}
+
+func (e *diagError) Error() string {
+	if e.cause == nil {
+		return e.kind.Error() + ": " + e.msg
+	}
+	return e.kind.Error() + ": " + e.msg + " (" + e.cause.Error() + ")"
+}
+
+func (e *diagError) Unwrap() []error {
+	if e.cause == nil {
+		return []error{e.kind}
+	}
+	return []error{e.kind, e.cause}
+}
+
+// SafeDiagnostic implements diag.Safe.
+func (e *diagError) SafeDiagnostic() string { return e.kind.Error() + ": " + e.msg }
+
 func wrap(kind error, format string, args ...any) error {
-	return fmt.Errorf("%w: %s", kind, fmt.Sprintf(format, args...))
+	return &diagError{kind: kind, msg: fmt.Sprintf(format, args...)}
 }
 
 func wrapCause(kind, cause error, format string, args ...any) error {
-	return fmt.Errorf("%w: %s (%w)", kind, fmt.Sprintf(format, args...), cause)
+	return &diagError{kind: kind, msg: fmt.Sprintf(format, args...), cause: cause}
 }

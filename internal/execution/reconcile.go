@@ -3,6 +3,8 @@ package execution
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"time"
 
 	"github.com/optimiware/kodama/internal/domain"
 )
@@ -132,14 +134,21 @@ func (s *Service) ReconcileRun(ctx context.Context, ref RunRef) (ReconcileReport
 		}
 	}
 	// Deadlines, skip propagation and completion.
+	var missed []deadlineMiss
 	agg, _, err := s.d.Store.Update(ctx, ref.Scope, ref.ID, UpdateOptions{}, func(ctx context.Context, env Env, agg *Aggregate) (Effects, error) {
-		agg.CheckDeadlines(env.Now())
+		missed = missed[:0] // a retried transaction recomputes
+		for _, at := range agg.CheckDeadlines(env.Now()) {
+			missed = append(missed, newDeadlineMiss(at, agg.Control(at.ID), env.Now()))
+		}
 		after, err := advance(env, agg)
 		return Effects{After: after}, err
 	})
 	if err != nil {
 		note(err)
 		return rep, first
+	}
+	for _, m := range missed {
+		s.logDeadlineMiss(ctx, m)
 	}
 	s.terminateRevoked(ctx, agg)
 	view = agg
@@ -294,4 +303,45 @@ func (s *Service) settle(ctx context.Context, ref RunRef, attempt domain.Attempt
 		return ErrOutcomeUnknown
 	}
 	return nil
+}
+
+// deadlineMiss is the timing evidence of an attempt that missed a deadline: enough to tell a workload that was
+// never dispatched, never observed and never started from one that ran too long, without any step content.
+type deadlineMiss struct {
+	attempt           domain.AttemptID
+	step              string
+	reason            Reason
+	now               time.Time
+	startupDeadline   time.Time
+	executionDeadline *time.Time
+	startedAt         *time.Time
+	dispatchConfirmed bool
+	workloadBound     bool
+}
+
+func newDeadlineMiss(at *Attempt, c *Control, now time.Time) deadlineMiss {
+	return deadlineMiss{
+		attempt: at.ID, step: at.StepID, reason: at.Reason, now: now.UTC(), startupDeadline: at.StartupDeadline,
+		executionDeadline: at.ExecutionDeadline, startedAt: at.StartedAt,
+		dispatchConfirmed: c != nil && c.DispatchConfirmedAt != nil, workloadBound: at.WorkloadUID != "",
+	}
+}
+
+func (s *Service) logDeadlineMiss(ctx context.Context, m deadlineMiss) {
+	if s.o.Logger == nil {
+		return
+	}
+	attrs := []slog.Attr{
+		slog.String("attempt", string(m.attempt)), slog.String("step", m.step), slog.String("reason", string(m.reason)),
+		slog.Time("now", m.now), slog.Time("startupDeadline", m.startupDeadline.UTC()),
+		slog.Bool("dispatchConfirmed", m.dispatchConfirmed), slog.Bool("workloadBound", m.workloadBound),
+		slog.Bool("started", m.startedAt != nil),
+	}
+	if m.startedAt != nil {
+		attrs = append(attrs, slog.Time("startedAt", m.startedAt.UTC()))
+	}
+	if m.executionDeadline != nil {
+		attrs = append(attrs, slog.Time("executionDeadline", m.executionDeadline.UTC()))
+	}
+	s.o.Logger.LogAttrs(ctx, slog.LevelWarn, "execution: attempt deadline missed", attrs...)
 }
