@@ -270,16 +270,28 @@ func Test_runtime_secret_route(t *testing.T) {
 		}
 	})
 
-	t.Run("an attempt that pins no environment resolves nothing", func(t *testing.T) {
+	t.Run("an attempt that pins no environment resolves exactly the bindings its step declared", func(t *testing.T) {
 		w := newSecretWorldWith(t, func(c *runtimev1.Context) { c.Environment = nil })
 		for _, b := range w.pinned {
-			_, err := w.resolve(b.Ref, b.Version)
-			if c := code(t, err); c != domain.CodeForbidden {
-				t.Errorf("%s: %s, want forbidden", b.Name, c)
+			if _, err := w.resolve(b.Ref, b.Version); err != nil {
+				t.Errorf("%s: a declared binding was refused: %v", b.Name, err)
 			}
 		}
-		if len(w.source.opens) != 0 || len(w.snapshots.reads) != 0 {
-			t.Fatalf("an attempt without an environment reached the snapshot or the store")
+		if len(w.snapshots.reads) != 0 {
+			t.Fatal("an attempt without an environment read an environment snapshot")
+		}
+		before := len(w.source.opens)
+		for name, req := range map[string]runtimev1.SecretResolveRequest{
+			"an undeclared secret":          {Ref: otherSecret, Version: 1},
+			"a newer version of a declared": {Ref: tokenSecret, Version: 4},
+			"a declared ref at a different": {Ref: kubeSecret, Version: 6},
+		} {
+			if _, err := w.resolve(req.Ref, req.Version); code(t, err) != domain.CodeForbidden {
+				t.Errorf("%s: %v, want forbidden", name, err)
+			}
+		}
+		if len(w.source.opens) != before {
+			t.Fatal("an undeclared reference reached the store")
 		}
 	})
 
