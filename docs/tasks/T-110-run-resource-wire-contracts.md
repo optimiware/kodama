@@ -7,7 +7,7 @@ decision_blockers: []
 owns: [contracts/pipeline/, contracts/runtime/, internal/pipeline/, internal/execution/pipeline_version_v2_test.go]
 check: make check-go PKGS='./contracts/... ./internal/pipeline/... ./internal/execution/...'
 resources: [go]
-acceptance: []
+acceptance: [v1alpha2_format_disabled_by_default, v1alpha2_canonical_goldens, v1alpha2_digest_independent_of_run_source_and_policy, v1alpha2_argv_omission_equivalence, v1alpha2_invalid_documents, v1alpha2_registration_opt_in, v1alpha2_source_defaults, v1alpha2_execution_order_ties_and_gates, v1alpha2_stored_document_and_copies, v1alpha1_compatibility_preserved, v1alpha2_contract_fixtures, v1alpha2_schema_is_a_separate_version, v1alpha2_schema_states_the_contract_bounds, v1alpha2_schema_is_embedded_and_copied, runtime_v2_contract_fixtures, runtime_v2_schema_matches_go, runtime_v2_operations_and_v1_reuse, runtime_v2_audience_and_subject_rules, runtime_v2_derivations, runtime_v2_result_hash_unchanged, runtime_v2_v1_validators_unchanged, runtime_v2_strict_and_nullable, unit_pipeline_v2_ordinary_admission_refused_before_effects, unit_pipeline_v2_cleanup_admission_refused_before_effects, unit_pipeline_v2_guard_unchanged, unit_pipeline_v2_step_codec_is_v1_only]
 ---
 # T-110 — P0: versioned pipeline and runtime wire contracts
 
@@ -26,6 +26,8 @@ Design direction `0b12febef5b9e092982af74e2c951afe2dd80c19`, original executable
 
 ## Acceptance
 Run the declared scoped check and `make docs-check`; test old golden compatibility, new shape/semantic/canonical fixtures, registration and execution capability refusal, source-free/source-backed defaults, invalid expressions, deterministic order and sensitive-value-free diagnostics. Record real test names in handoff for the coordinator to pin before merge.
+
+The acceptance names above are the concrete `Test_<name>` functions supplied by the implementation handoff and pinned by the coordinator before exact-candidate qualification/review. Their presence is not a passing result: every name must appear passed in the scoped check. Runtime scenario fixtures prove wire shape and pure derivation only, not actual route authorization, run-resource lifecycle or real backend qualification. `unit_pipeline_v2_step_codec_is_v1_only` deliberately fences the unchanged executor; T-112 must replace it with round-trip evidence when extending the codec and admission capability checks together.
 
 ## Out of scope
 Execution/runtime resource effects, production enablement, shared dependency files and generated aggregate/client.
