@@ -30,8 +30,12 @@ const (
 type obj = map[string]any
 
 func tok(aud string) obj {
+	max := "2026-10-26T12:00:00Z"
+	if aud == "kodama-runtime-resource" {
+		max = "2026-10-26T11:00:00Z" // never beyond the resource's deadlineAt
+	}
 	return obj{"token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "tokenType": "Bearer", "audience": aud,
-		"expiresAt": "2026-10-26T10:15:00Z", "maxExpiresAt": "2026-10-26T12:00:00Z"}
+		"expiresAt": "2026-10-26T10:15:00Z", "maxExpiresAt": max}
 }
 
 func limits() obj {
@@ -96,13 +100,23 @@ func ctxWriter() obj {
 func ctxFree() obj {
 	c := ctxBase("teardown", "att_04", freeWS())
 	c["endpoints"], c["secrets"] = obj{}, []any{}
-	c["command"].(obj)["env"] = obj{}
+	c["command"] = obj{"image": img, "command": []any{"/bin/sh", "-ec"}, "args": []any{sourceFreeWrites}, "env": obj{}}
 	return c
 }
+
+// sourceFreeWrites and sourceFreeReads are the shape example of the two-step
+// source-free sequence: the first step writes a file under /workspace and the
+// second reads it. The example documents what the wire carries; it does not
+// qualify any filesystem.
+const (
+	sourceFreeWrites = "echo teardown-complete > /workspace/teardown.log"
+	sourceFreeReads  = "test -s /workspace/teardown.log"
+)
+
 func ctxFreeSecond() obj {
 	c := ctxBase("verify", "att_05", freeWS(lineage("teardown", "att_04", "none", "2026-10-26T10:06:00Z", "none", false, nil)))
 	c["endpoints"], c["secrets"] = obj{}, []any{}
-	c["command"] = obj{"image": img, "command": []any{"/bin/sh", "-ec"}, "args": []any{"test -s /workspace/teardown.log"}, "env": obj{}}
+	c["command"] = obj{"image": img, "command": []any{"/bin/sh", "-ec"}, "args": []any{sourceFreeReads}, "env": obj{}}
 	return c
 }
 
@@ -352,6 +366,11 @@ func cases(t testing.TB) []draftCase {
 		bad("resource_admit_response_attempt_audience", "ResourceAdmitResponse", obj{"token": tok("kodama-runtime"), "context": prepCtx()}, "invalid_request", "VS-14"),
 		bad("resource_admit_response_token_type", "ResourceAdmitResponse", mut(t, obj{"token": tok("kodama-runtime-resource"), "context": prepCtx()}, "token.tokenType", "Basic"), "invalid_request", "VS-14"),
 		bad("resource_admit_response_token_beyond_maximum", "ResourceAdmitResponse", mut(t, obj{"token": tok("kodama-runtime-resource"), "context": prepCtx()}, "token.expiresAt", "2026-10-26T13:00:00Z"), "invalid_request", "VS-14"),
+		bad("resource_admit_response_preparation_token_outlives_deadline", "ResourceAdmitResponse", mut(t, obj{"token": tok("kodama-runtime-resource"), "context": prepCtx()}, "token.maxExpiresAt", "2026-10-26T11:00:01Z"), "invalid_request", "VS-14"),
+		bad("resource_admit_response_service_token_outlives_deadline", "ResourceAdmitResponse", mut(t, obj{"token": tok("kodama-runtime-resource"), "context": svcSecretsCtx()}, "token.maxExpiresAt", "2026-10-26T12:00:00Z"), "invalid_request", "VS-14"),
+		bad("resource_admit_response_service_token_outlives_earlier_deadline", "ResourceAdmitResponse", mut(t, obj{"token": tok("kodama-runtime-resource"), "context": svcSecretsCtx()}, "context.service.deadlineAt", "2026-10-26T10:30:00Z"), "invalid_request", "VS-14"),
+		ok("resource_admit_response_token_ends_exactly_at_the_deadline", "ResourceAdmitResponse", mut(t, obj{"token": tok("kodama-runtime-resource"), "context": svcSecretsCtx()}, "context.service.deadlineAt", "2026-10-26T10:30:00Z", "token.maxExpiresAt", "2026-10-26T10:30:00Z"), "VS-14"),
+		ok("resource_admit_response_token_ends_before_the_deadline", "ResourceAdmitResponse", mut(t, obj{"token": tok("kodama-runtime-resource"), "context": prepCtx()}, "token.maxExpiresAt", "2026-10-26T10:59:59Z"), "VS-14"),
 		ok("resource_token_request", "ResourceTokenRequest", obj{}, "VS-14"),
 		bad("resource_token_request_with_body", "ResourceTokenRequest", obj{"token": "x"}, "invalid_request", "VS-14"),
 		ok("resource_token_response", "ResourceTokenResponse", obj{"token": tok("kodama-runtime-resource")}, "VS-14"),

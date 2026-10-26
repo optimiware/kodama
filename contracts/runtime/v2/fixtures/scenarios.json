@@ -500,7 +500,7 @@
             "attemptId": "att_04",
             "command": {
               "args": [
-                "cd /workspace \u0026\u0026 go test ./..."
+                "echo teardown-complete \u003e /workspace/teardown.log"
               ],
               "command": [
                 "/bin/sh",
@@ -928,7 +928,7 @@
             "attemptId": "att_04",
             "command": {
               "args": [
-                "cd /workspace \u0026\u0026 go test ./..."
+                "echo teardown-complete \u003e /workspace/teardown.log"
               ],
               "command": [
                 "/bin/sh",
@@ -1394,7 +1394,7 @@
             "attemptId": "att_04",
             "command": {
               "args": [
-                "cd /workspace \u0026\u0026 go test ./..."
+                "echo teardown-complete \u003e /workspace/teardown.log"
               ],
               "command": [
                 "/bin/sh",
@@ -1793,7 +1793,7 @@
           "token": {
             "audience": "kodama-runtime-resource",
             "expiresAt": "2026-10-26T10:15:00Z",
-            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "maxExpiresAt": "2026-10-26T11:00:00Z",
             "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "tokenType": "Bearer"
           }
@@ -1838,7 +1838,7 @@
           "token": {
             "audience": "kodama-runtime-resource",
             "expiresAt": "2026-10-26T10:15:00Z",
-            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "maxExpiresAt": "2026-10-26T11:00:00Z",
             "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "tokenType": "Bearer"
           }
@@ -2026,7 +2026,7 @@
           "token": {
             "audience": "kodama-runtime-resource",
             "expiresAt": "2026-10-26T10:15:00Z",
-            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "maxExpiresAt": "2026-10-26T11:00:00Z",
             "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "tokenType": "Bearer"
           }
@@ -2122,7 +2122,7 @@
           "token": {
             "audience": "kodama-runtime-resource",
             "expiresAt": "2026-10-26T10:15:00Z",
-            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "maxExpiresAt": "2026-10-26T11:00:00Z",
             "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "tokenType": "Bearer"
           }
@@ -2175,7 +2175,7 @@
           "token": {
             "audience": "kodama-runtime-resource",
             "expiresAt": "2026-10-26T10:15:00Z",
-            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "maxExpiresAt": "2026-10-26T11:00:00Z",
             "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "tokenType": "Bearer"
           }

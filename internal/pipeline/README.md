@@ -188,3 +188,8 @@ tasks rely on:
   tables; the `Admission*` constants spell the admission refusal codes execution returns.
 * **Execution codec.** `execution.EncodeStep` persists only the `v1alpha1` step fields. A run must
   not be admitted from a `v1alpha2` definition until T-112 extends the codec and the guard together.
+* **Constant v2 messages.** A `v1alpha2` validation replaces the messages of the shared
+  duplicate-step, cycle, parallel-writer, unknown-input/step/output, not-ancestor and
+  type-mismatch findings with constant text; the `v1alpha1` messages are unchanged. A typed
+  `Scalar` whose type is not string, boolean or integer, and storage paths that overlap on a
+  component boundary anywhere in the list, are refused.

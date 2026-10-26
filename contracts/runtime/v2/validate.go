@@ -394,8 +394,43 @@ func (t ResourceTokenInfo) Validate() error {
 	return nil
 }
 
+// Validate checks the token and the context structurally, then the envelope
+// consistency: the token's maximum lifetime never exceeds the resource's own
+// deadlineAt (the selected preparation or service deadline). A response whose
+// token outlives its resource is a contract violation however valid each part is.
 func (r ResourceAdmitResponse) Validate() error {
-	return firstError(r.Token.Validate(), r.Context.Validate())
+	if err := firstError(r.Token.Validate(), r.Context.Validate()); err != nil {
+		return err
+	}
+	return CheckResourceEnvelope(r.Token, r.Context)
+}
+
+// CheckResourceEnvelope is the pure consistency rule between a resource token and
+// the context it was issued with: maxExpiresAt must not be later than the
+// resource's deadlineAt (equality is allowed). The inputs are assumed
+// structurally valid; it decides nothing about whether the token is genuine.
+func CheckResourceEnvelope(token ResourceTokenInfo, ctx ResourceContext) error {
+	var deadline Timestamp
+	switch {
+	case ctx.ResourceKind == ResourcePreparation && ctx.Preparation != nil:
+		deadline = ctx.Preparation.DeadlineAt
+	case ctx.ResourceKind == ResourceService && ctx.Service != nil:
+		deadline = ctx.Service.DeadlineAt
+	default:
+		return fail("context", "the resource kind has no deadline member")
+	}
+	maximum, err := token.MaxExpiresAt.Time()
+	if err != nil {
+		return fail("token.maxExpiresAt", "not a valid time")
+	}
+	limit, err := deadline.Time()
+	if err != nil {
+		return fail("context.deadlineAt", "not a valid time")
+	}
+	if maximum.After(limit) {
+		return fail("token.maxExpiresAt", "must not be later than the resource's deadlineAt")
+	}
+	return nil
 }
 
 // Validate accepts only the empty object; the bearer token is the credential.
@@ -557,11 +592,23 @@ func (r ErrorResponse) Validate() error {
 }
 
 // ResourceKeyOf returns the resource key of a kind and, for a service, its name.
-func ResourceKeyOf(kind ResourceKind, name string) string {
-	if kind == ResourceService {
-		return "service." + name
+// Only the two kinds that have a runtime identity have a key: an unknown or empty
+// kind, a service without a valid name, or a preparation that is given a name is
+// refused instead of being mapped onto another key.
+func ResourceKeyOf(kind ResourceKind, name string) (string, error) {
+	switch kind {
+	case ResourceService:
+		if !compiled["ServiceName"].MatchString(name) {
+			return "", fail("name", "a service resource needs a valid service name")
+		}
+		return "service." + name, nil
+	case ResourcePreparation:
+		if name != "" {
+			return "", fail("name", "a preparation resource has no service name")
+		}
+		return string(ResourcePreparation), nil
 	}
-	return string(ResourcePreparation)
+	return "", fail("kind", "only preparation and service resources have a key")
 }
 
 // ServiceNameOf extracts NAME from a service resource key.

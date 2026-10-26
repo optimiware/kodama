@@ -40,3 +40,29 @@ const (
 	AdmissionWorkspaceAccessSourceFree = "workspace_access_source_free"
 	AdmissionAgentSourceFree           = "agent_source_free"
 )
+
+// v2ConstantMessages are the messages of the diagnostics the shared kodama/v1alpha1
+// rules fill with document identifiers (step IDs, input and output names). The
+// kodama/v1alpha2 contract promises constant messages that echo no document
+// content, so a v1alpha2 validation replaces these, by code, after the shared
+// rules ran. The kodama/v1alpha1 messages are unchanged. The path still locates
+// the finding.
+var v2ConstantMessages = map[string]string{
+	CodeDuplicateStep:   "the step id is already used by another step",
+	CodeCycle:           "the dependencies contain a cycle",
+	CodeParallelWriters: "two steps write the workspace but neither depends on the other",
+	CodeUnknownInput:    "the referenced input is not declared",
+	CodeUnknownStep:     "the referenced step does not exist",
+	CodeNotAncestor:     "the referenced step is not a dependency of this step, so its outputs are not available",
+	CodeUnknownOutput:   "the referenced step declares no such output",
+	CodeTypeMismatch:    "the value has a type this field does not accept",
+}
+
+// constantMessages applies v2ConstantMessages to the collected findings.
+func (d *diagnostics) constantMessages() {
+	for i := range d.list {
+		if m, ok := v2ConstantMessages[d.list[i].Code]; ok {
+			d.list[i].Message = m
+		}
+	}
+}

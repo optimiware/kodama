@@ -315,6 +315,15 @@ func runScenarios(t *testing.T, scenarios []draftScenario) {
 					if step.Status != 403 || !errorIs(t, step.Body, "forbidden") {
 						t.Fatalf("step %d: %v must be 403 forbidden", n, gate)
 					}
+					// A rejected exchange is still judged against the operation table:
+					// the route must be able to return the code it was rejected with.
+					er, err := DecodeResponse[ErrorResponse](step.Body)
+					if err != nil {
+						t.Fatalf("step %d error body: %v", n, err)
+					}
+					if status, _ := Status(er.Error.Code); status != step.Status || !containsCode(op.Errors, er.Error.Code) {
+						t.Fatalf("step %d: %s does not list %s", n, op.ID, er.Error.Code)
+					}
 					continue
 				}
 				if typeName, success := op.Responses[step.Status]; success {
@@ -662,11 +671,116 @@ func Test_runtime_v2_audience_and_subject_rules(t *testing.T) {
 			t.Errorf("resource key %q: %v", key, got)
 		}
 	}
-	if k := ResourceKeyOf(ResourceService, "db"); k != "service.db" {
-		t.Errorf("key %q", k)
+	for _, c := range []struct {
+		kind ResourceKind
+		name string
+		want string
+		ok   bool
+	}{
+		{ResourceService, "db", "service.db", true}, {ResourceService, "a-b", "service.a-b", true}, {ResourcePreparation, "", "preparation", true},
+		{"", "", "", false}, {"workspace", "", "", false}, {"network", "", "", false}, {ResourceService, "", "", false},
+		{ResourceService, "Db", "", false}, {ResourceService, "a.b", "", false}, {ResourcePreparation, "db", "", false},
+	} {
+		got, err := ResourceKeyOf(c.kind, c.name)
+		if (err == nil) != c.ok || got != c.want {
+			t.Errorf("ResourceKeyOf(%q, %q) = %q, %v", c.kind, c.name, got, err)
+		}
 	}
 	if n, ok := ServiceNameOf("service.db"); !ok || n != "db" {
 		t.Error("service name extraction")
+	}
+}
+
+// Test_runtime_v2_attempt_routes_list_forbidden: every attempt route can return
+// 403 forbidden, because a resource-audience token is rejected on it; the same
+// holds for every resource route, while the frozen v1 tables are unchanged and
+// do not list it where it was never listed. VS-14, IT-13.
+func Test_runtime_v2_attempt_routes_list_forbidden(t *testing.T) {
+	for _, op := range Operations {
+		if !containsCode(op.Errors, domain.CodeForbidden) {
+			t.Errorf("%s does not list forbidden", op.ID)
+		}
+	}
+	v1 := map[string]runtimev1.Operation{}
+	for _, op := range runtimev1.Operations {
+		v1[op.ID] = op
+	}
+	for _, id := range []string{"getContext", "renewToken", "reserveArtifact", "completeArtifact", "proposeSource", "submitResult"} {
+		if containsCode(v1[id].Errors, domain.CodeForbidden) {
+			t.Errorf("the frozen v1 route %s must not have gained forbidden", id)
+		}
+	}
+}
+
+// Test_runtime_v2_resource_envelope_consistency: a resource token never outlives
+// the resource it was issued for. The check is pure and runs after the structural
+// validation of both parts; equality at the deadline is allowed, one second later
+// is not, for a preparation and for a service, and a context of an unusable kind
+// has no deadline to compare. VS-14.
+func Test_runtime_v2_resource_envelope_consistency(t *testing.T) {
+	decode := func(b obj) ResourceAdmitResponse {
+		var r ResourceAdmitResponse
+		if err := json.Unmarshal(mustJSON(t, b), &r); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	for name, tc := range map[string]struct {
+		ctx obj
+		max string
+		ok  bool
+	}{
+		"preparation, equal":       {prepCtx(), "2026-10-26T11:00:00Z", true},
+		"preparation, earlier":     {prepCtx(), "2026-10-26T10:59:59Z", true},
+		"preparation, one later":   {prepCtx(), "2026-10-26T11:00:01Z", false},
+		"preparation, old fixture": {prepCtx(), "2026-10-26T12:00:00Z", false},
+		"service, equal":           {svcSecretsCtx(), "2026-10-26T11:00:00Z", true},
+		"service, one later":       {svcSecretsCtx(), "2026-10-26T11:00:01Z", false},
+		"service defaults, later":  {svcDefaultsCtx(), "2026-10-26T12:00:00Z", false},
+		"fractional second, later": {prepCtx(), "2026-10-26T11:00:00.000000001Z", false},
+		"fractional second, equal": {prepCtx(), "2026-10-26T11:00:00.000Z", true},
+	} {
+		r := decode(obj{"token": mut(t, tok("kodama-runtime-resource"), "maxExpiresAt", tc.max), "context": tc.ctx})
+		if err := r.Validate(); (err == nil) != tc.ok {
+			t.Errorf("%s: %v", name, err)
+		}
+		if err := CheckResourceEnvelope(r.Token, r.Context); (err == nil) != tc.ok {
+			t.Errorf("%s (pure check): %v", name, err)
+		}
+	}
+	if err := CheckResourceEnvelope(ResourceTokenInfo{MaxExpiresAt: "2026-10-26T11:00:00Z"}, ResourceContext{ResourceKind: "workspace"}); err == nil {
+		t.Error("a context without a deadline member has no envelope")
+	}
+}
+
+// Test_runtime_v2_source_free_sequence_example_is_consistent: the two-step
+// source-free example is a shape example only (it qualifies no filesystem), but
+// its two commands must tell the story the contract tells: the first step writes
+// a file under /workspace and the second step, whose lineage lists the first with
+// the explicit source-free values, reads that same file. WS-13.
+func Test_runtime_v2_source_free_sequence_example_is_consistent(t *testing.T) {
+	decode := func(c obj) ContextV2 {
+		ctx, err := DecodeResponse[ContextV2](mustJSON(t, c))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ctx
+	}
+	first, second := decode(ctxFree()), decode(ctxFreeSecond())
+	if len(first.Workspace.Lineage) != 0 || len(second.Workspace.Lineage) != 1 {
+		t.Fatalf("lineage %d, %d", len(first.Workspace.Lineage), len(second.Workspace.Lineage))
+	}
+	if second.Workspace.Lineage[0].StepID != first.StepID || second.Workspace.Lineage[0].AttemptID != first.AttemptID {
+		t.Fatal("the second context does not list the first attempt")
+	}
+	writes := strings.Join(first.Command.Args, " ")
+	reads := strings.Join(second.Command.Args, " ")
+	const file = "/workspace/teardown.log"
+	if !strings.Contains(writes, "> "+file) || !strings.Contains(reads, file) {
+		t.Fatalf("the first step must write and the second read %s: %q / %q", file, writes, reads)
+	}
+	if strings.Contains(writes, "go test") {
+		t.Fatal("the first source-free step must not inherit a source-backed command")
 	}
 }
 

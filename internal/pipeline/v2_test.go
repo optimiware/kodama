@@ -428,6 +428,8 @@ func Test_v1alpha2_invalid_documents(t *testing.T) {
 		sx("storage under /dev", pipeline.CodeInvalidStorage, "storage[0].path", "spec.services.db.storage", []any{map[string]any{"path": "/dev/shm", "sizeMiB": 1}}),
 		sx("storage under /run/secrets", pipeline.CodeInvalidStorage, "storage[0].path", "spec.services.db.storage", []any{map[string]any{"path": "/run/secrets/x", "sizeMiB": 1}}),
 		sx("storage similar prefix is allowed elsewhere but overlap is not", pipeline.CodeInvalidStorage, "services.db.storage", "spec.services.db.storage", []any{map[string]any{"path": "/var/data", "sizeMiB": 1}, map[string]any{"path": "/var/data/sub", "sizeMiB": 1}}),
+		sx("storage ancestor separated by an unrelated sibling", pipeline.CodeInvalidStorage, "services.db.storage", "spec.services.db.storage", []any{map[string]any{"path": "/var/data", "sizeMiB": 1}, map[string]any{"path": "/var/data-other", "sizeMiB": 1}, map[string]any{"path": "/var/data/sub", "sizeMiB": 1}}),
+		sx("storage descendant declared first", pipeline.CodeInvalidStorage, "services.db.storage", "spec.services.db.storage", []any{map[string]any{"path": "/var/data/sub", "sizeMiB": 1}, map[string]any{"path": "/var/data-other", "sizeMiB": 1}, map[string]any{"path": "/var/data", "sizeMiB": 1}}),
 		sx("duplicate storage path", pipeline.CodeInvalidStorage, "services.db.storage", "spec.services.db.storage", []any{map[string]any{"path": "/var/data", "sizeMiB": 1}, map[string]any{"path": "/var/data", "sizeMiB": 2}}),
 		sx("five volumes", pipeline.CodeInvalidStorage, "services.db.storage", "spec.services.db.storage", many("v", 5, func(i int) any { return map[string]any{"path": fmt.Sprintf("/data/%d", i), "sizeMiB": 1} })),
 		sx("volume size zero", pipeline.CodeInvalidStorage, "storage[0].sizeMiB", "spec.services.db.storage", []any{map[string]any{"path": "/var/data", "sizeMiB": 0}}),
@@ -548,14 +550,6 @@ func Test_v1alpha2_invalid_documents(t *testing.T) {
 			map[string]any{"id": "test", "kind": "container", "image": "registry.example.invalid/tools@" + v2Digest1, "command": []any{"/bin/true"}, "timeoutSeconds": 60},
 			map[string]any{"id": "review", "kind": "gate", "needs": []any{"test"}, "when": map[string]any{"input": "d", "equals": true}}}),
 	}
-	newV2Codes := map[string]bool{
-		pipeline.CodeWorkspaceFromRemoved: true, pipeline.CodeUnknownService: true, pipeline.CodeUnknownPort: true,
-		pipeline.CodeDuplicatePort: true, pipeline.CodeInvalidProbe: true, pipeline.CodeInvalidResources: true,
-		pipeline.CodeInvalidStorage: true, pipeline.CodeInvalidEdge: true, pipeline.CodeInvalidEgress: true,
-		pipeline.CodeInvalidRole: true, pipeline.CodeEdgeUndeclared: true, pipeline.CodeServiceSelfReference: true,
-		pipeline.CodeServiceStepReference: true, pipeline.CodeServiceSecretRequiresCommand: true,
-		pipeline.CodeStepTimeoutExceedsRun: true, pipeline.CodeFormatDisabled: true,
-	}
 	sentinels := []string{"registry.example.invalid", "registry.example.com", "ghost", "nope", "secret://", "test-db-password", "/var/data"}
 	type publishedCase struct {
 		Name        string `json:"name"`
@@ -597,11 +591,9 @@ func Test_v1alpha2_invalid_documents(t *testing.T) {
 				if !strings.HasPrefix(d.Path, "$") || d.Message == "" {
 					t.Fatalf("malformed diagnostic %+v", d)
 				}
-				if newV2Codes[c.code] { // shared v1 messages name identifiers by design
-					for _, s := range sentinels {
-						if strings.Contains(d.Message, s) {
-							t.Fatalf("message %q echoes document content %q", d.Message, s)
-						}
+				for _, s := range sentinels {
+					if strings.Contains(d.Message, s) {
+						t.Fatalf("message %q echoes document content %q", d.Message, s)
 					}
 				}
 			}
@@ -930,4 +922,230 @@ func Test_v1alpha1_compatibility_preserved(t *testing.T) {
 			}
 		}
 	})
+}
+
+func storageDoc(t testing.TB, paths ...string) []byte {
+	t.Helper()
+	vols := make([]any, len(paths))
+	for i, p := range paths {
+		vols[i] = map[string]any{"path": p, "sizeMiB": 1}
+	}
+	return mutate(t, "spec.services.db.storage", vols)
+}
+
+func permutations(in []string) [][]string {
+	if len(in) <= 1 {
+		return [][]string{append([]string{}, in...)}
+	}
+	var out [][]string
+	for i := range in {
+		rest := append(append([]string{}, in[:i]...), in[i+1:]...)
+		for _, p := range permutations(rest) {
+			out = append(out, append([]string{in[i]}, p...))
+		}
+	}
+	return out
+}
+
+// Test_v1alpha2_storage_overlap_is_pairwise: a volume path that is an ancestor
+// of another overlaps it on a component boundary however the paths sort or are
+// ordered in the document; a name that merely shares a string prefix does not.
+// Every permutation of up to four volumes is judged identically, as JSON and as
+// YAML and as a typed document. IT-14.
+func Test_v1alpha2_storage_overlap_is_pairwise(t *testing.T) {
+	e := newEnvV2(t)
+	for name, tc := range map[string]struct {
+		paths   []string
+		overlap bool
+	}{
+		"unrelated prefix between ancestor and child": {[]string{"/var/data", "/var/data-other", "/var/data/sub"}, true},
+		"two unrelated prefixes between":              {[]string{"/a/b", "/a/b-1", "/a/b.x", "/a/b/c/d"}, true},
+		"deep descendant":                             {[]string{"/x", "/x-y", "/x0", "/x/y/z"}, true},
+		"identical":                                   {[]string{"/a", "/b", "/a"}, true},
+		"string prefix only":                          {[]string{"/var/data", "/var/data-other", "/var/database", "/var/data2"}, false},
+		"siblings":                                    {[]string{"/var/a", "/var/b", "/opt/a"}, false},
+		"one volume":                                  {[]string{"/var/data"}, false},
+	} {
+		for _, perm := range permutations(tc.paths) {
+			label := name + " " + strings.Join(perm, ",")
+			raw := storageDoc(t, perm...)
+			_, err := e.validateJSON(raw)
+			if tc.overlap {
+				expectCode(t, err, pipeline.CodeInvalidStorage)
+			} else if err != nil {
+				t.Fatalf("%s: %v", label, err)
+			}
+			if len(perm) < 3 {
+				continue
+			}
+			// The same document as YAML.
+			var yml strings.Builder
+			var tree any
+			if jerr := json.Unmarshal(raw, &tree); jerr != nil {
+				t.Fatal(jerr)
+			}
+			yml.Write(raw) // JSON is YAML
+			_, yerr := e.v.ValidateYAML(t.Context(), scope, actor, []byte(yml.String()))
+			if (yerr != nil) != tc.overlap {
+				t.Fatalf("%s: YAML verdict %v", label, yerr)
+			}
+			// And as a typed document built in code.
+			v := newEnvV2(t)
+			base := v.mustValidateJSON(t, mutate(t))
+			parsed, perr := base.Document()
+			if perr != nil {
+				t.Fatal(perr)
+			}
+			svc := parsed.Spec.Services["db"]
+			svc.Storage = nil
+			for _, p := range perm {
+				svc.Storage = append(svc.Storage, pipeline.ServiceStorage{Path: p, SizeMiB: 1})
+			}
+			parsed.Spec.Services["db"] = svc
+			_, terr := v.v.Validate(t.Context(), scope, actor, parsed)
+			if (terr != nil) != tc.overlap {
+				t.Fatalf("%s: typed verdict %v", label, terr)
+			}
+		}
+	}
+}
+
+// Test_v1alpha2_typed_scalar_discriminator: a typed Scalar whose Type is not
+// string, boolean or integer is refused wherever a service or step environment
+// holds one, before any value check, so a Validated document always canonicalizes
+// to what was validated and reads back through the stored-content reader. The
+// reported hole was an empty Type skipping the length, secret-literal and
+// endpoint-edge checks while the canonical serializer wrote it as a string.
+// PX-21.
+func Test_v1alpha2_typed_scalar_discriminator(t *testing.T) {
+	e := newEnvV2(t)
+	base := e.mustValidateJSON(t, mutate(t))
+	typed := func(mut func(*pipeline.Document)) (pipeline.Validated, error) {
+		d, err := base.Document()
+		if err != nil {
+			t.Fatal(err)
+		}
+		mut(&d)
+		return e.v.Validate(t.Context(), scope, actor, d)
+	}
+	setSvc := func(sc pipeline.Scalar) func(*pipeline.Document) {
+		return func(d *pipeline.Document) {
+			s := d.Spec.Services["cache"]
+			s.Env["X"] = pipeline.EnvValue{Scalar: &sc}
+			d.Spec.Services["cache"] = s
+		}
+	}
+	setStep := func(sc pipeline.Scalar) func(*pipeline.Document) {
+		return func(d *pipeline.Document) { d.Spec.Steps[0].Env["X"] = pipeline.EnvValue{Scalar: &sc} }
+	}
+	long := strings.Repeat("x", 8193)
+	for name, sc := range map[string]pipeline.Scalar{
+		"empty type, long string":     {Str: long},
+		"empty type, secret literal":  {Str: "secret://project/test-db-password"},
+		"empty type, unchecked edge":  {Str: "${{ services.cache.host }}"},
+		"empty type, step reference":  {Str: "${{ steps.test.outputs.o }}"},
+		"unknown type":                {Type: "float", Str: "x"},
+		"artifact type":               {Type: pipeline.TypeArtifact, Str: "x"},
+		"ociArtifact type":            {Type: pipeline.TypeOCIArtifact, Str: "x"},
+		"case variant of string":      {Type: "String", Str: "x"},
+		"empty type, integer payload": {Int: 7},
+	} {
+		for where, set := range map[string]func(pipeline.Scalar) func(*pipeline.Document){"service": setSvc, "step": setStep} {
+			v, err := typed(set(sc))
+			if err == nil {
+				t.Errorf("%s in a %s env was accepted: %s", name, where, v.Canonical())
+				continue
+			}
+			expectCode(t, err, pipeline.CodeInvalidType)
+		}
+	}
+	// Supported discriminators still validate, and every Validated document
+	// reads back through the stored-content reader with the same bytes.
+	for name, sc := range map[string]pipeline.Scalar{
+		"string": pipeline.StringScalar("x"), "empty string": pipeline.StringScalar(""), "boolean": pipeline.BoolScalar(true), "integer": pipeline.IntScalar(7),
+		"endpoint with its edge": pipeline.StringScalar("${{ services.db.host }}"),
+	} {
+		for where, set := range map[string]func(pipeline.Scalar) func(*pipeline.Document){"service": setSvc, "step": setStep} {
+			v, err := typed(set(sc))
+			if where == "step" && name == "endpoint with its edge" {
+				if err != nil {
+					t.Errorf("%s %s: %v", name, where, err)
+				}
+			} else if err != nil {
+				t.Errorf("%s %s: %v", name, where, err)
+				continue
+			}
+			stored, serr := pipeline.NewValidatedFromCanonical(v.Canonical(), v.Digest())
+			if serr != nil {
+				t.Errorf("%s %s: the validated document is not readable as stored content: %v", name, where, serr)
+				continue
+			}
+			if _, derr := stored.Document(); derr != nil || !bytes.Equal(stored.Canonical(), v.Canonical()) {
+				t.Errorf("%s %s: round trip failed: %v", name, where, derr)
+			}
+		}
+	}
+	// An unchecked endpoint reference cannot dodge the edge policy this way: the
+	// same expression with a real type is refused when no edge exists.
+	_, err := typed(setSvc(pipeline.StringScalar("${{ services.db.ports.admin }}")))
+	expectCode(t, err, pipeline.CodeEdgeUndeclared)
+	_, err = typed(setSvc(pipeline.Scalar{Str: "${{ services.db.ports.admin }}"}))
+	expectCode(t, err, pipeline.CodeInvalidType)
+	// Input defaults and conditions are typed too: a mismatch is refused.
+	_, err = typed(func(d *pipeline.Document) {
+		in := d.Spec.Inputs["region"]
+		in.Default = &pipeline.Scalar{Str: "eu"}
+		d.Spec.Inputs["region"] = in
+	})
+	expectCode(t, err, pipeline.CodeTypeMismatch)
+}
+
+// Test_v1alpha2_diagnostics_never_echo_document_content: every finding of a
+// kodama/v1alpha2 document carries constant text, including those of the shared
+// graph, reference and duplicate rules, whose kodama/v1alpha1 messages name
+// step, input and output identifiers. The v1 messages are asserted unchanged.
+// PX-21.
+func Test_v1alpha2_diagnostics_never_echo_document_content(t *testing.T) {
+	e := newEnvV2(t)
+	step := func(id string, extra map[string]any) map[string]any {
+		m := map[string]any{"id": id, "kind": "container", "image": "registry.example.invalid/tools@" + v2Digest1, "command": []any{"/bin/true"}, "timeoutSeconds": 60}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	w := map[string]any{"access": "write"}
+	for name, tc := range map[string]struct {
+		code  string
+		steps []any
+		extra []any
+		leak  []string
+	}{
+		"duplicate step":   {pipeline.CodeDuplicateStep, []any{step("zqxdup", nil), step("zqxdup", nil)}, nil, []string{"zqxdup"}},
+		"cycle":            {pipeline.CodeCycle, []any{step("zqxone", map[string]any{"needs": []any{"zqxtwo"}}), step("zqxtwo", map[string]any{"needs": []any{"zqxone"}})}, nil, []string{"zqxone", "zqxtwo"}},
+		"parallel writers": {pipeline.CodeParallelWriters, []any{step("zqxw1", map[string]any{"workspace": w}), step("zqxw2", map[string]any{"workspace": w})}, nil, []string{"zqxw1", "zqxw2"}},
+		"unknown input":    {pipeline.CodeUnknownInput, []any{step("zqxs", map[string]any{"env": map[string]any{"A": "${{ inputs.zqxinput }}"}})}, nil, []string{"zqxinput"}},
+		"unknown step":     {pipeline.CodeUnknownStep, []any{step("zqxs", map[string]any{"env": map[string]any{"A": "${{ steps.zqxghost.outputs.o }}"}})}, nil, []string{"zqxghost"}},
+		"unknown need":     {pipeline.CodeUnknownStep, []any{step("zqxs", map[string]any{"needs": []any{"zqxmissing"}})}, nil, []string{"zqxmissing"}},
+		"not an ancestor":  {pipeline.CodeNotAncestor, []any{step("zqxa", map[string]any{"outputs": map[string]any{"zqxout": map[string]any{"type": "string"}}}), step("zqxb", map[string]any{"env": map[string]any{"A": "${{ steps.zqxa.outputs.zqxout }}"}})}, nil, []string{"zqxa", "zqxout"}},
+		"unknown output":   {pipeline.CodeUnknownOutput, []any{step("zqxa", nil), step("zqxb", map[string]any{"needs": []any{"zqxa"}, "env": map[string]any{"A": "${{ steps.zqxa.outputs.zqxnone }}"}})}, nil, []string{"zqxa", "zqxnone"}},
+		"step kind":        {pipeline.CodeUnknownField, []any{step("zqxs", map[string]any{"agent": map[string]any{"profile": "zqxprofile"}})}, nil, []string{"zqxprofile", "container"}},
+	} {
+		raw := mutate(t, append([]any{"spec.services", nil, "spec.network", nil, "spec.steps", tc.steps}, tc.extra...)...)
+		_, err := e.validateJSON(raw)
+		expectCode(t, err, tc.code)
+		for _, d := range err.(*pipeline.ValidationError).Diagnostics {
+			for _, l := range tc.leak {
+				if strings.Contains(d.Message, l) {
+					t.Errorf("%s: message %q echoes %q", name, d.Message, l)
+				}
+			}
+		}
+	}
+	// kodama/v1alpha1 is unchanged and still names identifiers by design.
+	_, err := newEnv(t).validate(doc(container("dup"), container("dup")))
+	var ve *pipeline.ValidationError
+	if !errors.As(err, &ve) || !strings.Contains(ve.Diagnostics[0].Message, "the step id dup is already used by step 0") {
+		t.Fatalf("the v1alpha1 duplicate-step message changed: %v", err)
+	}
 }

@@ -738,6 +738,24 @@
     "document": "{\"apiVersion\":\"kodama/v1alpha2\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"inputs\":{\"region\":{\"default\":\"eu\",\"type\":\"string\"}},\"network\":{\"edges\":[{\"from\":\"cache\",\"ports\":[\"sql\"],\"to\":\"db\"}]},\"services\":{\"cache\":{\"image\":\"registry.example.invalid/cache@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"ports\":{\"kv\":{\"port\":6379}},\"readiness\":{\"tcp\":\"kv\",\"timeoutSeconds\":30},\"resources\":{\"cpuMillis\":100,\"ephemeralMiB\":64,\"memoryMiB\":64}},\"db\":{\"image\":\"registry.example.invalid/db@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"ports\":{\"admin\":{\"port\":5433},\"sql\":{\"port\":5432}},\"readiness\":{\"tcp\":\"sql\",\"timeoutSeconds\":60},\"resources\":{\"cpuMillis\":500,\"ephemeralMiB\":256,\"memoryMiB\":512},\"storage\":[{\"path\":\"/var/data\",\"sizeMiB\":1},{\"path\":\"/var/data/sub\",\"sizeMiB\":1}]}},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"env\":{\"PGHOST\":\"${{ services.db.host }}\",\"PGPORT\":\"${{ services.db.ports.sql }}\"},\"id\":\"test\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600}],\"timeoutSeconds\":1800}}"
   },
   {
+    "name": "storage ancestor separated by an unrelated sibling",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "syntax",
+    "code": "invalid_storage",
+    "path": "services.db.storage",
+    "document": "{\"apiVersion\":\"kodama/v1alpha2\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"inputs\":{\"region\":{\"default\":\"eu\",\"type\":\"string\"}},\"network\":{\"edges\":[{\"from\":\"cache\",\"ports\":[\"sql\"],\"to\":\"db\"}]},\"services\":{\"cache\":{\"image\":\"registry.example.invalid/cache@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"ports\":{\"kv\":{\"port\":6379}},\"readiness\":{\"tcp\":\"kv\",\"timeoutSeconds\":30},\"resources\":{\"cpuMillis\":100,\"ephemeralMiB\":64,\"memoryMiB\":64}},\"db\":{\"image\":\"registry.example.invalid/db@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"ports\":{\"admin\":{\"port\":5433},\"sql\":{\"port\":5432}},\"readiness\":{\"tcp\":\"sql\",\"timeoutSeconds\":60},\"resources\":{\"cpuMillis\":500,\"ephemeralMiB\":256,\"memoryMiB\":512},\"storage\":[{\"path\":\"/var/data\",\"sizeMiB\":1},{\"path\":\"/var/data-other\",\"sizeMiB\":1},{\"path\":\"/var/data/sub\",\"sizeMiB\":1}]}},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"env\":{\"PGHOST\":\"${{ services.db.host }}\",\"PGPORT\":\"${{ services.db.ports.sql }}\"},\"id\":\"test\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "storage descendant declared first",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "syntax",
+    "code": "invalid_storage",
+    "path": "services.db.storage",
+    "document": "{\"apiVersion\":\"kodama/v1alpha2\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"inputs\":{\"region\":{\"default\":\"eu\",\"type\":\"string\"}},\"network\":{\"edges\":[{\"from\":\"cache\",\"ports\":[\"sql\"],\"to\":\"db\"}]},\"services\":{\"cache\":{\"image\":\"registry.example.invalid/cache@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"ports\":{\"kv\":{\"port\":6379}},\"readiness\":{\"tcp\":\"kv\",\"timeoutSeconds\":30},\"resources\":{\"cpuMillis\":100,\"ephemeralMiB\":64,\"memoryMiB\":64}},\"db\":{\"image\":\"registry.example.invalid/db@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"ports\":{\"admin\":{\"port\":5433},\"sql\":{\"port\":5432}},\"readiness\":{\"tcp\":\"sql\",\"timeoutSeconds\":60},\"resources\":{\"cpuMillis\":500,\"ephemeralMiB\":256,\"memoryMiB\":512},\"storage\":[{\"path\":\"/var/data/sub\",\"sizeMiB\":1},{\"path\":\"/var/data-other\",\"sizeMiB\":1},{\"path\":\"/var/data\",\"sizeMiB\":1}]}},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"env\":{\"PGHOST\":\"${{ services.db.host }}\",\"PGPORT\":\"${{ services.db.ports.sql }}\"},\"id\":\"test\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600}],\"timeoutSeconds\":1800}}"
+  },
+  {
     "name": "duplicate storage path",
     "format": "json",
     "schemaValid": true,

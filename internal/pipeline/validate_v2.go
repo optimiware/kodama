@@ -4,7 +4,6 @@ import (
 	"context"
 	"path"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -60,6 +59,7 @@ func (v *Validator) validateV2(ctx context.Context, scope domain.Scope, actor Ac
 	n := normalize(doc)
 	v.checkDocumentV2(n, &d)
 	if d.any() {
+		d.constantMessages()
 		return Validated{}, d.err(StageSemantic)
 	}
 	if err := v.checkLookups(ctx, scope, actor, n, &d); err != nil {
@@ -69,6 +69,7 @@ func (v *Validator) validateV2(ctx context.Context, scope domain.Scope, actor Ac
 		return Validated{}, err
 	}
 	if d.any() {
+		d.constantMessages()
 		return Validated{}, d.err(StageSemantic)
 	}
 	return newValidated(n)
@@ -104,7 +105,7 @@ func (v *Validator) checkForbiddenV2(doc Document, d *diagnostics) {
 			case s.Kind == KindGate:
 				d.add(CodeGateField, p+"."+f, "gates have no executable fields")
 			default:
-				d.add(CodeUnknownField, p+"."+f, "the field is not part of a %s step", s.Kind)
+				d.add(CodeUnknownField, p+"."+f, "the field is not part of this step kind")
 			}
 		}
 		if s.Workspace != nil && s.Workspace.From != "" {
@@ -244,6 +245,11 @@ func checkShapeV2(doc Document, d *diagnostics) {
 	for i, s := range doc.Spec.Steps {
 		if s.Kind == KindContainer {
 			checkEgressNames(stepPath(i)+".egress", s.Egress, d)
+			for _, name := range sortedKeys(s.Env) {
+				if sc := s.Env[name].Scalar; sc != nil {
+					checkScalarTypeV2(childPath(stepPath(i)+".env", name), sc, d)
+				}
+			}
 		}
 	}
 }
@@ -376,13 +382,38 @@ func checkStorage(p string, storage []ServiceStorage, d *diagnostics) {
 			d.add(CodeInvalidStorage, ep+".sizeMiB", "sizeMiB must be between 1 and 262144")
 		}
 	}
-	sort.Strings(valid)
-	for k := 1; k < len(valid); k++ {
-		if valid[k] == valid[k-1] || strings.HasPrefix(valid[k], valid[k-1]+"/") {
-			d.add(CodeInvalidStorage, sp, "storage paths must be distinct and must not overlap")
-			break
+	if storagePathsOverlap(valid) {
+		d.add(CodeInvalidStorage, sp, "storage paths must be distinct and must not overlap")
+	}
+}
+
+// storagePathsOverlap compares every pair of valid, normalized paths on path
+// component boundaries: equal, or one an ancestor of the other. Sorting and
+// comparing neighbors is not enough, because an unrelated path can sort between
+// an ancestor and its descendant (/var/data, /var/data-other, /var/data/sub).
+func storagePathsOverlap(paths []string) bool {
+	for i := 0; i < len(paths); i++ {
+		for j := i + 1; j < len(paths); j++ {
+			a, b := paths[i], paths[j]
+			if a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/") {
+				return true
+			}
 		}
 	}
+	return false
+}
+
+// checkScalarTypeV2 rejects a typed Scalar whose discriminator is not string,
+// boolean or integer. The canonical serializer renders an unknown type as a
+// string, so letting one through would register a document whose canonical form
+// is not the document that was checked.
+func checkScalarTypeV2(path string, sc *Scalar, d *diagnostics) bool {
+	switch sc.Type {
+	case TypeString, TypeBoolean, TypeInteger:
+		return true
+	}
+	d.add(CodeInvalidType, path, "a scalar is a string, boolean or integer")
+	return false
 }
 
 func checkReadiness(p string, s RunService, d *diagnostics) {
@@ -563,6 +594,7 @@ func (v *Validator) checkServicesV2(doc Document, r *resolver) {
 				if secretRefRE.FindStringSubmatch(val.SecretRef) == nil {
 					d.add(CodeInvalidSecretRef, ep+".secretRef", "a secret reference is secret://project/NAME")
 				}
+			case !checkScalarTypeV2(ep, val.Scalar, d):
 			case val.Scalar.Type == TypeString:
 				v.checkString(ep, val.Scalar.Str, d)
 				v.noSecretLiteral(ep, val.Scalar.Str, d)

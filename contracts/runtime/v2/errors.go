@@ -88,8 +88,11 @@ type Operation struct {
 	Kinds     []ResourceKind
 }
 
+// attemptAuthErrors include forbidden because an attempt route rejects a token of
+// another audience (a resource token) with 403 forbidden before anything else; the
+// frozen v1 tables are unchanged.
 var attemptAuthErrors = []domain.ErrorCode{
-	domain.CodeInvalidCredential, runtimev1.CodeAttemptRevoked, CodeContextVersionMismatch, domain.CodeUnavailable, domain.CodeRateLimited,
+	domain.CodeInvalidCredential, domain.CodeForbidden, runtimev1.CodeAttemptRevoked, CodeContextVersionMismatch, domain.CodeUnavailable, domain.CodeRateLimited,
 }
 
 var resourceAuthErrors = []domain.ErrorCode{

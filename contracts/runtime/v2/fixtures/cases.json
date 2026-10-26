@@ -305,7 +305,7 @@
       "attemptId": "att_04",
       "command": {
         "args": [
-          "cd /workspace \u0026\u0026 go test ./..."
+          "echo teardown-complete \u003e /workspace/teardown.log"
         ],
         "command": [
           "/bin/sh",
@@ -1553,7 +1553,7 @@
       "attemptId": "att_04",
       "command": {
         "args": [
-          "cd /workspace \u0026\u0026 go test ./..."
+          "echo teardown-complete \u003e /workspace/teardown.log"
         ],
         "command": [
           "/bin/sh",
@@ -1625,7 +1625,7 @@
       "attemptId": "att_04",
       "command": {
         "args": [
-          "cd /workspace \u0026\u0026 go test ./..."
+          "echo teardown-complete \u003e /workspace/teardown.log"
         ],
         "command": [
           "/bin/sh",
@@ -5192,7 +5192,7 @@
         "attemptId": "att_04",
         "command": {
           "args": [
-            "cd /workspace \u0026\u0026 go test ./..."
+            "echo teardown-complete \u003e /workspace/teardown.log"
           ],
           "command": [
             "/bin/sh",
@@ -6051,7 +6051,7 @@
       "token": {
         "audience": "kodama-runtime-resource",
         "expiresAt": "2026-10-26T10:15:00Z",
-        "maxExpiresAt": "2026-10-26T12:00:00Z",
+        "maxExpiresAt": "2026-10-26T11:00:00Z",
         "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "tokenType": "Bearer"
       }
@@ -6110,7 +6110,7 @@
       "token": {
         "audience": "kodama-runtime-resource",
         "expiresAt": "2026-10-26T10:15:00Z",
-        "maxExpiresAt": "2026-10-26T12:00:00Z",
+        "maxExpiresAt": "2026-10-26T11:00:00Z",
         "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "tokenType": "Bearer"
       }
@@ -6194,7 +6194,7 @@
       "token": {
         "audience": "kodama-runtime-resource",
         "expiresAt": "2026-10-26T10:15:00Z",
-        "maxExpiresAt": "2026-10-26T12:00:00Z",
+        "maxExpiresAt": "2026-10-26T11:00:00Z",
         "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "tokenType": "Basic"
       }
@@ -6236,6 +6236,107 @@
       "token": {
         "audience": "kodama-runtime-resource",
         "expiresAt": "2026-10-26T13:00:00Z",
+        "maxExpiresAt": "2026-10-26T11:00:00Z",
+        "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tokenType": "Bearer"
+      }
+    },
+    "raw": null,
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "resource_admit_response_preparation_token_outlives_deadline",
+    "type": "ResourceAdmitResponse",
+    "requirements": [
+      "VS-14"
+    ],
+    "payload": {
+      "context": {
+        "contextVersion": 2,
+        "policy": {
+          "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "id": "run-v1"
+        },
+        "preparation": {
+          "commit": "1111111111111111111111111111111111111111",
+          "deadlineAt": "2026-10-26T11:00:00Z",
+          "maxAttempts": 2,
+          "maxBytes": 1073741824,
+          "mountPath": "/workspace",
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "timeoutSeconds": 600
+        },
+        "projectId": "p_inventory",
+        "resourceKey": "preparation",
+        "resourceKind": "preparation",
+        "runId": "run_01",
+        "service": null,
+        "tenantId": "t_acme"
+      },
+      "token": {
+        "audience": "kodama-runtime-resource",
+        "expiresAt": "2026-10-26T10:15:00Z",
+        "maxExpiresAt": "2026-10-26T11:00:01Z",
+        "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tokenType": "Bearer"
+      }
+    },
+    "raw": null,
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "resource_admit_response_service_token_outlives_deadline",
+    "type": "ResourceAdmitResponse",
+    "requirements": [
+      "VS-14"
+    ],
+    "payload": {
+      "context": {
+        "contextVersion": 2,
+        "policy": {
+          "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "id": "run-v1"
+        },
+        "preparation": null,
+        "projectId": "p_inventory",
+        "resourceKey": "service.db",
+        "resourceKind": "service",
+        "runId": "run_01",
+        "service": {
+          "command": {
+            "args": [],
+            "command": [
+              "/usr/local/bin/docker-entrypoint.sh",
+              "postgres"
+            ],
+            "env": {
+              "POSTGRES_DB": "app",
+              "POSTGRES_PASSWORD_FILE": "/kodama/secrets/postgres-password",
+              "POSTGRES_USER": "kodama"
+            },
+            "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          "deadlineAt": "2026-10-26T11:00:00Z",
+          "name": "db",
+          "role": "general",
+          "secrets": [
+            {
+              "delivery": "file",
+              "name": "postgres-password",
+              "ref": "secret://project/test-db-password",
+              "version": 3
+            }
+          ]
+        },
+        "tenantId": "t_acme"
+      },
+      "token": {
+        "audience": "kodama-runtime-resource",
+        "expiresAt": "2026-10-26T10:15:00Z",
         "maxExpiresAt": "2026-10-26T12:00:00Z",
         "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "tokenType": "Bearer"
@@ -6245,6 +6346,166 @@
     "schemaValid": true,
     "valid": false,
     "code": "invalid_request"
+  },
+  {
+    "name": "resource_admit_response_service_token_outlives_earlier_deadline",
+    "type": "ResourceAdmitResponse",
+    "requirements": [
+      "VS-14"
+    ],
+    "payload": {
+      "context": {
+        "contextVersion": 2,
+        "policy": {
+          "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "id": "run-v1"
+        },
+        "preparation": null,
+        "projectId": "p_inventory",
+        "resourceKey": "service.db",
+        "resourceKind": "service",
+        "runId": "run_01",
+        "service": {
+          "command": {
+            "args": [],
+            "command": [
+              "/usr/local/bin/docker-entrypoint.sh",
+              "postgres"
+            ],
+            "env": {
+              "POSTGRES_DB": "app",
+              "POSTGRES_PASSWORD_FILE": "/kodama/secrets/postgres-password",
+              "POSTGRES_USER": "kodama"
+            },
+            "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          "deadlineAt": "2026-10-26T10:30:00Z",
+          "name": "db",
+          "role": "general",
+          "secrets": [
+            {
+              "delivery": "file",
+              "name": "postgres-password",
+              "ref": "secret://project/test-db-password",
+              "version": 3
+            }
+          ]
+        },
+        "tenantId": "t_acme"
+      },
+      "token": {
+        "audience": "kodama-runtime-resource",
+        "expiresAt": "2026-10-26T10:15:00Z",
+        "maxExpiresAt": "2026-10-26T11:00:00Z",
+        "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tokenType": "Bearer"
+      }
+    },
+    "raw": null,
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "resource_admit_response_token_ends_exactly_at_the_deadline",
+    "type": "ResourceAdmitResponse",
+    "requirements": [
+      "VS-14"
+    ],
+    "payload": {
+      "context": {
+        "contextVersion": 2,
+        "policy": {
+          "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "id": "run-v1"
+        },
+        "preparation": null,
+        "projectId": "p_inventory",
+        "resourceKey": "service.db",
+        "resourceKind": "service",
+        "runId": "run_01",
+        "service": {
+          "command": {
+            "args": [],
+            "command": [
+              "/usr/local/bin/docker-entrypoint.sh",
+              "postgres"
+            ],
+            "env": {
+              "POSTGRES_DB": "app",
+              "POSTGRES_PASSWORD_FILE": "/kodama/secrets/postgres-password",
+              "POSTGRES_USER": "kodama"
+            },
+            "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          "deadlineAt": "2026-10-26T10:30:00Z",
+          "name": "db",
+          "role": "general",
+          "secrets": [
+            {
+              "delivery": "file",
+              "name": "postgres-password",
+              "ref": "secret://project/test-db-password",
+              "version": 3
+            }
+          ]
+        },
+        "tenantId": "t_acme"
+      },
+      "token": {
+        "audience": "kodama-runtime-resource",
+        "expiresAt": "2026-10-26T10:15:00Z",
+        "maxExpiresAt": "2026-10-26T10:30:00Z",
+        "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tokenType": "Bearer"
+      }
+    },
+    "raw": null,
+    "schemaValid": true,
+    "valid": true,
+    "code": ""
+  },
+  {
+    "name": "resource_admit_response_token_ends_before_the_deadline",
+    "type": "ResourceAdmitResponse",
+    "requirements": [
+      "VS-14"
+    ],
+    "payload": {
+      "context": {
+        "contextVersion": 2,
+        "policy": {
+          "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "id": "run-v1"
+        },
+        "preparation": {
+          "commit": "1111111111111111111111111111111111111111",
+          "deadlineAt": "2026-10-26T11:00:00Z",
+          "maxAttempts": 2,
+          "maxBytes": 1073741824,
+          "mountPath": "/workspace",
+          "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+          "timeoutSeconds": 600
+        },
+        "projectId": "p_inventory",
+        "resourceKey": "preparation",
+        "resourceKind": "preparation",
+        "runId": "run_01",
+        "service": null,
+        "tenantId": "t_acme"
+      },
+      "token": {
+        "audience": "kodama-runtime-resource",
+        "expiresAt": "2026-10-26T10:15:00Z",
+        "maxExpiresAt": "2026-10-26T10:59:59Z",
+        "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tokenType": "Bearer"
+      }
+    },
+    "raw": null,
+    "schemaValid": true,
+    "valid": true,
+    "code": ""
   },
   {
     "name": "resource_token_request",
@@ -6282,7 +6543,7 @@
       "token": {
         "audience": "kodama-runtime-resource",
         "expiresAt": "2026-10-26T10:15:00Z",
-        "maxExpiresAt": "2026-10-26T12:00:00Z",
+        "maxExpiresAt": "2026-10-26T11:00:00Z",
         "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "tokenType": "Bearer"
       }
