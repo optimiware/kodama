@@ -134,7 +134,9 @@ func (l *lateEnvironments) GetEnvironment(ctx context.Context, c delivery.Caller
 var _ pipeline.ReferencePolicy = pipelineReferences{}
 
 func (r pipelineReferences) CheckSecret(ctx context.Context, scope domain.Scope, actor pipeline.Actor, name string, use pipeline.SecretUse) error {
-	if use != pipeline.SecretUseFile {
+	// Both declared forms are admitted: a file under /kodama/secrets and an ENV binding for the step's
+	// command only. The grant, not the form, decides what may be resolved at run time.
+	if use != pipeline.SecretUseFile && use != pipeline.SecretUseEnv {
 		return pipeline.ErrReferenceDenied
 	}
 	err := r.authority.Authorize(ctx, identity.Actor{ID: actor.ID, Type: identity.ActorType(actor.Type)},

@@ -2,7 +2,7 @@
   "kube_chart_install": {"package": "github.com/optimiware/kodama/test/e2e/kube-full", "test": "TestKubeChartInstall", "backend": "", "cases": []},
   "kube_m1_roundtrip": {"package": "github.com/optimiware/kodama/test/e2e/kube-full", "test": "TestKubeM1Roundtrip", "backend": "", "cases": []},
   "kube_cancel_restart": {"package": "github.com/optimiware/kodama/test/e2e/kube-full", "test": "TestKubeCancelRestart", "backend": "", "cases": ["lost_create_acknowledgment", "cancel_committed_while_delete_is_refused", "restart_adopts_the_running_Job"]},
-  "kube_secrets_kms": {"package": "github.com/optimiware/kodama/test/e2e/kube-full", "test": "TestKubeSecretsKMS", "backend": "", "cases": ["installed_secret_restart", "workload_provider_procedure"]},
+  "kube_secrets_kms": {"package": "github.com/optimiware/kodama/test/e2e/kube-full", "test": "TestKubeSecretsKMS", "backend": "", "cases": ["installed_secret_restart", "direct_secret_delivery", "workload_provider_procedure"]},
   "execution_assembly_roundtrip": {"package": "github.com/optimiware/kodama/test/integration/assembly-execution", "test": "TestExecutionAssemblyRoundtrip/kube", "backend": "kube", "cases": []},
   "execution_assembly_cancel_restart": {"package": "github.com/optimiware/kodama/test/integration/assembly-execution", "test": "TestExecutionAssemblyCancelRestart/kube", "backend": "kube", "cases": ["cancel_committed_while_Job_delete_is_refused,_then_the_next_process_finishes_it", "restart,_then_cancel_the_adopted_attempt", "a_foreign_Job_at_the_workload_name_is_never_adopted_or_touched"]},
   "execution_assembly_result_guard": {"package": "github.com/optimiware/kodama/test/integration/assembly-execution", "test": "TestExecutionAssemblyResultGuard/kube", "backend": "kube", "cases": []}
