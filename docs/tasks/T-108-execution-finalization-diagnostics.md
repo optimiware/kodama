@@ -1,7 +1,7 @@
 ---
 id: T-108
 milestone: production
-status: planned
+status: done
 depends_on: [T-104]
 decision_blockers: []
 owns: [internal/execution/result.go, internal/execution/reconcile.go, internal/diag/]
