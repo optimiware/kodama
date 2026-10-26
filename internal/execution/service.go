@@ -34,7 +34,13 @@ type Options struct {
 	// Batch bounds each scan page.
 	Batch  int
 	Logger *slog.Logger
+	// TerminationDelay is how long after an accepted result is committed its workload is stopped, so that
+	// the entrypoint still waiting for the acknowledgment receives it first (default 2s; negative stops at
+	// once, as a late or refused result always is).
+	TerminationDelay time.Duration
 }
+
+const defaultTerminationDelay = 2 * time.Second
 
 func (o Options) withDefaults() (Options, error) {
 	if o.ClaimLease == 0 {
@@ -42,6 +48,9 @@ func (o Options) withDefaults() (Options, error) {
 	}
 	if o.Batch == 0 {
 		o.Batch = 50
+	}
+	if o.TerminationDelay == 0 {
+		o.TerminationDelay = defaultTerminationDelay
 	}
 	if o.ClaimLease < time.Second || o.Batch < 1 || o.Batch > 1000 {
 		return o, invalidf("claim lease and batch are out of range")
