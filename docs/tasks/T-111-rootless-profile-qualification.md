@@ -1,7 +1,7 @@
 ---
 id: T-111
 milestone: production
-status: planned
+status: done
 depends_on: [T-110]
 decision_blockers: []
 owns: [test/integration/kube/, test/integration/runtime/, images/, docs/acceptance/run-resource-profile.md]
@@ -32,3 +32,6 @@ Read-only source preflight found that `dev/internal/devenv/cluster.go` creates s
 
 ## Out of scope
 Product lifecycle/assembly/chart changes, permissive fallbacks, shared stage rollout and claiming untested platform combinations.
+
+## Completion evidence
+Squashed to one commit and merged locally as `dea45c6c1101ac3519bc0334028182f3d562d499`, after independent exact-candidate approval (`ses_e8588493dffe1dtkGpksIwTKvr`) and coordinator offline scoped checks: all eight declared acceptances and six additional safety/reporting regressions passed; docs-check passed (125 files). Review repairs enforce create-only namespace ownership, UID/resourceVersion-preconditioned cleanup, failed-lookup honesty, complete mandatory check inventories, actual BuildKit mode projection and live-positive-control requirements for network claims. The original real probe remains historical **blocked/FAIL** evidence, not retargeted to this driver. Full P1 qualification belongs to planned T-121 after T-120; neither ran during closeout. The finished worktree/branch were removed, original source history was archived locally, and nothing was pushed.

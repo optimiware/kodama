@@ -1,7 +1,7 @@
 ---
 id: T-112
 milestone: production
-status: planned
+status: done
 depends_on: [T-110, T-119]
 decision_blockers: []
 owns: [internal/execution/, internal/app/migrate.go, internal/app/migrate_test.go, internal/app/m3_test.go]
@@ -38,5 +38,7 @@ Hold the single manual integration lease `/tmp/opencode/kodama-run-resources-int
 ## Out of scope
 Provider adapters, authority/publication changes owned by T-113, public API fragments/client generation, broader assembly and deployment. T-116 owns the `api/execution.yaml` integration handoff together with aggregate/client generation.
 
-## Blocking review handoff
-Candidate `503083853da63269e48d8985870e0b9debf826d1` is not approved or merged. Independent lifecycle review (`ses_e85e4b966ffe0osulKCMt16Lwf`) and persistence review (`ses_e85e4b891ffe3XrWO1W3fIA0MU`) identified collision-as-cleanup, begin replay after revocation/deadline, stale/reordered readiness, transactional holder-release race, result/run-deadline omission, redrive capability/barrier omission, policy-loss cleanup, delayed service stop after nonretryable begun failure, unsolicited stopped-resource loss, attempt-slot reservations, gate order, missing source-free admission/outbox, legacy migration wiring and unequal memory/SQL immutability guards. Each requires a deterministic negative regression in the appropriate shared/SQL suite before renewed approval. T-119 freezes the missing event contract and identity encoding first; retain the existing task worktree for repair.
+## Historical review and completion
+The initial `503083853da63269e48d8985870e0b9debf826d1` candidate was rejected, not merged. Reviews identified lifecycle/fencing, identity/readiness generations, quota-slot, source-free admission, transactional event, migration and memory/SQL immutability defects. Deterministic shared-store/SQL regressions and the T-119 event prerequisite repaired these before publication; passing initial tests were not treated as approval.
+
+The final implementation was squashed to one commit and merged locally as `978a4e6bd6149314c13cd0ce5e4a16fc8e351140`. Independent lifecycle/application review (`ses_e85b633ceffe3Q2ZfgDF7tsyuq`) and persistence/legacy review (`ses_e85b633b1ffeNZxxnevtll7B5c`) both approved that exact candidate with no findings. Coordinator reran the complete declared check after squash: execution/app scoped units, memory shared contract and real event/execution SQL integration; all 18 declared acceptances passed, with zero SQL skips/failures. Docs-check and diff-check passed. The application migration is appended after the frozen legacy contributions; the authorized M3 assertion preserves that ordering. Provider/auth/route/new-feature composition is not delivered here and default admission remains closed. The task-owned `t112` services scope was removed under the integration lease after checks; the finished worktree/branch were removed. Original source history was archived locally; nothing was pushed.
