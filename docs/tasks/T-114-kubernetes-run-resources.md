@@ -2,7 +2,7 @@
 id: T-114
 milestone: production
 status: planned
-depends_on: [T-111, T-112]
+depends_on: [T-112, T-121]
 decision_blockers: []
 owns: [internal/kube/]
 check: make check-go PKGS='./internal/kube/...'
@@ -12,7 +12,7 @@ acceptance: []
 # T-114 — P4: Kubernetes run resources and execution policy
 
 ## Goal
-Implement [P4](../implementation/run-workspace-services-builders.md#p4--kubernetes-resources-and-policy) using the exact qualified T-111 profile and T-112 seam.
+Implement [P4](../implementation/run-workspace-services-builders.md#p4--kubernetes-resources-and-policy) using the exact qualified T-121 profile and T-112 seam. T-111 driver/evidence delivery does not qualify the target.
 
 ## Contract
 ADR 0010/O-28 and immutable prerequisite candidates. Preserve one Job/primary container per executable attempt, `backoffLimit: 0`, no token automount, scoped ownership and actual default deny. No arbitrary pipeline Pod controls or unqualified capability claims.

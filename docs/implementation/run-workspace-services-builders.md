@@ -32,7 +32,7 @@ These documents record the design baseline, not delivered runtime behavior. The 
 | Phase | Task | Checkpoint |
 | --- | --- | --- |
 | P0 | [T-109](../tasks/T-109-run-resource-contracts.md), [T-118](../tasks/T-118-pipeline-version-admission.md), [T-110](../tasks/T-110-run-resource-wire-contracts.md) | Owning specifications and old-executor version fence independently, then executable versioned wire/parser fixtures |
-| P1 | [T-111](../tasks/T-111-rootless-profile-qualification.md) | Real deployable builder/storage/network profile |
+| P1 | [T-111](../tasks/T-111-rootless-profile-qualification.md), planned [T-120](../tasks/T-120-kubernetes-builder-profile.md) and [T-121](../tasks/T-121-run-profile-requalification.md) | Driver/blocked findings, then configure Kubernetes and complete real qualification later |
 | P2 | [T-112](../tasks/T-112-run-resource-lifecycle.md) | Execution-owned resources, persistence and frozen companion seam |
 | P3 | [T-113](../tasks/T-113-run-workspace-authority.md) | Preparation, authority, cumulative publication and provenance |
 | P4 | [T-114](../tasks/T-114-kubernetes-run-resources.md) | Kubernetes resources and verified policy |
@@ -45,6 +45,8 @@ The source design is commit `0b12febef5b9e092982af74e2c951afe2dd80c19`; executab
 **Progress:** P0 is complete: T-118's reviewed version fence is merged at `16a5d0df`, T-109's normative specifications at the checkpoint above, and T-110's reviewed executable schema/parser/wire fixtures at `6343b9e5f75b20e41e28b62b418069bb1811950f`. Coordinator checks passed all 26 named acceptances plus six review regressions and docs-check (121 files). New-format registration remains off by default and the current executor refuses it. T-111/P1 and T-112/P2 are ready independently; no shared-workspace/service runtime, real SQL/CSI/CNI or builder qualification is implied. The last integrated infrastructure-free lint/unit batch passed at `73404c51`; the subsequent executable checkpoint has scoped evidence, not a retargeted batch receipt.
 
 **P2 review prerequisite:** [T-119](../tasks/T-119-run-resource-event-contract.md) is reviewed, checked and merged at `b75dca7411bdc556f84ab7b674ce5d2f81da8841`, freezing the missing resource event and domain-valid scoped identity encoding. T-112 can now emit it transactionally, but its initial candidate is not approved; review repairs still include source-free lifecycle and adversarial recovery/fencing schedules. A narrowly ordered migration-manifest contribution is pulled forward from P6 to T-112 solely to preserve legacy PostgreSQL compatibility; public API fragments and new-feature composition remain with P6. P1 has not yet supplied final real qualification evidence.
+
+**Owner closeout direction (O-29):** Kubernetes configuration and verification are planned T-120/T-121, not work performed now. T-111 may close as reviewed driver and blocked-evidence delivery under offline checks; full P1 remains unqualified until T-121 passes. Dependent authority/runtime adapters remain gated on T-121. Current component candidates are squashed before merge only after review and scoped checks. New-format admission remains disabled; no full-plan completion or deployment claim follows from this closeout.
 
 ## Contract decisions to freeze
 

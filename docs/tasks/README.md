@@ -32,6 +32,8 @@ T-118 is reviewed, unit-tested and merged locally at `16a5d0df`; T-109's reviewe
 
 T-112's first candidate is held for material review repairs. [T-119](T-119-run-resource-event-contract.md) is reviewed, checked and merged at `b75dca74`, so T-112 can now repair against the complete event contract. The bounded T-112 migration-manifest exception preserves the existing PostgreSQL assembly without enabling shared runs. T-111 qualification continues independently; no passing P1 report has been recorded.
 
+**Owner closeout update (O-29):** T-111 now closes reviewed qualification-driver and blocked-evidence delivery, not full P1. [T-120](T-120-kubernetes-builder-profile.md) (configure the role-scoped Kubernetes profile) and [T-121](T-121-run-profile-requalification.md) (real verification) are planned for later. T-113/T-114/T-115 depend on T-121, so closing T-111 cannot bypass qualification. Current T-111/T-112 candidates still require passing scoped checks and review before one-commit-per-task squash/merge; no cluster mutation or wider queue restart is included.
+
 ## Task contract
 
 Scheduled (`planned` or `blocked`) tasks declare `owns`, `check`, optional `resources`, and `acceptance`:
