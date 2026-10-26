@@ -115,6 +115,52 @@ revision labels; the chart tree; the contract and values digests; both receipt p
 posture; and every limitation below. Evidence bundles are written under `deploy/stage/.evidence/` (git-ignored): copy
 them read-only, with checksums, outside the checkout before removing a worktree.
 
+## Qualification record
+
+**Qualified at candidate `8448adc623b5` (`8448adc623b5d8901cead7b7843aae5f3ad58cf0`), 2026-10-26.** One `readiness` gate
+(828.62s) and one `staging` gate (202.7s) passed on the same fresh session `kj`, the same frozen clean commit, the same
+contract and the same values; the `staging` gate verified the readiness receipt's digests before running.
+
+| Item | Value |
+| --- | --- |
+| Release image | `rg.fr-par.scw.cloud/kodama-stage-scw/kodama@sha256:2e937d6cb3c3b5f6e3085040420b98128ad056e377a144142134a293046d4421`, registry revision label = the full commit (verified at the registry by both gates) |
+| Test-only helper (readiness only) | `.../stageprobe@sha256:2e9b3488306be77b9621fe495e8ecb8273c721d04b2aff9f849c8a58be87ec1b`, same label check |
+| Workload image | `.../workload:1@sha256:24cff5ad7765e56c3242014e64e2d911ca02053b92ab9c14f2beeb6519d929ea` (not rebuilt per candidate, not label-verified) |
+| Chart tree | `14436ec71a4c143328fbbda9a2265cef94487138` |
+| Contract / values | `sha256:b31cfe0c8c927452970c1684ce6615816e6494002a7831f098028f58249c59ea` / `sha256:5b469858a002eb3ad5ad84d15d759bc3c95fe6d462a8ff2f80c1ae0291731453` |
+| Receipts | `~/kodama-stage/evidence/T-090-qualification-8448adc623b5/{readiness,staging}` (read-only, `SHA256SUMS`) |
+| Stage deployment | the stage's own release in `kodama-system` runs this image and chart; Alloy tails the control plane, the contract's tenant namespaces and `kodama-q-*` |
+
+Readiness: all seven acceptances and every child case passed, including `kube_secrets_kms/direct_secret_delivery`
+([T-107](../tasks/T-107-direct-secret-delivery.md)). Staging: `stage_clean_install`, `stage_e2e_roundtrip`,
+`stage_restart_reconcile`, `stage_loki_log_search`, `stage_dev_adapter_refused` (four selections, each refused with the
+adapter named) and `stage_retention_uninstall` passed; nothing was skipped. Podman regression of the entrypoint change:
+all three assembly scenarios and the PostgreSQL contracts passed before the candidate was built.
+
+### What the first staging attempt found
+
+An earlier candidate (`4daa4516f044`) passed readiness but failed `stage_loki_log_search`: a trivial step ended
+`execution_timeout`. The control plane's new `attempt deadline missed` log and Loki showed the command had run and
+printed its output, then the entrypoint went silent until the deadline aborted it. The entrypoint's HTTP client had no
+per-request deadline, so one stalled request waited out the whole five-minute finalization budget, longer than the step's
+own deadline. Every request is now bounded and the finalization phases are logged ([T-108](../tasks/T-108-execution-finalization-diagnostics.md));
+the cause is inferred from that evidence, not observed. The failed attempt's evidence is kept with the receipts' sibling
+`T-090-superseded-4daa4516f044`. It is a real intermittent product defect, which is why the gate was not simply rerun.
+
+### Limits of this qualification
+
+- O-27, scheduled-only backups and the issuer fixture, as above. No NATS TLS, no PostgreSQL certificate verification, no
+  authentication-strength claim ([T-106](../tasks/T-106-production-tls-hardening.md), deferred to a design session).
+- Recovery objectives (PITR, restore drills) are not exercised ([T-029](../tasks/T-029-recovery-qualification.md)).
+- The execution deadline still covers finalization (uploads and the result submission count against the step's timeout);
+  the bounds shorten a stall but do not separate the two budgets.
+- A writer step that declares a secret cannot publish source yet, and a step that pins an environment and declares its own
+  secrets receives only the environment's ([T-107](../tasks/T-107-direct-secret-delivery.md)).
+- Staging qualifies the Kubernetes appliance on regular containers for trusted engineers; untrusted-code isolation,
+  hosted authority and supported-release claims are not made.
+- The receipts bind this exact commit, contract and values; any later change to product, chart or stage inputs needs new
+  receipts.
+
 ## Known limitations
 
 - O-27 (NATS, issuer) and scheduled-only backups, as above.

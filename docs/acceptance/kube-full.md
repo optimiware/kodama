@@ -61,6 +61,17 @@ An independent read-only review of the branch (on the candidate before `e6660bca
 | State directory default changed silently | `deploy.sh` and `qualify.sh` refuse when the old directory exists and the new one does not |
 | Tenant-boundary notes (`safe.directory=*`, kube-dns egress, Git CA fallback, Secret `update`) | Recorded above; narrowing `safe.directory` is a follow-up |
 
+## Later receipt: candidate `8448adc623b5` (2026-10-26, with T-090)
+
+The readiness gate was requalified at `8448adc623b5` on session `kj`, together with the `staging` gate (see
+[the staging record](../operations/staging.md#qualification-record)): all seven acceptances and every child case passed,
+now including `kube_secrets_kms/direct_secret_delivery` (ENV and file delivery of declared project secrets without a
+deployment environment, before and after a server restart, never in the Job or Pod objects), a `kube_m1_roundtrip`
+check that the conflicted writer's result is logged accepted and never unavailable, and per-request bounds in the
+entrypoint. Receipt: `~/kodama-stage/evidence/T-090-qualification-8448adc623b5/readiness`, contract
+`sha256:b31cfe0c…59ea`, values `sha256:5b469858…1453`, release image `sha256:2e937d6c…4421`, helper `sha256:2e9b3488306be77b9621fe495e8ecb8273c721d04b2aff9f849c8a58be87ec1b`, both labelled with the commit at
+the registry. It qualifies that commit only; the `e6660bca8488` receipt above stays valid for that commit.
+
 ## Superseded readiness receipt (candidate `5aee4af54e2e`, 2026-10-25)
 
 **Superseded, not qualifying.** It passed functionally (exit 0, `suite_passed=true`, 643s, session `ke`, product image `…/kodama@sha256:0c3b7859…791b`, receipt `~/kodama-stage/evidence/T-104-readiness-5aee4af54e2e/`), but review found (a) its helper image `…/stageprobe@sha256:091cd647…e47f1` labelled `dirty-debug` in the registry, because a cached label layer from an uncommitted debug build was reused, so the PX-A02 proxy and KMS procedure ran from an image of unproven origin; and (b) a product defect: a zero-byte `command.log` upload went out chunked (Go sends `ContentLength: 0` with a non-nil body as unknown length), which the signed zero-length presigned PUT refuses (HTTP 405 on Scaleway storage, logged as `diagnostic upload failed … unexpected HTTP 405` for every no-output step). Fixed in `internal/entrypoint/client.go` with a unit test and proven live: an unfixed image retains no `command.log` for a quiet step, the fixed one does.

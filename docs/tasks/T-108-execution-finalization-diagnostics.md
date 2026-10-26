@@ -26,6 +26,8 @@ Remove two operability gaps observed on the installed Kubernetes server, and exp
 
 - **A stalled request no longer holds the attempt (found while qualifying T-090).** A trivial step ran, printed its output and then went silent until the execution deadline failed it (`execution_timeout`), although the command had succeeded. The entrypoint's HTTP client had no per-request deadline (`Timeout: 0`), so one request that stalled after the connection was up waited for the whole five-minute finalization budget, longer than the step's own deadline. Each API request now has a bound (default 30s, response body included) and each upload a size-aware bound (60s plus one second per MiB, capped at 10 minutes); a timed-out try is retried like any transient failure and logged as `runtime request timed out; will retry` with the operation and the bound. The entrypoint also logs `command finished` and `finalizing`, so a future stall is located by the first line that is missing. The stalled request itself was inferred from the evidence (the command's output was the last line before `context canceled`, and the server saw no further request), not observed.
 
+Qualified live at `8448adc623b5` (the readiness and staging receipts; the first staging attempt at `4daa4516f044` is what exposed the unbounded request).
+
 Not changed: result acceptance rules, the attempt reason mapping (`command_failed` for non-output failures is intentional) and Job lifetime policy.
 
 ## Questions that were settled first

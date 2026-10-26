@@ -23,7 +23,7 @@ Verified by acceptance suites that run the real server against PostgreSQL, NATS 
 | Area | Where it stands |
 | --- | --- |
 | Production profile | `KODAMA_ENV=production` runs on the stage installation with live Scaleway KMS custody (T-104). A supported production profile is not claimed: TLS hardening (O-27), recovery and PITR, and hosted authority remain |
-| Installed server on Kubernetes | Shown on the Scaleway stage cluster by the T-104 readiness gate (qualified at `e6660bca8488` and merged on the owner's approval; [report](acceptance/kube-full.md)). Plaintext NATS and a fixture issuer (O-27), scheduled-only backups, and secret delivery only through deployment environments ([T-107](tasks/T-107-direct-secret-delivery.md)) remain. Not a supported production profile |
+| Installed server on Kubernetes | Shown on the Scaleway stage cluster by the T-104 readiness gate (readiness and staging gates passed at `8448adc623b5`; [readiness report](acceptance/kube-full.md), [staging record](operations/staging.md#qualification-record)). Plaintext NATS and a fixture issuer (O-27), scheduled-only backups, and secret delivery only through deployment environments ([T-107](tasks/T-107-direct-secret-delivery.md)) remain. Not a supported production profile |
 | Source, data and key recovery drills | Planned |
 | Live model and coding-agent qualification | Agents are tested with scripted responses only |
 | Optimi Platform (hosted) integration | Design target; standalone identity works today |
