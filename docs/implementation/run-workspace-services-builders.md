@@ -123,12 +123,13 @@ P1/P2 can proceed independently after P0. P3–P5 have independent paths once in
 
 ### P0 — Contract checkpoint
 
-**Own:** ADR/index/register, affected specification/contract docs, glossary; `contracts/pipeline/`; `contracts/runtime/`; `internal/pipeline/`; `api/pipeline.yaml` and `api/runtime.yaml` contributions. P6 owns aggregate/client regeneration.
+**Own:** ADR/index/register, affected specification/contract docs, glossary; `contracts/pipeline/`; `contracts/runtime/`; `internal/pipeline/`; the narrow execution admission version-refusal guard. T-110 supplies the API contribution handoff; P6 owns public source-fragment integration and aggregate/client regeneration together, because existing fragments are bundled or checked against frozen v1 operations.
 
 - Install ADR/plan at intended paths and rebase links. Amend ADR 0005/0008 and P-06/P-07/P-11/P-14/O-07 explicitly. Define run scratch/support services without renaming the durable logical workspace.
 - Update workspace/execution/entrypoint semantics, gate-wait resource statements, recovery/retention, security, delivery provenance, lifecycle/architecture explanations, examples and traceability together.
 - Version shapes/canonicalization. Reject mutable step/service images, unknown fields, bad ports/probes/references, service references to step outputs, arbitrary Pod security/mount/network controls and new-format `workspace.from`.
 - Freeze endpoint expressions, secret bindings, deadlines, order, source-free runs and migration errors. Version runtime context/provenance while retaining the expected-tip publisher protocol and old result hashes.
+- Keep new-format registration off by default and explicitly refuse new-format definitions at every old-executor admission path, including storage/resolver and cleanup-run paths. Readability of historical definitions must not authorize execution with old semantics.
 - Draft execution-owned resource DTOs and companion-port identity/fingerprint, ready/unknown/stopped/removed evidence semantics for P2 to freeze. Deliberately extend capabilities: existing `Guarantees` is `uint8` with six used bits; do not overflow it. Keep optional launch-history proof separate.
 - Allocate proposed requirement/acceptance IDs below after checking reservations. Describe implementation as proposed until delivered/qualified.
 
