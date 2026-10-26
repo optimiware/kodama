@@ -211,6 +211,27 @@ class RunnerTests(RunnerBase):
         self.results.write_text(json.dumps(good))
         self.assertEqual(self.verify().returncode, 0)
 
+    def test_staging_receipt_needs_the_runners_proof(self):
+        names = ["stage_clean_install", "stage_e2e_roundtrip", "stage_restart_reconcile", "stage_loki_log_search", "stage_dev_adapter_refused", "stage_retention_uninstall"]
+        contract = self.contract
+        sha = lambda p: "sha256:" + hashlib.sha256(Path(p).read_bytes()).hexdigest()
+        prov = {
+            "cloud": contract["cloud"], "installation_id": contract["installation_id"], "git_commit": self.head[:12],
+            "contract_sha256": sha(self.session / "contract.json"), "values_sha256": sha(self.session / "values.yaml"),
+            "cluster_endpoint": contract["cluster"]["endpoint"], "suite_passed": True, "candidate_stable": True,
+            "image_revisions": [{"image": self.registry.ref("kodama"), "revision": self.head}],
+        }
+        def check(mutate):
+            doc = {"passed": ["Test" + "".join(w.title() for w in n.split("_")) for n in names], "failed": [], "skipped": [], "acceptances": [], "truncated": False, "provenance": json.loads(json.dumps(prov))}
+            mutate(doc["provenance"])
+            self.results.write_text(json.dumps(doc))
+            return subprocess.run(["bash", "-c", 'source "$1/lib.sh"; verify_forge_results "$3" "$2/contract.json" "$2/values.yaml" ' + " ".join(names), "fixture", str(self.scripts), str(self.session), str(self.results)],
+                                  env=self.env, cwd=self.repo, capture_output=True, text=True, timeout=20).returncode
+        self.assertEqual(check(lambda p: None), 0)
+        self.assertNotEqual(check(lambda p: p.update(candidate_stable=False)), 0)
+        self.assertNotEqual(check(lambda p: p.pop("image_revisions")), 0)
+        self.assertNotEqual(check(lambda p: p["image_revisions"][0].update(revision="dirty-debug")), 0)
+
     def test_skipped_required_child_never_counts_as_parent_pass(self):
         self.run_suite(MOCK_SKIP_CASE="lost_create_acknowledgment")
         self.assertNotEqual(self.verify().returncode, 0)

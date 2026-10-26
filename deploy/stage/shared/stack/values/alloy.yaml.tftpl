@@ -29,13 +29,18 @@ alloy:
     content: |
       discovery.kubernetes "kodama_pods" {
         role = "pod"
-        namespaces {
-          names = ${jsonencode(monitored_namespaces)}
-        }
       }
 
       discovery.relabel "kodama_pods" {
         targets = discovery.kubernetes.kodama_pods.targets
+
+        // Only Kodama's own namespaces are tailed: the control plane, the tenant namespaces of the contract and the
+        // qualification sessions (kodama-q-<session>[-a|-b]) that the readiness and staging gates install.
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          regex         = ${jsonencode(monitored_namespace_regex)}
+          action        = "keep"
+        }
 
         rule {
           source_labels = ["__meta_kubernetes_namespace"]
@@ -73,6 +78,19 @@ alloy:
           expressions = {
             attempt_id = "attempt",
             level      = "level",
+          }
+        }
+
+        // The control plane names the attempt "attemptId" where the step entrypoint says "attempt"; both are
+        // searchable as one attempt_id. Only lines that carry the key are re-read, so a line without it keeps
+        // the value the first stage found.
+        stage.match {
+          selector = "{container=\"server\"} |= \"attemptId\""
+
+          stage.json {
+            expressions = {
+              attempt_id = "attemptId",
+            }
           }
         }
 
