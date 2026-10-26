@@ -12,6 +12,7 @@
 | Full Kubernetes readiness | Ready chart/server, live KMS and assembled M1 roundtrips with supported TLS | T-104 after T-105 and T-103; explicitly scheduled |
 | Trusted-engineer staging (current target) | Regular Kubernetes containers with the existing restricted execution baseline in Platform stage | T-090 after T-104 and the actual installation's prerequisites |
 | Trusted-engineer production | Same regular-container trust model with qualified operations and recovery | T-028/T-029 and T-056; Optimi-hosted authority integration also requires T-061 |
+| Shared run workspace, services and rootless builders (designed, off by default) | `run_shared` model of [ADR 0010](../adr/0010-run-workspace-services-builders.md): explicit enablement, a qualified node/storage/network profile and the cutover below. No installation supports it until integrated acceptance passes | T-109 contract → T-111 profile → T-112–T-116 → T-117; not a prerequisite of staging or the current trusted-engineer release |
 | Stronger/untrusted execution (deferred) | Later evaluation/support for gVisor, Substrate or other isolation/security options | T-055 after the baseline T-056 release, separately scheduled and qualified |
 
 A supported installation is Kubernetes on AWS, GCP, or Scaleway. It requires PostgreSQL and that cloud's KMS (AWS KMS, GCP Cloud KMS, or Scaleway Key Manager). The chart and product contracts are the same on each cloud. The installation selects one KMS provider; a missing provider prevents startup, and one cloud's KMS is not a fallback for another. The development keyfile is not a production provider. Platform data residency does not choose this cluster's cloud.
@@ -32,6 +33,15 @@ O-07 selects trusted engineers using regular Kubernetes containers for this stag
 
 Record the cluster/context, namespace set, image/chart revisions, selected cloud KMS and authority profile in the stage handoff. An explicitly standalone trusted-engineer smoke deployment can precede hosted qualification once its actual prerequisites are wired and tested; do not relabel it as a hosted integration. T-028 supplies the KMS adapters and T-105 supplies startup wiring. T-104 verifies live KMS, full installed-server readiness and the assembled Kubernetes roundtrips before T-090; T-089's O-24 component checkpoint alone is insufficient. Co-location does not bypass that work or authorize using the development keyfile as a cloud KMS. T-061 qualifies the real Platform caller and records the supported installation/API pairing. Stage deployment commands and evidence remain deployment deliverables.
 
+### Run-shared profile (designed, not installed)
+
+Nothing here is wired into the chart or qualified. The contract: [execution policy](../contracts/run-resources.md#execution-policy), [pipeline `v1alpha2`](../contracts/pipeline-format-v1alpha2.md). The current `attempt_private` model with the existing restricted baseline stays the installed behavior until the steps below pass.
+
+- **Prerequisites (T-111 freezes values, T-116 renders and preflights them).** Qualified kernel, Kubernetes, CRI/OCI runtime and CNI; Pod user namespaces and a CSI storage class supporting `ReadWriteOncePod`, delete reclaim and idmapped mounts; installed seccomp/LSM profiles; node subordinate ID allocation sufficient for the qualified builder images; Pod Security `baseline` at a tested version on the execution namespaces; replacement of broad tenant egress with per-run policies; resolver and egress-profile destinations; a pinned builder-service mode or none (a host-privileged mode additionally needs an exclusive disposable worker pool). Preflight checks capabilities by behavior, not declarations; a missing prerequisite is an actionable installation error, never a silent fallback to wider privilege.
+- **Capacity.** Services and scratch are reserved for the whole run, gate waits included. Set the run-deadline ceiling, quotas and PVC capacity accordingly; PVC storage is charged separately from container ephemeral storage.
+- **Cutover.** (1) Install the policy with `runShared: closed`; (2) enable `v1alpha2` registration, then admission, on a trusted-engineer stage; (3) set `legacyFormat: drain` and let old runs finish under their original semantics; (4) `closed` when none remain. Historical definitions/results stay readable throughout. Rollback: stop admission, cancel/drain `run_shared` runs, reconcile their resources, then revert the controller/profile; never resume a `run_shared` run on an older controller.
+- **Uninstall and offboarding.** Run scratch, services, policies and PVC/PV allocations are disposable per-run resources: tenant offboarding and uninstall stop admission, cancel runs, wait for verified stop and remove them; stuck cleanup is reported, not hidden. Scratch contents are deleted with the volume and are never restored. Git refs, artifacts and registry content follow their own retention.
+
 ## Integrations
 O-26 updates the original T-029 startup handoff: T-105 supplies `secrets.adapter: keyfile | kms` and cloud `aws | gcp | scw` startup wiring. T-104 performs live-provider validation in Kubernetes before T-090 staging. T-029 retains full disaster recovery. See [configuration and credentials](../../deploy/helm/kodama/README.md#kms-selection) for version-2 settings, stable key mappings and rollout behavior.
 
@@ -45,7 +55,7 @@ O-26 updates the original T-029 startup handoff: T-105 supplies `secrets.adapter
 | OCI registry | Digest pull and rootless-builder push scopes |
 | OIDC | Issuer/JWKS, factory access-token audience, PKCE redirect/client |
 | KMS | Required. AWS KMS, GCP Cloud KMS, or Scaleway Key Manager, one per installation. Wrap/unwrap scope keys and restore a derived value. Development keyfile is not valid here |
-| Kubernetes | Restricted Pods, NetworkPolicy, quotas, runtime baseline and reachable callback URL |
+| Kubernetes | Restricted Pods, NetworkPolicy, quotas, runtime baseline and reachable callback URL. For `run_shared`, additionally the preflighted execution-policy prerequisites ([below](#run-shared-profile-designed-not-installed)) |
 | Optional AI/MCP | Approved endpoint, typed credential, pinned protocol/wrapper compatibility |
 | Optional delivery | Namespace-scoped kubeconfig, explicit runtime config, preview TTL |
 

@@ -1,6 +1,6 @@
 # Example: staging and acceptance
 
-**Target:** M3, continuing [preview](erp-gap-to-preview.md).
+**Target:** M3, continuing [preview](erp-gap-to-preview.md). The pipelines here are `kodama/v1alpha1` (current executable format); see the [run-shared example](run-shared-build-and-services.md) for the `kodama/v1alpha2` form.
 
 Start a delivery run using the exact successful source commit, current content revision, and verified image artifact. Admission checks artifact provenance. The source is the candidate; no additional candidate/checkpoint IDs are needed.
 

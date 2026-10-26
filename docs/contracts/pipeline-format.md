@@ -1,6 +1,6 @@
 # Pipeline format
 
-**Status:** proposed `kodama/v1alpha1`, an API-managed document rather than a CRD.
+**Status:** `kodama/v1alpha1`, an API-managed document rather than a CRD. This is the **current executable format** and the `attempt_private` run model: each attempt clones its pinned commit into private scratch. It stays valid, readable and executable (frozen canonical bytes, digests and result hashes) until the documented cutover. [`kodama/v1alpha2`](pipeline-format-v1alpha2.md) is the separate, normative `run_shared` format (one shared `/workspace` per run, support services, total run deadline); it is not accepted by this validator and not enabled by default. Statements below describe `v1alpha1` unless they say otherwise.
 
 ```yaml
 apiVersion: kodama/v1alpha1
@@ -21,7 +21,7 @@ spec:
         report: {type: artifact, path: /kodama/outputs/tests.json}
 ```
 
-Images/digests are placeholders. Source repository comes from the work item's workspace; `sourceCommit` is pinned at run creation. Commands execute through [kodama step](../implementation/step-entrypoint.md). Read access means no publication, not a filesystem incapable of holding build-tool scratch changes.
+Images/digests are placeholders. This is the `v1alpha1` example; the `v1alpha2` equivalent has no `workspace.from` ([migration](pipeline-format-v1alpha2.md#migration-from-v1alpha1)). Source repository comes from the work item's workspace; `sourceCommit` is pinned at run creation. Commands execute through [kodama step](../implementation/step-entrypoint.md). Read access means no publication, not a filesystem incapable of holding build-tool scratch changes.
 
 ## Fields
 
@@ -69,7 +69,7 @@ Gates are unconditional, require one project reviewer, and have no image, retrie
 
 Only whole-scalar `${{ inputs.name }}` and `${{ steps.id.outputs.name }}` references are supported. Producer references require a dependency path and successful finalized outputs. Artifact references resolve to registered IDs, not raw arbitrary URLs. Use argument arrays/environment variables, not interpolation into shell programs.
 
-`workspace.from: run` selects the original source commit; a writer ID selects its published commit. Writers must be totally ordered in the DAG. A write after approval requires a new applicable gate before protected successors. Each successful writer has an implicit `commit` output. Branch movement does not change existing read inputs.
+In `v1alpha1`, `workspace.from: run` selects the original source commit; a writer ID selects its published commit. Writers must be totally ordered in the DAG. A write after approval requires a new applicable gate before protected successors. Each successful writer has an implicit `commit` output. Branch movement does not change existing read inputs. `from` is removed in `v1alpha2`: a shared tree cannot be rewound to an ancestor snapshot, so later steps consume the cumulative scratch and the writer's `commit` output only identifies the published commit.
 
 ## Result outputs
 

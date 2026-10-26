@@ -14,6 +14,7 @@ Proxy live Kubernetes logs only after authorizing the specific attempt. The entr
 | Events | Outbox oldest age, publish errors, inbox retries, consumer lag, quarantine |
 | Execution | Eligible wait, active attempts, startup/finish, pending cancellation, unknown outcomes |
 | Source | Writer contention, CAS conflict, publication age/failure, retained-ref verification |
+| Run resources (`run_shared`) | Resources by kind/phase/reason, preparation and readiness latency, service loss, cleanup-pending age, workspace-holder wait, capacity reserved versus used, run-deadline expiries |
 | Review/delivery | Pending review age, stale decisions, preview expiry/cleanup backlog |
 | AI/MCP | Request count, observed/estimated tokens, stream failure, tool denial/outcome |
 | Flow | M3 SQL active/blocked/review intervals and reopens |

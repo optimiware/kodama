@@ -1,6 +1,6 @@
 # Example: ERP inventory gap to preview
 
-**Target:** M2. Images, profiles, commands, and scripts below are implementation fixtures, not published software.
+**Target:** M2. Images, profiles, commands, and scripts below are implementation fixtures, not published software. The pipeline is the **current `kodama/v1alpha1` (`attempt_private`)** form and stays valid; the shared-workspace `kodama/v1alpha2` equivalents and service/builder examples are in the [run-shared example](run-shared-build-and-services.md).
 
 The analyst creates `wi_1042` with specification/plan sections and acceptance criteria: application-tenant isolation, audited resolution, idempotent ERP writes, and warehouse usability. The engineer selects the Go/PostgreSQL blueprint, pulls the item into active WIP, and provisions `refs/heads/kodama/work/wi_1042`.
 

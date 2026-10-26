@@ -11,7 +11,7 @@ production profile.
 | --- | --- |
 | Cluster | Scaleway Kapsule `kodama-stage-scw`, `fr-par`, Kubernetes 1.37, Cilium |
 | Control plane | `KODAMA_ENV=production`, `kodama server --assembly core`, standalone authority, one release in `kodama-system` |
-| Execution | Kubernetes Jobs in tenant namespaces under the restricted Pod Security baseline |
+| Execution | Kubernetes Jobs in tenant namespaces under the restricted Pod Security baseline (`attempt_private`). The designed shared-workspace/services/builders model is not part of this stage's qualification |
 | Trust model | **Trusted engineers on regular Kubernetes containers** (O-07, P-14). Untrusted-code isolation is T-055 and is not claimed |
 | Secrets | Scaleway Key Manager (`scw` provider); the development keyfile is refused |
 | Database | Scaleway Managed PostgreSQL 17, scheduled backups only: `qualifies_o11_pitr=false`, no 30-day PITR |

@@ -64,7 +64,7 @@ _Avoid_: Ticket as a separate entity.
 
 **Step attempt**: One attempt to execute a step, including its result and failure reason.
 
-**Step entrypoint**: The wrapper coordinating source preparation, command execution, and result collection for an attempt.
+**Step entrypoint**: The wrapper coordinating workspace verification (or, in the `attempt_private` model, source checkout), command execution, and result collection for an attempt.
 
 **Runtime**: The backend that runs attempt workloads (Kubernetes, Podman, or Process in tests) behind one execution port.
 _Avoid_: Executor.
@@ -78,6 +78,24 @@ _Avoid_: Profile, mode.
 **Memory adapter**: An in-memory implementation of a port over the `memdb` transaction kernel, qualified by the same contract suite as its PostgreSQL adapter. It proves policy, never SQL semantics.
 
 **Runtime guarantee**: A property a runtime enforces for every workload, such as image, isolation or network policy. Admission pins the guarantees a run requires.
+
+**Run model**: The execution semantics a run pins at admission. `attempt_private` (format `kodama/v1alpha1`, runtime context v1) is the current executable model with a private checkout per attempt. `run_shared` (format `kodama/v1alpha2`, runtime context v2) is the versioned design with one run workspace, support services and a total deadline; it is not delivered or qualified until its cutover and acceptance. Old runs keep their model; a controller refuses a model it does not implement.
+
+**Run workspace**: The disposable scratch filesystem of one `run_shared` run, mounted at `/workspace` by one attempt at a time. It is prepared once from the run's pinned commit (or empty for a source-free run), never a checkpoint or recovery authority, and distinct from the durable **Workspace**. _Avoid_: workspace without qualification when scratch is meant.
+
+**Preparation**: The controller-owned, one-shot checkout of a run workspace with read-only repository access and no user code; its control-plane receipt is the only evidence the checkout completed.
+
+**Workspace holder**: The single executable attempt currently entitled to mount a run workspace. Handoff requires the previous holder's workload to be verified stopped and the volume released; an expired claim or deleted Pod is not a fence.
+
+**Run resource**: Execution-owned state a `run_shared` run needs beyond its attempts: the run workspace, preparation, support services and the run's network boundary. It has deterministic identity, a spec fingerprint, a bound instance UID and ready/stopped/removed evidence, but no business status.
+
+**Support service**: A declared, digest-pinned workload (database, browser, builder daemon) that starts with a run, must be ready before any user command, is reachable only by that run's authorized workloads, and is stopped when the run ends. It is neither a step nor a sidecar.
+
+**Execution policy**: The versioned, operator-installed definition of workload security shapes, storage, limits, egress profiles and builder modes that a `run_shared` run pins at admission. Pipeline documents cannot supply raw security, mount or network settings.
+
+**Builder**: Tooling that builds and pushes OCI images, such as ko, Buildah or BuildKit, running as an ordinary step or (BuildKit) a run-exclusive support service under the execution policy. A mode is supported only with real qualification evidence.
+
+**Command-begin fence**: The durable server record taken just before an attempt's command starts. Its absence, with the workload verified stopped, is the proof that no user code ran and an automatic retry is safe.
 
 **Harness**: The environment managing an agent's model interaction and tools.
 

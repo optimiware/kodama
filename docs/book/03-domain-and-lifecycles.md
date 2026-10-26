@@ -16,7 +16,7 @@ erDiagram
     ENVIRONMENT ||--o{ DEPLOYMENT : receives
 ```
 
-Source checkpoints/candidates are Git commits, not separate storage aggregates. Evidence is artifact metadata/provenance. An agent profile expands into an ordinary executable step. A defect is a work item. A plan is part of the specification.
+Source checkpoints/candidates are Git commits, not separate storage aggregates. Under the designed `run_shared` model a run also owns disposable **run resources** (one shared scratch `/workspace`, preparation, support services, a network boundary); they are execution bookkeeping with their own evidence, not a lifecycle status, an aggregate or a checkpoint ([run resources](../contracts/run-resources.md)). Evidence is artifact metadata/provenance. An agent profile expands into an ordinary executable step. A defect is a work item. A plan is part of the specification.
 
 ## States
 
@@ -49,6 +49,6 @@ stateDiagram-v2
     review --> cancelled
 ```
 
-All entries to active check WIP capacity. Completion is a human decision against current content/source. A passing run does not move the card automatically. A failed run leaves the work branch and published commits available. A gate wait retains a database record without retaining compute.
+All entries to active check WIP capacity. Completion is a human decision against current content/source. A passing run does not move the card automatically. A failed run leaves the work branch and published commits available. A gate wait retains a database record without a Job; in the current `attempt_private` model it retains no compute, while in `run_shared` the run's services and scratch persist through the wait, bounded by the run's total deadline.
 
 Content revision changes only when specification/acceptance changes; resource version changes on every mutation. Runs pin content revision and source commit. Gates additionally bind evidence and deployment configuration. Historical runs/decisions remain immutable after rework.

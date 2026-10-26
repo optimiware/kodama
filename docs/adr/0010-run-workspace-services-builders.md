@@ -1,14 +1,16 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # ADR 0010: Run-scoped workspace, support services, and rootless builders
 
 **Date:** 2026-10-26  
-**Direction:** owner-requested. Shared workspace, services, builder support, and retained isolation/publication invariants are selected direction; the implementation choices below are proposed.  
+**Direction:** owner-requested and scheduled (O-28, 2026-10-26). Shared workspace, services, builder support, and retained isolation/publication invariants are selected direction.  
+**Disposition:** accepted by the T-109 contract checkpoint as the normative design of the **versioned `run_shared` model**. This is not delivery or qualification: the current `attempt_private` model (`kodama/v1alpha1`, runtime v1, fixed `restricted` baseline) remains the only executable model until the T-116 cutover and the T-117 acceptance. Values that depend on real kernel/runtime/storage/CNI behavior (security shapes, mapping ranges, builder modes, the supported matrix) stay qualification-dependent: T-111 freezes them, and no combination is a supported builder until its evidence exists.  
 **Repository baseline:** `github.com/optimiware/kodama` at `7a66d3493f2bc69d197406f757841e603efbb0c1`.  
 **Register:** [O-28](../decisions.md#run-workspace-and-builders--2026-10-26-o-28).  
-**Implementation:** [implementation plan](../implementation/run-workspace-services-builders.md).
+**Implementation:** [implementation plan](../implementation/run-workspace-services-builders.md).  
+**Contracts:** [pipeline `v1alpha2`](../contracts/pipeline-format-v1alpha2.md), [runtime v2](../contracts/runtime-v2.md), [run resources and execution policy](../contracts/run-resources.md); requirements WS-13–WS-16, PX-17–PX-22, IT-14–IT-16, VS-14, DQ-16 in the owning specifications.
 
 ## Context
 
@@ -38,7 +40,7 @@ Initially allow one executable attempt to hold a run's workspace at a time. Incl
 
 Freeze a deterministic topological order at admission, breaking ties by declaration order. Process executable steps and gates in that order, preserving `needs`, conditions, mandatory gates, explicit output dependencies, and fail-fast behavior. A prior step must finish result/publication settlement and relinquish its workload/mount before the next executable attempt starts. An expired SQL claim or deleted Pod object is not a storage fence; uncertain termination prevents workspace handoff.
 
-Use a new pipeline format, proposed `kodama/v1alpha2`, because shared mutable contents cannot preserve `v1alpha1` per-attempt snapshot semantics:
+Use a new pipeline format, `kodama/v1alpha2`, because shared mutable contents cannot preserve `v1alpha1` per-attempt snapshot semantics:
 
 - All executable steps receive `/workspace` implicitly.
 - `workspace.access: read|write` expresses publication authority, not filesystem mutability. `none` remains available to source-free runs and is rejected for source-backed runs; it never claims filesystem isolation. Omission defaults to `read` for a source-backed run and `none` for a source-free run, explicit in admitted context.
@@ -111,7 +113,7 @@ The installation selects and pins a qualified mode; a failed rootless attempt ne
 
 Execution owns desired run resources and reconciliation. Persist tenant/project/run, backend, deterministic resource key, spec fingerprint, observed UID, preparation/readiness evidence, deadlines, stop intent, and removal evidence. Runtime calls stay outside SQL transactions; decisions commit with audit/outbox. Adapters translate records into volumes, networks, services, and workloads.
 
-Retain the six-method attempt `execution.Runtime` port; add a small companion execution-owned run-resource port: ensure, observe, logs, stop, remove. These resources are not another public business aggregate. `internal/app` wires both ports from the selected backend. Capabilities describe workspace sharing, run-service isolation, and qualified builder profiles without overstating Process/Podman guarantees.
+Retain the six-method attempt `execution.Runtime` port; add a small companion execution-owned run-resource port: ensure, observe, logs, stop, remove, plus its own capability declaration (six methods). These resources are not another public business aggregate. `internal/app` wires both ports from the selected backend. Capabilities describe workspace sharing, run-service isolation, and qualified builder profiles without overstating Process/Podman guarantees.
 
 Cancellation/failure blocks preparation/service/step claims and revokes runtime/credential grants. Stop attempts/services promptly while reconciling uncertain source/external effects; preserve evidence needed to settle those effects. Capture bounded diagnostics and remove run resources. Success uses the same teardown after result/publication finalization. Keep cleanup intent until removal is confirmed; terminal completion leaves neither running services nor reusable scratch. Cleanup/orphan reconciliation survives restart, including terminal records left by an interrupted older controller.
 
@@ -120,6 +122,19 @@ Names alone never authorize adoption/deletion: verify scope, pinned spec, and UI
 After controller restart, adopt the same verified workspace/services if intact. If scratch or an essential service is lost, fail with an explicit resource-loss reason; do not reclone and resume later steps as though files survived. A rerun gets a new ID, volume, services, and pinned inputs. Recovery remains Git commits plus retained artifacts. PVC writes never acknowledge a source checkpoint.
 
 Initially allow automatic attempt retries only when launch is affirmatively known not to have reached the command and scratch remains intact. A command that may have changed scratch/services is not replay-safe just because failure is classified `infrastructure`. Preserve existing uncertain-external-effect barriers.
+
+## Details frozen by the contract checkpoint
+
+The sections above are the design; T-109 froze these choices where they were open, so dependent tasks implement one reading:
+
+- **Source defaults and canonical form.** Whether a run has source is a run property. The definition's canonical form leaves `workspace` absent when absent (no source-dependent default and no installation-dependent default is filled); admission resolves and records effective access, scratch size and limits in the run snapshot. Contract-constant defaults (ports protocol, probe period, `shmMiB`) are filled. `v1alpha1` canonical bytes, digests and `ResultHash` are untouched.
+- **Ordering.** Lexicographically smallest topological order by declaration index; gates hold their position; settlement means workload stopped, result/publication settled, volume released.
+- **Pre-command proof.** A server-recorded command-begin fence (`POST /begin`) rather than runtime launch history proves pre-command; it works on every backend and keeps `ProvesNeverStarted` optional and separate.
+- **Capabilities.** One spare bit of the attempt `Guarantees` (`uint8`, six bits used) marks `run_resources` and doubles as a decode-time refusal for older controllers; all finer capabilities form a separate named set. Provider types never enter domain contracts.
+- **Pins.** Execution policy `{id, digest}`, runtime binding, capabilities, run model and context version are pinned at admission and survive restart/adoption; policies are append-only and retained while pinned.
+- **Services.** Required resources/readiness, bounded ports/storage, declared directed edges, named egress profiles (never hosts/CIDRs in documents), at most one `role: builder` service per run; endpoints resolve at admission from typed expressions.
+- **Cleanup and terminal state.** A run is terminal only after every resource is verified stopped; removal is retried to confirmation and capacity released after it.
+- **Cutover.** Explicit opt-in format capability (off by default), `open`/`drain`/`closed` legacy admission, old runs drain under original semantics, older controllers refuse `run_shared` runs.
 
 ## Compatibility and consequences
 

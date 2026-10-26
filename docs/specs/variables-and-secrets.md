@@ -35,6 +35,8 @@ Prefer the AI gateway and MCP proxy for agent provider credentials: the server r
 
 An ordinary container script/build step may explicitly declare `env: {NAME: {secretRef: "secret://project/name"}}` under the existing pipeline contract. Admission pins the version and checks scope/purpose. Resolve it just in time into the authorized child environment, not plaintext Kubernetes Job/Pod fields; protected secret files outside source/output roots remain the preferred direct-delivery form where supported. A child receiving ENV or a file can read that secret, so the binding is an explicit disclosure grant, not a guarantee against a malicious script. Direct agent disclosure requires a separately explicit justified binding, never inheritance from a build step.
 
+**Services, preparation and shared scratch (`run_shared`, designed, not delivered).** A [service](../contracts/pipeline-format-v1alpha2.md#services) may declare its own `env` secret references and `secretFiles`; admission pins their versions like a step's. Preparation and each service authenticate with a resource-subject token ([runtime v2](../contracts/runtime-v2.md#resource-subjects)) and can resolve only that resource's pinned bindings: a binding made for a step is not a binding for a service, a service cannot call step `source`/`result`/`artifacts`, and copying one subject's token to another resource, attempt or publication action fails. Plaintext stays out of manifests and shared mounts: injection is just-in-time into the intended process or a private memory-backed file. Registry/build credentials needed by a build use a private auth file or a scoped build session and are destroyed on stop; push credentials normally stay with the build client. Because all steps of a run share `/workspace`, a command explicitly given a secret can copy it there. Mount exclusion and known-value scanning do not prevent that; source/output redaction also scans for values delivered to earlier attempts of the run, and the residual risk is documented rather than denied. The checkout credential belongs only to the preparation workload and never reaches a step or service.
+
 Revocation prevents new resolution/proxy use. Redact known injected values and exclude secret files from bundles/artifacts; do not claim arbitrary output is leak-proof. T-061 qualifies hosted delivery and requests a bounded owner prerequisite if an existing runtime delivery seam needs extension; no frozen wire contract is silently changed here.
 
 ## Requirements
@@ -43,7 +45,7 @@ Revocation prevents new resolution/proxy use. Redact known injected values and e
 | --- | --- |
 | VS-01 | Values MUST be scoped/versioned; secret values MUST use authenticated envelope encryption. |
 | VS-02 | Resolution MUST follow declared precedence and pin effective values/versions. |
-| VS-03 | Runtime resolution MUST be restricted to declared references and active attempt authority. |
+| VS-03 | Runtime resolution MUST be restricted to declared references and active attempt authority (`run_shared`: or the resource's own pinned bindings and active resource authority). |
 | VS-04 | Management reads/events/errors MUST omit secret values. |
 | VS-05 | Runtime delivery MUST be scoped and audited; prefer files outside source/output roots. |
 | VS-06 | Tampered ciphertext or ownership context MUST fail authentication. |
@@ -54,6 +56,7 @@ Revocation prevents new resolution/proxy use. Redact known injected values and e
 | VS-11 | Injected secret files MUST be excluded from source bundles/artifacts; diagnostics access and redaction remain separate controls. |
 | VS-12 | Deletion MUST account for pinned runs and backup retention and retain metadata audit. |
 | VS-13 | Agent provider credentials SHOULD stay behind scoped proxies. Direct ENV/file delivery MUST be explicitly declared, version-pinned, purpose-scoped and audited; plaintext MUST NOT be placed in Pod manifests or implicitly inherited by other steps. |
+| VS-14 | `[run_shared]` Preparation and services MUST resolve only their own pinned secrets just in time; a grant MUST NOT work for another resource, attempt or publication action; checkout credentials MUST reach only preparation; manifests MUST omit plaintext; revoked bindings MUST block new resolution; redaction MUST account for earlier attempts' disclosures in the shared scratch. |
 
 ## Interface and authorization
 
@@ -75,3 +78,4 @@ An already delivered secret cannot be recalled from memory. Revocation prevents 
 | VS-A08 | Restore decrypts required values; commits/artifacts exclude injected files | VS-10, VS-11 |
 | VS-A09 | Deletion reports outstanding references/backup retention | VS-12 |
 | VS-A10 | A proxy call succeeds without exposing the provider token to the agent; an authorized script ENV binding receives only its pinned value, while undeclared/foreign/revoked bindings and plaintext Pod-manifest injection fail | VS-02, VS-03, VS-04, VS-05, VS-08, VS-13 |
+| VS-A11 | A service and the preparation workload resolve only their pinned secrets; foreign, copied, revoked or cross-resource grants fail on other resources, attempts and publication actions; manifests contain no plaintext and a prior step's copied secret is rejected from later source/output | VS-03, VS-05, VS-08, VS-11, VS-14 |

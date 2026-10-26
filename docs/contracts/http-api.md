@@ -28,10 +28,10 @@ Base URL is `https://factory.example.invalid/api/v1`. Let `P` mean `/tenants/{te
 | `GET, POST P/pipeline-definitions` | List/register validated immutable versions |
 | `GET P/pipeline-definitions/{id}` | Definition/digest |
 | `GET, POST P/runs` | List/start work runs |
-| `GET P/runs/{id}`, `GET P/runs/{id}/steps` | State, input snapshot, attempts/results |
+| `GET P/runs/{id}`, `GET P/runs/{id}/steps` | State, input snapshot, attempts/results; for a `run_shared` run also `runModel`, `deadlineAt`, `executionOrder`, effective workspace access and safe `resources` observations ([run resources](run-resources.md#observations-and-api-projection)) |
 | `POST P/runs/{id}/cancel` | Idempotently set cancellation request |
 | `GET P/events`, `GET P/runs/{id}/events` | Authorized durable SSE observations |
-| `GET P/runs/{id}/logs` | Bounded live/retained log retrieval |
+| `GET P/runs/{id}/logs` | Bounded live/retained log retrieval; `resource=preparation\|service.NAME` selects run-resource diagnostics |
 | `GET, POST P/variables`, `GET, PATCH, DELETE P/variables/{id}` | Project nonsecret configuration |
 | `GET, POST P/secrets`, `GET, DELETE P/secrets/{id}` | Secret metadata/create/deletion |
 | `GET, POST P/secrets/{id}/versions` | Metadata list/new encrypted value version |
@@ -79,6 +79,8 @@ Start a run with `Idempotency-Key`:
 
 The source commit must belong to the project's configured repository and retained workspace history. The server resolves and pins spec, configuration, credentials, and profile. The candidate for a read-only delivery run is this commit; a writer can produce a new commit output before gates. No redundant candidate/checkpoint IDs are submitted.
 
+Run admission can refuse a definition with `422` and a stable code such as `format_retired`, `capability_unsupported`, `policy_unavailable`, `limit_exceeds_policy` or `egress_profile_unknown` ([admission refusals](pipeline-format-v1alpha2.md#format-availability-and-admission-refusals)); `details` names only causes, never document content. The `v1alpha2` additions are optional response fields and codes; existing clients keep working.
+
 Cancel returns `202` with the run's current status and `cancelRequestedAt`. Poll/watch that run until terminal. Workspace provisioning similarly returns the workspace, not an operation handle.
 
 ## Gate decision
@@ -95,7 +97,7 @@ Use `If-Match` and `Idempotency-Key`. The server derives the human actor. The [d
 
 ## Runtime and observation
 
-Internal runtime endpoints are defined in the [step entrypoint contract](../implementation/step-entrypoint.md), with an attempt-token audience distinct from human access. Runtime deployment creation uses the same underlying module with restricted authorization.
+Internal runtime endpoints are defined in the [step entrypoint contract](../implementation/step-entrypoint.md) (`/runtime/v1`; `run_shared` runs use [runtime v2](runtime-v2.md)), with an attempt-token audience distinct from human access. Runtime deployment creation uses the same underlying module with restricted authorization.
 
 SSE uses a durable project event sequence/cursor retained with outbox/event history. `Last-Event-ID` resumes within retention. An expired cursor returns `410 cursor_expired`; snapshot reads return a new observation cursor so clients can resynchronize. NATS delivery is not itself a client cursor.
 

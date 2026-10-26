@@ -30,4 +30,13 @@ Every backend still rejects a subsequent start after stop/removal, protects fore
 
 Outside Kubernetes, one workload instance stands for both the Job and the Pod in the runtime admission identity. The wire contract is unchanged. The Podman runtime does not yet issue source-checkout credentials, so it runs only workspace-free attempts until checkout support is added.
 
-[ADR 0010](0010-run-workspace-services-builders.md) proposes a companion run-resource seam and a builder-capable execution profile. This accepted port and the current restricted baseline remain in force until that proposal is accepted.
+## Amendment — companion run-resource seam and execution policy (ADR 0010, 2026-10-26)
+
+[ADR 0010](0010-run-workspace-services-builders.md) adds, for the versioned `run_shared` model only, an execution-owned companion port over run resources (scratch, preparation, services, run network boundary): `Ensure`, `Observe`, `Logs`, `Stop`, `Remove` and its own `Capabilities`. **Everything above is retained**: the six-method attempt port, adapters and requirement-policy admission, durable instance identity and UID binding, no cross-backend action, `Stopped` meaning no launch can still arrive, and the O-25 launch-evidence rules. The companion applies the same discipline to resources: verified scope/fingerprint/UID before adopt/stop/remove, fenced stop, a missing record never upgrading `LaunchUnknown`, removal retried to confirmation.
+
+- **Capabilities.** `Guarantees` is a `uint8` with six used bits. The contract spends one spare bit on `run_resources` (a marker that also makes older decoders refuse a `run_shared` binding) and keeps further capabilities in a separate named set; optional launch-history proof stays outside both. Wire encoding (a list of names) is unchanged and persisted bindings decode identically.
+- **Policy pin.** The fixed restricted container baseline remains for `attempt_private` runs. `run_shared` runs pin a versioned operator-installed execution policy at admission, verified at dispatch and adoption.
+- **Adapters.** Process advertises lifecycle members only; Podman only what its real tests prove, with network/egress members absent unless enforced; Kubernetes the full set after qualification. Local lifecycle tests cannot certify Kubernetes isolation.
+- **Pre-command proof.** A server-recorded command-begin fence, not a new runtime capability, distinguishes pre-command failure for retry.
+
+Contract: [run resources](../contracts/run-resources.md), [runtime v2](../contracts/runtime-v2.md). The accepted decisions of this ADR otherwise stand.

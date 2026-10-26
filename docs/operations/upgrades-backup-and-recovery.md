@@ -10,8 +10,9 @@
 | Images | OCI registry retention by digest |
 | Encrypted secrets | PostgreSQL envelopes plus retained KMS key versions |
 | External execution/effects | Kubernetes attempt labels/UIDs, publication fields, deployment rows/annotations |
+| Run resources (`run_shared`) | Execution's durable resource intents and evidence; scratch contents and service state are disposable and **never** recovered |
 
-Uncommitted scratch files are explicitly outside recovery. Git and object retention must cover every supported database recovery point. Upload/publication is confirmed before metadata claims durability; subsequent garbage collection respects referenced runs/gates and backup windows.
+Uncommitted scratch files, shared run scratch and service state are explicitly outside recovery; a lost run is rerun from a pinned Git commit. Git and object retention must cover every supported database recovery point. Upload/publication is confirmed before metadata claims durability; subsequent garbage collection respects referenced runs/gates and backup windows.
 
 ## Approved retention and recovery baseline
 
@@ -38,6 +39,8 @@ Offboarding reports separately identify approved retained audit metadata, active
 
 ## Upgrade
 
+A `run_shared` run records its model, runtime context version and execution policy; an older controller refuses it rather than adopting it with old semantics. Before rolling the controller back, stop admission, cancel or drain `run_shared` runs and reconcile their resources. Policy versions are append-only and retained while any nonterminal run pins them.
+
 Pin the release's supported dependency/schema/client versions. Verify a usable backup and KMS/Git/artifact recovery path. Pause dispatch when mixed-version execution is unsupported. Apply ordered expand/contract migrations under a lock, roll the server, run identity/source/execution/result smoke tests, then resume dispatch. Binary rollback is permitted only with a compatible schema; otherwise use the documented restore procedure and reconcile post-backup effects.
 
 ## Restore procedure
@@ -45,7 +48,7 @@ Pin the release's supported dependency/schema/client versions. Verify a usable b
 1. **Quiesce:** pause dispatch and side-effecting consumers. Fence old control-plane instances and publishers. Revoke/rotate publisher Git and target credentials where an old process could retain authority.
 2. **Restore:** recover PostgreSQL, Git refs/objects, artifacts/images, and KMS access to the selected consistent recovery window. Verify referenced digests/commits/decryptability.
 3. **Rotate:** replace workload signing keys and revoke old attempt admission. Existing remote operations/credentials still require explicit settlement; key rotation alone is not fencing.
-4. **Inventory:** match Jobs by attempt identity/spec/UID, identify orphaned workloads, and stop/reconcile them. Inspect pending Git publication fields against remote refs. Observe deployments by their recorded identities before any repeat apply.
+4. **Inventory:** match run resources (scratch, services, preparation, network boundary) by scope, spec fingerprint and UID, adopt intact ones or fail their run explicitly, and reap orphans; match Jobs by attempt identity/spec/UID, identify orphaned workloads, and stop/reconcile them. Inspect pending Git publication fields against remote refs. Observe deployments by their recorded identities before any repeat apply.
 5. **Rebuild coordination:** release writer/capacity only after publication/effect uncertainty is resolved. Replay outbox events and use consumer inboxes/external records to prevent duplicate effects.
 6. **Resume:** admit a bounded set of new work, inspect reconciliation backlog, and complete the foundation tracer with restored data.
 
@@ -59,6 +62,8 @@ Pin the release's supported dependency/schema/client versions. Verify a usable b
 | Human push race | Report CAS conflict; retain proposal for explicit rework |
 | NATS outage/loss | Preserve outbox, recover broker, deduplicate/reconcile replay |
 | Node loss | Recover from accepted Git commit; report uncommitted loss and possible unknown effects |
+| Scratch or service lost mid-run (`run_shared`) | The run fails with an explicit reason once resources are verified stopped; rerun with new resources. No empty replacement under the same run |
+| Stuck resource cleanup | Visible `cleanup_pending`; retried; capacity stays reserved until verified removal; operator resolves the backend object, never a foreign one |
 | Unknown deployment | Observe recorded target objects/action identity before repeating |
 | KMS failure | Recover key/provider access; never substitute plaintext or destroy retained envelopes |
 

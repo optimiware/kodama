@@ -35,7 +35,7 @@ AR-07 and AR-08 (handoff/continuation contracts) are retired from the initial sc
 
 Wrapper outcomes are `completed`, `needs_input`, or `failed`. Runtime cancellation/timeout is supplied by the entrypoint. `needs_input` preserves its question and diagnostic artifacts but does not publish incomplete source as a successful candidate. A completed profile must return declared evidence and any proposed commit.
 
-An interrupted attempt can lose uncommitted scratch work. Resume means a fresh run from the last accepted Git commit. Harness-native resumability may be added through a separately verified later contract.
+An interrupted attempt can lose uncommitted scratch work; in the designed `run_shared` model agent steps share the run's scratch with other steps, and a lost scratch fails the run rather than being reconstructed. Resume means a fresh run from the last accepted Git commit. Harness-native resumability may be added through a separately verified later contract.
 
 The approved profile routes provider traffic through the AI gateway and tool traffic through authorized tools, keeping provider credentials server-side. Ordinary build/script steps can explicitly bind a declared pinned secret to their child environment under [secrets delivery](variables-and-secrets.md#runtime-delivery); agents do not inherit those values by default. Transcripts are sensitive artifacts; content recording is independently configurable. Shell/network access follows the M1 trust model in [identity](identity-tenancy-and-rbac.md).
 

@@ -51,7 +51,7 @@ One required variable, `KODAMA_ENV`, selects the adapters behind the same ports 
 | Kubernetes | Actual workload execution and observed Job/Pod state |
 | KMS | Required. Wrapping KEKs for scope keys; Go derives per-revision value keys |
 
-No shared writable source volume is required. Attempts use private clones. Publication passes through a control-plane Git writer using expected-tip CAS; a database row alone does not fence a remote writer. See [workspaces](../specs/workspaces.md).
+`attempt_private` (current): no shared writable source volume is required and attempts use private clones. `run_shared` ([ADR 0010](../adr/0010-run-workspace-services-builders.md); designed, not delivered): one bounded disposable scratch volume per run, prepared once, mounted by one attempt at a time, plus run-scoped support services and a pinned execution policy; it is never a source or recovery authority. Publication passes through a control-plane Git writer using expected-tip CAS; a database row alone does not fence a remote writer. See [workspaces](../specs/workspaces.md).
 
 ## Dispatch and completion
 
@@ -60,7 +60,7 @@ No shared writable source volume is required. Attempts use private clones. Publi
 3. Consumer deduplicates local effects; the reconciler also periodically scans nonterminal state.
 4. A short transaction claims an eligible attempt and writer/capacity. External Kubernetes calls occur afterward.
 5. The runtime (Kubernetes in staging and production) creates/observes a deterministic Job with `backoffLimit: 0` and injected `kodama step`.
-6. Entrypoint admits, clones, executes, collects outputs, and requests source publication where applicable.
+6. Entrypoint admits, clones (`attempt_private`; in `run_shared` it verifies the already prepared shared workspace), executes, collects outputs, and requests source publication where applicable.
 7. Result verification commits final state/evidence/outbox. Gates retain pending records without Pods.
 
 A Job is not an exactly-once guarantee. Unknown outcomes remain explicit until observed or resolved. External scripts use stable action keys; deployment rows precede apply. [Runtime contract](../implementation/step-entrypoint.md) and [event contract](../contracts/event-catalog.md) define the seams.
@@ -69,4 +69,4 @@ A Job is not an exactly-once guarantee. Unknown outcomes remain explicit until o
 
 Helm installs the server and configuration on Kubernetes. AWS, GCP, and Scaleway are the supported clouds. PostgreSQL and that cloud's KMS are required; NATS, Git, S3, registry, and OIDC are declared integrations. Development pins a local keyfile instead of a cloud KMS. Kubernetes live log access and retained log artifacts work without Loki; operators can add Loki for aggregation.
 
-O-07 starts with mutually trusting tenant engineers on regular Kubernetes containers, using tenant namespaces, RLS, scoped credentials, restricted Pods, network policies and quotas. gVisor, Substrate and other isolation/security options are deferred extensions requiring their own qualification. The current trusted-engineer scope does not wait for those backends. On-premises/hosted authority contracts remain shared; execution trust and supported capacity are declared separately.
+O-07 starts with mutually trusting tenant engineers on regular Kubernetes containers, using tenant namespaces, RLS, scoped credentials, restricted Pods (the pinned rootless-builder execution policy for `run_shared` runs once qualified), network policies and quotas. gVisor, Substrate and other isolation/security options are deferred extensions requiring their own qualification. The current trusted-engineer scope does not wait for those backends. On-premises/hosted authority contracts remain shared; execution trust and supported capacity are declared separately.

@@ -6,7 +6,7 @@ Reviewed baseline: commit `dea8a04`. This pass preserves the product direction w
 
 | Before | Current design | Authority |
 | --- | --- | --- |
-| Volume checkpoints, manifests, sessions, lease epochs | Git commits, private clones, one publication slot | [Workspaces](specs/workspaces.md) |
+| Volume checkpoints, manifests, sessions, lease epochs | Git commits, private clones, one publication slot (the designed `run_shared` scratch of [ADR 0010](adr/0010-run-workspace-services-builders.md) is disposable run scratch, never a checkpoint or session) | [Workspaces](specs/workspaces.md) |
 | Generic operations/revisions/blockers/findings/connections | Resource state, content history, `blocked_reason`, defect work items, typed secrets | [HTTP](contracts/http-api.md) |
 | Waiting/starting/lost/paused states | Small status enums plus reason/timestamps; gate wait is derived | [Execution](specs/pipeline-execution.md) |
 | Harness continuation/handoff framework | One verified wrapper; `needs_input` fails with a question | [Agents](specs/agent-runtime.md) |
@@ -21,7 +21,7 @@ The owner retained the durable NATS event bus. Outbox, inbox deduplication, retr
 
 ## Corrections to the simplification proposal
 
-1. **Pod deletion is not fencing.** A partitioned process can survive deletion from the API. Private clones and publisher-owned compare-and-swap prevent stale source publication. External effects still need reconciliation.
+1. **Pod deletion is not fencing.** A partitioned process can survive deletion from the API. Private clones and publisher-owned compare-and-swap prevent stale source publication; in the `run_shared` model the single scratch holder is additionally fenced by verified stop and volume release, never by deleting a Pod or letting a SQL claim expire. External effects still need reconciliation.
 2. **Use a normal Git branch.** `refs/heads/kodama/work/<id>` works with ordinary hosting conventions; arbitrary `refs/kodama/*` cannot be assumed portable.
 3. **Keep source and spec identity together at review.** A commit alone cannot identify which acceptance criteria/configuration were approved. Gate subjects include content revision and deployment configuration.
 4. **Keep optimistic concurrency on content edits.** Restricting `If-Match` to transitions would allow concurrent analyst/agent edits to overwrite each other.

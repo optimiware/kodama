@@ -25,6 +25,7 @@ Work dependencies, flow summaries, evidence-to-defect mapping, and authenticated
 ## Next
 
 - **Full Kubernetes readiness (T-104).** An installed server that becomes ready on Kubernetes, with live KMS validation and the original M1 round trips. It follows the production startup wiring for cloud KMS and the known M1 defect cleanup, both merged.
+- **Shared run workspace, services and builders (T-109–T-117, O-28).** Contract checkpoint (T-109/T-110), then real rootless-builder/storage/network qualification, execution lifecycle, entrypoint authority, Kubernetes and local adapters, assembly and integrated acceptance. Until T-117 passes, the current private-attempt model is the only executable one and no builder combination is a supported claim.
 - **Trusted-engineer staging (T-090).** The deployment to the stage cluster, after full readiness.
 - **Recovery and release (T-029, T-056).** Source, data and key recovery drills, measured recovery objectives and scale, and a supported release.
 - **Hosted Platform integration (T-061).** Hosted authority and credentials, qualified against the real Platform caller. The [platform integration contract](../specs/platform-integration.md) stays the source of truth for it; local acceptance does not certify it.

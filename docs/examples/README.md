@@ -1,12 +1,13 @@
 # Examples
 
-These examples instantiate the proposed design. CLI commands, pipeline images, profile names, and delivery scripts are illustrative interfaces for future implementation. Reserved example domains and repeated-character digests are placeholders.
+These examples instantiate the proposed design; `kodama/v1alpha1` pipelines are the current executable format and `kodama/v1alpha2` ones are normative design fixtures. CLI commands, pipeline images, profile names, and delivery scripts are illustrative interfaces for future implementation. Reserved example domains and repeated-character digests are placeholders.
 
 ## Workflows
 
 1. [ERP gap to preview](workflows/erp-gap-to-preview.md): analyst intent, planning, implementation, source-quality review, build, and preview.
 2. [Staging and acceptance](workflows/staging-and-acceptance.md): reuse the image, test the stage deployment, perform agent-led exploratory QA, and obtain human acceptance.
 3. [Recovery and rework](workflows/recovery-and-rework.md): controller failure, competing writers, rejected reviews, unknown external effects, and restore.
+4. [Shared workspace, services and builders](workflows/run-shared-build-and-services.md): the `kodama/v1alpha2` design fixtures for ordering, service endpoints and edges, ko/Buildah/BuildKit builds, source-free cleanup and egress policy. Design fixtures only: no image, mode or combination is qualified.
 
 ## API and CLI
 

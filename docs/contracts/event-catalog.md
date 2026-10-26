@@ -48,6 +48,7 @@ Only authorized platform roles publish/consume domain events. Tenant workloads u
 | `run.created` | Run | Work item, definition ID, input-snapshot digest |
 | `run.state_changed` | Run | Previous/new state, classified reason |
 | `step_attempt.state_changed` | Attempt | Run/step IDs, previous/new state, classified reason |
+| `run_resource.state_changed` | Run resource (`run_shared` runs; resource ID `RUN_ID/KEY`) | Run ID, kind (`network`, `workspace`, `preparation`, `service`), key, previous/new phase, safe reason code ([catalog](run-resources.md#reasons)), spec fingerprint, whether a runtime UID is bound |
 | `gate.requested` | Gate | Subject digest, content revision, reviewer scope, deadline |
 | `gate.decided` | Gate | Actor, decision, resulting state, subject digest |
 | `gate.invalidated` | Gate | Subject digest, reason, superseding commit/revision when present |
@@ -57,7 +58,7 @@ Only authorized platform roles publish/consume domain events. Tenant workloads u
 | `configuration.changed` | Variable/secret | Resource kind, value/wrapping version, change kind, scope |
 | `usage.recorded` | Usage record | Run/attempt, model, observed or estimated usage, uncertainty |
 
-Gate expiry is an applicability check against its deadline, not a status transition. Agent results and defects use attempt/work-item events. No separate session, candidate, finding, or policy subsystem is introduced.
+`run_resource.state_changed` carries references only: no endpoints beyond the logical key, logs, credentials, secret values or scratch contents, and scratch changes never produce `workspace.checkpoint_created`. Gate expiry is an applicability check against its deadline, not a status transition; a run deadline that expires while a gate is pending invalidates it with reason `run_deadline_exceeded`. Agent results and defects use attempt/work-item events. No separate session, candidate, finding, or policy subsystem is introduced.
 
 ## Publication and consumption
 
