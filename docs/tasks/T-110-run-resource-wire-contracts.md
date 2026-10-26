@@ -1,7 +1,7 @@
 ---
 id: T-110
 milestone: production
-status: planned
+status: done
 depends_on: [T-109, T-118]
 decision_blockers: []
 owns: [contracts/pipeline/, contracts/runtime/, internal/pipeline/, internal/execution/pipeline_version_v2_test.go]
@@ -31,3 +31,6 @@ The acceptance names above are the concrete `Test_<name>` functions supplied by 
 
 ## Out of scope
 Execution/runtime resource effects, production enablement, shared dependency files and generated aggregate/client.
+
+## Completion evidence
+Merged locally as `6343b9e5f75b20e41e28b62b418069bb1811950f` after independent pipeline review (`ses_e861acad5ffebi5YwzZyTOAHgl`) and runtime/execution review (`ses_e861acac1ffeJ07Naf153pjviD`), both approve with zero outstanding findings on that exact candidate. Coordinator reran the declared scoped check and `make docs-check` (121 files): all 26 declared acceptances and six additional review regressions passed, with no failed test outcomes. Old v1 contracts/goldens, API fragments and dependencies are unchanged. Review repairs cover pairwise storage overlap, typed-scalar canonical safety, constant v2 diagnostics, resource-token deadline consistency, complete cross-audience error tables, source-free fixture consistency and checked resource keys. The finished worktree/branch were removed; nothing was pushed. P0 is complete as a contract/parser checkpoint, not runtime/HTTP authorization/build qualification. T-111/T-112 now own the next independent phases.

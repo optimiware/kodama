@@ -42,7 +42,7 @@ These documents record the design baseline, not delivered runtime behavior. The 
 
 The source design is commit `0b12febef5b9e092982af74e2c951afe2dd80c19`; executable baseline remains the commit above. OpenForge bootstrap is currently unavailable because the separate checkout is absent. Manual isolated workers and independent candidate review may prepare changes; automated queue/index validation and batch receipts must not be claimed until the harness is available.
 
-**Progress:** T-118's old-executor version fence is reviewed, unit-tested and merged at `16a5d0df`; T-109's normative specifications are reviewed, docs-checked (121 files) and merged at the checkpoint above. T-110 is ready; P0 is not complete until its executable fixtures pass. The integrated infrastructure-free lint/unit batch passed at `73404c51` before the documentation-only checkpoint; no real SQL/CSI/CNI/builder qualification is implied. All later phases remain pending.
+**Progress:** P0 is complete: T-118's reviewed version fence is merged at `16a5d0df`, T-109's normative specifications at the checkpoint above, and T-110's reviewed executable schema/parser/wire fixtures at `6343b9e5f75b20e41e28b62b418069bb1811950f`. Coordinator checks passed all 26 named acceptances plus six review regressions and docs-check (121 files). New-format registration remains off by default and the current executor refuses it. T-111/P1 and T-112/P2 are ready independently; no shared-workspace/service runtime, real SQL/CSI/CNI or builder qualification is implied. The last integrated infrastructure-free lint/unit batch passed at `73404c51`; the subsequent executable checkpoint has scoped evidence, not a retargeted batch receipt.
 
 ## Contract decisions to freeze
 
