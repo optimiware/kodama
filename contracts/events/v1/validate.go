@@ -35,6 +35,9 @@ var Patterns = map[string]string{
 	"Timestamp": `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$`,
 	"Code":      `^[a-z][a-z0-9_]{0,63}$`,
 	"FieldName": `^[A-Za-z][A-Za-z0-9_.-]{0,63}$`,
+	// RunResourceKey: the fixed run-resource keys or service.NAME, NAME being
+	// the pipeline service-name syntax (pipeline-format-v1alpha2).
+	"RunResourceKey": `^(network|workspace|preparation|service\.[a-z][a-z0-9-]{0,29})$`,
 }
 
 var compiled = func() map[string]*regexp.Regexp {
@@ -55,6 +58,11 @@ type TypeSpec struct {
 }
 
 var specs = map[string]TypeSpec{}
+
+// envelopeChecks are optional per-type rules that bind the envelope to its
+// payload (for example a derived resource ID); they run after the payload
+// validates.
+var envelopeChecks = map[string]func(Envelope) error{}
 
 func register[T any, P interface {
 	*T
@@ -197,7 +205,13 @@ func (e Envelope) Validate() error {
 	if !strings.HasPrefix(trimmed, "{") {
 		return invalidf("data must be an object")
 	}
-	return spec.validate(e.Data)
+	if err := spec.validate(e.Data); err != nil {
+		return err
+	}
+	if check := envelopeChecks[e.Type]; check != nil {
+		return check(e)
+	}
+	return nil
 }
 
 func invalidf(format string, args ...any) error {

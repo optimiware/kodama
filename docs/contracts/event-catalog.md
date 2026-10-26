@@ -48,7 +48,7 @@ Only authorized platform roles publish/consume domain events. Tenant workloads u
 | `run.created` | Run | Work item, definition ID, input-snapshot digest |
 | `run.state_changed` | Run | Previous/new state, classified reason |
 | `step_attempt.state_changed` | Attempt | Run/step IDs, previous/new state, classified reason |
-| `run_resource.state_changed` | Run resource (`run_shared` runs; resource ID `RUN_ID/KEY`) | Run ID, kind (`network`, `workspace`, `preparation`, `service`), key, previous/new phase, safe reason code ([catalog](run-resources.md#reasons)), spec fingerprint, whether a runtime UID is bound |
+| `run_resource.state_changed` | Run resource (`run_shared` runs; envelope resource type `run_resource`; resource ID [`rr-…`](#run-resource-events); project required) | Run ID, kind (`network`, `workspace`, `preparation`, `service`), key, previous/new phase, safe reason code ([catalog](run-resources.md#reasons)), spec fingerprint, whether a runtime UID is bound |
 | `gate.requested` | Gate | Subject digest, content revision, reviewer scope, deadline |
 | `gate.decided` | Gate | Actor, decision, resulting state, subject digest |
 | `gate.invalidated` | Gate | Subject digest, reason, superseding commit/revision when present |
@@ -59,6 +59,23 @@ Only authorized platform roles publish/consume domain events. Tenant workloads u
 | `usage.recorded` | Usage record | Run/attempt, model, observed or estimated usage, uncertainty |
 
 `run_resource.state_changed` carries references only: no endpoints beyond the logical key, logs, credentials, secret values or scratch contents, and scratch changes never produce `workspace.checkpoint_created`. Gate expiry is an applicability check against its deadline, not a status transition; a run deadline that expires while a gate is pending invalidates it with reason `run_deadline_exceeded`. Agent results and defects use attempt/work-item events. No separate session, candidate, finding, or policy subsystem is introduced.
+
+## Run resource events
+
+`run_resource.state_changed` is an additive v1 type (`contracts/events/v1`): earlier envelopes, types, fixtures and digests are unchanged and the schema version stays 1. It is an observation of execution-owned state; it never authorizes a workload action, and consumers rely on current policy and the execution record, not the payload.
+
+| Member | Rule |
+| --- | --- |
+| Envelope | `resource.type` is `run_resource`; `projectId` is required and `tenantId`/`projectId` are the run's scope. `resource.version` is the committed run-resource record version (at least 1) |
+| `resource.id` | `rr-` plus the first 40 lowercase hex characters of SHA-256 over the length-prefixed UTF-8 tuple `(tenantId, projectId, runId, key)`: each element is preceded by its byte length as an unsigned 4-byte big-endian integer. The result is 43 characters and satisfies the ID domain; a raw `RUN_ID/KEY` does not, and an underscore join is ambiguous across tuple boundaries (tenant `t_a` with project `p` aliases tenant `t` with project `a_p`), so neither is accepted. The Go contract derives and checks it from the envelope scope and payload; `eventsv1.RunResourceID` is the single implementation. Golden vector: `(t_acme, p_inventory, run_01, network)` → `rr-b6db60ce0677ae6f334067ebe0214c4795279151` |
+| `runId` | Run ID domain |
+| `kind`, `key` | `network`/`network`, `workspace`/`workspace`, `preparation`/`preparation`, `service`/`service.NAME` with `NAME` as in the pipeline service-name syntax (`^[a-z][a-z0-9-]{0,29}$`); any other pairing is invalid |
+| `from`, `to` | A [phase](run-resources.md#phases-and-evidence): `pending`, `ready`, `failed`, `stopped`, `absent` or `unknown`. `from` may also be `none` for the creation edge; `to` never is. A change names two different phases |
+| `reason` | A stable safe code (`^[a-z][a-z0-9_]{0,63}$`), normally from the [reason catalog](run-resources.md#reasons); never prose, a message or a log line |
+| `specFingerprint` | `sha256:` and 64 lowercase hex characters |
+| `uidBound` | Required boolean (an explicit `false` is meaningful; omitted or null is invalid): whether a provider identity is bound. `to: ready` requires `true` because readiness is verified against the bound identity |
+
+All eight members are required. The payload carries no provider UID, endpoint, log, credential or scratch content: a producer serializes only these members, and the typed projection (`RunResourceStateChanged`) exposes nothing else. Additional unknown members follow the general rule below (tolerated on decode, never part of the typed projection) and are not a place for such data. The envelope's tenant/project validity is checked here; whether a producer may publish for that scope is established by the execution transaction that commits the event with its state, not by envelope validation.
 
 ## Publication and consumption
 

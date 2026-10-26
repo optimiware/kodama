@@ -269,6 +269,35 @@
         ],
         "properties": {
           "type": {
+            "const": "run_resource.state_changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "run_resource"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.run_resource.state_changed"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
             "const": "step_attempt.state_changed"
           }
         }
@@ -535,6 +564,7 @@
                 "project.settings_changed",
                 "run.created",
                 "run.state_changed",
+                "run_resource.state_changed",
                 "step_attempt.state_changed",
                 "usage.recorded",
                 "work_item.created",
@@ -575,6 +605,10 @@
     "FieldName": {
       "type": "string",
       "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"
+    },
+    "RunResourceKey": {
+      "type": "string",
+      "pattern": "^(network|workspace|preparation|service\\.[a-z][a-z0-9-]{0,29})$"
     },
     "Revision": {
       "type": "integer",
@@ -1068,6 +1102,289 @@
           "maximum": 9007199254740991
         }
       }
+    },
+    "data.run_resource.state_changed": {
+      "type": "object",
+      "description": "Safe references only: no provider UID, endpoint, log, credential or scratch content. uidBound states whether a provider identity is bound. The envelope resource.id is the derived run resource ID (rr- plus 40 hex of a length-prefixed SHA-256, docs/contracts/run-resources.md), which the Go contract checks; JSON Schema cannot compute it.",
+      "required": [
+        "runId",
+        "kind",
+        "key",
+        "from",
+        "to",
+        "reason",
+        "specFingerprint",
+        "uidBound"
+      ],
+      "properties": {
+        "runId": {
+          "$ref": "#/$defs/ID"
+        },
+        "kind": {
+          "enum": [
+            "network",
+            "workspace",
+            "preparation",
+            "service"
+          ]
+        },
+        "key": {
+          "$ref": "#/$defs/RunResourceKey"
+        },
+        "from": {
+          "enum": [
+            "none",
+            "pending",
+            "ready",
+            "failed",
+            "stopped",
+            "absent",
+            "unknown"
+          ]
+        },
+        "to": {
+          "enum": [
+            "pending",
+            "ready",
+            "failed",
+            "stopped",
+            "absent",
+            "unknown"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/Code"
+        },
+        "specFingerprint": {
+          "$ref": "#/$defs/Digest"
+        },
+        "uidBound": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "service"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "key": {
+                "pattern": "^service\\."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "network"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "key": {
+                "const": "network"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "workspace"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "key": {
+                "const": "workspace"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "preparation"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "key": {
+                "const": "preparation"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": {
+                "const": "pending"
+              }
+            },
+            "required": [
+              "from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "to": {
+                "not": {
+                  "const": "pending"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "to": {
+                "not": {
+                  "const": "ready"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": {
+                "const": "failed"
+              }
+            },
+            "required": [
+              "from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "to": {
+                "not": {
+                  "const": "failed"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": {
+                "const": "stopped"
+              }
+            },
+            "required": [
+              "from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "to": {
+                "not": {
+                  "const": "stopped"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": {
+                "const": "absent"
+              }
+            },
+            "required": [
+              "from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "to": {
+                "not": {
+                  "const": "absent"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": {
+                "const": "unknown"
+              }
+            },
+            "required": [
+              "from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "to": {
+                "not": {
+                  "const": "unknown"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "to": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "to"
+            ]
+          },
+          "then": {
+            "properties": {
+              "uidBound": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

@@ -122,6 +122,8 @@ func DecodeData(e Envelope) (any, error) {
 		target = new(RunStateChanged)
 	case TypeStepAttemptStateChange:
 		target = new(StepAttemptStateChanged)
+	case TypeRunResourceStateChanged:
+		target = new(RunResourceStateChanged)
 	case TypeGateRequested:
 		target = new(GateRequested)
 	case TypeGateDecided:

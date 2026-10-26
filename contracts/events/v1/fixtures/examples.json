@@ -401,5 +401,34 @@
    "outputTokens": 300
   },
   "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_run_resource_state_changed",
+  "schemaVersion": 1,
+  "type": "run_resource.state_changed",
+  "occurredAt": "2026-10-19T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "run_resource",
+   "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+   "version": 7
+  },
+  "actor": {
+   "type": "service",
+   "id": "svc_execution"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "runId": "run_01",
+   "kind": "service",
+   "key": "service.db",
+   "from": "pending",
+   "to": "ready",
+   "reason": "service_ready",
+   "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+   "uidBound": true
+  },
+  "projectId": "p_inventory"
  }
 ]

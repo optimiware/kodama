@@ -2474,5 +2474,910 @@
    },
    "projectId": "p_inventory"
   }
+ },
+ {
+  "name": "valid run_resource.state_changed",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource creation from none without a bound identity",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-b6db60ce0677ae6f334067ebe0214c4795279151",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "network",
+    "key": "network",
+    "from": "none",
+    "to": "pending",
+    "reason": "resource_ensured",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": false
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource project required",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   }
+  }
+ },
+ {
+  "name": "run_resource wrong resource type",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource id is raw RUN_ID/KEY",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "run_01/service.db",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource id derived for a foreign project",
+  "valid": false,
+  "schemaValid": true,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-2041d0021d684b6bf0f4e08a5d29d8c34f716671",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource id derived for another run",
+  "valid": false,
+  "schemaValid": true,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-72e730e64823dcdf6edf0d58e3af51447532bd36",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource id by underscore concatenation",
+  "valid": false,
+  "schemaValid": true,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-b27b26be3a7e83744be6bd9b6f19948affd3ff0c",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource kind and key mismatch",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "workspace",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource fixed kind with another fixed key",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-269c85611baea144e71405b4cc163242eee10dc1",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "network",
+    "key": "workspace",
+    "from": "pending",
+    "to": "failed",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": false
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource service key without a name",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-82662b2ff150979ac372d8bd7764159d903d90f3",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource service key uppercase name",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-b909265720084d30998a2fb9482946aecd340439",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.DB",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource unknown kind",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-c168b5315110d75da68accc01d139b8a3e55faf1",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "volume",
+    "key": "volume",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource to none",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "none",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource unknown phase",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "running",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource same phase",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "ready",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource ready without a bound identity",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": false
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource unsafe reason",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "Service not ready: password=hunter2",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource bad run id",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-0000000000000000000000000000000000000000",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run/01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource missing uidBound",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource null uidBound",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource string uidBound",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": "true"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource missing reason",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource missing fingerprint",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource malformed fingerprint",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:ABC",
+    "uidBound": true
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "run_resource optional additions are compatible",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_run_resource_state_changed",
+   "schemaVersion": 1,
+   "type": "run_resource.state_changed",
+   "occurredAt": "2026-10-19T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run_resource",
+    "id": "rr-4f2ffd415817e8593fc1f5f29f2e4c8e48ceaa32",
+    "version": 7
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_execution"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "runId": "run_01",
+    "kind": "service",
+    "key": "service.db",
+    "from": "pending",
+    "to": "ready",
+    "reason": "service_ready",
+    "specFingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "uidBound": true,
+    "note": "extra",
+    "futureHint": "ignored"
+   },
+   "projectId": "p_inventory"
+  }
  }
 ]
