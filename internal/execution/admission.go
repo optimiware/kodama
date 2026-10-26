@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 
+	pipelinev1 "github.com/optimiware/kodama/contracts/pipeline/v1"
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/pipeline"
@@ -233,7 +234,22 @@ func (s *Service) loadDefinition(ctx context.Context, scope domain.Scope, id dom
 	if err != nil {
 		return pipeline.Definition{}, pipeline.Document{}, Unavailablef(err, "the stored definition is unreadable")
 	}
+	if err := checkDefinitionVersion(doc.APIVersion); err != nil {
+		return pipeline.Definition{}, pipeline.Document{}, err
+	}
 	return def, doc, nil
+}
+
+// checkDefinitionVersion is the fail-closed execution guard on the pipeline
+// document version. This executor implements exactly the current format, so
+// anything else (empty, unknown or a future version a shared parser may later
+// learn to read) is refused before admission creates any state: readability and
+// registration do not grant execution. The message carries no document content.
+func checkDefinitionVersion(version string) error {
+	if version == pipelinev1.APIVersion {
+		return nil
+	}
+	return Refusedf("the pipeline definition version is not supported for execution")
 }
 
 // checkKinds rejects steps whose kind this installation does not execute.
