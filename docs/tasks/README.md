@@ -28,7 +28,7 @@ Package completion is not milestone acceptance. No real SQL/RLS/transaction/prov
 
 [O-28](../decisions.md#run-workspace-and-builders--2026-10-26-o-28) schedules the [P0–P7 plan](../implementation/run-workspace-services-builders.md). T-109 updates the owning contracts; [T-118](T-118-pipeline-version-admission.md) independently fences the current executor to its implemented document version before T-110 extends shared parsing. T-110 depends on both and implements the wire/parser checkpoint. T-111 (real profile qualification) and T-112 (lifecycle) follow independently; T-113/T-114/T-115 wait for both, followed by T-116 assembly and T-117 acceptance. Other deferred tasks are not promoted. The generated summary above has not been regenerated: the separate OpenForge checkout is unavailable. The task frontmatter and this explicit scheduling notice govern these new tasks until `index --write` and `validate` can run.
 
-T-118 is reviewed, unit-tested and merged locally at `16a5d0df`; T-109 is in progress. P0's complete contract/parser checkpoint and P1 qualification are not yet delivered. No new runtime capability is enabled by this prerequisite.
+T-118 is reviewed, unit-tested and merged locally at `16a5d0df`; T-109's reviewed specification checkpoint is merged at `9db322ff`. T-110 is now ready for the executable schema/parser portion of P0. P0 is not complete until that passes, and P1 qualification is not yet delivered. No new runtime capability is enabled by these checkpoints.
 
 ## Task contract
 

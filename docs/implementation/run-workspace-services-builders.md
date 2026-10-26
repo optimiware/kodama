@@ -6,6 +6,8 @@
 **Register:** [O-28](../decisions.md#run-workspace-and-builders--2026-10-26-o-28).  
 **Baseline:** `main` at `7a66d3493f2bc69d197406f757841e603efbb0c1`.
 
+**Reviewed contract checkpoint:** T-109 merged at `9db322ffd37a4279f8a7ac1a404a06e46533527d`. The [pipeline v1alpha2](../contracts/pipeline-format-v1alpha2.md), [runtime v2](../contracts/runtime-v2.md) and [run-resource](../contracts/run-resources.md) contracts there supersede the proposal's detail where explicitly amended. Original executable behavior remains `attempt_private`; no new runtime/build capability is delivered by this documentation checkpoint.
+
 ## Outcome
 
 A run prepares its pinned Git commit once and carries one disposable `/workspace` through all executable steps, each with its own pinned image. Declared database/browser/builder services start with the run, are reachable only through run-scoped policy, and disappear on completion/cancellation. Rootless ko and Buildah work in the tenant baseline; BuildKit works there or through a selected run-exclusive builder service. Preserve expected-tip Git publication, tenant ownership, scoped credentials, external default deny, and uncertain-effect reconciliation.
@@ -23,7 +25,7 @@ This is an intentional change to today's private-attempt checkout and fixed `res
 | Delivery/gates | DQ-01–DQ-05, DQ-07, DQ-14; candidate/evidence provenance |
 | Design/assembly | SD-04, SD-06–SD-15; repository-layout seam contracts |
 
-These documents record the design baseline, not delivered runtime behavior. The owner subsequently requested implementation; the coordinator allocated the tasks below. T-109 updates the owning specifications before dependent implementation. Each task starts in its own worktree from `main` and requires exact-candidate review and scoped checks before merge.
+These documents record the design baseline, not delivered runtime behavior. The owner subsequently requested implementation; the coordinator allocated the tasks below. T-109 has updated the owning specifications before dependent implementation. Each task starts in its own worktree from `main` and requires exact-candidate review and scoped checks before merge.
 
 ### Scheduled implementation
 
@@ -39,6 +41,8 @@ These documents record the design baseline, not delivered runtime behavior. The 
 | P7 | [T-117](../tasks/T-117-run-resource-acceptance.md) | Integrated qualification and staged rollout |
 
 The source design is commit `0b12febef5b9e092982af74e2c951afe2dd80c19`; executable baseline remains the commit above. OpenForge bootstrap is currently unavailable because the separate checkout is absent. Manual isolated workers and independent candidate review may prepare changes; automated queue/index validation and batch receipts must not be claimed until the harness is available.
+
+**Progress:** T-118's old-executor version fence is reviewed, unit-tested and merged at `16a5d0df`; T-109's normative specifications are reviewed, docs-checked (121 files) and merged at the checkpoint above. T-110 is ready; P0 is not complete until its executable fixtures pass. The integrated infrastructure-free lint/unit batch passed at `73404c51` before the documentation-only checkpoint; no real SQL/CSI/CNI/builder qualification is implied. All later phases remain pending.
 
 ## Contract decisions to freeze
 

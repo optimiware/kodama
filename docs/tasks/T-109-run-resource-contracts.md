@@ -1,7 +1,7 @@
 ---
 id: T-109
 milestone: production
-status: planned
+status: done
 depends_on: []
 decision_blockers: []
 owns: [CONTEXT.md, docs/adr/, docs/specs/, docs/contracts/, docs/book/, docs/examples/, docs/traceability.md, docs/review-kiss.md, docs/implementation/step-entrypoint.md, docs/implementation/repository-layout.md, docs/operations/]
@@ -28,3 +28,6 @@ Intentional change from repository `7a66d3493f2bc69d197406f757841e603efbb0c1` an
 
 ## Out of scope
 Runtime/product changes, generated API/client, task metadata and operations qualification. P-06/P-07/P-11/P-14/O-07 register amendments are coordinator-owned and must be requested at handoff if needed. The coordinator owns plan progress and task index.
+
+## Completion evidence
+Contract checkpoint merged locally as `9db322ffd37a4279f8a7ac1a404a06e46533527d` after independent review of the corrected exact candidate (session `ses_e864038ceffeU5n6hbS8BZk6iM`, approve, zero findings) and coordinator `make docs-check` PASS (121 files). The canonical v1alpha2 reference vector was independently re-derived by the writer; existing v1 bytes/hashes and executable behavior were untouched. Review fixes froze resource-specific identity/token envelopes, image argv defaults, one-workload preparation retry, source-free scratch retention, begin/lineage provenance, mandatory network/default-deny capabilities and terminal cleanup. The finished worktree/branch were removed; nothing was pushed. Decision-register amendments are recorded by the coordinator. T-110 owns executable schema/parser fixtures; no runtime or builder qualification is claimed here.
