@@ -401,7 +401,9 @@ env.update({
     "KODAMA_S3_PREFIX": c["object_storage"]["artifacts_prefix"],
 })
 
-ACCEPTANCE = json.loads((repo_root / "deploy/stage/scripts/readiness-cases.json").read_text())
+# The case file lists the acceptances of both gates; each run is judged against its own.
+ACCEPTANCE = {k: v for k, v in json.loads((repo_root / "deploy/stage/scripts/readiness-cases.json").read_text()).items()
+              if v.get("gate", "readiness") == ("staging" if staging else "readiness")}
 
 cmd = ["go", "test", "-json", "-p", "1", "-race", "-count=1", "-timeout", env.get("KODAMA_GO_TEST_TIMEOUT", "45m"), *pkgs]
 passed, failed, skipped = set(), set(), set()
@@ -482,7 +484,7 @@ for name, spec in ACCEPTANCE.items():
         "cases": {case: last.get((want_pkg, want_test + "/" + case), "missing") for case in spec["cases"]},
     })
 pkg_ok = bool(pkg_actions) and all(a == "pass" for a in pkg_actions.values())
-cases_ok = not readiness or all(a["status"] == "pass" and all(v == "pass" for v in a["cases"].values()) for a in acceptances)
+cases_ok = all(a["status"] == "pass" and all(v == "pass" for v in a["cases"].values()) for a in acceptances) if (readiness or staging) else True
 prov["suite_passed"] = (rc == 0 and pkg_ok and not failed and not truncated and cases_ok)
 prov["session"] = env.get("KODAMA_QUAL_SESSION", "")
 prov["fault_config"] = {
@@ -579,6 +581,18 @@ if prov.get("suite_passed") is not True:
 
 ACCEPTANCE = json.load(open(cases_path))
 
+def runner_flaws():
+    # The runner's own completion evidence: a clean exit and every required package finished with pass.
+    flaws = []
+    if data.get("runner_exit") != 0:
+        flaws.append("runner_exit is not 0")
+    done = {p.get("package"): p.get("action") for p in data.get("packages", []) if isinstance(p, dict)}
+    for req in required:
+        spec = ACCEPTANCE.get(req)
+        if spec and done.get(spec["package"]) != "pass":
+            flaws.append(f"package {spec['package']} did not complete with pass")
+    return flaws
+
 if "stage_clean_install" in required:
     # A staging receipt carries the runner's own proof too: an unchanged candidate and the release image
     # labelled with this exact commit in the registry.
@@ -586,7 +600,7 @@ if "stage_clean_install" in required:
     repo = pathlib.Path(cases_path).resolve().parents[3]
     full_commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     images = prov.get("image_revisions")
-    flaws = []
+    flaws = runner_flaws()
     if prov.get("candidate_stable") is not True:
         flaws.append("provenance.candidate_stable is not true")
     if not isinstance(images, list) or len(images) < 1 or any(not isinstance(i, dict) or i.get("revision") != full_commit for i in images):
@@ -603,7 +617,7 @@ if "kube_chart_install" in required:
     repo = pathlib.Path(cases_path).resolve().parents[3]
     full_commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     images = prov.get("image_revisions")
-    flaws = []
+    flaws = runner_flaws()
     if prov.get("candidate_stable") is not True:
         flaws.append("provenance.candidate_stable is not true")
     if not isinstance(prov.get("fault_config"), dict) or prov["fault_config"].get("applied") is not True:

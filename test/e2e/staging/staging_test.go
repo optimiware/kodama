@@ -32,6 +32,11 @@ func TestStageCleanInstall(t *testing.T) {
 	}
 	leftover := regexp.MustCompile(`^secret/kdm-.*-adm$`)
 	for _, tenant := range i.S.Tenants {
+		// The clean-up below deletes every Job and Pod of the namespace: only this session's own tenant
+		// namespaces may be touched, whatever a session handle says.
+		if !strings.HasPrefix(tenant.Namespace, "kodama-q-"+i.S.Name+"-") {
+			t.Fatalf("tenant namespace %q does not belong to qualification session %q; refusing to clear it", tenant.Namespace, i.S.Name)
+		}
 		for _, kind := range []string{"job", "pod"} {
 			if _, err := i.Kube.Run(ctx, "-n", tenant.Namespace, "delete", kind, "--all", "--wait=true", "--timeout=3m"); err != nil {
 				t.Fatalf("clear %ss of %s: %v", kind, tenant.Namespace, err)
@@ -63,10 +68,11 @@ func TestStageCleanInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"--assembly"`, `"core"`, `"KODAMA_ENV"`, `"production"`} {
-		if !strings.Contains(deploy, want) {
-			t.Fatalf("the deployed server lacks %s", want)
-		}
+	if env, ok := deployedEnv(t, deploy, "KODAMA_ENV"); !ok || env != "production" {
+		t.Fatalf("the deployed server's KODAMA_ENV is %q, want production", env)
+	}
+	if !strings.Contains(deploy, `"--assembly"`) || !strings.Contains(deploy, `"core"`) {
+		t.Fatal("the deployed server is not running the core assembly")
 	}
 	if me, err := i.API("admin").GetMeWithResponse(ctx); err != nil || me.StatusCode() != http.StatusOK {
 		t.Fatalf("the installation does not serve its API: %v", err)
@@ -154,8 +160,12 @@ func TestStageRestartReconcile(t *testing.T) {
 func TestStageLokiLogSearch(t *testing.T) {
 	i := stage.New(t)
 	g := openGrafana(t, i)
-	if code, _, err := g.get("/api/datasources/proxy/uid/kodama-loki/loki/api/v1/labels", false); err != nil || code == http.StatusOK {
-		t.Fatalf("Grafana answered an unauthenticated Loki query with HTTP %d (%v)", code, err)
+	// An outage or a wrong path must not read as "refused": the refusal has to be a refusal.
+	switch code, _, err := g.get("/api/datasources/proxy/uid/kodama-loki/loki/api/v1/labels", false); {
+	case err != nil:
+		t.Fatalf("the unauthenticated Loki query could not be made: %v", err)
+	case code != http.StatusUnauthorized && code != http.StatusForbidden && code != http.StatusFound && code != http.StatusSeeOther:
+		t.Fatalf("Grafana answered an unauthenticated Loki query with HTTP %d, want a refusal (401, 403 or a login redirect)", code)
 	}
 	if code, _, err := g.get("/api/datasources/proxy/uid/kodama-loki/loki/api/v1/labels", true); err != nil || code != http.StatusOK {
 		t.Fatalf("the operator cannot query Loki through Grafana: HTTP %d (%v)", code, err)
@@ -199,8 +209,8 @@ func TestStageDevAdapterRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(deploy, `"KODAMA_ENV"`) || !strings.Contains(deploy, `"production"`) {
-		t.Fatal("the deployed server is not KODAMA_ENV=production")
+	if env, ok := deployedEnv(t, deploy, "KODAMA_ENV"); !ok || env != "production" {
+		t.Fatalf("the deployed server's KODAMA_ENV is %q, want production", env)
 	}
 	for _, forbidden := range []string{"ALLOW_INSECURE_HTTP", "KODAMA_SECRETS_ADAPTER", "KODAMA_RUNTIME_STATE_DIR", "KODAMA_ENTRYPOINT_BINARY"} {
 		if strings.Contains(deploy, forbidden) {
@@ -286,7 +296,7 @@ func runOverridden(t *testing.T, i *stage.Installation, deployJSON, name, value 
 }
 
 // TestStageRetentionUninstall is stage_retention_uninstall: uninstalling the release removes the workload and
-// retains the database, the object-store bucket and its data, and the installation's Key Manager keys.
+// leaves the database, the object-store bucket and its data, and the installation's Key Manager keys in place.
 // It is last: it leaves the session uninstalled.
 func TestStageRetentionUninstall(t *testing.T) {
 	i := stage.New(t)

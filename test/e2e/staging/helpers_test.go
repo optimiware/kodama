@@ -19,8 +19,9 @@ import (
 )
 
 // The staging suite runs one session through the lifecycle in source order: install from a clean namespace
-// set, use it, restart it, search its logs, check what it refuses, then uninstall it. A failure stops later
-// tests from claiming anything about a half-built installation, and the gate requires every one to pass.
+// set, use it, restart it, search its logs, check what it refuses, then uninstall it. Go keeps running after a
+// failure, but each test re-establishes what it needs (EnsureReady) and the gate requires every one to pass,
+// so a failed step never lets a later one claim a pass on its own.
 
 func suffix(t *testing.T) string {
 	t.Helper()
@@ -188,4 +189,39 @@ func (g grafana) lines(query string, since time.Duration) (int, []string, error)
 		}
 	}
 	return code, lines, nil
+}
+
+// deployedEnv returns the value of an environment variable of the server container in a Deployment's JSON,
+// so an assertion is about the variable's value and not about a substring of the whole document.
+func deployedEnv(t *testing.T, deployJSON, name string) (string, bool) {
+	t.Helper()
+	var d struct {
+		Spec struct {
+			Template struct {
+				Spec struct {
+					Containers []struct {
+						Name string `json:"name"`
+						Env  []struct {
+							Name  string `json:"name"`
+							Value string `json:"value"`
+						} `json:"env"`
+					} `json:"containers"`
+				} `json:"spec"`
+			} `json:"template"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal([]byte(deployJSON), &d); err != nil {
+		t.Fatal("the Deployment is not valid JSON")
+	}
+	for _, c := range d.Spec.Template.Spec.Containers {
+		if c.Name != "server" {
+			continue
+		}
+		for _, e := range c.Env {
+			if e.Name == name {
+				return e.Value, true
+			}
+		}
+	}
+	return "", false
 }

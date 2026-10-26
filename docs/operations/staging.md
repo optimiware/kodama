@@ -88,7 +88,7 @@ requires the release image to be labelled with the candidate commit **in the reg
 | `stage_dev_adapter_refused` | checks the deployed configuration is production with the cloud KMS and no development selection, then starts the **deployed** server specification with one development or test selection at a time (development key file, OIDC fixture, S3 fixture, Process/Podman runtime) and requires a non-zero exit that names the refused adapter |
 | `stage_retention_uninstall` | uninstalls, then requires the run records, the artifacts bucket and its objects, and the installation's enabled Key Manager keys to remain. It runs last and leaves the session uninstalled |
 
-The tests run in that order; a failing step stops later tests from claiming anything about a half-built installation.
+The tests run in that order. Go keeps running after a failure, but each test re-establishes what it needs and the gate requires all six (and the four `stage_dev_adapter_refused` selections) to pass.
 
 ## Search logs by attempt
 
@@ -145,7 +145,7 @@ printed its output, then the entrypoint went silent until the deadline aborted i
 per-request deadline, so one stalled request waited out the whole five-minute finalization budget, longer than the step's
 own deadline. Every request is now bounded and the finalization phases are logged ([T-108](../tasks/T-108-execution-finalization-diagnostics.md));
 the cause is inferred from that evidence, not observed. The failed attempt's evidence is kept with the receipts' sibling
-`T-090-superseded-4daa4516f044`. It is a real intermittent product defect, which is why the gate was not simply rerun.
+`T-090-superseded-4daa4516f044`. It was an intermittent product defect, which is why the gate was not simply rerun.
 
 ### Limits of this qualification
 
@@ -164,7 +164,8 @@ the cause is inferred from that evidence, not observed. The failed attempt's evi
 ## Known limitations
 
 - O-27 (NATS, issuer) and scheduled-only backups, as above.
-- Secrets reach steps through deployment environments until T-107 lands.
+- Declared project secrets reach steps directly (ENV and file) since T-107; a writer step that declares a secret cannot publish source yet, and a step that pins an environment and declares its own secrets receives only the environment's.
+- `qualify.sh destroy` purges a session's `qualification/<session>/` objects, but the artifacts bucket is **versioned** and the stage runtime credential may not list versions: the tool then deletes the current objects, which only adds delete markers, and prints a WARNING that earlier versions remain. Removing them needs a credential allowed to list and delete object versions, or a lifecycle rule that expires non-current versions under `qualification/` (an infrastructure decision for the owner).
 - `qualify.sh destroy` stops on real teardown failures and retries once from recorded state when a resource is already
   gone; a session whose state it still cannot reconcile needs a manual decision, not a forced removal.
 - Image provenance is a declared registry label, not a build attestation.

@@ -34,7 +34,7 @@ The first stage target is the Kodama-owned standalone cluster `kodama-stage-scw`
 Production release and support claims (T-056), hosted Platform authority (T-061), measured capacity, recovery drills (T-029) and stronger isolation (T-055).
 
 ## Progress (2026-10-26)
-Qualified at candidate `8448adc623b5` by a passing `readiness` gate and a passing `staging` gate on the same session, commit, contract and values; receipts and limits: [docs/operations/staging.md](../operations/staging.md#qualification-record). Merged on the owner's instruction.
+Qualified at candidate `8448adc623b5` by a passing `readiness` gate and a passing `staging` gate on the same session, commit, contract and values; receipts and limits: [docs/operations/staging.md](../operations/staging.md#qualification-record).
 
 Implemented: `test/e2e/staging/` (the six acceptance tests, run in lifecycle order), Alloy now tails the control plane, the contract's tenant namespaces and the `kodama-q-*` qualification sessions and normalizes the control plane's `attemptId` to `attempt_id` (`deploy/stage/shared/stack`), the `staging` gate verifies the release image's registry revision label and requires the runner's own proof in the receipt, `qualify.sh destroy` fails on real teardown errors, retries once from recorded state for an already-gone resource, and purges the session's object prefix (`deploy/stage/cmd/purge-session-objects`), and the runbook is [docs/operations/staging.md](../operations/staging.md).
 

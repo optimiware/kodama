@@ -281,6 +281,9 @@ if "kube_chart_install" in tests:
         "candidate_stable": True, "probe_image": probe, "fault_config": {"applied": True},
         "image_revisions": [{"image": "registry.invalid/kodama@sha256:" + "b" * 64, "revision": head}, {"image": probe, "revision": head}],
     })
+if "kube_chart_install" in tests or "stage_clean_install" in tests:
+    doc["runner_exit"] = 0
+    doc["packages"] = [{"package": p, "action": "pass"} for p in sorted({ACCEPTANCE[n]["package"] for n in tests if n in ACCEPTANCE})]
 if "stage_clean_install" in tests:
     head = subprocess.check_output(["git", "-C", os.environ["STAGE_DIR"], "rev-parse", "HEAD"], text=True).strip()
     doc["provenance"].update({"candidate_stable": True, "image_revisions": [{"image": "registry.invalid/kodama@sha256:" + "b" * 64, "revision": head}]})
