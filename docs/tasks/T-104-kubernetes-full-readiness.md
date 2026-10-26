@@ -1,7 +1,7 @@
 ---
 id: T-104
 milestone: production
-status: planned
+status: done
 depends_on: []
 decision_blockers: []
 owns: [test/e2e/kube-full/, test/integration/assembly-execution/, test/support/stage/, docs/acceptance/kube-full.md]

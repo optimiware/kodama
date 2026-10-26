@@ -1,7 +1,7 @@
 ---
 id: T-090
 milestone: production
-status: planned
+status: done
 depends_on: [T-104]
 decision_blockers: []
 owns: [deploy/stage/, test/e2e/staging/, docs/operations/staging.md]
