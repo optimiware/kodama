@@ -50,6 +50,10 @@ func (s *Store) updateRun(tx memdb.Tx, r *execution.Run) error {
 	cur.CancelRequestedAt, cur.CancelReason = cloneTime(r.CancelRequestedAt), r.CancelReason
 	cur.FailureIntentAt, cur.FailureReason = cloneTime(r.FailureIntentAt), r.FailureReason
 	cur.SourceRetention = r.SourceRetention
+	if cur.DeadlineAt != nil && (r.DeadlineAt == nil || !r.DeadlineAt.Equal(*cur.DeadlineAt)) {
+		return immutablef("the run deadline is pinned once")
+	}
+	cur.DeadlineAt = cloneTime(r.DeadlineAt)
 	cur.Version, cur.UpdatedAt, cur.StartedAt, cur.FinishedAt = r.Version, r.UpdatedAt, cloneTime(r.StartedAt), cloneTime(r.FinishedAt)
 	return runsT.Put(tx, cur)
 }
@@ -222,6 +226,9 @@ func (s *Store) persist(tx memdb.Tx, agg *execution.Aggregate) error {
 			return err
 		}
 	}
+	if err := s.persistShared(tx, agg); err != nil {
+		return err
+	}
 	for _, ev := range agg.Evidence {
 		seq, err := nextSeq(tx)
 		if err != nil {
@@ -247,6 +254,10 @@ func versionOf(agg *execution.Aggregate, t execution.Transition) domain.Version 
 	case execution.SubjectAttempt:
 		if a := agg.Attempt(t.AttemptID); a != nil {
 			return a.Version
+		}
+	case execution.SubjectResource:
+		if r := agg.Resource(t.ID); r != nil {
+			return r.Version
 		}
 	}
 	return agg.Run.Version
@@ -297,6 +308,16 @@ func (s *Store) writeAudit(tx memdb.Tx, agg *execution.Aggregate, t execution.Tr
 	case execution.SubjectAttempt:
 		resType, resID, action = "step_attempt", string(t.AttemptID), "step_attempt.state_changed"
 		md["runId"], md["stepId"] = string(agg.Run.ID), t.StepID
+	case execution.SubjectResource:
+		id, err := execution.ResourceAuditID(agg.Run.Scope, agg.Run.ID, t.ID)
+		if err != nil {
+			return err
+		}
+		resType, resID, action = eventsv1.ResourceTypeRunResource, id, eventsv1.TypeRunResourceStateChanged
+		md = map[string]any{"runId": string(agg.Run.ID), "key": t.ID, "from": t.FromPhase, "to": t.ToPhase, "reason": string(t.Reason)}
+		if r := agg.Resource(t.ID); r != nil {
+			md["fingerprint"], md["uidBound"] = r.Fingerprint, r.UID != ""
+		}
 	}
 	if len(reqID) > 256 {
 		reqID = reqID[:256]
@@ -343,6 +364,21 @@ func (s *Store) writeEvent(tx memdb.Tx, agg *execution.Aggregate, index int, t e
 		typ = eventsv1.TypeStepAttemptStateChange
 		res = eventsv1.Resource{Type: "step_attempt", ID: string(t.AttemptID), Version: int64(t.Version)}
 		data = eventsv1.StepAttemptStateChanged{RunID: string(agg.Run.ID), StepID: t.StepID, From: from, To: t.To, Reason: string(t.Reason)}
+	case execution.SubjectResource:
+		r := agg.Resource(t.ID)
+		if r == nil {
+			return fmt.Errorf("execution: a resource transition names no resource")
+		}
+		id, err := execution.ResourceAuditID(agg.Run.Scope, agg.Run.ID, t.ID)
+		if err != nil {
+			return err
+		}
+		typ = eventsv1.TypeRunResourceStateChanged
+		res = eventsv1.Resource{Type: eventsv1.ResourceTypeRunResource, ID: id, Version: int64(t.Version)}
+		data = eventsv1.RunResourceStateChanged{
+			RunID: string(agg.Run.ID), Kind: string(r.Kind), Key: r.Key, From: t.FromPhase, To: t.ToPhase, Reason: string(t.Reason),
+			SpecFingerprint: r.Fingerprint, UIDBound: r.UID != "",
+		}
 	default:
 		return nil // step transitions are history and audit only
 	}

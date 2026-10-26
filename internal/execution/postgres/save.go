@@ -34,16 +34,25 @@ func (s *Store) insertRun(ctx context.Context, tx pgx.Tx, r *execution.Run) erro
 	if r.ContentRevision != 0 {
 		rev = int64(r.ContentRevision)
 	}
+	var shared any
+	if r.Shared != nil {
+		b, err := jsonb(r.Shared)
+		if err != nil {
+			return err
+		}
+		shared = b
+	}
 	_, err = tx.Exec(ctx, `INSERT INTO runs
 		(tenant_id, project_id, id, purpose, work_item_id, workspace_id, deployment_id, definition_id, definition_digest, content_revision,
 		 specification, source_commit, inputs, snapshot_digest, source_retention, retained_ref_id, requested_by_type, requested_by_id,
-		 status, status_reason, cancel_requested_at, cancel_reason, failure_intent_at, failure_reason, version, created_at, updated_at, started_at, finished_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+		 status, status_reason, cancel_requested_at, cancel_reason, failure_intent_at, failure_reason, version, created_at, updated_at, started_at, finished_at,
+		 run_shared, deadline_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,
 		string(r.Scope.TenantID), string(r.Scope.ProjectID), string(r.ID), string(r.Purpose), nstr(string(r.WorkItemID)), nstr(r.WorkspaceID),
 		nstr(r.DeploymentID), string(r.DefinitionID), r.DefinitionDigest, rev, spec, nstr(r.SourceCommit), inputs, r.SnapshotDigest,
 		string(r.SourceRetention), nstr(r.RetainedRefID), string(r.RequestedBy.Type), r.RequestedBy.ID, string(r.Status), string(r.Reason),
 		ntm(r.CancelRequestedAt), nstr(string(r.CancelReason)), ntm(r.FailureIntentAt), nstr(string(r.FailureReason)), int64(r.Version),
-		micros(r.CreatedAt), micros(r.UpdatedAt), ntm(r.StartedAt), ntm(r.FinishedAt))
+		micros(r.CreatedAt), micros(r.UpdatedAt), ntm(r.StartedAt), ntm(r.FinishedAt), shared, ntm(r.DeadlineAt))
 	return err
 }
 
@@ -163,11 +172,11 @@ func (s *Store) updateControl(ctx context.Context, tx pgx.Tx, scope domain.Scope
 
 func (s *Store) updateRun(ctx context.Context, tx pgx.Tx, r *execution.Run) error {
 	tag, err := tx.Exec(ctx, `UPDATE runs SET status=$4, status_reason=$5, cancel_requested_at=$6, cancel_reason=$7, failure_intent_at=$8,
-		failure_reason=$9, source_retention=$10, version=$11, updated_at=$12, started_at=$13, finished_at=$14
+		failure_reason=$9, source_retention=$10, version=$11, updated_at=$12, started_at=$13, finished_at=$14, deadline_at=$15
 		WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND version=$11-1`,
 		string(r.Scope.TenantID), string(r.Scope.ProjectID), string(r.ID), string(r.Status), string(r.Reason), ntm(r.CancelRequestedAt),
 		nstr(string(r.CancelReason)), ntm(r.FailureIntentAt), nstr(string(r.FailureReason)), string(r.SourceRetention), int64(r.Version),
-		micros(r.UpdatedAt), ntm(r.StartedAt), ntm(r.FinishedAt))
+		micros(r.UpdatedAt), ntm(r.StartedAt), ntm(r.FinishedAt), ntm(r.DeadlineAt))
 	if err != nil {
 		return err
 	}
@@ -222,6 +231,9 @@ func (s *Store) persist(ctx context.Context, tx pgx.Tx, agg *execution.Aggregate
 			return err
 		}
 	}
+	if err := s.persistShared(ctx, tx, agg); err != nil {
+		return err
+	}
 	for _, ev := range agg.Evidence {
 		detail, err := jsonb(nonNil(ev.Detail))
 		if err != nil {
@@ -248,6 +260,7 @@ func (s *Store) markClean(agg *execution.Aggregate) {
 		c.MarkClean()
 	}
 	agg.Created = nil
+	markCleanShared(agg)
 }
 
 func versionOf(agg *execution.Aggregate, t execution.Transition) domain.Version {
@@ -259,6 +272,10 @@ func versionOf(agg *execution.Aggregate, t execution.Transition) domain.Version 
 	case execution.SubjectAttempt:
 		if a := agg.Attempt(t.AttemptID); a != nil {
 			return a.Version
+		}
+	case execution.SubjectResource:
+		if r := agg.Resource(t.ID); r != nil {
+			return r.Version
 		}
 	}
 	return agg.Run.Version
@@ -307,6 +324,16 @@ func (s *Store) writeAudit(ctx context.Context, tx pgx.Tx, agg *execution.Aggreg
 	case execution.SubjectAttempt:
 		resType, resID, action = "step_attempt", string(t.AttemptID), "step_attempt.state_changed"
 		md["runId"], md["stepId"] = string(agg.Run.ID), t.StepID
+	case execution.SubjectResource:
+		id, err := execution.ResourceAuditID(scope, agg.Run.ID, t.ID)
+		if err != nil {
+			return err
+		}
+		resType, resID, action = eventsv1.ResourceTypeRunResource, id, eventsv1.TypeRunResourceStateChanged
+		md = map[string]any{"runId": string(agg.Run.ID), "key": t.ID, "from": t.FromPhase, "to": t.ToPhase, "reason": string(t.Reason)}
+		if r := agg.Resource(t.ID); r != nil {
+			md["fingerprint"], md["uidBound"] = r.Fingerprint, r.UID != ""
+		}
 	}
 	raw, err := json.Marshal(md)
 	if err != nil {
@@ -351,6 +378,21 @@ func (s *Store) writeEvent(ctx context.Context, tx pgx.Tx, agg *execution.Aggreg
 		typ = eventsv1.TypeStepAttemptStateChange
 		res = eventsv1.Resource{Type: "step_attempt", ID: string(t.AttemptID), Version: int64(t.Version)}
 		data = eventsv1.StepAttemptStateChanged{RunID: string(agg.Run.ID), StepID: t.StepID, From: from, To: t.To, Reason: string(t.Reason)}
+	case execution.SubjectResource:
+		r := agg.Resource(t.ID)
+		if r == nil {
+			return fmt.Errorf("execution: a resource transition names no resource")
+		}
+		id, err := execution.ResourceAuditID(agg.Run.Scope, agg.Run.ID, t.ID)
+		if err != nil {
+			return err
+		}
+		typ = eventsv1.TypeRunResourceStateChanged
+		res = eventsv1.Resource{Type: eventsv1.ResourceTypeRunResource, ID: id, Version: int64(t.Version)}
+		data = eventsv1.RunResourceStateChanged{
+			RunID: string(agg.Run.ID), Kind: string(r.Kind), Key: r.Key, From: t.FromPhase, To: t.ToPhase, Reason: string(t.Reason),
+			SpecFingerprint: r.Fingerprint, UIDBound: r.UID != "",
+		}
 	default:
 		return nil // step transitions are history and audit only
 	}

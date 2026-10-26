@@ -149,7 +149,32 @@ func (a *Aggregate) gateStep(stepID string) (*StepRun, error) {
 // dependency succeeded, and the run still accepts progression. A gate is never
 // executable and never has an attempt.
 func (a *Aggregate) GateReady(s *StepRun) bool {
-	return s.Spec.Kind == pipeline.KindGate && s.Status == StepPending && a.Run.AcceptsDispatch() && a.dependenciesSucceeded(s)
+	return s.Spec.Kind == pipeline.KindGate && s.Status == StepPending && a.Run.AcceptsDispatch() && a.dependenciesSucceeded(s) && a.sharedGateEligible(s)
+}
+
+// sharedGateEligible is the run_shared order fence of a gate: a gate occupies
+// its position in the pinned execution order, so it is eligible only when every
+// earlier node is terminal and settled (workload stopped, result and effects
+// accounted for) and no attempt still holds the workspace volume. Logical
+// needs alone never make a gate eligible. A run of the original model is
+// unchanged.
+func (a *Aggregate) sharedGateEligible(s *StepRun) bool {
+	if a.Run.Shared == nil {
+		return true
+	}
+	if a.ActiveHolder() != nil {
+		return false
+	}
+	for _, id := range a.Run.Shared.Order {
+		if id == s.ID {
+			return true
+		}
+		p := a.Step(id)
+		if p == nil || !p.Status.Terminal() || !a.stepSettled(p) {
+			return false
+		}
+	}
+	return false
 }
 
 // ReadyGates lists the ready gate steps in definition order.
@@ -334,6 +359,15 @@ func (a *Aggregate) CompleteGate(stepID string, now time.Time) error {
 	}
 	if !a.Run.AcceptsDispatch() || !a.dependenciesSucceeded(s) {
 		return fmt.Errorf("%w: gate step %s cannot progress", ErrStale, stepID)
+	}
+	if !a.sharedGateEligible(s) {
+		return fmt.Errorf("%w: gate step %s waits for its predecessors to settle and release the workspace", ErrStale, stepID)
+	}
+	if a.Run.Shared != nil && a.Run.DeadlineAt != nil && !now.Before(*a.Run.DeadlineAt) {
+		// The run's total deadline covers gate waits: an approval that arrives
+		// after it no longer applies (the gate is invalidated with the run's
+		// run_deadline_exceeded reason).
+		return fmt.Errorf("%w: gate step %s is past the run deadline", ErrStale, stepID)
 	}
 	from := s.Status
 	s.Status, s.Reason, s.NextAttemptAt = StepSucceeded, ReasonGateApproved, nil

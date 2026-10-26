@@ -33,11 +33,11 @@ func WorkspaceFKSQL() string { return workspaceAttemptFKSQL }
 //	    storage.BaseContribution(), eventspg.Migrations(), /* work, pipeline, secrets, workspace, artifacts ... */
 //	}, execpg.Migrations()...)...)
 //
-// It is Schema followed by CleanupMigrations. A composition that has already
+// It is Schema followed by CleanupMigrations and RunResourceMigrations. A composition that has already
 // been deployed lists Schema where it always did and appends CleanupMigrations
 // after everything it has applied (see CleanupMigrations).
 func Migrations() []storage.Contribution {
-	return append(Schema(), CleanupMigrations())
+	return append(Schema(), CleanupMigrations(), RunResourceMigrations())
 }
 
 // Schema returns the execution tables and their dependent constraints as
@@ -57,7 +57,7 @@ func Schema() []storage.Contribution {
 		switch m.ID {
 		case "T020_002_runs.sql":
 			tables = append(tables, m)
-		case CleanupMigrationID:
+		case CleanupMigrationID, RunResourcesMigrationID:
 		default:
 			links = append(links, m)
 		}
@@ -86,3 +86,22 @@ func CleanupMigrations() storage.Contribution {
 
 // CleanupMigrationID is the migration of workload removal bookkeeping.
 const CleanupMigrationID = "T086_001_workload_cleanup.sql"
+
+// RunResourcesMigrationID is the migration of the run_shared resource lifecycle
+// and persistence (T-112).
+const RunResourcesMigrationID = "T112_001_run_resources.sql"
+
+// RunResourceMigrations returns the additive run_shared tables and columns
+// (T112_001) as their own final contribution. A composition that has already
+// deployed execution lists it after every contribution it has applied (the
+// ledger refuses a pending migration ordered before an applied one); this
+// package does not wire it into any composition (T-116 owns the ordering).
+func RunResourceMigrations() storage.Contribution {
+	var out []storage.Migration
+	for _, m := range loadOwn() {
+		if m.ID == RunResourcesMigrationID {
+			out = append(out, m)
+		}
+	}
+	return storage.Contribution{Module: "execution-run-resources", Migrations: out}
+}

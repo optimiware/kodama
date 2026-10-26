@@ -96,6 +96,13 @@ func (e *txEnv) CapacityAvailable(ctx context.Context, scope domain.Scope, lim e
 		WHERE tenant_id = $1 AND released_at IS NULL`, string(scope.TenantID), string(scope.ProjectID)).Scan(&tenantHeld, &projectHeld); err != nil {
 		return err
 	}
+	// A run_shared run's active-attempt slot is reserved for its whole life.
+	var sharedTenant, sharedProject int
+	if err := e.tx.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE project_id = $2) FROM execution_run_reservations
+		WHERE tenant_id = $1 AND released_at IS NULL`, string(scope.TenantID), string(scope.ProjectID)).Scan(&sharedTenant, &sharedProject); err != nil {
+		return err
+	}
+	tenantHeld, projectHeld = tenantHeld+sharedTenant, projectHeld+sharedProject
 	if tenantHeld >= lim.TenantConcurrency || projectHeld >= lim.ProjectConcurrency {
 		return fmt.Errorf("%w: %d of %d tenant and %d of %d project slots are in use", execution.ErrQuotaExceeded,
 			tenantHeld, lim.TenantConcurrency, projectHeld, lim.ProjectConcurrency)

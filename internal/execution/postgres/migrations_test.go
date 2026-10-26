@@ -154,8 +154,8 @@ func Test_execution_migrations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("upgrade: %v", err)
 		}
-		if len(res.Applied) != 5 {
-			t.Fatalf("applied %v, want only the five execution migrations", res.Applied)
+		if len(res.Applied) != 6 {
+			t.Fatalf("applied %v, want only the six execution migrations", res.Applied)
 		}
 		var n int
 		if err := pool.QueryRow(ctx, `SELECT count(*) FROM workspaces`).Scan(&n); err != nil || n != 1 {
@@ -188,7 +188,7 @@ func Test_execution_migrations(t *testing.T) {
 			t.Fatal(err)
 		}
 		res, err := storage.Migrate(ctx, pool, fullManifest(t), opts(db))
-		if err != nil || len(res.Applied) != 1 || res.Applied[0] != execpg.CleanupMigrationID {
+		if err != nil || len(res.Applied) != 2 || res.Applied[0] != execpg.CleanupMigrationID || res.Applied[1] != execpg.RunResourcesMigrationID {
 			t.Fatalf("upgrade: %+v %v", res, err)
 		}
 	})
@@ -234,8 +234,9 @@ func Test_execution_migrations(t *testing.T) {
 
 	t.Run("the contributions are valid, non-conflicting manifest parts", func(t *testing.T) {
 		c := execpg.Migrations()
-		if len(c) != 4 || c[0].Module != "execution" || c[1].Module != "execution-workspace-links" || c[2].Module != "execution-links" ||
-			c[3].Module != "execution-cleanup" || len(c[3].Migrations) != 1 || c[3].Migrations[0].ID != execpg.CleanupMigrationID {
+		if len(c) != 5 || c[0].Module != "execution" || c[1].Module != "execution-workspace-links" || c[2].Module != "execution-links" ||
+			c[3].Module != "execution-cleanup" || len(c[3].Migrations) != 1 || c[3].Migrations[0].ID != execpg.CleanupMigrationID ||
+			c[4].Module != "execution-run-resources" || len(c[4].Migrations) != 1 || c[4].Migrations[0].ID != execpg.RunResourcesMigrationID {
 			t.Fatalf("contributions: %+v", c)
 		}
 		if _, err := storage.NewManifest(append(c, c...)...); !errors.Is(err, storage.ErrDuplicateMigration) {
@@ -273,7 +274,12 @@ func Test_execution_migrations(t *testing.T) {
 		}{{"runs", "status", true}, {"runs", "inputs", false}, {"runs", "definition_id", false}, {"runs", "specification", false},
 			{"step_attempts", "status", true}, {"step_attempts", "context", false}, {"step_attempts", "job_name", false},
 			{"step_runs", "spec", false}, {"execution_reservations", "released_at", true}, {"execution_reservations", "held_at", false},
-			{"attempt_controls", "workload_removed_at", true}} {
+			{"attempt_controls", "workload_removed_at", true},
+			// run_shared (T112_001): only the mutable evidence columns are updatable.
+			{"runs", "deadline_at", true}, {"runs", "run_shared", false}, {"run_resources", "uid", true}, {"run_resources", "spec", false},
+			{"run_resources", "fingerprint", false}, {"run_resources", "name", false}, {"run_holders", "released_at", true},
+			{"run_holders", "held_at", false}, {"attempt_begins", "body_digest", false}, {"execution_run_reservations", "released_at", true},
+			{"execution_run_reservations", "cpu_millis", false}} {
 			var got bool
 			if err := pool.QueryRow(ctx, `SELECT has_column_privilege($1, $2, $3, 'UPDATE')`, db.RuntimeRole, c.table, c.col).Scan(&got); err != nil {
 				t.Fatal(err)
@@ -282,7 +288,8 @@ func Test_execution_migrations(t *testing.T) {
 				t.Errorf("UPDATE(%s.%s) = %v, want %v", c.table, c.col, got, c.want)
 			}
 		}
-		for _, table := range []string{"runs", "step_runs", "step_attempts", "attempt_controls", "attempt_evidence", "run_history", "execution_reservations"} {
+		for _, table := range []string{"runs", "step_runs", "step_attempts", "attempt_controls", "attempt_evidence", "run_history", "execution_reservations",
+			"run_resources", "run_holders", "attempt_begins", "execution_run_reservations"} {
 			var del bool
 			if err := pool.QueryRow(ctx, `SELECT has_table_privilege($1, $2, 'DELETE')`, db.RuntimeRole, table).Scan(&del); err != nil || del {
 				t.Errorf("the runtime role can DELETE from %s", table)

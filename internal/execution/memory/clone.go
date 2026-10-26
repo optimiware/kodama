@@ -40,7 +40,10 @@ func cloneRun(r execution.Run) execution.Run {
 		r.Snapshot.Runtime = &b
 	}
 	r.CancelRequestedAt, r.FailureIntentAt = cloneTime(r.CancelRequestedAt), cloneTime(r.FailureIntentAt)
-	r.StartedAt, r.FinishedAt = cloneTime(r.StartedAt), cloneTime(r.FinishedAt)
+	r.StartedAt, r.FinishedAt, r.DeadlineAt = cloneTime(r.StartedAt), cloneTime(r.FinishedAt), cloneTime(r.DeadlineAt)
+	if sh, err := cloneShared(r.Shared); err == nil {
+		r.Shared = sh
+	}
 	return r
 }
 

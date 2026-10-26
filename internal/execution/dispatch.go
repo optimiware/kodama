@@ -48,6 +48,21 @@ func advance(env Env, agg *Aggregate, settle ...*Attempt) ([]func(context.Contex
 		run := agg.Run
 		after = append(after, func(ctx context.Context, env Env) error { return env.ReleaseSecrets(ctx, run) })
 	}
+	if agg.Run.Shared != nil && agg.Run.Status.Terminal() {
+		// The run-level reservation is released only once the run is terminal,
+		// which requires every resource verified stopped and removed.
+		run := agg.Run
+		after = append(after, func(ctx context.Context, env Env) error {
+			if len(agg.Resources) == 0 {
+				return nil
+			}
+			se, err := sharedEnvOf(env)
+			if err != nil {
+				return err
+			}
+			return se.ReleaseRunCapacity(ctx, run)
+		})
+	}
 	return after, nil
 }
 
@@ -106,6 +121,9 @@ func (s *Service) claimOne(ctx context.Context, ref RunRef) (*AttemptSpec, error
 	view, err := s.d.Store.Get(ctx, ref.Scope, ref.ID)
 	if err != nil {
 		return nil, err
+	}
+	if view.Run.Shared != nil {
+		return s.claimShared(ctx, ref, view)
 	}
 	now := s.now()
 	step := view.NextRunnable(now, s.d.Hooks)
@@ -266,6 +284,12 @@ func (s *Service) DispatchNext(ctx context.Context, tenant domain.TenantID) (boo
 // removal is bound to that instance. The runtime verifies ownership and the
 // expected spec before adopting an existing workload.
 func (s *Service) drive(ctx context.Context, rt Runtime, spec AttemptSpec) error {
+	// A run_shared attempt is created or adopted only while the run model, backend,
+	// pins, policy, capabilities and the provisioning barrier all still hold:
+	// first launch and redrive alike.
+	if err := s.sharedDriveCheck(ctx, spec); err != nil {
+		return Unavailablef(err, "the run_shared launch checks do not hold")
+	}
 	w, err := rt.Start(ctx, spec)
 	if err != nil {
 		return Unavailablef(err, "the runtime could not start the workload")

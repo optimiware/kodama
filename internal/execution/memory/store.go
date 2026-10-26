@@ -138,6 +138,11 @@ func (s *Store) loadAggregate(tx memdb.Tx, scope domain.Scope, id domain.RunID) 
 		ctl := cloneControl(c.Control)
 		agg.Controls[ctl.AttemptID] = &ctl
 	}
+	if run.Shared != nil {
+		if err := s.loadShared(tx, agg); err != nil {
+			return nil, err
+		}
+	}
 	return agg, nil
 }
 

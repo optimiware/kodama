@@ -16,7 +16,7 @@ func TestMigrationOrderIsDeclared(t *testing.T) {
 		modules = append(modules, c.Module)
 	}
 	got := strings.Join(modules, ",")
-	want := "storage,events,httpapi,identity,work,secrets,pipeline,workspace,artifacts,execution,execution-workspace-links,execution-links,runtimeauth,execution-cleanup,logs,agents,delivery,gates,gateway,mcpproxy,work_dependencies,metrics,chatops,gitwebhook"
+	want := "storage,events,httpapi,identity,work,secrets,pipeline,workspace,artifacts,execution,execution-workspace-links,execution-links,runtimeauth,execution-cleanup,logs,agents,delivery,gates,gateway,mcpproxy,work_dependencies,metrics,chatops,gitwebhook,execution-run-resources"
 	if got != want {
 		t.Fatalf("contribution order\n got %s\nwant %s", got, want)
 	}
@@ -76,6 +76,53 @@ func TestMigrateRefusesUnsafeIdentities(t *testing.T) {
 	} {
 		if _, err := Migrate(ctx, tc); err == nil {
 			t.Errorf("%s: migration was attempted", name)
+		}
+	}
+}
+
+// TestRunResourceMigrationIsAppendedLastAndPreservesTheLedgerPrefix: the T-112
+// run_shared schema is the final contribution, so the migration ledger of every
+// earlier release is a strict prefix of the new manifest in the same order (the
+// ledger refuses a pending migration ordered before an applied one), and it is
+// the only addition: nothing earlier moved, nothing else was added.
+func TestRunResourceMigrationIsAppendedLastAndPreservesTheLedgerPrefix(t *testing.T) {
+	cs := Contributions()
+	last := cs[len(cs)-1]
+	if last.Module != "execution-run-resources" || len(last.Migrations) != 1 || last.Migrations[0].ID != "T112_001_run_resources.sql" {
+		t.Fatalf("the final contribution is %+v", last.Module)
+	}
+	prior := cs[:len(cs)-1]
+	if got := prior[len(prior)-1].Module; got != "gitwebhook" {
+		t.Fatalf("the previous last contribution moved: %s", got)
+	}
+	m, err := Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := m.Migrations()
+	var priorIDs []string
+	for _, c := range prior {
+		for _, mig := range c.Migrations {
+			priorIDs = append(priorIDs, mig.ID)
+		}
+	}
+	if len(all) != len(priorIDs)+1 {
+		t.Fatalf("%d migrations, want the %d of the prior release plus one", len(all), len(priorIDs))
+	}
+	for i, id := range priorIDs {
+		if all[i].ID != id {
+			t.Fatalf("migration %d is %s, the prior ledger has %s", i, all[i].ID, id)
+		}
+	}
+	if all[len(all)-1].ID != "T112_001_run_resources.sql" {
+		t.Fatalf("last migration %s", all[len(all)-1].ID)
+	}
+	// The migration is additive and enables nothing: it creates tables and columns
+	// only and no composition option exists in this package for the new format.
+	sql := last.Migrations[0].SQL
+	for _, forbidden := range []string{"DROP TABLE", "DROP COLUMN", "TRUNCATE", "DELETE FROM", "ALTER COLUMN"} {
+		if strings.Contains(sql, forbidden) {
+			t.Fatalf("the migration is not additive: %s", forbidden)
 		}
 	}
 }

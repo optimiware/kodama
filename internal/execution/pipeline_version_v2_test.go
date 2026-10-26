@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -277,24 +278,52 @@ func Test_unit_pipeline_v2_guard_unchanged(t *testing.T) {
 	}
 }
 
-// Test_unit_pipeline_v2_step_codec_is_v1_only records why the guard above is
-// the only fence: the frozen step codec persists exactly the kodama/v1alpha1
-// step fields, so a run admitted from a v1alpha2 definition would silently
-// lose its egress profiles. When T-112 teaches the codec the new fields, this
-// pin is replaced by their round-trip tests in the same change that extends the
-// guard.
-func Test_unit_pipeline_v2_step_codec_is_v1_only(t *testing.T) {
+// Test_unit_pipeline_v2_step_codec_round_trip replaces T-110's deliberate
+// "step codec is v1 only" regression in the same change that teaches the codec
+// the kodama/v1alpha2 step fields (T-112): the frozen step of a run_shared run
+// round-trips exactly, egress profiles included, and a kodama/v1alpha1 step is
+// stored byte for byte as before (no egress key), so historical rows and
+// hashes are unchanged. New-format admission stays closed unless the
+// installation composes the run_shared ports (see the shared admission tests).
+func Test_unit_pipeline_v2_step_codec_round_trip(t *testing.T) {
 	step := pipeline.Step{ID: "t", Kind: pipeline.KindContainer, Image: v2Image, Command: []string{"/bin/true"}, TimeoutSeconds: 60,
-		Workspace: &pipeline.Workspace{Access: pipeline.AccessRead}, Egress: []string{"registry"}}
+		Workspace: &pipeline.Workspace{Access: pipeline.AccessRead}, Egress: []string{"registry", "preview"}}
 	raw, err := EncodeStep(step)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "egress") {
-		t.Fatal("the step codec learned a v1alpha2 field: extend the admission guard's capability checks and replace this pin")
+	if !strings.Contains(string(raw), `"egress":["registry","preview"]`) {
+		t.Fatalf("the step codec dropped the v1alpha2 egress profiles: %s", raw)
 	}
 	back, err := DecodeStep(raw)
-	if err != nil || back.Egress != nil {
+	if err != nil || !reflect.DeepEqual(back, step) {
 		t.Fatalf("round trip: %+v %v", back, err)
+	}
+	// Every v1alpha2 step of the documents above survives the stored form.
+	for name, yaml := range v2Documents {
+		doc, err := v2Definition(t, yaml).Content.Document()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, st := range doc.Spec.Steps {
+			b, err := EncodeStep(st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := DecodeStep(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			again, _ := EncodeStep(got)
+			if string(again) != string(b) {
+				t.Errorf("%s/%s: the stored step is not stable: %s != %s", name, st.ID, again, b)
+			}
+		}
+	}
+	// A v1alpha1 step is stored exactly as before.
+	v1 := pipeline.Step{ID: "b", Kind: pipeline.KindContainer, Image: v2Image, Command: []string{"/bin/true"}, TimeoutSeconds: 60}
+	v1raw, _ := EncodeStep(v1)
+	if strings.Contains(string(v1raw), "egress") {
+		t.Fatalf("a v1alpha1 step must not gain an egress key: %s", v1raw)
 	}
 }

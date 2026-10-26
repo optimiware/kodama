@@ -44,6 +44,14 @@ type Run struct {
 
 	RequestedBy Actor
 
+	// Shared is the immutable run_shared pin set; nil for every
+	// attempt_private run, which keeps its stored shape unchanged.
+	Shared *RunShared
+	// DeadlineAt is the pinned total run deadline (covering preparation, service
+	// startup, attempts, backoff and gate waits), set once when resource holding
+	// starts. Nil until then and for attempt_private runs.
+	DeadlineAt *time.Time
+
 	Status RunStatus
 	Reason Reason
 	// CancelRequestedAt is the durable cancellation request; the run stays

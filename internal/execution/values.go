@@ -330,6 +330,12 @@ type Limit struct {
 	DefaultTimeout time.Duration
 	// MaxTimeout bounds a step's declared timeout.
 	MaxTimeout time.Duration
+	// SharedTenant and SharedProject bound the run-level capacity reserved by
+	// run_shared runs (services, preparation, the largest attempt and scratch).
+	// The zero value reserves nothing: a run_shared run is never started
+	// without explicit capacity.
+	SharedTenant  CapacityUnits
+	SharedProject CapacityUnits
 }
 
 // Validate rejects an unusable limit.

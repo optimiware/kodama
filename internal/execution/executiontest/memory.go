@@ -72,6 +72,11 @@ type MemOptions struct {
 	// Grants is the optional runtime-grant revoker joined to the store's
 	// transactions.
 	Grants memory.GrantRevoker
+	// Shared is the explicit run_shared opt-in (a test-injected fake port and
+	// policy); nil keeps new-format admission closed.
+	Shared *execution.SharedConfig
+	// SourceWrap wraps the Git observation seam (a call counter).
+	SourceWrap func(execution.Sources) execution.Sources
 }
 
 // Mem is one fully wired execution module over the in-memory store: the memory
@@ -151,7 +156,10 @@ func (m *Mem) NewService(opt MemOptions) *execution.Service {
 		Store: m.Mem, Authority: m.Auth, Definitions: memDefinitions{m.Defs}, Capabilities: kinds,
 		Work: m.World, Configuration: m.World, Sources: m.World, Limits: m.Limits, Hooks: hooks,
 		Tenants: tenantList{ScopeA.TenantID, ScopeB.TenantID}, Cleanup: opt.Cleanup, Clock: m.Clock.Now, CancelledWork: m.World,
-		Requirements: opt.Requirements, NewID: m.ID,
+		Requirements: opt.Requirements, NewID: m.ID, Shared: opt.Shared,
+	}
+	if opt.SourceWrap != nil {
+		deps.Sources = opt.SourceWrap(deps.Sources)
 	}
 	if !opt.NoRuntime {
 		deps.Runtime = m.Workloads

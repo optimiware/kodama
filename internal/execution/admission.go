@@ -2,6 +2,8 @@ package execution
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -68,16 +70,20 @@ func (s *Service) Prepare(ctx context.Context, caller Caller, cmd AdmitCommand) 
 	if err != nil {
 		return nil, err
 	}
-	def, doc, err := s.loadDefinition(ctx, cmd.Scope, cmd.DefinitionID)
+	def, doc, err := s.loadDefinition(ctx, cmd.Scope, cmd.DefinitionID, true)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.checkKinds(ctx, doc); err != nil {
 		return nil, err
 	}
-	binding, err := s.bind(doc)
-	if err != nil {
-		return nil, err
+	shared := doc.IsV1Alpha2()
+	var binding *RuntimeBinding
+	if !shared {
+		// A run_shared run derives its binding with the pins (planShared).
+		if binding, err = s.bind(doc); err != nil {
+			return nil, err
+		}
 	}
 	work, err := s.d.Work.Snapshot(ctx, cmd.Scope, cmd.WorkItemID)
 	if err != nil {
@@ -106,9 +112,16 @@ func (s *Service) Prepare(ctx context.Context, caller Caller, cmd AdmitCommand) 
 	if err != nil {
 		return nil, err
 	}
+	runID := domain.RunID(s.d.NewID("run"))
+	var pins *RunShared
+	if shared {
+		if pins, binding, err = s.planShared(ctx, cmd.Scope, runID, doc, true, src, snap); err != nil {
+			return nil, err
+		}
+	}
 	snap.Runtime = binding
 	run := &Run{
-		Scope: cmd.Scope, ID: domain.RunID(s.d.NewID("run")), Purpose: PurposeWork,
+		Scope: cmd.Scope, ID: runID, Purpose: PurposeWork, Shared: pins,
 		WorkItemID: cmd.WorkItemID, WorkspaceID: src.WorkspaceID,
 		DefinitionID: def.ID, DefinitionDigest: string(def.Digest),
 		ContentRevision: work.ContentRevision, Specification: &Specification{Spec: work.Spec, AcceptanceCriteria: work.Criteria},
@@ -145,16 +158,22 @@ func (s *Service) PrepareCleanup(ctx context.Context, cmd CleanupCommand) (*Admi
 	if err := s.d.Cleanup.AuthorizeCleanup(ctx, cmd.Scope, cmd.DeploymentID); err != nil {
 		return nil, classifyAuthority(err)
 	}
-	def, doc, err := s.loadDefinition(ctx, cmd.Scope, cmd.DefinitionID)
+	// A source-free kodama/v1alpha2 definition is admitted as a run_shared cleanup
+	// run only when the installation composed the run_shared ports explicitly;
+	// an unconfigured composition refuses it exactly as before (checkVersion).
+	def, doc, err := s.loadDefinition(ctx, cmd.Scope, cmd.DefinitionID, true)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.checkKinds(ctx, doc); err != nil {
 		return nil, err
 	}
-	binding, err := s.bind(doc)
-	if err != nil {
-		return nil, err
+	shared := doc.IsV1Alpha2()
+	var binding *RuntimeBinding
+	if !shared {
+		if binding, err = s.bind(doc); err != nil {
+			return nil, err
+		}
 	}
 	for _, st := range doc.Spec.Steps {
 		if st.Environment != "" && (s.d.CleanupEnvironments == nil || !storeAdmitsEnvironments(s.d.Store)) {
@@ -179,9 +198,19 @@ func (s *Service) PrepareCleanup(ctx context.Context, cmd CleanupCommand) (*Admi
 	if err != nil {
 		return nil, err
 	}
+	runID := domain.RunID(s.d.NewID("run"))
+	var pins *RunShared
+	if shared {
+		// No work item, no source lookup, no repository, no checkout credential and
+		// no preparation exists for this run: the scratch starts empty and only
+		// earlier steps of the run change it.
+		if pins, binding, err = s.planShared(ctx, cmd.Scope, runID, doc, false, SourceInfo{}, snap); err != nil {
+			return nil, err
+		}
+	}
 	snap.Runtime = binding
 	run := &Run{
-		Scope: cmd.Scope, ID: domain.RunID(s.d.NewID("run")), Purpose: PurposeCleanup, DeploymentID: cmd.DeploymentID,
+		Scope: cmd.Scope, ID: runID, Purpose: PurposeCleanup, DeploymentID: cmd.DeploymentID, Shared: pins,
 		DefinitionID: def.ID, DefinitionDigest: string(def.Digest), Snapshot: snap, SourceRetention: RetentionNotRequired,
 		RequestedBy: System, Status: RunQueued, Reason: ReasonCreated, Version: 1,
 	}
@@ -225,7 +254,7 @@ func cleanupInputs(doc pipeline.Document, cmd CleanupCommand) (map[string]runtim
 	return out, nil
 }
 
-func (s *Service) loadDefinition(ctx context.Context, scope domain.Scope, id domain.DefinitionID) (pipeline.Definition, pipeline.Document, error) {
+func (s *Service) loadDefinition(ctx context.Context, scope domain.Scope, id domain.DefinitionID, allowShared bool) (pipeline.Definition, pipeline.Document, error) {
 	def, err := s.d.Definitions.Get(ctx, scope, id)
 	if err != nil {
 		return pipeline.Definition{}, pipeline.Document{}, mapLookup(err, "definition")
@@ -234,7 +263,7 @@ func (s *Service) loadDefinition(ctx context.Context, scope domain.Scope, id dom
 	if err != nil {
 		return pipeline.Definition{}, pipeline.Document{}, Unavailablef(err, "the stored definition is unreadable")
 	}
-	if err := checkDefinitionVersion(doc.APIVersion); err != nil {
+	if err := s.checkVersion(doc.APIVersion, allowShared); err != nil {
 		return pipeline.Definition{}, pipeline.Document{}, err
 	}
 	return def, doc, nil
@@ -331,6 +360,34 @@ func (s *Service) resolveConfiguration(ctx context.Context, scope domain.Scope, 
 			req.Secrets = append(req.Secrets, SecretUse{Step: st.ID, Name: n, Ref: st.SecretFiles[n], Delivery: runtimev1.DeliveryFile})
 		}
 	}
+	if doc.IsV1Alpha2() {
+		svcNames := make([]string, 0, len(doc.Spec.Services))
+		for n := range doc.Spec.Services {
+			svcNames = append(svcNames, n)
+		}
+		sort.Strings(svcNames)
+		for _, sn := range svcNames {
+			sv := doc.Spec.Services[sn]
+			envNames := make([]string, 0, len(sv.Env))
+			for n, e := range sv.Env {
+				if e.SecretRef != "" {
+					envNames = append(envNames, n)
+				}
+			}
+			sort.Strings(envNames)
+			for _, n := range envNames {
+				req.Secrets = append(req.Secrets, SecretUse{Step: serviceStepKey(sn), Name: n, Ref: sv.Env[n].SecretRef, Delivery: runtimev1.DeliveryEnv})
+			}
+			fileNames := make([]string, 0, len(sv.SecretFiles))
+			for n := range sv.SecretFiles {
+				fileNames = append(fileNames, n)
+			}
+			sort.Strings(fileNames)
+			for _, n := range fileNames {
+				req.Secrets = append(req.Secrets, SecretUse{Step: serviceStepKey(sn), Name: n, Ref: sv.SecretFiles[n], Delivery: runtimev1.DeliveryFile})
+			}
+		}
+	}
 	res, err := s.d.Configuration.Resolve(ctx, req)
 	if err != nil {
 		switch {
@@ -350,6 +407,14 @@ func (s *Service) plan(run *Run, doc pipeline.Document, src SourceInfo, actor Ac
 	digest, err := Digest(run.DefinitionID, run.DefinitionDigest, run.WorkItemID, run.ContentRevision, run.SourceCommit, run.Snapshot)
 	if err != nil {
 		return nil, err
+	}
+	if run.Shared != nil {
+		sd, err := run.Shared.Digest()
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256([]byte(digest + "|" + sd))
+		digest = "sha256:" + hex.EncodeToString(sum[:])
 	}
 	run.SnapshotDigest = digest
 	agg := &Aggregate{Run: run}

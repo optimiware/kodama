@@ -20,6 +20,9 @@ type ReconcileReport struct {
 	Settled    int
 	Removed    int
 	Errors     int
+	// Resources counts run_shared resource effects (ensure, observe, stop,
+	// remove) this pass performed.
+	Resources int
 }
 
 func (r *ReconcileReport) add(o ReconcileReport) {
@@ -32,6 +35,7 @@ func (r *ReconcileReport) add(o ReconcileReport) {
 	r.Settled += o.Settled
 	r.Removed += o.Removed
 	r.Errors += o.Errors
+	r.Resources += o.Resources
 }
 
 // Reconcile repairs every tenant: it rescans cancelled work items, confirms
@@ -95,6 +99,37 @@ func (s *Service) ReconcileTenant(ctx context.Context, tenant domain.TenantID) (
 		}
 		after = refs[len(refs)-1]
 	}
+	if ss, ok := s.d.Store.(SharedStore); ok && s.d.Shared != nil {
+		// Terminal runs (an interrupted older controller, an earlier policy) whose
+		// resources were never verified removed are cleaned up without touching
+		// their recorded outcome. Nonterminal runs were handled above.
+		var cursor RunRef
+		for {
+			refs, err := ss.UnfinishedResources(ctx, tenant, cursor, s.o.Batch)
+			if err != nil {
+				rep.Errors++
+				if first == nil {
+					first = err
+				}
+				break
+			}
+			for _, ref := range refs {
+				r, err := s.reconcileSharedResources(ctx, ref)
+				rep.add(r)
+				if err != nil {
+					s.log(ctx, "reconcile resources", err, "run", string(ref.ID))
+					rep.Errors++
+					if first == nil {
+						first = err
+					}
+				}
+			}
+			if len(refs) < s.o.Batch {
+				break
+			}
+			cursor = refs[len(refs)-1]
+		}
+	}
 	if s.d.Runtime != nil {
 		n, err := s.RemoveSettled(ctx, tenant)
 		rep.Removed += n
@@ -112,6 +147,22 @@ func (s *Service) ReconcileTenant(ctx context.Context, tenant domain.TenantID) (
 // blocked attempt (an unsettled publication, an unknown effect) never stalls
 // the others.
 func (s *Service) ReconcileRun(ctx context.Context, ref RunRef) (ReconcileReport, error) {
+	rep, first := s.reconcileRunAttempts(ctx, ref)
+	if errors.Is(first, ErrNotFound) {
+		return rep, first
+	}
+	// A run_shared run additionally drives its resources: provisioning, the
+	// readiness barrier, holder release, teardown and cleanup. A terminal run that
+	// still shows unfinished resources is cleaned up without changing its outcome.
+	r, err := s.reconcileSharedResources(ctx, ref)
+	rep.add(r)
+	if err != nil && first == nil {
+		first = err
+	}
+	return rep, first
+}
+
+func (s *Service) reconcileRunAttempts(ctx context.Context, ref RunRef) (ReconcileReport, error) {
 	rep := ReconcileReport{Runs: 1}
 	var first error
 	note := func(err error) {
@@ -126,6 +177,14 @@ func (s *Service) ReconcileRun(ctx context.Context, ref RunRef) (ReconcileReport
 	if view.Run.Status.Terminal() {
 		return rep, nil
 	}
+	if view.Run.Shared != nil {
+		// Model and ownership BEFORE any mutation or peer effect: a controller that
+		// does not implement the pinned run model, or is not the run's backend, never
+		// records a deadline, a failure, a revocation, a stop or a retention.
+		if _, _, err := s.sharedCleanup(ctx, view.Run); err != nil {
+			return rep, err
+		}
+	}
 	if view.Run.SourceRetention == RetentionPending {
 		if _, err := s.ConfirmSource(ctx, ref.Scope, ref.ID); err != nil {
 			note(err)
@@ -137,6 +196,7 @@ func (s *Service) ReconcileRun(ctx context.Context, ref RunRef) (ReconcileReport
 	var missed []deadlineMiss
 	agg, _, err := s.d.Store.Update(ctx, ref.Scope, ref.ID, UpdateOptions{}, func(ctx context.Context, env Env, agg *Aggregate) (Effects, error) {
 		missed = missed[:0] // a retried transaction recomputes
+		agg.CheckRunDeadline(env.Now())
 		for _, at := range agg.CheckDeadlines(env.Now()) {
 			missed = append(missed, newDeadlineMiss(at, agg.Control(at.ID), env.Now()))
 		}
@@ -270,6 +330,9 @@ func (s *Service) ReconcileAttempt(ctx context.Context, scope domain.Scope, atte
 		return err
 	}
 	_, _, err = s.d.Store.Update(ctx, scope, run, UpdateOptions{}, func(ctx context.Context, env Env, agg *Aggregate) (Effects, error) {
+		if err := s.ownsModel(agg.Run); err != nil {
+			return Effects{}, err
+		}
 		at := agg.Attempt(attempt)
 		if at == nil {
 			return Effects{}, ErrNotFound

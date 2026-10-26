@@ -142,6 +142,7 @@ func markClean(agg *execution.Aggregate) {
 		c.MarkClean()
 	}
 	agg.Created = nil
+	markCleanShared(agg)
 }
 
 // ---- Env ----
@@ -213,6 +214,13 @@ func (e *txEnv) CapacityAvailable(_ context.Context, scope domain.Scope, lim exe
 	}
 	var tenantHeld, projectHeld int
 	for _, r := range collect(e.tx, reservationsT, Reservation.Held) {
+		tenantHeld++
+		if r.Scope.ProjectID == scope.ProjectID {
+			projectHeld++
+		}
+	}
+	// A run_shared run's active-attempt slot is reserved for its whole life.
+	for _, r := range collect(e.tx, runReservationsT, RunReservation.Held) {
 		tenantHeld++
 		if r.Scope.ProjectID == scope.ProjectID {
 			projectHeld++

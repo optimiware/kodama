@@ -208,3 +208,160 @@ everything already applied, as `internal/app` does after the runtime authority s
   `ErrInvalid` and `ErrStale` (unsettled publication) to the runtime error codes.
 * **M2.** Gate (T-034), agent profile (T-030) and deployment cleanup (T-035) plug into
   `Hooks`, `Dependencies.Cleanup` and `Service.AdmitCleanup`; none is claimed delivered here.
+
+## `run_shared` resource lifecycle and persistence (T-112, P2)
+
+Implements [P2](../../docs/implementation/run-workspace-services-builders.md#p2--run-resource-lifecycle-and-persistence)
+under the frozen contracts (T-109 `9db322ff`, executable T-110 `6343b9e5`:
+[run resources](../../docs/contracts/run-resources.md), [runtime v2](../../docs/contracts/runtime-v2.md),
+[v1alpha2](../../docs/contracts/pipeline-format-v1alpha2.md)). **Not enabled, not qualified.** New-format
+admission is closed unless an installation composes `Dependencies.Shared` explicitly; nothing in
+`internal/app` does, no production default exists and no test-only permissive constructor ships. P1
+(real profile qualification) is independent; this phase does not claim it.
+
+| File | Purpose |
+| --- | --- |
+| `resources.go` | The **frozen companion port** `RunResources` (six methods: `Capabilities`, `Ensure`, `Observe`, `Logs`, `Stop`, `Remove`) and its DTOs: `ResourceKind`, `ResourceHandle`, `ResourceSpec` (+ `Fingerprint`), `ResourceObservation`, `ResourcePhase`, `ResourceStopEvidence`, `ResourceRemoveEvidence`, `ResourceCapabilities`/`ResourceCapabilitySet` (a 32-bit named set, 13 members), `ResourceReason`, `PolicyPin`, the receipt digest object and the deterministic `ResourceName`/`EndpointHost` |
+| `policy.go` | `ExecutionPolicy` (installation-owned, canonical digest, role/limit/egress validation) and the `Policies` port |
+| `shared.go`, `shared_aggregate.go`, `runresource.go` | `RunShared` pins, requirement derivation, `BuildResourceSpecs`, the `RunResource` entity and its state machine, `RunHolder`, `BeginRecord`, the aggregate operations (start, observe, stop/remove evidence, receipt, begin, order, `BuildContextV2`) |
+| `shared_service.go`, `shared_reconcile.go` | `SharedConfig` (the opt-in), `SharedEnv`/`SharedStore` (capacity reservation, orphan scan), admission planning, `StartShared`, shared dispatch, `RecordPreparationReceipt`, `RecordBegin`, and the intent-first provisioning/teardown driver |
+| `shared_view.go` | The safe `SharedView`/`ResourceView` observation projection |
+| `memory/shared.go`, `postgres/shared.go`, `postgres/migrations/T112_001_run_resources.sql` | Persistence |
+| `executiontest/shared*.go` | `FakeResources` (injected by tests only), `TestPolicy`, `SharedContract` |
+
+### Frozen identities (for P3–P6)
+
+* `execution.RunResources` as above; adapters implement it and keep provider types private. The attempt
+  `Runtime` keeps its six methods. `Guarantees` stays a `uint8`: six used bits, `RunResourcesMarker` is
+  bit 6 (`"run_resources"` on the wire), bit 7 is reserved, `AllGuarantees` is unchanged (a backend that
+  implements the companion declares `AllGuarantees.WithRunResources()`). Finer capabilities live only in
+  `ResourceCapabilitySet`. `Capabilities.ProvesNeverStarted` stays a separate flag.
+* `RuntimeBinding` additionally pins `ResourceRequires` (omitted when empty: legacy bindings, digests and
+  readers are unchanged). The binding, `RunShared` pins and the retained policy body are written once.
+* **Receipt digest object** (frozen, golden vector in `Test_unit_preparation_receipt_digest_object_is_frozen`):
+  canonical JSON of `{"request": <PreparationReceiptRequest>, "resourceKey": "preparation", "runId": RUN, "workspaceUid": WORKSPACE_UID}`,
+  `sha256:` + hex SHA-256. `Aggregate.RecordPreparationReceipt` binds it to the **committed** workspace UID, refuses
+  an unbound resource (`ErrResourceUnbound` → `resource_unbound`), a stopping/stopped/past-deadline preparation
+  (`ErrResourceRevoked`), a wrong commit or too many tries, and a different receipt (`ErrReceiptConflict`).
+  The workspace is ready only when the receipt is recorded, still verifies against the bound UID **and** the
+  preparation workload is verified stopped.
+* **Names:** `kr-` + first 24 hex of SHA-256, endpoint host `s-` + 16 hex + `-NAME`, both over the tuple with each
+  element framed as a 4-byte big-endian length plus its bytes (the contract text, now fixed by T-119, and the repository's
+  idempotency framing). **Audit/event resource ID:** `ResourceAuditID(scope, run, key)` is `eventsv1.RunResourceID`
+  (`rr-` + 40 hex of the same framing over `(tenant, project, run, key)`): the single derivation for the audit row's
+  `resource_id` and the event envelope, domain-valid and not aliased across tuple boundaries (the first candidate's
+  underscore flattening is gone).
+
+### Events, audit and history (T-119)
+
+Every resource transition is one `run_history` row (subject `resource`), one `audit` row (resource type
+`run_resource`, action `run_resource.state_changed`) and one `run_resource.state_changed` outbox event with the eight
+safe fields of `eventsv1.RunResourceStateChanged` (`runId, kind, key, from, to, reason, specFingerprint, uidBound`), in the
+transaction that saves the state, in the memory and PostgreSQL stores alike. `from`/`to` are phases (`none` at creation;
+verified removal is `absent`); a same-phase observation (a bound UID, the recorded receipt, the ensure intent, a stop
+intent, a reason change) is a transition too. The event ID is stable (`run, subject, key, record version, index`). A resource-only
+outbox refusal rolls back every row of the transition (`...outbox refusal rolls back the whole transition`).
+
+### Constructor and profile handoff
+
+* **P3** (entrypoint/authority): call `Service.RecordPreparationReceipt(scope, run, req)` and
+  `Service.RecordBegin(scope, attempt, req)` from the verified resource/attempt routes (the use cases
+  re-verify under the run lock; the bearer verification and `ResourceIdentity` comparison against
+  `RunResource.Name`/`UID`/`Stopping()` stay in P3). `RecordBegin` rechecks live command authority (revocation,
+  cancellation, failure intent, the pinned deadline) before ANY acknowledgment, an identical replay included
+  (`ErrAttemptRevoked` → `attempt_revoked`), and keeps the original record. Resource subjects are revoked from
+  `RunResource.Stopping()` or a passed `Run.DeadlineAt`. Attempt contexts of run_shared runs are canonical
+  `runtimev2.ContextV2` (`AttemptSpec.DecodeContextV2`); `decodeContext` for result checking projects either version.
+* **P4/P5** (providers): implement `execution.RunResources` per backend and declare only the capabilities
+  that are enforced and tested. Compose with the same backend identity as the attempt runtime
+  (`Capabilities.Backend` equality is checked at admission, dispatch, launch and reconcile).
+  `Stop` must report `Stopped` only when no pending create can arrive and, for the workspace, `Released`
+  only when no node uses the volume; `Observe` of a workspace reports `Released` for the holder handoff; an
+  unobservable resource must be `PhaseUnknown`, never `PhaseAbsent`. A **collision reply is never evidence**: for a
+  handle with a bound UID (or whose create may have happened) it means only that the object at the name cannot be
+  verified, so execution keeps the stop/removal unconfirmed (`resource_collision`, retried, nonterminal). A handle with
+  NO bound UID whose name holds a foreign object must be answered with a verified stop/removal that touches nothing foreign.
+  `ResourceObservation.ObservedAt` is the adapter's own observation time; a missing one is taken as the start of the request.
+* **P6** (assembly): construct `execution.NewService` with `Dependencies.Shared =
+  &execution.SharedConfig{Resources: <companion port of the SAME backend>, Policies: <installation policy source>}`
+  only when an installation enabled `runShared: open`; give `Limit.SharedTenant/SharedProject` explicit
+  capacity (zero reserves nothing and nothing starts) and set `Dependencies.Cleanup` for source-free runs. The
+  `RunResourceMigrations()` contribution is **already appended** to `app.Contributions()` by T-112's bounded exception
+  (`internal/app/migrate.go`, regression `TestRunResourceMigrationIsAppendedLastAndPreservesTheLedgerPrefix`): the store reads
+  its columns unconditionally. Nothing else is wired. The reconciler is `Service.Reconcile`/`ReconcileTenant`/`ReconcileRun`
+  (they also drive resources and terminal-run cleanup via `SharedStore.UnfinishedResources`) and dispatch is
+  `ClaimRunnable`/`DispatchNext` (the first claim of a queued run starts resource holding).
+
+### Module API handoff (T-116 owns `api/execution.yaml`, the aggregate and the client; this task leaves them unchanged)
+
+`GET /…/runs/{id}` gains, additively, `runModel`, `deadlineAt`, `executionOrder`, per-step effective `workspace.access`
+and `resources[]` of `{kind, key, phase, reason, readyAt, stoppedAt, removedAt}`: source it from
+`Aggregate.SharedView()` (no UID, fingerprint, spec, endpoint, log or credential in it; `CleanupReason` is the visible
+`resource_stop_unconfirmed` / `cleanup_pending` of a run held nonterminal after failure, cancellation or success). Logs of
+`preparation`/`service.NAME` come from `RunResources.Logs` with the caller's current authorization. Admission refusals use the
+stable `Refusedf` messages prefixed `capability_unsupported`, `policy_unavailable`, `limit_exceeds_policy`,
+`egress_profile_unknown`, `workspace_none_source_backed`, `workspace_access_source_free`, `agent_source_free`.
+
+### Lifecycle summary
+
+* **Admission** admits `kodama/v1alpha2` only through the explicit `SharedConfig`: work runs (source-backed) and internal
+  deployment cleanup runs (`PrepareCleanup`/`AdmitCleanup`, source-free: no work item, source lookup, checkout credential or
+  preparation; the scratch is empty only at its initial provisioning and later steps see earlier steps' files, with the
+  explicit source-free lineage values) under the same complete capability, policy and ceiling gate. An unconfigured
+  composition refuses both.
+* **Start** (`Service.StartShared`, first claim): one transaction under quota → work → run locks: pins deadline, inserts
+  the resource intents (spec + fingerprint, before any runtime call) and reserves run capacity: services, preparation, the
+  largest step allowance, the scratch volume (separately from ephemeral storage) **and one tenant/project active-attempt
+  slot**, which every successive attempt of the run consumes without a second charge and which other runs' admissions
+  count. Insufficient capacity rolls the whole step back and leaves the run queued. Terminal completion releases the
+  reservation only after every resource is verified removed.
+* **Two authorities.** LAUNCH (create, adopt, redrive, dispatch) needs model, pinned backend, verified pins/policy, the
+  runtime's pinned guarantees and every pinned resource capability, checked before every launch (`sharedDriveCheck`),
+  redrive and adoption. CLEANUP (observe, stop, remove the committed owned UIDs) needs only that the controller implements the
+  model and the companion is the pinned backend: a lost policy or capability fails the run (`policy_unavailable` /
+  `capability_unsupported`) and the resources still settle; a run of an unsupported model or another backend stays untouched.
+* **Provision:** network → workspace → preparation ∥ services. Every `Ensure` is preceded by a committed intent mark; an
+  unbound intent that never became ready is re-`Ensure`d (idempotent) only before any command began, otherwise it is loss.
+  Observation AND Ensure requests carry a server-side generation committed before the runtime call; EVERY outcome (ready, unknown,
+  an outage with its backoff, collision, fenced) is applied through that fence and only if newer than every applied one, so a delayed
+  older "ready" never clears a newer unknown and a delayed older outage never degrades a newer ready; an ambiguous Ensure outcome
+  persists an unknown observation of its generation before its backoff. Identity is verified BEFORE anything is bound: a foreign
+  UID or a non-matching fingerprint is a collision that binds nothing; an empty fingerprint ("could not verify") is unknown, binds
+  nothing and is never ready or release evidence. A preparation completes only with its trusted receipt (and verified stop): one that
+  is ready without a receipt fails with `preparation_failed` at its own budget, inside the total deadline.
+* **Ownership guard.** Every entry that could change a persisted run (reconcile, results, begin, receipts, attempt observations)
+  first requires that this controller implements the run's pinned model and, for reconciliation, owns its backend: an unsupported
+  model or foreign backend is refused before any deadline, failure, revocation, stop or peer effect is recorded
+  (`...cannot own the run model changes nothing, even past the deadline`).
+* **Barrier and handoff:** dispatch needs network, workspace (receipt bound, preparation stopped) and every service ready
+  and observed within `Options.ResourceFreshness`, no unreleased holder, the workspace observed released and the pinned order
+  (a gate occupies its position and is eligible only when every earlier node is settled and no attempt holds the volume).
+  The claim records the holder in the attempt's transaction; the release observation is applied and the holder released in ONE
+  transaction on the current UID-bound, fresh evidence observed after the verified stop. The logical writer is separate.
+* **Retry:** automatic retry only when the workload is verified `not_started` and no `begin` was recorded for the step;
+  a begun attempt of a retryable class fails the run now (services stop promptly while the uncertain attempt settles).
+* **Loss/unknown/deadline:** affirmative failed/absent, an unsolicited verified stop (except a preparation after its receipt),
+  UID or fingerprint mismatch or continuous readiness failure is loss and fails the run; `unknown` blocks dispatch only; the
+  pinned total deadline (covering gate waits) fails the run with `run_deadline_exceeded` in the reconciler, in a result
+  transaction (a late success is evidence only; an accepted result stays replayable), in begin and in `CompleteGate`.
+* **Teardown:** failure/cancel/deadline/completion set every resource's stop intent at once, stop services/preparation promptly,
+  the workspace after no attempt can use it, the network last; stuck stop/removal stays visible
+  (`resource_stop_unconfirmed`, `cleanup_pending`, `resource_collision`), retried with persisted exponential backoff,
+  restart-safe. Terminal status needs every resource stopped and removed.
+
+### Evidence
+
+* `Test_unit_*` in `shared_test.go` (seam identity, vectors, state machine, generations, holder release, unsolicited stop,
+  command authority, order/deadline); `TestUnitSharedResourceContract` (memory) and `Test_shared_resource_contract`
+  (PostgreSQL) run `executiontest.SharedContract` including the review regressions; real-SQL only:
+  `Test_shared_forced_rls_ownership_and_guards`, `Test_shared_start_is_atomic_with_its_effects`,
+  `Test_shared_concurrent_starts_never_exceed_capacity`, `Test_shared_migration_is_additive` (real historical runs, fresh and
+  upgrade, the application manifest).
+* `Test_unit_pipeline_v2_step_codec_round_trip` replaces T-110's v1-only codec pin; `Test_unit_pipeline_v2_guard_unchanged`
+  and the ordinary/cleanup refusal tests still pass under the default composition.
+
+### Known limits (explicit)
+
+* The memory store does not model locks or RLS; the claims about them rest on the PostgreSQL suites. Its guards mirror the SQL triggers.
+* No provider, HTTP route, app composition or client exists; those are P3–P6.
+* Real Kubernetes/CSI/CNI behavior (collision semantics of a real adapter, volume release) is the providers' and P7's evidence.

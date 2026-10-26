@@ -30,6 +30,9 @@ func (s *Service) ObserveAttempt(ctx context.Context, scope domain.Scope, attemp
 		return err
 	}
 	agg, res, err := s.d.Store.Update(ctx, scope, run, UpdateOptions{}, func(ctx context.Context, env Env, agg *Aggregate) (Effects, error) {
+		if err := s.ownsModel(agg.Run); err != nil {
+			return Effects{}, err
+		}
 		at := agg.Attempt(attempt)
 		if at == nil {
 			return Effects{}, ErrNotFound

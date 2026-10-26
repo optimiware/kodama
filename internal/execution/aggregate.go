@@ -31,6 +31,11 @@ type Transition struct {
 	At        time.Time
 	// Version is the subject's resource version after this transaction.
 	Version domain.Version
+	// FromPhase and ToPhase are the observed resource phases of a SubjectResource
+	// transition (From is "none" at creation, To never is; "removed" is the phase
+	// absent). They feed the run_resource.state_changed event; From/To keep the
+	// finer lifecycle name (stopping, removed) for history and audit.
+	FromPhase, ToPhase string
 }
 
 // PendingEvidence is evidence to append for an attempt.
@@ -56,6 +61,16 @@ type Aggregate struct {
 	// Revoked lists attempts whose authority ended in this mutation; the
 	// adapter terminates their workloads after commit.
 	Revoked []*Attempt
+
+	// run_shared state; all empty for an attempt_private run. Resources are
+	// ordered by provisioning order; NewResources/NewHolders/NewBegins list the
+	// rows inserted by this mutation.
+	Resources    []*RunResource
+	Holders      []*RunHolder
+	Begins       []*BeginRecord
+	NewResources []*RunResource
+	NewHolders   []*RunHolder
+	NewBegins    []*BeginRecord
 }
 
 // Step returns the run-local step, or nil.
@@ -194,6 +209,7 @@ func (a *Aggregate) RequestCancel(reason Reason, now time.Time) bool {
 	}
 	a.Transitions = append(a.Transitions, Transition{Subject: SubjectRun, ID: string(a.Run.ID), From: string(a.Run.Status), To: string(a.Run.Status), Reason: ReasonCancelRequested, At: now.UTC()})
 	a.drain(reason, "", now)
+	a.stopResources(ResourceReason(reason), now)
 	return true
 }
 
@@ -205,6 +221,7 @@ func (a *Aggregate) RecordFailure(reason Reason, exclude domain.AttemptID, now t
 	}
 	a.Transitions = append(a.Transitions, Transition{Subject: SubjectRun, ID: string(a.Run.ID), From: string(a.Run.Status), To: string(a.Run.Status), Reason: reason, At: now.UTC()})
 	a.drain(ReasonRunFailed, exclude, now)
+	a.stopResources(ResourceReason(reason), now)
 	return true
 }
 
@@ -428,7 +445,13 @@ func (a *Aggregate) failAttempt(at *Attempt, reason Reason, class FailureClass, 
 	c.requestTermination(now)
 	a.Revoked = append(a.Revoked, at)
 	s := a.Step(at.StepID)
-	if s != nil && s.Retryable(class) {
+	// A retry reuses the run's scratch and services, so in a run_shared run a step
+	// whose attempt (or an earlier one) recorded a command begin is never retried
+	// automatically, whatever its retry class says: its failure is final now, the
+	// services and preparation are stopped promptly and the uncertain attempt or
+	// source effects settle independently.
+	retryable := s != nil && s.Retryable(class) && !(a.Run.Shared != nil && a.StepBegan(s.ID))
+	if retryable {
 		return
 	}
 	a.RecordFailure(stepFailureReason(reason), at.ID, now)
@@ -572,6 +595,14 @@ func (a *Aggregate) Settle(at *Attempt, now time.Time) (SettleOutcome, error) {
 	if s != nil && s.Status == StepRunning && s.AttemptsStarted == at.Ordinal {
 		from := s.Status
 		replaySafe := c.Launch == LaunchNotStarted || (c.ReconciledAt != nil && c.ReplaySafe)
+		if a.Run.Shared != nil {
+			// A run_shared retry reuses the same scratch, so it is allowed only
+			// when no begin was recorded for this attempt or any earlier attempt of
+			// the step and the workload is verified never started. Reconciled
+			// replay-safety of an effect never overrides a recorded begin: the
+			// scratch may hold partial mutations.
+			replaySafe = c.Launch == LaunchNotStarted && !a.StepBegan(s.ID)
+		}
 		switch {
 		case at.Status == AttemptCancelled:
 			_ = s.cancel(at.Reason, now)
@@ -666,6 +697,16 @@ func (a *Aggregate) Finish(now time.Time) (bool, error) {
 		if s.Status == StepRunning {
 			return false, nil
 		}
+	}
+	if a.Run.Shared != nil && !a.ResourcesRemoved() {
+		// Terminal completion waits for every resource to be verified stopped and
+		// removed. The outcome intent is already recorded (or derivable); the run
+		// stays nonterminal with a visible cleanup reason until then.
+		if a.Run.CancelRequestedAt == nil && a.Run.FailureIntentAt == nil && !a.completionDecided() {
+			return false, nil
+		}
+		a.stopResources(ResourceReason(ReasonCompleted), now)
+		return false, nil
 	}
 	from := a.Run.Status
 	var to RunStatus

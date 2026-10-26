@@ -43,6 +43,13 @@ func (s *Service) bind(doc pipeline.Document) (*RuntimeBinding, error) {
 // act on its workloads. Otherwise nothing is started, stopped or removed:
 // another backend would report a workload it never ran as absent.
 func (s *Service) runtimeFor(run *Run) (Runtime, error) {
+	if run.Shared != nil {
+		// Observe, stop and remove of a run_shared run's workloads need only the
+		// cleanup authority: the controller implements the model and the backend
+		// is the pinned one. Launching needs more (launchable).
+		rt, _, err := s.sharedCleanup(context.Background(), run)
+		return rt, err
+	}
 	if s.d.Runtime == nil {
 		return nil, fmt.Errorf("%w: no runtime is configured", ErrNotConfigured)
 	}
@@ -63,6 +70,14 @@ func (s *Service) runtimeFor(run *Run) (Runtime, error) {
 // launchable returns the runtime that may start step now: the run's binding
 // holds and the current policy's requirements for the step are met.
 func (s *Service) launchable(run *Run, step *StepRun) (Runtime, error) {
+	if run.Shared != nil {
+		// A run_shared launch needs the model, the pinned backend, verified pins,
+		// the policy and every pinned guarantee and resource capability, before the
+		// step's own guarantees.
+		if _, _, _, err := s.sharedLaunch(context.Background(), run); err != nil {
+			return nil, err
+		}
+	}
 	rt, err := s.runtimeFor(run)
 	if err != nil {
 		return nil, err

@@ -209,6 +209,17 @@ func (a *Aggregate) resolveRef(raw string, inputs map[string]runtimev1.Value) (s
 	if !strings.Contains(raw, "${{") {
 		return raw, nil
 	}
+	if a.Run.Shared != nil {
+		// kodama/v1alpha2 endpoint references resolve against the pinned endpoints
+		// recorded at admission; nothing resolves later and the entrypoint never
+		// evaluates expressions.
+		if v, ok, err := resolveEndpointRef(strings.TrimSpace(raw), a.Run.Shared.Endpoints); ok {
+			if err != nil {
+				return "", err
+			}
+			return v, nil
+		}
+	}
 	body := strings.TrimSpace(raw)
 	if !strings.HasPrefix(body, "${{") || !strings.HasSuffix(body, "}}") {
 		return "", fmt.Errorf("%w: only whole-scalar references are supported", ErrInvalid)

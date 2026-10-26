@@ -36,6 +36,7 @@ type World struct {
 	verifyErr  error
 	retains    int
 	pendingPub map[domain.AttemptID]bool
+	eventFault map[string]error
 
 	catalog catalog
 }
@@ -435,11 +436,33 @@ var eventsT = memdb.NewTable("world_events",
 	func(e eventRow) string { return e.Seq },
 	func(e eventRow) string { return e.Env.ID })
 
+// FailEventType makes the append of one event type fail (nil clears it), to
+// prove an outbox refusal rolls the whole transition back.
+func (w *World) FailEventType(typ string, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.eventFault == nil {
+		w.eventFault = map[string]error{}
+	}
+	w.eventFault[typ] = err
+}
+
 // Append implements EventAppender. It deduplicates on the envelope ID: the same
 // event appended again, in this or a later transaction, stays one row.
 func (w *World) Append(tx memdb.Tx, env eventsv1.Envelope) error {
 	if env.TenantID != tx.Tenant() {
 		return execution.ErrNotFound
+	}
+	// The PostgreSQL appender validates the envelope against the event contract;
+	// the fake does too, so a producer's output is proven valid in the unit layer.
+	if err := env.Validate(); err != nil {
+		return fmt.Errorf("execution: invalid event %s: %w", env.Type, err)
+	}
+	w.mu.Lock()
+	fault := w.eventFault[env.Type]
+	w.mu.Unlock()
+	if fault != nil {
+		return fault
 	}
 	rows := collect(tx, eventsT, nil)
 	for _, r := range rows {

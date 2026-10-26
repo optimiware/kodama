@@ -377,6 +377,10 @@ type Dependencies struct {
 	// Requirements is the installation's admission policy (nil selects
 	// DefaultRequirements).
 	Requirements Requirements
+	// Shared is the explicit opt-in of the run_shared model: the companion
+	// resource port of the same backend plus the policy source. Nil (the
+	// default) keeps new-format admission closed.
+	Shared *SharedConfig
 	// Optional.
 	Cleanup DeploymentCleanup
 	// CleanupEnvironments resolves a deployment's retained configuration for

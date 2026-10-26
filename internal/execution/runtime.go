@@ -188,12 +188,28 @@ const (
 	ResourceQuotas
 	// CrashRecovery verifies and adopts workloads after a controller restart.
 	CrashRecovery
+	// RunResourcesMarker marks a backend that also implements the companion
+	// RunResources port. It is the one spare bit of the uint8 the run_shared
+	// contract uses; the last bit stays reserved so the set cannot overflow.
+	// Finer resource capabilities live in the separate ResourceCapabilitySet,
+	// never here. A persisted binding that lists "run_resources" is refused by
+	// an older decoder (unknown name), a deliberate protection beside the
+	// explicit run-model check.
+	RunResourcesMarker
 
-	// AllGuarantees is every guarantee.
+	// AllGuarantees is every attempt-runtime guarantee of the original model. It
+	// deliberately excludes RunResources: only a backend that implements the
+	// companion port declares it (see WithRunResources).
 	AllGuarantees = OCIImage | Isolation | ResourceLimits | NetworkPolicy | ResourceQuotas | CrashRecovery
+
+	// reservedGuarantee is the last bit of the uint8, never assigned.
+	reservedGuarantee Guarantees = 1 << 7
 )
 
-var guaranteeNames = [...]string{"oci_image", "isolation", "resource_limits", "network_policy", "resource_quotas", "crash_recovery"}
+var guaranteeNames = [...]string{"oci_image", "isolation", "resource_limits", "network_policy", "resource_quotas", "crash_recovery", "run_resources"}
+
+// WithRunResources adds the companion-port marker to g.
+func (g Guarantees) WithRunResources() Guarantees { return g | RunResourcesMarker }
 
 // Missing returns the guarantees of required that g lacks.
 func (g Guarantees) Missing(required Guarantees) Guarantees { return required &^ g }
@@ -259,6 +275,11 @@ func DefaultRequirements(step pipeline.Step) Guarantees {
 type RuntimeBinding struct {
 	Backend  string     `json:"backend"`
 	Requires Guarantees `json:"requires"`
+	// ResourceRequires is the named resource-capability set a run_shared run
+	// pinned at admission (beside Requires, which then lists run_resources). It is
+	// omitted for every attempt_private run, so historical bindings and their
+	// digests are unchanged.
+	ResourceRequires ResourceCapabilitySet `json:"resourceRequires,omitempty"`
 }
 
 // Workload returns the handle of the attempt's workload.

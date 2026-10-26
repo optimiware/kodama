@@ -165,9 +165,10 @@ func TestM3CompositionSmoke(t *testing.T) {
 		for _, c := range Contributions() {
 			modules = append(modules, c.Module)
 		}
-		// T-101 appends the Git triggers (T-100) after them; nothing moved.
-		tail := modules[len(modules)-5:]
-		if !slices.Equal(tail, []string{"mcpproxy", "work_dependencies", "metrics", "chatops", "gitwebhook"}) {
+		// T-101 appends the Git triggers (T-100) after them; nothing moved. T-112's
+		// additive run_shared schema is the only later contribution.
+		tail := modules[len(modules)-6:]
+		if !slices.Equal(tail, []string{"mcpproxy", "work_dependencies", "metrics", "chatops", "gitwebhook", "execution-run-resources"}) {
 			t.Errorf("migration order ends %v", tail)
 		}
 		if len(m.Migrations()) == 0 {

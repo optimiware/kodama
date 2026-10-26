@@ -18,7 +18,7 @@ import (
 const runColumns = `id, purpose, work_item_id, workspace_id, deployment_id, definition_id, definition_digest, content_revision,
 	specification, source_commit, inputs, snapshot_digest, source_retention, retained_ref_id, requested_by_type, requested_by_id,
 	status, status_reason, cancel_requested_at, cancel_reason, failure_intent_at, failure_reason, version, created_at, updated_at,
-	started_at, finished_at`
+	started_at, finished_at, run_shared, deadline_at`
 
 func scanRun(row pgx.Row, scope domain.Scope) (*execution.Run, error) {
 	var (
@@ -31,10 +31,12 @@ func scanRun(row pgx.Row, scope domain.Scope) (*execution.Run, error) {
 		cancelReason, failReason                                                 *string
 		version                                                                  int64
 		created, updated                                                         time.Time
+		shared                                                                   []byte
+		deadline                                                                 *time.Time
 	)
 	if err := row.Scan(&id, &purpose, &workItem, &workspaceID, &deployment, &definition, &digest, &revision, &spec, &commit, &inputs,
 		&snapDigest, &retention, &retained, &byType, &byID, &status, &reason, &cancelAt, &cancelReason, &failAt, &failReason,
-		&version, &created, &updated, &started, &finished); err != nil {
+		&version, &created, &updated, &started, &finished, &shared, &deadline); err != nil {
 		return nil, err
 	}
 	r := &execution.Run{
@@ -46,6 +48,14 @@ func scanRun(row pgx.Row, scope domain.Scope) (*execution.Run, error) {
 		CancelRequestedAt: tmp(cancelAt), CancelReason: execution.Reason(str(cancelReason)),
 		FailureIntentAt: tmp(failAt), FailureReason: execution.Reason(str(failReason)),
 		Version: domain.Version(version), CreatedAt: created.UTC(), UpdatedAt: updated.UTC(), StartedAt: tmp(started), FinishedAt: tmp(finished),
+	}
+	r.DeadlineAt = tmp(deadline)
+	if shared != nil {
+		var sh execution.RunShared
+		if err := json.Unmarshal(shared, &sh); err != nil {
+			return nil, fmt.Errorf("execution: stored run_shared pins: %w", err)
+		}
+		r.Shared = &sh
 	}
 	if revision != nil {
 		r.ContentRevision = domain.ContentRevision(*revision)
@@ -252,7 +262,15 @@ func (s *Store) loadAggregate(ctx context.Context, tx pgx.Tx, scope domain.Scope
 		agg.Controls[c.AttemptID] = c
 	}
 	rows.Close()
-	return agg, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if run.Shared != nil {
+		if err := s.loadShared(ctx, tx, agg); err != nil {
+			return nil, err
+		}
+	}
+	return agg, nil
 }
 
 // Get implements execution.Store (a consistent read, no locks).

@@ -40,7 +40,7 @@ import (
 //	secret-pin links) → runtime authority → execution workload cleanup →
 //	log capture records → agent profiles → delivery (environments, deployments)
 //	→ gates → model gateway → MCP proxy → work dependencies → flow summaries →
-//	ChatOps → native Git triggers
+//	ChatOps → native Git triggers → run_shared resource schema (T-112, additive)
 //
 // The runtime-authority schema serves the runtime credentials of the
 // execution assembly (T-071) and the execution store of the composition is the
@@ -65,7 +65,13 @@ func Contributions() []storage.Contribution {
 	cs = append(cs, rtpg.Migrations(), execpg.CleanupMigrations(), logspg.Migrations(), agentspg.Migrations(), deliverypg.Migrations())
 	cs = append(cs, gatespg.Migrations()...)
 	cs = append(cs, gatewaypg.Migrations(), mcppg.Migrations())
-	return append(cs, dependenciespg.Migrations(), metricspg.Migrations(), chatopspg.Migrations(), gitwebhookpg.Migrations())
+	cs = append(cs, dependenciespg.Migrations(), metricspg.Migrations(), chatopspg.Migrations(), gitwebhookpg.Migrations())
+	// The additive run_shared resource tables and columns (T-112) follow the last
+	// contribution an earlier release applied. The execution store reads their
+	// columns unconditionally, so they must exist before the store serves a run;
+	// the migration enables nothing: no route, backend, policy or admission of the
+	// new format is wired by it.
+	return append(cs, execpg.RunResourceMigrations())
 }
 
 // Manifest validates the contribution list.

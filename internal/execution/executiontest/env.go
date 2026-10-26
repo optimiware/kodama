@@ -143,6 +143,14 @@ type Options struct {
 	// Store replaces the PostgreSQL store of the service (fault injection or a
 	// store built over different peers).
 	Store execution.Store
+	// Shared is the explicit run_shared opt-in (a test-injected fake port and
+	// policy); nil keeps new-format admission closed.
+	Shared *execution.SharedConfig
+	// SourceWrap wraps the Git observation seam (a call counter).
+	SourceWrap func(execution.Sources) execution.Sources
+	// LegacySeed builds an UPGRADE fixture: the database holds the schema of the
+	// release before T112_001 while it runs, then the additive migration applies.
+	LegacySeed func(e *Env)
 }
 
 type execpgAppender = execpg.EventAppender
@@ -179,7 +187,14 @@ func New(t testing.TB, o ...Options) *Env {
 		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
 		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
 	}
-	manifest, err := storage.NewManifest(append(contribs, execpg.Migrations()...)...)
+	execContribs := execpg.Migrations()
+	if opt.LegacySeed != nil {
+		// Upgrade fixture: the database first holds exactly what a release before the
+		// run_shared schema (T112_001) deployed; historical rows are seeded and only
+		// then is the additive migration applied.
+		execContribs = execContribs[:len(execContribs)-1]
+	}
+	manifest, err := storage.NewManifest(append(contribs, execContribs...)...)
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}
@@ -187,6 +202,20 @@ func New(t testing.TB, o ...Options) *Env {
 	defer cancel()
 	if _, err := storage.Migrate(ctx, base.Migration, manifest, storage.MigrateOptions{RuntimeRole: base.DB.RuntimeRole}); err != nil {
 		t.Fatalf("migrate: %v", err)
+	}
+	upgrade := func() {
+		if opt.LegacySeed == nil {
+			return
+		}
+		opt.LegacySeed(e)
+		full, err := storage.NewManifest(append(contribs, execpg.Migrations()...)...)
+		if err != nil {
+			t.Fatalf("manifest: %v", err)
+		}
+		res, err := storage.Migrate(ctx, base.Migration, full, storage.MigrateOptions{RuntimeRole: base.DB.RuntimeRole})
+		if err != nil || len(res.Applied) != 1 || res.Applied[0] != execpg.RunResourcesMigrationID {
+			t.Fatalf("the upgrade must apply only the run_shared migration: %+v %v", res, err)
+		}
 	}
 
 	evOpts := eventstest.DefaultOptions()
@@ -237,6 +266,7 @@ func New(t testing.TB, o ...Options) *Env {
 	svcOpt := opt
 	svcOpt.Runtime = nil
 	e.Svc = e.NewService(svcOpt)
+	upgrade()
 	return e
 }
 
@@ -266,11 +296,14 @@ func (e *Env) NewService(opt Options) *execution.Service {
 	if opt.Store != nil {
 		store = opt.Store
 	}
+	if opt.SourceWrap != nil {
+		sources = opt.SourceWrap(sources)
+	}
 	deps := execution.Dependencies{
 		Store: store, Authority: authority, Definitions: defs, Capabilities: kinds,
 		Work: SQLWork{e}, Configuration: cfg, Sources: sources, Limits: e.Limits, Hooks: hooks,
 		Tenants: tenantList{ScopeA.TenantID, ScopeB.TenantID}, Cleanup: opt.Cleanup, Clock: e.Clock.Now, CancelledWork: SQLCancelled{e},
-		Requirements: opt.Requirements,
+		Requirements: opt.Requirements, Shared: opt.Shared,
 	}
 	switch {
 	case opt.NoRuntime:

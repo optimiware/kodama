@@ -36,13 +36,7 @@ type resultOutcome struct {
 	revoked bool
 }
 
-func decodeContext(at *Attempt) (runtimev1.Context, error) {
-	c, err := runtimev1.DecodeRequest[runtimev1.Context](at.Context)
-	if err != nil {
-		return runtimev1.Context{}, Unavailablef(err, "the pinned context is unreadable")
-	}
-	return c, nil
-}
+func decodeContext(at *Attempt) (runtimev1.Context, error) { return decodeAttemptContext(at) }
 
 // CommitResult records a validated result idempotently under attempt ID and
 // canonical result hash. Process exit zero is never success: a completed result
@@ -64,6 +58,9 @@ func (s *Service) CommitResult(ctx context.Context, in ResultCommit) (ResultAck,
 	}
 	hash := string(in.Request.ResultHash)
 	agg, res, err := s.d.Store.Update(ctx, in.Scope, run, UpdateOptions{}, func(ctx context.Context, env Env, agg *Aggregate) (Effects, error) {
+		if err := s.ownsModel(agg.Run); err != nil {
+			return Effects{}, err
+		}
 		at := agg.Attempt(in.AttemptID)
 		if at == nil {
 			return Effects{}, ErrNotFound
@@ -79,6 +76,19 @@ func (s *Service) CommitResult(ctx context.Context, in ResultCommit) (ResultAck,
 		// reconciler runs: a result submitted after the startup or execution
 		// deadline is late. The timeout and failure drain are persisted here,
 		// under the run lock, exactly as reconciliation would.
+		if at.Status == AttemptRunning && agg.CheckRunDeadline(now) {
+			// run_shared: the pinned total deadline (which covers every attempt's own
+			// window and gate waits) passed. The failure intent, the revocation of the
+			// attempt and the stop of the resources are persisted here, exactly as
+			// reconciliation would, and the late result is kept as evidence only. An
+			// already accepted result was answered above and stays replayable.
+			agg.RecordEvidence(at.ID, EvidenceLateResult, map[string]any{"resultHash": hash, "attemptStatus": string(at.Status)}, now)
+			after, err := advance(env, agg)
+			if err != nil {
+				return Effects{}, err
+			}
+			return Effects{After: after, Result: resultOutcome{revoked: true}}, nil
+		}
 		if at.Status == AttemptRunning {
 			timedOut := false
 			for _, f := range agg.CheckDeadlines(now) {

@@ -38,6 +38,14 @@ type Options struct {
 	// the entrypoint still waiting for the acknowledgment receives it first (default 2s; negative stops at
 	// once, as a late or refused result always is).
 	TerminationDelay time.Duration
+	// ResourceFreshness is how old a resource observation may be for the
+	// dispatch barrier to trust it; ResourceRecheck is the age after which
+	// dispatch observes again before claiming. ResourceBackoffBase/Max bound the
+	// restart-safe retry of Ensure, Stop and Remove.
+	ResourceFreshness   time.Duration
+	ResourceRecheck     time.Duration
+	ResourceBackoffBase time.Duration
+	ResourceBackoffMax  time.Duration
 }
 
 const defaultTerminationDelay = 2 * time.Second
@@ -51,6 +59,18 @@ func (o Options) withDefaults() (Options, error) {
 	}
 	if o.TerminationDelay == 0 {
 		o.TerminationDelay = defaultTerminationDelay
+	}
+	if o.ResourceFreshness == 0 {
+		o.ResourceFreshness = 30 * time.Second
+	}
+	if o.ResourceRecheck == 0 {
+		o.ResourceRecheck = 10 * time.Second
+	}
+	if o.ResourceBackoffBase == 0 {
+		o.ResourceBackoffBase = 2 * time.Second
+	}
+	if o.ResourceBackoffMax == 0 {
+		o.ResourceBackoffMax = 5 * time.Minute
 	}
 	if o.ClaimLease < time.Second || o.Batch < 1 || o.Batch > 1000 {
 		return o, invalidf("claim lease and batch are out of range")
@@ -92,6 +112,9 @@ func NewService(d Dependencies, o Options) (*Service, error) {
 		return nil, missing("limits")
 	case d.Hooks == nil:
 		return nil, missing("hooks")
+	}
+	if err := d.Shared.validate(d.Runtime); err != nil {
+		return nil, err
 	}
 	o, err := o.withDefaults()
 	if err != nil {
