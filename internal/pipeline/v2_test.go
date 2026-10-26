@@ -32,7 +32,7 @@ var v2Goldens = []string{"service-test", "integration-build", "argv-matrix", "ar
 // kodama/v1alpha2 document is an explicit opt-in. The zero-value Config keeps
 // the installation on kodama/v1alpha1 only, the refusal runs no lookup and names
 // no document content, while reading the same bytes (stored definitions) works
-// regardless of the flag. PX-17, PX-18.
+// regardless of the flag. PX-21.
 func Test_v1alpha2_format_disabled_by_default(t *testing.T) {
 	e := newEnv(t) // zero-value EnableV1Alpha2
 	if e.v.FormatEnabled(pipelinev1alpha2.APIVersion) || !e.v.FormatEnabled("kodama/v1alpha1") || e.v.FormatEnabled("kodama/v9") {
@@ -86,7 +86,7 @@ func Test_v1alpha2_format_disabled_by_default(t *testing.T) {
 // golden canonical bytes and digest, round-trips through the stored-content
 // reader, and the contract's published reference vector is reproduced
 // independently (digest computed by the contract authors with Python).
-// PX-17, PX-18, PX-19.
+// PX-17, PX-20, PX-21.
 func Test_v1alpha2_canonical_goldens(t *testing.T) {
 	e := newEnvV2(t)
 	for _, name := range v2Goldens {
@@ -147,7 +147,7 @@ func Test_v1alpha2_canonical_goldens(t *testing.T) {
 // Test_v1alpha2_digest_independent_of_run_source_and_policy: the canonical form
 // fills only contract-constant defaults. Step workspace, spec.runWorkspace,
 // service command, environment and when stay absent, so one definition has one
-// digest for source-backed and source-free runs. PX-18, WS-13.
+// digest for source-backed and source-free runs. PX-21, WS-13.
 func Test_v1alpha2_digest_independent_of_run_source_and_policy(t *testing.T) {
 	e := newEnvV2(t)
 	base := e.mustValidateJSON(t, mutate(t))
@@ -214,7 +214,7 @@ func Test_v1alpha2_digest_independent_of_run_source_and_policy(t *testing.T) {
 // Test_v1alpha2_argv_omission_equivalence: absent args and args: [] are one
 // value with one digest; absent command is preserved and differs from any
 // command; command: [] is rejected; the four argv rows each have a valid
-// fixture and the matrix resolves them as the contract states. PX-19, PX-20.
+// fixture and the matrix resolves them as the contract states. PX-17, PX-21.
 func Test_v1alpha2_argv_omission_equivalence(t *testing.T) {
 	e := newEnvV2(t)
 	omitted := e.mustValidate(t, string(readFixtureV2(t, "valid/argv-matrix.yaml")))
@@ -322,7 +322,7 @@ func many(prefix string, n int, v any) []any {
 // Test_v1alpha2_invalid_documents: strict rejection of unknown and raw Pod
 // controls, workspace.from, mutable images, bad ports, probes, resources,
 // storage, edges, egress names, roles, deadlines and argv, each with its stable
-// code, a path and the contract's stage. PX-17, PX-19, PX-20, PX-21, WS-14,
+// code, a path and the contract's stage. PX-17, PX-20, PX-21, WS-13,
 // IT-14.
 func Test_v1alpha2_invalid_documents(t *testing.T) {
 	e := newEnvV2(t)
@@ -467,6 +467,13 @@ func Test_v1alpha2_invalid_documents(t *testing.T) {
 		}(), "spec.network.edges", []any{}, "spec.steps.0.env", nil),
 		sx("service name uppercase", pipeline.CodeInvalidFormat, "services", "spec.services", map[string]any{"DB": map[string]any{}}, "spec.network.edges", []any{}, "spec.steps.0.env", nil),
 		sx("service name too long", pipeline.CodeInvalidFormat, "services", "spec.services", map[string]any{strings.Repeat("a", 31): map[string]any{}}, "spec.network.edges", []any{}, "spec.steps.0.env", nil),
+
+		// Names as keys.
+		sx("service env name starts with a digit", pipeline.CodeInvalidFormat, "services.db.env", "spec.services.db.env", map[string]any{"1BAD": "x"}),
+		sx("service secret file name with a slash", pipeline.CodeInvalidFormat, "services.db.secretFiles", "spec.services.db.secretFiles", map[string]any{"a/b": "secret://project/test-db-password"}, "spec.services.db.command", []any{"/bin/db"}),
+		sx("input name uppercase", pipeline.CodeInvalidFormat, "spec.inputs", "spec.inputs", map[string]any{"Region": map[string]any{"type": "string"}}),
+		sx("output name uppercase", pipeline.CodeInvalidFormat, "steps[0].outputs", "spec.steps.0.outputs", map[string]any{"Report": map[string]any{"type": "string"}}),
+		sx("step env name with a dash", pipeline.CodeInvalidFormat, "steps[0].env", "spec.steps.0.env", map[string]any{"A-B": "x"}),
 
 		// Deadlines.
 		sx("missing run deadline", pipeline.CodeMissingField, "spec.timeoutSeconds", "spec.timeoutSeconds", nil),
@@ -619,7 +626,7 @@ func Test_v1alpha2_invalid_documents(t *testing.T) {
 
 // Test_v1alpha2_registration_opt_in: through the registration use case the
 // format is refused with format_disabled unless the installation opted in, and
-// nothing is persisted for the refused document. PX-17.
+// nothing is persisted for the refused document. PX-21.
 func Test_v1alpha2_registration_opt_in(t *testing.T) {
 	src := string(readFixtureV2(t, "valid/service-test.yaml"))
 	build := func(t *testing.T, e *env) (*pipeline.Service, *pipelinetest.MemRepo) {
@@ -662,7 +669,7 @@ func Test_v1alpha2_registration_opt_in(t *testing.T) {
 
 // Test_v1alpha2_source_defaults: the effective workspace access of a step is a
 // pure function of the step and the run's source, never part of the definition.
-// WS-13, WS-14.
+// WS-13.
 func Test_v1alpha2_source_defaults(t *testing.T) {
 	ws := func(a pipeline.Access) *pipeline.Workspace { return &pipeline.Workspace{Access: a} }
 	container := func(w *pipeline.Workspace) pipeline.Step {
@@ -726,7 +733,7 @@ func Test_v1alpha2_source_defaults(t *testing.T) {
 
 // Test_v1alpha2_execution_order_ties_and_gates: the order is the
 // lexicographically smallest topological order by declaration index; a gate
-// holds its position; needs are explicit and preserved. PX-22.
+// holds its position; needs are explicit and preserved. PX-20, WS-14.
 func Test_v1alpha2_execution_order_ties_and_gates(t *testing.T) {
 	st := func(id string, needs ...string) pipeline.Step {
 		return pipeline.Step{ID: id, Kind: pipeline.KindContainer, Needs: needs}
@@ -795,7 +802,7 @@ func Test_v1alpha2_execution_order_ties_and_gates(t *testing.T) {
 
 // Test_v1alpha2_stored_document_and_copies: stored v1alpha2 content decodes
 // into a Document that keeps every new field, shares nothing with the stored
-// value, and is judged canonical by the stored-content reader. PX-17, PX-18.
+// value, and is judged canonical by the stored-content reader. PX-21.
 func Test_v1alpha2_stored_document_and_copies(t *testing.T) {
 	e := newEnvV2(t)
 	v := e.mustValidate(t, string(readFixtureV2(t, "valid/edges-and-endpoints.yaml")))
@@ -857,7 +864,7 @@ func Test_v1alpha2_stored_document_and_copies(t *testing.T) {
 // Test_v1alpha1_compatibility_preserved: the new format never changes what a
 // kodama/v1alpha1 document means: a v1alpha2 field in a v1alpha1 document is an
 // error, a service reference is still an interpolation error, workspace.from
-// still works, and every v1alpha1 golden keeps its bytes and digest. PX-17.
+// still works, and every v1alpha1 golden keeps its bytes and digest. PX-21.
 func Test_v1alpha1_compatibility_preserved(t *testing.T) {
 	e := newEnvV2(t) // even with the new format enabled
 	for name, src := range map[string]string{

@@ -1,0 +1,2505 @@
+[
+  {
+    "name": "begin_clean_then_result_hash_is_the_v1_hash",
+    "requirements": [
+      "DQ-16",
+      "PX-21"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-02",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.integration",
+            "attemptId": "att_02",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {
+                "PGHOST": "s-ab12cd34ef567890-db",
+                "PGPORT": "5432",
+                "PGUSER": "kodama"
+              },
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {
+              "db": {
+                "host": "s-ab12cd34ef567890-db",
+                "ports": {
+                  "sql": 5432
+                }
+              }
+            },
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [
+              {
+                "delivery": "env",
+                "name": "PGPASSWORD",
+                "ref": "secret://project/test-db-password",
+                "version": 3
+              }
+            ],
+            "stepId": "integration",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "read",
+              "lineage": [
+                {
+                  "access": "write",
+                  "attemptId": "att_01",
+                  "beganAt": "2026-10-26T10:01:00Z",
+                  "ignoredPresent": false,
+                  "publishedCommit": "2222222222222222222222222222222222222222",
+                  "stepId": "generate",
+                  "workspaceState": "clean"
+                }
+              ],
+              "mountPath": "/workspace",
+              "preparation": {
+                "commit": "1111111111111111111111111111111111111111",
+                "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "treeId": "3333333333333333333333333333333333333333"
+              },
+              "source": {
+                "branch": null,
+                "expectedTip": null,
+                "headCommit": "2222222222222222222222222222222222222222",
+                "inputCommit": "1111111111111111111111111111111111111111",
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git"
+              }
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "2222222222222222222222222222222222222222",
+            "ignoredPresent": true,
+            "trackedClean": true,
+            "untrackedPresent": false
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_02",
+          "beganAt": "2026-10-26T10:05:00Z",
+          "ignoredPresent": true,
+          "workspaceState": "clean"
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "2222222222222222222222222222222222222222",
+            "ignoredPresent": true,
+            "trackedClean": true,
+            "untrackedPresent": false
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_02",
+          "beganAt": "2026-10-26T10:05:00Z",
+          "ignoredPresent": true,
+          "workspaceState": "clean"
+        }
+      }
+    ]
+  },
+  {
+    "name": "begin_modified_workspace",
+    "requirements": [
+      "DQ-16"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-02",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.integration",
+            "attemptId": "att_02",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {
+                "PGHOST": "s-ab12cd34ef567890-db",
+                "PGPORT": "5432",
+                "PGUSER": "kodama"
+              },
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {
+              "db": {
+                "host": "s-ab12cd34ef567890-db",
+                "ports": {
+                  "sql": 5432
+                }
+              }
+            },
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [
+              {
+                "delivery": "env",
+                "name": "PGPASSWORD",
+                "ref": "secret://project/test-db-password",
+                "version": 3
+              }
+            ],
+            "stepId": "integration",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "read",
+              "lineage": [
+                {
+                  "access": "write",
+                  "attemptId": "att_01",
+                  "beganAt": "2026-10-26T10:01:00Z",
+                  "ignoredPresent": false,
+                  "publishedCommit": "2222222222222222222222222222222222222222",
+                  "stepId": "generate",
+                  "workspaceState": "clean"
+                }
+              ],
+              "mountPath": "/workspace",
+              "preparation": {
+                "commit": "1111111111111111111111111111111111111111",
+                "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "treeId": "3333333333333333333333333333333333333333"
+              },
+              "source": {
+                "branch": null,
+                "expectedTip": null,
+                "headCommit": "2222222222222222222222222222222222222222",
+                "inputCommit": "1111111111111111111111111111111111111111",
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git"
+              }
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "2222222222222222222222222222222222222222",
+            "ignoredPresent": false,
+            "trackedClean": false,
+            "untrackedPresent": true
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_02",
+          "beganAt": "2026-10-26T10:05:00Z",
+          "ignoredPresent": false,
+          "workspaceState": "modified"
+        }
+      }
+    ]
+  },
+  {
+    "name": "begin_wrong_head_is_modified",
+    "requirements": [
+      "DQ-16"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-02",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.integration",
+            "attemptId": "att_02",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {
+                "PGHOST": "s-ab12cd34ef567890-db",
+                "PGPORT": "5432",
+                "PGUSER": "kodama"
+              },
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {
+              "db": {
+                "host": "s-ab12cd34ef567890-db",
+                "ports": {
+                  "sql": 5432
+                }
+              }
+            },
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [
+              {
+                "delivery": "env",
+                "name": "PGPASSWORD",
+                "ref": "secret://project/test-db-password",
+                "version": 3
+              }
+            ],
+            "stepId": "integration",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "read",
+              "lineage": [
+                {
+                  "access": "write",
+                  "attemptId": "att_01",
+                  "beganAt": "2026-10-26T10:01:00Z",
+                  "ignoredPresent": false,
+                  "publishedCommit": "2222222222222222222222222222222222222222",
+                  "stepId": "generate",
+                  "workspaceState": "clean"
+                }
+              ],
+              "mountPath": "/workspace",
+              "preparation": {
+                "commit": "1111111111111111111111111111111111111111",
+                "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "treeId": "3333333333333333333333333333333333333333"
+              },
+              "source": {
+                "branch": null,
+                "expectedTip": null,
+                "headCommit": "2222222222222222222222222222222222222222",
+                "inputCommit": "1111111111111111111111111111111111111111",
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git"
+              }
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "4444444444444444444444444444444444444444",
+            "ignoredPresent": false,
+            "trackedClean": true,
+            "untrackedPresent": false
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_02",
+          "beganAt": "2026-10-26T10:05:00Z",
+          "ignoredPresent": false,
+          "workspaceState": "modified"
+        }
+      }
+    ]
+  },
+  {
+    "name": "begin_source_free",
+    "requirements": [
+      "DQ-16",
+      "WS-13"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-04",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.teardown",
+            "attemptId": "att_04",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {},
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {},
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [],
+            "stepId": "teardown",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "none",
+              "lineage": [],
+              "mountPath": "/workspace",
+              "preparation": null,
+              "source": null
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": null
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_04",
+          "beganAt": "2026-10-26T10:06:00Z",
+          "ignoredPresent": false,
+          "workspaceState": "none"
+        }
+      }
+    ]
+  },
+  {
+    "name": "begin_replay_with_a_different_body_conflicts",
+    "requirements": [
+      "DQ-16"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-02",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.integration",
+            "attemptId": "att_02",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {
+                "PGHOST": "s-ab12cd34ef567890-db",
+                "PGPORT": "5432",
+                "PGUSER": "kodama"
+              },
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {
+              "db": {
+                "host": "s-ab12cd34ef567890-db",
+                "ports": {
+                  "sql": 5432
+                }
+              }
+            },
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [
+              {
+                "delivery": "env",
+                "name": "PGPASSWORD",
+                "ref": "secret://project/test-db-password",
+                "version": 3
+              }
+            ],
+            "stepId": "integration",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "read",
+              "lineage": [
+                {
+                  "access": "write",
+                  "attemptId": "att_01",
+                  "beganAt": "2026-10-26T10:01:00Z",
+                  "ignoredPresent": false,
+                  "publishedCommit": "2222222222222222222222222222222222222222",
+                  "stepId": "generate",
+                  "workspaceState": "clean"
+                }
+              ],
+              "mountPath": "/workspace",
+              "preparation": {
+                "commit": "1111111111111111111111111111111111111111",
+                "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "treeId": "3333333333333333333333333333333333333333"
+              },
+              "source": {
+                "branch": null,
+                "expectedTip": null,
+                "headCommit": "2222222222222222222222222222222222222222",
+                "inputCommit": "1111111111111111111111111111111111111111",
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git"
+              }
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "2222222222222222222222222222222222222222",
+            "ignoredPresent": false,
+            "trackedClean": true,
+            "untrackedPresent": false
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_02",
+          "beganAt": "2026-10-26T10:05:00Z",
+          "ignoredPresent": false,
+          "workspaceState": "clean"
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "2222222222222222222222222222222222222222",
+            "ignoredPresent": false,
+            "trackedClean": false,
+            "untrackedPresent": false
+          }
+        },
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "idempotency_conflict",
+            "details": {},
+            "message": "a different begin is already recorded",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "begin_null_body_for_a_source_backed_attempt",
+    "requirements": [
+      "DQ-16"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-02",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.integration",
+            "attemptId": "att_02",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {
+                "PGHOST": "s-ab12cd34ef567890-db",
+                "PGPORT": "5432",
+                "PGUSER": "kodama"
+              },
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {
+              "db": {
+                "host": "s-ab12cd34ef567890-db",
+                "ports": {
+                  "sql": 5432
+                }
+              }
+            },
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [
+              {
+                "delivery": "env",
+                "name": "PGPASSWORD",
+                "ref": "secret://project/test-db-password",
+                "version": 3
+              }
+            ],
+            "stepId": "integration",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "read",
+              "lineage": [
+                {
+                  "access": "write",
+                  "attemptId": "att_01",
+                  "beganAt": "2026-10-26T10:01:00Z",
+                  "ignoredPresent": false,
+                  "publishedCommit": "2222222222222222222222222222222222222222",
+                  "stepId": "generate",
+                  "workspaceState": "clean"
+                }
+              ],
+              "mountPath": "/workspace",
+              "preparation": {
+                "commit": "1111111111111111111111111111111111111111",
+                "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "treeId": "3333333333333333333333333333333333333333"
+              },
+              "source": {
+                "branch": null,
+                "expectedTip": null,
+                "headCommit": "2222222222222222222222222222222222222222",
+                "inputCommit": "1111111111111111111111111111111111111111",
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git"
+              }
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": null
+        },
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "invalid_request",
+            "details": {},
+            "message": "a source-backed attempt reports its workspace",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "begin_object_for_a_source_free_attempt",
+    "requirements": [
+      "DQ-16"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-04",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.teardown",
+            "attemptId": "att_04",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {},
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {},
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [],
+            "stepId": "teardown",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "none",
+              "lineage": [],
+              "mountPath": "/workspace",
+              "preparation": null,
+              "source": null
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "2222222222222222222222222222222222222222",
+            "ignoredPresent": false,
+            "trackedClean": true,
+            "untrackedPresent": false
+          }
+        },
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "invalid_request",
+            "details": {},
+            "message": "a source-free attempt reports a null workspace",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "cancelled_before_begin_starts_nothing",
+    "requirements": [
+      "DQ-16",
+      "PX-22"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-02",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.integration",
+            "attemptId": "att_02",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {
+                "PGHOST": "s-ab12cd34ef567890-db",
+                "PGPORT": "5432",
+                "PGUSER": "kodama"
+              },
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {
+              "db": {
+                "host": "s-ab12cd34ef567890-db",
+                "ports": {
+                  "sql": 5432
+                }
+              }
+            },
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [
+              {
+                "delivery": "env",
+                "name": "PGPASSWORD",
+                "ref": "secret://project/test-db-password",
+                "version": 3
+              }
+            ],
+            "stepId": "integration",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "read",
+              "lineage": [
+                {
+                  "access": "write",
+                  "attemptId": "att_01",
+                  "beganAt": "2026-10-26T10:01:00Z",
+                  "ignoredPresent": false,
+                  "publishedCommit": "2222222222222222222222222222222222222222",
+                  "stepId": "generate",
+                  "workspaceState": "clean"
+                }
+              ],
+              "mountPath": "/workspace",
+              "preparation": {
+                "commit": "1111111111111111111111111111111111111111",
+                "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "treeId": "3333333333333333333333333333333333333333"
+              },
+              "source": {
+                "branch": null,
+                "expectedTip": null,
+                "headCommit": "2222222222222222222222222222222222222222",
+                "inputCommit": "1111111111111111111111111111111111111111",
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git"
+              }
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "2222222222222222222222222222222222222222",
+            "ignoredPresent": false,
+            "trackedClean": true,
+            "untrackedPresent": false
+          }
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "attempt_revoked",
+            "details": {},
+            "message": "the attempt is revoked",
+            "requestId": "req_01"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "submitResult",
+        "request": {
+          "result": {
+            "diagnosticArtifactIds": [],
+            "exitCode": 0,
+            "outcome": "completed",
+            "outputs": {},
+            "question": null,
+            "reason": null,
+            "sourceCommit": null
+          },
+          "resultHash": "sha256:aa0e4b25b020724fc70e96a985ea10ed321c962cc70fe56e5aca2ddcba2683d3"
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "attempt_revoked",
+            "details": {},
+            "message": "the attempt is revoked",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "lost_begin_acknowledgment_leaves_the_record",
+    "requirements": [
+      "DQ-16",
+      "PX-22"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-02",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.integration",
+            "attemptId": "att_02",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {
+                "PGHOST": "s-ab12cd34ef567890-db",
+                "PGPORT": "5432",
+                "PGUSER": "kodama"
+              },
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {
+              "db": {
+                "host": "s-ab12cd34ef567890-db",
+                "ports": {
+                  "sql": 5432
+                }
+              }
+            },
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [
+              {
+                "delivery": "env",
+                "name": "PGPASSWORD",
+                "ref": "secret://project/test-db-password",
+                "version": 3
+              }
+            ],
+            "stepId": "integration",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "read",
+              "lineage": [
+                {
+                  "access": "write",
+                  "attemptId": "att_01",
+                  "beganAt": "2026-10-26T10:01:00Z",
+                  "ignoredPresent": false,
+                  "publishedCommit": "2222222222222222222222222222222222222222",
+                  "stepId": "generate",
+                  "workspaceState": "clean"
+                }
+              ],
+              "mountPath": "/workspace",
+              "preparation": {
+                "commit": "1111111111111111111111111111111111111111",
+                "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "treeId": "3333333333333333333333333333333333333333"
+              },
+              "source": {
+                "branch": null,
+                "expectedTip": null,
+                "headCommit": "2222222222222222222222222222222222222222",
+                "inputCommit": "1111111111111111111111111111111111111111",
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git"
+              }
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "2222222222222222222222222222222222222222",
+            "ignoredPresent": false,
+            "trackedClean": true,
+            "untrackedPresent": false
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_02",
+          "beganAt": "2026-10-26T10:05:00Z",
+          "ignoredPresent": false,
+          "workspaceState": "clean"
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": {
+            "head": "2222222222222222222222222222222222222222",
+            "ignoredPresent": false,
+            "trackedClean": true,
+            "untrackedPresent": false
+          }
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_02",
+          "beganAt": "2026-10-26T10:05:00Z",
+          "ignoredPresent": false,
+          "workspaceState": "clean"
+        }
+      }
+    ]
+  },
+  {
+    "name": "two_step_source_free_sequence_keeps_the_scratch",
+    "requirements": [
+      "WS-13",
+      "DQ-16"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-04",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.teardown",
+            "attemptId": "att_04",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {},
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {},
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [],
+            "stepId": "teardown",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "none",
+              "lineage": [],
+              "mountPath": "/workspace",
+              "preparation": null,
+              "source": null
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": null
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_04",
+          "beganAt": "2026-10-26T10:06:00Z",
+          "ignoredPresent": false,
+          "workspaceState": "none"
+        }
+      },
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-05",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.verify",
+            "attemptId": "att_05",
+            "command": {
+              "args": [
+                "test -s /workspace/teardown.log"
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {},
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {},
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [],
+            "stepId": "verify",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "none",
+              "lineage": [
+                {
+                  "access": "none",
+                  "attemptId": "att_04",
+                  "beganAt": "2026-10-26T10:06:00Z",
+                  "ignoredPresent": false,
+                  "publishedCommit": null,
+                  "stepId": "teardown",
+                  "workspaceState": "none"
+                }
+              ],
+              "mountPath": "/workspace",
+              "preparation": null,
+              "source": null
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": null
+        },
+        "status": 200,
+        "body": {
+          "attemptId": "att_05",
+          "beganAt": "2026-10-26T10:07:00Z",
+          "ignoredPresent": false,
+          "workspaceState": "none"
+        }
+      }
+    ]
+  },
+  {
+    "name": "v2_attempt_on_a_v1_route",
+    "requirements": [
+      "PX-21"
+    ],
+    "steps": [
+      {
+        "api": "v1",
+        "op": "getContext",
+        "request": null,
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "context_version_mismatch",
+            "details": {},
+            "message": "the attempt belongs to another runtime version",
+            "requestId": "req_01"
+          }
+        }
+      },
+      {
+        "api": "v1",
+        "op": "renewToken",
+        "request": {},
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "context_version_mismatch",
+            "details": {},
+            "message": "the attempt belongs to another runtime version",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "v1_attempt_on_a_v2_route",
+    "requirements": [
+      "PX-21"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "getContext",
+        "request": null,
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "context_version_mismatch",
+            "details": {},
+            "message": "the attempt belongs to another runtime version",
+            "requestId": "req_01"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "request": {
+          "workspace": null
+        },
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "context_version_mismatch",
+            "details": {},
+            "message": "the attempt belongs to another runtime version",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "resource_token_on_an_attempt_route",
+    "requirements": [
+      "VS-14",
+      "IT-13"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "getContext",
+        "tokenAudience": "kodama-runtime-resource",
+        "request": null,
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "details": {},
+            "message": "the token is not valid for this route family",
+            "requestId": "req_01"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "begin",
+        "tokenAudience": "kodama-runtime-resource",
+        "request": {
+          "workspace": null
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "details": {},
+            "message": "the token is not valid for this route family",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "attempt_token_on_a_resource_route",
+    "requirements": [
+      "VS-14",
+      "IT-13"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "getResourceContext",
+        "resourceKind": "service",
+        "tokenAudience": "kodama-runtime",
+        "request": null,
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "details": {},
+            "message": "the token is not valid for this route family",
+            "requestId": "req_01"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "resolveResourceSecret",
+        "resourceKind": "service",
+        "tokenAudience": "kodama-runtime",
+        "request": {
+          "ref": "secret://project/test-db-password",
+          "version": 3
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "details": {},
+            "message": "the token is not valid for this route family",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "preparation_admission_context_receipt",
+    "requirements": [
+      "WS-13",
+      "VS-14"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admitResource",
+        "resourceKind": "preparation",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "identity": {
+            "podName": "kr-0123456789abcdef01234567-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "workloadName": "kr-0123456789abcdef01234567",
+            "workloadUid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "contextVersion": 2,
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "preparation": {
+              "commit": "1111111111111111111111111111111111111111",
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "maxAttempts": 2,
+              "maxBytes": 1073741824,
+              "mountPath": "/workspace",
+              "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+              "timeoutSeconds": 600
+            },
+            "projectId": "p_inventory",
+            "resourceKey": "preparation",
+            "resourceKind": "preparation",
+            "runId": "run_01",
+            "service": null,
+            "tenantId": "t_acme"
+          },
+          "token": {
+            "audience": "kodama-runtime-resource",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "getResourceContext",
+        "resourceKind": "preparation",
+        "request": null,
+        "status": 200,
+        "body": {
+          "contextVersion": 2,
+          "policy": {
+            "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "id": "run-v1"
+          },
+          "preparation": {
+            "commit": "1111111111111111111111111111111111111111",
+            "deadlineAt": "2026-10-26T11:00:00Z",
+            "maxAttempts": 2,
+            "maxBytes": 1073741824,
+            "mountPath": "/workspace",
+            "repositoryUrl": "https://git.example.invalid/acme/inventory.git",
+            "timeoutSeconds": 600
+          },
+          "projectId": "p_inventory",
+          "resourceKey": "preparation",
+          "resourceKind": "preparation",
+          "runId": "run_01",
+          "service": null,
+          "tenantId": "t_acme"
+        }
+      },
+      {
+        "api": "v2",
+        "op": "renewResourceToken",
+        "resourceKind": "preparation",
+        "request": {},
+        "status": 200,
+        "body": {
+          "token": {
+            "audience": "kodama-runtime-resource",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "completePreparation",
+        "resourceKind": "preparation",
+        "request": {
+          "attempts": 1,
+          "commit": "1111111111111111111111111111111111111111",
+          "credentialsRemoved": true,
+          "hooksDisabled": true,
+          "submodules": "skipped",
+          "treeId": "3333333333333333333333333333333333333333"
+        },
+        "status": 200,
+        "body": {
+          "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "recordedAt": "2026-10-26T10:00:30Z"
+        }
+      },
+      {
+        "api": "v2",
+        "op": "completePreparation",
+        "resourceKind": "preparation",
+        "request": {
+          "attempts": 1,
+          "commit": "1111111111111111111111111111111111111111",
+          "credentialsRemoved": true,
+          "hooksDisabled": true,
+          "submodules": "skipped",
+          "treeId": "3333333333333333333333333333333333333333"
+        },
+        "status": 200,
+        "body": {
+          "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "recordedAt": "2026-10-26T10:00:30Z"
+        }
+      },
+      {
+        "api": "v2",
+        "op": "completePreparation",
+        "resourceKind": "preparation",
+        "request": {
+          "attempts": 1,
+          "commit": "1111111111111111111111111111111111111111",
+          "credentialsRemoved": true,
+          "hooksDisabled": true,
+          "submodules": "skipped",
+          "treeId": "4444444444444444444444444444444444444444"
+        },
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "receipt_conflict",
+            "details": {},
+            "message": "a different receipt is recorded",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "preparation_has_no_secret_route",
+    "requirements": [
+      "VS-14"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "resolveResourceSecret",
+        "resourceKind": "preparation",
+        "request": {
+          "ref": "secret://project/test-db-password",
+          "version": 3
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "details": {},
+            "message": "this resource kind may not call the route",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "service_cannot_complete_preparation",
+    "requirements": [
+      "VS-14"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "completePreparation",
+        "resourceKind": "service",
+        "request": {
+          "attempts": 1,
+          "commit": "1111111111111111111111111111111111111111",
+          "credentialsRemoved": true,
+          "hooksDisabled": true,
+          "submodules": "skipped",
+          "treeId": "3333333333333333333333333333333333333333"
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "details": {},
+            "message": "this resource kind may not call the route",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "service_admission_and_secret_resolution",
+    "requirements": [
+      "VS-14",
+      "PX-17"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admitResource",
+        "resourceKind": "service",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "identity": {
+            "podName": null,
+            "podUid": null,
+            "workloadName": "s-ab12cd34ef567890-db",
+            "workloadUid": "8b3e3f40-5c6d-4e7f-8a01-2c3d4e5f6071"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "contextVersion": 2,
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "preparation": null,
+            "projectId": "p_inventory",
+            "resourceKey": "service.db",
+            "resourceKind": "service",
+            "runId": "run_01",
+            "service": {
+              "command": {
+                "args": [],
+                "command": [
+                  "/usr/local/bin/docker-entrypoint.sh",
+                  "postgres"
+                ],
+                "env": {
+                  "POSTGRES_DB": "app",
+                  "POSTGRES_PASSWORD_FILE": "/kodama/secrets/postgres-password",
+                  "POSTGRES_USER": "kodama"
+                },
+                "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+              },
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "name": "db",
+              "role": "general",
+              "secrets": [
+                {
+                  "delivery": "file",
+                  "name": "postgres-password",
+                  "ref": "secret://project/test-db-password",
+                  "version": 3
+                }
+              ]
+            },
+            "tenantId": "t_acme"
+          },
+          "token": {
+            "audience": "kodama-runtime-resource",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "resolveResourceSecret",
+        "resourceKind": "service",
+        "request": {
+          "ref": "secret://project/test-db-password",
+          "version": 3
+        },
+        "status": 200,
+        "body": {
+          "delivery": "file",
+          "name": "postgres-password",
+          "ref": "secret://project/test-db-password",
+          "valueBase64": "c2VjcmV0",
+          "version": 3
+        }
+      },
+      {
+        "api": "v2",
+        "op": "resolveResourceSecret",
+        "resourceKind": "service",
+        "request": {
+          "ref": "secret://project/other",
+          "version": 1
+        },
+        "status": 404,
+        "body": {
+          "error": {
+            "code": "not_found",
+            "details": {},
+            "message": "no such binding",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "resource_admission_replay_and_consumption",
+    "requirements": [
+      "VS-14"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admitResource",
+        "resourceKind": "service",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "identity": {
+            "podName": null,
+            "podUid": null,
+            "workloadName": "kr-fedcba9876543210fedcba98",
+            "workloadUid": "3f9a2c4b6d8e1f0a7b5c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "contextVersion": 2,
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "preparation": null,
+            "projectId": "p_inventory",
+            "resourceKey": "service.cache",
+            "resourceKind": "service",
+            "runId": "run_01",
+            "service": {
+              "command": {
+                "args": [],
+                "command": null,
+                "env": {
+                  "MODE": "ephemeral"
+                },
+                "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+              },
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "name": "cache",
+              "role": "general",
+              "secrets": []
+            },
+            "tenantId": "t_acme"
+          },
+          "token": {
+            "audience": "kodama-runtime-resource",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "admitResource",
+        "resourceKind": "service",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "identity": {
+            "podName": null,
+            "podUid": null,
+            "workloadName": "kr-fedcba9876543210fedcba98",
+            "workloadUid": "3f9a2c4b6d8e1f0a7b5c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "contextVersion": 2,
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "preparation": null,
+            "projectId": "p_inventory",
+            "resourceKey": "service.cache",
+            "resourceKind": "service",
+            "runId": "run_01",
+            "service": {
+              "command": {
+                "args": [],
+                "command": null,
+                "env": {
+                  "MODE": "ephemeral"
+                },
+                "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+              },
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "name": "cache",
+              "role": "general",
+              "secrets": []
+            },
+            "tenantId": "t_acme"
+          },
+          "token": {
+            "audience": "kodama-runtime-resource",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "admitResource",
+        "resourceKind": "service",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "identity": {
+            "podName": null,
+            "podUid": null,
+            "workloadName": "kr-fedcba9876543210fedcba98",
+            "workloadUid": "3f9a2c4b6d8e1f0a7b5c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a"
+          },
+          "nonce": "mmmmmmmmmmmmmmmmmmmmmm"
+        },
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "admission_consumed",
+            "details": {},
+            "message": "the credential was consumed with another nonce",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "resource_identity_mismatch_unbound_and_revoked",
+    "requirements": [
+      "VS-14",
+      "IT-13"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admitResource",
+        "resourceKind": "service",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "identity": {
+            "podName": null,
+            "podUid": null,
+            "workloadName": "s-ab12cd34ef567890-db",
+            "workloadUid": "9c4f4051-6d7e-4f80-9b12-3d4e5f607182"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "details": {},
+            "message": "the identity does not match the committed resource",
+            "requestId": "req_01"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "admitResource",
+        "resourceKind": "preparation",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "identity": {
+            "podName": "kr-other-pod",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "workloadName": "kr-0123456789abcdef01234567",
+            "workloadUid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "forbidden",
+            "details": {},
+            "message": "the pod does not belong to the workload",
+            "requestId": "req_01"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "admitResource",
+        "resourceKind": "service",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "identity": {
+            "podName": null,
+            "podUid": null,
+            "workloadName": "kr-process-1",
+            "workloadUid": "pid-4242-start-1761473000"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 409,
+        "body": {
+          "error": {
+            "code": "resource_unbound",
+            "details": {},
+            "message": "the resource instance is not bound yet",
+            "requestId": "req_01"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "renewResourceToken",
+        "resourceKind": "service",
+        "request": {},
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "resource_revoked",
+            "details": {},
+            "message": "the resource is no longer authorized",
+            "requestId": "req_01"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "getResourceContext",
+        "resourceKind": "service",
+        "request": null,
+        "status": 403,
+        "body": {
+          "error": {
+            "code": "resource_revoked",
+            "details": {},
+            "message": "the resource is no longer authorized",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "resource_incompatible_client",
+    "requirements": [
+      "VS-14"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admitResource",
+        "resourceKind": "service",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "0.0.1",
+          "identity": {
+            "podName": null,
+            "podUid": null,
+            "workloadName": "s-ab12cd34ef567890-db",
+            "workloadUid": "8b3e3f40-5c6d-4e7f-8a01-2c3d4e5f6071"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "profile_unsupported",
+            "details": {},
+            "message": "the client version is not supported",
+            "requestId": "req_01"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "attempt_token_renewal_keeps_the_attempt_audience",
+    "requirements": [
+      "PX-21"
+    ],
+    "steps": [
+      {
+        "api": "v2",
+        "op": "admit",
+        "request": {
+          "admissionCredential": "adm_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "clientVersion": "1.4.0",
+          "job": {
+            "name": "kodama-att-02",
+            "podName": "kodama-att-02-x7k2p",
+            "podUid": "7a2d2e3f-4b5c-4d6e-9fa0-1b2c3d4e5f60",
+            "uid": "6f1c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+          },
+          "nonce": "nnnnnnnnnnnnnnnnnnnnnn"
+        },
+        "status": 200,
+        "body": {
+          "context": {
+            "actionKey": "run_01.integration",
+            "attemptId": "att_02",
+            "command": {
+              "args": [
+                "cd /workspace \u0026\u0026 go test ./..."
+              ],
+              "command": [
+                "/bin/sh",
+                "-ec"
+              ],
+              "env": {
+                "PGHOST": "s-ab12cd34ef567890-db",
+                "PGPORT": "5432",
+                "PGUSER": "kodama"
+              },
+              "image": "registry.example.invalid/test-tools@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            "contextVersion": 2,
+            "definition": {
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "id": "pd_02"
+            },
+            "designBaseline": null,
+            "egress": [],
+            "endpoints": {
+              "db": {
+                "host": "s-ab12cd34ef567890-db",
+                "ports": {
+                  "sql": 5432
+                }
+              }
+            },
+            "environment": null,
+            "inputs": {},
+            "limits": {
+              "maxDiagnosticBytes": 10485760,
+              "maxOutputBytes": 104857600,
+              "maxOutputFiles": 100,
+              "timeoutSeconds": 1200
+            },
+            "outputs": [
+              {
+                "name": "report",
+                "path": "/kodama/outputs/tests.json",
+                "type": "artifact"
+              }
+            ],
+            "policy": {
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "id": "run-v1"
+            },
+            "profile": null,
+            "projectId": "p_inventory",
+            "run": {
+              "deadlineAt": "2026-10-26T11:00:00Z",
+              "startedAt": "2026-10-26T10:00:00Z"
+            },
+            "runId": "run_01",
+            "runModel": "run_shared",
+            "secrets": [
+              {
+                "delivery": "env",
+                "name": "PGPASSWORD",
+                "ref": "secret://project/test-db-password",
+                "version": 3
+              }
+            ],
+            "stepId": "integration",
+            "tenantId": "t_acme",
+            "workItem": null,
+            "workspace": {
+              "access": "read",
+              "lineage": [
+                {
+                  "access": "write",
+                  "attemptId": "att_01",
+                  "beganAt": "2026-10-26T10:01:00Z",
+                  "ignoredPresent": false,
+                  "publishedCommit": "2222222222222222222222222222222222222222",
+                  "stepId": "generate",
+                  "workspaceState": "clean"
+                }
+              ],
+              "mountPath": "/workspace",
+              "preparation": {
+                "commit": "1111111111111111111111111111111111111111",
+                "receiptDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "treeId": "3333333333333333333333333333333333333333"
+              },
+              "source": {
+                "branch": null,
+                "expectedTip": null,
+                "headCommit": "2222222222222222222222222222222222222222",
+                "inputCommit": "1111111111111111111111111111111111111111",
+                "repositoryUrl": "https://git.example.invalid/acme/inventory.git"
+              }
+            }
+          },
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      },
+      {
+        "api": "v2",
+        "op": "renewToken",
+        "request": {},
+        "status": 200,
+        "body": {
+          "token": {
+            "audience": "kodama-runtime",
+            "expiresAt": "2026-10-26T10:15:00Z",
+            "maxExpiresAt": "2026-10-26T12:00:00Z",
+            "token": "rt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tokenType": "Bearer"
+          }
+        }
+      }
+    ]
+  }
+]

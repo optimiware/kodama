@@ -13,6 +13,32 @@ executable.
 | `v1/fixtures/cases.json` | Rejected documents with the diagnostic code each must produce |
 | `v1/fixtures/canonical/` | Golden canonical bytes and digests |
 
+## kodama/v1alpha2 (`run_shared`)
+
+The sibling directory `v1alpha2/` (package `pipelinev1alpha2`) holds the executable schema,
+fixtures and goldens of the [`kodama/v1alpha2` format](../../docs/contracts/pipeline-format-v1alpha2.md),
+delivered by T-110. It is a separate document version: a document is judged by the schema of its own
+`apiVersion`, a `v1alpha2` document is never valid under the `v1/` schema and the reverse, and every
+`v1/` golden, digest and diagnostic is unchanged. **Representability is not installation support**:
+the validator rejects the format with `format_disabled` unless `Config.EnableV1Alpha2` is set, and run
+admission refuses it until the run-resource capability checks exist (T-112, T-116).
+
+| Path | Purpose |
+| --- | --- |
+| `v1alpha2/schema.json` | JSON Schema (2020-12): services, ports, resources, storage, readiness, edges, egress names, run deadline, `workspace` without `from`; unknown and raw Pod/security/mount/volume/network fields rejected |
+| `v1alpha2/schema.go` | `SchemaJSON()`, `Schema()`, `APIVersion` |
+| `v1alpha2/fixtures/valid/` | Valid documents: the contract example, the reference vector (YAML and JSON), the four argv rows plus the explicit-empty spelling, edges and endpoints with a builder service, source-free cleanup, order with a gate, agent and gate |
+| `v1alpha2/fixtures/cases.json` | Rejected documents with the diagnostic code, path and stage each must produce (generated from the validator tests; `schemaValid` is the schema's own verdict, so a case the validator rejects at its syntax stage may be schema-valid) |
+| `v1alpha2/fixtures/canonical/` | Golden canonical bytes and digests. `service-test` is the contract's published vector (`sha256:368c96…10e2`), derived independently with Python |
+
+Regenerate goldens and cases deliberately and review the diff:
+`KODAMA_UPDATE_GOLDEN=1 go test ./internal/pipeline -run 'Test_v1alpha2_(canonical_goldens|invalid_documents)'`.
+
+Hand-off for T-116 (the sole owner of public-API integration): `api/pipeline.yaml` (bundled into the
+generated aggregate and client) is **not** changed here and still documents only `kodama/v1alpha1`.
+T-116 adds the `v1alpha2` document description, the `format_disabled` and `workspace_from_removed`
+diagnostics and the regenerated aggregate/client together, behind the installation's explicit enablement.
+
 ## Schema versus enabled behavior
 
 The schema says which shapes exist. It does not say which step kinds an

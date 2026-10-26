@@ -18,6 +18,8 @@ integration is claimed.
 | `parse.go`, `document.go` | Bounded YAML/JSON parsing into a structurally valid `Document` (strict, no aliases/tags/duplicate keys) |
 | `validate.go`, `graph.go`, `references.go` | `Validator`: DAG, source/writer ordering, whole-scalar references, typing, images, outputs, gates, capability and reference lookups |
 | `canonical.go` | Canonical bytes and `Digest` (frozen by golden fixtures) |
+| `document_v2.go`, `validate_v2.go`, `references_v2.go`, `parse_v2.go`, `errors_v2.go` | The `kodama/v1alpha2` (`run_shared`) branch: types, normalization and canonical tree, shape and semantic rules, endpoint expressions, schema-error code mapping, new diagnostic and admission-refusal codes. `document.go`, `validate.go` and `canonical.go` dispatch on `apiVersion`; no `kodama/v1alpha1` branch changed behavior |
+| `order.go`, `run_defaults.go` | `ExecutionOrder` (declaration-order topological order, gates included), `EffectiveAccess` (source-backed/source-free defaults) and `EffectiveArgv` (the argv matrix): pure functions for run admission and the runtime adapters |
 | `definition.go`, `errors.go` | `Definition` entity, `Candidate`, failure classes, bounded diagnostics |
 | `ports.go`, `service.go` | Consumer-owned ports and the `Register`/`Get`/`List` use cases |
 | `postgres/` | `Store` (`pipeline.Repository`), `T014_001_pipeline_definitions.sql`, `Migrations()` |
@@ -155,3 +157,34 @@ go generate ./internal/pipeline/... && git diff --exit-code -- internal/pipeline
 4. **Parser bounds** (`256 KiB`, depth 16, 20000 nodes) are library options, not installation settings.
 5. **Scope of validation**: definition-side only. Run-input resolution, source-commit ownership, secret-version pinning, output finalization, runtime filesystem/symlink containment of `/kodama/outputs` and gate applicability are runtime responsibilities of their owning tasks.
 6. **Wiring**: T-027 registers `Migrations()` after `storage.BaseContribution()`, builds the cursor codec, and provides `Authority`, routes and the router `Authorizer` policy for the three actions.
+
+## kodama/v1alpha2 (run_shared), delivered by T-110, not enabled
+
+The format is specified by [`pipeline-format-v1alpha2.md`](../../docs/contracts/pipeline-format-v1alpha2.md)
+and described in [`contracts/pipeline`](../../contracts/pipeline/README.md). Facts the next
+tasks rely on:
+
+* **Opt-in, off by default.** `Config.EnableV1Alpha2` (zero value `false`) makes a
+  `v1alpha2` document fail `Validate` with `format_disabled` (semantic stage, no lookup, nothing
+  persisted by `Service.Register`). `Validator.FormatEnabled(apiVersion)` reports the choice.
+  Enabling registration is not enabling execution: run admission refuses the format
+  (the T-118 guard in `internal/execution`) until T-112/T-116 deliver complete resource
+  capability checks.
+* **Reading is independent of the flag.** `ParseYAML`/`ParseJSON`, `NewValidatedFromCanonical`
+  and `Validated.Document` always read a `v1alpha2` document, so stored definitions stay
+  readable on an installation that never enabled or later disables registration.
+* **Stages.** Schema and shape findings (ranges, ports, probes, storage, edges, egress names,
+  `workspace_from_removed`, `invalid_*`, `duplicate_port`, probe/edge `unknown_port` and
+  `unknown_service`) are syntax-stage. Expression, edge-to-endpoint, secret and `needs`-graph
+  findings are semantic. The same code is reported at the same path whichever path found it:
+  `Validate` re-runs the shape checks for a `Document` built in code.
+* **Canonical form** fills contract-constant defaults only. Absent step `workspace`,
+  `spec.runWorkspace`, service `command`, `environment` and `when` stay absent; `args` absent
+  and `[]` are one value; `services: {}` and an absent `services` are two spellings kept distinct.
+* **Typed documents.** `Spec` gained `TimeoutSeconds`, `RunWorkspace`, `Services`, `Network`; `Step`
+  gained `Egress`. The service type is `RunService` (the use case keeps the name `Service`). A
+  `kodama/v1alpha1` document that sets any of them is refused, never silently reduced.
+* **Pure helpers.** `ExecutionOrder`, `EffectiveAccess` and `EffectiveArgv` implement the contract
+  tables; the `Admission*` constants spell the admission refusal codes execution returns.
+* **Execution codec.** `execution.EncodeStep` persists only the `v1alpha1` step fields. A run must
+  not be admitted from a `v1alpha2` definition until T-112 extends the codec and the guard together.

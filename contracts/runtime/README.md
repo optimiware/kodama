@@ -62,3 +62,35 @@ go test ./contracts/runtime/v1 -run TestOpenAPI -update   # after changing Opera
 ```
 
 `TestRuntimeContractFixtures` (PX-10, AR-06, AC-12) and `TestDesignContextFixtures` (AR-14, DQ-14, SD-08) are the T-003 acceptance checks. The schema's string patterns are asserted equal to the Go patterns, and `api/runtime.yaml` is asserted equal to the document generated from `Operations`. Changing a contract requires agreement from the dependent tasks (T-016, T-019, T-021, T-022).
+
+## Runtime contract v2 (`run_shared`): shapes only, not enabled
+
+[`v2/`](v2/) (package `runtimev2`, delivered by T-110) is the executable form of
+[runtime v2](../../docs/contracts/runtime-v2.md). `v1/` is untouched: its schema, fixtures, canonical vectors, validators and
+`api/runtime.yaml` are byte-identical, and `api/runtime.yaml` stays the frozen v1 operation table until T-116 integrates the v2
+fragments and regenerates the aggregate and client together.
+
+| Path | Contents |
+| --- | --- |
+| `v2/schema.json` | `ContextV2`, `AdmitResponseV2`, begin, resource-subject, `PreparationReceipt*` and `ErrorResponse` definitions. Everything shared with v1 is referenced from the unchanged v1 schema resource (`https://kodama.invalid/contracts/runtime/v1/schema.json`); consumers compile both |
+| `v2/*.go` | `ContextV2` and its pins (workspace source/preparation/lineage, endpoints, egress, run window, policy), `BeginRequest/Response`, `ResourceIdentity`, `ResourceAdmitRequest/Response`, `ResourceTokenInfo/Request/Response` (audience `kodama-runtime-resource`), `ResourceContext`, `PreparationReceiptRequest/Response`; aliases of the unchanged v1 DTOs; `DecodeRequest`/`DecodeResponse` (the v1 decoders); the v2 error codes `context_version_mismatch`, `receipt_conflict`, `resource_unbound`, `resource_revoked` and `Status`; the `Operations` table; the pure `DeriveBegin`, `CheckBeginResponse`, `CheckReceipt`, `CheckAudience` and `CheckResourceCall` |
+| `v2/fixtures/cases.json`, `scenarios.json` | Generated from typed bases and mutations (`KODAMA_UPDATE_GOLDEN=1 go test ./contracts/runtime/v2`); the schema judges every payload independently and a drift test pins the files |
+
+What the fixtures are: protocol and shape examples. A scenario proves that its request and response bodies decode, that the status
+and code belong to the operation, and that the recorded exchange is consistent with the pure derivations (begin state, replay,
+receipt, audience, resource kind). It proves **nothing** about an HTTP handler, authority, credentials, the begin fence's
+database linearization against cancellation, preparation lifecycle, or revocation: those belong to T-113 (entrypoint and
+authority) and T-116 (assembly) and are tested there.
+
+Rules specific to v2: the unchanged v1 messages (`AdmitRequest`, `TokenInfo` of audience `kodama-runtime`, secrets, artifacts,
+source proposals, `Result`/`ResultRequest`/`ResultResponse`) are reused with their v1 validators, and `ResultHash` is the v1
+canonicalization of the result object, so every historical hash holds (`Test_runtime_v2_result_hash_unchanged`). The resource
+subject types never reuse the v1 token or Job identity types. `receiptDigest` is carried as an opaque `Digest`: the exact
+canonical object it covers (request plus run, resource key and observed volume UID) is for T-112, which owns the receipt
+store. Engineering bounds chosen here where the contract is silent: lineage at most 8192 entries, preparation `maxAttempts`
+1–100, service secret bindings at most 80, element and value sizes 8192 bytes.
+
+```sh
+go test -race -count=1 ./contracts/runtime/...
+KODAMA_UPDATE_GOLDEN=1 go test ./contracts/runtime/v2   # after changing a base, then review the diff
+```

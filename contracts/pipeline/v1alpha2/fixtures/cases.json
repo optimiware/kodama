@@ -990,6 +990,51 @@
     "document": "{\"apiVersion\":\"kodama/v1alpha2\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"inputs\":{\"region\":{\"default\":\"eu\",\"type\":\"string\"}},\"network\":{\"edges\":[]},\"services\":{\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{}},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"test\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600}],\"timeoutSeconds\":1800}}"
   },
   {
+    "name": "service env name starts with a digit",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_format",
+    "path": "services.db.env",
+    "document": "{\"apiVersion\":\"kodama/v1alpha2\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"inputs\":{\"region\":{\"default\":\"eu\",\"type\":\"string\"}},\"network\":{\"edges\":[{\"from\":\"cache\",\"ports\":[\"sql\"],\"to\":\"db\"}]},\"services\":{\"cache\":{\"image\":\"registry.example.invalid/cache@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"ports\":{\"kv\":{\"port\":6379}},\"readiness\":{\"tcp\":\"kv\",\"timeoutSeconds\":30},\"resources\":{\"cpuMillis\":100,\"ephemeralMiB\":64,\"memoryMiB\":64}},\"db\":{\"env\":{\"1BAD\":\"x\"},\"image\":\"registry.example.invalid/db@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"ports\":{\"admin\":{\"port\":5433},\"sql\":{\"port\":5432}},\"readiness\":{\"tcp\":\"sql\",\"timeoutSeconds\":60},\"resources\":{\"cpuMillis\":500,\"ephemeralMiB\":256,\"memoryMiB\":512}}},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"env\":{\"PGHOST\":\"${{ services.db.host }}\",\"PGPORT\":\"${{ services.db.ports.sql }}\"},\"id\":\"test\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "service secret file name with a slash",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_format",
+    "path": "services.db.secretFiles",
+    "document": "{\"apiVersion\":\"kodama/v1alpha2\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"inputs\":{\"region\":{\"default\":\"eu\",\"type\":\"string\"}},\"network\":{\"edges\":[{\"from\":\"cache\",\"ports\":[\"sql\"],\"to\":\"db\"}]},\"services\":{\"cache\":{\"image\":\"registry.example.invalid/cache@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"ports\":{\"kv\":{\"port\":6379}},\"readiness\":{\"tcp\":\"kv\",\"timeoutSeconds\":30},\"resources\":{\"cpuMillis\":100,\"ephemeralMiB\":64,\"memoryMiB\":64}},\"db\":{\"command\":[\"/bin/db\"],\"image\":\"registry.example.invalid/db@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"ports\":{\"admin\":{\"port\":5433},\"sql\":{\"port\":5432}},\"readiness\":{\"tcp\":\"sql\",\"timeoutSeconds\":60},\"resources\":{\"cpuMillis\":500,\"ephemeralMiB\":256,\"memoryMiB\":512},\"secretFiles\":{\"a/b\":\"secret://project/test-db-password\"}}},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"env\":{\"PGHOST\":\"${{ services.db.host }}\",\"PGPORT\":\"${{ services.db.ports.sql }}\"},\"id\":\"test\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "input name uppercase",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_format",
+    "path": "spec.inputs",
+    "document": "{\"apiVersion\":\"kodama/v1alpha2\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"inputs\":{\"Region\":{\"type\":\"string\"}},\"network\":{\"edges\":[{\"from\":\"cache\",\"ports\":[\"sql\"],\"to\":\"db\"}]},\"services\":{\"cache\":{\"image\":\"registry.example.invalid/cache@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"ports\":{\"kv\":{\"port\":6379}},\"readiness\":{\"tcp\":\"kv\",\"timeoutSeconds\":30},\"resources\":{\"cpuMillis\":100,\"ephemeralMiB\":64,\"memoryMiB\":64}},\"db\":{\"image\":\"registry.example.invalid/db@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"ports\":{\"admin\":{\"port\":5433},\"sql\":{\"port\":5432}},\"readiness\":{\"tcp\":\"sql\",\"timeoutSeconds\":60},\"resources\":{\"cpuMillis\":500,\"ephemeralMiB\":256,\"memoryMiB\":512}}},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"env\":{\"PGHOST\":\"${{ services.db.host }}\",\"PGPORT\":\"${{ services.db.ports.sql }}\"},\"id\":\"test\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "output name uppercase",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_format",
+    "path": "steps[0].outputs",
+    "document": "{\"apiVersion\":\"kodama/v1alpha2\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"inputs\":{\"region\":{\"default\":\"eu\",\"type\":\"string\"}},\"network\":{\"edges\":[{\"from\":\"cache\",\"ports\":[\"sql\"],\"to\":\"db\"}]},\"services\":{\"cache\":{\"image\":\"registry.example.invalid/cache@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"ports\":{\"kv\":{\"port\":6379}},\"readiness\":{\"tcp\":\"kv\",\"timeoutSeconds\":30},\"resources\":{\"cpuMillis\":100,\"ephemeralMiB\":64,\"memoryMiB\":64}},\"db\":{\"image\":\"registry.example.invalid/db@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"ports\":{\"admin\":{\"port\":5433},\"sql\":{\"port\":5432}},\"readiness\":{\"tcp\":\"sql\",\"timeoutSeconds\":60},\"resources\":{\"cpuMillis\":500,\"ephemeralMiB\":256,\"memoryMiB\":512}}},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"env\":{\"PGHOST\":\"${{ services.db.host }}\",\"PGPORT\":\"${{ services.db.ports.sql }}\"},\"id\":\"test\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"outputs\":{\"Report\":{\"type\":\"string\"}},\"timeoutSeconds\":600}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "step env name with a dash",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_format",
+    "path": "steps[0].env",
+    "document": "{\"apiVersion\":\"kodama/v1alpha2\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"inputs\":{\"region\":{\"default\":\"eu\",\"type\":\"string\"}},\"network\":{\"edges\":[{\"from\":\"cache\",\"ports\":[\"sql\"],\"to\":\"db\"}]},\"services\":{\"cache\":{\"image\":\"registry.example.invalid/cache@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"ports\":{\"kv\":{\"port\":6379}},\"readiness\":{\"tcp\":\"kv\",\"timeoutSeconds\":30},\"resources\":{\"cpuMillis\":100,\"ephemeralMiB\":64,\"memoryMiB\":64}},\"db\":{\"image\":\"registry.example.invalid/db@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"ports\":{\"admin\":{\"port\":5433},\"sql\":{\"port\":5432}},\"readiness\":{\"tcp\":\"sql\",\"timeoutSeconds\":60},\"resources\":{\"cpuMillis\":500,\"ephemeralMiB\":256,\"memoryMiB\":512}}},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"env\":{\"A-B\":\"x\"},\"id\":\"test\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600}],\"timeoutSeconds\":1800}}"
+  },
+  {
     "name": "missing run deadline",
     "format": "json",
     "schemaValid": false,

@@ -68,8 +68,8 @@ func readFixture(t testing.TB, rel string) string {
 // document as the fixture records. The schema alone decides structure;
 // edge-to-service references, probe-to-port references, source defaults and the
 // format capability are the validator's (internal/pipeline), so a case the
-// validator rejects at its syntax stage may still be schema-valid. PX-17,
-// PX-19, IT-14.
+// validator rejects at its syntax stage may still be schema-valid. PX-17, PX-20,
+// IT-14.
 func Test_v1alpha2_contract_fixtures(t *testing.T) {
 	valid, err := filepath.Glob("fixtures/valid/*")
 	if err != nil || len(valid) < 6 {
@@ -151,7 +151,7 @@ func Test_v1alpha2_contract_fixtures(t *testing.T) {
 
 // Test_v1alpha2_schema_is_a_separate_version: a v1alpha2 document is never
 // valid under the v1alpha1 schema and the reverse, so no document is reinterpreted.
-// PX-17.
+// PX-21.
 func Test_v1alpha2_schema_is_a_separate_version(t *testing.T) {
 	v2 := readFixture(t, "valid/service-test.yaml")
 	v1sch, err := pipelinev1.Schema()
@@ -180,7 +180,7 @@ func Test_v1alpha2_schema_is_a_separate_version(t *testing.T) {
 
 // Test_v1alpha2_schema_states_the_contract_bounds pins the numbers the prose
 // contract fixes, so the schema, the Go shape checks and the document cannot
-// drift apart silently. PX-19, IT-14.
+// drift apart silently. PX-17, IT-14.
 func Test_v1alpha2_schema_states_the_contract_bounds(t *testing.T) {
 	var s map[string]any
 	if err := json.Unmarshal(pipelinev1alpha2.SchemaJSON(), &s); err != nil {
