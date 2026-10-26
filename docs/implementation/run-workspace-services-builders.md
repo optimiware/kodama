@@ -29,7 +29,7 @@ These documents record the design baseline, not delivered runtime behavior. The 
 
 | Phase | Task | Checkpoint |
 | --- | --- | --- |
-| P0 | [T-109](../tasks/T-109-run-resource-contracts.md), [T-110](../tasks/T-110-run-resource-wire-contracts.md) | Owning specifications, then executable versioned wire/parser fixtures |
+| P0 | [T-109](../tasks/T-109-run-resource-contracts.md), [T-118](../tasks/T-118-pipeline-version-admission.md), [T-110](../tasks/T-110-run-resource-wire-contracts.md) | Owning specifications and old-executor version fence independently, then executable versioned wire/parser fixtures |
 | P1 | [T-111](../tasks/T-111-rootless-profile-qualification.md) | Real deployable builder/storage/network profile |
 | P2 | [T-112](../tasks/T-112-run-resource-lifecycle.md) | Execution-owned resources, persistence and frozen companion seam |
 | P3 | [T-113](../tasks/T-113-run-workspace-authority.md) | Preparation, authority, cumulative publication and provenance |

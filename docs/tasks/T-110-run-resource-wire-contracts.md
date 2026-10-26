@@ -2,9 +2,9 @@
 id: T-110
 milestone: production
 status: planned
-depends_on: [T-109]
+depends_on: [T-109, T-118]
 decision_blockers: []
-owns: [contracts/pipeline/, contracts/runtime/, internal/pipeline/, internal/execution/admission.go, internal/execution/pipeline_version_test.go]
+owns: [contracts/pipeline/, contracts/runtime/, internal/pipeline/, internal/execution/pipeline_version_v2_test.go]
 check: make check-go PKGS='./contracts/... ./internal/pipeline/... ./internal/execution/...'
 resources: [go]
 acceptance: []
@@ -21,7 +21,7 @@ Design baseline `0b12febef5b9e092982af74e2c951afe2dd80c19`, executable baseline 
 - Versioned pipeline schema/Go DTOs and strict YAML/JSON parsing, normalization and canonical fixtures for shared scratch, services, bounded total deadline, resources/storage, probes, declared network edges and endpoint expressions. Validate immutable step/service images and reject unknown/raw Pod controls, invalid ports/probes/references, step-output service dependencies and new-format `workspace.from`.
 - Stable topological-order fixtures with declaration-order tie breaks and gate positions; preserve explicit logical/output dependencies.
 - New immutable runtime context version with run-resource/workspace/policy/endpoint/source-provenance pins and source-free shape, compatible reference to unchanged result/source-proposal envelopes as defined by T-109. Keep v1 readers/tests intact.
-- Add the narrow execution admission version guard and regression tests in the explicitly owned files: every new-run path (ordinary/source-free cleanup included) refuses unsupported definition versions, including a v2 definition supplied by a resolver or loaded from storage. Registration opt-in alone is not an execution fence. T-112 later extends the guard only with its complete run-resource capability checks.
+- Consume T-118's independently landed old-executor admission guard; add real v2-definition regression tests in the explicitly owned test file for ordinary and source-free cleanup admission, including resolver/storage definitions. Registration opt-in alone is not an execution fence. T-112 later extends the guard only with its complete run-resource capability checks.
 - Supply versioned schema/README fixtures and the module API handoff for T-116. Keep existing `api/pipeline.yaml` and `api/runtime.yaml` unchanged in P0: the former is bundled into the generated aggregate/client and the latter is byte-checked against frozen v1 operations. T-116 owns source-fragment integration and regeneration together; do not publish a drifting aggregate or repoint a v1 operation to v2.
 
 ## Acceptance
