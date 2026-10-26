@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/optimiware/kodama/internal/diag"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -149,7 +150,11 @@ func (s *Service) log(ctx context.Context, op string, err error, attrs ...any) {
 	if err == nil {
 		return
 	}
-	s.o.Logger.LogAttrs(ctx, slog.LevelWarn, "execution: "+op, append([]slog.Attr{slog.String("error", errClass(err))}, toAttrs(attrs)...)...)
+	head := []slog.Attr{slog.String("error", errClass(err))}
+	if detail := diag.Describe(err); detail != "" {
+		head = append(head, slog.String("detail", detail))
+	}
+	s.o.Logger.LogAttrs(ctx, slog.LevelWarn, "execution: "+op, append(head, toAttrs(attrs)...)...)
 }
 
 func toAttrs(kv []any) []slog.Attr {

@@ -4,9 +4,9 @@ This backlog holds the **18 planned and deferred tasks**. Completed work is not 
 
 <!-- harness:summary:start -->
 
-**Ready now:** [T-104](T-104-kubernetes-full-readiness.md), [T-107](T-107-direct-secret-delivery.md).
+**Ready now:** [T-104](T-104-kubernetes-full-readiness.md), [T-107](T-107-direct-secret-delivery.md), [T-108](T-108-execution-finalization-diagnostics.md).
 
-**Deferred:** [T-029](T-029-recovery-qualification.md), [T-047](T-047-supabase-blueprint.md), [T-050](T-050-engineer-workbench.md), [T-051](T-051-analyst-interface.md), [T-052](T-052-native-harness.md), [T-053](T-053-claude-harness.md), [T-054](T-054-codex-harness.md), [T-055](T-055-hosted-isolation.md), [T-056](T-056-production-release.md), [T-057](T-057-operator-assessment.md), [T-058](T-058-operator.md), [T-059](T-059-chassis-assessment.md), [T-060](T-060-m4-integration.md), [T-061](T-061-platform-integration.md), [T-069](T-069-qa-profile-qualification.md), [T-085](T-085-live-agent-qualification.md), [T-090](T-090-staging-deployment.md), [T-104](T-104-kubernetes-full-readiness.md), [T-108](T-108-execution-finalization-diagnostics.md).
+**Deferred:** [T-029](T-029-recovery-qualification.md), [T-047](T-047-supabase-blueprint.md), [T-050](T-050-engineer-workbench.md), [T-051](T-051-analyst-interface.md), [T-052](T-052-native-harness.md), [T-053](T-053-claude-harness.md), [T-054](T-054-codex-harness.md), [T-055](T-055-hosted-isolation.md), [T-056](T-056-production-release.md), [T-057](T-057-operator-assessment.md), [T-058](T-058-operator.md), [T-059](T-059-chassis-assessment.md), [T-060](T-060-m4-integration.md), [T-061](T-061-platform-integration.md), [T-069](T-069-qa-profile-qualification.md), [T-085](T-085-live-agent-qualification.md), [T-090](T-090-staging-deployment.md), [T-104](T-104-kubernetes-full-readiness.md).
 
 Generated from task frontmatter by `bun ../openforge/src/cli.ts index --write`; do not edit by hand.
 
@@ -92,7 +92,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-104 Full Kubernetes installation readiness](T-104-kubernetes-full-readiness.md) | — | planned |
 | [T-106 Production TLS hardening with a private CA](T-106-production-tls-hardening.md) | T-104, T-090 | deferred |
 | [T-107 Direct project-secret delivery to ordinary steps](T-107-direct-secret-delivery.md) | T-104 | planned |
-| [T-108 Result finalization ordering and actionable dispatch diagnostics](T-108-execution-finalization-diagnostics.md) | T-104 | deferred |
+| [T-108 Result finalization ordering and actionable dispatch diagnostics](T-108-execution-finalization-diagnostics.md) | T-104 | planned |
 
 ## Verification and scope
 

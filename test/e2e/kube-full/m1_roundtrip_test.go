@@ -143,6 +143,27 @@ func TestKubeM1Roundtrip(t *testing.T) {
 	if tip := w.Repo.Commit(ctx, strings.TrimPrefix(raceWS.Branch, "refs/heads/")); tip != moved {
 		t.Fatal("the human's commit on the work branch was overwritten")
 	}
+	// The failed result is acknowledged before its workload is stopped: the server logged the accepted
+	// result and no unavailable signal for this attempt (previously the pod was killed mid-acknowledgment).
+	serverLog, err := i.Kube.Run(ctx, "-n", i.S.Namespace, "logs", "deploy/"+i.Deployment(), "-c", "server", "--since=30m")
+	if err != nil {
+		t.Fatalf("read the server log: %v", err)
+	}
+	accepted := false
+	for _, line := range strings.Split(serverLog, "\n") {
+		if !strings.Contains(line, atts[0].Id) {
+			continue
+		}
+		if strings.Contains(line, `"op":"submitResult"`) && strings.Contains(line, `"outcome":"ok"`) {
+			accepted = true
+		}
+		if strings.Contains(line, `"op":"submitResult"`) && strings.Contains(line, `"outcome":"unavailable"`) {
+			t.Fatalf("the conflicted writer's result was reported unavailable: %.300s", line)
+		}
+	}
+	if !accepted {
+		t.Fatal("the server log does not show the conflicted writer's result accepted")
+	}
 }
 
 func refSHA(refs []string, name string) string {

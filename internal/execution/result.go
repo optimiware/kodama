@@ -122,11 +122,16 @@ func (s *Service) CommitResult(ctx context.Context, in ResultCommit) (ResultAck,
 	if err != nil {
 		return ResultAck{}, err
 	}
-	s.terminateRevoked(ctx, agg)
 	out, _ := res.(resultOutcome)
 	if out.revoked {
+		// A late or refused result has no acknowledgment to protect: stop the workload now.
+		s.terminateRevoked(ctx, agg)
 		return ResultAck{}, ErrAttemptRevoked
 	}
+	// An accepted result is acknowledged before its workload is stopped. The entrypoint is still waiting for
+	// the answer; stopping first killed it mid-acknowledgment, so the same outcome read as a finalization
+	// failure at the pod and an unavailable result at the server. The durable termination request is carried
+	// out by the next reconciliation pass (a few seconds), which also covers a lost or failed stop.
 	return out.ack, nil
 }
 

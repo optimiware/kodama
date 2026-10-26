@@ -68,6 +68,9 @@ func (e *Error) Error() string {
 	return s
 }
 
+// SafeDiagnostic implements diag.Safe: the operation, class and HTTP status only, scrubbed of any body.
+func (e *Error) SafeDiagnostic() string { return e.Error() }
+
 // Is matches the failure class.
 func (e *Error) Is(target error) bool { return target == e.Kind }
 
