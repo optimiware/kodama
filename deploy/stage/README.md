@@ -47,7 +47,14 @@ zero is a real outage with the database untouched); `kq-pgprobe` is the test pro
 tokens, object-store and Key Manager credentials are copied from the stage; the ingress host is `<name>.<ip>.nip.io` with a
 Let's Encrypt certificate; the OIDC issuer and audience are the stage's. The session's Helm values and derived contract are
 written next to its state; the tests install, upgrade and uninstall the release themselves. `qualify.sh destroy` removes the
-release, tenant namespaces, database and all session resources. The test process runs on the operator machine
+release, tenant namespaces, database and all session resources.
+
+By default the session database is created through the Scaleway API (operator `SCW_*` credentials). With
+`--database sql` (or `KODAMA_QUAL_DATABASE=sql`) `qualify.sh` creates and drops `kodama_q_<name>` with SQL from a short-lived
+Pod in the stage namespace as the stage database admin, so the session needs only `KUBECONFIG` plus
+`KODAMA_STAGE_BOOTSTRAP_SECRETS` (a JSON file with `postgres_admin_username` and `postgres_admin_password`). Use the same
+mode for `prepare` and `destroy`. The readiness gate's KMS acceptance still needs `SCW_DEFAULT_PROJECT_ID` and accepts
+the operator kubeconfig token as the API credential. The test process runs on the operator machine
 (`KODAMA_QUAL_SESSION=<name>`, `KUBECONFIG`) through `test/support/stage`.
 
 ## Cloud Infrastructure & Staging vs. Production Retention

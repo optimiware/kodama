@@ -8,6 +8,8 @@
 # object-store bucket (unique prefix), Key Manager keys, the Git server, the image registry and the OIDC issuer.
 
 data "scaleway_rdb_instance" "postgres" {
+  count = var.manage_database ? 1 : 0
+
   name = "${var.stage_contract.installation_id}-pg"
 }
 
@@ -90,22 +92,44 @@ locals {
 # ---- database ----
 
 resource "scaleway_rdb_database" "session" {
-  instance_id = data.scaleway_rdb_instance.postgres.id
+  count = var.manage_database ? 1 : 0
+
+  instance_id = data.scaleway_rdb_instance.postgres[0].id
   name        = local.database
 }
 
 resource "scaleway_rdb_privilege" "migration" {
-  instance_id   = data.scaleway_rdb_instance.postgres.id
+  count = var.manage_database ? 1 : 0
+
+  instance_id   = data.scaleway_rdb_instance.postgres[0].id
   user_name     = local.pg.migration_role
-  database_name = scaleway_rdb_database.session.name
+  database_name = scaleway_rdb_database.session[0].name
   permission    = "all"
 }
 
 resource "scaleway_rdb_privilege" "runtime" {
-  instance_id   = data.scaleway_rdb_instance.postgres.id
+  count = var.manage_database ? 1 : 0
+
+  instance_id   = data.scaleway_rdb_instance.postgres[0].id
   user_name     = local.pg.runtime_role
-  database_name = scaleway_rdb_database.session.name
+  database_name = scaleway_rdb_database.session[0].name
   permission    = "readwrite"
+}
+
+# A session prepared before manage_database existed keeps its database: the resources moved to indexed addresses.
+moved {
+  from = scaleway_rdb_database.session
+  to   = scaleway_rdb_database.session[0]
+}
+
+moved {
+  from = scaleway_rdb_privilege.migration
+  to   = scaleway_rdb_privilege.migration[0]
+}
+
+moved {
+  from = scaleway_rdb_privilege.runtime
+  to   = scaleway_rdb_privilege.runtime[0]
 }
 
 # ---- namespace, keys and Secrets ----

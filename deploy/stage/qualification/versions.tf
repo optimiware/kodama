@@ -30,7 +30,7 @@ terraform {
 }
 
 provider "scaleway" {
-  project_id = var.project_id
+  project_id = var.project_id == "" ? null : var.project_id
   region     = var.stage_contract.region
   zone       = "${var.stage_contract.region}-1"
 }

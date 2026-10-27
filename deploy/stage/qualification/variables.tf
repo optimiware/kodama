@@ -4,8 +4,15 @@ variable "kubeconfig_path" {
 }
 
 variable "project_id" {
-  description = "Scaleway project that owns the stage database instance."
+  description = "Scaleway project that owns the stage database instance. Unused when manage_database is false."
   type        = string
+  default     = ""
+}
+
+variable "manage_database" {
+  description = "true: this root creates the session database and its privileges through the Scaleway API (needs operator SCW_* credentials). false: the database kodama_q_<session> already exists with the stage roles granted on it (qualify.sh --database sql creates it with SQL from inside the cluster), so the root needs only the kubeconfig."
+  type        = bool
+  default     = true
 }
 
 variable "session" {
