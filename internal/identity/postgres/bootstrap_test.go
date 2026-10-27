@@ -69,7 +69,7 @@ func TestBootstrapVerifiedOnce(t *testing.T) {
 	}
 
 	t.Run("configuration is explicit", func(t *testing.T) {
-		s := idtest.New(t, idtest.Options{NoWork: true})
+		s := idtest.New(t, idtest.Options{})
 		store := must(identitypg.NewBootstrapStore(s.Owner, s.Events))
 		v := newVerifier()
 		for name, mut := range map[string]func(*identity.BootstrapConfig){
@@ -95,7 +95,7 @@ func TestBootstrapVerifiedOnce(t *testing.T) {
 	})
 
 	t.Run("an unverified or wrong identity never opens the administrative transaction", func(t *testing.T) {
-		s := idtest.New(t, idtest.Options{NoWork: true})
+		s := idtest.New(t, idtest.Options{})
 		v := newVerifier()
 		svc, store := newBootstrap(t, s, bootstrapConfig(), v)
 		if _, err := svc.Run(ctx, "bogus"); !is(err, identity.ErrUnauthenticated) {
@@ -117,7 +117,7 @@ func TestBootstrapVerifiedOnce(t *testing.T) {
 	})
 
 	t.Run("concurrent invocations provision once; retries observe the commit", func(t *testing.T) {
-		s := idtest.New(t, idtest.Options{NoWork: true, Conns: 4})
+		s := idtest.New(t, idtest.Options{Conns: 4})
 		svc, _ := newBootstrap(t, s, bootstrapConfig(), newVerifier())
 		const n = 10
 		results := make([]identity.BootstrapResult, n)
@@ -223,7 +223,7 @@ func TestBootstrapVerifiedOnce(t *testing.T) {
 	})
 
 	t.Run("an earlier login is reused and a rolled-back bootstrap leaves the way open", func(t *testing.T) {
-		s := idtest.New(t, idtest.Options{NoWork: true})
+		s := idtest.New(t, idtest.Options{})
 		prior := s.User(operator.Issuer, operator.Subject)
 		s.OwnerExec(`ALTER TABLE audit ADD CONSTRAINT t010_block CHECK (action <> 'membership.granted')`)
 		svc, _ := newBootstrap(t, s, bootstrapConfig(), newVerifier())
@@ -245,7 +245,7 @@ func TestBootstrapVerifiedOnce(t *testing.T) {
 	})
 
 	t.Run("an unknown commit outcome is unavailable; the retry observes the completion", func(t *testing.T) {
-		s := idtest.New(t, idtest.Options{NoWork: true})
+		s := idtest.New(t, idtest.Options{})
 		db := &lostCommitDB{inner: s.Owner, armed: true}
 		store := must(identitypg.NewBootstrapStore(db, s.Events))
 		svc := must(identity.NewBootstrapService(bootstrapConfig(), newVerifier(), store))

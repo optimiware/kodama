@@ -14,9 +14,9 @@ import (
 	eventsv1 "github.com/optimiware/kodama/contracts/events/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
+	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	"github.com/optimiware/kodama/internal/gateway"
 	"github.com/optimiware/kodama/internal/gateway/gatewaytest"
-	gatewaypg "github.com/optimiware/kodama/internal/gateway/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 )
 
@@ -248,19 +248,14 @@ func Test_gateway_storage_isolation(t *testing.T) {
 	})
 
 	t.Run("the migration reapplies as a no-op and rejects edits", func(t *testing.T) {
-		c := gatewaypg.Migrations()
-		if c.Module != "gateway" || len(c.Migrations) != 1 || c.Migrations[0].ID != "T032_001_gateway.sql" {
-			t.Fatalf("contribution %+v", c)
-		}
-		res, err := storage.Migrate(bg, s.e.X.Migration, gatewaytest.Manifest(t), storage.MigrateOptions{RuntimeRole: s.e.X.Base.DB.RuntimeRole})
-		if err != nil || len(res.Applied) != 0 || res.Skipped == 0 {
+		m := gatewaytest.Manifest(t)
+		res, err := storage.Migrate(bg, s.e.X.Migration, m, storage.MigrateOptions{RuntimeRole: s.e.X.Base.DB.RuntimeRole})
+		if err != nil || len(res.Applied) != 0 || res.Skipped != len(m.Migrations()) {
 			t.Fatalf("reapply: %+v %v", res, err)
 		}
-		changed := gatewaypg.Migrations()
+		changed := storage.BaseContribution()
 		changed.Migrations[0].SQL += "\n-- edited"
-		contribs := gatewaytest.Contributions()
-		contribs[len(contribs)-1] = changed
-		bad, err := storage.NewManifest(contribs...)
+		bad, err := storage.NewManifest(changed, execpg.RunResourceMigrations())
 		if err != nil {
 			t.Fatal(err)
 		}

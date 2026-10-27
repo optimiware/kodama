@@ -36,20 +36,16 @@ import (
 	arts3 "github.com/optimiware/kodama/internal/artifacts/s3"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/entrypoint"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/execution"
 	execadapters "github.com/optimiware/kodama/internal/execution/adapters"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	"github.com/optimiware/kodama/internal/httpapi"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
 	"github.com/optimiware/kodama/internal/identity"
 	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/kube"
 	kubeadapters "github.com/optimiware/kodama/internal/kube/adapters"
-	logspg "github.com/optimiware/kodama/internal/logs/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
 	"github.com/optimiware/kodama/internal/results"
 	resultsadapters "github.com/optimiware/kodama/internal/results/adapters"
 	resultshttp "github.com/optimiware/kodama/internal/results/http"
@@ -59,10 +55,7 @@ import (
 	rtjwt "github.com/optimiware/kodama/internal/runtimeauth/jwt"
 	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/secrets"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 	s3support "github.com/optimiware/kodama/test/support/s3"
 )
 
@@ -188,13 +181,7 @@ func newStack(t *testing.T, o ...stackOptions) *stack {
 
 	// The merged migration order: execution's contribution is already applied;
 	// runtime grants and logs append after it.
-	contribs := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}
-	contribs = append(contribs, execpg.Migrations()...)
-	contribs = append(contribs, rtpg.Migrations(), logspg.Migrations())
-	manifest, err := storage.NewManifest(contribs...)
+	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations())
 	must(t, err)
 	mctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()

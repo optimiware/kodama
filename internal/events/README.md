@@ -9,7 +9,7 @@ PostgreSQL state and the outbox are authoritative. JetStream provides at-least-o
 | Package | Contents | Depends on |
 | --- | --- | --- |
 | `internal/events` | Entities (`Publication`, `InboxEntry`), failure classes, retry/retention policy, replay request/grant/classification, `Publisher` worker, `Reconciler`, consumer-owned ports | `contracts/events/v1`, `internal/domain`. **No pgx, no NATS.** |
-| `internal/events/postgres` | `Store`: `Append`, observation reads, outbox claims, inbox processing, quarantine, replay, fences, retention; `Migrations()` | pgx, `internal/storage` |
+| `internal/events/postgres` | `Store`: `Append`, observation reads, outbox claims, inbox processing, quarantine, replay, fences, retention; the event tables are in the baseline schema (`internal/storage/migrations/001_schema.sql`) | pgx, `internal/storage` |
 | `internal/events/jetstream` | `Publisher` (durable ack), `Consumer` (explicit ack), stream/consumer provisioning and validation | `nats.go` |
 | `internal/events/eventstest` | Test fixtures: migrated database, broker streams, fault proxy, event builders | test only |
 
@@ -18,8 +18,8 @@ Ports owned by this module (`ports.go`): `TenantSource`, `PublicationStore`, `St
 ## Wiring (for T-027)
 
 ```go
-// 1. Migrations, after the base contribution.
-manifest, _ := storage.NewManifest(storage.BaseContribution(), postgres.Migrations() /* , others */)
+// 1. The baseline schema holds the event tables; the module contributes no migration.
+manifest, _ := storage.NewManifest(storage.BaseContribution())
 storage.Migrate(ctx, migrationPool, manifest, storage.MigrateOptions{RuntimeRole: role})
 
 // 2. The store: every policy is explicit, none has a default.

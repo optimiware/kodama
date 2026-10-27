@@ -52,11 +52,11 @@ var (
 // Origin is the canonical API origin of the fixture's review links.
 const Origin = "https://api.t041.example"
 
-// Contributions is the ordered migration manifest the tests apply: the
-// foundation, event, identity and then ChatOps contributions. It is the order
-// the composition root must register.
+// Contributions is the migration manifest the tests apply: the squashed
+// baseline, which already holds the identity tables ChatOps authorizes against
+// and the ChatOps tables themselves.
 func Contributions() []storage.Contribution {
-	return []storage.Contribution{storage.BaseContribution(), eventspg.Migrations(), identitypg.Migrations(), chatopspg.Migrations()}
+	return []storage.Contribution{storage.BaseContribution()}
 }
 
 // Options select fault injection and policies.

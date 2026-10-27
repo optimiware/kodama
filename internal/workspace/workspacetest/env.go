@@ -126,13 +126,23 @@ func New(t testing.TB, cfg Config) *Env {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	e := &Env{T: t, DB: db, Migration: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, 30)}
-	manifest, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), workspacepg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}
 	if _, err := storage.Migrate(ctx, e.Migration, manifest, storage.MigrateOptions{RuntimeRole: db.RuntimeRole}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	// The work-item, writer, publication and retained-ref links name rows other
+	// modules own (work items, attempts, runs, artifacts). This fixture exercises
+	// the workspace module alone, so it drops those links; the execution
+	// composition tests cover them against real rows.
+	pgtest.DropExecutionLinks(t, e.Migration, "workspaces",
+		"workspaces_work_item_fk", "workspaces_writer_attempt_fk", "workspaces_publish_attempt_fk", "workspaces_publish_artifact_fk")
+	pgtest.DropExecutionLinks(t, e.Migration, "workspace_publications",
+		"workspace_publications_attempt_fk", "workspace_publications_artifact_fk")
+	pgtest.DropExecutionLinks(t, e.Migration, "workspace_retained_refs",
+		"workspace_retained_refs_run_fk", "workspace_retained_refs_attempt_fk")
 	for _, s := range []domain.Scope{ScopeA, ScopeB} {
 		if _, err := e.Migration.Exec(ctx, `INSERT INTO tenants (id, key) VALUES ($1::text, $1::text)`, string(s.TenantID)); err != nil {
 			t.Fatalf("seed tenant: %v", err)

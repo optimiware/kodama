@@ -10,22 +10,13 @@ import (
 
 	eventsv1 "github.com/optimiware/kodama/contracts/events/v1"
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
-	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/execution/adapters"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
-	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
-	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 func fakePeers(e *executiontest.Env) execpg.Peers {
@@ -77,10 +68,7 @@ func Test_runtime_store_revocation(t *testing.T) {
 	ctx := context.Background()
 	e := executiontest.New(t)
 	e.GrantAll()
-	manifest, err := storage.NewManifest(append([]storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}, append(execpg.Migrations(), rtpg.Migrations())...)...)
+	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations())
 	if err != nil {
 		t.Fatal(err)
 	}

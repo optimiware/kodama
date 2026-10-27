@@ -49,20 +49,24 @@ func Test_runtime_role_privileges(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer rows.Close()
-		seen := 0
+		seen := map[string]bool{}
 		for rows.Next() {
 			var name string
 			var enabled, forced bool
 			if err := rows.Scan(&name, &enabled, &forced); err != nil {
 				t.Fatal(err)
 			}
-			seen++
+			seen[name] = true
 			if !enabled || !forced {
 				t.Errorf("%s: enable=%v force=%v", name, enabled, forced)
 			}
 		}
-		if seen != 5 {
-			t.Errorf("checked %d tables, want tenants, projects, users, memberships, audit", seen)
+		// The baseline carries every capability's tables: the check above must
+		// have covered all of them, including the base five.
+		for _, name := range []string{"tenants", "projects", "users", "memberships", "audit", "work_items", "runs", "artifacts"} {
+			if !seen[name] {
+				t.Errorf("table %s was not checked", name)
+			}
 		}
 	})
 

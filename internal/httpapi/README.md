@@ -7,7 +7,7 @@ policy and no identity provider; authentication, authorization and throttling ar
 small consumer-owned ports injected by the composition root (T-027).
 
 Status: implemented and tested against real PostgreSQL. Nothing registers these
-routes or migrations yet; that is T-027's job.
+routes yet; that is T-027's job.
 
 ## Layout
 
@@ -19,7 +19,7 @@ routes or migrations yet; that is T-027's job.
 | `cursor.go`, `pagination.go` | `NewCursorCodec`, `ParsePage`, `BuildPage`, `ListPage` |
 | `idempotency.go` | `ClientKey`, canonical route, `HashRequest`, `StoredResponse`, `Outcome`, `Call.Identity` |
 | `common.gen.go`, `generate.go`, `oapi-codegen.yaml` | types generated from `api/common.yaml` |
-| `postgres/` | `Idempotency` (keyed transaction), `Migrations()` contribution, `T004_001_idempotency.sql` |
+| `postgres/` | `Idempotency` (keyed transaction); the idempotency table is in the baseline schema (`internal/storage/migrations/001_schema.sql`) |
 
 Dependencies point inward: `postgres` imports `httpapi`, `storage` and `domain`;
 `httpapi` imports only `domain` and the standard library.
@@ -163,9 +163,10 @@ inspects the primary key and indexes). Same hash replays the stored response wit
    `httpapi.Outcome` whose `Target` names the created resource.
 4. For lists: `CheckQuery`, `codec.ParsePage(r, call.CursorScope(filters, sort))`,
    query `FetchLimit()` rows in a unique order, `BuildPage`.
-5. Register `postgres.Migrations()` after `storage.BaseContribution()` in the
-   manifest. Inject cursor keys, retention, size bounds and the logger from the
-   configuration; T-027 owns the setting names.
+5. Nothing to register for migrations: the idempotency table is part of the
+   baseline schema (`internal/storage/migrations/001_schema.sql`) that
+   `storage.BaseContribution()` applies. Inject cursor keys, retention, size
+   bounds and the logger from the configuration; T-027 owns the setting names.
 6. Reference `api/common.yaml` components from the module's OpenAPI fragment;
    T-027 assembles and publishes the combined document.
 

@@ -27,9 +27,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
-	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
@@ -37,11 +35,9 @@ import (
 	"github.com/optimiware/kodama/internal/gateway/adapters"
 	"github.com/optimiware/kodama/internal/gateway/openai"
 	gatewaypg "github.com/optimiware/kodama/internal/gateway/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
 	identity "github.com/optimiware/kodama/internal/identity"
 	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 	"github.com/optimiware/kodama/internal/runtimeauth/jwt"
 	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
@@ -50,8 +46,6 @@ import (
 	"github.com/optimiware/kodama/internal/secrets/keyfile"
 	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 // Prefix is this task's resource prefix.
@@ -203,17 +197,9 @@ func Manifest(t testing.TB) storage.Manifest {
 	return m
 }
 
-// Contributions lists the modules in application order.
+// Contributions lists the modules in application order: the squashed baseline.
 func Contributions() []storage.Contribution {
-	// The execution fixture's own manifest, extended at the end: applying it again
-	// skips what is already applied and adds the runtime-authority and gateway
-	// migrations.
-	base := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}
-	base = append(base, execpg.Migrations()...)
-	return append(base, rtpg.Migrations(), gatewaypg.Migrations())
+	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations()}
 }
 
 // Estimator is the conservative per-model accounting of the fixtures.

@@ -22,9 +22,10 @@ var (
 	ErrRuntimeRoleRequired = errors.New("migration uses {{runtime_role}} but no runtime role was configured")
 )
 
-// migrationIDPattern requires a task prefix and sequence, such as
-// T011_001_work.sql, so IDs are globally unique by construction.
-var migrationIDPattern = regexp.MustCompile(`^T[0-9]{3}_[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$`)
+// migrationIDPattern requires a numeric sequence and a name, such as
+// 003_work_items.sql. The manifest and the ledger assign order and uniqueness,
+// so the file name only has to sort and identify the change.
+var migrationIDPattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$`)
 
 // RuntimeRolePlaceholder in migration SQL is replaced by the quoted runtime
 // role name given in MigrateOptions, so grants follow the deployment's role.
@@ -121,8 +122,14 @@ func (m Manifest) Migrations() []Migration {
 //go:embed migrations/*.sql
 var baseFS embed.FS
 
-// BaseContribution returns T-002's tenancy, audit and discovery migrations.
-// They must precede every contribution holding tenant-owned foreign keys.
+// BaseContribution returns the baseline: the whole schema (001_schema.sql) and
+// the runtime role's grants over it (002_grants.sql). Every capability's tables,
+// views, functions, indexes and policies are squashed into the one schema
+// migration in dependency order; every GRANT and REVOKE that names the runtime
+// role lives in the grants migration so least privilege is reviewable in one
+// place, while a PUBLIC revocation stays beside the definition it protects.
+// Both must precede any later migration, which references the objects and
+// privileges they establish.
 func BaseContribution() Contribution {
 	ms, err := LoadFS(baseFS, "migrations")
 	if err != nil {

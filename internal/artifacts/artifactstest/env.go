@@ -116,13 +116,18 @@ func NewDB(t testing.TB, opts Options) *Env {
 	}
 	e := &Env{T: t, DB: db, Owner: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, conns), Clock: &Clock{},
 		Authority: NewAuthority(), Reader: NewReader(), HTTP: &http.Client{Timeout: 20 * time.Second}}
-	manifest, err := storage.NewManifest(storage.BaseContribution(), artifactspg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := storage.Migrate(ctx, e.Owner, manifest, storage.MigrateOptions{RuntimeRole: db.RuntimeRole}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	// The baseline carries the execution link that makes an attempt row the
+	// producer of its artifacts. This fixture exercises the artifact module
+	// without execution (its authority is in memory), so it drops that one
+	// constraint; the execution composition tests cover it against real attempts.
+	pgtest.DropExecutionLinks(t, e.Owner, "artifacts", "artifacts_producer_attempt_fk")
 	e.seed(TenantA, ProjectA, ProjectA2)
 	e.seed(TenantB, ProjectB)
 	if e.Store, err = artifactspg.NewStore(artifactspg.Config{DB: e.Runtime}); err != nil {

@@ -381,27 +381,4 @@ func Test_shared_migration_is_additive(t *testing.T) {
 			}
 		}
 	})
-
-	t.Run("the base manifest applies it after a deployed execution schema too", func(t *testing.T) {
-		db := pgtest.New(t)
-		pool := db.MigrationPool(ctx, 2)
-		opts := storage.MigrateOptions{RuntimeRole: db.RuntimeRole}
-		base := append(peerContributions(), execpg.Schema()...)
-		base = append(base, execpg.CleanupMigrations())
-		deployed, err := storage.NewManifest(base...)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := storage.Migrate(ctx, pool, deployed, opts); err != nil {
-			t.Fatal(err)
-		}
-		full, err := storage.NewManifest(append(base, execpg.RunResourceMigrations())...)
-		if err != nil {
-			t.Fatal(err)
-		}
-		res, err := storage.Migrate(ctx, pool, full, opts)
-		if err != nil || len(res.Applied) != 1 || res.Applied[0] != execpg.RunResourcesMigrationID {
-			t.Fatalf("%+v %v", res, err)
-		}
-	})
 }

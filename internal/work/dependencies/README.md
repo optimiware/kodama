@@ -8,7 +8,7 @@ and [software design](../../../docs/specs/software-design.md); acceptance WM-A04
 the contract in [`api/work-dependencies.yaml`](../../../api/work-dependencies.yaml).
 
 Status: implemented and tested against real PostgreSQL. Nothing registers these
-routes, the migration or the guard yet; that is T-046's job, as described under
+routes or the guard yet; that is T-046's job, as described under
 [Integration](#integration).
 
 ## Business links are not pipeline DAGs
@@ -76,7 +76,7 @@ identity outage are `work.ErrUnavailable`, never access.
 | --- | --- |
 | `link.go`, `commands.go`, `errors.go` | `Link`, `Owner` (the dependent as the graph sees it), `Facts`, `Change`, commands, `ErrGraph` |
 | `ports.go`, `service.go` | Consumer-owned `Repository` and `Tx` ports; the `List`/`Add`/`Remove` use cases |
-| `postgres/` | `work_item_dependencies` (`T045_001_work_dependencies.sql`), `Store`, `NewDependencyGuard`, `Migrations()` |
+| `postgres/` | `work_item_dependencies` (in the baseline schema, `internal/storage/migrations/001_schema.sql`), `Store`, `NewDependencyGuard` |
 | `http/` | Routes, DTO mapping, error mapping, generated types (`dependencies.gen.go`) |
 | `depstest/` | Test-only fixture stack: real work store with the real guard, real dependency store, fixture authority |
 | `../dependency-admission.go` | Pure completion policy (`work.PrerequisiteStatus`, `work.DependenciesComplete`) |
@@ -123,8 +123,9 @@ project lock after the item lock.
 
 T-046 (integration owner) wires, without editing this package:
 
-1. **Migration order.** `storage.BaseContribution()`, events, T-011 work, then
-   `dependencies/postgres.Migrations()`.
+1. **Migration order.** Nothing to register: `work_item_dependencies` is part of the
+   baseline schema (`internal/storage/migrations/001_schema.sql`), after the
+   event and T-011 work tables it references.
 2. **Guard injection.** Replace the explicit M1 `work.NoDependencyGraph{}` in the
    work store's `GuardBinder` with `dependencies/postgres.NewDependencyGuard(tx)`:
 

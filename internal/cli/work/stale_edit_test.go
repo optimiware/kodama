@@ -98,7 +98,7 @@ func newRealFactory(t *testing.T) *realFactory {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	owner, rt := db.MigrationPool(ctx, 4), db.RuntimePool(ctx, 16)
-	manifest, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), workpg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}

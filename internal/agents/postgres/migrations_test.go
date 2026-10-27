@@ -5,30 +5,16 @@ import (
 	"strings"
 	"testing"
 
-	agentspg "github.com/optimiware/kodama/internal/agents/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 )
 
 func TestAgentMigrations(t *testing.T) {
-	t.Run("the contribution is ordered and valid after the base", func(t *testing.T) {
-		c := agentspg.Migrations()
-		if c.Module != "agents" || len(c.Migrations) != 1 || c.Migrations[0].ID != "T030_001_agent_profiles.sql" {
-			t.Fatalf("contribution = %+v", c)
-		}
-		if !strings.Contains(c.Migrations[0].SQL, storage.RuntimeRolePlaceholder) {
-			t.Fatal("grants must follow the deployment's runtime role")
-		}
-		if _, err := storage.NewManifest(storage.BaseContribution(), c); err != nil {
-			t.Fatal(err)
-		}
-	})
-
 	e := newEnv(t)
 	ctx := context.Background()
 	res := e.mustRegister(scopeA, engineer, e.draft)
 
 	t.Run("reapplication is a no-op that preserves rows", func(t *testing.T) {
-		manifest, err := storage.NewManifest(storage.BaseContribution(), agentspg.Migrations())
+		manifest, err := storage.NewManifest(storage.BaseContribution())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -36,7 +22,7 @@ func TestAgentMigrations(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(out.Applied) != 0 || out.Skipped < 4 {
+		if len(out.Applied) != 0 || out.Skipped != 2 {
 			t.Fatalf("reapply applied %v skipped %d", out.Applied, out.Skipped)
 		}
 		got, err := e.store.Get(ctx, scopeA, "coding", 1)
@@ -46,9 +32,9 @@ func TestAgentMigrations(t *testing.T) {
 	})
 
 	t.Run("an edited migration is detected", func(t *testing.T) {
-		m := agentspg.Migrations()
+		m := storage.BaseContribution()
 		m.Migrations[0].SQL += "\n-- edited"
-		manifest, err := storage.NewManifest(storage.BaseContribution(), m)
+		manifest, err := storage.NewManifest(m)
 		if err != nil {
 			t.Fatal(err)
 		}

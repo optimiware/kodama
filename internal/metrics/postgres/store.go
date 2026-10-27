@@ -1,5 +1,5 @@
 // Package postgres is the PostgreSQL adapter of the metrics module: the
-// history-derived flow views (T042_001_flow_intervals.sql) and the batch summary
+// history-derived flow views (part of the baseline schema) and the batch summary
 // query behind metrics.SummaryReader.
 //
 // Every read runs inside storage.WithTenantOptions under the non-owner runtime

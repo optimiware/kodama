@@ -10,8 +10,8 @@ materialized state or event. A summary is a read model computed on request and
 contributed to the items of the existing work list.
 
 Status: implemented and tested against real PostgreSQL. Nothing wires the
-migration, store, authorizer or list contribution yet; that is T-046's job, with
-the confirmations listed below.
+store, authorizer or list contribution yet; that is T-046's job, with the
+confirmations listed below.
 
 ## Layout
 
@@ -20,7 +20,7 @@ the confirmations listed below.
 | `window.go`, `summary.go`, `errors.go` | `Window`, the `WorkSummary` read model and its coherence check, failure classes |
 | `ports.go`, `service.go` | Consumer-owned ports (`SummaryReader`, `ReadAuthorizer`) and `Service.Summarize` |
 | `auth/` | `metricsauth.WorkReadAuthorizer`: delegates to `work.Authority` for `work_item:read`; no role map, no policy |
-| `postgres/` | `migrations/T042_001_flow_intervals.sql` (four views), `Store` (`SummaryReader`), batch SQL, tests |
+| `postgres/` | The four flow views (in the baseline schema, `internal/storage/migrations/001_schema.sql`), `Store` (`SummaryReader`), batch SQL, tests |
 | `http/` | Types generated from `api/work-summaries.yaml`, option parsing, mapping; no routes |
 | `PLAN.md` | Retained query-plan workload and result |
 | `../../api/work-summaries.yaml` | OpenAPI 3.0.3 fragment: query options, `FlowSummary`, optional list-item member, examples |
@@ -31,8 +31,9 @@ entities, tables, grants and mutations stay T-011's; only `work_item_history` is
 
 ## Executable semantics
 
-All of this is implemented in `T042_001_flow_intervals.sql` and the summary
-statement; the fixtures in `postgres/*_test.go` pin each rule.
+All of this is implemented in the four flow views of the baseline schema
+(`internal/storage/migrations/001_schema.sql`) and the summary statement;
+the fixtures in `postgres/*_test.go` pin each rule.
 
 1. **Ordering.** History resource `version` orders an item's rows, never the
    timestamp or the history id. Timestamps have microsecond precision, are kept
@@ -116,15 +117,18 @@ invisible. There is no replay worker or materialized state to reconcile.
   `Service.Summarize(ctx, scope, principalID, ids, window) ([]WorkSummary, error)`;
   `Service.Window(from, to)`; `metrics.NewWindow(from, to, now)`; `metrics.MaxBatch = 200`.
 * `metricsauth.NewWorkReadAuthorizer(work.Authority)`.
-* `metricspg.NewStore(storage.TxBeginner)`; `metricspg.Migrations() storage.Contribution`
-  (module `metrics`, `T042_001_flow_intervals.sql`), registered after base, events and work.
+* `metricspg.NewStore(storage.TxBeginner)`; the four flow views are part of the
+  baseline schema (`internal/storage/migrations/001_schema.sql`), so this
+  module contributes no migration.
 * `metricshttp.ParseOptions(include, from, to, now) (Options, error)`,
   `Options.Binding()`, `FromSummary`, `Contributions`.
 * Events and commands: none.
 
 ## Integration instructions (T-046)
 
-1. Register `metricspg.Migrations()` after `workpg.Migrations()`.
+1. Register no migration for this module: the flow views are part of the baseline
+   schema (`internal/storage/migrations/001_schema.sql`) that
+   `storage.BaseContribution()` applies.
 2. Construct `metricspg.NewStore(pool)`, `metricsauth.NewWorkReadAuthorizer(workAuthority)`
    and `metrics.NewService`.
 3. Compose `api/work-summaries.yaml` into the published document: add the three

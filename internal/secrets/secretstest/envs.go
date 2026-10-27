@@ -13,11 +13,11 @@ import (
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/events/eventstest"
 	eventspg "github.com/optimiware/kodama/internal/events/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
 	"github.com/optimiware/kodama/internal/memdb"
 	"github.com/optimiware/kodama/internal/secrets"
 	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
+	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
 
 // MemEnv is the secrets module in memory: one memdb kernel shared by the secrets
@@ -167,13 +167,17 @@ func OpenPostgres(t testing.TB) Env {
 			t.Fatalf("seed project: %v", err)
 		}
 	}
-	manifest, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), secretspg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := storage.Migrate(context.Background(), base.Migration, manifest, storage.MigrateOptions{RuntimeRole: base.DB.RuntimeRole}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	// A pin names the run that consumed the version. This fixture exercises the
+	// secrets module without execution, so the run link is dropped; the
+	// execution composition tests cover it against real runs.
+	pgtest.DropExecutionLinks(t, base.Migration, "secret_pins", "secret_pins_run_fk")
 	p := &PGEnv{Base: base, Wrap: OpenKeyfile(t).Wrapper}
 	p.Events = base.NewStore(t, eventstest.DefaultOptions())
 	p.Pg, err = secretspg.NewStore(secretspg.Config{DB: base.Runtime, Events: p.appender(), IDs: secrets.RandomIDs{}})

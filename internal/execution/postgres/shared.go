@@ -15,7 +15,7 @@ import (
 	"github.com/optimiware/kodama/internal/execution"
 )
 
-// The run_shared rows (migration T112_001): run resources, workspace holders,
+// The run_shared rows (migration 003_run_resources.sql): run resources, workspace holders,
 // the command-begin journal and the run-level capacity reservation. They are
 // loaded and saved with the run aggregate under the same run row lock; the
 // reservation is taken under the quota scope locks. No statement here calls the

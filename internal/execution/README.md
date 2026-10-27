@@ -7,7 +7,7 @@ PX-16). PostgreSQL owns desired state; the runtime only acts on **committed** in
 transaction.
 
 Status: implemented and tested against real PostgreSQL (and real NATS and HTTPS Git for the
-recovery tests) and, for policy, on the in-memory store (see *Unit qualification*). Nothing registers these routes, migrations, consumers or adapters yet; that is
+recovery tests) and, for policy, on the in-memory store (see *Unit qualification*). Nothing registers these routes, consumers or adapters yet; that is
 T-027's job (see *Integration owner*). It does **not** claim Kubernetes execution (T-021),
 runtime `/result` routing or artifact verification (T-022), agent profiles (T-030), human gates
 (T-034) or deployment cleanup (T-035): those are narrow seams with disabled M1 defaults.
@@ -22,12 +22,12 @@ runtime `/result` routing or artifact verification (T-022), agent profiles (T-03
 | `ports.go`, `errors.go`, `values.go` | Consumer-owned ports, sentinel errors, value objects; use-case inputs sit beside their use case (`AdmitCommand`, `ResultCommit`, `Observation`) |
 | `service.go`, `admission.go`, `dispatch.go`, `observation.go`, `cancellation.go`, `result.go`, `reconcile.go`, `queries.go` | Use cases |
 | `memory/` | In-memory `execution.Store` over `memdb` (T-080): the same transaction semantics as `postgres/` with the peer joins (work admission, workspace writer/retained source, secret pins, event outbox, runtime grants) passing the caller's `memdb.Tx`; `World`/`Authority` are fakes of the consumer-owned seams for the unit layer |
-| `postgres/` | PostgreSQL store, `T020_002/003/004` and `T086_001` migrations, generated copy of `T020_001`, peer-module transaction bindings, keyed creation |
+| `postgres/` | PostgreSQL store, the execution tables and their cross-module constraints (in the baseline schema, `internal/storage/migrations/001_schema.sql`), peer-module transaction bindings, keyed creation |
 | `adapters/` | Bridges from execution ports to identity, pipeline, secrets/configuration, work and workspace |
 | `http/` | The five run routes and DTOs generated from `api/runs.yaml` |
 | `executiontest/` | Fixtures and the exported `Contract(t, open)` of `execution.Store`. `Env` is real PostgreSQL with every dependent schema and skips in the unit layer; `Mem` is the same module over the memory store with controlled time, a table authority and no service. Doubles only for the runtime (`runtimetest.Manual` behind `runtimetest.Decorator`, or a real runtime via `Options.Runtime`), effect reconciler and Git observation |
 | `../../api/runs.yaml` | OpenAPI 3.0 fragment referencing `api/common.yaml` |
-| `../workspace/migrations/T020_001_attempt_fk.sql` | Deferred workspace ownership constraints (owned by this task) |
+| `internal/storage/migrations/001_schema.sql` | The execution tables and the deferred workspace/artifact/secret-pin ownership constraints (this task's schema, in dependency order) |
 | `review.md` | Candidate-specific verification and assumptions |
 
 `internal/execution` imports only the standard library, `internal/domain`, `internal/pipeline`
@@ -158,21 +158,21 @@ fail closed.
 
 ## Integration owner (T-027 and later tasks)
 
-Compose, in this migration order after the base, events, HTTP idempotency, identity, work,
-secrets, pipeline, workspace and artifact contributions:
+Compose the baseline; there is no per-module contribution order to register:
 
 ```go
-manifest, err := storage.NewManifest(append(peers, execpg.Migrations()...)...)
+manifest, err := storage.NewManifest(storage.BaseContribution())
 ```
 
-`execpg.Migrations()` returns four contributions that **must stay in this order**: the tables
-(`T020_002`), the workspace constraints (`T020_001`, authored in
-`internal/workspace/migrations` and embedded through `go generate ./internal/execution/...`),
-the artifact-producer and secret-pin constraints (`T020_003`, `T020_004`), then workload cleanup
-bookkeeping (`T086_001`). Later schema joins as a new final contribution. `execpg.Migrations()` is
-the fresh-database order (`execpg.Schema()` then `execpg.CleanupMigrations()`); a composition that
-deployed before cleanup existed lists `Schema()` where it did and `CleanupMigrations()` after
-everything already applied, as `internal/app` does after the runtime authority schema.
+`internal/app.Contributions()` returns the baseline and, after it, this package's one later
+contribution: the additive run_shared schema of T-112 (`003_run_resources.sql`). The execution
+tables and every constraint that depends on them live in the baseline schema
+(`internal/storage/migrations/001_schema.sql`) in dependency order: the tables themselves,
+the deferred workspace ownership constraints, the artifact-producer and secret-pin constraints,
+and the workload cleanup bookkeeping. There is no `execpg.Migrations()`, no generated copy of
+another module's SQL and no per-module migration directory: that SQL is in the baseline and is
+applied once, while a later schema change appends one contribution after it (the ledger refuses a
+pending migration ordered before an applied one).
 
 * **Store.** `execpg.NewStore(pool, events, execpg.Peers{Authority: adapters.BindAuthority,
   Workspaces: workspaceStore, Secrets: secretsStore, RetainedRefPrefix: <workspace option>}, opts)`.
@@ -226,7 +226,7 @@ admission is closed unless an installation composes `Dependencies.Shared` explic
 | `shared.go`, `shared_aggregate.go`, `runresource.go` | `RunShared` pins, requirement derivation, `BuildResourceSpecs`, the `RunResource` entity and its state machine, `RunHolder`, `BeginRecord`, the aggregate operations (start, observe, stop/remove evidence, receipt, begin, order, `BuildContextV2`) |
 | `shared_service.go`, `shared_reconcile.go` | `SharedConfig` (the opt-in), `SharedEnv`/`SharedStore` (capacity reservation, orphan scan), admission planning, `StartShared`, shared dispatch, `RecordPreparationReceipt`, `RecordBegin`, and the intent-first provisioning/teardown driver |
 | `shared_view.go` | The safe `SharedView`/`ResourceView` observation projection |
-| `memory/shared.go`, `postgres/shared.go`, `postgres/migrations/T112_001_run_resources.sql` | Persistence |
+| `memory/shared.go`, `postgres/shared.go`, `postgres/migrations/003_run_resources.sql` | Persistence |
 | `executiontest/shared*.go` | `FakeResources` (injected by tests only), `TestPolicy`, `SharedContract` |
 
 ### Frozen identities (for P3–P6)

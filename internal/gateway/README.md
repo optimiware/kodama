@@ -37,7 +37,7 @@ here qualify the protocol subset only).
 | --- | --- |
 | `settings.go`, `budget.go`, `request.go`, `usage.go`, `values.go` | Entities and values with their invariants: `ModelSettings` (revisions), `RunBinding`, `RunBudget`, `ModelRequest` (state machine), `Usage`, `Endpoint`, `Limits`. No HTTP, SQL or provider types. |
 | `ports.go`, `errors.go`, `service.go`, `forward.go`, `reconcile.go`, `recording.go` | Use cases and the consumer-owned ports: `Store`, `Workloads`, `Authority`, `Credentials`, `Provider`, `Destinations`, `Estimator`, `Decoder`, `Recorder`, `Sink`, `TenantSource`. |
-| `postgres/` | PostgreSQL adapter: migration `T032_001_gateway.sql`, settings, admission, finalization, reconciliation. |
+| `postgres/` | PostgreSQL adapter: settings, admission, finalization, reconciliation. The gateway tables are in the baseline schema (`internal/storage/migrations/001_schema.sql`). |
 | `adapters/` | Bridges to merged modules: identity (management permissions), runtime authority and execution attempts, secrets (exact version, pins), events. |
 | `openai/` | Provider adapter: strict request decoding, restricted TLS transport, destination policy, SSE validation, token estimator. |
 | `http/` | HTTP adapter: management route, workload streaming route, error mapping, generated types. |
@@ -206,11 +206,8 @@ deletion belong to the recorder's owner.
 The composition root (not edited by T-032) supplies:
 
 ```go
-// migrations, after identity, secrets, execution, runtime authority and events
-storage.NewManifest(append([]storage.Contribution{
-    storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-    secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-}, append(execpg.Migrations(), rtpg.Migrations(), gatewaypg.Migrations())...)...)
+// the gateway tables are in the baseline schema; no module contributes a migration
+storage.NewManifest(storage.BaseContribution())
 
 store, _ := gatewaypg.NewStore(gatewaypg.Config{
     DB: runtimePool, Events: adapters.EventsFrom(eventStore),

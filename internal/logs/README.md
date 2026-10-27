@@ -18,7 +18,7 @@ label-selector access are out of scope.
 | `logs` | `Record` capture entity, redaction, bounded streaming, `Service` (reads), `Controller` (fallback, observation, reconciliation), retention policy, consumer-owned ports | `domain`, `logs/contract` only |
 | `logs/contract` | Frozen, versioned completeness sidecar and its codec | `domain` |
 | `logs/adapters` | Identity authority, execution attempts/placement, artifact reader and controller writer, retention bridge | peers (`identity`, `execution`, `artifacts`) |
-| `logs/postgres` | `Store`, `T023_001_log_records.sql` | `pgx`, `storage` |
+| `logs/postgres` | `Store`; `log_records` is in the baseline schema (`internal/storage/migrations/001_schema.sql`) | `pgx`, `storage` |
 | `logs/kubernetes` | `Reader` over the Kubernetes API (injected authenticated `net/http` client) | `net/http` |
 | `logs/http` | Protected route, NDJSON framing, generated DTOs from `api/logs.yaml` | `httpapi`, `identity` (permission names) |
 | `logs/logstest`, `logstest/kubefake` | Test fixtures only | tests |
@@ -57,10 +57,11 @@ lines, bytes, duration, concurrent streams and write inactivity (the default tai
 is a conservative 100 lines); T-071 selects operational values. No environment
 variable or project setting changes them.
 
-**Migration order:** after the artifact and execution contributions:
-`..., artifactspg.Migrations(), execpg.Migrations()..., logspg.Migrations()`. The
-central manifest is not edited here. `TestMigrationContribution` proves the
-order is load-bearing and re-applying is a no-op.
+**Migration order:** the log tables are part of the baseline schema
+(`internal/storage/migrations/001_schema.sql`), created after the artifact,
+execution and attempt tables they reference; `002_grants.sql` holds the
+runtime grants. There is no log contribution to order and the central manifest is
+not edited here. `TestMigrationReapply` proves re-applying the baseline is a no-op.
 
 **Route and action mapping:** `GET /api/v1/tenants/{tenantId}/projects/{projectId}/runs/{id}/logs`,
 action `logshttp.ActionLogs` (`run.logs`), resource kind `run`. Add

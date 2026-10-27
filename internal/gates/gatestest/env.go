@@ -30,24 +30,18 @@ import (
 	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	arts3 "github.com/optimiware/kodama/internal/artifacts/s3"
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	"github.com/optimiware/kodama/internal/gates"
 	"github.com/optimiware/kodama/internal/gates/adapters"
 	gatespg "github.com/optimiware/kodama/internal/gates/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
 	"github.com/optimiware/kodama/internal/identity"
 	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
 	"github.com/optimiware/kodama/internal/workspace"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 	s3support "github.com/optimiware/kodama/test/support/s3"
 )
 
@@ -160,13 +154,7 @@ func New(t testing.TB, o ...Options) *Env {
 	if e.ttl == 0 {
 		e.ttl = time.Hour
 	}
-	contribs := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}
-	contribs = append(contribs, execpg.Migrations()...)
-	contribs = append(contribs, gatespg.Migrations()...)
-	manifest, err := storage.NewManifest(contribs...)
+	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations())
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}

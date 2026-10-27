@@ -17,7 +17,7 @@ T-027's job, with the confirmations listed below.
 | `transitions.go`, `completion.go` | The transition table, `Item.Transition`, review subjects and the human completion decision |
 | `ports.go`, `service.go`, `commands.go` | Consumer-owned ports (`Repository`, `Authority`, guards) and the use cases |
 | `cancellation.go` | Cancellation intent seam: event decoding, scan source, `ReconcileCancellations` |
-| `postgres/` | Tables (`T011_001_work.sql`), `Store` (`work.Repository`), guard binding, admission and cancellation seams |
+| `postgres/` | Tables (in the baseline schema, `internal/storage/migrations/001_schema.sql`), `Store` (`work.Repository`), guard binding, admission and cancellation seams |
 | `http/` | Routes, DTO mapping, error mapping, generated types (`work.gen.go`) |
 | `worktest/` | Test-only fixture stack used by the HTTP tests |
 | `../../api/work.yaml` | OpenAPI 3.0.3 fragment with examples |

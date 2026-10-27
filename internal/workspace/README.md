@@ -5,7 +5,7 @@ filesystem. Implements the [workspace protocol](../../docs/specs/workspaces.md)
 (WS-01–WS-12, WS-A01–WS-A08) with supporting WM-11, SD-01–SD-08 and IT-02–IT-05.
 
 Status: implemented and tested against real PostgreSQL and real Git over HTTPS.
-Nothing registers these routes, migrations or adapters yet; that is T-027's job
+Nothing registers these routes or adapters yet; that is T-027's job
 (see *Integration owner* below).
 
 ## Layout
@@ -15,7 +15,7 @@ Nothing registers these routes, migrations or adapters yet; that is T-027's job
 | `workspace.go`, `publication.go`, `retention.go` | Entities: `Workspace`, `Publication` receipt, `RetainedRef`; explicit transitions, no I/O |
 | `ports.go`, `errors.go` | Consumer-owned ports (store, authorization, peer modules, Git) and sentinel errors |
 | `service.go`, `provision.go`, `sync.go`, `writer.go`, `publish.go`, `reconcile.go`, `archive.go`, `fence.go`, `retained_refs.go` | Use cases coordinating entities through ports |
-| `postgres/` | PostgreSQL adapter, `T013_001_workspaces.sql`, transaction-bound entry points |
+| `postgres/` | PostgreSQL adapter, transaction-bound entry points; the workspace tables and their deferred cross-module constraints are in the baseline schema (`internal/storage/migrations/001_schema.sql`) |
 | `git/` | Hardened Git adapter: `Reader` (read credential), `Publisher` (write credential), bundle verification, bounds |
 | `http/` | The five human routes, error mapping, DTOs generated from `api/workspace.yaml` |
 | `runtime/` | Translation of the frozen `runtimev1` source proposal; registers no route |
@@ -128,7 +128,7 @@ copying, also against an understated declared size) and `MaxScratchBytes`
 Compose with:
 
 ```go
-manifest, _ := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), workspacepg.Migrations(), /* ... */)
+manifest, _ := storage.NewManifest(storage.BaseContribution())  // the workspace tables are in the baseline
 store, _ := workspacepg.NewStore(pool, eventsStore, workspacepg.Options{})
 reader, _ := gitad.NewReader(gitOptions, checkoutCredentials)     // resolves checkout references only
 publisher, _ := gitad.NewPublisher(gitOptions, publisherCredentials) // resolves publisher references only
@@ -146,9 +146,10 @@ go svc.RunReconciler(ctx, interval)
   `workspace.ReserveWriterMutation` inside its attempt-creation transaction, and
   result finalization calls it with `workspace.SettleWriterMutation`. Lock
   order: eligible run/step, attempt insert, then the workspace row last.
-  T-020 also adds the `writer_attempt_id` / `publish_artifact_id` /
-  `work_item_id` foreign keys in its own migration contribution.
-* Migration order: base tenancy/audit, event bus, then `T013_001`.
+  T-020's `writer_attempt_id` / `publish_artifact_id` / `work_item_id` foreign
+  keys are part of the baseline schema, added after the work, execution and
+  artifact tables they reference.
+* Migration order: handled by the baseline; this module contributes no migration.
 * No new event catalog entries, CLI commands, environment variables or runtime
   context fields.
 

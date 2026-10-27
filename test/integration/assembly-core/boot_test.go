@@ -87,21 +87,11 @@ func Test_core_assembly_boot(t *testing.T) {
 		if again, err := app.Migrate(ctx, app.MigrateConfig{MigrationURL: s.DB.MigrationURL, RuntimeURL: s.DB.RuntimeURL}); err != nil || len(again.Applied) != 0 || again.Skipped != len(want) {
 			t.Fatalf("a second migration must verify, not reapply: %+v %v", again, err)
 		}
-		// base < events < idempotency < identity < work < secrets < pipeline < workspace < artifacts < execution < runtime grants
-		order := []string{"T002_001", "T005_", "T004_", "T010_", "T011_", "T012_", "T014_", "T013_", "T015_", "T020_", "T019_"}
-		pos := -1
-		for _, prefix := range order {
-			found := -1
-			for i, id := range want {
-				if strings.HasPrefix(id, prefix) {
-					found = i
-					break
-				}
-			}
-			if found < 0 || found < pos {
-				t.Fatalf("migration %s is missing or out of the declared order in %v", prefix, want)
-			}
-			pos = found
+		// The baseline is schema then grants; the only later change is the additive
+		// run_shared schema (T-112), appended last.
+		order := []string{"001_schema.sql", "002_grants.sql", "003_run_resources.sql"}
+		if strings.Join(want, ",") != strings.Join(order, ",") {
+			t.Fatalf("migrations %v, want %v", want, order)
 		}
 		waitFor(t, "readiness after migration", 10*time.Second, func() bool { return readyz(t, base) == 200 })
 		if body := mustGet(t, base, "/readyz"); body != `{"status":"ready"}` {

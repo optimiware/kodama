@@ -3,12 +3,12 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 )
 
@@ -31,7 +31,7 @@ func TestMigrationReapply(t *testing.T) {
 	f := newFixture(t, nil)
 	ctx := context.Background()
 
-	manifest, err := storage.NewManifest(storage.BaseContribution(), postgres.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,18 +42,12 @@ func TestMigrationReapply(t *testing.T) {
 	if len(res.Applied) != 0 || res.Skipped != len(manifest.Migrations()) {
 		t.Fatalf("re-apply: applied=%v skipped=%d of %d", res.Applied, res.Skipped, len(manifest.Migrations()))
 	}
-	ids := map[string]bool{}
+	var ids []string
 	for _, m := range manifest.Migrations() {
-		ids[m.ID] = true
+		ids = append(ids, m.ID)
 	}
-	for _, want := range []string{"T005_001_delivery.sql", "T005_002_observation_replay.sql"} {
-		if !ids[want] {
-			t.Errorf("migration %s missing from the manifest", want)
-		}
-	}
-	// The contribution is ordered and valid on its own.
-	if c := postgres.Migrations(); c.Module != "events" || len(c.Migrations) != 2 {
-		t.Fatalf("contribution: %+v", c)
+	if fmt.Sprint(ids) != "[001_schema.sql 002_grants.sql]" {
+		t.Fatalf("manifest = %v", ids)
 	}
 
 	t.Run("row level security is enabled and forced", func(t *testing.T) {

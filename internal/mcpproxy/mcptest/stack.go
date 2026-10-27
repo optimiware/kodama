@@ -31,13 +31,13 @@ import (
 	mcppg "github.com/optimiware/kodama/internal/mcpproxy/postgres"
 	"github.com/optimiware/kodama/internal/mcpproxy/protocol"
 	"github.com/optimiware/kodama/internal/runtimeauth"
-	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/runtimeauth/rtest"
 	"github.com/optimiware/kodama/internal/secrets"
 	"github.com/optimiware/kodama/internal/secrets/keyfile"
 	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 	mcpfixture "github.com/optimiware/kodama/test/support/mcp"
+	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
 
 // Prefix is this task's resource prefix.
@@ -239,13 +239,17 @@ func New(t testing.TB, cfg Config) *Stack {
 	s := &Stack{T: t, RT: rt, Cfg: cfg, Policy: &Policies{}, Human: &Humans{}, Recorder: &Recorder{}, Faults: &Faults{}}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	manifest, err := storage.NewManifest(storage.BaseContribution(), rtpg.Migrations(), secretspg.Migrations(), mcppg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := storage.Migrate(ctx, rt.Owner, manifest, storage.MigrateOptions{RuntimeRole: rt.DB.RuntimeRole}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	// Released credentials are pinned to the run that consumed them. This fixture
+	// exercises the proxy without execution, so the run link is dropped; the
+	// execution composition tests cover it.
+	pgtest.DropExecutionLinks(t, rt.Owner, "secret_pins", "secret_pins_run_fk")
 
 	// Secrets: the real store and service over a development key provider.
 	key := make([]byte, keyfile.KeySize)

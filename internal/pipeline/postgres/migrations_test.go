@@ -7,37 +7,16 @@ import (
 
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 )
 
 func Test_pipeline_migrations(t *testing.T) {
-	t.Run("the contribution is ordered and valid after the base", func(t *testing.T) {
-		c := pipelinepg.Migrations()
-		if c.Module != "pipeline" || len(c.Migrations) != 1 || c.Migrations[0].ID != "T014_001_pipeline_definitions.sql" {
-			t.Fatalf("contribution = %+v", c)
-		}
-		if !strings.Contains(c.Migrations[0].SQL, storage.RuntimeRolePlaceholder) {
-			t.Fatal("grants must follow the deployment's runtime role")
-		}
-		if _, err := storage.NewManifest(storage.BaseContribution(), c); err != nil {
-			t.Fatal(err)
-		}
-		// Contributions are ordered by the composition root, not lexically: the
-		// base must come first because this migration references its tables.
-		for _, m := range storage.BaseContribution().Migrations {
-			if m.ID >= c.Migrations[0].ID && !strings.HasPrefix(m.ID, "T002") {
-				t.Fatalf("unexpected base migration %s", m.ID)
-			}
-		}
-	})
-
 	e := newEnv(t)
 	ctx := context.Background()
 	res := e.mustRegister(scopeA, engineer, pipelinetest.Doc(pipelinetest.Container("a")))
 
 	t.Run("reapplication is a no-op that preserves rows", func(t *testing.T) {
-		manifest, err := storage.NewManifest(storage.BaseContribution(), pipelinepg.Migrations())
+		manifest, err := storage.NewManifest(storage.BaseContribution())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +24,7 @@ func Test_pipeline_migrations(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(out.Applied) != 0 || out.Skipped < 4 {
+		if len(out.Applied) != 0 || out.Skipped != 2 {
 			t.Fatalf("reapply applied %v skipped %d", out.Applied, out.Skipped)
 		}
 		got, err := e.store.Get(ctx, scopeA, res.Definition.ID)
@@ -55,9 +34,9 @@ func Test_pipeline_migrations(t *testing.T) {
 	})
 
 	t.Run("an edited migration is detected", func(t *testing.T) {
-		m := pipelinepg.Migrations()
+		m := storage.BaseContribution()
 		m.Migrations[0].SQL += "\n-- edited"
-		manifest, err := storage.NewManifest(storage.BaseContribution(), m)
+		manifest, err := storage.NewManifest(m)
 		if err != nil {
 			t.Fatal(err)
 		}

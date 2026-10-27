@@ -51,7 +51,6 @@ import (
 	"github.com/optimiware/kodama/internal/runtimeauth/jwt"
 	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/secrets"
-	"github.com/optimiware/kodama/internal/storage"
 )
 
 // ---- fault-injecting cluster ----
@@ -434,15 +433,6 @@ func newStack(t *testing.T, o ...stackOptions) *stack {
 	e := executiontest.New(t)
 	e.GrantAll()
 	s := &stack{t: t, c: c, e: e}
-
-	// The runtime admission schema (T-019), applied as T-027 will after the
-	// execution contribution.
-	for _, m := range rtpg.Migrations().Migrations {
-		sql := strings.ReplaceAll(m.SQL, storage.RuntimeRolePlaceholder, `"`+e.Base.DB.RuntimeRole+`"`)
-		if _, err := e.Migration.Exec(context.Background(), sql); err != nil {
-			t.Fatalf("runtimeauth migration %s: %v", m.ID, err)
-		}
-	}
 
 	suffix := randHex(3)
 	s.nsA, s.nsB = "t089-"+suffix+"-a", "t089-"+suffix+"-b"

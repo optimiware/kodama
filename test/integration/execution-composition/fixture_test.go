@@ -40,16 +40,12 @@ import (
 	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	arts3 "github.com/optimiware/kodama/internal/artifacts/s3"
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/execution"
 	execadapters "github.com/optimiware/kodama/internal/execution/adapters"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
 	"github.com/optimiware/kodama/internal/identity"
-	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
 	"github.com/optimiware/kodama/internal/results"
 	"github.com/optimiware/kodama/internal/results/adapters"
 	resultshttp "github.com/optimiware/kodama/internal/results/http"
@@ -59,12 +55,9 @@ import (
 	rtjwt "github.com/optimiware/kodama/internal/runtimeauth/jwt"
 	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/runtimeauth/rtest"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
 	"github.com/optimiware/kodama/internal/workspace"
 	gitad "github.com/optimiware/kodama/internal/workspace/git"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 	wsruntime "github.com/optimiware/kodama/internal/workspace/runtime"
 	wst "github.com/optimiware/kodama/internal/workspace/workspacetest"
 	gitfx "github.com/optimiware/kodama/test/support/git"
@@ -217,15 +210,9 @@ func New(t testing.TB, o Options) *Env {
 		x.Grant(s, executiontest.Engineer, identity.RoleEngineer)
 	}
 
-	// The execution fixture migrated everything but the runtime grants; the
-	// same manifest plus T-019's contribution is a pure append.
-	contribs := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}
-	contribs = append(contribs, execpg.Migrations()...)
-	contribs = append(contribs, rtpg.Migrations()) // appended after execution, as the composition root lists it
-	manifest, err := storage.NewManifest(contribs...)
+	// The execution fixture already applied the baseline, which includes the
+	// runtime grants; re-applying it is a no-op.
+	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations())
 	must(t, err)
 	mctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()

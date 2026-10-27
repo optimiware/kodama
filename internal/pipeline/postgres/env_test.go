@@ -73,7 +73,7 @@ func newEnvWith(t testing.TB, o envOptions) *env {
 		conns = 24
 	}
 	e := &env{t: t, db: db, owner: db.MigrationPool(ctx, 4), rt: db.RuntimePool(ctx, conns), clock: time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)}
-	manifest, err := storage.NewManifest(storage.BaseContribution(), pipelinepg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}

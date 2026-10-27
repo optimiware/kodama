@@ -27,7 +27,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
-	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/events/eventstest"
 	eventspg "github.com/optimiware/kodama/internal/events/postgres"
@@ -45,7 +44,6 @@ import (
 	"github.com/optimiware/kodama/internal/secrets/keyfile"
 	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
 	"github.com/optimiware/kodama/internal/workspace"
 	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
@@ -149,7 +147,8 @@ type Options struct {
 	// SourceWrap wraps the Git observation seam (a call counter).
 	SourceWrap func(execution.Sources) execution.Sources
 	// LegacySeed builds an UPGRADE fixture: the database holds the schema of the
-	// release before T112_001 while it runs, then the additive migration applies.
+	// release before 003_run_resources.sql while it runs, then the additive
+	// migration applies.
 	LegacySeed func(e *Env)
 }
 
@@ -183,18 +182,15 @@ func New(t testing.TB, o ...Options) *Env {
 	}
 	e.ownerExec(`INSERT INTO projects (tenant_id, id, key, active_wip_limit) VALUES ($1::text, $2::text, $2::text, 5)`, string(ScopeA2.TenantID), string(ScopeA2.ProjectID))
 
-	contribs := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
+	// The baseline carries every table and grant except the additive run_shared
+	// schema (T-112), which stays a separate contribution so an upgrade applies
+	// exactly that one migration. A LegacySeed fixture starts on the baseline
+	// alone, seeds historical rows and then lets upgrade apply the addition.
+	contribs := []storage.Contribution{storage.BaseContribution()}
+	if opt.LegacySeed == nil {
+		contribs = append(contribs, execpg.RunResourceMigrations())
 	}
-	execContribs := execpg.Migrations()
-	if opt.LegacySeed != nil {
-		// Upgrade fixture: the database first holds exactly what a release before the
-		// run_shared schema (T112_001) deployed; historical rows are seeded and only
-		// then is the additive migration applied.
-		execContribs = execContribs[:len(execContribs)-1]
-	}
-	manifest, err := storage.NewManifest(append(contribs, execContribs...)...)
+	manifest, err := storage.NewManifest(contribs...)
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}
@@ -208,7 +204,7 @@ func New(t testing.TB, o ...Options) *Env {
 			return
 		}
 		opt.LegacySeed(e)
-		full, err := storage.NewManifest(append(contribs, execpg.Migrations()...)...)
+		full, err := storage.NewManifest(append(contribs, execpg.RunResourceMigrations())...)
 		if err != nil {
 			t.Fatalf("manifest: %v", err)
 		}

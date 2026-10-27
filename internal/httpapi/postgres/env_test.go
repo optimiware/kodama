@@ -39,7 +39,7 @@ func testCtx(t testing.TB) context.Context {
 
 func manifest(t testing.TB) storage.Manifest {
 	t.Helper()
-	m, err := storage.NewManifest(storage.BaseContribution(), httppg.Migrations())
+	m, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}

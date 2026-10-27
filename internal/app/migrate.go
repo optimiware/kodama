@@ -6,72 +6,29 @@ import (
 	"fmt"
 	"net/url"
 
-	agentspg "github.com/optimiware/kodama/internal/agents/postgres"
-	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
-	deliverypg "github.com/optimiware/kodama/internal/delivery/postgres"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
-	gatespg "github.com/optimiware/kodama/internal/gates/postgres"
-	gatewaypg "github.com/optimiware/kodama/internal/gateway/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
-	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
-	chatopspg "github.com/optimiware/kodama/internal/integrations/chatops/postgres"
-	gitwebhookpg "github.com/optimiware/kodama/internal/integrations/gitwebhook/postgres"
-	logspg "github.com/optimiware/kodama/internal/logs/postgres"
-	mcppg "github.com/optimiware/kodama/internal/mcpproxy/postgres"
-	metricspg "github.com/optimiware/kodama/internal/metrics/postgres"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
-	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	dependenciespg "github.com/optimiware/kodama/internal/work/dependencies/postgres"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 // Contributions lists the schema contributions of the core assembly in the
-// order they must be applied. The manifest orders contributions as listed, not
-// by task number, and the migration ledger refuses a pending migration ordered
-// before an applied one: the order is part of the deployed contract and only
-// ever grows at the end.
+// order they must be applied.
 //
-//	base → events → HTTP idempotency → identity → work → secrets → pipeline →
-//	workspace → artifacts → execution (tables, workspace links, artifact and
-//	secret-pin links) → runtime authority → execution workload cleanup →
-//	log capture records → agent profiles → delivery (environments, deployments)
-//	→ gates → model gateway → MCP proxy → work dependencies → flow summaries →
-//	ChatOps → native Git triggers → run_shared resource schema (T-112, additive)
+// It is the squashed baseline first: 001_schema.sql holds every capability's
+// tables, views, functions, indexes and policies in dependency order, and
+// 002_grants.sql holds every GRANT and REVOKE that names the runtime role. A
+// PUBLIC revocation stays in the schema migration beside the definition it
+// protects, so an interrupted run is fail-closed.
 //
-// The runtime-authority schema serves the runtime credentials of the
-// execution assembly (T-071) and the execution store of the composition is the
-// runtime-enabled one (T-062), whose cancellation revokes grants in the same
-// transaction. The log records reference artifacts and attempts, so they come
-// next. The manual agent/gate/delivery slice (T-072) is appended at the end:
-// delivery follows the execution, artifact and runtime-grant contributions it
-// references and gates follow execution; agent profiles reference nothing. The
-// order only ever grows at the end. The M2 composition (T-039) appends the
-// model gateway and the MCP proxy after them: both reference projects, runs,
-// step attempts and the secrets, which every earlier contribution has created.
-// The business-loop composition (T-075) appends the dependency graph (it
-// references work items and appends to their history), the flow-summary views
-// (they read the work history) and ChatOps (it references projects and its
-// authorization reads the identity tables) after those.
+// Later schema changes append one contribution per change after it; the
+// migration ledger refuses a pending migration ordered before an applied one,
+// so the list is part of the deployed contract and only ever grows at the end.
+// The additive run_shared resource tables and columns (T-112) follow the last
+// contribution an earlier release applied. The execution store reads their
+// columns unconditionally, so they must exist before the store serves a run;
+// the migration enables nothing: no route, backend, policy or admission of the
+// new format is wired by it.
 func Contributions() []storage.Contribution {
-	cs := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}
-	cs = append(cs, execpg.Schema()...)
-	cs = append(cs, rtpg.Migrations(), execpg.CleanupMigrations(), logspg.Migrations(), agentspg.Migrations(), deliverypg.Migrations())
-	cs = append(cs, gatespg.Migrations()...)
-	cs = append(cs, gatewaypg.Migrations(), mcppg.Migrations())
-	cs = append(cs, dependenciespg.Migrations(), metricspg.Migrations(), chatopspg.Migrations(), gitwebhookpg.Migrations())
-	// The additive run_shared resource tables and columns (T-112) follow the last
-	// contribution an earlier release applied. The execution store reads their
-	// columns unconditionally, so they must exist before the store serves a run;
-	// the migration enables nothing: no route, backend, policy or admission of the
-	// new format is wired by it.
-	return append(cs, execpg.RunResourceMigrations())
+	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations()}
 }
 
 // Manifest validates the contribution list.

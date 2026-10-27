@@ -10,12 +10,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/metrics"
 	metricspg "github.com/optimiware/kodama/internal/metrics/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 	"github.com/optimiware/kodama/internal/work"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
 	"github.com/optimiware/kodama/internal/work/worktest"
 )
 
@@ -94,7 +92,7 @@ func newEnv(t testing.TB) *env {
 	stack := worktest.NewStack(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	manifest, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), workpg.Migrations(), metricspg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}

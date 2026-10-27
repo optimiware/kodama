@@ -7,7 +7,7 @@ digest, and immutable registered versions. The HTTP API and the local CLI both c
 
 Status: implemented and tested (validator and HTTP adapter with port fakes; the
 PostgreSQL adapter against real PostgreSQL). Nothing wires these routes,
-migrations, capabilities or ports yet; that is T-027's job, with the
+capabilities or ports yet; that is T-027's job, with the
 confirmations below. No run, scheduling, CLI command, M2 execution or hosted
 integration is claimed.
 
@@ -22,7 +22,7 @@ integration is claimed.
 | `order.go`, `run_defaults.go` | `ExecutionOrder` (declaration-order topological order, gates included), `EffectiveAccess` (source-backed/source-free defaults) and `EffectiveArgv` (the argv matrix): pure functions for run admission and the runtime adapters |
 | `definition.go`, `errors.go` | `Definition` entity, `Candidate`, failure classes, bounded diagnostics |
 | `ports.go`, `service.go` | Consumer-owned ports and the `Register`/`Get`/`List` use cases |
-| `postgres/` | `Store` (`pipeline.Repository`), `T014_001_pipeline_definitions.sql`, `Migrations()` |
+| `postgres/` | `Store` (`pipeline.Repository`); the definition table is in the baseline schema (`internal/storage/migrations/001_schema.sql`) |
 | `http/` | Routes, DTO/error mapping, generated types (`pipeline.gen.go`) |
 | `pipelinetest/` | Test doubles shared by tests and composition tests (in-memory repository, table authority) |
 | `../../api/pipeline.yaml` | OpenAPI 3.0.3 fragment with examples |
@@ -156,7 +156,10 @@ go generate ./internal/pipeline/... && git diff --exit-code -- internal/pipeline
 3. **No registration event** (see above).
 4. **Parser bounds** (`256 KiB`, depth 16, 20000 nodes) are library options, not installation settings.
 5. **Scope of validation**: definition-side only. Run-input resolution, source-commit ownership, secret-version pinning, output finalization, runtime filesystem/symlink containment of `/kodama/outputs` and gate applicability are runtime responsibilities of their owning tasks.
-6. **Wiring**: T-027 registers `Migrations()` after `storage.BaseContribution()`, builds the cursor codec, and provides `Authority`, routes and the router `Authorizer` policy for the three actions.
+6. **Wiring**: T-027 has no migration to register for this module (the definition table is part of the
+   baseline schema, `internal/storage/migrations/001_schema.sql`, applied by `storage.BaseContribution()`);
+   it builds the cursor codec and provides `Authority`, routes and the router `Authorizer` policy for the three
+   actions.
 
 ## kodama/v1alpha2 (run_shared), delivered by T-110, not enabled
 

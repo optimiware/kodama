@@ -7,7 +7,7 @@ attributable human decision about one identified subject** and consumes no compu
 step stays `pending` in durable records with its gate reference, zero attempts and no reservation.
 
 Status: implemented and tested against real PostgreSQL (plus real S3, NATS and HTTPS Git where the
-test names say so). Nothing registers these routes, migrations, consumer, adapters or scheduler yet;
+test names say so). Nothing registers these routes, consumer, adapters or scheduler yet;
 that is the integration owner's job (see *Integration owner*). The deployment module (T-035) is
 implemented in `internal/delivery`, but this package consumes it only through its own injectable
 `Deployments` port and transaction-bound `DeploymentBinder`: the component tests use a controlled
@@ -26,7 +26,7 @@ overrides or any approval authority for an agent identity.
 | `prepare.go` | `RequestForStep`: build and verify the subject (evidence, candidate, deployment, conformance), pin evidence, persist |
 | `service.go`, `reconcile.go` | Use cases: read, list, decide, bounded restart-safe reconciliation |
 | `ports.go` | Consumer-owned ports (store, authority, evidence, pins, candidates, deployments, conformance) |
-| `postgres/` | `T034_001_gates.sql`, the store, keyed decision helper, gate-aware execution store, decision-wakeup consumer, scans |
+| `postgres/` | The gate tables (in the baseline schema, `internal/storage/migrations/001_schema.sql`), the store, keyed decision helper, gate-aware execution store, decision-wakeup consumer, scans |
 | `adapters/` | Bridges to identity (reviewer authority), artifacts (metadata, bytes, pins), execution (conformance baseline/report identification) and workspace (candidate history) |
 | `http/` | The three routes and DTOs generated from `api/gates.yaml` |
 | `gatestest/` | Fixtures: real PostgreSQL with every dependent schema; controlled component seams only for deployment facts, workspace history and fault injection |
@@ -113,7 +113,9 @@ the run, which is the event that fails after the step and run mutations were wri
 
 ## Integration owner
 
-1. **Migrations.** Append `gatespg.Migrations()` after the execution contributions (see `postgres/migrations.go`).
+1. **Migrations.** Nothing to append: the gate tables are part of the baseline schema
+   (`internal/storage/migrations/001_schema.sql`) that `storage.BaseContribution()`
+   applies, ordered after the execution tables they reference.
 2. **Services.** Construct `gates.NewService` with an injected positive `Options.GateTTL` (no default),
    `adapters.NewAuthority`, `adapters.NewEvidence`, `adapters.NewPins`, `adapters.NewCandidates(executionSources)`,
    `adapters.ConformanceMapping{ReportOutput: …}` and an adapter over the T-035 deployment module. The

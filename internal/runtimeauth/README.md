@@ -28,7 +28,7 @@ effects ended (PX-08 settlement belongs to execution).
 | --- | --- |
 | `runtimeauth` | Entities (`AdmissionGrant`, `ActionSet`, `Policy`, `Credential`), use cases (`Service`), consumer-owned ports (`ports.go`). Imports only shared values, the runtime contract DTOs and the standard library. |
 | `jwt` | ES256 session-reference tokens: `go-jose` signs, `go-oidc` verifies over a local key set. `KeyRing` owns the current key and signing generation. |
-| `postgres` | `Store`, migration `T019_001_runtime_grants.sql`, the restricted digest lookup, and the transaction seam (`Bind`, `RevokeAttempt`). |
+| `postgres` | `Store`, the grant tables in the baseline schema (`internal/storage/migrations/001_schema.sql`), the restricted digest lookup, and the transaction seam (`Bind`, `RevokeAttempt`). |
 | `http` (`package runtimehttp`) | `POST /admit`, `POST /token`, `GET /context` over `net/http`. |
 | `rtest` | Test fixture only: migrated database, transaction-aware execution fixture, controlled Job observer, fault injection. |
 
@@ -199,7 +199,8 @@ attempt that allows more than the ceiling never widens it.
   `runtimeauth.PinContext`. Its cancellation transaction locks the attempt
   (`FOR UPDATE`), then calls `postgres.RevokeAttempt` in the same transaction.
   It may add a composite foreign key from `runtime_grants (tenant_id,
-  project_id, attempt_id)` to its attempts table in its own migration.
+  project_id, attempt_id)` to its attempts table as a later contribution after
+  the baseline.
 - **T-021 (Kubernetes)** implements `runtimeauth.JobObserver`: read the Job by
   name in the tenant namespace, the Pod by name, and report immutable UIDs and
   the Pod's controlling owner UID. `ErrNotObserved` means definitely absent;
@@ -207,9 +208,11 @@ attempt that allows more than the ceiling never widens it.
   `runtimeauth.GenerateCredential`, registers it with `Service.Register`
   (retrying with the same credential after a lost response), and places the
   credential in the Job.
-- **T-027 (composition)** lists `postgres.Migrations()` after
-  `storage.BaseContribution()` (and execution's contribution), wires the
+- **T-027 (composition)** lists only `storage.BaseContribution()` and wires the
   constructors, mounts `runtimehttp.NewHandler`, and provides the settings above.
+  The runtime-authority tables are part of the baseline schema
+  (`internal/storage/migrations/001_schema.sql`), ordered after the execution
+  tables they reference.
 - **Result/artifact/source/secret owners** call `Service.Authorize` for routing
   and `runtimeauth.CheckSession` inside their own transaction for mutations.
 

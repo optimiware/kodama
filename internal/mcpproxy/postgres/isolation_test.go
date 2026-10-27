@@ -11,9 +11,6 @@ import (
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/mcpproxy"
 	"github.com/optimiware/kodama/internal/mcpproxy/mcptest"
-	"github.com/optimiware/kodama/internal/mcpproxy/postgres"
-	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
@@ -28,20 +25,13 @@ func code(err error) string {
 	return ""
 }
 
-// Test_migration_reapply: the contribution applies after the modules it
-// references, reapplies as a no-op, rejects a modified applied migration and
-// creates the constraints the module relies on.
+// Test_migration_reapply: the baseline applies and reapplies as a no-op,
+// rejects a modified applied migration and creates the constraints the module
+// relies on.
 func Test_migration_reapply(t *testing.T) {
-	c := postgres.Migrations()
-	if c.Module != "mcpproxy" || len(c.Migrations) != 1 || c.Migrations[0].ID != "T033_001_mcp_proxy.sql" {
-		t.Fatalf("contribution = %+v", c)
-	}
-	manifest, err := storage.NewManifest(storage.BaseContribution(), rtpg.Migrations(), secretspg.Migrations(), c)
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err := storage.NewManifest(storage.BaseContribution(), c, c); !errors.Is(err, storage.ErrDuplicateMigration) {
-		t.Fatalf("a duplicated contribution: %v", err)
 	}
 	db := pgtest.New(t)
 	owner := db.MigrationPool(bg, 2)
@@ -50,20 +40,16 @@ func Test_migration_reapply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
-	for _, id := range first.Applied {
-		found = found || id == "T033_001_mcp_proxy.sql"
-	}
-	if !found {
-		t.Fatalf("applied = %v", first.Applied)
+	if len(first.Applied) != 2 {
+		t.Fatalf("the baseline is two migrations, applied %v", first.Applied)
 	}
 	second, err := storage.Migrate(bg, owner, manifest, opts)
 	if err != nil || len(second.Applied) != 0 || second.Skipped != len(first.Applied) {
 		t.Fatalf("reapply: %+v %v", second, err)
 	}
-	changed := postgres.Migrations()
+	changed := storage.BaseContribution()
 	changed.Migrations[0].SQL += "\n-- edited"
-	bad, _ := storage.NewManifest(storage.BaseContribution(), rtpg.Migrations(), secretspg.Migrations(), changed)
+	bad, _ := storage.NewManifest(changed)
 	if _, err := storage.Migrate(bg, owner, bad, opts); !errors.Is(err, storage.ErrChecksumMismatch) {
 		t.Fatalf("a modified migration: %v", err)
 	}

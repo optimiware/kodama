@@ -6,19 +6,19 @@ PostgreSQL adapters of the native Git push trigger (task T-100; the trigger itse
 | --- | --- | --- |
 | `Store` | `gitwebhook.Store` | Triggers, the durable delivery claim with its admission lease and write-once outcome, and audit written in the transaction of the change it describes. |
 | `Ledger` | `adapters.Ledger` | The admission ledger: run creation and the refusal decision for one idempotency key in one transaction. `adapters.Runs` maps `gitwebhook.Runs` onto it. |
-| `Migrations()` | | `T100_001_git_triggers.sql`: `git_triggers`, `git_trigger_deliveries`, `git_trigger_admissions`, the guard triggers and `kodama_git_trigger_locate`. |
+| Baseline schema | — | `git_triggers`, `git_trigger_deliveries`, `git_trigger_admissions`, the guard triggers and `kodama_git_trigger_locate`, in `internal/storage/migrations/001_schema.sql`. |
 
 ## Wiring (for T-101)
 
 ```go
-manifest, err := storage.NewManifest(append(existing, gwpg.Migrations())...) // after execution (runs), pipeline definitions, work items
+manifest, err := storage.NewManifest(storage.BaseContribution())             // trigger tables: baseline, after runs, pipeline definitions and work items
 store, err := gwpg.NewStore(runtimePool, gwpg.Options{})                      // gitwebhook.Dependencies.Store
 ledger, err := gwpg.NewLedger(runtimePool, executionStore)                    // executionStore: *execution/postgres.Store (AdmitInTx)
 planner, err := adapters.NewExecutionPlanner(adapters.PlannerConfig{Preparer: executionService, Work: workContent, Repositories: repositories, Workspaces: workspaceStore})
 runs, err := adapters.NewRuns(planner, ledger)                                // gitwebhook.Dependencies.Runs
 ```
 
-Migration order is part of the deployed contract: the contribution references tenants/projects (base), `pipeline_definitions`, `work_items` and `runs`, so it is appended after the execution contributions and only ever at the end of what a deployment has applied.
+The trigger tables are part of the baseline schema (`internal/storage/migrations/001_schema.sql`), placed there after `tenants`/`projects`, `pipeline_definitions`, `work_items` and `runs` because they reference them. A later schema change appends one contribution after the baseline; the ledger refuses a pending migration ordered before an applied one.
 
 ## Tenancy
 

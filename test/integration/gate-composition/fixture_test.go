@@ -37,9 +37,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
-	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/execution"
 	execadapters "github.com/optimiware/kodama/internal/execution/adapters"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
@@ -48,16 +46,9 @@ import (
 	"github.com/optimiware/kodama/internal/gates/adapters"
 	"github.com/optimiware/kodama/internal/gates/gatestest"
 	gatespg "github.com/optimiware/kodama/internal/gates/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
-	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
-	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 // Prefix is the task's resource prefix.
@@ -127,19 +118,9 @@ func New(t testing.TB, o Options) *Env {
 	if e.ttl == 0 {
 		e.ttl = time.Hour
 	}
-	// The gate fixture migrated everything but the runtime grants; the same
-	// manifest plus the runtime authority is a pure append (the manifest checks
-	// that an applied contribution is never ordered after an unapplied one). The
-	// two contributions do not depend on each other; the root may list either
-	// first, both after execution.
-	contribs := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}
-	contribs = append(contribs, execpg.Migrations()...)
-	contribs = append(contribs, gatespg.Migrations()...)
-	contribs = append(contribs, rtpg.Migrations()) // appended after the gate fixture's own manifest
-	manifest, err := storage.NewManifest(contribs...)
+	// The execution fixture already applied the baseline, which includes the gate
+	// tables and the runtime grants; re-applying it is a no-op.
+	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations())
 	must(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()

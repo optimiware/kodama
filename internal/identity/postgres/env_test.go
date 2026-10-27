@@ -6,10 +6,8 @@ import (
 	"testing"
 
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/identity"
 	"github.com/optimiware/kodama/internal/identity/idtest"
-	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 )
 
@@ -29,7 +27,6 @@ type fixture struct {
 // newFixture seeds two tenants, a tenant admin, and unbound/other users.
 func newFixture(t *testing.T, o idtest.Options) *fixture {
 	t.Helper()
-	o.NoWork = true
 	s := idtest.New(t, o)
 	s.SeedProject(tenantA, projectA, 5)
 	s.SeedProject(tenantA, projectA2, 5)
@@ -66,15 +63,9 @@ func idtest0() idtestOptions { return idtestOptions{} }
 
 type idtestOptions = idtest.Options
 
-func eventsMigrations() storage.Contribution { return eventspg.Migrations() }
-
-func manifestOf(t *testing.T, withIdentity bool) storage.Manifest {
+func manifestOf(t *testing.T) storage.Manifest {
 	t.Helper()
-	cs := []storage.Contribution{storage.BaseContribution(), eventspg.Migrations()}
-	if withIdentity {
-		cs = append(cs, identitypg.Migrations())
-	}
-	m, err := storage.NewManifest(cs...)
+	m, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}

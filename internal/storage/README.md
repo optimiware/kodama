@@ -60,7 +60,20 @@ Every policy compares `tenant_id` with `kodama_tenant_id()`, which is `NULL`
 when the setting is absent or empty, so statements outside `WithTenant` see and
 write nothing (fail closed).
 
-## Base schema (T002_001 to T002_003)
+## Baseline schema (`001_schema.sql`) and grants (`002_grants.sql`)
+
+`internal/storage/migrations/001_schema.sql` is the squashed schema of
+every capability in dependency order: the base tenancy objects below, then the
+event, HTTP idempotency, identity, work, secrets, pipeline, workspace, artifact,
+execution, runtime authority, log, agent, delivery, gate, gateway, MCP proxy,
+dependency, flow-summary, ChatOps and Git-trigger objects. `002_grants.sql`
+holds every `GRANT` and `REVOKE` that names the runtime role so least privilege
+is reviewable in one place. A `REVOKE ... FROM PUBLIC` stays in the schema
+migration beside the function it protects, so a failure before the grants
+migration leaves no `SECURITY DEFINER` function executable by `PUBLIC`.
+
+The table below describes the base objects only; each capability's README
+describes its own tables.
 
 | Object | Notes |
 | --- | --- |
@@ -81,27 +94,36 @@ requests. Times are `timestamptz` (UTC sessions); IDs are opaque text; versions
 are integers 1 to 2^53-1. Foreign key checks bypass RLS, so composite keys
 reject cross-owner references even when the writer cannot see the target row.
 
-## Contributing migrations (module tasks)
+## Changing the schema
 
-1. Put SQL files in your module, for example `internal/work/migrations/`, and
-   embed them: `//go:embed migrations/*.sql`.
-2. Name each file `T<task>_<seq>_<name>.sql` (`T011_001_work.sql`); the runner
-   rejects other names. IDs and contents are **immutable once merged**; fixes
-   are new files.
-3. Export `func Migrations() storage.Contribution { ms, _ := storage.LoadFS(fs, "migrations"); ... }`.
-   Files inside a contribution must be ascending by ID.
-4. Own tables get tenant/project columns, composite foreign keys, `ENABLE` +
-   `FORCE ROW LEVEL SECURITY`, a policy on `kodama_tenant_id()`, and minimal
-   `GRANT ... TO {{runtime_role}}`. The runner replaces `{{runtime_role}}` with
-   the quoted `MigrateOptions.RuntimeRole`. Add an `owner_all ... TO
-   CURRENT_USER` policy only if a definer function or admin seeding needs it.
-5. Statements must be valid inside a transaction block (no `CREATE INDEX
+The baseline is closed: `001_schema.sql` and `002_grants.sql` are
+immutable once merged, and capability packages do not embed migrations.
+
+1. Append a new migration. `storage.BaseContribution()` is the baseline; a
+   later change adds its own embedded SQL file and `Contribution` after it (the
+   execution package's `RunResourceMigrations()` is the current example) so the
+   ledger order only grows at the end.
+2. Name the file `NNN_name.sql` (`003_work_items.sql`, three digits then a
+   lowercase name); the runner rejects other names. IDs and contents are
+   **immutable once merged**; fixes are new files.
+3. New tables follow the baseline conventions: tenant/project columns, composite
+   foreign keys, `ENABLE` + `FORCE ROW LEVEL SECURITY`, a policy on
+   `kodama_tenant_id()`, and minimal `GRANT ... TO {{runtime_role}}` in the
+   grants migration (or the new contribution's own grant section). The runner
+   replaces `{{runtime_role}}` with the quoted `MigrateOptions.RuntimeRole`.
+   Add an `owner_all ... TO CURRENT_USER` policy only if a definer function or
+   admin seeding needs it.
+4. Statements must be valid inside a transaction block (no `CREATE INDEX
    CONCURRENTLY`). Each file plus its `schema_migrations` row commits atomically.
-6. The composition root (T-027) lists contributions in dependency order; base
-   comes first. The runner rejects duplicate IDs, a modified applied migration,
-   an applied ID missing from the manifest, and a pending migration ordered
-   before an applied one. A concurrent runner waits on a database-scoped
-   advisory lock (key `0x4b4f44414d41`).
+5. `internal/app.Contributions()` lists contributions in dependency order;
+   the baseline comes first. The runner rejects duplicate IDs, a modified
+   applied migration, an applied ID missing from the manifest, and a pending
+   migration ordered before an applied one. A concurrent runner waits on a
+   database-scoped advisory lock (key `0x4b4f44414d41`).
+6. A component fixture that exercises one module without the rows another module
+   owns drops the cross-module foreign key explicitly with
+   `pgtest.DropExecutionLinks`; composition fixtures cover those links against
+   real rows.
 
 ## Running the checks
 

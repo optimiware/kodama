@@ -9,9 +9,7 @@ import (
 
 	"github.com/optimiware/kodama/internal/integrations/chatops"
 	"github.com/optimiware/kodama/internal/integrations/chatops/chatopstest"
-	chatopspg "github.com/optimiware/kodama/internal/integrations/chatops/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
 
 var chatopsTables = []string{"chatops_destinations", "chatops_deliveries", "chatops_delivery_attempts", "chatops_replays", "chatops_delivery_fences"}
@@ -83,26 +81,13 @@ func TestMigrationReapply(t *testing.T) {
 	}
 	opts := storage.MigrateOptions{RuntimeRole: e.DB.RuntimeRole}
 
-	t.Run("the contribution follows what it references and is recorded once", func(t *testing.T) {
+	t.Run("the baseline is recorded exactly once", func(t *testing.T) {
 		var got []string
 		for _, line := range ledger(t, e) {
 			got = append(got, strings.SplitN(line, "|", 2)[0])
 		}
-		var own []string
-		for _, m := range chatopspg.Migrations().Migrations {
-			own = append(own, m.ID)
-		}
-		if len(own) != 1 || own[0] != "T041_001_chatops.sql" || got[len(got)-1] != own[0] {
-			t.Fatalf("ledger = %v, own = %v", got, own)
-		}
-		for _, prefix := range []string{"T002_", "T005_", "T010_"} {
-			found := false
-			for _, id := range got {
-				found = found || strings.HasPrefix(id, prefix)
-			}
-			if !found {
-				t.Errorf("no applied %s migration: ChatOps' foreign keys and authorization have no target", prefix)
-			}
+		if fmt.Sprint(got) != "[001_schema.sql 002_grants.sql]" {
+			t.Fatalf("ledger = %v", got)
 		}
 	})
 
@@ -123,15 +108,9 @@ func TestMigrationReapply(t *testing.T) {
 	})
 
 	t.Run("a modified applied migration is refused", func(t *testing.T) {
-		contribs := chatopstest.Contributions()
-		for i, c := range contribs {
-			if c.Module == "chatops" {
-				ms := append([]storage.Migration(nil), c.Migrations...)
-				ms[0] = storage.Migration{ID: ms[0].ID, SQL: ms[0].SQL + "\nALTER TABLE chatops_deliveries ADD COLUMN t041_tamper int;\n"}
-				contribs[i] = storage.Contribution{Module: c.Module, Migrations: ms}
-			}
-		}
-		tampered, err := storage.NewManifest(contribs...)
+		altered := storage.BaseContribution()
+		altered.Migrations[0].SQL += "\nALTER TABLE chatops_deliveries ADD COLUMN t041_tamper int;\n"
+		tampered, err := storage.NewManifest(altered)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -140,31 +119,6 @@ func TestMigrationReapply(t *testing.T) {
 		}
 		if e.Count(`SELECT count(*) FROM information_schema.columns WHERE table_name = 'chatops_deliveries' AND column_name = 't041_tamper'`) != 0 {
 			t.Fatal("a tampered migration changed the schema")
-		}
-	})
-
-	t.Run("a contribution ordered before what it references fails atomically and the right order applies", func(t *testing.T) {
-		db := pgtest.New(t)
-		pool := db.MigrationPool(ctx, 2)
-		bad, err := storage.NewManifest(chatopspg.Migrations(), storage.BaseContribution())
-		if err == nil {
-			_, err = storage.Migrate(ctx, pool, bad, storage.MigrateOptions{RuntimeRole: db.RuntimeRole})
-		}
-		if err == nil {
-			t.Fatal("ChatOps ordered before the base schema was applied")
-		}
-		var exists bool
-		if err := pool.QueryRow(ctx, `SELECT to_regclass('chatops_destinations') IS NOT NULL`).Scan(&exists); err != nil || exists {
-			t.Fatalf("a failed migration left ChatOps tables: %v %v", exists, err)
-		}
-		for i := range 2 {
-			res, err := storage.Migrate(ctx, pool, manifest, storage.MigrateOptions{RuntimeRole: db.RuntimeRole})
-			if err != nil {
-				t.Fatalf("apply %d: %v", i, err)
-			}
-			if (i == 0) != (len(res.Applied) > 0) {
-				t.Fatalf("apply %d: %+v", i, res)
-			}
 		}
 	})
 

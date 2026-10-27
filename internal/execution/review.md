@@ -16,8 +16,9 @@ preserved; O-11 (retention) and O-18/O-19 (hosted authority/custody) untouched.
   PostgreSQL adapter only persists them (`postgres/save.go`, `load.go`) and binds peer seams
   (`env.go`, `admission.go`, `cancellation.go`, `authority.go`).
 * Lock order in `postgres/store.go` and `ports.go` (`Env`).
-* `T020_002_runs.sql` guards: immutable pins, terminal immutability, one unsettled attempt per
-  step, column-scoped grants, append-only history/evidence, forced RLS.
+* The execution tables in the squashed baseline (`internal/storage/migrations/001_schema.sql`)
+  guard immutable pins, terminal immutability, one unsettled attempt per step, column-scoped grants,
+  append-only history/evidence and forced RLS.
 * The unknown-effect barrier (`Aggregate.Settle`) and the replay-safety rule
   (`launch == not_started` or trusted reconciliation).
 
@@ -31,10 +32,11 @@ preserved; O-11 (retention) and O-18/O-19 (hosted authority/custody) untouched.
    `EffectReconciler` makes a replay safe, and missing evidence leaves the step blocked.
 3. **M2 seams.** Cleanup (`Dependencies.Cleanup`), gate and agent hooks exist but are disabled in M1
    wiring; public creation accepts work runs only.
-4. **Migration packaging.** The workspace SQL path cannot be embedded from the execution package, so
-   `go generate ./internal/execution/...` copies `internal/workspace/migrations/T020_001_attempt_fk.sql`
-   into `postgres/workspace_fk.gen.go`; a test requires byte equality and the manifest contribution
-   is the same text.
+4. **Migration packaging.** The execution tables and their dependent workspace, artifact and
+   secret-pin constraints are part of the squashed baseline
+   (`internal/storage/migrations/001_schema.sql`); there is no per-module migration directory and no
+   generated copy. The one later change this package contributes is the additive run_shared schema,
+   appended as `003_run_resources.sql`.
 5. **Retention confirmation.** The retained-source *intent* is persisted atomically with the run;
    confirmation uses `workspace.Service.PinCommit`, which is idempotent for the same run and commit.
 6. **Event vocabulary.** Only existing catalog events are used. A cleanup run (no work item) emits

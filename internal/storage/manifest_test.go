@@ -8,8 +8,8 @@ import (
 )
 
 func TestManifestRejectsDuplicateAcrossContributions(t *testing.T) {
-	a := Contribution{Module: "a", Migrations: []Migration{{ID: "T010_001_a.sql", SQL: "SELECT 1"}}}
-	b := Contribution{Module: "b", Migrations: []Migration{{ID: "T010_001_a.sql", SQL: "SELECT 2"}}}
+	a := Contribution{Module: "a", Migrations: []Migration{{ID: "010_001_a.sql", SQL: "SELECT 1"}}}
+	b := Contribution{Module: "b", Migrations: []Migration{{ID: "010_001_a.sql", SQL: "SELECT 2"}}}
 	_, err := NewManifest(a, b)
 	if !errors.Is(err, ErrDuplicateMigration) {
 		t.Fatalf("err = %v, want ErrDuplicateMigration", err)
@@ -21,7 +21,7 @@ func TestManifestRejectsDuplicateAcrossContributions(t *testing.T) {
 
 func TestManifestRejectsDuplicateWithinContribution(t *testing.T) {
 	c := Contribution{Module: "a", Migrations: []Migration{
-		{ID: "T010_001_a.sql", SQL: "SELECT 1"}, {ID: "T010_001_a.sql", SQL: "SELECT 1"},
+		{ID: "010_001_a.sql", SQL: "SELECT 1"}, {ID: "010_001_a.sql", SQL: "SELECT 1"},
 	}}
 	if _, err := NewManifest(c); !errors.Is(err, ErrDuplicateMigration) {
 		t.Fatalf("err = %v, want ErrDuplicateMigration", err)
@@ -29,37 +29,37 @@ func TestManifestRejectsDuplicateWithinContribution(t *testing.T) {
 }
 
 func TestManifestRejectsInvalidIDs(t *testing.T) {
-	for _, id := range []string{"", "001_base.sql", "T10_001_a.sql", "T010_001_A.sql", "T010_001_a.SQL", "T010_001_a", "../T010_001_a.sql", "T010_001_a.sql\n"} {
+	for _, id := range []string{"", "1_base.sql", "0001_base.sql", "010_Base.sql", "010_a.SQL", "010_a", "../010_a.sql", "010_a.sql\n"} {
 		c := Contribution{Module: "a", Migrations: []Migration{{ID: id, SQL: "SELECT 1"}}}
 		if _, err := NewManifest(c); !errors.Is(err, ErrInvalidMigrationID) {
 			t.Errorf("id %q: err = %v, want ErrInvalidMigrationID", id, err)
 		}
 	}
-	empty := Contribution{Module: "a", Migrations: []Migration{{ID: "T010_001_a.sql", SQL: " \n"}}}
+	empty := Contribution{Module: "a", Migrations: []Migration{{ID: "010_001_a.sql", SQL: " \n"}}}
 	if _, err := NewManifest(empty); !errors.Is(err, ErrInvalidMigrationID) {
 		t.Errorf("empty SQL: err = %v", err)
 	}
 }
 
 func TestManifestOrderIsExplicitAcrossContributions(t *testing.T) {
-	late := Contribution{Module: "late", Migrations: []Migration{{ID: "T001_001_x.sql", SQL: "SELECT 1"}}}
-	early := Contribution{Module: "early", Migrations: []Migration{{ID: "T099_001_y.sql", SQL: "SELECT 1"}}}
+	late := Contribution{Module: "late", Migrations: []Migration{{ID: "001_x.sql", SQL: "SELECT 1"}}}
+	early := Contribution{Module: "early", Migrations: []Migration{{ID: "099_y.sql", SQL: "SELECT 1"}}}
 	m, err := NewManifest(early, late) // lexical order would be the reverse
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := m.Migrations()
-	if got[0].ID != "T099_001_y.sql" || got[1].ID != "T001_001_x.sql" {
+	if got[0].ID != "099_y.sql" || got[1].ID != "001_x.sql" {
 		t.Fatalf("manifest order = %v", got)
 	}
 	got[0].ID = "mutated"
-	if m.Migrations()[0].ID != "T099_001_y.sql" {
+	if m.Migrations()[0].ID != "099_y.sql" {
 		t.Error("Migrations must return a copy")
 	}
 }
 
 func TestManifestRejectsUnorderedContribution(t *testing.T) {
-	c := Contribution{Module: "a", Migrations: []Migration{{ID: "T010_002_b.sql", SQL: "SELECT 1"}, {ID: "T010_001_a.sql", SQL: "SELECT 1"}}}
+	c := Contribution{Module: "a", Migrations: []Migration{{ID: "010_002_b.sql", SQL: "SELECT 1"}, {ID: "010_001_a.sql", SQL: "SELECT 1"}}}
 	if _, err := NewManifest(c); !errors.Is(err, ErrMigrationOrder) {
 		t.Fatalf("err = %v, want ErrMigrationOrder", err)
 	}
@@ -67,15 +67,15 @@ func TestManifestRejectsUnorderedContribution(t *testing.T) {
 
 func TestLoadFSOrdersAndValidates(t *testing.T) {
 	fsys := fstest.MapFS{
-		"m/T010_002_b.sql": {Data: []byte("SELECT 2")},
-		"m/T010_001_a.sql": {Data: []byte("SELECT 1")},
-		"m/README.md":      {Data: []byte("ignored")},
+		"m/010_002_b.sql": {Data: []byte("SELECT 2")},
+		"m/010_001_a.sql": {Data: []byte("SELECT 1")},
+		"m/README.md":     {Data: []byte("ignored")},
 	}
 	ms, err := LoadFS(fsys, "m")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ms) != 2 || ms[0].ID != "T010_001_a.sql" || ms[1].SQL != "SELECT 2" {
+	if len(ms) != 2 || ms[0].ID != "010_001_a.sql" || ms[1].SQL != "SELECT 2" {
 		t.Fatalf("LoadFS = %+v", ms)
 	}
 	bad := fstest.MapFS{"m/base.sql": {Data: []byte("SELECT 1")}}
@@ -85,7 +85,7 @@ func TestLoadFSOrdersAndValidates(t *testing.T) {
 }
 
 func TestChecksumIsStableAndContentSensitive(t *testing.T) {
-	a := Migration{ID: "T010_001_a.sql", SQL: "SELECT 1"}
+	a := Migration{ID: "010_001_a.sql", SQL: "SELECT 1"}
 	if a.Checksum() != (Migration{ID: "other", SQL: "SELECT 1"}).Checksum() || len(a.Checksum()) != 64 {
 		t.Error("checksum must depend only on SQL and be hex SHA-256")
 	}
@@ -102,17 +102,18 @@ func TestBaseContributionIsValid(t *testing.T) {
 	if _, err := NewManifest(c); err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range c.Migrations {
-		if !strings.HasPrefix(m.ID, "T002_") {
-			t.Errorf("base migration %q lacks the T002_ prefix", m.ID)
-		}
+	if len(c.Migrations) != 2 || c.Migrations[0].ID != "001_schema.sql" || c.Migrations[1].ID != "002_grants.sql" {
+		t.Fatalf("baseline = %+v", c.Migrations)
+	}
+	if !strings.Contains(c.Migrations[1].SQL, RuntimeRolePlaceholder) {
+		t.Error("the grants migration must use the runtime role placeholder")
 	}
 }
 
 func TestPlanDetectsHistoryConflicts(t *testing.T) {
-	a := Migration{ID: "T010_001_a.sql", SQL: "A"}
-	b := Migration{ID: "T010_002_b.sql", SQL: "B"}
-	c := Migration{ID: "T010_003_c.sql", SQL: "C"}
+	a := Migration{ID: "010_001_a.sql", SQL: "A"}
+	b := Migration{ID: "010_002_b.sql", SQL: "B"}
+	c := Migration{ID: "010_003_c.sql", SQL: "C"}
 	ms := []Migration{a, b, c}
 
 	pending, err := plan(ms, map[string]string{a.ID: a.Checksum()})
@@ -131,7 +132,7 @@ func TestPlanDetectsHistoryConflicts(t *testing.T) {
 }
 
 func TestExpandAllRuntimeRole(t *testing.T) {
-	ms := []Migration{{ID: "T010_001_a.sql", SQL: "GRANT SELECT ON t TO " + RuntimeRolePlaceholder}, {ID: "T010_002_b.sql", SQL: "SELECT 1"}}
+	ms := []Migration{{ID: "010_001_a.sql", SQL: "GRANT SELECT ON t TO " + RuntimeRolePlaceholder}, {ID: "010_002_b.sql", SQL: "SELECT 1"}}
 	if _, err := expandAll(ms, ""); !errors.Is(err, ErrRuntimeRoleRequired) {
 		t.Fatalf("err = %v, want ErrRuntimeRoleRequired", err)
 	}

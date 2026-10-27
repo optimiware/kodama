@@ -283,14 +283,7 @@ func TestPostgresMigrations(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
 
-	t.Run("the contribution is one valid migration and reapplication is a no-op", func(t *testing.T) {
-		c := gwpg.Migrations()
-		if c.Module != "gitwebhook" || len(c.Migrations) != 1 || c.Migrations[0].ID != "T100_001_git_triggers.sql" {
-			t.Fatalf("contribution = %+v", c)
-		}
-		if !strings.Contains(c.Migrations[0].SQL, storage.RuntimeRolePlaceholder) {
-			t.Fatal("grants must follow the deployment's runtime role")
-		}
+	t.Run("the baseline reapplies as a no-op", func(t *testing.T) {
 		manifest, err := storage.NewManifest(contributions()...)
 		if err != nil {
 			t.Fatal(err)
@@ -302,11 +295,9 @@ func TestPostgresMigrations(t *testing.T) {
 	})
 
 	t.Run("an edited migration is detected", func(t *testing.T) {
-		m := gwpg.Migrations()
+		m := storage.BaseContribution()
 		m.Migrations[0].SQL += "\n-- edited"
-		cs := contributions()
-		cs[len(cs)-1] = m
-		manifest, err := storage.NewManifest(cs...)
+		manifest, err := storage.NewManifest(m)
 		if err != nil {
 			t.Fatal(err)
 		}

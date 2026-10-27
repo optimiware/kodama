@@ -6,7 +6,7 @@ onto the existing container runtime, following the [agent runtime specification]
 
 Status: implemented and tested (domain, expansion and codecs without infrastructure; the PostgreSQL
 store, registration and both admission paths against real PostgreSQL). Nothing registers these
-routes, migrations or adapters yet; that is the integration owner's job (T-039), with the
+routes or adapters yet; that is the integration owner's job (T-039), with the
 confirmations in [review.md](review.md). It does **not** claim an OpenCode wrapper or its
 compatibility smoke result (T-031), the AI gateway or tool proxy enforcement of limits (T-032/T-033),
 human gates (T-034), hosted delegation or credentials (O-18/O-19), sessions, continuation or a
@@ -20,7 +20,7 @@ cancellation and recovery machinery.
 | `profile.go`, `values.go`, `errors.go` | `Draft` → validated, canonical `Content` (digest-addressed), immutable `ProfileVersion`; actors, permissions, controls, `name@version` references |
 | `catalogue.go`, `ports.go`, `service.go` | Injected compatibility catalogue; consumer-owned ports (`Repository`, `Authority`, `Compatibility`, `Approvals`); `Register`/`List`/`Stored`/`Resolve` use cases |
 | `payload.go`, `expansion.go` | Pure expansion into image, wrapper command and the canonical wrapper payload; the shared encoder/decoder; pinned `Policy` |
-| `postgres/` | `Store` (`agents.Repository`), `T030_001_agent_profiles.sql`, `Migrations()` |
+| `postgres/` | `Store` (`agents.Repository`); the profile table is in the baseline schema (`internal/storage/migrations/001_schema.sql`) |
 | `http/` | The two routes, DTO/error mapping, generated types (`agents.gen.go`) |
 | `adapters/` | `Lookup` (`pipeline.ProfileLookup`), `Resolver` (`execution.AgentResolver`), `Authority` (identity), admission decorators and `Chain`, `Planner`, `PolicyReader`, `MetadataReader` |
 | `agentstest/` | Fixtures: builders, a table authority and approvals, an in-memory repository. Fixture catalogue entries never establish production support |
@@ -83,7 +83,7 @@ whose arguments open with the marker is refused at admission.
 ## Wiring (integration owner)
 
 ```go
-store, _ := agentspg.NewStore(pool, agentspg.Options{})      // migrations: agentspg.Migrations() after storage.BaseContribution()
+store, _ := agentspg.NewStore(pool, agentspg.Options{})      // schema: the baseline (storage.BaseContribution())
 svc, _ := agents.NewService(agents.ServiceConfig{Repository: store, Authority: agentAuth /* adapters.NewAuthority(identity, reader) */,
     Compatibility: catalogue, Approvals: approvals})
 resolver, _ := adapters.NewResolver(svc)

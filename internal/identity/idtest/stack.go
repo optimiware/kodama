@@ -18,11 +18,9 @@ import (
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/events/eventstest"
 	eventspg "github.com/optimiware/kodama/internal/events/postgres"
-	httpapipg "github.com/optimiware/kodama/internal/httpapi/postgres"
 	"github.com/optimiware/kodama/internal/identity"
 	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
 	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
 
@@ -47,17 +45,12 @@ type Options struct {
 	Conns int32
 	// Events mutates the event store options (for example the backlog bound).
 	Events func(*eventspg.Options)
-	// NoWork skips the work and HTTP-idempotency contributions.
-	NoWork bool
 }
 
-// Manifest lists the contributions in dependency order.
-func Manifest(withWork bool) (storage.Manifest, error) {
-	cs := []storage.Contribution{storage.BaseContribution(), eventspg.Migrations(), identitypg.Migrations()}
-	if withWork {
-		cs = append(cs, httpapipg.Migrations(), workpg.Migrations())
-	}
-	return storage.NewManifest(cs...)
+// Manifest is the squashed baseline: identity, work and idempotency share one
+// contribution, so there is nothing to select.
+func Manifest() (storage.Manifest, error) {
+	return storage.NewManifest(storage.BaseContribution())
 }
 
 // New provisions the database, migrations and services.
@@ -71,7 +64,7 @@ func New(t testing.TB, o Options) *Stack {
 		conns = 24
 	}
 	s := &Stack{T: t, DB: db, Owner: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, conns), Clock: &eventstest.Clock{}}
-	manifest, err := Manifest(!o.NoWork)
+	manifest, err := Manifest()
 	if err != nil {
 		t.Fatal(err)
 	}

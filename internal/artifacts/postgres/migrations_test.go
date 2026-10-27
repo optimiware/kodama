@@ -6,22 +6,21 @@ import (
 	"testing"
 	"time"
 
-	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
 
 var tables = []string{"artifacts", "artifact_objects", "artifact_pins"}
 
-// TestMigrationReapply: contribution ordering, fresh migration, reapply,
-// constraints, immutability guards and runtime grants on a real PostgreSQL.
+// TestMigrationReapply: fresh application of the baseline, reapply, constraints,
+// immutability guards and runtime grants on a real PostgreSQL.
 func TestMigrationReapply(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	db := pgtest.New(t)
 	mig := db.MigrationPool(ctx, 4)
 
-	m, err := storage.NewManifest(storage.BaseContribution(), artifactspg.Migrations())
+	m, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}
@@ -30,17 +29,8 @@ func TestMigrationReapply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var ours []string
-	for _, id := range first.Applied {
-		if strings.HasPrefix(id, "T015_") {
-			ours = append(ours, id)
-		}
-	}
-	if len(ours) != 1 || ours[0] != "T015_001_artifacts.sql" {
-		t.Fatalf("module migrations applied: %v", ours)
-	}
-	if mods := artifactspg.Migrations(); mods.Module != "artifacts" || len(mods.Migrations) != 1 {
-		t.Fatalf("contribution: %+v", mods)
+	if len(first.Applied) != 2 {
+		t.Fatalf("the baseline is two migrations, applied %v", first.Applied)
 	}
 	second, err := storage.Migrate(ctx, mig, m, opts)
 	if err != nil {
@@ -48,6 +38,17 @@ func TestMigrationReapply(t *testing.T) {
 	}
 	if len(second.Applied) != 0 || second.Skipped != len(first.Applied) {
 		t.Fatalf("reapply applied %v skipped %d", second.Applied, second.Skipped)
+	}
+
+	// The baseline installs the execution link; this module's test creates no
+	// attempts, so it asserts the constraint and then isolates the artifact
+	// schema. The execution composition tests exercise the link itself.
+	var linked bool
+	if err := mig.QueryRow(ctx, `SELECT count(*) = 1 FROM pg_constraint WHERE conname = 'artifacts_producer_attempt_fk'`).Scan(&linked); err != nil || !linked {
+		t.Fatalf("the producer attempt link is not installed: %v %v", linked, err)
+	}
+	if _, err := mig.Exec(ctx, `ALTER TABLE artifacts DROP CONSTRAINT artifacts_producer_attempt_fk`); err != nil {
+		t.Fatal(err)
 	}
 
 	one := func(sql string, args ...any) (v bool) {

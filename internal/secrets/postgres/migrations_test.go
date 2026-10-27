@@ -6,9 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/events/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
@@ -27,8 +24,8 @@ func Test_migration_reapply(t *testing.T) {
 	db := pgtest.New(t)
 	mig := db.MigrationPool(ctx, 4)
 
-	// The documented order: base, HTTP idempotency, event bus, then this module.
-	m, err := storage.NewManifest(storage.BaseContribution(), httppg.Migrations(), postgres.Migrations(), secretspg.Migrations())
+	// The squashed baseline: schema, then the runtime role's grants.
+	m, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatalf("combined manifest: %v", err)
 	}
@@ -37,15 +34,11 @@ func Test_migration_reapply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var ours []string
-	for _, id := range first.Applied {
-		if strings.HasPrefix(id, "T012_") {
-			ours = append(ours, id)
-		}
+	if len(first.Applied) != 2 {
+		t.Fatalf("the baseline is two migrations, applied %v", first.Applied)
 	}
-	if len(ours) != 2 || ours[0] != "T012_001_configuration.sql" || ours[1] != "T012_002_references.sql" {
-		t.Fatalf("module migrations applied: %v", ours)
-	}
+	// Pins name the consuming run; this module's schema test has no execution.
+	pgtest.DropExecutionLinks(t, mig, "secret_pins", "secret_pins_run_fk")
 	second, err := storage.Migrate(ctx, mig, m, opts)
 	if err != nil {
 		t.Fatalf("reapply: %v", err)

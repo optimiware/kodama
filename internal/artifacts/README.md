@@ -26,7 +26,7 @@ central migration registration, configuration names.
 | `ports.go` | Consumer-owned ports: `AttemptAuthority`, `ReadAuthority`, `Repository`, `CleanupStore`, `ObjectStore`, `RegistryVerifier`, `Retention`, `IDs` |
 | `service.go`, `reserve.go`, `complete.go`, `lookup.go` | Use cases: `Reserve`, `Complete`, `Metadata`, `References`/`Reference`, `Pin`/`Unpin` |
 | `reconcile.go` | `Reconciler`: bounded orphan, abandonment, deletion-recovery and retention sweeps under durable leases |
-| `postgres/` | `Store` (Repository + CleanupStore), `Migrations()` and `migrations/T015_001_artifacts.sql` |
+| `postgres/` | `Store` (Repository + CleanupStore); the artifact tables are in the baseline schema (`internal/storage/migrations/001_schema.sql`) |
 | `s3/` | S3-compatible `ObjectStore`: scoped presigned transfer, read, seal, delete, under an owned key prefix |
 | `oci/` | `Verifier`: digest-addressed registry verification with injected `Policy` and `ProvenanceResolver` |
 | `http/` (package `artifactshttp`) | Runtime reserve/complete routes, public metadata route, generated DTOs (`artifacts.gen.go` from [`api/artifacts.yaml`](../../api/artifacts.yaml)) |
@@ -137,15 +137,17 @@ injected, never defaulted here.
 
 ## Database
 
-`T015_001_artifacts.sql`: `artifacts`, `artifact_objects`, `artifact_pins`.
+The artifact tables — `artifacts`, `artifact_objects`, `artifact_pins` — are part
+of the baseline schema (`internal/storage/migrations/001_schema.sql`).
 Composite `(tenant_id, project_id)` ownership to `projects`; forced RLS with
 owner and tenant policies; runtime grants without DELETE (except releasing a pin)
 and `UPDATE` only on lifecycle columns; triggers keep identity, declaration,
 provenance, seal and verification evidence immutable and the lifecycle one-way;
-`UNIQUE (tenant_id, project_id, attempt_id, name)` is the replay key. The
-execution tables do not exist yet, so there is no foreign key to attempts:
-**T-020 adds `(tenant_id, project_id, attempt_id)` → attempts and
-`(tenant_id, project_id, run_id)` → runs in its migration contribution.** Audit
+`UNIQUE (tenant_id, project_id, attempt_id, name)` is the replay key. In the same
+baseline, after the execution tables, the producer constraint
+`artifacts_producer_attempt_fk` adds
+`(tenant_id, project_id, attempt_id, run_id, step_id)` → `step_attempts` in
+dependency order. Audit
 rows (`artifact.reserved|registered|completed|abandoned|removed`) commit with
 the transition and hold identifiers only. No artifact event type exists in the
 event catalog, so none is emitted.
@@ -153,7 +155,7 @@ event catalog, so none is emitted.
 ## Wiring (T-027 and the execution/integration owners)
 
 ```go
-manifest, _ := storage.NewManifest(storage.BaseContribution(), /* ... */ artifactspg.Migrations())
+manifest, _ := storage.NewManifest(storage.BaseContribution())  // the artifact tables are in the baseline
 store, _ := artifactspg.NewStore(artifactspg.Config{DB: runtimePool})
 objects, _ := arts3.NewStore(arts3.Config{Client: s3Client, TransferClient: signerClient, Bucket: bucket, Prefix: prefix, MaxTransfer: ttlCap})
 verifier, _ := oci.NewVerifier(oci.Config{Policy: registryPolicy, Provenance: provenanceResolver})

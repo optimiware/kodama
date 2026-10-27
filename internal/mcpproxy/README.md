@@ -8,7 +8,7 @@ SD-01–SD-08.
 
 Status: implemented and tested (entities without infrastructure; the PostgreSQL store, SDK adapters,
 destination policy, bridges and HTTP routes against real PostgreSQL, the real runtime-authority and
-secrets modules and a local TLS MCP server). Nothing mounts these routes, migrations or adapters yet;
+secrets modules and a local TLS MCP server). Nothing mounts these routes or adapters yet;
 that is the integration owner's job (T-039), with the confirmations in [review.md](review.md).
 
 It does **not** claim: OpenCode compatibility (T-031 qualifies the real harness; the fixture proves
@@ -23,7 +23,7 @@ do not deploy Kubernetes network policy).
 | --- | --- |
 | `registration.go`, `session.go`, `invocation.go`, `policy.go` | Entities and pure rules: `Registration` (expected-version edits, tombstone), `RemoteSession` (caller-tuple binding, expiry, terminal states), `Invocation` (admitted → dispatching → succeeded/failed/unknown), qualified-tool `ToolPolicy` |
 | `ports.go`, `service.go`, `errors.go` | Consumer-owned ports (`Store`, `RuntimeAuthority`, `HumanAuthority`, `AttemptPolicy`, `CredentialSource`, `RemoteTools`, `Destinations`, `SecretChecker`, optional `ContentRecorder`) and the use cases |
-| `postgres/` | `Store`, `T033_001_mcp_proxy.sql`, `Migrations()` |
+| `postgres/` | `Store`; the proxy tables are in the baseline schema (`internal/storage/migrations/001_schema.sql`) |
 | `protocol/` | Pinned SDK/protocol (`compatibility.go`), approved-destination policy and TLS transport, the SDK remote client (`RemoteTools`) and the workload-facing Streamable HTTP handler |
 | `adapters/` | Bridges: `RuntimeAuthority` (runtimeauth), `HumanAuthority` (identity), `Policy` (execution + agents `PolicyReader`), `Credentials` and `Pins` (secrets), `ToolApprovals` (agents approvals contribution) |
 | `http/` | The four registration routes, DTO/error mapping, generated types (`mcp.gen.go`) |
@@ -121,9 +121,10 @@ are not relayed.
 
 ## Integration obligations (T-039)
 
-1. **Migrations.** `postgres.Migrations()` after `storage.BaseContribution()`, the runtimeauth and
-   secrets contributions. Consider adding a foreign key `mcp_run_bindings(tenant_id, project_id, run_id)
-   → runs` after the execution contribution (omitted here so the module does not require execution tables).
+1. **Migrations.** Nothing to register: the proxy tables are in the baseline schema
+   (`internal/storage/migrations/001_schema.sql`) applied by `storage.BaseContribution()`.
+   Consider adding a foreign key `mcp_run_bindings(tenant_id, project_id, run_id) → runs` as a later
+   contribution after the baseline; the baseline does not declare it.
 2. **Construction.** `postgres.NewStore(db, postgres.Options{Recheck: runtimeAuthority.Recheck, Pin: adapters.Pins(secretsStore)})`;
    `mcpproxy.NewService(Config{...})` with `adapters.NewRuntimeAuthority` (same `AttemptAuthority` and signing
    generation as runtimeauth's store), `adapters.NewHumanAuthority`, `adapters.NewPolicy`,

@@ -233,7 +233,7 @@ func newEnv(t testing.TB, opts ...envOption) *env {
 	base.SeedTenant(t, string(tenantB), string(projectB1))
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	m, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), secretspg.Migrations())
+	m, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}

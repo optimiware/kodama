@@ -150,7 +150,7 @@ var _ Env = pgEnv{}
 // in the unit layer.
 func OpenPostgres(t testing.TB) Env {
 	t.Helper()
-	s := New(t, Options{NoWork: true})
+	s := New(t, Options{})
 	fail := &failingEvents{}
 	store, err := identitypg.NewStore(s.Runtime, pgFaultAppender{inner: s.Events, fail: fail})
 	if err != nil {

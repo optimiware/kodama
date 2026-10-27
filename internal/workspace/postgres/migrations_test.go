@@ -5,19 +5,17 @@ import (
 	"errors"
 	"testing"
 
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
 
 // Test_migration_reapply: fresh application, repeated application (a no-op
-// verified by checksum), schema constraints and manifest contribution rules.
+// verified by checksum), schema constraints and the runtime-role placeholder.
 func Test_migration_reapply(t *testing.T) {
 	ctx := context.Background()
 	db := pgtest.New(t)
 	migration := db.MigrationPool(ctx, 2)
-	manifest, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), workspacepg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,14 +23,8 @@ func Test_migration_reapply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var applied bool
-	for _, id := range first.Applied {
-		if id == "T013_001_workspaces.sql" {
-			applied = true
-		}
-	}
-	if !applied {
-		t.Fatalf("T013_001 not applied: %v", first.Applied)
+	if len(first.Applied) != 2 {
+		t.Fatalf("the baseline is two migrations, applied %v", first.Applied)
 	}
 	second, err := storage.Migrate(ctx, migration, manifest, storage.MigrateOptions{RuntimeRole: db.RuntimeRole})
 	if err != nil || len(second.Applied) != 0 || second.Skipped != len(manifest.Migrations()) {
@@ -66,24 +58,14 @@ func Test_migration_reapply(t *testing.T) {
 	})
 
 	t.Run("a checksum change is refused", func(t *testing.T) {
-		altered := workspacepg.Migrations()
+		altered := storage.BaseContribution()
 		altered.Migrations[0].SQL += "\n-- edited after merge\n"
-		m2, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), altered)
+		m2, err := storage.NewManifest(altered)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if _, err := storage.Migrate(ctx, migration, m2, storage.MigrateOptions{RuntimeRole: db.RuntimeRole}); !errors.Is(err, storage.ErrChecksumMismatch) {
 			t.Fatalf("got %v", err)
-		}
-	})
-
-	t.Run("the contribution is a valid, ordered, non-conflicting manifest part", func(t *testing.T) {
-		c := workspacepg.Migrations()
-		if c.Module != "workspace" || len(c.Migrations) == 0 {
-			t.Fatalf("%+v", c)
-		}
-		if _, err := storage.NewManifest(storage.BaseContribution(), c, c); !errors.Is(err, storage.ErrDuplicateMigration) {
-			t.Fatalf("a duplicate contribution must be rejected: %v", err)
 		}
 	})
 

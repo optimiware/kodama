@@ -11,7 +11,7 @@ import (
 )
 
 func TestFirstLoginConcurrent(t *testing.T) {
-	s := idtest.New(t, idtest.Options{NoWork: true, Conns: 32})
+	s := idtest.New(t, idtest.Options{Conns: 32})
 	s.SeedProject(tenantA, projectA, 5)
 
 	const n = 24

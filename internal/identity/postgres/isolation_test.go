@@ -192,56 +192,41 @@ func TestMigrationReapply(t *testing.T) {
 	owner := db.MigrationPool(ctx, 4)
 	opts := storage.MigrateOptions{RuntimeRole: db.RuntimeRole}
 
-	base := manifestOf(t, false)
-	if _, err := storage.Migrate(ctx, owner, base, opts); err != nil {
+	full := manifestOf(t)
+	res, err := storage.Migrate(ctx, owner, full, opts)
+	if err != nil {
 		t.Fatal(err)
 	}
-	// Seed data an installation would already hold before this module arrives.
+	if len(res.Applied) != 2 {
+		t.Fatalf("the baseline is two migrations, applied %v", res.Applied)
+	}
 	if _, err := owner.Exec(ctx, `INSERT INTO tenants (id, key) VALUES ('t010_up', 'up'); INSERT INTO users (id, issuer, subject) VALUES ('u_up', 'https://i', 's')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := owner.Exec(ctx, `INSERT INTO memberships (tenant_id, id, user_id, role) VALUES ('t010_up', 'mb_up', 'u_up', 'viewer')`); err != nil {
 		t.Fatal(err)
 	}
-
-	full := manifestOf(t, true)
-	res, err := storage.Migrate(ctx, owner, full, opts)
-	if err != nil {
-		t.Fatalf("upgrade: %v", err)
-	}
-	if len(res.Applied) != 1 || res.Applied[0] != "T010_001_identity_authority.sql" {
-		t.Fatalf("applied %v", res.Applied)
-	}
 	res, err = storage.Migrate(ctx, owner, full, opts)
-	if err != nil || len(res.Applied) != 0 || res.Skipped < 2 {
+	if err != nil || len(res.Applied) != 0 || res.Skipped != len(full.Migrations()) {
 		t.Fatalf("reapply: %+v %v", res, err)
 	}
 
-	// Existing rows survive and the new authority works over them: the pre-existing
-	// binding has no revision row yet, and a first change creates it.
+	// Existing rows survive: the binding remains visible to its tenant.
 	rt := db.RuntimePool(ctx, 4)
 	users := rtStack{rt}
 	if got := users.bindingCount("t010_up"); got != 1 {
 		t.Fatalf("pre-existing binding lost: %d", got)
 	}
 
-	// A modified contribution is refused rather than silently reapplied.
-	tampered := identitypg.Migrations()
-	tampered.Migrations = append([]storage.Migration(nil), tampered.Migrations...)
+	// A modified migration is refused rather than silently reapplied.
+	tampered := storage.BaseContribution()
 	tampered.Migrations[0].SQL += "\n-- edited after merge\n"
-	m, err := storage.NewManifest(storage.BaseContribution(), eventsMigrations(), tampered)
+	m, err := storage.NewManifest(tampered)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := storage.Migrate(ctx, owner, m, opts); !errors.Is(err, storage.ErrChecksumMismatch) {
 		t.Fatalf("tampered migration: %v", err)
-	}
-
-	// The migration IDs are globally unique and well-formed.
-	for _, mg := range identitypg.Migrations().Migrations {
-		if !strings.HasPrefix(mg.ID, "T010_") {
-			t.Errorf("migration %s lacks the task prefix", mg.ID)
-		}
 	}
 }
 

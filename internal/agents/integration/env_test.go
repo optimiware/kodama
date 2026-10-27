@@ -15,26 +15,19 @@ import (
 	"github.com/optimiware/kodama/internal/agents/adapters"
 	"github.com/optimiware/kodama/internal/agents/agentstest"
 	agentspg "github.com/optimiware/kodama/internal/agents/postgres"
-	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/execution"
 	execadapters "github.com/optimiware/kodama/internal/execution/adapters"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	executionhttp "github.com/optimiware/kodama/internal/execution/http"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	"github.com/optimiware/kodama/internal/httpapi"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
 	"github.com/optimiware/kodama/internal/identity"
 	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
 	"github.com/optimiware/kodama/internal/secrets"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 // env is the execution module's real PostgreSQL fixture extended with the agent
@@ -71,13 +64,7 @@ func newEnv(t *testing.T, o ...envOptions) *env {
 	x.GrantAll()
 	e := &env{Env: x, Approvals: agentstest.NewApprovals(), Draft: agentstest.Draft(t, "coding")}
 
-	// The agents contribution is appended after the contributions executiontest
-	// applied, in the same order, so the applied history is a prefix.
-	contribs := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}
-	manifest, err := storage.NewManifest(append(append(contribs, execpg.Migrations()...), agentspg.Migrations())...)
+	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations())
 	if err != nil {
 		t.Fatal(err)
 	}

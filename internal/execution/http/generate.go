@@ -3,6 +3,6 @@ package executionhttp
 // The generator is pinned by version and invoked without being added to go.mod,
 // exactly as in internal/httpapi/generate.go. Verify reproducibility with:
 //
-//	go generate ./internal/execution/... && git diff --exit-code -- internal/execution/http/runs.gen.go internal/execution/postgres/workspace_fk.gen.go
+//	go generate ./internal/execution/... && git diff --exit-code -- internal/execution/http/runs.gen.go
 //
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 -config oapi-codegen.yaml ../../../api/runs.yaml

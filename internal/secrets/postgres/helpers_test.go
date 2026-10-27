@@ -23,6 +23,7 @@ import (
 	"github.com/optimiware/kodama/internal/secrets/keyfile"
 	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
+	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
 
 const (
@@ -157,7 +158,7 @@ func withBacklog(n int) envOption { return func(c *envConfig) { c.backlog = n } 
 func fullManifest(t testing.TB) storage.Manifest {
 	t.Helper()
 	// Applied order: base, events (by eventstest), then HTTP idempotency and the module.
-	m, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), secretspg.Migrations())
+	m, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +179,10 @@ func newEnv(t testing.TB, opts ...envOption) *env {
 	if _, err := storage.Migrate(ctx, base.Migration, fullManifest(t), storage.MigrateOptions{RuntimeRole: base.DB.RuntimeRole}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	// A pin names the consuming run; these tests exercise the secrets module
+	// without execution, so the run link is dropped. The execution composition
+	// tests cover it against real runs.
+	pgtest.DropExecutionLinks(t, base.Migration, "secret_pins", "secret_pins_run_fk")
 
 	e := &env{t: t, base: base, keys: newKeyring(t)}
 	e.keys.add("v1")

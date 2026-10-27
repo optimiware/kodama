@@ -27,7 +27,7 @@ IT-02–IT-06/IT-11 and the HTTP concurrency conventions. Named acceptance:
 | `resolver.go` | Declared-reference resolution: `AttemptAuthority`, `VersionSource`, `PendingValue` ports |
 | `envelope/` | The one envelope codec: HKDF-SHA-256 value keys, AES-256-GCM, bound ownership context |
 | `keyfile/` | Development key-wrapping adapter (explicitly selected raw 32-byte KEK files) |
-| `postgres/` | Migrations `T012_001`, `T012_002`; tenant-scoped store, atomic write unit, pin registration, standalone `VersionSource`, keyed idempotent writes |
+| `postgres/` | Tenant-scoped store, atomic write unit, pin registration, standalone `VersionSource`, keyed idempotent writes; the configuration tables are in the baseline schema (`internal/storage/migrations/001_schema.sql`) |
 | `http/` (package `secretshttp`) | Management routes, generated DTOs (`configuration.gen.go` from [`api/configuration.yaml`](../../api/configuration.yaml)) |
 | `runtime/` (package `secretsruntime`) | Translation of the runtime contract's `SecretResolveRequest/Response` and error codes; registers nothing |
 | `integration/` | Delivery evidence through the merged `kodama step` entrypoint |
@@ -76,12 +76,13 @@ compatibility with platform rows is claimed**; no rows are copied between the sy
 
 ## Wiring (for the composition root, T-027)
 
-Migration order: `storage.BaseContribution()`, the HTTP idempotency contribution,
-the event bus contribution, then this module:
+Migrations are the squashed baseline only: the configuration tables, their
+grants and the run-pin constraint are part of
+`internal/storage/migrations/001_schema.sql` and `002_grants.sql`, applied
+by `storage.BaseContribution()`. This module contributes none:
 
 ```go
-manifest, err := storage.NewManifest(
-    storage.BaseContribution(), httppg.Migrations(), eventspg.Migrations(), secretspg.Migrations())
+manifest, err := storage.NewManifest(storage.BaseContribution())
 ```
 
 Construction (names are the module's exports; the key provider and installation

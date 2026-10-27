@@ -66,13 +66,13 @@ func Test_migration_reapply(t *testing.T) {
 
 	base := storage.BaseContribution()
 	modA := contribution("modA",
-		mig("T900_001_a_one.sql", "CREATE TABLE a_one (tenant_id kodama_id NOT NULL REFERENCES tenants (id), n int)"),
-		mig("T900_002_a_two.sql", "CREATE TABLE a_two (n int); GRANT SELECT ON a_two TO {{runtime_role}}"),
+		mig("900_001_a_one.sql", "CREATE TABLE a_one (tenant_id kodama_id NOT NULL REFERENCES tenants (id), n int)"),
+		mig("900_002_a_two.sql", "CREATE TABLE a_two (n int); GRANT SELECT ON a_two TO {{runtime_role}}"),
 	)
 	// A module listed after base but with a lexically smaller task ID: the
 	// manifest order, not the name, decides.
-	modB := contribution("modB", mig("T001_001_b_first.sql", "CREATE TABLE b_first (n int)"))
-	modC := contribution("modC", mig("T901_001_c.sql", "CREATE TABLE c_one (n int)"))
+	modB := contribution("modB", mig("001_001_b_first.sql", "CREATE TABLE b_first (n int)"))
+	modC := contribution("modC", mig("901_001_c.sql", "CREATE TABLE c_one (n int)"))
 	full := manifest(t, base, modA, modB)
 	wantOrder := func() []string {
 		var ids []string
@@ -144,17 +144,17 @@ func Test_migration_reapply(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(res.Applied) != 1 || res.Applied[0] != "T901_001_c.sql" {
+		if len(res.Applied) != 1 || res.Applied[0] != "901_001_c.sql" {
 			t.Fatalf("applied %v", res.Applied)
 		}
 	})
 
 	t.Run("checksum_mismatch_rejected", func(t *testing.T) {
 		tampered := contribution("modA",
-			mig("T900_001_a_one.sql", "CREATE TABLE a_one (tenant_id kodama_id NOT NULL REFERENCES tenants (id), n int, extra int)"),
+			mig("900_001_a_one.sql", "CREATE TABLE a_one (tenant_id kodama_id NOT NULL REFERENCES tenants (id), n int, extra int)"),
 			modA.Migrations[1],
 		)
-		next := contribution("modZ", mig("T902_001_z.sql", "CREATE TABLE z_one (n int)"))
+		next := contribution("modZ", mig("902_001_z.sql", "CREATE TABLE z_one (n int)"))
 		before := appliedIDs(t, pool)
 		_, err := storage.Migrate(ctx, pool, manifest(t, base, tampered, modB, modC, next), opts)
 		if !errors.Is(err, storage.ErrChecksumMismatch) {
@@ -173,7 +173,7 @@ func Test_migration_reapply(t *testing.T) {
 	})
 
 	t.Run("pending_before_applied_rejected", func(t *testing.T) {
-		gap := contribution("gap", mig("T899_001_gap.sql", "CREATE TABLE gap_one (n int)"))
+		gap := contribution("gap", mig("899_001_gap.sql", "CREATE TABLE gap_one (n int)"))
 		_, err := storage.Migrate(ctx, pool, manifest(t, base, gap, modA, modB, modC), opts)
 		if !errors.Is(err, storage.ErrMigrationOrder) {
 			t.Fatalf("err = %v, want ErrMigrationOrder", err)
@@ -185,7 +185,7 @@ func Test_migration_reapply(t *testing.T) {
 
 	t.Run("duplicate_id_rejected", func(t *testing.T) {
 		before := appliedIDs(t, pool)
-		dup := contribution("dup", mig("T900_001_a_one.sql", "CREATE TABLE dup_table (n int)"))
+		dup := contribution("dup", mig("900_001_a_one.sql", "CREATE TABLE dup_table (n int)"))
 		_, err := storage.NewManifest(base, modA, dup)
 		if !errors.Is(err, storage.ErrDuplicateMigration) {
 			t.Fatalf("err = %v, want ErrDuplicateMigration", err)
@@ -199,13 +199,13 @@ func Test_migration_reapply(t *testing.T) {
 	t.Run("failed_migration_leaves_no_partial_state", func(t *testing.T) {
 		d := postgres.New(t)
 		p := d.MigrationPool(ctx, 2)
-		good := contribution("good", mig("T910_001_good.sql", "CREATE TABLE good_one (n int)"))
+		good := contribution("good", mig("910_001_good.sql", "CREATE TABLE good_one (n int)"))
 		if _, err := storage.Migrate(ctx, p, manifest(t, good), storage.MigrateOptions{}); err != nil {
 			t.Fatal(err)
 		}
 		bad := contribution("bad",
-			mig("T911_001_bad.sql", "CREATE TABLE half_done (n int); INSERT INTO half_done VALUES (1); SELECT 1/0"),
-			mig("T911_002_after.sql", "CREATE TABLE after_bad (n int)"),
+			mig("911_001_bad.sql", "CREATE TABLE half_done (n int); INSERT INTO half_done VALUES (1); SELECT 1/0"),
+			mig("911_002_after.sql", "CREATE TABLE after_bad (n int)"),
 		)
 		res, err := storage.Migrate(ctx, p, manifest(t, good, bad), storage.MigrateOptions{})
 		if err == nil || pgCode(err) != "22012" {
@@ -217,11 +217,11 @@ func Test_migration_reapply(t *testing.T) {
 		if tableExists(t, p, "half_done") || tableExists(t, p, "after_bad") {
 			t.Fatal("partial DDL from the failed migration survived")
 		}
-		if got := appliedIDs(t, p); fmt.Sprint(got) != "[T910_001_good.sql]" {
+		if got := appliedIDs(t, p); fmt.Sprint(got) != "[910_001_good.sql]" {
 			t.Fatalf("recorded %v", got)
 		}
 		// The lock was released: a corrected migration under a new ID applies.
-		fixed := contribution("bad", mig("T911_001_bad.sql", "CREATE TABLE half_done (n int)"))
+		fixed := contribution("bad", mig("911_001_bad.sql", "CREATE TABLE half_done (n int)"))
 		_, err = storage.Migrate(ctx, p, manifest(t, good, fixed), storage.MigrateOptions{})
 		if err != nil {
 			t.Fatalf("retry after failure: %v", err)
@@ -243,8 +243,8 @@ func Test_migration_reapply(t *testing.T) {
 	t.Run("concurrent_runners_serialize", func(t *testing.T) {
 		d := postgres.New(t)
 		slow := contribution("slow",
-			mig("T920_001_slow.sql", "SELECT pg_sleep(0.3); CREATE TABLE slow_one (n int)"),
-			mig("T920_002_slow.sql", "SELECT pg_sleep(0.3); CREATE TABLE slow_two (n int); INSERT INTO slow_two VALUES (1)"),
+			mig("920_001_slow.sql", "SELECT pg_sleep(0.3); CREATE TABLE slow_one (n int)"),
+			mig("920_002_slow.sql", "SELECT pg_sleep(0.3); CREATE TABLE slow_two (n int); INSERT INTO slow_two VALUES (1)"),
 		)
 		m := manifest(t, base, slow)
 		const runners = 6
@@ -280,7 +280,7 @@ func Test_migration_reapply(t *testing.T) {
 		}
 		// The lock is database-scoped: it does not block another database.
 		other := postgres.New(t)
-		if _, err := storage.Migrate(ctx, other.MigrationPool(ctx, 1), manifest(t, contribution("x", mig("T921_001_x.sql", "SELECT 1"))), storage.MigrateOptions{}); err != nil {
+		if _, err := storage.Migrate(ctx, other.MigrationPool(ctx, 1), manifest(t, contribution("x", mig("921_001_x.sql", "SELECT 1"))), storage.MigrateOptions{}); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -290,11 +290,55 @@ func Test_migration_reapply(t *testing.T) {
 		p := d.MigrationPool(ctx, 1)
 		cctx, cancel := context.WithCancel(ctx)
 		cancel()
-		if _, err := storage.Migrate(cctx, p, manifest(t, contribution("x", mig("T930_001_x.sql", "SELECT 1"))), storage.MigrateOptions{}); err == nil {
+		if _, err := storage.Migrate(cctx, p, manifest(t, contribution("x", mig("930_001_x.sql", "SELECT 1"))), storage.MigrateOptions{}); err == nil {
 			t.Fatal("cancelled migrate succeeded")
 		}
-		if _, err := storage.Migrate(ctx, p, manifest(t, contribution("x", mig("T930_001_x.sql", "SELECT 1"))), storage.MigrateOptions{}); err != nil {
+		if _, err := storage.Migrate(ctx, p, manifest(t, contribution("x", mig("930_001_x.sql", "SELECT 1"))), storage.MigrateOptions{}); err != nil {
 			t.Fatalf("pool unusable after cancelled migrate: %v", err)
 		}
 	})
+}
+
+// Test_schema_alone_is_fail_closed proves the schema migration leaves no
+// SECURITY DEFINER function executable by PUBLIC on its own. A REVOKE ... FROM
+// PUBLIC commits with the definition it protects, so a crash or a failure in
+// 002_grants.sql can never leave owner-authority functions reachable.
+func Test_schema_alone_is_fail_closed(t *testing.T) {
+	db := postgres.New(t)
+	ctx := testCtx(t)
+	pool := db.MigrationPool(ctx, 4)
+	base := storage.BaseContribution()
+	if len(base.Migrations) != 2 {
+		t.Fatalf("baseline = %+v", base.Migrations)
+	}
+	schemaOnly := contribution("storage", base.Migrations[0])
+	if _, err := storage.Migrate(ctx, pool, manifest(t, schemaOnly), storage.MigrateOptions{}); err != nil {
+		t.Fatalf("apply the schema alone: %v", err)
+	}
+
+	rows, err := pool.Query(ctx, `SELECT p.oid::regprocedure::text, has_function_privilege('public', p.oid, 'EXECUTE')
+		FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = 'public' AND p.prosecdef ORDER BY 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	checked := 0
+	for rows.Next() {
+		var name string
+		var public bool
+		if err := rows.Scan(&name, &public); err != nil {
+			t.Fatal(err)
+		}
+		checked++
+		if public {
+			t.Errorf("%s is executable by PUBLIC before the grants migration", name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if checked == 0 {
+		t.Fatal("no SECURITY DEFINER function to check: the fixture proves nothing")
+	}
 }

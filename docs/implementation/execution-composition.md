@@ -98,7 +98,7 @@ A cancellation request, by event, direct call or periodic scan, is intent plus r
 
 ## Migration contribution order
 
-The composition fixture (`test/integration/execution-composition/fixture_test.go`) verifies this contribution order: base, events, httpapi, identity, work, secrets, pipeline, workspace, artifacts, then execution (`execution`, `execution-workspace-links`, `execution-links`), then runtime authority (`rtpg.Migrations()`) after execution. That is the order the integration owner must register in the composition root; no executable root registers these contributions yet, so this record does not show that root composition is wired. No new migration is needed, and merged migrations are not modified.
+The composition fixture (`test/integration/execution-composition/fixture_test.go`) applies the squashed baseline (`001_schema.sql`, then `002_grants.sql`), which already contains the execution tables, the workspace/artifact/secret-pin links and the runtime-authority schema. There is no per-module contribution order to register: `internal/app.Contributions()` returns that baseline plus the additive run_shared contribution (`003_run_resources.sql`, T-112), and the fixture verifies the composition against it. No new migration is needed, and merged migrations are not modified.
 
 ## Gate participation boundary (T-034, T-073)
 

@@ -35,26 +35,20 @@ import (
 	"github.com/optimiware/kodama/internal/delivery/adapters"
 	deliverypg "github.com/optimiware/kodama/internal/delivery/postgres"
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
 	"github.com/optimiware/kodama/internal/identity"
 	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
 	rpg "github.com/optimiware/kodama/internal/results/postgres"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 	rtjwt "github.com/optimiware/kodama/internal/runtimeauth/jwt"
 	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/runtimeauth/rtest"
 	"github.com/optimiware/kodama/internal/secrets"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 // Resource prefix and fixed scopes of the task's tests.
@@ -101,18 +95,11 @@ type Options struct {
 	DefaultPreviewTTL time.Duration
 }
 
-// Contributions is the ordered migration manifest the component tests apply: the
-// foundation, event, idempotency, identity, work, secrets, pipeline, workspace
-// and artifact contributions, the execution tables, the runtime grants and then
-// delivery, which references the attempts and artifacts the earlier ones create.
-// It is the order the composition root must register.
+// Contributions is the migration manifest the component tests apply: the
+// squashed baseline, which already holds every table, view, function, index,
+// policy and runtime grant the delivery fixtures exercise.
 func Contributions() []storage.Contribution {
-	contribs := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}
-	contribs = append(contribs, execpg.Migrations()...)
-	return append(contribs, rtpg.Migrations(), deliverypg.Migrations())
+	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations()}
 }
 
 // Manifest builds the ordered manifest of Contributions.
@@ -171,9 +158,8 @@ func New(t testing.TB, o Options) *Env {
 	lim.TenantConcurrency, lim.ProjectConcurrency = 200, 100
 	x.Limits.Set(lim)
 
-	// The execution fixture migrated everything the delivery schema depends on
-	// but the runtime grants and delivery itself: the same manifest plus those
-	// contributions is a pure append.
+	// The execution fixture already applied the baseline, which holds the
+	// delivery tables and the runtime grants; re-applying it is a no-op.
 	manifest, err := Manifest()
 	must(t, err)
 	mctx, cancel := context.WithTimeout(ctx, time.Minute)

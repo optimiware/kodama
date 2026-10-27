@@ -98,7 +98,7 @@ func New(t testing.TB, o Options) *Stack {
 		conns = 16
 	}
 	s := &Stack{T: t, DB: db, Owner: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, conns), Clock: NewClock(), Faults: &Faults{}, Logs: &SafeBuffer{}}
-	manifest, err := storage.NewManifest(storage.BaseContribution(), rtpg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}

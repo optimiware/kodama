@@ -51,7 +51,7 @@ Every permission-sensitive write runs in one `storage.WithTenant` transaction un
 ## Integration exports
 
 - Constructors: `identity.NewService`, `NewStandaloneAuthority`, `SelectAuthority`, `NewBootstrapService`; `oidc.NewVerifier`; `identitypg.NewStore`, `NewBootstrapStore`, `NewTxAuthority`, `Migrations`; `identityhttp.NewAuthenticator`, `NewAuthorizer`, `DefaultRules`, `NewHandler`, `(*Handler).RegisterRoutes`; `consumer.NewWorkAuthority`, `BindPermissions`.
-- Migrations: `T010_001_identity_authority.sql`, listed after `storage.BaseContribution()` (and the events contribution).
+- Migrations: none of its own; the identity tables are in the baseline schema (`internal/storage/migrations/001_schema.sql`).
 - Wiring owned by the composition root: the explicit authority profile, issuer and API audience, the injected HTTP client and cursor codec, runtime versus operator pools, the event appender, extra `Rule`s for actions of later modules (a missing rule denies), and bootstrap invocation.
 - Later consumers (logs, streams, source, artifacts, human gates) ask `identity.Authority` with the permissions above; the resource owner remains responsible for scoped lookup, and identity never reads another module's tables.
 

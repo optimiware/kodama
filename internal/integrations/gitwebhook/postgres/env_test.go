@@ -12,24 +12,16 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	"github.com/optimiware/kodama/internal/domain"
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
-	httppg "github.com/optimiware/kodama/internal/httpapi/postgres"
 	"github.com/optimiware/kodama/internal/identity"
-	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	gw "github.com/optimiware/kodama/internal/integrations/gitwebhook"
 	gwpg "github.com/optimiware/kodama/internal/integrations/gitwebhook/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
-	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
-	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
-	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 func TestMain(m *testing.M) {
@@ -43,12 +35,7 @@ func TestMain(m *testing.M) {
 // Contributions is the manifest the environment migrates: the execution
 // environment's own, then this module after everything it references.
 func contributions() []storage.Contribution {
-	cs := []storage.Contribution{
-		storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(), workpg.Migrations(),
-		secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(), artifactspg.Migrations(),
-	}
-	cs = append(cs, execpg.Migrations()...)
-	return append(cs, gwpg.Migrations())
+	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations()}
 }
 
 // env is the real execution module over PostgreSQL with this module's schema

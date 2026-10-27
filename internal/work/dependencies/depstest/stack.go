@@ -157,7 +157,7 @@ func NewStack(t testing.TB, o ...Options) *Stack {
 
 // Manifest is the full migration order: base, events, work, dependencies.
 func Manifest() (storage.Manifest, error) {
-	return storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), workpg.Migrations(), deppg.Migrations())
+	return storage.NewManifest(storage.BaseContribution())
 }
 
 // Migrate applies the manifest (reapplication is a no-op).

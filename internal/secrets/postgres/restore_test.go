@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/secrets"
 	"github.com/optimiware/kodama/internal/secrets/envelope"
 	"github.com/optimiware/kodama/internal/secrets/keyfile"
@@ -82,13 +81,15 @@ func restoreInto(t *testing.T, b []tableRows) (*secretspg.Store, *pgxpool.Pool, 
 	ctx := context.Background()
 	db := pgtest.New(t)
 	mig := db.MigrationPool(ctx, 4)
-	m, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), secretspg.Migrations())
+	m, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := storage.Migrate(ctx, mig, m, storage.MigrateOptions{RuntimeRole: db.RuntimeRole}); err != nil {
 		t.Fatalf("migrate restore target: %v", err)
 	}
+	// Restored pins name runs; the restore target has no execution rows.
+	pgtest.DropExecutionLinks(t, mig, "secret_pins", "secret_pins_run_fk")
 	tx, err := mig.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		t.Fatal(err)

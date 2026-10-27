@@ -3,13 +3,8 @@ package postgres_test
 import (
 	"context"
 	"testing"
-	"time"
 
-	eventspg "github.com/optimiware/kodama/internal/events/postgres"
-	metricspg "github.com/optimiware/kodama/internal/metrics/postgres"
 	"github.com/optimiware/kodama/internal/storage"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
-	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
 
 var flowViews = []string{"work_flow_steps", "work_flow_segments", "work_flow_episodes", "work_flow_blocked_runs"}
@@ -25,7 +20,7 @@ func Test_metrics_migration_reapply(t *testing.T) {
 	w := window(at(0), at(mins(10)))
 	before := e.summarize(it, w)
 
-	manifest, err := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), workpg.Migrations(), metricspg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,14 +28,11 @@ func Test_metrics_migration_reapply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Applied) != 0 || res.Skipped < 1 {
+	if len(res.Applied) != 0 || res.Skipped != 2 {
 		t.Fatalf("reapply applied %v skipped %d", res.Applied, res.Skipped)
 	}
 	if after := e.summarize(it, w); after != before {
 		t.Fatalf("summary changed across reapplication: %+v vs %+v", after, before)
-	}
-	if c := metricspg.Migrations(); c.Module != "metrics" || len(c.Migrations) != 1 || c.Migrations[0].ID != "T042_001_flow_intervals.sql" {
-		t.Fatalf("contribution = %+v", c)
 	}
 
 	t.Run("views_are_plain_security_invoker_views", func(t *testing.T) {
@@ -106,26 +98,6 @@ func Test_metrics_migration_reapply(t *testing.T) {
 		}
 		if after := e.summarize(it, w); after != before {
 			t.Errorf("summary changed: %+v", after)
-		}
-	})
-
-	t.Run("dependency_order_is_enforced", func(t *testing.T) {
-		// Without the work contribution the views cannot be created, and the
-		// failed file leaves nothing behind.
-		db := pgtest.New(t)
-		cctx, cancel := context.WithTimeout(ctx, time.Minute)
-		defer cancel()
-		owner := db.MigrationPool(cctx, 2)
-		bad, err := storage.NewManifest(storage.BaseContribution(), metricspg.Migrations())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := storage.Migrate(cctx, owner, bad, storage.MigrateOptions{RuntimeRole: db.RuntimeRole}); err == nil {
-			t.Fatal("the flow views were created without work_item_history")
-		}
-		var n int
-		if err := owner.QueryRow(cctx, `SELECT count(*) FROM pg_class WHERE relname LIKE 'work\_flow\_%'`).Scan(&n); err != nil || n != 0 {
-			t.Fatalf("a failed migration left %d objects: %v", n, err)
 		}
 	})
 }

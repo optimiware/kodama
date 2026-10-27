@@ -4,10 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/events/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 	"github.com/optimiware/kodama/internal/work"
-	workpg "github.com/optimiware/kodama/internal/work/postgres"
 )
 
 // Test_migration_reapply: the base, event and work migrations apply and reapply
@@ -18,7 +16,7 @@ func Test_migration_reapply(t *testing.T) {
 	ctx := context.Background()
 	it := e.create(scopeA, work.KindStory, "survives reapplication")
 
-	manifest, err := storage.NewManifest(storage.BaseContribution(), postgres.Migrations(), workpg.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,9 +29,6 @@ func Test_migration_reapply(t *testing.T) {
 	}
 	if got := e.get(it); got.Title != it.Title {
 		t.Fatalf("row after reapply: %+v", got)
-	}
-	if ms := workpg.Migrations().Migrations; len(ms) != 1 || ms[0].ID != "T011_001_work.sql" {
-		t.Fatalf("contribution = %+v", ms)
 	}
 
 	var rls, forced int

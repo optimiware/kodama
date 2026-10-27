@@ -70,7 +70,7 @@ func NewDB(t testing.TB, runtimeConns int32) *Env {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	e := &Env{DB: db, Migration: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, runtimeConns)}
-	manifest, err := storage.NewManifest(storage.BaseContribution(), postgres.Migrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution())
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}

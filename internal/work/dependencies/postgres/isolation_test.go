@@ -12,7 +12,6 @@ import (
 	"github.com/optimiware/kodama/internal/storage"
 	"github.com/optimiware/kodama/internal/work"
 	"github.com/optimiware/kodama/internal/work/dependencies/depstest"
-	deppg "github.com/optimiware/kodama/internal/work/dependencies/postgres"
 )
 
 func pgCode(err error) string {
@@ -44,26 +43,6 @@ func Test_dependency_isolation_and_migrations(t *testing.T) {
 		}
 		if st.Links(tenantA) != 1 {
 			t.Fatal("reapplication changed the data")
-		}
-		c := deppg.Migrations()
-		if c.Module != "work_dependencies" || len(c.Migrations) != 1 || c.Migrations[0].ID != "T045_001_work_dependencies.sql" {
-			t.Fatalf("contribution = %+v", c)
-		}
-		m, err := depstest.Manifest()
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Ordered after the base, events and T-011 contributions.
-		all := m.Migrations()
-		if last := all[len(all)-1].ID; last != "T045_001_work_dependencies.sql" {
-			t.Fatalf("last migration %s", last)
-		}
-		pos := map[string]int{}
-		for i, mg := range all {
-			pos[mg.ID] = i
-		}
-		if pos["T011_001_work.sql"] >= pos["T045_001_work_dependencies.sql"] {
-			t.Fatalf("T-045 is not ordered after T-011: %v", pos)
 		}
 	})
 

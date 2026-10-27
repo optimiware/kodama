@@ -4,12 +4,13 @@ Environment and deployment records (task T-035). It supports build/preview/stage
 bookkeeping around ordinary scripts; it is **not** a deployment engine, applies
 nothing to a cluster and schedules nothing.
 
-Status: the record package, its adapters, the PostgreSQL store and migration,
-the HTTP contract (`api/delivery.yaml`) with its public and runtime handlers, the
-published fixtures and the component tests are implemented in this package. The
-tests run the real store, migration, execution/secrets/artifact/runtime-authority
+Status: the record package, its adapters, the PostgreSQL store and its schema
+(the baseline, `internal/storage/migrations/001_schema.sql`), the HTTP contract
+(`api/delivery.yaml`) with its public and runtime handlers, the published fixtures and
+the component tests are implemented in this package. The
+tests run the real store, the baseline schema, execution/secrets/artifact/runtime-authority
 adapters and the real handlers over PostgreSQL; they are **component evidence**,
-not production qualification. Nothing registers these routes, migrations or
+not production qualification. Nothing registers these routes or
 adapters in the composition root yet (T-072); the real admission transaction,
 retention and cleanup bindings are qualified by T-077 and the end-to-end path by
 T-067. See [downstream responsibilities](#downstream-responsibilities).
@@ -27,7 +28,7 @@ TTL scheduler and cleanup run to T-066.
 | `ports.go`, `validation.go` | consumer-owned ports; pinned-context checks (`CheckPinned`, `CheckEnvironment`) |
 | `service.go`, `environments.go`, `registration.go`, `outcomes.go`, `cleanup.go` | use cases (`beginRuntime` authenticates and checks the retained pin for every runtime callback) |
 | `adapters/` | identity, secrets, execution, artifact, runtime-authority adapters; `execution.EnvironmentResolver`; `execution.DeploymentCleanup` |
-| `postgres/` | store, migration `T035_001_delivery.sql`, guard, events, history; `keyed.go` joins human creation to the HTTP foundation's keyed transaction |
+| `postgres/` | store, guard, events, history; delivery tables are in the baseline schema (`internal/storage/migrations/001_schema.sql`); `keyed.go` joins human creation to the HTTP foundation's keyed transaction |
 | `http/` | public `Handler` and runtime `Runtime`, DTOs generated from `api/delivery.yaml` (`delivery.gen.go`), `dto.go`, `errors.go`, `strict.go` |
 | `deliverytest/` | component fixtures: real PostgreSQL schemas and adapters; controlled doubles only for the OCI registry, Kubernetes Job observation and Git sources, plus `Pins` (immutable-pin edits) and `Bindings` (scope-aware cleanup bindings) |
 | `testdata/` | published JSON exchanges (see [fixtures](#fixtures)) |
@@ -104,11 +105,7 @@ and retried. Scheduling, the cleanup run and Kubernetes deletes belong to T-066/
 ## Construction and wiring order
 
 ```go
-manifest := storage.NewManifest(append([]storage.Contribution{
-    storage.BaseContribution(), eventspg.Migrations(), httppg.Migrations(), identitypg.Migrations(),
-    workpg.Migrations(), secretspg.Migrations(), pipelinepg.Migrations(), workspacepg.Migrations(),
-    artifactspg.Migrations(),
-}, append(execpg.Migrations(), rtpg.Migrations(), deliverypg.Migrations())...)...)
+manifest := storage.NewManifest(storage.BaseContribution())  // the delivery tables are in the baseline, after the execution tables
 
 guard, _ := deliverypg.NewGuard(attemptAuthority, keyRing.Generation, clock)
 store, _ := deliverypg.NewStore(deliverypg.Config{DB: runtimePool, Events: deliverypg.EventsFrom(eventStore), Guard: guard})
@@ -126,10 +123,11 @@ runtime, _ := deliveryhttp.NewRuntime(svc, deliveryhttp.DefaultRuntimeActions())
 runtime.RegisterRoutes(runtimeRouter)                  // router prefix /runtime/v1, attempt-token authenticator
 ```
 
-`deliverytest.Contributions()` is the executable form of the manifest order. The
-delivery migration must follow the execution tables (`step_attempts`) and the
-artifact and runtime-grant contributions; once deployed the order must not
-change (the ledger refuses a pending migration ordered before an applied one).
+`deliverytest.Contributions()` is the executable form of the manifest: the squashed
+baseline. The delivery tables and their constraints on the execution attempts and
+the artifacts live in that baseline in dependency order, so there is no delivery
+contribution to append; a later schema change appends one contribution after the
+baseline (the ledger refuses a pending migration ordered before an applied one).
 Required missing collaborators fail construction (`Store`, `Access`,
 `Credentials`); the runtime collaborators disable only what needs them and
 never loosen a check.

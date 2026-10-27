@@ -253,3 +253,19 @@ func randomHex(t testing.TB, n int) string {
 	}
 	return hex.EncodeToString(b)
 }
+
+// DropExecutionLinks drops the foreign keys the execution contribution adds to
+// a module's tables. A component fixture that exercises its module without
+// creating runs, attempts or artifacts drops them so its local rows stay legal;
+// the composition fixtures cover the links against real execution rows, so no
+// coverage is lost.
+func DropExecutionLinks(t testing.TB, pool *pgxpool.Pool, table string, constraints ...string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for _, name := range constraints {
+		if _, err := pool.Exec(ctx, `ALTER TABLE `+ident(table)+` DROP CONSTRAINT `+ident(name)); err != nil {
+			t.Fatalf("drop %s.%s (the baseline must install it): %v", table, name, err)
+		}
+	}
+}

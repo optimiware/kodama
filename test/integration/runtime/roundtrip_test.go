@@ -31,7 +31,6 @@ import (
 	"github.com/optimiware/kodama/internal/runtimeauth"
 	"github.com/optimiware/kodama/internal/runtimeauth/jwt"
 	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
-	"github.com/optimiware/kodama/internal/storage"
 	podmantest "github.com/optimiware/kodama/test/support/podman"
 )
 
@@ -115,12 +114,6 @@ func newStack(t *testing.T, b backend) *stack {
 	t.Helper()
 	e := executiontest.New(t)
 	e.GrantAll()
-	for _, m := range rtpg.Migrations().Migrations {
-		sql := strings.ReplaceAll(m.SQL, storage.RuntimeRolePlaceholder, `"`+e.Base.DB.RuntimeRole+`"`)
-		if _, err := e.Migration.Exec(context.Background(), sql); err != nil {
-			t.Fatalf("runtimeauth migration %s: %v", m.ID, err)
-		}
-	}
 	srv := newServer(t)
 	authority, err := rpg.NewAttemptAuthority(e.Store, func(domain.Scope) (string, error) { return b.namespace, nil }, nil)
 	must(t, err)

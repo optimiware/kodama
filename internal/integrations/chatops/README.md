@@ -2,7 +2,7 @@
 
 Durable outbound ChatOps links (task T-041): project-scoped generic JSON webhook destinations, durable notification delivery over the event bus, bounded retries with a complete attempt history, visible failures with authorized manual replay, and authenticated current-record review links. The HTTP contract, the outbound payload and the receiver conventions are in [`api/chatops.yaml`](../../../api/chatops.yaml).
 
-**Status.** The component is implemented and tested against real PostgreSQL, NATS JetStream and local HTTPS receivers. It is **not wired**: nothing registers its migration, routes, worker or event binding in a server yet (that is T-075/T-046's assembly), and no real gate exists as a link target here (T-046 verifies it).
+**Status.** The component is implemented and tested against real PostgreSQL, NATS JetStream and local HTTPS receivers. It is **not wired**: nothing registers its routes, worker or event binding in a server yet (that is T-075/T-046's assembly), and no real gate exists as a link target here (T-046 verifies it). Its tables are part of the baseline schema.
 
 **What this is not.** It is not interactive approval: a notification carries a link and no authority. There is no Slack/Teams semantics, no approval token, no capability link and no webhook receiver. It does not claim exactly-once delivery to a receiver that does not deduplicate.
 
@@ -19,7 +19,7 @@ Durable outbound ChatOps links (task T-041): project-scoped generic JSON webhook
 | Package | Contents | Depends on |
 | --- | --- | --- |
 | `internal/integrations/chatops` | `Destination` and `Delivery` entities and their transitions, `Payload`/`Project`, `LinkBuilder`, `Planner` and the consumer spec, `Service` (management use cases), `Worker`, consumer-owned ports (`ports.go`), failure classes (`errors.go`) | `contracts/events/v1`, `internal/domain`, `internal/events` (technology-free types only). **No pgx, no NATS, no `net/http`.** |
-| `…/postgres` | `Store` (management, claims, finalization, fence), the event-bus `Binding`, `TxAuthorizer`/`IdentityAuthorizer`, `Migrations()`, `T041_001_chatops.sql` | pgx, `internal/storage`, `internal/events/postgres`, `internal/identity/postgres` |
+| `…/postgres` | `Store` (management, claims, finalization, fence), the event-bus `Binding`, `TxAuthorizer`/`IdentityAuthorizer`; the ChatOps tables are in the baseline schema (`internal/storage/migrations/001_schema.sql`) | pgx, `internal/storage`, `internal/events/postgres`, `internal/identity/postgres` |
 | `…/webhook` | `Policy` (`chatops.EndpointPolicy`), `Client` (`chatops.Sender`), recipient-bound credential attachment | `pkg/netpolicy`, `net/http`; no SQL |
 | `…/http` | handlers, `Routes()`, `Rules()`, generated DTOs, error mapping | `internal/httpapi`, identity route rules |
 | `…/chatopstest` | shared fixture and published component evidence: real PostgreSQL stack, real event bus path, receivers, event builders | test support |
@@ -94,8 +94,9 @@ All are constructor configuration (`WorkerConfig`, `webhook.Config`, `PolicyConf
 ## Wiring (for T-075 / T-046) — placeholders, not merged code
 
 ```go
-// 1. Migrations, after base, events and identity (chatopstest.Contributions is the executable form).
-manifest, _ := storage.NewManifest(storage.BaseContribution(), eventspg.Migrations(), identitypg.Migrations() /* … */, chatopspg.Migrations())
+// 1. No migration to register: the ChatOps tables are in the baseline schema
+//    (internal/storage/migrations/001_schema.sql), applied by storage.BaseContribution().
+manifest, _ := storage.NewManifest(storage.BaseContribution())
 
 // 2. The consumer joins T-005's inbox transaction; give the binding to the event store.
 links, _ := chatops.NewLinkBuilder("https://<canonical API origin>")
@@ -122,7 +123,7 @@ Missing required bindings fail construction (`NewService`, `NewStore`, `NewWorke
 
 ## Migration order
 
-`T041_001_chatops.sql` is contributed after the base, event and identity migrations (it references `tenants`/`projects` and its authorization reads the identity tables). Once deployed the order must not change; the ledger refuses a reordered or modified migration (`TestMigrationReapply`).
+The ChatOps tables are part of the baseline schema (`internal/storage/migrations/001_schema.sql`), which creates `tenants`/`projects` and the identity tables before them, and `002_grants.sql` holds the runtime grants. There is no ChatOps contribution to order; re-applying the baseline is a no-op (`TestMigrationReapply`).
 
 ## Running the checks
 
