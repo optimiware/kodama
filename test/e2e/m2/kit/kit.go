@@ -118,7 +118,7 @@ func New(t *testing.T, o Options) *Env {
 	dir := t.TempDir()
 	e.modelCA = writeCert(t, filepath.Join(dir, "model-ca.pem"), e.Provider.Srv.Certificate())
 	e.mcpCA = writeCert(t, filepath.Join(dir, "mcp-ca.pem"), e.MCP.Srv.Certificate())
-	e.Front = newWorkloadFront(t, "127.0.0.1", s)
+	e.Front = newWorkloadFront(t, CallbackHost(), s)
 
 	cfg := e.Config()
 	if _, err := s.TryStart(cfg); err != nil {
@@ -241,7 +241,10 @@ func newWorkloadFront(t testing.TB, host string, s *Stack) *WorkloadFront {
 		Rewrite: func(r *httputil.ProxyRequest) {
 			u, _ := url.Parse(s.Base())
 			r.SetURL(u)
-			r.Out.Host = r.In.Host
+			// The server is reached on loopback: a workload's own host name for the
+			// test process (host.containers.internal) would be refused by the MCP
+			// handler's localhost protection.
+			r.Out.Host = u.Host
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
 			http.Error(w, "the server is not serving", http.StatusBadGateway)

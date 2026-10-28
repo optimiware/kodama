@@ -188,8 +188,19 @@ func NewStack(t *testing.T, o StackOptions) *Stack {
 	s.removeContainers()
 	s.recordContainerLogs()
 	t.Cleanup(s.removeContainers)
-	s.Front = newFront(t, "127.0.0.1", s.dial)
+	s.Front = newFront(t, CallbackHost(), s.dial)
 	return s
+}
+
+// CallbackHost is the host name the workload containers use to reach the test
+// process. They share the Podman engine's network, so it is the loopback address
+// where the engine runs on this host and KODAMA_TEST_SERVER_CALLBACK_HOST
+// (host.containers.internal for a Podman machine) where it runs in a VM.
+func CallbackHost() string {
+	if host := os.Getenv("KODAMA_TEST_SERVER_CALLBACK_HOST"); host != "" {
+		return host
+	}
+	return "127.0.0.1"
 }
 
 // ScopeEnv returns a required environment variable of the scope or fails: the

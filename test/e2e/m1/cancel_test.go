@@ -98,10 +98,13 @@ func TestM1CancelRace(t *testing.T) {
 		kit.WaitFor(t, "every workload to be removed", 90*time.Second, func() bool {
 			return len(s.Containers(kit.TenantA, "")) == 0
 		})
-		if n := s.OwnerCount(`SELECT count(*) FROM attempt_controls c JOIN step_attempts a ON a.tenant_id = c.tenant_id AND a.id = c.attempt_id
-			WHERE a.run_id = ANY($1) AND (c.revoked_at IS NULL OR c.workload_removed_at IS NULL) AND c.dispatch_confirmed_at IS NOT NULL`, runs); n != 0 {
-			t.Fatalf("%d dispatched attempts keep authority or a workload", n)
-		}
+		// The container disappears before the runtime records its removal, so the
+		// record is awaited, not read once.
+		const keeping = `SELECT count(*) FROM attempt_controls c JOIN step_attempts a ON a.tenant_id = c.tenant_id AND a.id = c.attempt_id
+			WHERE a.run_id = ANY($1) AND (c.revoked_at IS NULL OR c.workload_removed_at IS NULL) AND c.dispatch_confirmed_at IS NOT NULL`
+		kit.WaitFor(t, "every dispatched attempt to lose its authority and workload", 30*time.Second, func() bool {
+			return s.OwnerCount(keeping, runs) == 0
+		})
 		// A run cancelled before its dispatch never claimed an attempt.
 		if n := s.OwnerCount(`SELECT count(*) FROM step_attempts WHERE run_id = ANY($1) AND status = 'running'`, runs); n != 0 {
 			t.Fatalf("%d attempts are still running", n)

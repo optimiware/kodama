@@ -44,21 +44,18 @@ func TestM1DuplicateEventJob(t *testing.T) {
 			t.Fatalf("%d succeeded attempts", n)
 		}
 		// Podman's own event log: one container was created per attempt, never two.
-		out, err := exec.Command("podman", "events", "--since", started.Format(time.RFC3339), "--until", "0s", "--stream=false",
-			"--filter", "event=create", "--filter", "label=kodama.optimi.com/tenant="+kit.TenantA, "--format", "{{.Name}}").Output()
-		if err != nil {
-			t.Fatalf("podman events: %v", err)
-		}
-		names := map[string]int{}
-		for _, n := range strings.Fields(string(out)) {
-			names[n]++
-		}
-		if len(names) != runs {
-			t.Fatalf("containers created %v for %d attempts", names, runs)
-		}
-		for n, c := range names {
-			if c != 1 {
-				t.Fatalf("container %s was created %d times", n, c)
+		// Each attempt is selected by its own label alone (Podman ORs repeated label
+		// filters), so containers other tests of the tenant start in the same window
+		// are not counted.
+		for _, id := range ids {
+			attempt := w.Attempts(id)[0].Id
+			out, err := exec.Command("podman", "events", "--since", started.Format(time.RFC3339), "--until", "0s", "--stream=false",
+				"--filter", "event=create", "--filter", "label=kodama.optimi.com/attempt="+attempt, "--format", "{{.Name}}").Output()
+			if err != nil {
+				t.Fatalf("podman events: %v", err)
+			}
+			if created := strings.Fields(string(out)); len(created) != 1 {
+				t.Fatalf("attempt %s created containers %v, want exactly one", attempt, created)
 			}
 		}
 		for _, id := range ids {

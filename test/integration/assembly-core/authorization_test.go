@@ -264,8 +264,11 @@ func Test_core_assembly_authorization(t *testing.T) {
 		if code, body := register(container(map[string]any{"secretFiles": map[string]any{"nope": "secret://project/absent"}})); code != 422 || !strings.Contains(string(body), "secret") {
 			t.Errorf("a file reference to an absent secret: %d %s", code, body)
 		}
-		if code, body := register(container(map[string]any{"env": map[string]any{"T": map[string]any{"secretRef": "secret://project/token"}}})); code != 422 {
-			t.Errorf("environment delivery of a secret is not permitted in the core installation: %d %s", code, body)
+		if code, body := register(container(map[string]any{"env": map[string]any{"T": map[string]any{"secretRef": "secret://project/absent"}}})); code != 422 || !strings.Contains(string(body), "secret") {
+			t.Errorf("an environment reference to an absent secret: %d %s", code, body)
+		}
+		if code, body := register(container(map[string]any{"env": map[string]any{"T": map[string]any{"secretRef": "secret://project/token"}}})); code != 201 {
+			t.Errorf("an environment reference to an existing secret is a declared form of delivery: %d %s", code, body)
 		}
 		if code, body := register(container(map[string]any{"secretFiles": map[string]any{"token": "secret://project/token"}})); code != 201 {
 			t.Errorf("a file reference to an existing secret: %d %s", code, body)
