@@ -60,7 +60,7 @@ Update the glossary when a domain term changes; keep implementation decisions in
 
 ## Build and test
 
-Local Go work needs Go 1.27.2 and GNU Make 3.81+. OpenForge automation additionally needs Bun 1.4.2. Containers are only needed for integration: Podman is the local default on every OS, with `DEV_PROVIDER=docker` available for CI. Use an isolated worktree as described in [Git workflow](#git-workflow). The Go module path is `github.com/optimiware/kodama`.
+Local Go work needs Go 1.27.2 or later and GNU Make 3.81+. OpenForge automation additionally needs Bun 1.4.2. Containers are only needed for integration: Podman is the local default on every OS, with `DEV_PROVIDER=docker` available for CI. Use an isolated worktree as described in [Git workflow](#git-workflow). The Go module path is `github.com/optimiware/kodama`.
 
 ```sh
 make lint test build     # Go unit loop: no containers or harness tests

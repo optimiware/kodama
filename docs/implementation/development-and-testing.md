@@ -2,7 +2,7 @@
 
 ## Repository tooling bootstrap
 
-Go development needs Go **1.27.2** and Make. `make lint test build` runs product formatting/vet, infrastructure-free race-enabled unit tests and the binary build. It does not test OpenForge, start containers or need provider credentials. Formatting and the repository checks are Go commands under `dev/cmd/`.
+Go development needs Go **1.27.2 or later** and Make. `make lint test build` runs product formatting/vet, infrastructure-free race-enabled unit tests and the binary build. It does not test OpenForge, start containers or need provider credentials. Formatting and the repository checks are Go commands under `dev/cmd/`.
 
 The default Go scope is `GO_CORE_PACKAGES` in Make: commands, internal modules, public API/client, contracts, reusable packages and test support. Linux-only image wrappers, development-stack programs, templates and integration/e2e drivers are checked explicitly by their owning tasks/checkpoints, not silently included through `./...` on every host. The main unit batch uses `make test-go-unit-json` from that same scope.
 

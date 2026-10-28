@@ -4,7 +4,7 @@ This is the T-001 scaffold (a Go process, real dependency fixtures, and named ac
 
 ## Prerequisites
 
-- Go **1.27.2**, GNU Make **3.81 or later**, and Git. Bun **1.4.2** is only needed for OpenForge commands; the development tooling is Go.
+- Go **1.27.2 or later**, GNU Make **3.81 or later**, and Git. Bun **1.4.2** is only needed for OpenForge commands; the development tooling is Go.
 - macOS ARM64: a running Podman machine. The initial acceptance environment uses Podman **6.1.4**, an AppleHV VM with 8 CPUs / 8 GiB, and its existing rootful connection.
 - Linux AMD64: Podman locally by default; explicitly select `DEV_PROVIDER=docker` for Docker/CI. Local Podman results do not qualify Docker.
 - Compose: `podman compose` (Podman's compose provider, such as podman-compose 1.6) locally, or the Docker Compose v2 plugin (`docker compose`) in CI. Compose runs the dependency containers; kind provides the cluster whose Pods reach them.

@@ -10,7 +10,7 @@ Thanks for your interest. Kodama is early, so the most useful contributions righ
 
 ## Set up
 
-You need Go 1.27.2 and GNU Make 3.81+. Podman is only needed for integration tests.
+You need Go 1.27.2 or later and GNU Make 3.81+. Podman is only needed for integration tests.
 
 ```sh
 git clone https://github.com/optimiware/kodama.git

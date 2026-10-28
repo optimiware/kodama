@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"go/version"
 	"io"
 	"net/http"
 	"os"
@@ -20,6 +21,15 @@ const ManifestTypes = "application/vnd.oci.image.manifest.v1+json, application/v
 
 var digestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
+// checkGoVersion accepts the locked Go release or any later one.
+func checkGoVersion(found, minimum string) error {
+	found = strings.TrimSpace(found)
+	if !version.IsValid(found) || version.Compare(found, "go"+minimum) < 0 {
+		return fmt.Errorf("expected Go %s or later, found %s", minimum, found)
+	}
+	return nil
+}
+
 // buildImage builds the fixture image with the real Linux `kodama`, the
 // dependency probe and the Git server, publishes it to the scope registry and
 // records its digest.
@@ -28,12 +38,12 @@ func (e *Environment) buildImage() error {
 	if err != nil {
 		return err
 	}
-	version, err := output("go", "env", "GOVERSION")
+	found, err := output("go", "env", "GOVERSION")
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(version) != "go"+lock.Go {
-		return fmt.Errorf("expected Go %s, found %s", lock.Go, strings.TrimSpace(version))
+	if err := checkGoVersion(found, lock.Go); err != nil {
+		return err
 	}
 	machine, apkArch, err := goarch(runtime.GOARCH)
 	if err != nil {

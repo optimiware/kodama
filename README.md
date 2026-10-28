@@ -88,7 +88,7 @@ make build       # builds dev/.state/bin/kodama
 dev/.state/bin/kodama --help
 ```
 
-Running the real server needs PostgreSQL, JetStream, S3, Git and an OIDC issuer. The [development runbook](dev/README.md) brings them up locally with Podman. You need Go 1.27.2 and GNU Make.
+Running the real server needs PostgreSQL, JetStream, S3, Git and an OIDC issuer. The [development runbook](dev/README.md) brings them up locally with Podman. You need Go 1.27.2 or later and GNU Make.
 
 ## Documentation
 
