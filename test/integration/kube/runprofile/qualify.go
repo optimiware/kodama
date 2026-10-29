@@ -1,5 +1,7 @@
 // Package runprofile is the bounded P1 qualification driver for the rootless
-// run-resource profile (ADR 0010, T-111). It probes a named Kubernetes target
+// run-resource profile (ADR 0010, T-111) as revised by O-30 (T-124): storage,
+// ko and Buildah as ordinary steps in the S3 `step` role, PostgreSQL and the
+// tenant network model. BuildKit and browser are out of scope. It probes a named Kubernetes target
 // with task-owned, uniquely labelled, quota-bounded namespaces and records
 // retained receipts. It never changes node, runtime, storage, CNI or global
 // policy configuration, never uses host privilege and never reports a
@@ -48,7 +50,7 @@ func LoadPins() (*Pins, error) {
 	if err := json.Unmarshal(pinsJSON, &p); err != nil {
 		return nil, err
 	}
-	for _, name := range []string{"ko", "buildah", "buildkit", "registry", "httpd", "postgres", "browser"} {
+	for _, name := range []string{"ko", "buildah", "registry", "httpd", "postgres"} {
 		img, ok := p.Images[name]
 		if !ok || !strings.Contains(img.Ref, "@sha256:") || len(img.Ref[strings.Index(img.Ref, "@sha256:")+8:]) != 64 {
 			return nil, fmt.Errorf("pins: image %q missing or not digest-pinned", name)
@@ -182,9 +184,7 @@ func Run(ctx context.Context, cfg *Config) (*Report, error) {
 		{"registry", q.phaseRegistry},
 		{"ko", q.phaseKo},
 		{"buildah", q.phaseBuildah},
-		{"buildkit", q.phaseBuildKit},
 		{"postgres", q.phasePostgres},
-		{"browser", q.phaseBrowser},
 		{"network", q.phaseNetwork},
 	}
 	for i, ph := range phases {
@@ -212,7 +212,7 @@ func Run(ctx context.Context, cfg *Config) (*Report, error) {
 // runPhase isolates a phase: a panic or error becomes a failed check, and
 // the remaining phases still produce evidence.
 func (q *Qualifier) runPhase(ctx context.Context, name string, fn func(context.Context) error) (err error) {
-	pctx, cancel := context.WithTimeout(ctx, 14*time.Minute)
+	pctx, cancel := context.WithTimeout(ctx, 25*time.Minute)
 	defer cancel()
 	defer func() {
 		if r := recover(); r != nil {

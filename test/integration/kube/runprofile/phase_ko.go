@@ -63,9 +63,10 @@ func (q *Qualifier) phaseKo(ctx context.Context) error {
 		return nil
 	}
 	ns, f := q.nsMain, q.reg
-	p := q.builderPod("ko", q.img("ko"), 65532)
-	p.ReadOnlyFS = true
-	p.Env = []any{plainEnv("HOME", "/tmp/home"), plainEnv("GOCACHE", "/tmp/gocache"), plainEnv("GOPATH", "/tmp/gopath"),
+	// O-30: ko is an ordinary run_shared step and receives the same S3 step
+	// role as every other step (no restricted-compatible exception).
+	p := q.stepPod("ko", q.img("ko"), false, false)
+	p.Env = []any{plainEnv("HOME", "/kodama/home"), plainEnv("GOCACHE", "/kodama/home/gocache"), plainEnv("GOPATH", "/kodama/home/gopath"),
 		plainEnv("GOFLAGS", "-mod=mod"), plainEnv("GOPROXY", f.deps+"/goproxy"), plainEnv("GOSUMDB", "off"), plainEnv("GOTOOLCHAIN", "local"),
 		plainEnv("CGO_ENABLED", "0"), plainEnv("SSL_CERT_FILE", "/ca/ca.crt"), plainEnv("DOCKER_CONFIG", "/creds"),
 		plainEnv("KO_DOCKER_REPO", f.host+"/koapp"), plainEnv("KO_DEFAULTBASEIMAGE", f.host+"/base:empty")}
@@ -79,11 +80,22 @@ func (q *Qualifier) phaseKo(ctx context.Context) error {
 		_ = q.c.DeletePod(dctx, ns, p.Name, time.Minute)
 	}()
 	if err := q.c.WaitReady(ctx, ns, p.Name, 10*minute); err != nil {
-		q.add("build.ko", "ko build and push", true, Fail, err.Error(), grepLines(q.podEvents(ctx, ns, p.Name), "Warning"), "")
+		st, h := Fail, ""
+		if profileFailure(err.Error()) {
+			st, h = Blocked, buildahHandoff
+		}
+		q.add("build.ko", "ko build and push", true, st, err.Error(), grepLines(q.podEvents(ctx, ns, p.Name), "Warning"), h)
+		q.add("step.role_shape.ko", "ko step role applied exactly", true, NotRun, "the ko Pod never became ready", nil, "")
 		return nil
 	}
 	if pj, err := q.c.GetPod(ctx, ns, p.Name); err == nil {
 		q.noteImage(pj, p.Image)
+	}
+	if bad, rev := q.checkStepRole(ctx, ns, p.Name, false, ""); len(bad) > 0 {
+		q.add("step.role_shape.ko", "ko step role applied exactly", true, Fail, "the ko Pod does not carry the S3 step role: "+strings.Join(bad, "; "), rev, "")
+	} else {
+		q.add("step.role_shape.ko", "ko step role applied exactly", true, Pass,
+			"ko ran in the same S3 step role as Buildah: non-root 1000, hostUsers false, exactly SETGID/SETUID, escalation allowed, Localhost seccomp and AppArmor enforced; the live Pod object matches", rev, "")
 	}
 	src, err := buildContext(map[string]string{"go.mod": "module example.com/koapp\n\ngo 1.22\n\nrequire example.com/dep v1.0.0\n", "main.go": koMain}, nil)
 	if err != nil {
@@ -92,7 +104,7 @@ func (q *Qualifier) phaseKo(ctx context.Context) error {
 	if _, err := q.c.Exec(ctx, ns, p.Name, bytes.NewReader(src), "tar -C /work -xf -"); err != nil {
 		return err
 	}
-	out, err := q.c.Exec(ctx, ns, p.Name, nil, `cd /work && ko version && ko build --bare --platform=linux/amd64 -t latest . 2>&1 | tail -20; echo "dep_cached=$(ls /tmp/gopath/pkg/mod/cache/download/example.com/dep/@v 2>&1 | tr '\n' ' ')"`)
+	out, err := q.c.Exec(ctx, ns, p.Name, nil, `cd /work && ko version && ko build --bare --platform=linux/amd64 -t latest . 2>&1 | tail -20; echo "dep_cached=$(ls /kodama/home/gopath/pkg/mod/cache/download/example.com/dep/@v 2>&1 | tr '\n' ' ')"`)
 	if err != nil {
 		q.add("build.ko", "ko build and push", true, Fail, "ko failed: "+tail(out, 400), lines(out, 8), "")
 		return nil
@@ -134,59 +146,5 @@ func (q *Qualifier) phaseKo(ctx context.Context) error {
 	}
 	q.add("build.ko", "ko build and push", true, status, detail,
 		append([]string{"ko ref " + ref, "registry digest " + digest, fmt.Sprintf("layer entries %d", len(entries))}, grepLines(out, "ko version", "dep_cached", "Version:")...), "")
-
-	q.builderEgress(ctx, ns, p.Name)
 	return nil
-}
-
-// builderEgress exercises the explicit builder allowances and the denials
-// from inside a builder-role Pod, with in-run controls.
-func (q *Qualifier) builderEgress(ctx context.Context, ns, pod string) {
-	f := q.reg
-	// Control: the denied in-run target is live for a client-role Pod.
-	if err := q.ensureWWW(ctx); err != nil {
-		q.add("network.builder_egress", "explicit registry/dependency egress", true, Fail, "live control target unavailable: "+err.Error(), nil, "")
-		return
-	}
-	probe := func(host string, port int) string {
-		return fmt.Sprintf(`if timeout 5 bash -c 'exec 3<>/dev/tcp/%s/%d' 2>/dev/null; then echo "open %s:%d"; else echo "closed %s:%d"; fi`, host, port, host, port, host, port)
-	}
-	script := strings.Join([]string{
-		probe(strings.Split(f.host, ":")[0], 5000),
-		probe("deps."+ns+".svc.cluster.local", 8080),
-		probe("www."+ns+".svc.cluster.local", 8080),
-		probe("kubernetes.default.svc.cluster.local", 443),
-		probe("1.1.1.1", 443),
-	}, "\n")
-	out, err := q.c.Exec(ctx, ns, pod, nil, script)
-	if err != nil {
-		q.add("network.builder_egress", "explicit registry/dependency egress", true, Fail, err.Error(), nil, "")
-		return
-	}
-	want := map[string]string{
-		strings.Split(f.host, ":")[0] + ":5000":    "open",
-		"deps." + ns + ".svc.cluster.local:8080":   "open",
-		"www." + ns + ".svc.cluster.local:8080":    "closed",
-		"kubernetes.default.svc.cluster.local:443": "closed",
-		"1.1.1.1:443": "closed",
-	}
-	ok := true
-	var ev []string
-	for _, l := range lines(out, 10) {
-		fields := strings.SplitN(l, " ", 2)
-		if len(fields) == 2 {
-			ev = append(ev, l)
-			if w, found := want[fields[1]]; found && w != fields[0] {
-				ok = false
-			}
-		}
-	}
-	if len(ev) != len(want) {
-		ok = false
-	}
-	status, detail := Pass, "builder role reached only the registry and dependency server; the live www service, Kubernetes API and public address were denied"
-	if !ok {
-		status, detail = Fail, "builder egress did not match the explicit allowances"
-	}
-	q.add("network.builder_egress", "explicit registry/dependency egress", true, status, detail, ev, "")
 }

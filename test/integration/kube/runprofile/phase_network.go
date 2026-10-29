@@ -3,86 +3,288 @@ package runprofile
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// NetTarget is one destination of the traffic matrix.
+// NetKind is the verdict rule of one probed destination.
+type NetKind int
+
+const (
+	// AllowTenant must be open before and after policy: the tenant model lets
+	// workloads of one tenant namespace reach each other whatever their run.
+	AllowTenant NetKind = iota
+	// DenyCore must be open in the control and closed afterwards; a missing
+	// control fails the check (the target is a fixture the run owns).
+	DenyCore
+	// DenyProbe is a deny claim about a destination the run does not own
+	// (Kubernetes API, cloud metadata). It needs an open live control; without
+	// one the claim is unproven and the check is blocked, never passed.
+	DenyProbe
+	// AllowPublic must be open before and after policy (public HTTPS).
+	AllowPublic
+)
+
+// Network claims the tenant model makes; every one must be tested.
+const (
+	ClaimSameTenant    = "same-tenant other-run reachable"
+	ClaimForeignTenant = "foreign tenant denied"
+	ClaimAPI           = "kubernetes api denied"
+	ClaimMetadata      = "cloud metadata denied"
+	ClaimPublic        = "public https open"
+)
+
+var requiredNetClaims = []string{ClaimSameTenant, ClaimForeignTenant, ClaimAPI, ClaimMetadata, ClaimPublic}
+
+// Probe modes. http is a plain TCP+HTTP request (busybox wget), used for the
+// allow claims between the run's own servers; tls is a complete HTTPS exchange
+// with certificate verification (curl), which is what the public-HTTPS claim
+// needs; tcp is connect-only (see ProbeTCP).
+const (
+	ProbeHTTP = "http"
+	ProbeTLS  = "tls"
+	// ProbeTCP is a connect-only probe (busybox `nc -z`): it reports whether
+	// the TCP connection was established and exchanges nothing afterwards, so a
+	// timeout can only be a connection-establishment timeout. Every deny claim
+	// uses it; an accepted connection followed by a stalled response is `open`.
+	ProbeTCP = "tcp"
+)
+
+// NetTarget is one destination of the traffic matrix, probed from Client.
 type NetTarget struct {
-	Name string
-	URL  string
-	Core bool // must be live in the control and denied afterwards
+	Name   string
+	Client string
+	URL    string
+	Kind   NetKind
+	Claim  string
+	Mode   string // ProbeHTTP (default) or ProbeTLS
 }
 
+// probeFn runs one probe and reports its exit status with its output, so the
+// driver classifies on both (an output pattern alone, or an ignored exit
+// status, once turned unknown failures into "open"). Fields are tab separated.
 const probeFn = `probe() {
-  out=$(wget -q -T 4 -O- "$2" 2>&1); rc=$?
-  case "$out" in
-    *"timed out"*|*"Connection refused"*|*"can't connect"*|*"bad address"*|*"Network is unreachable"*) echo "closed $1";;
-    *) echo "open $1";;
-  esac
+  name=$1; mode=$2; url=$3
+  if [ "$mode" = tcp ]; then
+    hp=${url#*://}; hp=${hp%%/*}; host=${hp%:*}; port=${hp##*:}
+    if command -v nc >/dev/null 2>&1; then
+      out=$(nc -z -v -w 4 "$host" "$port" 2>&1); rc=$?
+    else
+      out="nc is not installed"; rc=127
+    fi
+  elif [ "$mode" = tls ]; then
+    if command -v curl >/dev/null 2>&1; then
+      out=$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w 'http=%{http_code} verify=%{ssl_verify_result}' "$url" 2>&1); rc=$?
+    else
+      out="curl is not installed"; rc=127
+    fi
+  else
+    out=$(wget -q -T 4 -O /dev/null "$url" 2>&1); rc=$?
+  fi
+  out=$(printf '%s' "$out" | tr '\n\t' '  ' | cut -c1-240)
+  printf 'probe\t%s\t%s\t%s\n' "$name" "$rc" "$out"
 }
 `
 
-// NetObservations are the measured open/closed results of the traffic matrix.
-type NetObservations struct {
-	Control, After               map[string]string // cli-same, before and after policy
-	ControlOther, AfterOther     map[string]string // other-run client toward the reverse targets
-	ControlForeign, AfterForeign map[string]string // foreign-namespace client toward the reverse targets
+// Probe states.
+const (
+	StateOpen   = "open"
+	StateClosed = "closed"
+	StateError  = "error"
+)
+
+// ClassifyProbe turns one probe's exit status and output into open, closed or
+// error. Only an outcome that proves the destination answered is open, only an
+// outcome that proves the connection was refused, unroutable or dropped is
+// closed, and everything else (DNS failure, TLS failure, missing tool, an
+// unrecognised message) is an error, never open.
+func ClassifyProbe(mode string, rc int, out string) (state, reason string) {
+	o := strings.ToLower(out)
+	has := func(subs ...string) bool {
+		for _, s := range subs {
+			if strings.Contains(o, s) {
+				return true
+			}
+		}
+		return false
+	}
+	if rc == 127 || has("not installed", ": not found", "command not found") {
+		return StateError, "probe tool unavailable: " + tail(out, 100)
+	}
+	if mode == ProbeTCP {
+		// nc -z performs no I/O after connect(): rc 0 means the connection
+		// was accepted (whatever the peer then does), a timeout is a
+		// connection-establishment timeout, a refusal or unroutable network
+		// prints nothing or its own message, and anything else is undecided.
+		switch {
+		case rc == 0:
+			return StateOpen, "TCP connection established: " + tail(out, 100)
+		case has("bad address"):
+			return StateError, "DNS failure: " + tail(out, 100)
+		case has("operation timed out", "connection timed out"):
+			return StateClosed, "connection establishment timed out: " + tail(out, 100)
+		case has("connection refused", "no route to host", "network is unreachable"):
+			return StateClosed, "connection refused or unroutable: " + tail(out, 100)
+		case rc == 1 && strings.TrimSpace(out) == "":
+			return StateClosed, "connection refused or unroutable (nc reports no message)"
+		}
+		return StateError, fmt.Sprintf("unrecognised nc result (exit %d): %s", rc, tail(out, 100))
+	}
+	if mode == ProbeTLS {
+		switch rc {
+		case 0:
+			if has("verify=0") && !has("http=000") {
+				return StateOpen, "TLS handshake verified and HTTP answered: " + tail(out, 100)
+			}
+			return StateError, "TLS exchange succeeded without a verified certificate or response: " + tail(out, 100)
+		case 7:
+			return StateClosed, "connect failed: " + tail(out, 100)
+		case 28:
+			if has("connection timed out", "connection time-out", "connect timed out") {
+				return StateClosed, "connect timed out: " + tail(out, 100)
+			}
+			return StateError, "operation timed out after connecting: " + tail(out, 100)
+		case 6:
+			return StateError, "DNS failure: " + tail(out, 100)
+		case 35, 51, 53, 54, 58, 59, 60, 77, 80, 83, 90, 91:
+			return StateError, "TLS failure: " + tail(out, 100)
+		}
+		return StateError, fmt.Sprintf("unrecognised curl exit %d: %s", rc, tail(out, 100))
+	}
+	if rc == 0 {
+		return StateOpen, "HTTP exchange succeeded"
+	}
+	switch {
+	case has("bad address"):
+		return StateError, "DNS failure: " + tail(out, 100)
+	case has("server returned error", "http/1."):
+		return StateOpen, "peer answered at HTTP level: " + tail(out, 100)
+	case has("connection refused", "network is unreachable", "no route to host"):
+		return StateClosed, "connection refused or unroutable: " + tail(out, 100)
+	}
+	// BusyBox "download timed out" (and any other timeout) can occur after the
+	// connection was accepted, while waiting for the response: it cannot
+	// distinguish a drop from a stalled peer, so it is undecided, never closed.
+	return StateError, fmt.Sprintf("unrecognised failure (exit %d): %s", rc, tail(out, 100))
 }
 
-// EvaluateNetwork decides the network matrix verdict. A deny claim is made
+// parseProbeLines reads the tab-separated probe results of one client.
+func parseProbeLines(out string, modes map[string]string) (states, details map[string]string) {
+	states, details = map[string]string{}, map[string]string{}
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Split(strings.TrimRight(l, "\r"), "\t")
+		if len(f) < 3 || f[0] != "probe" {
+			continue
+		}
+		rc, err := strconv.Atoi(strings.TrimSpace(f[2]))
+		text := ""
+		if len(f) > 3 {
+			text = f[3]
+		}
+		if err != nil {
+			states[f[1]], details[f[1]] = StateError, "unparseable exit status "+f[2]
+			continue
+		}
+		states[f[1]], details[f[1]] = ClassifyProbe(modes[f[1]], rc, text)
+	}
+	return states, details
+}
+
+// NetObservations are the measured open/closed results of the traffic matrix,
+// keyed by target name, before (Control) and after (After) the tenant policy.
+type NetObservations struct {
+	Control, After map[string]string
+	// Detail explains each classification (evidence only).
+	Detail map[string]string
+}
+
+// EvaluateNetwork decides the tenant-model verdict. A deny claim is made
 // only for a destination whose positive control was observed open in the same
-// run; a core destination without a live control fails, and a non-core one
-// (Kubernetes API, public address) whose control is absent or closed leaves
-// that claim unproven, so the check is blocked and the detail narrows what
-// is claimed. Nothing passes by omission.
-func EvaluateNetwork(targets, reverse []NetTarget, o NetObservations) (Status, string) {
+// run: a core destination without a live control fails; a probe destination
+// (Kubernetes API, cloud metadata) whose control is absent or closed leaves
+// that claim unproven, so the check is blocked and the detail narrows what is
+// claimed. An allow claim needs the destination open after the policy. Every
+// claim of the tenant model must be present among the targets, and an
+// execution error or unknown observation never passes.
+func EvaluateNetwork(targets []NetTarget, o NetObservations) (Status, string) {
 	var failures, proven, unproven []string
-	for _, t := range targets {
-		c, af := o.Control[t.Name], o.After[t.Name]
-		sameRun := strings.HasPrefix(t.Name, "srv-same")
-		switch {
-		case sameRun && c != "open":
-			failures = append(failures, "control not live for "+t.Name)
-		case sameRun && af != "open":
-			failures = append(failures, "same-run traffic blocked: "+t.Name)
-		case sameRun:
-			proven = append(proven, "allow "+t.Name)
-		case c != "open" && t.Core:
-			failures = append(failures, "control not live for "+t.Name)
-		case c != "open":
-			unproven = append(unproven, fmt.Sprintf("deny %s (no live positive control: %q)", t.Name, c))
-		case af != "closed":
-			failures = append(failures, "not denied: "+t.Name)
-		default:
-			proven = append(proven, "deny "+t.Name)
+	have := map[string]bool{}
+	for _, m := range []map[string]string{o.Control, o.After} {
+		for k, v := range m {
+			if strings.HasPrefix(k, "error") {
+				failures = append(failures, "probe execution error "+k+": "+v)
+			}
 		}
 	}
-	for _, t := range reverse {
-		if o.ControlOther[t.Name] != "open" || o.ControlForeign[t.Name] != "open" {
-			failures = append(failures, "reverse control not live for "+t.Name)
+	for _, t := range targets {
+		have[t.Claim] = true
+		c, af := o.Control[t.Name], o.After[t.Name]
+		if c == StateError || af == StateError {
+			// A probe that could not decide is never open, never closed and
+			// never an unproven-but-tolerated claim: the check fails.
+			failures = append(failures, fmt.Sprintf("probe error for %s (control=%s: %s; policy=%s: %s)", t.Name, c, o.Detail["control:"+t.Name], af, o.Detail["after:"+t.Name]))
 			continue
 		}
-		if o.AfterOther[t.Name] != "closed" || o.AfterForeign[t.Name] != "closed" {
-			failures = append(failures, "foreign client reached "+t.Name)
+		if (t.Kind == DenyCore || t.Kind == DenyProbe) && t.Mode != ProbeTCP {
+			failures = append(failures, "a deny claim needs a connect-only TCP probe, not mode "+t.Mode+": "+t.Name)
 			continue
 		}
-		proven = append(proven, "deny other-run and foreign-namespace clients to "+t.Name)
+		if t.Kind == AllowPublic && t.Mode != ProbeTLS {
+			failures = append(failures, "public HTTPS claim needs a verified TLS exchange, not mode "+t.Mode+": "+t.Name)
+			continue
+		}
+		switch t.Kind {
+		case AllowTenant, AllowPublic:
+			switch {
+			case c != "open":
+				failures = append(failures, "control not live for "+t.Name)
+			case af != "open":
+				failures = append(failures, "allowed traffic blocked: "+t.Name)
+			default:
+				proven = append(proven, "allow "+t.Name)
+			}
+		case DenyCore:
+			switch {
+			case c != "open":
+				failures = append(failures, "control not live for "+t.Name)
+			case af != "closed":
+				failures = append(failures, "not denied: "+t.Name)
+			default:
+				proven = append(proven, "deny "+t.Name)
+			}
+		case DenyProbe:
+			switch {
+			case c != "open":
+				unproven = append(unproven, fmt.Sprintf("deny %s (no live positive control: %q)", t.Name, c))
+			case af != "closed":
+				failures = append(failures, "not denied: "+t.Name)
+			default:
+				proven = append(proven, "deny "+t.Name)
+			}
+		default:
+			failures = append(failures, "unknown rule for "+t.Name)
+		}
+	}
+	for _, claim := range requiredNetClaims {
+		if !have[claim] {
+			failures = append(failures, "claim not tested: "+claim)
+		}
 	}
 	switch {
 	case len(failures) > 0:
 		return Fail, strings.Join(failures, "; ")
 	case len(unproven) > 0:
-		return Blocked, "default-deny claims not fully proven. Proven with live controls: " + strings.Join(proven, ", ") + ". Unproven: " + strings.Join(unproven, "; ")
+		return Blocked, "tenant-model claims not fully proven. Proven with live controls: " + strings.Join(proven, ", ") + ". Unproven: " + strings.Join(unproven, "; ")
 	}
-	return Pass, "with live positive controls, default deny plus the run-scoped edge admitted only same-run traffic (pod IP and Service DNAT) and denied other runs, other namespaces, the Kubernetes API and public addresses; proven: " + strings.Join(proven, ", ")
+	return Pass, "with live positive controls, the tenant model held: workloads of the tenant namespace reached each other's services whatever their run label (pod IP and Service DNAT), a foreign tenant namespace, the Kubernetes API and cloud metadata were denied, and public HTTPS stayed open; proven: " + strings.Join(proven, ", ")
 }
 
-// phaseNetwork qualifies the outer CNI: with known-live positive controls
-// in the same run, a default-deny policy plus run-scoped allows lets only
-// same-run traffic through, including via Service DNAT, and denies other
-// runs of the same tenant, other namespaces, the Kubernetes API and public
-// addresses.
+// phaseNetwork qualifies the tenant network model (seam S8) on the outer CNI:
+// with known-live positive controls in the same run, the tenant policy lets
+// a client of the same tenant namespace but another run label reach the
+// service (pod IP and Service DNAT), denies a foreign tenant namespace, the
+// Kubernetes API and cloud metadata, and leaves public HTTPS open.
 func (q *Qualifier) phaseNetwork(ctx context.Context) error {
 	a, b := q.nsNetA, q.nsNetB
 	server := func(ns, name, run string) Pod {
@@ -95,18 +297,21 @@ func (q *Qualifier) phaseNetwork(ctx context.Context) error {
 		p.Readiness = map[string]any{"tcpSocket": map[string]any{"port": 8080}, "periodSeconds": 3}
 		return p
 	}
-	client := func(ns, name, run string, caps []string) Pod {
+	client := func(ns, name, run string) Pod {
 		p := q.base(name, q.img("httpd"), 10001)
 		p.Namespace = ns
 		p.Labels = map[string]any{"krp/role": "client", "krp/run": run}
 		p.Command = []string{"sleep", "1200"}
-		p.Caps = caps
 		return p
 	}
+	// The public-HTTPS claim needs a real TLS exchange with certificate
+	// verification: the ko image (a full Go toolchain image) carries curl and
+	// the system CA bundle; a missing tool is a probe error, never "open".
+	tlsClient := client(a, "cli-tls", "r1")
+	tlsClient.Image, tlsClient.UID, tlsClient.GID = q.img("ko"), 10001, 10001
 	pods := []Pod{
 		server(a, "srv-same", "r1"), server(a, "srv-other", "r2"), server(b, "srv-foreign", "r1"),
-		client(a, "cli-same", "r1", nil), client(a, "cli-other", "r2", nil), client(b, "cli-foreign", "r1", nil),
-		client(a, "cli-nested", "r1", []string{"SYS_ADMIN"}),
+		client(a, "cli-same", "r1"), client(a, "cli-other", "r2"), client(b, "cli-foreign", "r1"), tlsClient,
 	}
 	svc := func(ns, name string) map[string]any {
 		return q.c.obj("v1", "Service", ns, name, nil, map[string]any{"type": "ClusterIP", "selector": map[string]any{"krp/svc": name},
@@ -121,10 +326,9 @@ func (q *Qualifier) phaseNetwork(ctx context.Context) error {
 		return err
 	}
 	for _, p := range pods {
-		if err := q.c.WaitReady(ctx, p.Namespace, p.Name, 8*minute); err != nil && !strings.HasPrefix(p.Name, "cli-") {
-			return err
-		} else if err != nil {
-			if err := Wait(ctx, 5*minute, 3*time.Second, func() (bool, error) {
+		if strings.HasPrefix(p.Name, "cli-") {
+			// Clients have no readiness probe: running is enough.
+			if err := Wait(ctx, 8*minute, 3*time.Second, func() (bool, error) {
 				pj, e := q.c.GetPod(ctx, p.Namespace, p.Name)
 				if e != nil {
 					return false, e
@@ -133,6 +337,10 @@ func (q *Qualifier) phaseNetwork(ctx context.Context) error {
 			}); err != nil {
 				return err
 			}
+			continue
+		}
+		if err := q.c.WaitReady(ctx, p.Namespace, p.Name, 8*minute); err != nil {
+			return err
 		}
 	}
 	ip := func(ns, name string) string {
@@ -140,96 +348,94 @@ func (q *Qualifier) phaseNetwork(ctx context.Context) error {
 		return strings.TrimSpace(out)
 	}
 	ipSame, ipOther, ipForeign := ip(a, "srv-same"), ip(a, "srv-other"), ip(b, "srv-foreign")
+	podURL := func(ipa string) string { return "http://" + ipa + ":8080/" }
+	svcURL := func(ns, name string) string { return "http://" + name + "." + ns + ".svc.cluster.local:8080/" }
 	targets := []NetTarget{
-		{"srv-same(pod ip)", "http://" + ipSame + ":8080/", true},
-		{"srv-same(service)", "http://srv-same." + a + ".svc.cluster.local:8080/", true},
-		{"srv-other-run(pod ip)", "http://" + ipOther + ":8080/", true},
-		{"srv-other-run(service)", "http://srv-other." + a + ".svc.cluster.local:8080/", true},
-		{"srv-foreign-ns(pod ip)", "http://" + ipForeign + ":8080/", true},
-		{"srv-foreign-ns(service)", "http://srv-foreign." + b + ".svc.cluster.local:8080/", true},
-		{"kubernetes-api", "http://kubernetes.default.svc.cluster.local:443/", false},
-		{"public-1.1.1.1", "http://1.1.1.1:443/", false},
+		{"same-run srv (pod ip)", "cli-same", podURL(ipSame), AllowTenant, ClaimSameTenant, ProbeHTTP},
+		{"same-run srv (service)", "cli-same", svcURL(a, "srv-same"), AllowTenant, ClaimSameTenant, ProbeHTTP},
+		{"other-run srv (pod ip)", "cli-same", podURL(ipOther), AllowTenant, ClaimSameTenant, ProbeHTTP},
+		{"other-run srv (service)", "cli-same", svcURL(a, "srv-other"), AllowTenant, ClaimSameTenant, ProbeHTTP},
+		{"other-run client -> same-run srv (pod ip)", "cli-other", podURL(ipSame), AllowTenant, ClaimSameTenant, ProbeHTTP},
+		{"other-run client -> same-run srv (service)", "cli-other", svcURL(a, "srv-same"), AllowTenant, ClaimSameTenant, ProbeHTTP},
+		{"foreign-tenant srv (pod ip)", "cli-same", podURL(ipForeign), DenyCore, ClaimForeignTenant, ProbeTCP},
+		{"foreign-tenant srv (service)", "cli-same", svcURL(b, "srv-foreign"), DenyCore, ClaimForeignTenant, ProbeTCP},
+		{"foreign-tenant client -> srv (pod ip)", "cli-foreign", podURL(ipSame), DenyCore, ClaimForeignTenant, ProbeTCP},
+		{"foreign-tenant client -> srv (service)", "cli-foreign", svcURL(a, "srv-same"), DenyCore, ClaimForeignTenant, ProbeTCP},
+		{"kubernetes-api", "cli-same", "http://kubernetes.default.svc.cluster.local:443/", DenyProbe, ClaimAPI, ProbeTCP},
+		{"cloud-metadata 169.254.169.254", "cli-same", "http://169.254.169.254:80/", DenyProbe, ClaimMetadata, ProbeTCP},
+		{"public-https 1.1.1.1:443 (verified TLS)", "cli-tls", "https://1.1.1.1/", AllowPublic, ClaimPublic, ProbeTLS},
 	}
-	run := func(ns, pod string, tg []NetTarget) map[string]string {
-		var sb strings.Builder
-		sb.WriteString(probeFn)
-		for _, t := range tg {
-			fmt.Fprintf(&sb, "probe %q %q\n", t.Name, t.URL)
-		}
-		out, err := q.c.Exec(ctx, ns, pod, nil, sb.String())
-		res := map[string]string{}
-		if err != nil {
-			res["error"] = err.Error()
-		}
-		for _, l := range lines(out, 40) {
-			if st, name, ok := strings.Cut(l, " "); ok && (st == "open" || st == "closed") {
-				res[name] = st
+	clientNS := map[string]string{"cli-same": a, "cli-other": a, "cli-foreign": b, "cli-tls": a}
+	measure := func(only func(NetTarget) bool) (res, detail map[string]string) {
+		res, detail = map[string]string{}, map[string]string{}
+		byClient := map[string][]NetTarget{}
+		for _, t := range targets {
+			if only == nil || only(t) {
+				byClient[t.Client] = append(byClient[t.Client], t)
 			}
 		}
-		return res
-	}
-	reverse := []NetTarget{
-		{"srv-same(pod ip)", "http://" + ipSame + ":8080/", true},
-		{"srv-same(service)", "http://srv-same." + a + ".svc.cluster.local:8080/", true},
+		for cli, tg := range byClient {
+			var sb strings.Builder
+			sb.WriteString(probeFn)
+			modes := map[string]string{}
+			for _, t := range tg {
+				mode := t.Mode
+				if mode == "" {
+					mode = ProbeHTTP
+				}
+				modes[t.Name] = mode
+				fmt.Fprintf(&sb, "probe %q %q %q\n", t.Name, mode, t.URL)
+			}
+			out, err := q.c.Exec(ctx, clientNS[cli], cli, nil, sb.String())
+			if err != nil {
+				res["error:"+cli] = tail(err.Error(), 200)
+			}
+			st, dt := parseProbeLines(out, modes)
+			for _, t := range tg {
+				if s, ok := st[t.Name]; ok {
+					res[t.Name], detail[t.Name] = s, dt[t.Name]
+				} else {
+					res[t.Name], detail[t.Name] = StateError, "no result line from the probe"
+				}
+			}
+		}
+		return res, detail
 	}
 	// 1. Positive controls with no policy anywhere.
-	ctl := run(a, "cli-same", targets)
-	ctlOther, ctlForeign := run(a, "cli-other", reverse), run(b, "cli-foreign", reverse)
+	ctl, ctlDetail := measure(nil)
 
-	// 2. Run-scoped policy in namespace A: default deny, DNS, same-run edge.
-	sel := func(kv map[string]any) map[string]any { return map[string]any{"matchLabels": kv} }
-	r1 := map[string]any{"krp/run": "r1"}
-	pol := func(name string, spec map[string]any) map[string]any {
-		return q.c.obj("networking.k8s.io/v1", "NetworkPolicy", a, name, nil, spec)
-	}
-	port := []any{map[string]any{"protocol": "TCP", "port": 8080}}
-	if err := q.c.ApplyAll(ctx,
-		pol("default-deny", map[string]any{"podSelector": map[string]any{}, "policyTypes": []any{"Ingress", "Egress"}}),
-		pol("dns-egress", map[string]any{"podSelector": map[string]any{}, "policyTypes": []any{"Egress"}, "egress": []any{map[string]any{
-			"to":    []any{map[string]any{"namespaceSelector": sel(map[string]any{"kubernetes.io/metadata.name": "kube-system"}), "podSelector": sel(map[string]any{"k8s-app": "kube-dns"})}},
-			"ports": []any{map[string]any{"protocol": "UDP", "port": 53}, map[string]any{"protocol": "TCP", "port": 53}}}}}),
-		pol("same-run-egress", map[string]any{"podSelector": sel(r1), "policyTypes": []any{"Egress"},
-			"egress": []any{map[string]any{"to": []any{map[string]any{"podSelector": sel(r1)}}, "ports": port}}}),
-		pol("same-run-ingress", map[string]any{"podSelector": sel(r1), "policyTypes": []any{"Ingress"},
-			"ingress": []any{map[string]any{"from": []any{map[string]any{"podSelector": sel(r1)}}, "ports": port}}}),
-	); err != nil {
+	// 2. The tenant model in namespace A (namespace B stays open: the foreign
+	// tenant's own rules are not under test, and its pods are controls).
+	if err := q.c.ApplyAll(ctx, q.tenantPolicies(a, []int{8080})...); err != nil {
 		return err
 	}
 	// Enforcement is programmed asynchronously; poll until the first denial
 	// shows or the bound expires, then take the authoritative measurement.
 	_ = Wait(ctx, 90*time.Second, 5*time.Second, func() (bool, error) {
-		r := run(a, "cli-same", []NetTarget{targets[2]})
-		return r[targets[2].Name] == "closed", nil
+		r, _ := measure(func(t NetTarget) bool { return t.Name == "foreign-tenant srv (pod ip)" })
+		return r["foreign-tenant srv (pod ip)"] == StateClosed, nil
 	})
-	after := run(a, "cli-same", targets)
-	afterOther, afterForeign := run(a, "cli-other", reverse), run(b, "cli-foreign", reverse)
+	after, afterDetail := measure(nil)
+	obsDetail := map[string]string{}
+	for k, v := range ctlDetail {
+		obsDetail["control:"+k] = v
+	}
+	for k, v := range afterDetail {
+		obsDetail["after:"+k] = v
+	}
 
-	ev := []string{}
+	var ev []string
 	for _, t := range targets {
-		ev = append(ev, fmt.Sprintf("cli-same -> %s: control=%s policy=%s", t.Name, ctl[t.Name], after[t.Name]))
+		ev = append(ev, fmt.Sprintf("%s -> %s: control=%s (%s) policy=%s (%s)", t.Client, t.Name, ctl[t.Name], ctlDetail[t.Name], after[t.Name], afterDetail[t.Name]))
 	}
-	for _, t := range reverse {
-		ev = append(ev, fmt.Sprintf("cli-other-run -> %s: control=%s policy=%s", t.Name, ctlOther[t.Name], afterOther[t.Name]),
-			fmt.Sprintf("cli-foreign-ns -> %s: control=%s policy=%s", t.Name, ctlForeign[t.Name], afterForeign[t.Name]))
-	}
-	status, detail := EvaluateNetwork(targets, reverse, NetObservations{Control: ctl, After: after,
-		ControlOther: ctlOther, AfterOther: afterOther, ControlForeign: ctlForeign, AfterForeign: afterForeign})
-	q.add("network.matrix", "outer CNI same-run / foreign / default deny", true, status, detail, ev, "")
-
-	// 3. Nested network namespace under the same outer policy.
-	nested := q.execOrEmpty(ctx, a, "cli-nested", probeFn+`
-echo "outer_same_run=$(probe same http://`+ipSame+`:8080/)"
-echo "outer_other_run=$(probe other http://`+ipOther+`:8080/)"
-unshare -Urn sh -c 'echo "nested_ifaces=$(tail -n +3 /proc/net/dev | cut -d: -f1 | tr -d " " | tr "\n" ",")"; if wget -q -T 3 -O- http://`+ipSame+`:8080/ >/dev/null 2>&1; then echo nested_same_run=open; else echo nested_same_run=closed; fi' 2>&1`)
-	nst, nd := NotRun, "nested namespace probe produced no result: "+tail(nested, 160)
-	if strings.Contains(nested, "outer_same_run=open same") && strings.Contains(nested, "outer_other_run=closed other") {
-		switch {
-		case strings.Contains(nested, "nested_same_run=closed") && strings.Contains(nested, "nested_ifaces=lo,"):
-			nst, nd = Pass, "a nested user+network namespace inside the policed Pod has only loopback and cannot reach the run peer, while the outer Pod keeps exactly its run-scoped access; NAT'd nested networking (slirp4netns/pasta/CNI-in-Pod) is not qualified: the profile exposes no /dev/net/tun"
-		default:
-			nst, nd = Fail, "nested namespace behaved unexpectedly: "+tail(nested, 200)
+	for _, m := range []map[string]string{ctl, after} {
+		for k, v := range m {
+			if strings.HasPrefix(k, "error") {
+				ev = append(ev, k+": "+v)
+			}
 		}
 	}
-	q.add("network.nested", "nested network namespace under outer default deny", false, nst, nd, lines(nested, 8), "")
+	status, detail := EvaluateNetwork(targets, NetObservations{Control: ctl, After: after, Detail: obsDetail})
+	q.add("network.matrix", "tenant network model with live controls", true, status, detail, ev, "")
 	return nil
 }

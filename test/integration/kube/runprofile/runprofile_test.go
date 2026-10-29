@@ -23,9 +23,10 @@ import (
 // layer (-tags unit) skips it and runs only the Test_unit_runprofile_*
 // offline tests; that skip is not qualification evidence. In the normal
 // non-unit layer it never skips: a missing target, tool, credential or
-// prerequisite fails it, and so does any required capability (Buildah, one
-// selected BuildKit mode, the browser sandbox, storage, CNI, cleanup) that is
-// not proven by a real probe. The legacy kind-only suites do not stand in for it.
+// prerequisite fails it, and so does any required capability of the O-30
+// profile (storage, ko, Buildah in the step role, PostgreSQL, the tenant
+// network model, cleanup) that is not proven by a real probe. The legacy
+// kind-only suites do not stand in for it. Run it through verify.sh.
 //
 //	KODAMA_RUNPROFILE_KUBECONFIG    explicit kubeconfig of the disposable-probe-capable target
 //	KODAMA_RUNPROFILE_TARGET        name recorded in the report
@@ -79,7 +80,7 @@ func okPod() map[string]any {
 		"metadata": map[string]any{"name": "p", "namespace": runprofile.NamespacePrefix + "abc", "labels": map[string]any{runprofile.LabelTask: "t111", runprofile.LabelRun: "abc"}},
 		"spec": map[string]any{
 			"hostUsers":       false,
-			"securityContext": map[string]any{"seccompProfile": map[string]any{"type": "RuntimeDefault"}},
+			"securityContext": map[string]any{"seccompProfile": map[string]any{"type": "RuntimeDefault"}, "runAsNonRoot": true, "runAsUser": 1000},
 			"containers": []any{map[string]any{"name": "main", "image": "example.invalid/x@sha256:" + strings.Repeat("a", 64),
 				"securityContext": map[string]any{"capabilities": map[string]any{"drop": []any{"ALL"}}}}},
 		},
@@ -110,7 +111,7 @@ func Test_unit_runprofile_guard(t *testing.T) {
 			p["spec"].(map[string]any)["volumes"] = []any{map[string]any{"name": "h", "hostPath": map[string]any{"path": "/run/containerd/containerd.sock"}}}
 		},
 		"unconfined seccomp": func(p map[string]any) {
-			p["spec"].(map[string]any)["securityContext"] = map[string]any{"seccompProfile": map[string]any{"type": "Unconfined"}}
+			p["spec"].(map[string]any)["securityContext"] = map[string]any{"seccompProfile": map[string]any{"type": "Unconfined"}, "runAsNonRoot": true, "runAsUser": 1000}
 		},
 		"unconfined apparmor": func(p map[string]any) { setContainerSC(p, "appArmorProfile", map[string]any{"type": "Unconfined"}) },
 		"apparmor annotation": func(p map[string]any) {
@@ -127,6 +128,33 @@ func Test_unit_runprofile_guard(t *testing.T) {
 		},
 		"pinned node":   func(p map[string]any) { p["spec"].(map[string]any)["nodeName"] = "n1" },
 		"proc unmasked": func(p map[string]any) { setContainerSC(p, "procMount", "Unmasked") },
+		"sys admin": func(p map[string]any) {
+			setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}, "add": []any{"SETUID", "SETGID", "SYS_ADMIN"}})
+		},
+		"sys chroot": func(p map[string]any) {
+			setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}, "add": []any{"SYS_CHROOT"}})
+		},
+		"all capabilities": func(p map[string]any) {
+			setContainerSC(p, "capabilities", map[string]any{"add": []any{"ALL"}})
+		},
+		"capabilities without drop all": func(p map[string]any) {
+			setContainerSC(p, "capabilities", map[string]any{"add": []any{"SETUID"}})
+			setContainerSC(p, "runAsUser", 1000)
+		},
+		"capabilities as root": func(p map[string]any) {
+			setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}, "add": []any{"SETUID", "SETGID"}})
+			setContainerSC(p, "runAsUser", 0)
+		},
+		"unknown localhost seccomp": func(p map[string]any) {
+			p["spec"].(map[string]any)["securityContext"] = map[string]any{"seccompProfile": map[string]any{"type": "Localhost", "localhostProfile": "other.json"}, "runAsNonRoot": true, "runAsUser": 1000}
+		},
+		"unknown localhost apparmor": func(p map[string]any) {
+			setContainerSC(p, "appArmorProfile", map[string]any{"type": "Localhost", "localhostProfile": "my-profile"})
+		},
+		"host ipc": func(p map[string]any) { p["spec"].(map[string]any)["hostIPC"] = true },
+		"container seccomp unconfined over pod localhost": func(p map[string]any) {
+			setContainerSC(p, "seccompProfile", map[string]any{"type": "Unconfined"})
+		},
 	}
 	for name, f := range mut {
 		p := clone(t, okPod())
@@ -152,11 +180,138 @@ func Test_unit_runprofile_guard(t *testing.T) {
 			t.Errorf("guard refused supported kind %q: %v", kind, err)
 		}
 	}
-	// Permitted additions are exactly the user-namespace capabilities.
+	// Permitted additions are exactly the mapping-helper capabilities, as a
+	// non-root user, with only the installed Localhost profiles.
 	p := clone(t, okPod())
-	setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}, "add": []any{"SETUID", "SETGID", "SYS_ADMIN"}})
+	setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}, "add": []any{"SETUID", "SETGID"}})
+	setContainerSC(p, "allowPrivilegeEscalation", true)
+	setContainerSC(p, "runAsUser", 1000)
+	p["spec"].(map[string]any)["securityContext"] = map[string]any{
+		"runAsNonRoot":    true,
+		"seccompProfile":  map[string]any{"type": "Localhost", "localhostProfile": runprofile.StepSeccompProfile},
+		"appArmorProfile": map[string]any{"type": "Localhost", "localhostProfile": runprofile.StepAppArmorProfile},
+	}
 	if err := runprofile.Guard(p, "abc"); err != nil {
-		t.Errorf("user-namespace capability shape refused: %v", err)
+		t.Errorf("step role shape refused: %v", err)
+	}
+	// procMount: Unmasked is allowed only inside that exact shape.
+	setContainerSC(p, "procMount", "Unmasked")
+	if err := runprofile.Guard(p, "abc"); err != nil {
+		t.Errorf("step role with procMount Unmasked refused: %v", err)
+	}
+	// ...and the SYS_ADMIN/privileged/Unconfined/host-user variants of it are not.
+	for name, f := range map[string]func(map[string]any){
+		"sys admin": func(p map[string]any) {
+			setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}, "add": []any{"SETUID", "SETGID", "SYS_ADMIN"}})
+		},
+		"privileged": func(p map[string]any) { setContainerSC(p, "privileged", true) },
+		"host users": func(p map[string]any) { p["spec"].(map[string]any)["hostUsers"] = true },
+		"unconfined apparmor": func(p map[string]any) {
+			setContainerSC(p, "appArmorProfile", map[string]any{"type": "Unconfined"})
+		},
+		"hostPath": func(p map[string]any) {
+			p["spec"].(map[string]any)["volumes"] = []any{map[string]any{"name": "h", "hostPath": map[string]any{"path": "/"}}}
+		},
+	} {
+		v := clone(t, p)
+		f(v)
+		if err := runprofile.Guard(v, "abc"); err == nil {
+			t.Errorf("step role variant %q accepted", name)
+		}
+	}
+}
+
+// stepShapedPod is the complete step role (non-root, drop ALL + SETUID/SETGID,
+// escalation, Localhost profiles, hostUsers false).
+func stepShapedPod(t *testing.T) map[string]any {
+	p := clone(t, okPod())
+	setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}, "add": []any{"SETUID", "SETGID"}})
+	setContainerSC(p, "allowPrivilegeEscalation", true)
+	p["spec"].(map[string]any)["securityContext"] = map[string]any{
+		"runAsNonRoot": true, "runAsUser": 1000,
+		"seccompProfile":  map[string]any{"type": "Localhost", "localhostProfile": runprofile.StepSeccompProfile},
+		"appArmorProfile": map[string]any{"type": "Localhost", "localhostProfile": runprofile.StepAppArmorProfile},
+	}
+	return p
+}
+
+func delContainerSC(p map[string]any, key string) {
+	c := p["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)
+	delete(c["securityContext"].(map[string]any), key)
+}
+
+// Identity and capability omissions are refused independently of any added
+// capability: a user-namespaced Pod never inherits root or the runtime's
+// default capability set by leaving a field out.
+func Test_unit_runprofile_guard_omissions(t *testing.T) {
+	if err := runprofile.Guard(stepShapedPod(t), "abc"); err != nil {
+		t.Fatalf("complete step role refused: %v", err)
+	}
+	unmasked := func(p map[string]any) { setContainerSC(p, "procMount", "Unmasked") }
+	cases := map[string]func(map[string]any){
+		"root with Localhost profiles, drop ALL, no additions, Unmasked": func(p map[string]any) {
+			setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}})
+			setContainerSC(p, "allowPrivilegeEscalation", false)
+			p["spec"].(map[string]any)["securityContext"].(map[string]any)["runAsUser"] = 0
+			delete(p["spec"].(map[string]any)["securityContext"].(map[string]any), "runAsNonRoot")
+			unmasked(p)
+		},
+		"root without additions": func(p map[string]any) {
+			setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}})
+			p["spec"].(map[string]any)["securityContext"].(map[string]any)["runAsUser"] = 0
+		},
+		"container runs as root over a non-root Pod": func(p map[string]any) { setContainerSC(p, "runAsUser", 0) },
+		"missing runAsNonRoot": func(p map[string]any) {
+			delete(p["spec"].(map[string]any)["securityContext"].(map[string]any), "runAsNonRoot")
+		},
+		"runAsNonRoot false": func(p map[string]any) { setContainerSC(p, "runAsNonRoot", false) },
+		"missing runAsUser": func(p map[string]any) {
+			delete(p["spec"].(map[string]any)["securityContext"].(map[string]any), "runAsUser")
+		},
+		"missing capabilities entirely":  func(p map[string]any) { delContainerSC(p, "capabilities") },
+		"missing drop with no additions": func(p map[string]any) { setContainerSC(p, "capabilities", map[string]any{}) },
+		"drop without ALL":               func(p map[string]any) { setContainerSC(p, "capabilities", map[string]any{"drop": []any{"NET_RAW"}}) },
+		"no container securityContext": func(p map[string]any) {
+			p["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)["securityContext"] = nil
+		},
+		"Unmasked without hostUsers false": func(p map[string]any) { unmasked(p); p["spec"].(map[string]any)["hostUsers"] = true },
+		"Unmasked with hostUsers absent":   func(p map[string]any) { unmasked(p); delete(p["spec"].(map[string]any), "hostUsers") },
+		"Unmasked without Localhost seccomp": func(p map[string]any) {
+			unmasked(p)
+			p["spec"].(map[string]any)["securityContext"].(map[string]any)["seccompProfile"] = map[string]any{"type": "RuntimeDefault"}
+		},
+		"Unmasked without Localhost AppArmor": func(p map[string]any) {
+			unmasked(p)
+			delete(p["spec"].(map[string]any)["securityContext"].(map[string]any), "appArmorProfile")
+		},
+		"Unmasked without the added capabilities": func(p map[string]any) {
+			unmasked(p)
+			setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}})
+		},
+		"Unmasked without escalation": func(p map[string]any) { unmasked(p); setContainerSC(p, "allowPrivilegeEscalation", false) },
+		"Unmasked with only SETUID": func(p map[string]any) {
+			unmasked(p)
+			setContainerSC(p, "capabilities", map[string]any{"drop": []any{"ALL"}, "add": []any{"SETUID"}})
+		},
+		"init container without drop ALL": func(p map[string]any) {
+			c := clone(t, p["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any))
+			c["name"] = "init"
+			c["securityContext"] = map[string]any{}
+			p["spec"].(map[string]any)["initContainers"] = []any{c}
+		},
+	}
+	for name, f := range cases {
+		p := stepShapedPod(t)
+		f(p)
+		if err := runprofile.Guard(p, "abc"); err == nil {
+			t.Errorf("%s: guard accepted the omission", name)
+		}
+	}
+	// The complete step role with Unmasked is the only Unmasked shape accepted.
+	p := stepShapedPod(t)
+	setContainerSC(p, "procMount", "Unmasked")
+	if err := runprofile.Guard(p, "abc"); err != nil {
+		t.Errorf("complete step role with Unmasked refused: %v", err)
 	}
 }
 
@@ -273,6 +428,8 @@ func Test_unit_runprofile_verdicts(t *testing.T) {
 		}
 	}
 	blocked := rep(pass, runprofile.Check{ID: "psa.builder_pod", Required: true, Status: runprofile.Pass},
+		runprofile.Check{ID: "step.role_shape", Required: true, Status: runprofile.Pass},
+		runprofile.Check{ID: "step.role_shape.ko", Required: true, Status: runprofile.Pass},
 		runprofile.Check{ID: "build.buildah_vfs", Required: true, Status: runprofile.Blocked, Handoff: "install X"})
 	blocked.Finalize()
 	if len(blocked.Handoffs) != 1 || !strings.Contains(blocked.Markdown(), "install X") {
@@ -283,7 +440,7 @@ func Test_unit_runprofile_verdicts(t *testing.T) {
 		if strings.HasPrefix(row.Combination, "ko build") {
 			ko = row.Status
 		}
-		if strings.HasPrefix(row.Combination, "Buildah VFS") {
+		if strings.HasPrefix(row.Combination, "Buildah build+push") {
 			buildah = row.Status
 		}
 	}

@@ -29,6 +29,11 @@ func mount(name, path string, readOnly bool) map[string]any {
 	return m
 }
 
+// mountSub mounts one key of a volume as a read-only file.
+func mountSub(name, path, subPath string) map[string]any {
+	return map[string]any{"name": name, "mountPath": path, "subPath": subPath, "readOnly": true}
+}
+
 func secretVolume(name, secret string, mode int) map[string]any {
 	return map[string]any{"name": name, "secret": map[string]any{"secretName": secret, "defaultMode": mode}}
 }

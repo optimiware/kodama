@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const helperSource = `package main
+const helperTemplate = `package main
 
 import (
 	"fmt"
@@ -45,7 +45,7 @@ func main() {
 	for _, o := range []struct {
 		name     string
 		uid, gid int
-	}{{"root", 0, 0}, {"u1000", 1000, 1000}, {"u65534", 65534, 65534}, {"u4242", 4242, 4343}} {
+	}{{{OWNERS}}} {
 		path := "/own/" + o.name
 		if err := os.WriteFile(path, []byte(o.name), 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -70,6 +70,16 @@ RUN ["/helper", "build"]
 ENTRYPOINT ["/helper"]
 `
 
+// helperSource renders the helper with the owners of stepOwners, all of which
+// fit the subordinate range inside the Pod.
+func helperSource() string {
+	var owners []string
+	for _, o := range stepOwners {
+		owners = append(owners, fmt.Sprintf("{%q, %d, %d}", o.Name, o.UID, o.GID))
+	}
+	return strings.Replace(helperTemplate, "{{OWNERS}}", strings.Join(owners, ", "), 1)
+}
+
 // buildHelper compiles the static helper the RUN step executes. It needs the
 // Go toolchain of the host running the qualification and no network.
 func buildHelper(dir string) (string, error) {
@@ -77,7 +87,7 @@ func buildHelper(dir string) (string, error) {
 	if err := os.MkdirAll(src, 0o755); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(src, "main.go"), []byte(helperSource), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "main.go"), []byte(helperSource()), 0o644); err != nil {
 		return "", err
 	}
 	if err := os.WriteFile(filepath.Join(src, "go.mod"), []byte("module helper\n\ngo 1.22\n"), 0o644); err != nil {
@@ -93,22 +103,16 @@ func buildHelper(dir string) (string, error) {
 	return out, nil
 }
 
-// variant is one explicit, escalating-but-never-host-privileged Pod shape.
-type variant struct {
-	Name string
-	UID  int64
-	Caps []string
-	PE   bool
-}
-
-// variants are the only shapes ever tried. No variant sets an unconfined
-// seccomp or AppArmor profile, mounts a host path or runs privileged; Guard
-// refuses those regardless. Later variants add only capabilities inside the
-// Pod's own user namespace.
-var variants = []variant{
-	{"nonroot-no-caps", 1000, nil, false},
-	{"nonroot-userns-bounding", 1000, []string{"SETUID", "SETGID", "SYS_ADMIN"}, true},
-	{"root-in-userns", 0, []string{"SETUID", "SETGID", "SYS_ADMIN", "SYS_CHROOT"}, false},
+type attempt struct {
+	Variant   string
+	OK        bool
+	Output    string
+	Diag      string
+	Blocked   bool     // failure attributable to the node security profile
+	StartErr  string   // the Pod never started
+	SpecBad   []string // differences between the live Pod and the S3 role
+	Inspected bool     // the live Pod object was read back
+	Digest    string   // digest the builder reports it pushed
 }
 
 const diagScript = `
@@ -119,24 +123,43 @@ echo "diag_unshare_user_mount=$(unshare -Urm true 2>&1 && echo ok)"
 echo "diag_caps=$(grep -E '^Cap(Prm|Bnd):' /proc/self/status | tr -s '\t ' ' ' | tr '\n' ' ')"
 `
 
-type attempt struct {
-	Variant  string
-	OK       bool
-	Output   string
-	Diag     string
-	Blocked  bool // failure attributable to the node security profile
-	StartErr string
+// inspectScript prints the in-Pod view of the step role and the subordinate
+// ID files of the pinned image.
+const inspectScript = `
+echo "uid=$(id -u)"
+echo "gid=$(id -g)"
+echo "user=$(id -un 2>&1)"
+echo "cap_bnd=$(grep '^CapBnd:' /proc/self/status | tr -s '\t ' ' ' | cut -d' ' -f2)"
+echo "no_new_privs=$(grep '^NoNewPrivs:' /proc/self/status | tr -s '\t ' ' ' | cut -d' ' -f2)"
+echo "seccomp=$(grep '^Seccomp:' /proc/self/status | tr -s '\t ' ' ' | cut -d' ' -f2)"
+echo "apparmor=$(cat /proc/self/attr/current 2>&1)"
+echo "uid_map=$(tr -s ' ' < /proc/self/uid_map)"
+echo "newuidmap=$(ls -l /usr/bin/newuidmap 2>&1)"
+sed 's/^/subuid_line=/' /etc/subuid 2>/dev/null || true
+sed 's/^/subgid_line=/' /etc/subgid 2>/dev/null || true
+`
+
+// stepPod is a builder-role Pod in the exact S3 step role with HOME-based
+// builder storage. subid mounts the fallback subordinate-ID files.
+func (q *Qualifier) stepPod(name, image string, unmasked, subid bool) Pod {
+	p := q.builderPod(name, image, StepUID)
+	p.StepRole, p.Unmasked = true, unmasked
+	p.Env = []any{plainEnv("HOME", "/kodama/home"), plainEnv("XDG_RUNTIME_DIR", "/kodama/run"), plainEnv("TMPDIR", "/tmp"),
+		plainEnv("SSL_CERT_FILE", "/ca/ca.crt"), plainEnv("DOCKER_CONFIG", "/creds"), plainEnv("BUILDAH_ISOLATION", "chroot")}
+	p.Volumes = append(p.Volumes, emptyDir("home", "2Gi", false), emptyDir("run", "64Mi", false))
+	p.Mounts = append(p.Mounts, mount("home", "/kodama/home", false), mount("run", "/kodama/run", false))
+	if subid {
+		p.Volumes = append(p.Volumes, secretVolume("subid", "buildah-subid", 0o444))
+		p.Mounts = append(p.Mounts, mountSub("subid", "/etc/subuid", "subuid"), mountSub("subid", "/etc/subgid", "subgid"))
+	}
+	return p
 }
 
-// attemptBuild runs one build+push attempt in a freshly created builder Pod.
-func (q *Qualifier) attemptBuild(ctx context.Context, name, image string, v variant, env []any, extraVols, extraMounts []any, buildScript string, ctxTar []byte) attempt {
+// attemptBuild runs one build+push attempt in a freshly created step Pod and
+// records the live Pod's conformance to the role.
+func (q *Qualifier) attemptBuild(ctx context.Context, p Pod, variant, buildScript string, ctxTar []byte) attempt {
 	ns := q.nsMain
-	a := attempt{Variant: v.Name}
-	p := q.builderPod(name, image, v.UID)
-	p.Caps, p.AllowPE = v.Caps, v.PE
-	p.Env = env
-	p.Volumes = append(p.Volumes, extraVols...)
-	p.Mounts = append(p.Mounts, extraMounts...)
+	a := attempt{Variant: variant}
 	p.Command = []string{"sleep", "900"}
 	if err := q.c.ApplyAll(ctx, q.c.PodObject(p)); err != nil {
 		a.StartErr = err.Error()
@@ -145,37 +168,49 @@ func (q *Qualifier) attemptBuild(ctx context.Context, name, image string, v vari
 	defer func() {
 		dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
 		defer cancel()
-		_ = q.c.DeletePod(dctx, ns, name, 2*time.Minute)
+		_ = q.c.DeletePod(dctx, ns, p.Name, 2*time.Minute)
 	}()
-	if err := q.c.WaitReady(ctx, ns, name, 10*minute); err != nil {
+	if err := q.c.WaitReady(ctx, ns, p.Name, 10*minute); err != nil {
+		a.StartErr = err.Error()
+		a.Blocked = profileFailure(a.StartErr)
+		return a
+	}
+	if pj, err := q.c.GetPod(ctx, ns, p.Name); err == nil {
+		q.noteImage(pj, p.Image)
+	}
+	var live map[string]any
+	a.Inspected = true
+	if err := q.c.K.JSON(ctx, &live, "-n", ns, "get", "pod", p.Name); err == nil {
+		a.SpecBad = StepRoleSpecViolations(live, p.Unmasked)
+	} else {
+		a.SpecBad = []string{"live Pod unreadable: " + err.Error()}
+	}
+	if _, err := q.c.Exec(ctx, ns, p.Name, bytes.NewReader(ctxTar), "mkdir -p /work && tar -C /work -xf -"); err != nil {
 		a.StartErr = err.Error()
 		return a
 	}
-	if pj, err := q.c.GetPod(ctx, ns, name); err == nil {
-		q.noteImage(pj, image)
-	}
-	if _, err := q.c.Exec(ctx, ns, name, bytes.NewReader(ctxTar), "mkdir -p /work && tar -C /work -xf -"); err != nil {
-		a.StartErr = err.Error()
-		return a
-	}
-	bctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+	bctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
 	defer cancel()
-	out, err := q.c.Exec(bctx, ns, name, nil, buildScript+" 2>&1; echo build_exit=$?")
+	out, err := q.c.Exec(bctx, ns, p.Name, nil, buildScript+" 2>&1; echo build_exit=$?")
 	a.Output = out
 	a.OK = err == nil && strings.Contains(out, "build_exit=0")
+	for _, l := range lines(out, 400) {
+		if d, ok := strings.CutPrefix(l, "pushed_digest="); ok {
+			a.Digest = strings.TrimSpace(d)
+		}
+	}
 	if !a.OK {
-		a.Diag = q.execOrEmpty(ctx, ns, name, diagScript)
+		a.Diag = q.execOrEmpty(ctx, ns, p.Name, diagScript)
 		a.Blocked = strings.Contains(a.Diag, "diag_unshare_user_mount=unshare:") &&
 			(strings.Contains(a.Diag, "Permission denied") || strings.Contains(a.Diag, "Operation not permitted"))
-	} else {
-		a.Diag = q.execOrEmpty(ctx, ns, name, `echo "processes_before_teardown=$(ps -eo pid,args 2>/dev/null | wc -l)"`)
 	}
 	return a
 }
 
 // verifyBuilt checks the pushed image's contents: the RUN step executed, the
-// dependency was fetched, and files carry several distinct numeric owners.
-func (q *Qualifier) verifyBuilt(ctx context.Context, repo string) (bool, []string) {
+// dependency was fetched, files carry several distinct numeric owners, and the
+// registry's manifest digest is the one the builder pushed.
+func (q *Qualifier) verifyBuilt(ctx context.Context, repo, pushedDigest string) (bool, []string) {
 	client, err := q.freshClient(ctx)
 	if err != nil {
 		return false, []string{err.Error()}
@@ -198,20 +233,44 @@ func (q *Qualifier) verifyBuilt(ctx context.Context, repo string) (bool, []strin
 			dep = true
 		}
 	}
-	ok := dep && owners["u1000"] == [2]int{1000, 1000} && owners["u65534"] == [2]int{65534, 65534} &&
-		owners["u4242"] == [2]int{4242, 4343} && owners["root"] == [2]int{0, 0}
-	return ok, []string{"manifest " + digest, fmt.Sprintf("owners %v", owners), fmt.Sprintf("dependency marker %t", dep)}
+	ownersOK := true
+	for _, o := range stepOwners {
+		if owners[o.Name] != [2]int{o.UID, o.GID} {
+			ownersOK = false
+		}
+	}
+	match := pushedDigest != "" && pushedDigest == digest
+	ok := dep && ownersOK && match
+	return ok, []string{"registry manifest " + digest, "builder pushed digest " + pushedDigest, fmt.Sprintf("digest match %t", match),
+		fmt.Sprintf("owners %v", owners), fmt.Sprintf("dependency marker %t", dep)}
 }
 
-const buildahHandoff = "T-114/T-116 installation prerequisite: rootless Buildah and BuildKit need to create a mount namespace inside a nested user namespace. On this target the container runtime's enforced default AppArmor profile (cri-containerd.apparmor.d) denies that mount, and Pod Security (restricted/baseline) rejects the SYS_ADMIN bounding capability the runtime's default seccomp profile requires for nested user namespaces. Provide a node-installed, builder-only AppArmor Localhost profile (and its distribution) or a dedicated builder node pool/runtime class without the denial, plus a Pod Security level that admits the builder Pods, then re-run this qualification. Do not use Unconfined profiles or privileged Pods."
+const buildahHandoff = "T-120/T-121 installation prerequisite: the O-30 step role needs the installed node profiles. Install the seccomp profile kodama/kodama-rootless-build-v1.json under the kubelet seccomp root and load the AppArmor profile kodama-rootless-build-v1 on every worker that runs tenant steps (T-120 installer), then re-run this qualification. Do not use Unconfined profiles, SYS_ADMIN or privileged Pods."
 
-// phaseBuildah attempts rootless Buildah with VFS under each permitted Pod
-// shape and qualifies only a real build+push.
+// buildahScript builds the fixture with Buildah's documented rootless storage
+// (VFS under HOME, chroot isolation), pushes with the run credential and
+// reports the digest it pushed.
+func buildahScript(depsURL, registryHost string) string {
+	return fmt.Sprintf(`set -e; mkdir -p "$HOME/containers" /work; cd /work
+S="--root $HOME/containers/root --runroot $HOME/containers/run --storage-driver=vfs"
+buildah $S version | head -2
+buildah $S build --isolation=chroot --layers=false --build-arg DEPS_URL=%s -f Containerfile -t localhost/probe:1 .
+buildah $S push --authfile /creds/config.json --digestfile "$HOME/digest" localhost/probe:1 docker://%s/buildah:latest
+echo "pushed_digest=$(cat "$HOME/digest")"`, depsURL, registryHost)
+}
+
+// phaseBuildah qualifies Buildah in the exact S3 step role and nothing wider.
 func (q *Qualifier) phaseBuildah(ctx context.Context) error {
 	if q.reg == nil || q.reg.client == nil {
 		q.add("build.buildah_vfs", "Buildah VFS build and push", true, NotRun, "registry fixture unavailable", nil, "")
+		q.add("step.role_shape", "step role applied exactly", true, NotRun, "registry fixture unavailable", nil, "")
+		q.add("psa.builder_pod", "step role admitted under Pod Security", true, NotRun, "registry fixture unavailable", nil, "")
 		return nil
 	}
+	q.add("build.buildah_overlay_fuse", "Buildah overlay/FUSE", false, NotAdvertised,
+		"not advertised: the step role exposes no devices (no /dev/fuse) and the driver never requests one", nil, "")
+	q.psaCheck(ctx)
+
 	hdir, err := os.MkdirTemp(q.dir, "helper-")
 	if err != nil {
 		return err
@@ -219,6 +278,7 @@ func (q *Qualifier) phaseBuildah(ctx context.Context) error {
 	helper, err := buildHelper(hdir)
 	if err != nil {
 		q.add("build.buildah_vfs", "Buildah VFS build and push", true, Fail, err.Error(), nil, "")
+		q.add("step.role_shape", "step role applied exactly", true, NotRun, "no builder ran", nil, "")
 		return nil
 	}
 	bin, _ := os.ReadFile(helper)
@@ -227,48 +287,150 @@ func (q *Qualifier) phaseBuildah(ctx context.Context) error {
 		return err
 	}
 	f := q.reg
-	env := []any{plainEnv("HOME", "/tmp/home"), plainEnv("SSL_CERT_FILE", "/ca/ca.crt")}
-	script := fmt.Sprintf(`set -e; mkdir -p /tmp/home /tmp/c; cd /work
-S="--root /tmp/c/root --runroot /tmp/c/run --storage-driver vfs"
-buildah $S version | head -2
-buildah $S build --isolation chroot --layers=false --build-arg DEPS_URL=%s -f Containerfile -t localhost/probe:1 .
-buildah $S push --authfile /creds/config.json localhost/probe:1 docker://%s/buildah:latest`, f.deps, f.host)
+	img := q.img("buildah")
 
+	// Inspect the pinned image's user and subordinate ID files under the role.
+	view, perr := q.inspectStep(ctx, img)
+	if perr != nil {
+		st, h := Fail, ""
+		if profileFailure(perr.Error()) {
+			st, h = Blocked, buildahHandoff
+		}
+		q.add("step.role_shape", "step role applied exactly", true, st, "the step-role Pod could not run its inspection: "+tail(perr.Error(), 300), nil, h)
+		q.add("build.buildah_vfs", "Buildah VFS build and push", true, NotRun, "step-role Pod did not start; no build was attempted", nil, "")
+		return nil
+	}
+	viewBad := StepViewViolations(view, "build")
+	ev := []string{"in-Pod view: " + fmt.Sprint(view.KV), fmt.Sprintf("subuid %v subgid %v", view.SubUID, view.SubGID)}
+	subid := false
+	for _, k := range []struct {
+		name    string
+		entries []string
+	}{{"/etc/subuid", view.SubUID}, {"/etc/subgid", view.SubGID}} {
+		if err := SubIDFit(k.entries, "build", StepUID, 60000); err != nil {
+			subid = true
+			ev = append(ev, k.name+" of the pinned image does not fit the Pod range ("+err.Error()+"): the build mounts a fallback")
+		}
+	}
+	if subid {
+		if err := q.c.ApplyAll(ctx, q.secret(q.nsMain, "buildah-subid", map[string]string{"subuid": fallbackSubID, "subgid": fallbackSubID})); err != nil {
+			return err
+		}
+	} else {
+		ev = append(ev, "the pinned image's own /etc/subuid and /etc/subgid fit inside the Pod range")
+	}
+	if len(viewBad) > 0 {
+		q.add("step.role_shape", "step role applied exactly", true, Fail, "the process inside the Pod does not see the S3 role: "+strings.Join(viewBad, "; "), ev, "")
+		q.add("build.buildah_vfs", "Buildah VFS build and push", true, NotRun, "the role was not applied as specified; no build evidence would describe it", nil, "")
+		return nil
+	}
+
+	script := "(" + buildahScript(f.deps, f.host) + ")"
+	variants := []struct {
+		name     string
+		unmasked bool
+	}{{"step", false}, {"step+procMount-unmasked", true}}
 	var tried []string
-	var ok *attempt
-	var last attempt
+	var results []attempt
+	var specBad []string
+	var goodDefault, goodUnmasked bool
+	var detailEv []string
 	for i, v := range variants {
-		a := q.attemptBuild(ctx, fmt.Sprintf("buildah-%d", i), q.img("buildah"), v, env, nil, nil, "("+script+")", ctxTar)
-		tried = append(tried, fmt.Sprintf("%s: ok=%t blocked=%t %s", v.Name, a.OK, a.Blocked, firstLine(a.Output+a.StartErr)))
-		last = a
+		if i > 0 && (results[0].OK || (results[0].Blocked && results[0].StartErr != "")) {
+			break // the optional variant only runs when the frozen role's build failed to start a nested namespace, never when its Pod could not start
+		}
+		a := q.attemptBuild(ctx, q.stepPod(fmt.Sprintf("buildah-%d", i), img, v.unmasked, subid), v.name, script, ctxTar)
+		tried = append(tried, fmt.Sprintf("%s: ok=%t blocked=%t %s", v.name, a.OK, a.Blocked, firstLine(a.Output+a.StartErr)))
+		results = append(results, a)
+		specBad = append(specBad, a.SpecBad...)
 		if a.OK {
-			ok = &a
-			break
+			good, bev := q.verifyBuilt(ctx, "buildah", a.Digest)
+			detailEv = append(detailEv, bev...)
+			if good && !v.unmasked {
+				goodDefault = true
+			}
+			if good && v.unmasked {
+				goodUnmasked = true
+			}
+			if !good {
+				tried = append(tried, v.name+": pushed image failed verification")
+			}
 		}
 	}
+	// The role check combines the in-Pod view with the live Pod objects.
+	if len(specBad) > 0 {
+		q.add("step.role_shape", "step role applied exactly", true, Fail, "the live Pod differs from the S3 role: "+strings.Join(specBad, "; "), ev, "")
+	} else if !results[0].Inspected {
+		st, h := Fail, ""
+		if results[0].Blocked {
+			st, h = Blocked, buildahHandoff
+		}
+		q.add("step.role_shape", "step role applied exactly", true, st, "the step-role build Pod never started, so its live object could not be compared: "+tail(results[0].StartErr, 300), ev, h)
+	} else {
+		q.add("step.role_shape", "step role applied exactly", true, Pass,
+			"non-root 1000, hostUsers false, capabilities [ALL] dropped and exactly SETGID/SETUID in the bounding set, allowPrivilegeEscalation true, Localhost seccomp and AppArmor profiles enforced, a 65,536-ID user-namespace mapping; the live Pod object matches", ev, "")
+	}
+
+	last := results[len(results)-1]
+	allEv := append(append(tried, detailEv...), lines(last.Diag, 8)...)
 	switch {
-	case ok != nil:
-		good, ev := q.verifyBuilt(ctx, "buildah")
-		st, det := Pass, "Buildah (VFS, chroot isolation) ran a RUN step that fetched the dependency over run egress, created files with several numeric owners, and pushed to the registry; variant "+ok.Variant
-		if !good {
-			st, det = Fail, "pushed image does not show the RUN step, dependency or multi-UID ownership"
-		}
-		q.add("build.buildah_vfs", "Buildah VFS build and push", true, st, det, append(tried, ev...), "")
-	case last.Blocked:
+	case goodDefault:
+		q.add("build.buildah_vfs", "Buildah VFS build and push", true, Pass,
+			"Buildah (VFS under HOME, chroot isolation) ran a RUN step in the S3 step role that fetched the dependency over run egress, created files with several numeric owners inside the Pod range, and pushed to the authenticated registry with the manifest digest it reported", allEv, "")
+	case goodUnmasked:
 		q.add("build.buildah_vfs", "Buildah VFS build and push", true, Blocked,
-			"every permitted rootless Pod shape failed: creating a mount namespace in a nested user namespace is denied by the node security profile",
-			append(tried, lines(last.Diag, 8)...), buildahHandoff)
+			"the frozen step role failed but the same role with procMount: Unmasked built and pushed: the role needs `procMount: unmasked` to qualify, which the S3 default does not set",
+			allEv, "Policy decision: the default step role did not build; only the optional procMount: Unmasked variant did. Record the policy's step role with procMount: unmasked (seam S3 supports it) or fix the node profile, then re-run. Nothing is qualified for the default role.")
+		q.add("build.buildah_procmount_unmasked", "Buildah with procMount: Unmasked", false, Pass, "built and pushed in the optional variant", nil, "")
+	case results[0].OK && !goodUnmasked:
+		q.add("build.buildah_vfs", "Buildah VFS build and push", true, Fail,
+			"Buildah finished but the pushed image does not show the RUN step, the dependency, the multi-UID ownership or a manifest digest equal to the pushed one", allEv, "")
+	case anyBlocked(results):
+		q.add("build.buildah_vfs", "Buildah VFS build and push", true, Blocked,
+			"the node security profile denies the step role (profile not installed/loaded, or a nested user-namespace mount is denied)", allEv, buildahHandoff)
 	default:
-		q.add("build.buildah_vfs", "Buildah VFS build and push", true, Fail, "Buildah failed without a node-profile denial: "+tail(last.Output+last.StartErr, 300), append(tried, lines(last.Diag, 8)...), "")
+		q.add("build.buildah_vfs", "Buildah VFS build and push", true, Fail, "Buildah failed without a node-profile denial: "+tail(last.Output+last.StartErr, 300), allEv, "")
 	}
-	hasFuse := false
-	if pv, ok := q.rep.Inventory["podView"].(map[string]string); ok {
-		hasFuse = pv["dev_fuse"] == "/dev/fuse"
-	}
-	q.add("build.buildah_overlay_fuse", "Buildah overlay/FUSE", false, NotAdvertised,
-		fmt.Sprintf("not advertised: no evidence collected (/dev/fuse present in a default Pod: %t; the profile exposes no fuse device and the driver never requests one)", hasFuse), nil, "")
-	q.psaCheck(ctx)
 	return nil
+}
+
+func anyBlocked(rs []attempt) bool {
+	for _, r := range rs {
+		if r.Blocked {
+			return true
+		}
+	}
+	return false
+}
+
+// checkStepRole compares a running step-role Pod with seam S3 twice: the live
+// Pod object the API server holds and what the process inside observes.
+// wantUser, when set, is the account UID 1000 must resolve to.
+func (q *Qualifier) checkStepRole(ctx context.Context, ns, name string, unmasked bool, wantUser string) (bad []string, evidence []string) {
+	var live map[string]any
+	if err := q.c.K.JSON(ctx, &live, "-n", ns, "get", "pod", name); err != nil {
+		return []string{"live Pod unreadable: " + err.Error()}, nil
+	}
+	bad = StepRoleSpecViolations(live, unmasked)
+	view := ParseStepView(q.execOrEmpty(ctx, ns, name, inspectScript))
+	for _, v := range StepViewViolations(view, wantUser) {
+		bad = append(bad, "in-Pod "+v)
+	}
+	evidence = []string{"in-Pod view: " + fmt.Sprint(view.KV)}
+	return bad, evidence
+}
+
+// inspectStep runs the inspection script in a one-shot step-role Pod.
+func (q *Qualifier) inspectStep(ctx context.Context, image string) (StepView, error) {
+	p := q.stepPod("buildah-inspect", image, false, false)
+	out, code, err := q.oneShot(ctx, q.nsMain, p, inspectScript, 10*minute)
+	if err != nil {
+		return StepView{}, err
+	}
+	if code != 0 {
+		return StepView{}, fmt.Errorf("inspection exited %d: %s", code, tail(out, 200))
+	}
+	return ParseStepView(out), nil
 }
 
 func firstLine(s string) string {
@@ -288,128 +450,30 @@ func tarFiles(files map[string][]byte, modes map[string]int64) ([]byte, error) {
 	return buildContext(m, modes)
 }
 
-// phaseBuildKit tries normal rootless BuildKit, then the one explicit
-// alternative (no process sandbox), each in a Pod that is deleted afterwards.
-func (q *Qualifier) phaseBuildKit(ctx context.Context) error {
-	if q.reg == nil || q.reg.client == nil {
-		q.add("build.buildkit_selected", "BuildKit selected mode", true, NotRun, "registry fixture unavailable", nil, "")
-		return nil
-	}
-	hdir, err := os.MkdirTemp(q.dir, "bk-helper-")
-	if err != nil {
-		return err
-	}
-	helper, err := buildHelper(hdir)
-	if err != nil {
-		q.add("build.buildkit_selected", "BuildKit selected mode", true, Fail, err.Error(), nil, "")
-		return nil
-	}
-	bin, _ := os.ReadFile(helper)
-	ctxTar, err := tarFiles(map[string][]byte{"helper": bin, "Dockerfile": []byte(containerfile)}, map[string]int64{"helper": 0o755})
-	if err != nil {
-		return err
-	}
-	f := q.reg
-	env := []any{plainEnv("HOME", "/tmp/home"), plainEnv("XDG_RUNTIME_DIR", "/tmp/run"), plainEnv("SSL_CERT_FILE", "/ca/ca.crt"), plainEnv("DOCKER_CONFIG", "/creds")}
-	vols := []any{emptyDir("bkstate", "1Gi", false)}
-	mounts := []any{mount("bkstate", "/home/user/.local/share/buildkit", false)}
-	build := func(flags string) string {
-		return fmt.Sprintf(`set -e; mkdir -p /tmp/run /tmp/home; cd /work
-export BUILDKITD_FLAGS=%q
-buildctl-daemonless.sh build --frontend dockerfile.v0 --local context=/work --local dockerfile=/work --opt build-arg:DEPS_URL=%s --output type=image,name=%s/buildkit:latest,push=true`, flags, f.deps, f.host)
-	}
-	modes := []struct{ id, name, flags string }{
-		{"build.buildkit_default", "rootless default (process sandbox)", ""},
-		{"build.buildkit_selected", "rootless --oci-worker-no-process-sandbox", "--oci-worker-no-process-sandbox"},
-	}
-	var qualified string
-	for mi, mode := range modes {
-		var tried []string
-		var ok *attempt
-		var last attempt
-		for i, v := range variants[:2] { // root-in-userns adds nothing for a non-root-image daemon
-			a := q.attemptBuild(ctx, fmt.Sprintf("buildkit-%d-%d", mi, i), q.img("buildkit"), v, env, vols, mounts, "("+build(mode.flags)+")", ctxTar)
-			tried = append(tried, fmt.Sprintf("%s: ok=%t blocked=%t %s", v.Name, a.OK, a.Blocked, firstLine(a.Output+a.StartErr)))
-			last = a
-			if a.OK {
-				ok = &a
-				break
-			}
-		}
-		required := mode.id == "build.buildkit_selected"
-		switch {
-		case ok != nil:
-			good, ev := q.verifyBuilt(ctx, "buildkit")
-			st, det := Pass, mode.name+": real RUN build and authenticated push succeeded in Pod shape "+ok.Variant+"; run-exclusive service and whole-process-tree teardown were not separately verified"
-			if !good {
-				st, det = Fail, mode.name+": pushed image does not show the RUN step, dependency or multi-UID ownership"
-			}
-			q.add(mode.id, "BuildKit "+mode.name, required, st, det, append(tried, ev...), "")
-			if required {
-				q.rep.Find(mode.id).Mode = mode.name
-			}
-			if st == Pass && qualified == "" {
-				qualified = mode.name
-			}
-		case last.Blocked:
-			q.add(mode.id, "BuildKit "+mode.name, required, Blocked, mode.name+": rootlesskit cannot create its mount namespace under the node security profile",
-				append(tried, lines(last.Diag, 8)...), buildahHandoff)
-			if required {
-				q.rep.Find(mode.id).Mode = mode.name
-			}
-		default:
-			q.add(mode.id, "BuildKit "+mode.name, required, Fail, mode.name+": "+tail(last.Output+last.StartErr, 300), append(tried, lines(last.Diag, 8)...), "")
-			if required {
-				q.rep.Find(mode.id).Mode = mode.name
-			}
-		}
-		if qualified != "" {
-			break
-		}
-	}
-	if c := q.rep.Find("build.buildkit_selected"); c == nil {
-		if d := q.rep.Find("build.buildkit_default"); d != nil && d.Status == Pass {
-			q.rep.Add(SelectedFromDefault(*d))
-		}
-	}
-	return nil
-}
-
-// SelectedFromDefault projects a passing default-mode BuildKit check onto the
-// selected-mode check. The selection is exactly the default mode; no
-// alternative mode was exercised and none is claimed.
-func SelectedFromDefault(def Check) Check {
-	return Check{ID: "build.buildkit_selected", Capability: "BuildKit selected mode", Required: true, Status: def.Status,
-		Mode:     "rootless default (process sandbox)",
-		Detail:   "selected mode is the default rootless mode, tested by the default-mode check; no alternative mode was exercised and run-exclusive service or process-tree teardown was not verified",
-		Evidence: def.Evidence}
-}
-
-// psaCheck asks the API server (dry run, admission included) whether the
-// builder Pod shapes are admitted at the restricted and baseline Pod
-// Security levels the tenant namespaces use. It creates nothing.
+// psaCheck asks the API server (dry run, admission included) whether the step
+// role Pod is admitted at the Pod Security levels. The role adds only
+// SETUID/SETGID with Localhost profiles and allows privilege escalation, so
+// baseline is its floor; restricted is recorded as evidence. It creates
+// nothing.
 func (q *Qualifier) psaCheck(ctx context.Context) {
 	ns := q.nsNetB
-	v := variants[1]
 	var ev []string
-	violates := false
+	warnings := map[string]int{}
 	for _, level := range []string{"restricted", "baseline"} {
 		if _, err := q.c.K.Run(ctx, nil, "label", "namespace", ns, "pod-security.kubernetes.io/warn="+level, "--overwrite"); err != nil {
-			q.add("psa.builder_pod", "builder Pod admitted under Pod Security", true, Fail, err.Error(), nil, "")
+			q.add("psa.builder_pod", "step role admitted under Pod Security", true, Fail, err.Error(), nil, "")
 			return
 		}
-		p := q.builderPod("psa-probe", q.img("buildah"), v.UID)
-		p.Namespace, p.Caps, p.AllowPE = ns, v.Caps, v.PE
+		p := q.stepPod("psa-probe", q.img("buildah"), false, false)
+		p.Namespace = ns
 		p.Command = []string{"sleep", "1"}
 		out, err := q.c.ApplyDryRun(ctx, q.c.PodObject(p))
 		if err != nil {
-			q.add("psa.builder_pod", "builder Pod admitted under Pod Security", true, Fail, "dry run: "+err.Error(), nil, "")
+			q.add("psa.builder_pod", "step role admitted under Pod Security", true, Fail, "dry run: "+err.Error(), nil, "")
 			return
 		}
 		w := grepLines(out, "would violate PodSecurity")
-		if len(w) > 0 {
-			violates = true
-		}
+		warnings[level] = len(w)
 		ev = append(ev, fmt.Sprintf("%s: %d warning(s) %s", level, len(w), firstLine(strings.Join(w, "\n"))))
 	}
 	// The ko/postgres shape (no added capabilities) is the control.
@@ -418,13 +482,17 @@ func (q *Qualifier) psaCheck(ctx context.Context) {
 		c.Namespace = ns
 		c.Command = []string{"sleep", "1"}
 		out, err := q.c.ApplyDryRun(ctx, q.c.PodObject(c))
-		ev = append(ev, fmt.Sprintf("control (no added caps, restricted): err=%v warnings=%d", err != nil, len(grepLines(out, "would violate PodSecurity"))))
+		ev = append(ev, fmt.Sprintf("control (restricted-compatible ko shape, restricted): err=%v warnings=%d", err != nil, len(grepLines(out, "would violate PodSecurity"))))
 	}
-	if violates {
-		q.add("psa.builder_pod", "builder Pod admitted under Pod Security", true, Blocked,
-			"the Pod shape that nested user namespaces require (SYS_ADMIN in the bounding set) violates Pod Security baseline/restricted; tenant namespaces on this target enforce restricted",
-			ev, "T-114/T-116 installation prerequisite: builder and browser Pods need a namespace (or exemption) whose Pod Security level admits SYS_ADMIN-in-user-namespace Pods; keep all other tenant Pods restricted.")
+	if warnings["baseline"] > 0 {
+		q.add("psa.builder_pod", "step role admitted under Pod Security", true, Blocked,
+			"the S3 step role violates Pod Security baseline; the tenant namespace could not admit run_shared step Pods at any standard level below privileged",
+			ev, "T-116/T-120 installation prerequisite: tenant namespaces for run_shared steps must enforce a Pod Security level that admits the step role (baseline admits SETUID/SETGID and Localhost profiles); keep attempt_private namespaces restricted.")
 		return
 	}
-	q.add("psa.builder_pod", "builder Pod admitted under Pod Security", true, Pass, "no Pod Security warnings at restricted or baseline", ev, "")
+	detail := "the step role produces no Pod Security warning at baseline"
+	if warnings["restricted"] > 0 {
+		detail += fmt.Sprintf(" but %d at restricted: tenant namespaces that run run_shared steps must enforce baseline (the stage tenant chart renders restricted today)", warnings["restricted"])
+	}
+	q.add("psa.builder_pod", "step role admitted under Pod Security", true, Pass, detail, ev, "")
 }

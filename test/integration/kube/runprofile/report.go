@@ -31,17 +31,18 @@ type Check struct {
 	Evidence   []string `json:"evidence,omitempty"`
 	Command    string   `json:"command,omitempty"`
 	Handoff    string   `json:"handoff,omitempty"`
-	// Mode names the exact tested mode where a check selects one (BuildKit).
-	Mode string `json:"mode,omitempty"`
 }
 
 // RequiredChecks is the complete inventory every qualification must contain.
 // A missing entry is recorded as not_run, never ignored.
+//
+// The O-30 profile: storage, ko and Buildah in the exact step role, PostgreSQL
+// and the tenant network model. Cleanup is verified separately and gates the
+// verdict. BuildKit and browser are out of scope and are not checks.
 var RequiredChecks = []string{
 	"inventory", "storage.rwop_sequential", "storage.rwop_exclusive", "storage.idmapped_ownership",
-	"storage.release_delete", "fixture.registry", "build.ko", "network.builder_egress",
-	"build.buildah_vfs", "psa.builder_pod", "build.buildkit_selected", "service.postgres",
-	"service.browser", "network.matrix",
+	"storage.release_delete", "fixture.registry", "build.ko", "step.role_shape.ko", "step.role_shape", "psa.builder_pod",
+	"build.buildah_vfs", "service.postgres", "network.matrix",
 }
 
 // Cleanup is the bounded, ownership-checked teardown inventory.
@@ -151,27 +152,14 @@ func (r *Report) Finalize() {
 	r.Limitation = "Bounded probes of the deployable profile on the named target only. This is not product runtime behavior, a stage rollout approval or a qualification of any combination not marked qualified."
 }
 
-// buildKitRowName names the matrix row after the mode that was actually
-// tested, never a mode that was not.
-func (r *Report) buildKitRowName() string {
-	if c := r.Find("build.buildkit_selected"); c != nil && c.Mode != "" {
-		return "BuildKit selected mode: " + c.Mode
-	}
-	return "BuildKit selected mode (none tested to completion)"
-}
-
 func (r *Report) matrix() []MatrixRow {
 	rows := []struct{ name, ids string }{
 		{"RWOP run storage shared sequentially across images and UIDs (Scaleway SBS ext4, idmapped, Delete reclaim)", "storage.rwop_sequential,storage.rwop_exclusive,storage.idmapped_ownership,storage.release_delete"},
-		{"ko build+push to authenticated TLS registry (Go dependency egress)", "build.ko"},
-		{"Buildah VFS build+push (RUN, multi-UID, dependency egress)", "build.buildah_vfs,psa.builder_pod"},
+		{"ko build+push in the exact step role to authenticated TLS registry (Go dependency fetch)", "step.role_shape.ko,build.ko"},
+		{"Buildah build+push in the exact step role (VFS, chroot, RUN, multi-UID, dependency fetch, authenticated push, digest match)", "step.role_shape,psa.builder_pod,build.buildah_vfs"},
 		{"Buildah overlay/FUSE", "build.buildah_overlay_fuse"},
-		{"BuildKit rootless default mode", "build.buildkit_default"},
-		{r.buildKitRowName(), "build.buildkit_selected"},
 		{"PostgreSQL non-root readiness and data roundtrip", "service.postgres"},
-		{"Browser sandbox and bounded /dev/shm", "service.browser"},
-		{"Outer CNI same-run / foreign-run / foreign-namespace / default-deny", "network.matrix"},
-		{"Explicit registry and dependency egress for builder role", "network.builder_egress"},
+		{"Tenant network model (same-tenant other-run reachable; foreign tenant, Kubernetes API and metadata denied; public HTTPS open)", "network.matrix"},
 	}
 	var out []MatrixRow
 	for _, row := range rows {

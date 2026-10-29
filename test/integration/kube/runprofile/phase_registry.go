@@ -101,39 +101,46 @@ func (q *Qualifier) secret(ns, name string, data map[string]string) map[string]a
 	return o
 }
 
-// networkPolicies applies the main namespace's default deny plus the
-// explicit run-scoped edges the builders and services need.
-func (q *Qualifier) networkPolicies(ctx context.Context) error {
-	ns := q.nsMain
+// publicEgressExcept are the ranges public egress never reaches: private,
+// link-local (cloud metadata), CGNAT and loopback. Cluster ranges sit inside
+// them on the supported networks.
+var publicEgressExcept = []any{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10", "127.0.0.0/8"}
+
+// tenantPolicies renders the O-30 tenant network model (seam S8) for one
+// namespace: default deny, DNS, any Pod of the tenant namespace may reach the
+// service ports of any other (a run label is not a boundary), and public
+// HTTP/HTTPS egress except private, link-local, CGNAT and cluster ranges.
+func (q *Qualifier) tenantPolicies(ns string, ports []int) []map[string]any {
 	sel := func(kv map[string]any) map[string]any { return map[string]any{"matchLabels": kv} }
-	port := func(p int) []any {
-		return []any{map[string]any{"protocol": "TCP", "port": p}}
+	var tp []any
+	for _, p := range ports {
+		tp = append(tp, map[string]any{"protocol": "TCP", "port": p})
 	}
-	policies := []map[string]any{
-		q.c.obj("networking.k8s.io/v1", "NetworkPolicy", ns, "default-deny", nil, map[string]any{
-			"podSelector": map[string]any{}, "policyTypes": []any{"Ingress", "Egress"}}),
-		q.c.obj("networking.k8s.io/v1", "NetworkPolicy", ns, "dns-egress", nil, map[string]any{
-			"podSelector": map[string]any{}, "policyTypes": []any{"Egress"},
+	pol := func(name string, spec map[string]any) map[string]any {
+		return q.c.obj("networking.k8s.io/v1", "NetworkPolicy", ns, name, nil, spec)
+	}
+	all := map[string]any{}
+	return []map[string]any{
+		pol("default-deny", map[string]any{"podSelector": all, "policyTypes": []any{"Ingress", "Egress"}}),
+		pol("dns-egress", map[string]any{"podSelector": all, "policyTypes": []any{"Egress"},
 			"egress": []any{map[string]any{
 				"to": []any{map[string]any{
 					"namespaceSelector": sel(map[string]any{"kubernetes.io/metadata.name": "kube-system"}),
 					"podSelector":       sel(map[string]any{"k8s-app": "kube-dns"})}},
 				"ports": []any{map[string]any{"protocol": "UDP", "port": 53}, map[string]any{"protocol": "TCP", "port": 53}}}}}),
+		pol("tenant-egress", map[string]any{"podSelector": all, "policyTypes": []any{"Egress"},
+			"egress": []any{map[string]any{"to": []any{map[string]any{"podSelector": all}}, "ports": tp}}}),
+		pol("tenant-ingress", map[string]any{"podSelector": all, "policyTypes": []any{"Ingress"},
+			"ingress": []any{map[string]any{"from": []any{map[string]any{"podSelector": all}}, "ports": tp}}}),
+		pol("public-egress", map[string]any{"podSelector": all, "policyTypes": []any{"Egress"},
+			"egress": []any{map[string]any{"to": []any{map[string]any{"ipBlock": map[string]any{"cidr": "0.0.0.0/0", "except": publicEgressExcept}}},
+				"ports": []any{map[string]any{"protocol": "TCP", "port": 80}, map[string]any{"protocol": "TCP", "port": 443}}}}}),
 	}
-	edge := func(name string, from, to map[string]any, p int) {
-		policies = append(policies,
-			q.c.obj("networking.k8s.io/v1", "NetworkPolicy", ns, name+"-egress", nil, map[string]any{
-				"podSelector": sel(from), "policyTypes": []any{"Egress"},
-				"egress": []any{map[string]any{"to": []any{map[string]any{"podSelector": sel(to)}}, "ports": port(p)}}}),
-			q.c.obj("networking.k8s.io/v1", "NetworkPolicy", ns, name+"-ingress", nil, map[string]any{
-				"podSelector": sel(to), "policyTypes": []any{"Ingress"},
-				"ingress": []any{map[string]any{"from": []any{map[string]any{"podSelector": sel(from)}}, "ports": port(p)}}}))
-	}
-	edge("builder-registry", map[string]any{"krp/role": "builder"}, map[string]any{"krp/svc": "registry"}, 5000)
-	edge("builder-deps", map[string]any{"krp/role": "builder"}, map[string]any{"krp/svc": "deps"}, 8080)
-	edge("client-postgres", map[string]any{"krp/role": "client"}, map[string]any{"krp/svc": "postgres"}, 5432)
-	edge("client-www", map[string]any{"krp/role": "client"}, map[string]any{"krp/svc": "www"}, 8080)
-	return q.c.ApplyAll(ctx, policies...)
+}
+
+// networkPolicies applies the main namespace's tenant model.
+func (q *Qualifier) networkPolicies(ctx context.Context) error {
+	return q.c.ApplyAll(ctx, q.tenantPolicies(q.nsMain, []int{5000, 8080, 5432})...)
 }
 
 func (q *Qualifier) service(ns, name string, port int) map[string]any {

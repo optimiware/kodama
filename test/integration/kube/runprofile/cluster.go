@@ -152,17 +152,22 @@ func (c *Cluster) CreateNamespaceOnly(ctx context.Context, name string, podSecur
 
 // Pod is a probe Pod description; PodSpec renders it.
 type Pod struct {
-	Name       string
-	Namespace  string
-	Labels     map[string]any
-	Image      string
-	Command    []string
-	Env        []any // pre-built env entries
-	UID        int64
-	GID        int64
-	FSGroup    int64
-	Caps       []string
-	AllowPE    bool
+	Name      string
+	Namespace string
+	Labels    map[string]any
+	Image     string
+	Command   []string
+	Env       []any // pre-built env entries
+	UID       int64
+	GID       int64
+	FSGroup   int64
+	// StepRole renders exactly the O-30 `step` role (seam S3): UID/GID
+	// StepUID, hostUsers false (always), all capabilities dropped then
+	// SETUID/SETGID added, allowPrivilegeEscalation true, Localhost seccomp
+	// and AppArmor profiles. Unmasked additionally sets procMount: Unmasked
+	// (the one optional variant). Nothing else widens a probe Pod.
+	StepRole   bool
+	Unmasked   bool
 	Volumes    []any
 	Mounts     []any
 	CPU        string
@@ -187,14 +192,16 @@ func (c *Cluster) PodObject(p Pod) map[string]any {
 		delete(psc, "runAsNonRoot")
 	}
 	caps := map[string]any{"drop": []any{"ALL"}}
-	if len(p.Caps) > 0 {
-		add := []any{}
-		for _, x := range p.Caps {
-			add = append(add, x)
+	csc := map[string]any{"allowPrivilegeEscalation": false, "capabilities": caps, "readOnlyRootFilesystem": p.ReadOnlyFS}
+	if p.StepRole {
+		caps["add"] = []any{"SETUID", "SETGID"}
+		csc["allowPrivilegeEscalation"] = true
+		psc["seccompProfile"] = map[string]any{"type": "Localhost", "localhostProfile": StepSeccompProfile}
+		psc["appArmorProfile"] = map[string]any{"type": "Localhost", "localhostProfile": StepAppArmorProfile}
+		if p.Unmasked {
+			csc["procMount"] = "Unmasked"
 		}
-		caps["add"] = add
 	}
-	csc := map[string]any{"allowPrivilegeEscalation": p.AllowPE, "capabilities": caps, "readOnlyRootFilesystem": p.ReadOnlyFS}
 	cpu := p.CPU
 	if cpu == "" {
 		cpu = "100m"
@@ -254,6 +261,8 @@ type PodJSON struct {
 	} `json:"spec"`
 	Status struct {
 		Phase      string `json:"phase"`
+		Reason     string `json:"reason"`
+		Message    string `json:"message"`
 		Conditions []struct {
 			Type    string `json:"type"`
 			Status  string `json:"status"`
@@ -264,6 +273,10 @@ type PodJSON struct {
 			Name    string `json:"name"`
 			ImageID string `json:"imageID"`
 			State   struct {
+				Waiting *struct {
+					Reason  string `json:"reason"`
+					Message string `json:"message"`
+				} `json:"waiting"`
 				Terminated *struct {
 					ExitCode int    `json:"exitCode"`
 					Reason   string `json:"reason"`
@@ -315,6 +328,24 @@ type terminalError struct{ error }
 
 func (t terminalError) Unwrap() error { return t.error }
 
+// profileWaiting reports a terminal error when a container cannot start
+// because the node cannot apply a referenced Localhost seccomp/AppArmor
+// profile: waiting longer cannot fix an uninstalled profile.
+func profileWaiting(p *PodJSON, name string) error {
+	for _, cs := range p.Status.ContainerStatuses {
+		if w := cs.State.Waiting; w != nil && (w.Reason == "CreateContainerError" || w.Reason == "CreateContainerConfigError") && profileFailure(w.Message) {
+			return terminalError{fmt.Errorf("pod %s container cannot start: %s: %s", name, w.Reason, tail(w.Message, 300))}
+		}
+	}
+	return nil
+}
+
+// profileFailure recognises a node-side seccomp/AppArmor profile refusal.
+func profileFailure(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "seccomp") || strings.Contains(m, "apparmor")
+}
+
 // WaitReady waits for the Pod's Ready condition.
 func (c *Cluster) WaitReady(ctx context.Context, ns, name string, timeout time.Duration) error {
 	return Wait(ctx, timeout, 3*time.Second, func() (bool, error) {
@@ -323,7 +354,10 @@ func (c *Cluster) WaitReady(ctx context.Context, ns, name string, timeout time.D
 			return false, err
 		}
 		if p.Status.Phase == "Failed" || p.Status.Phase == "Succeeded" {
-			return false, terminalError{fmt.Errorf("pod %s ended in phase %s", name, p.Status.Phase)}
+			return false, terminalError{fmt.Errorf("pod %s ended in phase %s: %s %s", name, p.Status.Phase, p.Status.Reason, tail(p.Status.Message, 300))}
+		}
+		if err := profileWaiting(p, name); err != nil {
+			return false, err
 		}
 		for _, cd := range p.Status.Conditions {
 			if cd.Type == "Ready" && cd.Status == "True" {
@@ -344,6 +378,9 @@ func (c *Cluster) WaitDone(ctx context.Context, ns, name string, timeout time.Du
 			return false, err
 		}
 		phase = p.Status.Phase
+		if err := profileWaiting(p, name); err != nil {
+			return false, err
+		}
 		if phase == "Succeeded" || phase == "Failed" {
 			for _, cs := range p.Status.ContainerStatuses {
 				if cs.State.Terminated != nil {
