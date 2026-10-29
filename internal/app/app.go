@@ -12,6 +12,7 @@ import (
 	"net"
 
 	"github.com/optimiware/kodama/internal/entrypoint"
+	"github.com/optimiware/kodama/internal/mcpserver"
 )
 
 const usageText = `Usage: kodama <command> [flags]
@@ -21,6 +22,7 @@ Commands:
   migrate    Apply the core schema through the owner database identity
   bootstrap  Provision the first tenant and administrator (operator only)
   step       Run one attempt's command inside its workload (used by the runtimes)
+  mcp        Run the external OAuth-protected MCP server for the public API
 
 Command groups of the command-line client:
   context, auth, work, workspace, pipeline, run, variable, secret, agent, gate, environment, deployment
@@ -53,6 +55,12 @@ func Main(ctx context.Context, args []string, getenv func(string) string, stdout
 		// The in-workload entrypoint reads no environment selection and builds no
 		// adapter: it is a client of the runtime API (SD-12 concerns the server).
 		return entrypoint.StepCommand().Run(ctx, command[1:], getenv, stdout, stderr)
+	}
+	if len(command) > 0 && command[0] == "mcp" {
+		// The MCP server is a client of the public API and the selected OIDC
+		// issuer. It intentionally reads no KODAMA_ENV and opens no database,
+		// broker, object store or KMS connection.
+		return mcpserver.Command(ctx, command[1:], getenv, stdout, stderr)
 	}
 	if len(command) == 0 || (command[0] != "server" && command[0] != "migrate" && command[0] != "bootstrap") {
 		root.Usage()

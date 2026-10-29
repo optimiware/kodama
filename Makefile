@@ -12,7 +12,7 @@ GO_CORE_PACKAGES = ./cmd/... ./internal/... ./api/... ./contracts/... ./pkg/... 
 PKGS ?= $(GO_CORE_PACKAGES)
 INTEGRATION_PKGS ?= ./test/e2e/m1/... ./test/integration/assembly-execution/...
 
-.PHONY: fmt fmt-check lint lint-openforge test test-go test-go-unit test-go-json check-devtools openforge-install test-openforge check-openforge check-go check-go-integration test-podman test-task check-task build tools dev-up dev-down dev-preflight dev-integration dev-runtime test-integration dev-smoke test-assembly test-m1 test-m2 test-m3 test-chart api-generate api-check dev-teardown-check dev-diagnostics docs-check validate-tasks openforge-telegram
+.PHONY: fmt fmt-check lint lint-openforge test test-go test-go-unit test-go-json test-mcp check-devtools openforge-install test-openforge check-openforge check-go check-go-integration test-podman test-task check-task build tools dev-up dev-down dev-preflight dev-integration dev-runtime test-integration dev-smoke test-assembly test-m1 test-m2 test-m3 test-chart api-generate api-check dev-teardown-check dev-diagnostics docs-check validate-tasks openforge-telegram
 
 fmt:
 	$(GO) fmt ./...
@@ -42,6 +42,11 @@ test-go-unit-json:
 
 test-go-json:
 	$(GO) test -json -race -count=1 ./...
+
+# The external MCP server: OAuth resource-server, operation registry and API
+# executor. It needs no service, container or cluster.
+test-mcp:
+	$(GO) test -race -count=1 ./internal/mcpserver/...
 
 # The development tooling itself: formatting, vet and tests for dev/ only.
 check-devtools:

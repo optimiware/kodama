@@ -46,6 +46,7 @@ Start with [system architecture](book/05-system-architecture.md), the [decision 
 | [Variables and secrets](specs/variables-and-secrets.md) | VS | Configuration and encrypted credential handling |
 | [Delivery and quality gates](specs/delivery-and-quality-gates.md) | DQ | Evidence, approvals, environments, and promotion |
 | [API, CLI, and integrations](specs/api-cli-and-integrations.md) | AC | Public access, external integrations, and notifications |
+| [External MCP server](specs/mcp-server.md) | MS | OAuth-protected MCP access to the public API |
 
 ### Operators
 
@@ -53,12 +54,14 @@ Start with [system architecture](book/05-system-architecture.md), the [decision 
 2. [Installation and configuration](operations/installation-and-configuration.md)
 3. [Observability and audit](operations/observability-and-audit.md)
 4. [Upgrades, backup, and recovery](operations/upgrades-backup-and-recovery.md)
-5. [Identity, tenancy, and RBAC](specs/identity-tenancy-and-rbac.md)
+5. [External MCP server](operations/mcp-server.md)
+6. [Identity, tenancy, and RBAC](specs/identity-tenancy-and-rbac.md)
 
 ### Integrators
 
 - [Contract overview](contracts/README.md)
 - [HTTP interface](contracts/http-api.md)
+- [External MCP server](specs/mcp-server.md)
 - [Pipeline format](contracts/pipeline-format.md)
 - [Event catalog](contracts/event-catalog.md)
 - [Example index](examples/README.md)

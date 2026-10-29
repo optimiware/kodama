@@ -60,7 +60,7 @@ spec:
 
 ## Why Kodama
 
-- **API-first.** Everything is available through the HTTP API, a generated Go client and the CLI, so it fits the editors and tools you already use.
+- **API-first.** Everything is available through the HTTP API, a generated Go client, the CLI and an OAuth-protected MCP server, so it fits the editors and tools you already use.
 - **Small core.** One Go server, one step entrypoint, a handful of durable records, and ordinary Git and container commands.
 - **Recoverable.** Source you published and results you committed survive container and server failures. Retries and cancellation are durable.
 - **Humans accept.** Agents produce evidence. People accept business outcomes.
