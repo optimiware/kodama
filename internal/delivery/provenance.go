@@ -94,8 +94,9 @@ type ProducedOutput struct {
 	Step      string
 	ToolImage string
 	// Accepted is true only for a succeeded attempt whose accepted result holds
-	// the artifact as the value of a declared ociArtifact output.
-	Accepted bool
+	// the artifact as the value of a declared output of AcceptedKind.
+	Accepted     bool
+	AcceptedKind ArtifactKind
 }
 
 // VerifyImage applies DQ-01 and DQ-07 to a requested image: it must be a usable
@@ -104,22 +105,33 @@ type ProducedOutput struct {
 // accepted output of a succeeded producer. Every failure is the same class so a
 // foreign, absent, incomplete or mismatched artifact cannot be told apart.
 func VerifyImage(scope domain.Scope, source Source, img Image, ev ImageEvidence, out ProducedOutput) (Producer, error) {
+	return VerifyArtifact(scope, source, FromImage(img), ev, out)
+}
+
+// VerifyArtifact applies the same provenance rules to either artifact kind.
+func VerifyArtifact(scope domain.Scope, source Source, artifact DeployableArtifact, ev ImageEvidence, out ProducedOutput) (Producer, error) {
 	reject := func() (Producer, error) {
-		return Producer{}, Fail(ErrProvenance, nil, "the image is not a verified output of this source")
+		return Producer{}, Fail(ErrProvenance, nil, "the artifact is not a verified output of this source")
 	}
-	if source.Validate() != nil || img.Validate() != nil {
+	if source.Validate() != nil || artifact.Validate() != nil {
 		return reject()
+	}
+	want := runtimev1.KindOCI
+	if artifact.Kind == ArtifactBundle {
+		want = runtimev1.KindFile
 	}
 	switch {
-	case ev.ID != img.ArtifactID || ev.Scope != scope:
+	case ev.ID != artifact.ArtifactID || ev.Scope != scope:
 		return reject()
-	case ev.Kind != runtimev1.KindOCI || ev.Role != runtimev1.RoleOutput || !ev.Usable:
+	case ev.Kind != want || ev.Role != runtimev1.RoleOutput || !ev.Usable:
 		return reject()
-	case ev.Digest != img.Digest:
+	case ev.Digest != artifact.Digest:
 		return reject()
 	case ev.Provenance != source:
 		return reject()
 	case out.Scope != scope || out.Attempt != ev.Attempt || !out.Accepted:
+		return reject()
+	case out.AcceptedKind != "" && out.AcceptedKind != artifact.Kind:
 		return reject()
 	}
 	p := Producer{Attempt: out.Attempt, Run: out.Run, Step: out.Step, ToolImage: out.ToolImage}

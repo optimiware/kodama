@@ -10,20 +10,20 @@ import (
 	"github.com/optimiware/kodama/internal/storage"
 )
 
-func TestMigrationBaselineIsTwoFiles(t *testing.T) {
+func TestMigrationBaselineFiles(t *testing.T) {
 	m, err := Manifest()
 	if err != nil {
 		t.Fatal(err)
 	}
 	cs := Contributions()
-	if len(cs) != 2 || cs[0].Module != "storage" || len(cs[0].Migrations) != 2 {
+	if len(cs) != 2 || cs[0].Module != "storage" || len(cs[0].Migrations) != 3 {
 		t.Fatalf("contributions = %+v", cs)
 	}
 	if cs[1].Module != "execution-run-resources" || len(cs[1].Migrations) != 1 || cs[1].Migrations[0].ID != execpg.RunResourcesMigrationID {
 		t.Fatalf("the appended contribution is %+v", cs[1])
 	}
 	ms := m.Migrations()
-	if len(ms) != 3 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID {
+	if len(ms) != 4 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != "003_delivery_targets.sql" || ms[3].ID != execpg.RunResourcesMigrationID {
 		t.Fatalf("manifest = %+v", ms)
 	}
 	// The schema file defines objects: the only privilege change it may make is a

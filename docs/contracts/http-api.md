@@ -41,8 +41,8 @@ Base URL is `https://factory.example.invalid/api/v1`. Let `P` mean `/tenants/{te
 | `GET, PUT P/model-settings` | M2 endpoint/model/credential reference and limits |
 | `GET, POST P/mcp-servers`, `PATCH, DELETE P/mcp-servers/{id}` | M2 endpoint/tool registrations |
 | `GET P/gates`, `GET P/gates/{id}`, `POST P/gates/{id}/decisions` | M2 review and immutable decision |
-| `GET, POST P/environments`, `GET, PATCH P/environments/{id}` | M2 explicit target/configuration |
-| `GET, POST P/deployments`, `GET P/deployments/{id}` | M2 durable deployment record before apply |
+| `GET, POST P/environments`, `GET, PATCH P/environments/{id}` | M2 explicit target/configuration; an optional `targetProfile` selects an installation target profile (ADR 0011), with `targetConfig` and the profile's required credentials |
+| `GET, POST P/deployments`, `GET P/deployments/{id}` | M2 durable deployment record before apply; an `artifact` (`ociImage` or `bundle`) and provider-neutral `resources` complement the legacy `image`/`objects` projections |
 | `POST P/deployments/{id}/cleanup` | M2 scoped cleanup request |
 | `GET, POST P/work-items/{id}/dependencies`, `DELETE P/work-items/{id}/dependencies/{dependencyId}` | M3 dependency links |
 

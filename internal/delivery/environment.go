@@ -16,8 +16,9 @@ import (
 type EnvironmentKind string
 
 const (
-	KindPreview EnvironmentKind = "preview"
-	KindStage   EnvironmentKind = "stage"
+	KindPreview    EnvironmentKind = "preview"
+	KindStage      EnvironmentKind = "stage"
+	KindProduction EnvironmentKind = "production"
 )
 
 // DefaultPreviewTTL is the approved default (O-11). It is configurable per
@@ -38,6 +39,7 @@ var (
 	environmentName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 	targetName      = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,62}$`)
 	namespaceName   = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+	digestPattern   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	configKey       = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]{0,127}$`)
 	bindingName     = regexp.MustCompile(runtimev1.Patterns["SafeName"])
 	projectRef      = regexp.MustCompile(`^secret://project/[a-z][a-z0-9-]{0,62}$`)
@@ -72,13 +74,25 @@ type EnvironmentRecord struct {
 	Name  string
 	Kind  EnvironmentKind
 	// Target is the label of the cluster or target; Namespace the single
-	// namespace a deployment may touch.
+	// namespace a deployment may touch. Both are legacy Kubernetes fields.
 	Target    string
 	Namespace string
 	// Kubeconfig is the project-owned, namespace-scoped kubeconfig secret the
-	// deployment script uses. Secrets are further explicit script credentials.
+	// legacy Kubernetes deployment script uses. Secrets are further explicit
+	// script credentials (and, for a target profile, every required binding).
 	Kubeconfig Credential
 	Secrets    []Credential
+	// TargetProfile selects the installation's target profile. Empty means the
+	// legacy Kubernetes behavior. TargetProfileDigest pins the profile content;
+	// TargetProvider, TargetArtifactKinds and TargetEgress are its resolved
+	// values, copied into every snapshot so a later profile edit cannot change an
+	// admitted run.
+	TargetProfile       string
+	TargetProfileDigest string
+	TargetProvider      string
+	TargetArtifactKinds []ArtifactKind
+	TargetEgress        []string
+	TargetConfig        map[string]string
 	// Config is explicit nonsecret runtime configuration.
 	Config     map[string]string
 	PreviewTTL time.Duration
@@ -93,6 +107,9 @@ type Environment struct{ rec EnvironmentRecord }
 
 // NewEnvironment validates and creates version 1.
 func NewEnvironment(rec EnvironmentRecord, now time.Time) (Environment, error) {
+	if rec.TargetProfile != "" && rec.Target == "" {
+		rec.Target = rec.TargetProfile
+	}
 	rec.Version, rec.CreatedAt, rec.UpdatedAt = 1, now.UTC(), now.UTC()
 	return RestoreEnvironment(rec)
 }
@@ -113,24 +130,74 @@ func RestoreEnvironment(rec EnvironmentRecord) (Environment, error) {
 		if rec.PreviewTTL < MinPreviewTTL || rec.PreviewTTL > MaxPreviewTTL {
 			return Environment{}, invalidf("a preview TTL must be between %s and %s", MinPreviewTTL, MaxPreviewTTL)
 		}
-	case KindStage:
+	case KindStage, KindProduction:
 		if rec.PreviewTTL != 0 {
-			return Environment{}, invalidf("a stage environment has no preview TTL")
+			return Environment{}, invalidf("a %s environment has no preview TTL", rec.Kind)
 		}
 	default:
-		return Environment{}, invalidf("an environment is a preview or a stage")
+		return Environment{}, invalidf("an environment is a preview, stage or production")
 	}
 	if rec.PreviewTTL%time.Second != 0 {
 		return Environment{}, invalidf("a preview TTL is a whole number of seconds")
 	}
-	if !targetName.MatchString(rec.Target) {
-		return Environment{}, invalidf("an environment target must match %s", targetName)
-	}
-	if !namespaceName.MatchString(rec.Namespace) {
-		return Environment{}, invalidf("an environment namespace must be a Kubernetes DNS label")
-	}
-	if err := checkCredentials(rec.Kubeconfig, rec.Secrets); err != nil {
-		return Environment{}, err
+	if rec.TargetProfile == "" {
+		// Legacy Kubernetes environment: the namespace and namespace-scoped
+		// kubeconfig are the target.
+		if !targetName.MatchString(rec.Target) {
+			return Environment{}, invalidf("an environment target must match %s", targetName)
+		}
+		if !namespaceName.MatchString(rec.Namespace) {
+			return Environment{}, invalidf("an environment namespace must be a Kubernetes DNS label")
+		}
+		if rec.Kubeconfig.Name == "" {
+			return Environment{}, invalidf("a Kubernetes environment needs a kubeconfig credential")
+		}
+		if err := checkCredentials(rec.Kubeconfig, rec.Secrets); err != nil {
+			return Environment{}, err
+		}
+	} else {
+		if !environmentName.MatchString(rec.TargetProfile) {
+			return Environment{}, invalidf("a target profile name must match %s", environmentName)
+		}
+		if rec.TargetProfileDigest == "" || !digestPattern.MatchString(rec.TargetProfileDigest) {
+			return Environment{}, invalidf("a target profile digest is required")
+		}
+		if !providerPattern.MatchString(rec.TargetProvider) {
+			return Environment{}, invalidf("a target provider must match %s", providerPattern)
+		}
+		if len(rec.TargetArtifactKinds) == 0 {
+			return Environment{}, invalidf("a target profile accepts at least one artifact kind")
+		}
+		for _, k := range rec.TargetArtifactKinds {
+			if !k.Valid() {
+				return Environment{}, invalidf("unknown artifact kind %q", k)
+			}
+		}
+		if len(rec.TargetEgress) > 8 {
+			return Environment{}, invalidf("an environment lists at most 8 egress profiles")
+		}
+		for _, e := range rec.TargetEgress {
+			if !egressNamePattern.MatchString(e) {
+				return Environment{}, invalidf("an egress profile name must match %s", egressNamePattern)
+			}
+		}
+		if err := checkConfig(rec.TargetConfig); err != nil {
+			return Environment{}, err
+		}
+		if rec.Namespace != "" {
+			return Environment{}, invalidf("a profile environment has no Kubernetes namespace")
+		}
+		if len(rec.Secrets) == 0 {
+			return Environment{}, invalidf("a profile environment needs at least one credential")
+		}
+		if err := checkCredentials(Credential{}, rec.Secrets); err != nil {
+			return Environment{}, err
+		}
+		if rec.Kubeconfig.Name != "" {
+			if err := rec.Kubeconfig.Validate(); err != nil {
+				return Environment{}, err
+			}
+		}
 	}
 	if err := checkConfig(rec.Config); err != nil {
 		return Environment{}, err
@@ -150,13 +217,18 @@ func RestoreEnvironment(rec EnvironmentRecord) (Environment, error) {
 // names, and one binding per reference. A runtime resolves a credential by
 // reference, so one reference under two names or forms could not be delivered.
 func checkCredentials(kube Credential, extra []Credential) error {
-	if err := kube.Validate(); err != nil {
-		return err
+	if kube.Name != "" || kube.Ref != "" || kube.Delivery != "" {
+		if err := kube.Validate(); err != nil {
+			return err
+		}
 	}
 	if len(extra) > MaxScriptSecrets {
 		return invalidf("an environment lists at most %d script credentials", MaxScriptSecrets)
 	}
-	names, refs := map[string]bool{kube.Name: true}, map[string]bool{kube.Ref: true}
+	names, refs := map[string]bool{}, map[string]bool{}
+	if kube.Name != "" {
+		names[kube.Name], refs[kube.Ref] = true, true
+	}
 	for _, c := range extra {
 		if err := c.Validate(); err != nil {
 			return err
@@ -200,6 +272,9 @@ func (e Environment) Record() EnvironmentRecord {
 	r := e.rec
 	r.Secrets = append([]Credential(nil), r.Secrets...)
 	r.Config = cloneConfig(r.Config)
+	r.TargetArtifactKinds = append([]ArtifactKind(nil), r.TargetArtifactKinds...)
+	r.TargetEgress = append([]string(nil), r.TargetEgress...)
+	r.TargetConfig = cloneConfig(r.TargetConfig)
 	return r
 }
 
@@ -211,12 +286,18 @@ func (e Environment) Version() domain.Version  { return e.rec.Version }
 // EnvironmentEdit lists the editable members; nil leaves one unchanged. The
 // identity, name and kind never change.
 type EnvironmentEdit struct {
-	Target     *string
-	Namespace  *string
-	Kubeconfig *Credential
-	Secrets    *[]Credential
-	Config     *map[string]string
-	PreviewTTL *time.Duration
+	Target              *string
+	Namespace           *string
+	Kubeconfig          *Credential
+	Secrets             *[]Credential
+	Config              *map[string]string
+	PreviewTTL          *time.Duration
+	TargetProfile       *string
+	TargetProfileDigest *string
+	TargetProvider      *string
+	TargetArtifactKinds *[]ArtifactKind
+	TargetEgress        *[]string
+	TargetConfig        *map[string]string
 }
 
 // Edit applies an edit if expected is the current resource version. An edit
@@ -245,6 +326,27 @@ func (e *Environment) Edit(expected domain.Version, edit EnvironmentEdit, now ti
 	if edit.PreviewTTL != nil {
 		next.PreviewTTL = *edit.PreviewTTL
 	}
+	if edit.TargetProfile != nil {
+		next.TargetProfile = *edit.TargetProfile
+	}
+	if edit.TargetProfileDigest != nil {
+		next.TargetProfileDigest = *edit.TargetProfileDigest
+	}
+	if edit.TargetProvider != nil {
+		next.TargetProvider = *edit.TargetProvider
+	}
+	if edit.TargetArtifactKinds != nil {
+		next.TargetArtifactKinds = append([]ArtifactKind(nil), (*edit.TargetArtifactKinds)...)
+	}
+	if edit.TargetEgress != nil {
+		next.TargetEgress = append([]string(nil), (*edit.TargetEgress)...)
+	}
+	if edit.TargetConfig != nil {
+		next.TargetConfig = cloneConfig(*edit.TargetConfig)
+	}
+	if next.TargetProfile != "" && next.Target == "" {
+		next.Target = next.TargetProfile
+	}
 	if sameEnvironment(e.rec, next) {
 		return false, nil
 	}
@@ -260,7 +362,9 @@ func (e *Environment) Edit(expected domain.Version, edit EnvironmentEdit, now ti
 
 func sameEnvironment(a, b EnvironmentRecord) bool {
 	if a.Target != b.Target || a.Namespace != b.Namespace || a.Kubeconfig != b.Kubeconfig || a.PreviewTTL != b.PreviewTTL ||
-		len(a.Secrets) != len(b.Secrets) || len(a.Config) != len(b.Config) {
+		a.TargetProfile != b.TargetProfile || a.TargetProfileDigest != b.TargetProfileDigest || a.TargetProvider != b.TargetProvider ||
+		len(a.Secrets) != len(b.Secrets) || len(a.Config) != len(b.Config) || len(a.TargetConfig) != len(b.TargetConfig) ||
+		len(a.TargetArtifactKinds) != len(b.TargetArtifactKinds) || len(a.TargetEgress) != len(b.TargetEgress) {
 		return false
 	}
 	for i := range a.Secrets {
@@ -273,12 +377,32 @@ func sameEnvironment(a, b EnvironmentRecord) bool {
 			return false
 		}
 	}
+	for k, v := range a.TargetConfig {
+		if w, ok := b.TargetConfig[k]; !ok || w != v {
+			return false
+		}
+	}
+	for i := range a.TargetArtifactKinds {
+		if a.TargetArtifactKinds[i] != b.TargetArtifactKinds[i] {
+			return false
+		}
+	}
+	for i := range a.TargetEgress {
+		if a.TargetEgress[i] != b.TargetEgress[i] {
+			return false
+		}
+	}
 	return true
 }
 
 // credentials lists every credential in a stable order.
 func (e Environment) credentials() []Credential {
-	out := append([]Credential{e.rec.Kubeconfig}, e.rec.Secrets...)
+	out := append([]Credential(nil), e.rec.Secrets...)
+	// A profile environment keeps the legacy kubeconfig field as a projection of
+	// its primary credential; the secrets list is the authoritative binding set.
+	if e.rec.TargetProfile == "" && e.rec.Kubeconfig.Name != "" {
+		out = append(out, e.rec.Kubeconfig)
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }

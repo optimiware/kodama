@@ -653,7 +653,7 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 		return err
 	}
 	deliverySvc, err := delivery.NewService(delivery.Config{
-		Store: deliveryStore, Access: deliveryAccess, Credentials: deliveryCredentials, Contexts: deliveryRuns, Producers: deliveryRuns,
+		Store: deliveryStore, Access: deliveryAccess, Credentials: deliveryCredentials, Targets: cfg.TargetProfiles, Contexts: deliveryRuns, Producers: deliveryRuns,
 		Artifacts: deliveryArtifacts, Authority: deliveryAuthority, Cleanups: cleanupBindings, Logger: c.log,
 	})
 	if err != nil {

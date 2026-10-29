@@ -95,11 +95,16 @@ func (e *Execution) Produced(ctx context.Context, scope domain.Scope, id domain.
 		return out, nil
 	}
 	for _, decl := range pinned.Outputs {
-		if decl.Type != runtimev1.OutputOCIArtifact {
+		want := delivery.ArtifactOCIImage
+		switch decl.Type {
+		case runtimev1.OutputOCIArtifact:
+		case runtimev1.OutputArtifact:
+			want = delivery.ArtifactBundle
+		default:
 			continue
 		}
 		if v, ok := at.Result.Outputs[decl.Name]; ok && v.IsString() && v.String() == string(artifact) {
-			out.Accepted = true
+			out.Accepted, out.AcceptedKind = true, want
 		}
 	}
 	return out, nil

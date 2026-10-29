@@ -195,14 +195,15 @@ func timePtr(t *time.Time) *time.Time {
 
 // ---- environments ----------------------------------------------------------
 
-const environmentColumns = `tenant_id, project_id, id, name, kind, target, namespace, kubeconfig, secrets, config, preview_ttl_seconds, version, created_at, updated_at`
+const environmentColumns = `tenant_id, project_id, id, name, kind, target, namespace, kubeconfig, secrets, config, target_profile, target_profile_digest, target_provider, target_artifact_kinds, target_egress, target_config, preview_ttl_seconds, version, created_at, updated_at`
 
 func scanEnvironment(row pgx.Row) (delivery.Environment, error) {
 	var rec delivery.EnvironmentRecord
 	var tenant, project, id, kind string
-	var kube, secrets, config []byte
+	var kube, secrets, config, kinds, egress, targetConfig []byte
 	var ttl, version int64
-	if err := row.Scan(&tenant, &project, &id, &rec.Name, &kind, &rec.Target, &rec.Namespace, &kube, &secrets, &config, &ttl, &version, &rec.CreatedAt, &rec.UpdatedAt); err != nil {
+	if err := row.Scan(&tenant, &project, &id, &rec.Name, &kind, &rec.Target, &rec.Namespace, &kube, &secrets, &config,
+		&rec.TargetProfile, &rec.TargetProfileDigest, &rec.TargetProvider, &kinds, &egress, &targetConfig, &ttl, &version, &rec.CreatedAt, &rec.UpdatedAt); err != nil {
 		return delivery.Environment{}, err
 	}
 	rec.Scope = domain.Scope{TenantID: domain.TenantID(tenant), ProjectID: domain.ProjectID(project)}
@@ -217,13 +218,22 @@ func scanEnvironment(row pgx.Row) (delivery.Environment, error) {
 	if err := json.Unmarshal(config, &rec.Config); err != nil {
 		return delivery.Environment{}, err
 	}
+	if err := json.Unmarshal(kinds, &rec.TargetArtifactKinds); err != nil {
+		return delivery.Environment{}, err
+	}
+	if err := json.Unmarshal(egress, &rec.TargetEgress); err != nil {
+		return delivery.Environment{}, err
+	}
+	if err := json.Unmarshal(targetConfig, &rec.TargetConfig); err != nil {
+		return delivery.Environment{}, err
+	}
 	return delivery.RestoreEnvironment(rec)
 }
 
-func envJSON(rec delivery.EnvironmentRecord) (kube, secrets, config string, err error) {
+func envJSON(rec delivery.EnvironmentRecord) (kube, secrets, config, kinds, egress, targetConfig string, err error) {
 	k, err := json.Marshal(rec.Kubeconfig)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", "", "", err
 	}
 	sec := rec.Secrets
 	if sec == nil {
@@ -231,7 +241,7 @@ func envJSON(rec delivery.EnvironmentRecord) (kube, secrets, config string, err 
 	}
 	sj, err := json.Marshal(sec)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", "", "", err
 	}
 	cfg := rec.Config
 	if cfg == nil {
@@ -239,9 +249,33 @@ func envJSON(rec delivery.EnvironmentRecord) (kube, secrets, config string, err 
 	}
 	cj, err := json.Marshal(cfg)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", "", "", err
 	}
-	return string(k), string(sj), string(cj), nil
+	ks := rec.TargetArtifactKinds
+	if ks == nil {
+		ks = []delivery.ArtifactKind{}
+	}
+	kj, err := json.Marshal(ks)
+	if err != nil {
+		return "", "", "", "", "", "", err
+	}
+	eg := rec.TargetEgress
+	if eg == nil {
+		eg = []string{}
+	}
+	ej, err := json.Marshal(eg)
+	if err != nil {
+		return "", "", "", "", "", "", err
+	}
+	tc := rec.TargetConfig
+	if tc == nil {
+		tc = map[string]string{}
+	}
+	tj, err := json.Marshal(tc)
+	if err != nil {
+		return "", "", "", "", "", "", err
+	}
+	return string(k), string(sj), string(cj), string(kj), string(ej), string(tj), nil
 }
 
 // CreateEnvironment implements delivery.Store.
@@ -250,14 +284,15 @@ func (s *Store) CreateEnvironment(ctx context.Context, m delivery.Mutation, env 
 		return err
 	}
 	rec := env.Record()
-	kube, sec, cfg, err := envJSON(rec)
+	kube, sec, cfg, kinds, egress, targetCfg, err := envJSON(rec)
 	if err != nil {
 		return err
 	}
 	return s.tx(ctx, rec.Scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `INSERT INTO environments (`+environmentColumns+`)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13, $14)`,
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13, $14::jsonb, $15::jsonb, $16::jsonb, $17, $18, $19, $20)`,
 			string(rec.Scope.TenantID), string(rec.Scope.ProjectID), string(rec.ID), rec.Name, string(rec.Kind), rec.Target, rec.Namespace, kube, sec, cfg,
+			rec.TargetProfile, rec.TargetProfileDigest, rec.TargetProvider, kinds, egress, targetCfg,
 			int64(rec.PreviewTTL/time.Second), int64(rec.Version), rec.CreatedAt, rec.UpdatedAt)
 		if err != nil {
 			if constraint(err) == "environments_name_unique" {
@@ -330,14 +365,17 @@ func (s *Store) UpdateEnvironment(ctx context.Context, m delivery.Mutation, scop
 			return nil
 		}
 		rec := env.Record()
-		kube, sec, cfg, e := envJSON(rec)
+		kube, sec, cfg, kinds, egress, targetCfg, e := envJSON(rec)
 		if e != nil {
 			return e
 		}
 		tag, e := tx.Exec(ctx, `UPDATE environments SET target = $4, namespace = $5, kubeconfig = $6::jsonb, secrets = $7::jsonb, config = $8::jsonb,
-preview_ttl_seconds = $9, version = $10, updated_at = $11 WHERE tenant_id = $1 AND project_id = $2 AND id = $3 AND version = $12`,
-			string(scope.TenantID), string(scope.ProjectID), string(id), rec.Target, rec.Namespace, kube, sec, cfg, int64(rec.PreviewTTL/time.Second),
-			int64(rec.Version), rec.UpdatedAt, int64(expected))
+target_profile = $9, target_profile_digest = $10, target_provider = $11, target_artifact_kinds = $12::jsonb, target_egress = $13::jsonb,
+target_config = $14::jsonb, preview_ttl_seconds = $15, version = $16, updated_at = $17
+WHERE tenant_id = $1 AND project_id = $2 AND id = $3 AND version = $18`,
+			string(scope.TenantID), string(scope.ProjectID), string(id), rec.Target, rec.Namespace, kube, sec, cfg,
+			rec.TargetProfile, rec.TargetProfileDigest, rec.TargetProvider, kinds, egress, targetCfg,
+			int64(rec.PreviewTTL/time.Second), int64(rec.Version), rec.UpdatedAt, int64(expected))
 		if e != nil {
 			return e
 		}
@@ -355,14 +393,15 @@ preview_ttl_seconds = $9, version = $10, updated_at = $11 WHERE tenant_id = $1 A
 
 // ---- snapshots -------------------------------------------------------------
 
-const snapshotColumns = `tenant_id, project_id, environment_id, digest, kind, target, namespace, config, preview_ttl_seconds, kubeconfig, secrets, created_at`
+const snapshotColumns = `tenant_id, project_id, environment_id, digest, kind, target, namespace, config, preview_ttl_seconds, kubeconfig, secrets, target_profile, target_profile_digest, target_provider, target_artifact_kinds, target_egress, target_config, created_at`
 
 func scanSnapshot(row pgx.Row) (delivery.ConfigurationSnapshot, error) {
 	var s delivery.ConfigurationSnapshot
 	var tenant, project, env, digest, kind string
-	var config, secrets []byte
+	var config, secrets, kinds, egress, targetConfig []byte
 	var ttl int64
-	if err := row.Scan(&tenant, &project, &env, &digest, &kind, &s.Target, &s.Namespace, &config, &ttl, &s.Kubeconfig, &secrets, &s.CreatedAt); err != nil {
+	if err := row.Scan(&tenant, &project, &env, &digest, &kind, &s.Target, &s.Namespace, &config, &ttl, &s.Kubeconfig, &secrets,
+		&s.TargetProfile, &s.TargetProfileDigest, &s.TargetProvider, &kinds, &egress, &targetConfig, &s.CreatedAt); err != nil {
 		return delivery.ConfigurationSnapshot{}, err
 	}
 	s.Scope = domain.Scope{TenantID: domain.TenantID(tenant), ProjectID: domain.ProjectID(project)}
@@ -371,6 +410,15 @@ func scanSnapshot(row pgx.Row) (delivery.ConfigurationSnapshot, error) {
 		return delivery.ConfigurationSnapshot{}, err
 	}
 	if err := json.Unmarshal(secrets, &s.Secrets); err != nil {
+		return delivery.ConfigurationSnapshot{}, err
+	}
+	if err := json.Unmarshal(kinds, &s.TargetArtifactKinds); err != nil {
+		return delivery.ConfigurationSnapshot{}, err
+	}
+	if err := json.Unmarshal(egress, &s.TargetEgress); err != nil {
+		return delivery.ConfigurationSnapshot{}, err
+	}
+	if err := json.Unmarshal(targetConfig, &s.TargetConfig); err != nil {
 		return delivery.ConfigurationSnapshot{}, err
 	}
 	return s, s.Validate()
@@ -389,11 +437,36 @@ func (s *Store) RetainSnapshot(ctx context.Context, snap delivery.ConfigurationS
 	if err != nil {
 		return delivery.ConfigurationSnapshot{}, err
 	}
+	kinds := snap.TargetArtifactKinds
+	if kinds == nil {
+		kinds = []delivery.ArtifactKind{}
+	}
+	kj, err := json.Marshal(kinds)
+	if err != nil {
+		return delivery.ConfigurationSnapshot{}, err
+	}
+	egress := snap.TargetEgress
+	if egress == nil {
+		egress = []string{}
+	}
+	ej, err := json.Marshal(egress)
+	if err != nil {
+		return delivery.ConfigurationSnapshot{}, err
+	}
+	targetCfg := snap.TargetConfig
+	if targetCfg == nil {
+		targetCfg = map[string]string{}
+	}
+	tj, err := json.Marshal(targetCfg)
+	if err != nil {
+		return delivery.ConfigurationSnapshot{}, err
+	}
 	err = s.tx(ctx, snap.Scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		if _, e := tx.Exec(ctx, `INSERT INTO environment_snapshots (`+snapshotColumns+`)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11::jsonb, $12) ON CONFLICT DO NOTHING`,
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11::jsonb, $12, $13, $14, $15::jsonb, $16::jsonb, $17::jsonb, $18) ON CONFLICT DO NOTHING`,
 			string(snap.Scope.TenantID), string(snap.Scope.ProjectID), string(snap.Environment), string(snap.Digest), string(snap.Kind), snap.Target, snap.Namespace,
-			string(cfg), int64(snap.PreviewTTL/time.Second), snap.Kubeconfig, string(sec), snap.CreatedAt.UTC()); e != nil {
+			string(cfg), int64(snap.PreviewTTL/time.Second), snap.Kubeconfig, string(sec),
+			snap.TargetProfile, snap.TargetProfileDigest, snap.TargetProvider, string(kj), string(ej), string(tj), snap.CreatedAt.UTC()); e != nil {
 			return e
 		}
 		var e error

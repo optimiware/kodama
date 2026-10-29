@@ -102,7 +102,7 @@ func TestBaseContributionIsValid(t *testing.T) {
 	if _, err := NewManifest(c); err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Migrations) != 2 || c.Migrations[0].ID != "001_schema.sql" || c.Migrations[1].ID != "002_grants.sql" {
+	if len(c.Migrations) != 3 || c.Migrations[0].ID != "001_schema.sql" || c.Migrations[1].ID != "002_grants.sql" || c.Migrations[2].ID != "003_delivery_targets.sql" {
 		t.Fatalf("baseline = %+v", c.Migrations)
 	}
 	if !strings.Contains(c.Migrations[1].SQL, RuntimeRolePlaceholder) {

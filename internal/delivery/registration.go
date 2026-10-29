@@ -14,14 +14,28 @@ import (
 // run, step, action key, originating attempt, environment and its
 // configuration identity) comes from the attempt's immutable pinned context.
 type RegistrationRequest struct {
-	Source Source
-	Image  Image
+	Source   Source
+	Image    Image
+	Artifact DeployableArtifact
 }
 
 // Validate checks the syntax.
 func (r RegistrationRequest) Validate() error {
 	if err := r.Source.Validate(); err != nil {
 		return err
+	}
+	if r.Artifact.Kind != "" {
+		if r.Artifact.Kind == ArtifactOCIImage {
+			if err := r.Image.Validate(); err != nil {
+				return err
+			}
+			if r.Image.ArtifactID != r.Artifact.ArtifactID || r.Image.Digest != r.Artifact.Digest {
+				return invalidf("the legacy image projection does not match the artifact")
+			}
+		} else if r.Image != (Image{}) && (r.Image.ArtifactID != r.Artifact.ArtifactID || r.Image.Digest != r.Artifact.Digest) {
+			return invalidf("the legacy image projection does not match the bundle")
+		}
+		return r.Artifact.Validate()
 	}
 	return r.Image.Validate()
 }
@@ -148,10 +162,20 @@ func (s *Service) plan(ctx context.Context, m Mutation, pinned runtimev1.Context
 	if err != nil {
 		return RegistrationPlan{}, err
 	}
-	if !ReferencesArtifact(pinned, req.Image.ArtifactID) {
-		return RegistrationPlan{}, Fail(ErrProvenance, nil, "the image is not an input of this attempt")
+	artifact := req.Artifact
+	artifactID := req.Image.ArtifactID
+	if artifact.Kind != "" {
+		artifactID = artifact.ArtifactID
+	} else {
+		artifact = FromImage(req.Image)
 	}
-	producer, err := s.verifyImage(ctx, scope, req)
+	if !ReferencesArtifact(pinned, artifactID) {
+		return RegistrationPlan{}, Fail(ErrProvenance, nil, "the artifact is not an input of this attempt")
+	}
+	if err := checkArtifactKind(snap, artifact.Kind); err != nil {
+		return RegistrationPlan{}, err
+	}
+	producer, err := s.verifyArtifact(ctx, scope, req.Source, artifact)
 	if err != nil {
 		return RegistrationPlan{}, err
 	}
@@ -161,8 +185,9 @@ func (s *Service) plan(ctx context.Context, m Mutation, pinned runtimev1.Context
 		expires = &t
 	}
 	d, err := NewDeployment(Registration{
-		Scope: scope, Environment: snap.Environment, ConfigDigest: snap.Digest, Namespace: snap.Namespace, Source: req.Source, Image: req.Image,
-		Producer: producer, Run: pinned.RunID, Step: pinned.StepID, ActionKey: pinned.ActionKey, Attempt: pinned.AttemptID, ExpiresAt: expires,
+		Scope: scope, Environment: snap.Environment, ConfigDigest: snap.Digest, Namespace: snap.Namespace, Source: req.Source,
+		Image: req.Image, Artifact: artifact, Producer: producer, Run: pinned.RunID, Step: pinned.StepID, ActionKey: pinned.ActionKey,
+		Attempt: pinned.AttemptID, ExpiresAt: expires,
 	}, m.Now)
 	if err != nil {
 		return RegistrationPlan{}, err
@@ -173,34 +198,49 @@ func (s *Service) plan(ctx context.Context, m Mutation, pinned runtimev1.Context
 	// the deterministic deployment identity: an unknown commit outcome therefore
 	// leaves the image protected (conservative), and a definite failure releases
 	// the pin only after reconciliation shows no committed deployment uses it.
-	if err := s.cfg.Artifacts.Protect(ctx, scope, req.Image.ArtifactID, d.ID()); err != nil {
+	if err := s.cfg.Artifacts.Protect(ctx, scope, artifactID, d.ID()); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			// Retention removed the artifact between verification and the pin.
 			return RegistrationPlan{}, Fail(ErrProvenance, err, "the image is not a verified output of this source")
 		}
 		return RegistrationPlan{}, Fail(ErrUnavailable, err, "the image could not be protected")
 	}
-	return RegistrationPlan{Command: RegisterCommand{Mutation: m, Deployment: d, Attempt: pinned.AttemptID}, scope: scope, artifact: req.Image.ArtifactID}, nil
+	return RegistrationPlan{Command: RegisterCommand{Mutation: m, Deployment: d, Attempt: pinned.AttemptID}, scope: scope, artifact: artifactID}, nil
 }
 
 // verifyImage reads the artifact owner's and the execution owner's evidence and
 // applies DQ-01/DQ-07.
-func (s *Service) verifyImage(ctx context.Context, scope domain.Scope, req RegistrationRequest) (Producer, error) {
-	ev, err := s.cfg.Artifacts.Evidence(ctx, scope, req.Image.ArtifactID)
+func (s *Service) verifyArtifact(ctx context.Context, scope domain.Scope, source Source, artifact DeployableArtifact) (Producer, error) {
+	ev, err := s.cfg.Artifacts.Evidence(ctx, scope, artifact.ArtifactID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return Producer{}, Fail(ErrProvenance, err, "the image is not a verified output of this source")
+			return Producer{}, Fail(ErrProvenance, err, "the artifact is not a verified output of this source")
 		}
 		return Producer{}, Fail(ErrUnavailable, err, "the artifact owner could not answer")
 	}
-	out, err := s.cfg.Producers.Produced(ctx, scope, ev.Attempt, req.Image.ArtifactID)
+	out, err := s.cfg.Producers.Produced(ctx, scope, ev.Attempt, artifact.ArtifactID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return Producer{}, Fail(ErrProvenance, err, "the image is not a verified output of this source")
+			return Producer{}, Fail(ErrProvenance, err, "the artifact is not a verified output of this source")
 		}
 		return Producer{}, Fail(ErrUnavailable, err, "the execution owner could not answer")
 	}
-	return VerifyImage(scope, req.Source, req.Image, ev, out)
+	return VerifyArtifact(scope, source, artifact, ev, out)
+}
+
+// checkArtifactKind applies the target profile's artifact policy. Legacy
+// environments (no profile) accept only an OCI image.
+func checkArtifactKind(snap ConfigurationSnapshot, kind ArtifactKind) error {
+	want := snap.TargetArtifactKinds
+	if len(want) == 0 {
+		want = []ArtifactKind{ArtifactOCIImage}
+	}
+	for _, k := range want {
+		if k == kind {
+			return nil
+		}
+	}
+	return Fail(ErrProvenance, nil, "the target does not accept this artifact kind")
 }
 
 // ReconcileRetention settles the retention pin an uncertain or refused

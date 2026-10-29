@@ -101,6 +101,19 @@ func TestLoadCoreConfig(t *testing.T) {
 	put("master-key", strings.Repeat("m", 32))
 	put("git-token", "gitpw")
 	put("git-credentials.json", `[{"ref":"secret://installation/checkout","username":"kodama","passwordFile":"git-token","urlPrefix":"https://git.example/","tenants":["t_acme"]}]`)
+	put("target-profiles.yaml", `apiVersion: kodama/v1alpha1
+kind: TargetProfiles
+profiles:
+  - name: cloudflare-worker
+    version: "1"
+    provider: cloudflare
+    artifactKinds: [bundle]
+    credentials:
+      - {name: CLOUDFLARE_API_TOKEN, kind: generic, delivery: file, required: true}
+    driver: {mode: script}
+    config:
+      workerName: {type: string, required: true}
+`)
 	env := map[string]string{
 		"KODAMA_SECRETS_DIR": dir, "KODAMA_NATS_URL": "nats://nats:4222", "KODAMA_S3_ENDPOINT": "http://s3:4566", "KODAMA_S3_BUCKET": "bucket",
 		"KODAMA_OIDC_ISSUER": "https://issuer.example", "KODAMA_OIDC_AUDIENCE": "https://api.example", "KODAMA_INSTALLATION_ID": "inst",
@@ -131,6 +144,12 @@ func TestLoadCoreConfig(t *testing.T) {
 	}
 	if len(cfg.Git.Credentials) != 1 || cfg.Git.Credentials[0].Password != "gitpw" || cfg.Git.Credentials[0].Tenants[0] != "t_acme" {
 		t.Fatalf("credentials %+v", cfg.Git.Credentials)
+	}
+	if cfg.TargetProfiles == nil {
+		t.Fatal("no target profile registry")
+	}
+	if p, ok := cfg.TargetProfiles.Get("cloudflare-worker"); !ok || p.Provider != "cloudflare" {
+		t.Fatalf("target profile = %+v, present=%v", p, ok)
 	}
 
 	// A token in the URL means no token file is read.

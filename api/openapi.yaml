@@ -4854,6 +4854,12 @@ components:
             $ref: '#/components/schemas/ObjectRef'
           maxItems: 64
           type: array
+        deletedResources:
+          description: Owned provider-neutral resources confirmed absent.
+          items:
+            $ref: '#/components/schemas/ResourceRef'
+          maxItems: 64
+          type: array
         reason:
           description: Required for `failed` and `unknown`.
           pattern: ^[a-z][a-z0-9_]{0,63}$
@@ -5275,6 +5281,29 @@ components:
         - createdAt
         - updatedAt
       type: object
+    DeliveryArtifact:
+      additionalProperties: false
+      properties:
+        artifactId:
+          $ref: '#/components/schemas/ID'
+        digest:
+          $ref: '#/components/schemas/Digest'
+        kind:
+          $ref: '#/components/schemas/DeliveryArtifactKind'
+        mediaType:
+          maxLength: 128
+          type: string
+      required:
+        - kind
+        - artifactId
+        - digest
+      type: object
+    DeliveryArtifactKind:
+      description: The deployable artifact shape a target accepts.
+      enum:
+        - ociImage
+        - bundle
+      type: string
     DeliveryDetail:
       additionalProperties: false
       description: A Delivery with its destination label and complete attempt history.
@@ -5440,6 +5469,8 @@ components:
       properties:
         actionKey:
           $ref: '#/components/schemas/ActionKey'
+        artifact:
+          $ref: '#/components/schemas/DeliveryArtifact'
         attemptId:
           $ref: '#/components/schemas/ID'
         cleanup:
@@ -5477,6 +5508,11 @@ components:
           description: registered, applying, outcome_unknown, ready or the failure's reason code.
           pattern: ^[a-z][a-z0-9_]{0,63}$
           type: string
+        resources:
+          items:
+            $ref: '#/components/schemas/ResourceRef'
+          maxItems: 64
+          type: array
         runId:
           $ref: '#/components/schemas/ID'
         source:
@@ -5514,6 +5550,8 @@ components:
     DeploymentCreate:
       additionalProperties: false
       properties:
+        artifact:
+          $ref: '#/components/schemas/DeliveryArtifact'
         attemptId:
           $ref: '#/components/schemas/ID'
         image:
@@ -5747,7 +5785,8 @@ components:
           pattern: ^[a-z][a-z0-9-]{0,62}$
           type: string
         namespace:
-          description: The single Kubernetes namespace a deployment may touch.
+          description: The single Kubernetes namespace a deployment may touch
+          or the profile target's legacy projection. Empty for a profile target without a namespace.: null
           type: string
         previewTtlSeconds:
           description: Present for a preview environment only.
@@ -5760,8 +5799,36 @@ components:
           maxItems: 32
           type: array
         target:
-          description: A label of the cluster or target.
+          description: A label of the cluster
           pattern: ^[a-z][a-z0-9._-]{0,62}$
+          profile or target.: null
+          type: string
+        targetArtifactKinds:
+          items:
+            $ref: '#/components/schemas/DeliveryArtifactKind'
+          maxItems: 4
+          type: array
+        targetConfig:
+          additionalProperties:
+            maxLength: 1024
+            type: string
+          description: Nonsecret target configuration validated by the target profile.
+          maxProperties: 64
+          type: object
+        targetEgress:
+          items:
+            pattern: ^[a-z][a-z0-9-]{0,62}$
+            type: string
+          maxItems: 8
+          type: array
+        targetProfile:
+          description: The installation target profile; absent for a legacy Kubernetes environment.
+          pattern: ^[a-z][a-z0-9-]{0,62}$
+          type: string
+        targetProfileDigest:
+          $ref: '#/components/schemas/Digest'
+        targetProvider:
+          description: The resolved provider of the target profile.
           type: string
         updatedAt:
           format: date-time
@@ -5812,12 +5879,18 @@ components:
         target:
           pattern: ^[a-z][a-z0-9._-]{0,62}$
           type: string
+        targetConfig:
+          additionalProperties:
+            maxLength: 1024
+            type: string
+          maxProperties: 64
+          type: object
+        targetProfile:
+          pattern: ^[a-z][a-z0-9-]{0,62}$
+          type: string
       required:
         - name
         - kind
-        - target
-        - namespace
-        - kubeconfig
       type: object
     EnvironmentEdit:
       additionalProperties: false
@@ -5846,11 +5919,23 @@ components:
         target:
           pattern: ^[a-z][a-z0-9._-]{0,62}$
           type: string
+        targetConfig:
+          additionalProperties:
+            maxLength: 1024
+            type: string
+          maxProperties: 64
+          type: object
+        targetProfile:
+          pattern: ^[a-z][a-z0-9-]{0,62}$
+          type: string
+        targetProfileDigest:
+          $ref: '#/components/schemas/Digest'
       type: object
     EnvironmentKind:
       enum:
         - preview
         - stage
+        - production
       type: string
     EnvironmentPage:
       properties:
@@ -6846,6 +6931,12 @@ components:
           description: Required for `failed` and forbidden otherwise.
           pattern: ^[a-z][a-z0-9_]{0,63}$
           type: string
+        resources:
+          description: 'Provider-neutral counterpart of objects for a bundle/profile target: intended identities before apply, observed versions/readiness afterwards.'
+          items:
+            $ref: '#/components/schemas/ResourceRef'
+          maxItems: 64
+          type: array
         state:
           enum:
             - applying
@@ -7216,6 +7307,43 @@ components:
         - expression
         - producer
       type: object
+    ResourceRef:
+      additionalProperties: false
+      properties:
+        etag:
+          maxLength: 256
+          type: string
+        id:
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$
+          type: string
+        metadata:
+          additionalProperties:
+            maxLength: 1024
+            type: string
+          maxProperties: 16
+          type: object
+        name:
+          maxLength: 256
+          type: string
+        provider:
+          pattern: ^[a-z][a-z0-9-]{0,62}$
+          type: string
+        ready:
+          type: boolean
+        type:
+          pattern: ^[A-Za-z][A-Za-z0-9._/-]{0,127}$
+          type: string
+        url:
+          maxLength: 2048
+          type: string
+        version:
+          maxLength: 256
+          type: string
+      required:
+        - provider
+        - type
+        - id
+      type: object
     ResyncRequired:
       additionalProperties: false
       properties:
@@ -7476,6 +7604,8 @@ components:
     RuntimeDeploymentRegister:
       additionalProperties: false
       properties:
+        artifact:
+          $ref: '#/components/schemas/DeliveryArtifact'
         image:
           $ref: '#/components/schemas/Image'
         source:

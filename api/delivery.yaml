@@ -624,7 +624,11 @@ components:
       pattern: '^sha256:[0-9a-f]{64}$'
     EnvironmentKind:
       type: string
-      enum: [preview, stage]
+      enum: [preview, stage, production]
+    ArtifactKind:
+      type: string
+      enum: [ociImage, bundle]
+      description: The deployable artifact shape a target accepts.
     SecretDelivery:
       type: string
       enum: [file, env]
@@ -657,8 +661,24 @@ components:
         id: {$ref: 'common.yaml#/components/schemas/ID'}
         name: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
         kind: {$ref: '#/components/schemas/EnvironmentKind'}
-        target: {type: string, pattern: '^[a-z][a-z0-9._-]{0,62}$', description: A label of the cluster or target.}
-        namespace: {type: string, description: The single Kubernetes namespace a deployment may touch.}
+        target: {type: string, pattern: '^[a-z][a-z0-9._-]{0,62}$', description: A label of the cluster, profile or target.}
+        targetProfile: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$', description: The installation target profile; absent for a legacy Kubernetes environment.}
+        targetProfileDigest: {$ref: '#/components/schemas/Digest'}
+        targetProvider: {type: string, description: The resolved provider of the target profile.}
+        targetArtifactKinds:
+          type: array
+          maxItems: 4
+          items: {$ref: '#/components/schemas/ArtifactKind'}
+        targetEgress:
+          type: array
+          maxItems: 8
+          items: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+        targetConfig:
+          type: object
+          maxProperties: 64
+          additionalProperties: {type: string, maxLength: 1024}
+          description: Nonsecret target configuration validated by the target profile.
+        namespace: {type: string, description: The single Kubernetes namespace a deployment may touch, or the profile target's legacy projection. Empty for a profile target without a namespace.}
         kubeconfig:
           $ref: '#/components/schemas/CredentialBinding'
         secrets:
@@ -681,11 +701,16 @@ components:
     EnvironmentCreate:
       type: object
       additionalProperties: false
-      required: [name, kind, target, namespace, kubeconfig]
+      required: [name, kind]
       properties:
         name: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
         kind: {$ref: '#/components/schemas/EnvironmentKind'}
         target: {type: string, pattern: '^[a-z][a-z0-9._-]{0,62}$'}
+        targetProfile: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+        targetConfig:
+          type: object
+          maxProperties: 64
+          additionalProperties: {type: string, maxLength: 1024}
         namespace: {type: string}
         kubeconfig: {$ref: '#/components/schemas/CredentialBinding'}
         secrets:
@@ -708,6 +733,12 @@ components:
       description: Omitted members are unchanged; name and kind cannot change.
       properties:
         target: {type: string, pattern: '^[a-z][a-z0-9._-]{0,62}$'}
+        targetProfile: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+        targetProfileDigest: {$ref: '#/components/schemas/Digest'}
+        targetConfig:
+          type: object
+          maxProperties: 64
+          additionalProperties: {type: string, maxLength: 1024}
         namespace: {type: string}
         kubeconfig: {$ref: '#/components/schemas/CredentialBinding'}
         secrets:
@@ -788,6 +819,32 @@ components:
         state: {$ref: '#/components/schemas/CleanupState'}
         reason: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}
         requestedAt: {type: string, format: date-time}
+    Artifact:
+      type: object
+      additionalProperties: false
+      required: [kind, artifactId, digest]
+      properties:
+        kind: {$ref: '#/components/schemas/ArtifactKind'}
+        artifactId: {$ref: 'common.yaml#/components/schemas/ID'}
+        digest: {$ref: '#/components/schemas/Digest'}
+        mediaType: {type: string, maxLength: 128}
+    ResourceRef:
+      type: object
+      additionalProperties: false
+      required: [provider, type, id]
+      properties:
+        provider: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+        type: {type: string, pattern: '^[A-Za-z][A-Za-z0-9._/-]{0,127}$'}
+        id: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$'}
+        name: {type: string, maxLength: 256}
+        version: {type: string, maxLength: 256}
+        etag: {type: string, maxLength: 256}
+        url: {type: string, maxLength: 2048}
+        ready: {type: boolean}
+        metadata:
+          type: object
+          maxProperties: 16
+          additionalProperties: {type: string, maxLength: 1024}
     Deployment:
       type: object
       additionalProperties: false
@@ -800,6 +857,7 @@ components:
         namespace: {type: string}
         source: {$ref: '#/components/schemas/Source'}
         image: {$ref: '#/components/schemas/Image'}
+        artifact: {$ref: '#/components/schemas/Artifact'}
         producer: {$ref: '#/components/schemas/Producer'}
         runId: {$ref: 'common.yaml#/components/schemas/ID'}
         stepId: {type: string}
@@ -818,6 +876,10 @@ components:
           type: array
           maxItems: 64
           items: {$ref: '#/components/schemas/ObjectRef'}
+        resources:
+          type: array
+          maxItems: 64
+          items: {$ref: '#/components/schemas/ResourceRef'}
         expiresAt: {type: string, format: date-time}
         cleanup: {$ref: '#/components/schemas/Cleanup'}
         deletedAt: {type: string, format: date-time}
@@ -849,6 +911,7 @@ components:
           $ref: 'common.yaml#/components/schemas/ID'
         source: {$ref: '#/components/schemas/Source'}
         image: {$ref: '#/components/schemas/Image'}
+        artifact: {$ref: '#/components/schemas/Artifact'}
     RuntimeDeploymentRegister:
       type: object
       additionalProperties: false
@@ -856,6 +919,7 @@ components:
       properties:
         source: {$ref: '#/components/schemas/Source'}
         image: {$ref: '#/components/schemas/Image'}
+        artifact: {$ref: '#/components/schemas/Artifact'}
     OutcomeReport:
       type: object
       additionalProperties: false
@@ -875,6 +939,13 @@ components:
           description: >-
             Intended identities for `applying` (no uid or ready); observed objects with uid and
             readiness for `succeeded` and `failed`; empty for `unknown`.
+        resources:
+          type: array
+          maxItems: 64
+          items: {$ref: '#/components/schemas/ResourceRef'}
+          description: >-
+            Provider-neutral counterpart of objects for a bundle/profile target: intended identities
+            before apply, observed versions/readiness afterwards.
     CleanupReport:
       type: object
       additionalProperties: false
@@ -892,6 +963,11 @@ components:
           maxItems: 64
           items: {$ref: '#/components/schemas/ObjectRef'}
           description: Owned objects confirmed absent. `done` lists every owned object.
+        deletedResources:
+          type: array
+          maxItems: 64
+          items: {$ref: '#/components/schemas/ResourceRef'}
+          description: Owned provider-neutral resources confirmed absent.
     DeploymentPage:
       type: object
       required: [items, nextCursor]

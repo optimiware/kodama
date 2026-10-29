@@ -26,9 +26,10 @@ const (
 // OutcomeReport is one script report. Objects are intended identities for
 // "applying" and observed objects (UID, readiness) afterwards.
 type OutcomeReport struct {
-	State   OutcomeState
-	Reason  string
-	Objects []ObjectRef
+	State     OutcomeState
+	Reason    string
+	Objects   []ObjectRef
+	Resources []ResourceRef
 }
 
 // Validate checks the structure; the entity applies the lifecycle rules.
@@ -40,6 +41,9 @@ func (r OutcomeReport) Validate() error {
 	}
 	if len(r.Objects) > MaxObjects {
 		return invalidf("a report lists at most %d objects", MaxObjects)
+	}
+	if len(r.Resources) > MaxResources {
+		return invalidf("a report lists at most %d resources", MaxResources)
 	}
 	if r.State == OutcomeFailed && !reasonCode.MatchString(r.Reason) {
 		return invalidf("a failure reports a reason code")
@@ -91,18 +95,22 @@ func (s *Service) ReportOutcome(ctx context.Context, attempt domain.AttemptID, b
 		switch rep.State {
 		case OutcomeApplying:
 			kind = "apply_started"
-			ch, err = d.BeginApply(rep.Objects, m.Now)
+			if len(rep.Resources) != 0 {
+				ch, err = d.BeginApplyResources(rep.Resources, m.Now)
+			} else {
+				ch, err = d.BeginApply(rep.Objects, m.Now)
+			}
 		case OutcomeUnknown:
 			kind = "outcome_unknown"
 			ch, err = d.MarkOutcomeUnknown(m.Now)
 		case OutcomeSucceeded:
 			kind = "succeeded"
-			ch, err = d.Settle(Settlement{Succeeded: true, Objects: rep.Objects}, m.Now)
+			ch, err = d.Settle(Settlement{Succeeded: true, Objects: rep.Objects, Resources: rep.Resources}, m.Now)
 		case OutcomeFailed:
 			kind = "failed"
-			ch, err = d.Settle(Settlement{Reason: rep.Reason, Objects: rep.Objects}, m.Now)
+			ch, err = d.Settle(Settlement{Reason: rep.Reason, Objects: rep.Objects, Resources: rep.Resources}, m.Now)
 		}
-		return Transition{Kind: kind, Change: ch, Attempt: call.p.Attempt, Detail: map[string]any{"objects": len(rep.Objects)}}, err
+		return Transition{Kind: kind, Change: ch, Attempt: call.p.Attempt, Detail: map[string]any{"objects": len(rep.Objects), "resources": len(rep.Resources)}}, err
 	})
 	if err != nil {
 		return Receipt{}, err

@@ -17,6 +17,19 @@ func environmentText(m map[string]any) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s  %s  %s\n", field(m, "id"), field(m, "name"), field(m, "kind"))
 	fmt.Fprintf(&b, "target: %s  namespace: %s\n", field(m, "target"), field(m, "namespace"))
+	if profile := field(m, "targetProfile"); profile != "-" {
+		fmt.Fprintf(&b, "target profile: %s (%s, %s)\n", profile, field(m, "targetProvider"), field(m, "targetProfileDigest"))
+	}
+	if cfg, ok := m["targetConfig"].(map[string]any); ok && len(cfg) > 0 {
+		keys := make([]string, 0, len(cfg))
+		for k := range cfg {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(&b, "target config: %s=%s\n", k, field(cfg, k))
+		}
+	}
 	if kc, ok := m["kubeconfig"].(map[string]any); ok {
 		fmt.Fprintf(&b, "kubeconfig: %s\n", bindingText(kc))
 	}

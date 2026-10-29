@@ -143,6 +143,7 @@ type DeploymentRecord struct {
 
 	Source   Source
 	Image    Image
+	Artifact DeployableArtifact
 	Producer Producer
 
 	Run       domain.RunID
@@ -154,9 +155,10 @@ type DeploymentRecord struct {
 	// Fingerprint is the canonical identity of the logical request.
 	Fingerprint runtimev1.Digest
 
-	Status  Status
-	Reason  string
-	Objects []ObjectRef
+	Status    Status
+	Reason    string
+	Objects   []ObjectRef
+	Resources []ResourceRef
 
 	ExpiresAt          *time.Time
 	CleanupRequestedAt *time.Time
@@ -185,6 +187,7 @@ type Registration struct {
 	Namespace    string
 	Source       Source
 	Image        Image
+	Artifact     DeployableArtifact
 	Producer     Producer
 	Run          domain.RunID
 	Step         string
@@ -202,19 +205,25 @@ var actionKeyPattern = regexp.MustCompile(runtimev1.Patterns["ActionKey"])
 // and caller are deliberately excluded: an authorized retry attempt of the same
 // step asks for the same deployment.
 func (r Registration) Fingerprint() (runtimev1.Digest, error) {
+	var artifact *DeployableArtifact
+	if r.Artifact.Kind != "" {
+		a := r.Artifact
+		artifact = &a
+	}
 	raw, err := json.Marshal(struct {
-		Format      string `json:"format"`
-		Tenant      string `json:"tenant"`
-		Project     string `json:"project"`
-		Environment string `json:"environment"`
-		Config      string `json:"config"`
-		Source      Source `json:"source"`
-		Image       Image  `json:"image"`
-		Run         string `json:"run"`
-		Step        string `json:"step"`
-		ActionKey   string `json:"actionKey"`
+		Format      string              `json:"format"`
+		Tenant      string              `json:"tenant"`
+		Project     string              `json:"project"`
+		Environment string              `json:"environment"`
+		Config      string              `json:"config"`
+		Source      Source              `json:"source"`
+		Image       Image               `json:"image"`
+		Artifact    *DeployableArtifact `json:"artifact,omitempty"`
+		Run         string              `json:"run"`
+		Step        string              `json:"step"`
+		ActionKey   string              `json:"actionKey"`
 	}{"kodama/deployment-request/v1", string(r.Scope.TenantID), string(r.Scope.ProjectID), string(r.Environment), string(r.ConfigDigest),
-		r.Source, r.Image, string(r.Run), r.Step, r.ActionKey})
+		r.Source, r.Image, artifact, string(r.Run), r.Step, r.ActionKey})
 	if err != nil {
 		return "", err
 	}
@@ -228,10 +237,17 @@ func NewDeployment(r Registration, now time.Time) (Deployment, error) {
 	if err != nil {
 		return Deployment{}, err
 	}
+	artifact, image := r.Artifact, r.Image
+	if artifact.Kind == "" {
+		artifact = FromImage(image)
+	}
+	if artifact.Kind == ArtifactOCIImage {
+		image = artifact.Image()
+	}
 	rec := DeploymentRecord{
 		Scope: r.Scope, ID: DeploymentIDFor(r.Scope, r.ActionKey), Environment: r.Environment, ConfigDigest: r.ConfigDigest, Namespace: r.Namespace,
-		Source: r.Source, Image: r.Image, Producer: r.Producer, Run: r.Run, Step: r.Step, ActionKey: r.ActionKey, Attempt: r.Attempt,
-		Fingerprint: fp, Status: StatusPending, Reason: ReasonRegistered, Objects: []ObjectRef{}, ExpiresAt: r.ExpiresAt,
+		Source: r.Source, Image: image, Artifact: artifact, Producer: r.Producer, Run: r.Run, Step: r.Step, ActionKey: r.ActionKey, Attempt: r.Attempt,
+		Fingerprint: fp, Status: StatusPending, Reason: ReasonRegistered, Objects: []ObjectRef{}, Resources: []ResourceRef{}, ExpiresAt: r.ExpiresAt,
 		Version: 1, CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
 	}
 	d, err := RestoreDeployment(rec)
@@ -244,7 +260,10 @@ func NewDeployment(r Registration, now time.Time) (Deployment, error) {
 
 // RestoreDeployment rebuilds a deployment from persisted state and validates it.
 func RestoreDeployment(rec DeploymentRecord) (Deployment, error) {
-	for _, err := range []error{rec.Scope.Validate(), rec.ID.Validate(), rec.Environment.Validate(), rec.ConfigDigest.Validate(), rec.Image.Validate(),
+	if rec.Artifact.Kind == "" {
+		rec.Artifact = FromImage(rec.Image)
+	}
+	for _, err := range []error{rec.Scope.Validate(), rec.ID.Validate(), rec.Environment.Validate(), rec.ConfigDigest.Validate(), rec.Artifact.Validate(),
 		rec.Run.Validate(), rec.Attempt.Validate(), rec.Fingerprint.Validate(), rec.Version.Validate()} {
 		if err != nil {
 			return Deployment{}, invalidf("%v", err)
@@ -256,8 +275,29 @@ func RestoreDeployment(rec DeploymentRecord) (Deployment, error) {
 	if err := rec.Producer.Validate(); err != nil {
 		return Deployment{}, err
 	}
-	if !actionKeyPattern.MatchString(rec.ActionKey) || rec.Step == "" || len(rec.Step) > 128 || !namespaceName.MatchString(rec.Namespace) {
-		return Deployment{}, invalidf("a deployment needs a step, an action key and a namespace")
+	if !actionKeyPattern.MatchString(rec.ActionKey) || rec.Step == "" || len(rec.Step) > 128 {
+		return Deployment{}, invalidf("a deployment needs a step and an action key")
+	}
+	if rec.Artifact.Kind == ArtifactOCIImage {
+		if err := rec.Image.Validate(); err != nil {
+			return Deployment{}, err
+		}
+		if rec.Image.ArtifactID != rec.Artifact.ArtifactID || rec.Image.Digest != rec.Artifact.Digest {
+			return Deployment{}, invalidf("the legacy image projection does not match the artifact")
+		}
+	} else {
+		if rec.Image != (Image{}) && (rec.Image.ArtifactID != rec.Artifact.ArtifactID || rec.Image.Digest != rec.Artifact.Digest) {
+			return Deployment{}, invalidf("the legacy image projection does not match the bundle")
+		}
+		if rec.Namespace != "" && !namespaceName.MatchString(rec.Namespace) {
+			return Deployment{}, invalidf("a deployment namespace is a Kubernetes DNS label")
+		}
+	}
+	if rec.Artifact.Kind == ArtifactOCIImage && !namespaceName.MatchString(rec.Namespace) {
+		return Deployment{}, invalidf("an OCI deployment needs a namespace")
+	}
+	if err := checkResources(rec.Resources); err != nil {
+		return Deployment{}, err
 	}
 	switch rec.Status {
 	case StatusPending, StatusRunning, StatusSucceeded, StatusFailed:
@@ -281,6 +321,7 @@ func RestoreDeployment(rec DeploymentRecord) (Deployment, error) {
 func (d Deployment) Record() DeploymentRecord {
 	r := d.rec
 	r.Objects = append([]ObjectRef{}, r.Objects...)
+	r.Resources = append([]ResourceRef{}, r.Resources...)
 	return r
 }
 
@@ -368,6 +409,36 @@ func (d *Deployment) BeginApply(intended []ObjectRef, now time.Time) (Change, er
 	return Change{}, Fail(ErrInvalidTransition, nil, "the deployment is %s", d.rec.Status)
 }
 
+// BeginApplyResources records the intended external resources of a
+// provider-neutral target before any external change. It is the bundle/profile
+// counterpart of BeginApply; a deployment uses one shape, not both.
+func (d *Deployment) BeginApplyResources(intended []ResourceRef, now time.Time) (Change, error) {
+	if len(intended) == 0 {
+		return Change{}, invalidf("an apply names the resources it will create")
+	}
+	if err := checkResources(intended); err != nil {
+		return Change{}, err
+	}
+	for _, r := range intended {
+		if r.Ready {
+			return Change{}, invalidf("intended resources carry no observed state")
+		}
+	}
+	switch {
+	case d.OutcomeUnknown():
+		return Change{}, Fail(ErrOutcomeUnknown, nil, "the previous apply has an unknown outcome; reconcile it first")
+	case d.rec.Status == StatusPending:
+		d.rec.Resources = sortedResources(intended)
+		return d.move(StatusRunning, ReasonApplying, now), nil
+	case d.rec.Status == StatusRunning:
+		if !sameResources(d.rec.Resources, intended) {
+			return Change{}, Fail(ErrConflict, nil, "the intended resources of a deployment do not change")
+		}
+		return d.same(), nil
+	}
+	return Change{}, Fail(ErrInvalidTransition, nil, "the deployment is %s", d.rec.Status)
+}
+
 // MarkOutcomeUnknown records that the apply may have taken effect but could
 // not be confirmed. It stays running; a new apply is blocked until settled.
 func (d *Deployment) MarkOutcomeUnknown(now time.Time) (Change, error) {
@@ -386,8 +457,11 @@ type Settlement struct {
 	Succeeded bool
 	// Reason is the failure code of an unsuccessful settlement.
 	Reason string
-	// Objects are the observed objects with their UIDs and readiness.
+	// Objects are the observed Kubernetes objects with their UIDs and readiness.
 	Objects []ObjectRef
+	// Resources are the observed provider-neutral resources with their versions
+	// and readiness. A bundle/profile deployment reports these instead of objects.
+	Resources []ResourceRef
 }
 
 // Settle records the final outcome. It is also how an unknown outcome is
@@ -397,6 +471,9 @@ func (d *Deployment) Settle(s Settlement, now time.Time) (Change, error) {
 	if err := checkObjects(d.rec.Namespace, s.Objects); err != nil {
 		return Change{}, err
 	}
+	if err := checkResources(s.Resources); err != nil {
+		return Change{}, err
+	}
 	intended := map[string]bool{}
 	for _, o := range d.intendedKeys() {
 		intended[o] = true
@@ -404,6 +481,15 @@ func (d *Deployment) Settle(s Settlement, now time.Time) (Change, error) {
 	for _, o := range s.Objects {
 		if !intended[o.key()] {
 			return Change{}, Fail(ErrDenied, nil, "an observed object was not recorded for this deployment")
+		}
+	}
+	intendedResources := map[string]bool{}
+	for _, r := range d.intendedResourceKeys() {
+		intendedResources[r] = true
+	}
+	for _, r := range s.Resources {
+		if !intendedResources[r.key()] {
+			return Change{}, Fail(ErrDenied, nil, "an observed resource was not recorded for this deployment")
 		}
 	}
 	reason := ReasonReady
@@ -418,8 +504,9 @@ func (d *Deployment) Settle(s Settlement, now time.Time) (Change, error) {
 		to = StatusSucceeded
 	}
 	merged := d.merge(s.Objects)
+	mergedResources := d.mergeResources(s.Resources)
 	if d.rec.Status.Terminal() {
-		if d.rec.Status == to && d.rec.Reason == reason && sameObjects(d.rec.Objects, merged) {
+		if d.rec.Status == to && d.rec.Reason == reason && sameObjects(d.rec.Objects, merged) && sameResources(d.rec.Resources, mergedResources) {
 			return d.same(), nil
 		}
 		return Change{}, Fail(ErrConflict, nil, "the deployment already settled with a different outcome")
@@ -433,10 +520,15 @@ func (d *Deployment) Settle(s Settlement, now time.Time) (Change, error) {
 				return Change{}, invalidf("every intended object must be observed ready with its UID")
 			}
 		}
-	} else if d.rec.Status == StatusPending && len(s.Objects) != 0 {
-		return Change{}, invalidf("a deployment that never applied has no observed objects")
+		for _, r := range mergedResources {
+			if !r.Ready || r.ID == "" {
+				return Change{}, invalidf("every intended resource must be observed ready")
+			}
+		}
+	} else if d.rec.Status == StatusPending && (len(s.Objects) != 0 || len(s.Resources) != 0) {
+		return Change{}, invalidf("a deployment that never applied has no observed state")
 	}
-	d.rec.Objects = merged
+	d.rec.Objects, d.rec.Resources = merged, mergedResources
 	return d.move(to, reason, now), nil
 }
 
@@ -444,6 +536,14 @@ func (d *Deployment) intendedKeys() []string {
 	out := make([]string, 0, len(d.rec.Objects))
 	for _, o := range d.rec.Objects {
 		out = append(out, o.key())
+	}
+	return out
+}
+
+func (d *Deployment) intendedResourceKeys() []string {
+	out := make([]string, 0, len(d.rec.Resources))
+	for _, r := range d.rec.Resources {
+		out = append(out, r.key())
 	}
 	return out
 }
@@ -463,6 +563,21 @@ func (d *Deployment) merge(observed []ObjectRef) []ObjectRef {
 		out = append(out, o)
 	}
 	return sortedObjects(out)
+}
+
+func (d *Deployment) mergeResources(observed []ResourceRef) []ResourceRef {
+	by := map[string]ResourceRef{}
+	for _, r := range d.rec.Resources {
+		by[r.key()] = r
+	}
+	for _, r := range observed {
+		by[r.key()] = r
+	}
+	out := make([]ResourceRef, 0, len(by))
+	for _, r := range by {
+		out = append(out, r)
+	}
+	return sortedResources(out)
 }
 
 // RequestCleanup records the request for a cleanup of the owned objects. A
@@ -491,6 +606,8 @@ type CleanupResult struct {
 	Reason string
 	// Deleted lists the owned objects confirmed absent.
 	Deleted []ObjectRef
+	// DeletedResources lists the owned provider-neutral resources confirmed absent.
+	DeletedResources []ResourceRef
 }
 
 // RecordCleanup applies a cleanup report. Deleting sets deleted_at without
@@ -504,6 +621,9 @@ func (d *Deployment) RecordCleanup(r CleanupResult, now time.Time) (bool, error)
 	if err := checkObjects(d.rec.Namespace, r.Deleted); err != nil {
 		return false, err
 	}
+	if err := checkResources(r.DeletedResources); err != nil {
+		return false, err
+	}
 	owned := map[string]ObjectRef{}
 	for _, o := range d.rec.Objects {
 		owned[o.key()] = o
@@ -514,13 +634,23 @@ func (d *Deployment) RecordCleanup(r CleanupResult, now time.Time) (bool, error)
 			return false, Fail(ErrDenied, nil, "a reported object is not owned by this deployment")
 		}
 	}
+	ownedResources := map[string]ResourceRef{}
+	for _, r := range d.rec.Resources {
+		ownedResources[r.key()] = r
+	}
+	for _, got := range r.DeletedResources {
+		rec, ok := ownedResources[got.key()]
+		if !ok || (rec.Version != "" && got.Version != "" && rec.Version != got.Version) {
+			return false, Fail(ErrDenied, nil, "a reported resource is not owned by this deployment")
+		}
+	}
 	switch r.State {
 	case CleanupDone:
 		if d.rec.DeletedAt != nil {
 			return false, nil
 		}
-		if len(r.Deleted) != len(owned) {
-			return false, invalidf("a completed cleanup lists every owned object")
+		if len(r.Deleted) != len(owned) || len(r.DeletedResources) != len(ownedResources) {
+			return false, invalidf("a completed cleanup lists every owned object and resource")
 		}
 		t := now.UTC()
 		d.rec.DeletedAt, d.rec.CleanupState, d.rec.CleanupReason = &t, CleanupDone, ""

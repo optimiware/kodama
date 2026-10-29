@@ -89,18 +89,20 @@ func (r *TxDeliveryReader) Authorize(ctx context.Context, actor delivery.Actor, 
 	return r.access.Authorize(ctx, actor, scope, perm)
 }
 
-const txSnapshotColumns = `tenant_id, project_id, environment_id, digest, kind, target, namespace, config, preview_ttl_seconds, kubeconfig, secrets, created_at`
+const txSnapshotColumns = `tenant_id, project_id, environment_id, digest, kind, target, namespace, config, preview_ttl_seconds, kubeconfig, secrets,
+target_profile, target_profile_digest, target_provider, target_artifact_kinds, target_egress, target_config, created_at`
 
 // Snapshot implements TxDelivery.
 func (r *TxDeliveryReader) Snapshot(ctx context.Context, scope domain.Scope, env domain.EnvironmentID, digest runtimev1.Digest) (delivery.ConfigurationSnapshot, error) {
 	var s delivery.ConfigurationSnapshot
 	var tenant, project, envID, dg, kind string
-	var config, secrets []byte
+	var config, secrets, kinds, egress, targetConfig []byte
 	var ttl int64
 	err := r.q.QueryRow(ctx, `SELECT `+txSnapshotColumns+` FROM environment_snapshots
 WHERE tenant_id = $1 AND project_id = $2 AND environment_id = $3 AND digest = $4`,
 		string(scope.TenantID), string(scope.ProjectID), string(env), string(digest)).
-		Scan(&tenant, &project, &envID, &dg, &kind, &s.Target, &s.Namespace, &config, &ttl, &s.Kubeconfig, &secrets, &s.CreatedAt)
+		Scan(&tenant, &project, &envID, &dg, &kind, &s.Target, &s.Namespace, &config, &ttl, &s.Kubeconfig, &secrets,
+			&s.TargetProfile, &s.TargetProfileDigest, &s.TargetProvider, &kinds, &egress, &targetConfig, &s.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return delivery.ConfigurationSnapshot{}, delivery.Fail(delivery.ErrNotFound, err, "not found")
 	}
@@ -116,26 +118,35 @@ WHERE tenant_id = $1 AND project_id = $2 AND environment_id = $3 AND digest = $4
 	if err := json.Unmarshal(secrets, &s.Secrets); err != nil {
 		return delivery.ConfigurationSnapshot{}, err
 	}
+	if err := json.Unmarshal(kinds, &s.TargetArtifactKinds); err != nil {
+		return delivery.ConfigurationSnapshot{}, err
+	}
+	if err := json.Unmarshal(egress, &s.TargetEgress); err != nil {
+		return delivery.ConfigurationSnapshot{}, err
+	}
+	if err := json.Unmarshal(targetConfig, &s.TargetConfig); err != nil {
+		return delivery.ConfigurationSnapshot{}, err
+	}
 	return s, s.Validate()
 }
 
 const txDeploymentColumns = `tenant_id, project_id, id, environment_id, config_digest, namespace, source_repository_url, source_commit,
-image_artifact_id, image_digest, producer_attempt_id, producer_run_id, producer_step_id, tool_image, run_id, step_id, action_key, attempt_id,
-request_fingerprint, status, reason, objects, expires_at, cleanup_requested_at, cleanup_state, cleanup_reason, deleted_at, version, created_at, updated_at`
+image_artifact_id, image_digest, artifact_kind, artifact_media_type, producer_attempt_id, producer_run_id, producer_step_id, tool_image, run_id, step_id, action_key, attempt_id,
+request_fingerprint, status, reason, objects, resources, expires_at, cleanup_requested_at, cleanup_state, cleanup_reason, deleted_at, version, created_at, updated_at`
 
 // Deployment implements TxDelivery. The row is read in the admission
 // transaction, so a cleanup that was requested or completed before the
 // admission's snapshot is seen.
 func (r *TxDeliveryReader) Deployment(ctx context.Context, scope domain.Scope, id delivery.DeploymentID) (delivery.Deployment, error) {
 	var rec delivery.DeploymentRecord
-	var tenant, project, did, env, digest, imageArtifact, imageDigest, prodAttempt, prodRun, run, attempt, fp, status, cleanup string
-	var objects []byte
+	var tenant, project, did, env, digest, imageArtifact, imageDigest, artifactKind, artifactMediaType, prodAttempt, prodRun, run, attempt, fp, status, cleanup string
+	var objects, resources []byte
 	var version int64
 	err := r.q.QueryRow(ctx, `SELECT `+txDeploymentColumns+` FROM deployments WHERE tenant_id = $1 AND project_id = $2 AND id = $3`,
 		string(scope.TenantID), string(scope.ProjectID), string(id)).
 		Scan(&tenant, &project, &did, &env, &digest, &rec.Namespace, &rec.Source.RepositoryURL, &rec.Source.Commit,
-			&imageArtifact, &imageDigest, &prodAttempt, &prodRun, &rec.Producer.Step, &rec.Producer.ToolImage, &run, &rec.Step, &rec.ActionKey, &attempt,
-			&fp, &status, &rec.Reason, &objects, &rec.ExpiresAt, &rec.CleanupRequestedAt, &cleanup, &rec.CleanupReason, &rec.DeletedAt, &version, &rec.CreatedAt, &rec.UpdatedAt)
+			&imageArtifact, &imageDigest, &artifactKind, &artifactMediaType, &prodAttempt, &prodRun, &rec.Producer.Step, &rec.Producer.ToolImage, &run, &rec.Step, &rec.ActionKey, &attempt,
+			&fp, &status, &rec.Reason, &objects, &resources, &rec.ExpiresAt, &rec.CleanupRequestedAt, &cleanup, &rec.CleanupReason, &rec.DeletedAt, &version, &rec.CreatedAt, &rec.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return delivery.Deployment{}, delivery.Fail(delivery.ErrNotFound, err, "not found")
 	}
@@ -145,12 +156,17 @@ func (r *TxDeliveryReader) Deployment(ctx context.Context, scope domain.Scope, i
 	rec.Scope = domain.Scope{TenantID: domain.TenantID(tenant), ProjectID: domain.ProjectID(project)}
 	rec.ID, rec.Environment, rec.ConfigDigest = delivery.DeploymentID(did), domain.EnvironmentID(env), runtimev1.Digest(digest)
 	rec.Image = delivery.Image{ArtifactID: domain.ArtifactID(imageArtifact), Digest: runtimev1.Digest(imageDigest)}
+	rec.Artifact = delivery.DeployableArtifact{Kind: delivery.ArtifactKind(artifactKind), ArtifactID: domain.ArtifactID(imageArtifact),
+		Digest: runtimev1.Digest(imageDigest), MediaType: artifactMediaType}
 	rec.Producer.Attempt, rec.Producer.Run = domain.AttemptID(prodAttempt), domain.RunID(prodRun)
 	rec.Run, rec.Attempt, rec.Fingerprint = domain.RunID(run), domain.AttemptID(attempt), runtimev1.Digest(fp)
 	rec.Status, rec.CleanupState, rec.Version = delivery.Status(status), delivery.CleanupState(cleanup), domain.Version(version)
 	rec.CreatedAt, rec.UpdatedAt = rec.CreatedAt.UTC(), rec.UpdatedAt.UTC()
 	rec.ExpiresAt, rec.CleanupRequestedAt, rec.DeletedAt = utcPtr(rec.ExpiresAt), utcPtr(rec.CleanupRequestedAt), utcPtr(rec.DeletedAt)
 	if err := json.Unmarshal(objects, &rec.Objects); err != nil {
+		return delivery.Deployment{}, err
+	}
+	if err := json.Unmarshal(resources, &rec.Resources); err != nil {
 		return delivery.Deployment{}, err
 	}
 	if rec.Scope != scope || rec.ID != id {

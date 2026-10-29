@@ -34,36 +34,73 @@ func updateRequest(scope client.Scope, id string, v domain.Version, body map[str
 	return client.Request{Method: http.MethodPatch, Scope: scope, Path: []string{"environments", id}, IfVersion: v, Body: body}
 }
 
+func addOptionalTarget(set map[string]bool, body map[string]any, s settings) error {
+	if set["target-profile"] {
+		profile, err := requireText(set, "target-profile", *s.targetProfile)
+		if err != nil {
+			return err
+		}
+		body["targetProfile"] = profile
+	}
+	if set["target-config"] {
+		cfg := map[string]any{}
+		for _, pair := range *s.targetConfigs {
+			k, v, ok := strings.Cut(pair, "=")
+			if !ok || strings.TrimSpace(k) == "" {
+				return root.Usagef("--target-config expects KEY=VALUE")
+			}
+			cfg[k] = v
+		}
+		body["targetConfig"] = cfg
+	}
+	return nil
+}
+
 func createBody(set map[string]bool, name, kind string, s settings) (map[string]any, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, root.Usagef("the environment name must not be empty")
 	}
 	if !set["kind"] {
-		return nil, root.Usagef("--kind is required: preview or stage")
+		return nil, root.Usagef("--kind is required: preview, stage or production")
 	}
-	if kind != "preview" && kind != "stage" {
-		return nil, root.Usagef("--kind must be preview or stage")
+	if kind != "preview" && kind != "stage" && kind != "production" {
+		return nil, root.Usagef("--kind must be preview, stage or production")
 	}
-	target, err := requireText(set, "target", *s.target)
-	if err != nil {
+	body := map[string]any{"name": name, "kind": kind}
+	if set["target-profile"] {
+		profile, err := requireText(set, "target-profile", *s.targetProfile)
+		if err != nil {
+			return nil, err
+		}
+		body["targetProfile"] = profile
+		if len(*s.secrets) == 0 {
+			return nil, root.Usagef("a profile environment needs at least one --secret credential")
+		}
+	} else {
+		target, err := requireText(set, "target", *s.target)
+		if err != nil {
+			return nil, err
+		}
+		namespace, err := requireText(set, "namespace", *s.namespace)
+		if err != nil {
+			return nil, err
+		}
+		if !set["kubeconfig"] {
+			return nil, root.Usagef("--kubeconfig is required for a legacy Kubernetes environment: NAME=secret://project/REF@file|env")
+		}
+		kc, err := parseBinding("kubeconfig", *s.kubeconfig)
+		if err != nil {
+			return nil, err
+		}
+		body["target"], body["namespace"], body["kubeconfig"] = target, namespace, kc
+	}
+	if err := addOptionalTarget(set, body, s); err != nil {
 		return nil, err
 	}
-	namespace, err := requireText(set, "namespace", *s.namespace)
-	if err != nil {
-		return nil, err
-	}
-	if !set["kubeconfig"] {
-		return nil, root.Usagef("--kubeconfig is required: NAME=secret://project/REF@file|env")
-	}
-	kc, err := parseBinding("kubeconfig", *s.kubeconfig)
-	if err != nil {
-		return nil, err
-	}
-	body := map[string]any{"name": name, "kind": kind, "target": target, "namespace": namespace, "kubeconfig": kc}
 	if err := addOptional(set, body, s); err != nil {
 		return nil, err
 	}
-	if kind == "stage" && set["preview-ttl-seconds"] {
+	if (kind == "stage" || kind == "production") && set["preview-ttl-seconds"] {
 		return nil, root.Usagef("--preview-ttl-seconds applies to a preview environment only; a stage environment has no expiry")
 	}
 	return body, nil
@@ -91,6 +128,9 @@ func editBody(set map[string]bool, s settings) (map[string]any, error) {
 			return nil, err
 		}
 		body["kubeconfig"] = kc
+	}
+	if err := addOptionalTarget(set, body, s); err != nil {
+		return nil, err
 	}
 	if set["clear-secrets"] && *s.clearSecrets && set["secret"] {
 		return nil, root.Usagef("--clear-secrets and --secret conflict: name the complete list or clear it")

@@ -88,8 +88,21 @@ func snapshotRow(t *testing.T, s delivery.ConfigurationSnapshot) fakeRow {
 	if err != nil {
 		t.Fatal(err)
 	}
+	kinds, err := json.Marshal(s.TargetArtifactKinds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	egress, err := json.Marshal(s.TargetEgress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetConfig, err := json.Marshal(s.TargetConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return fakeRow{values: []any{string(s.Scope.TenantID), string(s.Scope.ProjectID), string(s.Environment), string(s.Digest), string(s.Kind),
-		s.Target, s.Namespace, config, int64(s.PreviewTTL / time.Second), s.Kubeconfig, secrets, s.CreatedAt}}
+		s.Target, s.Namespace, config, int64(s.PreviewTTL / time.Second), s.Kubeconfig, secrets,
+		s.TargetProfile, s.TargetProfileDigest, s.TargetProvider, kinds, egress, targetConfig, s.CreatedAt}}
 }
 
 func deploymentRow(t *testing.T, d delivery.Deployment) fakeRow {
@@ -99,10 +112,15 @@ func deploymentRow(t *testing.T, d delivery.Deployment) fakeRow {
 	if err != nil {
 		t.Fatal(err)
 	}
+	resources, err := json.Marshal(r.Resources)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return fakeRow{values: []any{string(r.Scope.TenantID), string(r.Scope.ProjectID), string(r.ID), string(r.Environment), string(r.ConfigDigest), r.Namespace,
-		r.Source.RepositoryURL, r.Source.Commit, string(r.Image.ArtifactID), string(r.Image.Digest), string(r.Producer.Attempt), string(r.Producer.Run),
-		r.Producer.Step, r.Producer.ToolImage, string(r.Run), r.Step, r.ActionKey, string(r.Attempt), string(r.Fingerprint), string(r.Status), r.Reason,
-		objects, r.ExpiresAt, r.CleanupRequestedAt, string(r.CleanupState), r.CleanupReason, r.DeletedAt, int64(r.Version), r.CreatedAt, r.UpdatedAt}}
+		r.Source.RepositoryURL, r.Source.Commit, string(r.Image.ArtifactID), string(r.Image.Digest), string(r.Artifact.Kind), r.Artifact.MediaType,
+		string(r.Producer.Attempt), string(r.Producer.Run), r.Producer.Step, r.Producer.ToolImage, string(r.Run), r.Step, r.ActionKey, string(r.Attempt),
+		string(r.Fingerprint), string(r.Status), r.Reason, objects, resources, r.ExpiresAt, r.CleanupRequestedAt, string(r.CleanupState), r.CleanupReason,
+		r.DeletedAt, int64(r.Version), r.CreatedAt, r.UpdatedAt}}
 }
 
 // access is the transaction-bound current-authority check.

@@ -57,9 +57,10 @@ func (s *Service) requestCleanup(ctx context.Context, c Caller, scope domain.Sco
 
 // CleanupReport is a cleanup run's report about the deployment's owned objects.
 type CleanupReport struct {
-	State   CleanupState
-	Reason  string
-	Deleted []ObjectRef
+	State            CleanupState
+	Reason           string
+	Deleted          []ObjectRef
+	DeletedResources []ResourceRef
 }
 
 // checkCleanupBinding proves the caller is a cleanup run admitted for exactly
@@ -112,9 +113,9 @@ func (s *Service) ReportCleanup(ctx context.Context, attempt domain.AttemptID, b
 		if err := s.checkCleanupBinding(call, *d); err != nil {
 			return Transition{}, err
 		}
-		changed, err := d.RecordCleanup(CleanupResult{State: rep.State, Reason: rep.Reason, Deleted: rep.Deleted}, m.Now)
+		changed, err := d.RecordCleanup(CleanupResult{State: rep.State, Reason: rep.Reason, Deleted: rep.Deleted, DeletedResources: rep.DeletedResources}, m.Now)
 		kind := "cleanup_" + string(rep.State)
-		return Transition{Kind: kind, Attempt: call.p.Attempt, Detail: map[string]any{"deleted": len(rep.Deleted)},
+		return Transition{Kind: kind, Attempt: call.p.Attempt, Detail: map[string]any{"deleted": len(rep.Deleted), "deletedResources": len(rep.DeletedResources)},
 			Change: Change{FromStatus: d.Status(), ToStatus: d.Status(), FromReason: d.Reason(), ToReason: d.Reason(), Changed: changed}}, err
 	})
 	if err != nil {

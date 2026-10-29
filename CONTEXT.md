@@ -111,9 +111,11 @@ _Avoid_: Profile, mode.
 
 **Environment**: A named application delivery target with scoped credentials and configuration.
 
-**Deployment**: A record connecting an environment, source, image, configuration, and execution outcome.
+**Deployment**: A record connecting an environment, source, deployable artifact (OCI image or bundle), configuration, external resources, and execution outcome.
 
 **Preview**: A temporary deployment for reviewing a candidate.
+
+**Target profile**: Installation configuration naming a deployment provider, accepted artifact kinds, required credentials, egress profiles, a configuration schema, and a pinned driver. An environment selects one; the profile and its resolved values are pinned at admission.
 
 **AI exploratory QA**: Agent-led application exploration producing evidence and defects.
 

@@ -306,7 +306,8 @@ func (h *Handler) updateEnvironment(w http.ResponseWriter, r *http.Request, c *h
 		h.fail(w, r, err)
 		return
 	}
-	if req.Target == nil && req.Namespace == nil && req.Kubeconfig == nil && req.Secrets == nil && req.Config == nil && req.PreviewTtlSeconds == nil {
+	if req.Target == nil && req.TargetProfile == nil && req.TargetProfileDigest == nil && req.TargetConfig == nil &&
+		req.Namespace == nil && req.Kubeconfig == nil && req.Secrets == nil && req.Config == nil && req.PreviewTtlSeconds == nil {
 		h.fail(w, r, httpapi.BadRequestError("an edit changes at least one member"))
 		return
 	}
@@ -462,7 +463,7 @@ func (h *Handler) createDeployment(w http.ResponseWriter, r *http.Request, c *ht
 		return
 	}
 	ctx := r.Context()
-	plan, err := h.svc.PlanRegistrationForAttempt(ctx, h.caller(c), scope, attempt, registrationRequest(req.Source, req.Image))
+	plan, err := h.svc.PlanRegistrationForAttempt(ctx, h.caller(c), scope, attempt, registrationRequest(req.Source, req.Image, req.Artifact))
 	if err != nil {
 		h.fail(w, r, err)
 		return

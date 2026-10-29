@@ -14,29 +14,33 @@ import (
 )
 
 const deploymentColumns = `tenant_id, project_id, id, environment_id, config_digest, namespace, source_repository_url, source_commit,
-image_artifact_id, image_digest, producer_attempt_id, producer_run_id, producer_step_id, tool_image, run_id, step_id, action_key, attempt_id,
-request_fingerprint, status, reason, objects, expires_at, cleanup_requested_at, cleanup_state, cleanup_reason, deleted_at, version, created_at, updated_at`
+image_artifact_id, image_digest, artifact_kind, artifact_media_type, producer_attempt_id, producer_run_id, producer_step_id, tool_image, run_id, step_id, action_key, attempt_id,
+request_fingerprint, status, reason, objects, resources, expires_at, cleanup_requested_at, cleanup_state, cleanup_reason, deleted_at, version, created_at, updated_at`
 
 func scanDeployment(row pgx.Row) (delivery.Deployment, error) {
 	var rec delivery.DeploymentRecord
-	var tenant, project, id, env, digest, imageArtifact, imageDigest, prodAttempt, prodRun, run, attempt, fp, status, cleanup string
-	var objects []byte
+	var tenant, project, id, env, digest, imageArtifact, imageDigest, artifactKind, artifactMediaType, prodAttempt, prodRun, run, attempt, fp, status, cleanup string
+	var objects, resources []byte
 	var version int64
 	err := row.Scan(&tenant, &project, &id, &env, &digest, &rec.Namespace, &rec.Source.RepositoryURL, &rec.Source.Commit,
-		&imageArtifact, &imageDigest, &prodAttempt, &prodRun, &rec.Producer.Step, &rec.Producer.ToolImage, &run, &rec.Step, &rec.ActionKey, &attempt,
-		&fp, &status, &rec.Reason, &objects, &rec.ExpiresAt, &rec.CleanupRequestedAt, &cleanup, &rec.CleanupReason, &rec.DeletedAt, &version, &rec.CreatedAt, &rec.UpdatedAt)
+		&imageArtifact, &imageDigest, &artifactKind, &artifactMediaType, &prodAttempt, &prodRun, &rec.Producer.Step, &rec.Producer.ToolImage, &run, &rec.Step, &rec.ActionKey, &attempt,
+		&fp, &status, &rec.Reason, &objects, &resources, &rec.ExpiresAt, &rec.CleanupRequestedAt, &cleanup, &rec.CleanupReason, &rec.DeletedAt, &version, &rec.CreatedAt, &rec.UpdatedAt)
 	if err != nil {
 		return delivery.Deployment{}, err
 	}
 	rec.Scope = domain.Scope{TenantID: domain.TenantID(tenant), ProjectID: domain.ProjectID(project)}
 	rec.ID, rec.Environment, rec.ConfigDigest = delivery.DeploymentID(id), domain.EnvironmentID(env), runtimev1.Digest(digest)
 	rec.Image = delivery.Image{ArtifactID: domain.ArtifactID(imageArtifact), Digest: runtimev1.Digest(imageDigest)}
+	rec.Artifact = delivery.DeployableArtifact{Kind: delivery.ArtifactKind(artifactKind), ArtifactID: domain.ArtifactID(imageArtifact), Digest: runtimev1.Digest(imageDigest), MediaType: artifactMediaType}
 	rec.Producer.Attempt, rec.Producer.Run = domain.AttemptID(prodAttempt), domain.RunID(prodRun)
 	rec.Run, rec.Attempt, rec.Fingerprint = domain.RunID(run), domain.AttemptID(attempt), runtimev1.Digest(fp)
 	rec.Status, rec.CleanupState, rec.Version = delivery.Status(status), delivery.CleanupState(cleanup), domain.Version(version)
 	rec.CreatedAt, rec.UpdatedAt = utc(rec.CreatedAt), utc(rec.UpdatedAt)
 	rec.ExpiresAt, rec.CleanupRequestedAt, rec.DeletedAt = timePtr(rec.ExpiresAt), timePtr(rec.CleanupRequestedAt), timePtr(rec.DeletedAt)
 	if err := json.Unmarshal(objects, &rec.Objects); err != nil {
+		return delivery.Deployment{}, err
+	}
+	if err := json.Unmarshal(resources, &rec.Resources); err != nil {
 		return delivery.Deployment{}, err
 	}
 	return delivery.RestoreDeployment(rec)
@@ -47,6 +51,14 @@ func objectsJSON(objs []delivery.ObjectRef) (string, error) {
 		objs = []delivery.ObjectRef{}
 	}
 	b, err := json.Marshal(objs)
+	return string(b), err
+}
+
+func resourcesJSON(res []delivery.ResourceRef) (string, error) {
+	if res == nil {
+		res = []delivery.ResourceRef{}
+	}
+	b, err := json.Marshal(res)
 	return string(b), err
 }
 
@@ -96,13 +108,17 @@ func (s *Store) registerTx(ctx context.Context, tx pgx.Tx, cmd delivery.Register
 	if err != nil {
 		return delivery.RegisterResult{}, err
 	}
+	res, err := resourcesJSON(rec.Resources)
+	if err != nil {
+		return delivery.RegisterResult{}, err
+	}
 	tag, err := tx.Exec(ctx, `INSERT INTO deployments (`+deploymentColumns+`)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23, NULL, '', '', NULL, $24, $25, $26)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24::jsonb, $25::jsonb, $26, NULL, '', '', NULL, $27, $28, $29)
 ON CONFLICT DO NOTHING`,
 		string(rec.Scope.TenantID), string(rec.Scope.ProjectID), string(rec.ID), string(rec.Environment), string(rec.ConfigDigest), rec.Namespace,
-		rec.Source.RepositoryURL, rec.Source.Commit, string(rec.Image.ArtifactID), string(rec.Image.Digest), string(rec.Producer.Attempt),
-		string(rec.Producer.Run), rec.Producer.Step, rec.Producer.ToolImage, string(rec.Run), rec.Step, rec.ActionKey, string(rec.Attempt),
-		string(rec.Fingerprint), string(rec.Status), rec.Reason, objs, rec.ExpiresAt, int64(rec.Version), rec.CreatedAt, rec.UpdatedAt)
+		rec.Source.RepositoryURL, rec.Source.Commit, string(rec.Artifact.ArtifactID), string(rec.Artifact.Digest), string(rec.Artifact.Kind), rec.Artifact.MediaType,
+		string(rec.Producer.Attempt), string(rec.Producer.Run), rec.Producer.Step, rec.Producer.ToolImage, string(rec.Run), rec.Step, rec.ActionKey, string(rec.Attempt),
+		string(rec.Fingerprint), string(rec.Status), rec.Reason, objs, res, rec.ExpiresAt, int64(rec.Version), rec.CreatedAt, rec.UpdatedAt)
 	if err != nil {
 		return delivery.RegisterResult{}, err
 	}
@@ -250,10 +266,14 @@ func (s *Store) Update(ctx context.Context, scope domain.Scope, id delivery.Depl
 		if e != nil {
 			return e
 		}
-		tag, e := tx.Exec(ctx, `UPDATE deployments SET status = $4, reason = $5, objects = $6::jsonb, cleanup_requested_at = $7, cleanup_state = $8,
-cleanup_reason = $9, deleted_at = $10, version = $11, updated_at = $12
-WHERE tenant_id = $1 AND project_id = $2 AND id = $3 AND version = $13`,
-			string(scope.TenantID), string(scope.ProjectID), string(id), string(rec.Status), rec.Reason, objs, rec.CleanupRequestedAt, string(rec.CleanupState),
+		res, e := resourcesJSON(rec.Resources)
+		if e != nil {
+			return e
+		}
+		tag, e := tx.Exec(ctx, `UPDATE deployments SET status = $4, reason = $5, objects = $6::jsonb, resources = $7::jsonb, cleanup_requested_at = $8, cleanup_state = $9,
+cleanup_reason = $10, deleted_at = $11, version = $12, updated_at = $13
+WHERE tenant_id = $1 AND project_id = $2 AND id = $3 AND version = $14`,
+			string(scope.TenantID), string(scope.ProjectID), string(id), string(rec.Status), rec.Reason, objs, res, rec.CleanupRequestedAt, string(rec.CleanupState),
 			rec.CleanupReason, rec.DeletedAt, int64(rec.Version), rec.UpdatedAt, int64(before.Version))
 		if e != nil {
 			return e

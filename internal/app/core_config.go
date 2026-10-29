@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/optimiware/kodama/internal/delivery"
 	"github.com/optimiware/kodama/internal/events"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/kube"
@@ -63,6 +64,9 @@ type CoreConfig struct {
 	// protocol (the tools image's apply and cleanup entrypoints). Empty by
 	// default: no uncertain launch is then resolved from a deployment record.
 	DeliveryTools []ToolQualification
+	// TargetProfiles are the installation's deployment target profiles. Nil (or
+	// the builtin default) enables only the legacy Kubernetes namespace profile.
+	TargetProfiles *delivery.TargetRegistry
 
 	// ModelTools is the installation's model gateway, MCP proxy and wrapper
 	// catalogue statement (T-039). Empty by default: nothing is approved, no
@@ -649,6 +653,14 @@ func LoadCoreConfig(getenv func(string) string, process Config) (CoreConfig, err
 	}
 	c.CursorKey = readKey("KODAMA_CURSOR_KEY_FILE", "cursor-key")
 	c.IdempotencyHashKey = readKey("KODAMA_IDEMPOTENCY_KEY_FILE", "idempotency-hash-key")
+	c.TargetProfiles = delivery.DefaultTargetRegistry()
+	if p := setting("KODAMA_TARGET_PROFILES_FILE", filepath.Join(dir, "target-profiles.yaml")); fileExists(p) {
+		profiles, err := delivery.LoadTargetProfilesFile(p)
+		if err != nil {
+			return CoreConfig{}, err
+		}
+		c.TargetProfiles = profiles
+	}
 	if p := setting("KODAMA_DELIVERY_TOOLS_FILE", filepath.Join(dir, "delivery-tools.json")); fileExists(p) {
 		tools, err := loadDeliveryTools(p)
 		if err != nil {

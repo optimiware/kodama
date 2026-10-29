@@ -1,0 +1,62 @@
+# Installation target profiles.
+#
+# Copy to the secrets directory as target-profiles.yaml (or point
+# KODAMA_TARGET_PROFILES_FILE at it). The file is nonsecret configuration and is
+# read at startup; an invalid document refuses startup. Credentials are project
+# secret references on the environment, never values here.
+#
+# The builtin kubernetes-namespace profile is always available and is omitted
+# here on purpose. An environment with no targetProfile keeps the legacy
+# Kubernetes namespace/kubeconfig shape.
+apiVersion: kodama/v1alpha1
+kind: TargetProfiles
+profiles:
+  - name: cloudflare-worker
+    version: "1"
+    provider: cloudflare
+    description: >-
+      A Cloudflare Worker (OpenNext) deployed by a pinned driver. The target
+      configuration names the account, Worker and route; the driver image owns
+      Wrangler and the provider calls.
+    artifactKinds: [bundle]
+    credentials:
+      - name: CLOUDFLARE_API_TOKEN
+        kind: generic
+        delivery: file
+        required: true
+    egress: [cloudflare-api]
+    driver:
+      mode: image
+      protocol: kodama-deploy/v1
+      # Placeholder: replace with the digest of the qualified Cloudflare driver.
+      image: ghcr.io/optimiware/kodama-deploy-cloudflare@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      commands:
+        register: [/opt/deploy/register]
+        apply: [/opt/deploy/apply]
+        verify: [/opt/deploy/verify]
+        observe: [/opt/deploy/observe]
+        delete: [/opt/deploy/delete]
+    config:
+      accountId:
+        type: string
+        required: true
+        pattern: '^[0-9a-f]{32}$'
+      zoneId:
+        type: string
+        pattern: '^[0-9a-f]{32}$'
+      workerName:
+        type: string
+        required: true
+        pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+      route:
+        type: string
+        required: true
+        maxLength: 512
+      wranglerEnv:
+        type: string
+        pattern: '^[A-Za-z0-9_-]{1,32}$'
+      compatibilityDate:
+        type: string
+        pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      preview:
+        type: boolean

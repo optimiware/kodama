@@ -22,6 +22,9 @@ type Config struct {
 	Store       Store
 	Access      Access
 	Credentials Credentials
+	// Targets are the installation's target profiles. Nil selects the builtin
+	// Kubernetes profile only; an environment naming another profile is refused.
+	Targets *TargetRegistry
 
 	Contexts  PinnedContexts
 	Producers Producers

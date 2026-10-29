@@ -581,8 +581,21 @@ func snapshotValues(t *testing.T, s delivery.ConfigurationSnapshot) depRow {
 	if err != nil {
 		t.Fatal(err)
 	}
+	kinds, err := json.Marshal(s.TargetArtifactKinds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	egress, err := json.Marshal(s.TargetEgress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetConfig, err := json.Marshal(s.TargetConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return depRow{values: []any{string(s.Scope.TenantID), string(s.Scope.ProjectID), string(s.Environment), string(s.Digest), string(s.Kind),
-		s.Target, s.Namespace, config, int64(s.PreviewTTL / time.Second), s.Kubeconfig, secrets, s.CreatedAt}}
+		s.Target, s.Namespace, config, int64(s.PreviewTTL / time.Second), s.Kubeconfig, secrets,
+		s.TargetProfile, s.TargetProfileDigest, s.TargetProvider, kinds, egress, targetConfig, s.CreatedAt}}
 }
 
 // snapshotDelivery is delivery's snapshot resolution over one retained snapshot.

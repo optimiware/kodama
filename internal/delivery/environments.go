@@ -11,15 +11,21 @@ import (
 
 // EnvironmentInput is the definition of a new environment.
 type EnvironmentInput struct {
-	Name       string
-	Kind       EnvironmentKind
-	Target     string
-	Namespace  string
-	Kubeconfig Credential
-	Secrets    []Credential
-	Config     map[string]string
+	Name                string
+	Kind                EnvironmentKind
+	Target              string
+	Namespace           string
+	Kubeconfig          Credential
+	Secrets             []Credential
+	Config              map[string]string
+	TargetProfile       string
+	TargetProfileDigest string
+	TargetProvider      string
+	TargetArtifactKinds []ArtifactKind
+	TargetEgress        []string
+	TargetConfig        map[string]string
 	// PreviewTTL defaults to the installation's preview TTL for a preview
-	// environment and must be nil for a stage environment.
+	// environment and must be nil for a stage or production environment.
 	PreviewTTL *time.Duration
 }
 
@@ -28,8 +34,25 @@ type EnvironmentInput struct {
 // and that the deployment credential is a kubeconfig secret. It returns the
 // current version of each reference.
 func (s *Service) checkCredentials(ctx context.Context, scope domain.Scope, kube Credential, extra []Credential) (map[string]int64, error) {
+	return s.checkCredentialsFor(ctx, scope, nil, kube, extra)
+}
+
+// checkCredentialsFor verifies every binding through the secrets owner. A nil
+// profile is the legacy Kubernetes environment: its sole deployment credential
+// must be a kubeconfig. A profile environment checks the kind its profile names
+// for each binding; a missing required binding is refused before any lookup.
+func (s *Service) checkCredentialsFor(ctx context.Context, scope domain.Scope, profile *TargetProfile, kube Credential, extra []Credential) (map[string]int64, error) {
+	creds := append([]Credential(nil), extra...)
+	if kube.Name != "" || kube.Ref != "" || kube.Delivery != "" {
+		creds = append(creds, kube)
+	}
+	if profile != nil {
+		if missing := profile.MissingCredentials(creds); len(missing) != 0 {
+			return nil, Fail(ErrCredentialUnavailable, nil, "the environment is missing target credentials")
+		}
+	}
 	versions := map[string]int64{}
-	for i, c := range append([]Credential{kube}, extra...) {
+	for _, c := range creds {
 		info, err := s.cfg.Credentials.Current(ctx, scope, c.Ref)
 		if err != nil {
 			if errors.Is(err, ErrCredentialUnavailable) || errors.Is(err, ErrNotFound) {
@@ -40,12 +63,52 @@ func (s *Service) checkCredentials(ctx context.Context, scope domain.Scope, kube
 		if info.Ref != c.Ref || info.Version < 1 || info.Version > domain.MaxSafeInteger {
 			return nil, Fail(ErrCredentialUnavailable, nil, "a credential is not available in this project")
 		}
-		if i == 0 && info.Kind != KindKubeconfig {
-			return nil, Fail(ErrCredentialUnavailable, nil, "the deployment credential must be a kubeconfig secret")
+		want := KindKubeconfig
+		if profile != nil {
+			want = profile.CredentialKind(c.Name)
+		}
+		if want != "" && info.Kind != want {
+			return nil, Fail(ErrCredentialUnavailable, nil, "a credential has the wrong secret kind for this target")
 		}
 		versions[c.Ref] = info.Version
 	}
 	return versions, nil
+}
+
+// resolveTarget validates an environment's target profile and config and
+// returns the pinned values the snapshot and the deployment driver use.
+func hasCredential(in []Credential, c Credential) bool {
+	for _, got := range in {
+		if got == c || (got.Name == c.Name && got.Ref == c.Ref) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) resolveTarget(profileName string, config map[string]string, digest string) (TargetProfile, string, map[string]string, error) {
+	if profileName == "" {
+		if len(config) != 0 || digest != "" {
+			return TargetProfile{}, "", nil, invalidf("target configuration needs a target profile")
+		}
+		return TargetProfile{}, "", nil, nil
+	}
+	registry := s.cfg.Targets
+	if registry == nil {
+		registry = DefaultTargetRegistry()
+	}
+	profile, cfg, err := registry.Resolve(profileName, config)
+	if err != nil {
+		return TargetProfile{}, "", nil, err
+	}
+	want, err := profile.Digest()
+	if err != nil {
+		return TargetProfile{}, "", nil, err
+	}
+	if digest != "" && digest != want {
+		return TargetProfile{}, "", nil, Fail(ErrVersionConflict, nil, "the target profile changed")
+	}
+	return profile, want, cfg, nil
 }
 
 // CreateEnvironment defines a project environment. The deployment credential
@@ -67,19 +130,48 @@ func (s *Service) CreateEnvironment(ctx context.Context, c Caller, scope domain.
 	case in.PreviewTTL != nil:
 		ttl = *in.PreviewTTL
 	}
+	profile, digest, targetConfig, err := s.resolveTarget(in.TargetProfile, in.TargetConfig, in.TargetProfileDigest)
+	if err != nil {
+		return Environment{}, err
+	}
 	id, err := s.cfg.IDs.NewID("env")
 	if err != nil {
 		return Environment{}, err
 	}
-	env, err = NewEnvironment(EnvironmentRecord{
+	rec := EnvironmentRecord{
 		Scope: scope, ID: domain.EnvironmentID(id), Name: in.Name, Kind: in.Kind, Target: in.Target, Namespace: in.Namespace,
 		Kubeconfig: in.Kubeconfig, Secrets: in.Secrets, Config: in.Config, PreviewTTL: ttl,
-	}, m.Now)
+		TargetConfig: targetConfig,
+	}
+	var profilePtr *TargetProfile
+	if profile.Name != "" {
+		profilePtr = &profile
+		creds := append([]Credential(nil), in.Secrets...)
+		if in.Kubeconfig.Name != "" && !hasCredential(creds, in.Kubeconfig) {
+			creds = append(creds, in.Kubeconfig)
+		}
+		if len(creds) == 0 {
+			return Environment{}, invalidf("a profile environment needs at least one credential")
+		}
+		rec.Secrets, rec.Kubeconfig = creds, creds[0]
+		rec.TargetProfile, rec.TargetProfileDigest = profile.Name, digest
+		rec.TargetProvider, rec.TargetArtifactKinds, rec.TargetEgress = profile.Provider, profile.ArtifactKinds, profile.Egress
+		if rec.Target == "" {
+			rec.Target = profile.Name
+		}
+	}
+	env, err = NewEnvironment(rec, m.Now)
 	if err != nil {
 		return Environment{}, err
 	}
-	if _, err := s.checkCredentials(ctx, scope, in.Kubeconfig, in.Secrets); err != nil {
-		return Environment{}, err
+	if profile.Name != "" || in.Kubeconfig.Name != "" || len(in.Secrets) != 0 {
+		legacyKube := in.Kubeconfig
+		if profilePtr != nil {
+			legacyKube = Credential{}
+		}
+		if _, err := s.checkCredentialsFor(ctx, scope, profilePtr, legacyKube, rec.Secrets); err != nil {
+			return Environment{}, err
+		}
 	}
 	if err := s.cfg.Store.CreateEnvironment(ctx, m, env); err != nil {
 		return Environment{}, err
@@ -129,7 +221,8 @@ func (s *Service) UpdateEnvironment(ctx context.Context, c Caller, scope domain.
 	if err != nil {
 		return Environment{}, err
 	}
-	if edit.Kubeconfig != nil || edit.Secrets != nil {
+	targetEdit := edit.TargetProfile != nil || edit.TargetConfig != nil || edit.TargetProfileDigest != nil
+	if targetEdit || edit.Kubeconfig != nil || edit.Secrets != nil {
 		// Only the references changing in this edit need a current lookup; the
 		// store rechecks the merged definition's structure in the write.
 		cur, err := s.cfg.Store.GetEnvironment(ctx, scope, id)
@@ -143,11 +236,66 @@ func (s *Service) UpdateEnvironment(ctx context.Context, c Caller, scope domain.
 		if edit.Secrets != nil {
 			next.Secrets = *edit.Secrets
 		}
-		if err := checkCredentials(next.Kubeconfig, next.Secrets); err != nil {
-			return Environment{}, err
+		var profile *TargetProfile
+		if targetEdit {
+			profileName, targetConfig, targetDigest := next.TargetProfile, next.TargetConfig, next.TargetProfileDigest
+			if edit.TargetProfile != nil {
+				profileName = *edit.TargetProfile
+			}
+			if edit.TargetConfig != nil {
+				targetConfig = *edit.TargetConfig
+			}
+			if edit.TargetProfileDigest != nil {
+				targetDigest = *edit.TargetProfileDigest
+			}
+			resolved, digest, cfg, err := s.resolveTarget(profileName, targetConfig, targetDigest)
+			if err != nil {
+				return Environment{}, err
+			}
+			if resolved.Name == "" {
+				empty := ""
+				edit.TargetProfile, edit.TargetProfileDigest, edit.TargetProvider = &empty, &empty, &empty
+				noKinds, noEgress := []ArtifactKind{}, []string{}
+				edit.TargetArtifactKinds, edit.TargetEgress = &noKinds, &noEgress
+				edit.TargetConfig = &map[string]string{}
+				next.TargetProfile, next.TargetProfileDigest, next.TargetProvider = "", "", ""
+				next.TargetArtifactKinds, next.TargetEgress, next.TargetConfig = nil, nil, nil
+			} else {
+				profile = &resolved
+				edit.TargetProfile, edit.TargetProfileDigest = &resolved.Name, &digest
+				edit.TargetProvider = &resolved.Provider
+				edit.TargetArtifactKinds = &resolved.ArtifactKinds
+				edit.TargetEgress = &resolved.Egress
+				edit.TargetConfig = &cfg
+				next.TargetProfile, next.TargetProfileDigest, next.TargetProvider = resolved.Name, digest, resolved.Provider
+				next.TargetArtifactKinds, next.TargetEgress, next.TargetConfig = resolved.ArtifactKinds, resolved.Egress, cfg
+			}
+		} else if next.TargetProfile != "" {
+			resolved, _, _, err := s.resolveTarget(next.TargetProfile, next.TargetConfig, next.TargetProfileDigest)
+			if err != nil {
+				return Environment{}, err
+			}
+			profile = &resolved
 		}
-		if _, err := s.checkCredentials(ctx, scope, next.Kubeconfig, next.Secrets); err != nil {
-			return Environment{}, err
+		if next.TargetProfile != "" {
+			if len(next.Secrets) == 0 {
+				return Environment{}, invalidf("a profile environment needs at least one credential")
+			}
+			next.Kubeconfig = next.Secrets[0]
+			edit.Kubeconfig = &next.Kubeconfig
+			if err := checkCredentials(Credential{}, next.Secrets); err != nil {
+				return Environment{}, err
+			}
+			if _, err := s.checkCredentialsFor(ctx, scope, profile, Credential{}, next.Secrets); err != nil {
+				return Environment{}, err
+			}
+		} else {
+			if err := checkCredentials(next.Kubeconfig, next.Secrets); err != nil {
+				return Environment{}, err
+			}
+			if _, err := s.checkCredentialsFor(ctx, scope, nil, next.Kubeconfig, next.Secrets); err != nil {
+				return Environment{}, err
+			}
 		}
 	}
 	return s.cfg.Store.UpdateEnvironment(ctx, m, scope, id, expected, edit)
@@ -172,7 +320,19 @@ func (s *Service) ResolveSnapshot(ctx context.Context, scope domain.Scope, actor
 		return ConfigurationSnapshot{}, err
 	}
 	rec := env.Record()
-	versions, err := s.checkCredentials(ctx, scope, rec.Kubeconfig, rec.Secrets)
+	var profile *TargetProfile
+	if rec.TargetProfile != "" {
+		resolved, _, _, err := s.resolveTarget(rec.TargetProfile, rec.TargetConfig, rec.TargetProfileDigest)
+		if err != nil {
+			return ConfigurationSnapshot{}, err
+		}
+		profile = &resolved
+	}
+	legacyKube := rec.Kubeconfig
+	if profile != nil {
+		legacyKube = Credential{}
+	}
+	versions, err := s.checkCredentialsFor(ctx, scope, profile, legacyKube, rec.Secrets)
 	if err != nil {
 		return ConfigurationSnapshot{}, err
 	}

@@ -47,3 +47,11 @@ const (
 	WorkspaceStateAvailable    = Available
 	WorkspaceStateProvisioning = Provisioning
 )
+
+// Artifact roles, before the delivery target fragment's bundle kind shared the
+// "bundle" value and forced the ArtifactRole constants to be prefixed.
+const (
+	Bundle     = ArtifactRoleBundle
+	Diagnostic = ArtifactRoleDiagnostic
+	Output     = ArtifactRoleOutput
+)

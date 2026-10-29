@@ -95,27 +95,32 @@ func bindGet(fs *flag.FlagSet) root.RunFunc {
 
 // settings are the definition flags shared by create and update.
 type settings struct {
-	target       *string
-	namespace    *string
-	kubeconfig   *string
-	secrets      *stringList
-	configs      *stringList
-	ttl          *string
-	clearSecrets *bool
-	clearConfig  *bool
+	target        *string
+	namespace     *string
+	kubeconfig    *string
+	secrets       *stringList
+	configs       *stringList
+	ttl           *string
+	targetProfile *string
+	targetConfigs *stringList
+	clearSecrets  *bool
+	clearConfig   *bool
 }
 
 func bindSettings(fs *flag.FlagSet, update bool) settings {
 	s := settings{
-		target:     fs.String("target", "", "label of the cluster or target"),
-		namespace:  fs.String("namespace", "", "the single Kubernetes namespace a deployment may touch"),
-		kubeconfig: fs.String("kubeconfig", "", "kubeconfig credential binding NAME=secret://project/REF@file|env (a reference, never a value)"),
-		secrets:    &stringList{},
-		configs:    &stringList{},
-		ttl:        fs.String("preview-ttl-seconds", "", "preview environments only: seconds before a preview expires"),
+		target:        fs.String("target", "", "label of the cluster or target"),
+		namespace:     fs.String("namespace", "", "the single Kubernetes namespace a deployment may touch"),
+		kubeconfig:    fs.String("kubeconfig", "", "kubeconfig credential binding NAME=secret://project/REF@file|env (a reference, never a value)"),
+		secrets:       &stringList{},
+		configs:       &stringList{},
+		ttl:           fs.String("preview-ttl-seconds", "", "preview environments only: seconds before a preview expires"),
+		targetProfile: fs.String("target-profile", "", "installation target profile (for example cloudflare-worker); omit for a legacy Kubernetes environment"),
+		targetConfigs: &stringList{},
 	}
 	fs.Var(s.secrets, "secret", "script credential binding NAME=secret://project/REF@file|env (repeatable; references only)")
 	fs.Var(s.configs, "config", "explicit nonsecret configuration KEY=VALUE (repeatable)")
+	fs.Var(s.targetConfigs, "target-config", "target profile configuration KEY=VALUE (repeatable; validated by the profile)")
 	if update {
 		s.clearSecrets = fs.Bool("clear-secrets", false, "remove every script credential binding")
 		s.clearConfig = fs.Bool("clear-config", false, "remove every configuration entry")
@@ -124,7 +129,7 @@ func bindSettings(fs *flag.FlagSet, update bool) settings {
 }
 
 func bindCreate(fs *flag.FlagSet) root.RunFunc {
-	kind := fs.String("kind", "", "preview or stage (required)")
+	kind := fs.String("kind", "", "preview, stage or production (required)")
 	s := bindSettings(fs, false)
 	return func(ctx context.Context, inv *root.Invocation, args []string) (root.Result, error) {
 		name, err := oneArg(args, "the environment name")

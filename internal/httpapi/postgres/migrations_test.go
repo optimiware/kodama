@@ -35,11 +35,12 @@ func Test_idempotency_tenant_isolation(t *testing.T) {
 
 	t.Run("migration reapplication is safe", func(t *testing.T) {
 		res, err := storage.Migrate(ctx, e.mig, manifest(t), storage.MigrateOptions{RuntimeRole: e.db.RuntimeRole})
-		if err != nil || len(res.Applied) != 0 || res.Skipped != 2 {
+		want := len(manifest(t).Migrations())
+		if err != nil || len(res.Applied) != 0 || res.Skipped != want {
 			t.Fatalf("reapply: %+v, %v", res, err)
 		}
-		if n := e.count(t, `SELECT count(*) FROM schema_migrations`); n != 2 {
-			t.Fatalf("recorded %d migrations, want the baseline's two", n)
+		if n := e.count(t, `SELECT count(*) FROM schema_migrations`); n != want {
+			t.Fatalf("recorded %d migrations, want %d", n, want)
 		}
 	})
 

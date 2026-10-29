@@ -49,9 +49,9 @@ const (
 
 // Defines values for ArtifactRole.
 const (
-	Bundle     ArtifactRole = "bundle"
-	Diagnostic ArtifactRole = "diagnostic"
-	Output     ArtifactRole = "output"
+	ArtifactRoleBundle     ArtifactRole = "bundle"
+	ArtifactRoleDiagnostic ArtifactRole = "diagnostic"
+	ArtifactRoleOutput     ArtifactRole = "output"
 )
 
 // Defines values for ArtifactState.
@@ -135,6 +135,12 @@ const (
 	DecisionDecisionReject  DecisionDecision = "reject"
 )
 
+// Defines values for DeliveryArtifactKind.
+const (
+	DeliveryArtifactKindBundle   DeliveryArtifactKind = "bundle"
+	DeliveryArtifactKindOciImage DeliveryArtifactKind = "ociImage"
+)
+
 // Defines values for DeliveryState.
 const (
 	DeliveryStateClaimed   DeliveryState = "claimed"
@@ -161,8 +167,9 @@ const (
 
 // Defines values for EnvironmentKind.
 const (
-	Preview EnvironmentKind = "preview"
-	Stage   EnvironmentKind = "stage"
+	Preview    EnvironmentKind = "preview"
+	Production EnvironmentKind = "production"
+	Stage      EnvironmentKind = "stage"
 )
 
 // Defines values for EvidenceRefType.
@@ -717,6 +724,9 @@ type CleanupReport struct {
 	// Deleted Owned objects confirmed absent. `done` lists every owned object.
 	Deleted *[]ObjectRef `json:"deleted,omitempty"`
 
+	// DeletedResources Owned provider-neutral resources confirmed absent.
+	DeletedResources *[]ResourceRef `json:"deletedResources,omitempty"`
+
 	// Reason Required for `failed` and `unknown`.
 	Reason *string            `json:"reason,omitempty"`
 	State  CleanupReportState `json:"state"`
@@ -930,6 +940,20 @@ type Delivery struct {
 	Version Version `json:"version"`
 }
 
+// DeliveryArtifact defines model for DeliveryArtifact.
+type DeliveryArtifact struct {
+	// ArtifactId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	ArtifactId ID     `json:"artifactId"`
+	Digest     Digest `json:"digest"`
+
+	// Kind The deployable artifact shape a target accepts.
+	Kind      DeliveryArtifactKind `json:"kind"`
+	MediaType *string              `json:"mediaType,omitempty"`
+}
+
+// DeliveryArtifactKind The deployable artifact shape a target accepts.
+type DeliveryArtifactKind string
+
 // DeliveryDetail A Delivery with its destination label and complete attempt history.
 type DeliveryDetail struct {
 	// AttemptHistory Complete attempt history, never truncated. The bound is the persisted lifetime attempt limit (the database constrains an attempt number to 1..100000).
@@ -1024,7 +1048,8 @@ type DependencyPage struct {
 
 // Deployment defines model for Deployment.
 type Deployment struct {
-	ActionKey ActionKey `json:"actionKey"`
+	ActionKey ActionKey         `json:"actionKey"`
+	Artifact  *DeliveryArtifact `json:"artifact,omitempty"`
 
 	// AttemptId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	AttemptId           ID         `json:"attemptId"`
@@ -1050,7 +1075,8 @@ type Deployment struct {
 	Producer Producer `json:"producer"`
 
 	// Reason registered, applying, outcome_unknown, ready or the failure's reason code.
-	Reason string `json:"reason"`
+	Reason    string         `json:"reason"`
+	Resources *[]ResourceRef `json:"resources,omitempty"`
 
 	// RunId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	RunId     ID               `json:"runId"`
@@ -1065,6 +1091,8 @@ type Deployment struct {
 
 // DeploymentCreate defines model for DeploymentCreate.
 type DeploymentCreate struct {
+	Artifact *DeliveryArtifact `json:"artifact,omitempty"`
+
 	// AttemptId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	AttemptId ID     `json:"attemptId"`
 	Image     Image  `json:"image"`
@@ -1172,16 +1200,28 @@ type Environment struct {
 	Kubeconfig CredentialBinding `json:"kubeconfig"`
 	Name       string            `json:"name"`
 
-	// Namespace The single Kubernetes namespace a deployment may touch.
+	// Namespace The single Kubernetes namespace a deployment may touch
 	Namespace string `json:"namespace"`
 
 	// PreviewTtlSeconds Present for a preview environment only.
 	PreviewTtlSeconds *int                `json:"previewTtlSeconds,omitempty"`
 	Secrets           []CredentialBinding `json:"secrets"`
 
-	// Target A label of the cluster or target.
-	Target    string    `json:"target"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	// Target A label of the cluster
+	Target              string                  `json:"target"`
+	TargetArtifactKinds *[]DeliveryArtifactKind `json:"targetArtifactKinds,omitempty"`
+
+	// TargetConfig Nonsecret target configuration validated by the target profile.
+	TargetConfig *map[string]string `json:"targetConfig,omitempty"`
+	TargetEgress *[]string          `json:"targetEgress,omitempty"`
+
+	// TargetProfile The installation target profile; absent for a legacy Kubernetes environment.
+	TargetProfile       *string `json:"targetProfile,omitempty"`
+	TargetProfileDigest *Digest `json:"targetProfileDigest,omitempty"`
+
+	// TargetProvider The resolved provider of the target profile.
+	TargetProvider *string   `json:"targetProvider,omitempty"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 
 	// Version Resource version; the ETag is this integer in double quotes.
 	Version Version `json:"version"`
@@ -1191,24 +1231,29 @@ type Environment struct {
 type EnvironmentCreate struct {
 	Config     *map[string]string `json:"config,omitempty"`
 	Kind       EnvironmentKind    `json:"kind"`
-	Kubeconfig CredentialBinding  `json:"kubeconfig"`
+	Kubeconfig *CredentialBinding `json:"kubeconfig,omitempty"`
 	Name       string             `json:"name"`
-	Namespace  string             `json:"namespace"`
+	Namespace  *string            `json:"namespace,omitempty"`
 
 	// PreviewTtlSeconds Preview only; defaults to the installation's preview TTL (24 hours unless configured).
 	PreviewTtlSeconds *int                 `json:"previewTtlSeconds,omitempty"`
 	Secrets           *[]CredentialBinding `json:"secrets,omitempty"`
-	Target            string               `json:"target"`
+	Target            *string              `json:"target,omitempty"`
+	TargetConfig      *map[string]string   `json:"targetConfig,omitempty"`
+	TargetProfile     *string              `json:"targetProfile,omitempty"`
 }
 
 // EnvironmentEdit Omitted members are unchanged; name and kind cannot change.
 type EnvironmentEdit struct {
-	Config            *map[string]string   `json:"config,omitempty"`
-	Kubeconfig        *CredentialBinding   `json:"kubeconfig,omitempty"`
-	Namespace         *string              `json:"namespace,omitempty"`
-	PreviewTtlSeconds *int                 `json:"previewTtlSeconds,omitempty"`
-	Secrets           *[]CredentialBinding `json:"secrets,omitempty"`
-	Target            *string              `json:"target,omitempty"`
+	Config              *map[string]string   `json:"config,omitempty"`
+	Kubeconfig          *CredentialBinding   `json:"kubeconfig,omitempty"`
+	Namespace           *string              `json:"namespace,omitempty"`
+	PreviewTtlSeconds   *int                 `json:"previewTtlSeconds,omitempty"`
+	Secrets             *[]CredentialBinding `json:"secrets,omitempty"`
+	Target              *string              `json:"target,omitempty"`
+	TargetConfig        *map[string]string   `json:"targetConfig,omitempty"`
+	TargetProfile       *string              `json:"targetProfile,omitempty"`
+	TargetProfileDigest *Digest              `json:"targetProfileDigest,omitempty"`
 }
 
 // EnvironmentKind defines model for EnvironmentKind.
@@ -1715,8 +1760,11 @@ type OutcomeReport struct {
 	Objects *[]ObjectRef `json:"objects,omitempty"`
 
 	// Reason Required for `failed` and forbidden otherwise.
-	Reason *string            `json:"reason,omitempty"`
-	State  OutcomeReportState `json:"state"`
+	Reason *string `json:"reason,omitempty"`
+
+	// Resources Provider-neutral counterpart of objects for a bundle/profile target: intended identities before apply, observed versions/readiness afterwards.
+	Resources *[]ResourceRef     `json:"resources,omitempty"`
+	State     OutcomeReportState `json:"state"`
 }
 
 // OutcomeReportState defines model for OutcomeReport.State.
@@ -1919,6 +1967,19 @@ type RequiredEvidence struct {
 // RequiredEvidenceRole evidence: named by the gate step; report: the candidate's design conformance report; support: an artifact the report cites for a check.
 type RequiredEvidenceRole string
 
+// ResourceRef defines model for ResourceRef.
+type ResourceRef struct {
+	Etag     *string            `json:"etag,omitempty"`
+	Id       string             `json:"id"`
+	Metadata *map[string]string `json:"metadata,omitempty"`
+	Name     *string            `json:"name,omitempty"`
+	Provider string             `json:"provider"`
+	Ready    *bool              `json:"ready,omitempty"`
+	Type     string             `json:"type"`
+	Url      *string            `json:"url,omitempty"`
+	Version  *string            `json:"version,omitempty"`
+}
+
 // ResyncRequired defines model for ResyncRequired.
 type ResyncRequired struct {
 	Code    ResyncRequiredCode `json:"code"`
@@ -2066,8 +2127,9 @@ type RunsScalar2 = int64
 
 // RuntimeDeploymentRegister defines model for RuntimeDeploymentRegister.
 type RuntimeDeploymentRegister struct {
-	Image  Image  `json:"image"`
-	Source Source `json:"source"`
+	Artifact *DeliveryArtifact `json:"artifact,omitempty"`
+	Image    Image             `json:"image"`
+	Source   Source            `json:"source"`
 }
 
 // Scalar A string (at most 4096 bytes), boolean or integer within +/-(2^53-1).
