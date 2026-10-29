@@ -1,0 +1,884 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/part-of: kodama
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: privileged
+  name: kodama-node-profiles
+---
+apiVersion: v1
+automountServiceAccountToken: false
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/component: node-profiles
+    app.kubernetes.io/name: kodama-node-profiles
+    app.kubernetes.io/part-of: kodama
+  name: kodama-node-profiles
+  namespace: kodama-node-profiles
+---
+apiVersion: v1
+data:
+  install.sh: |
+    #!/bin/sh
+    # Installs the Kodama rootless-build node profiles on the node this Pod runs on and keeps them
+    # applied. Runs as the single container of the kodama-node-profiles DaemonSet (installation
+    # management; never in a tenant namespace). It:
+    #   1. copies the seccomp profile into the kubelet seccomp root atomically, and
+    #   2. loads the AppArmor profile with the HOST's apparmor_parser by entering the host mount
+    #      namespace (nsenter -t 1 -m), feeding the profile on stdin. The profile is never
+    #      written to the host file system and the host's /etc/apparmor.d includes resolve there.
+    # Then it records what it installed (status file + log) and re-checks every CHECK_INTERVAL
+    # seconds, reloading the AppArmor profile if the node lost it (for example after a reboot,
+    # which clears loaded profiles; the DaemonSet Pod is restarted and re-applies it as well).
+    #
+    # MODE=uninstall (the separate uninstall DaemonSet) removes the seccomp file and the status file
+    # and unloads the AppArmor profile instead, then idles so the DaemonSet rollout reports completion.
+    set -eu
+
+    PROFILES_DIR=${PROFILES_DIR:-/profiles}
+    HOST_SECCOMP_DIR=${HOST_SECCOMP_DIR:-/host-seccomp}
+    STATE_DIR=${STATE_DIR:-/run/kodama-node-profiles}
+    CHECK_INTERVAL=${CHECK_INTERVAL:-300}
+    MODE=${MODE:-install}
+    NSENTER=${NSENTER:-nsenter}
+    AA_PROFILES_FILE=${AA_PROFILES_FILE:-/sys/kernel/security/apparmor/profiles}
+    AA_ABI_FILE=${AA_ABI_FILE:-/etc/apparmor.d/abi/4.0}
+    SECCOMP_FILE=kodama-rootless-build-v1.json
+    APPARMOR_FILE=kodama-rootless-build-v1
+    APPARMOR_NAME=kodama-rootless-build-v1
+
+    log() { printf '%s kodama-node-profiles: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+    fail() { log "ERROR: $*"; exit 1; }
+
+    host() { "$NSENTER" -t 1 -m -- "$@"; }
+
+    install_seccomp() {
+      src=$PROFILES_DIR/$SECCOMP_FILE
+      dst=$HOST_SECCOMP_DIR/$SECCOMP_FILE
+      [ -s "$src" ] || fail "missing $src"
+      if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+        return 0
+      fi
+      tmp=$HOST_SECCOMP_DIR/.$SECCOMP_FILE.$$
+      cp "$src" "$tmp"
+      chmod 0644 "$tmp"
+      mv -f "$tmp" "$dst"
+      log "installed seccomp profile kodama/$SECCOMP_FILE sha256=$(sha256sum "$dst" | cut -d' ' -f1)"
+    }
+
+    # apparmor_state prints the kernel's state of the profile: "enforce" (exactly the enforce-mode
+    # entry), "other" (loaded in complain or any other mode) or "absent". It returns nonzero, printing
+    # nothing, when the kernel's profile list cannot be read, so a failed inspection is never mistaken
+    # for absence.
+    apparmor_state() {
+      list=$(host cat "$AA_PROFILES_FILE" 2>/dev/null) || return 1
+      if printf '%s\n' "$list" | grep -qx "$APPARMOR_NAME (enforce)"; then
+        echo enforce
+      elif printf '%s\n' "$list" | grep -q "^$APPARMOR_NAME "; then
+        echo other
+      else
+        echo absent
+      fi
+    }
+
+    load_apparmor() {
+      src=$PROFILES_DIR/$APPARMOR_FILE
+      [ -s "$src" ] || fail "missing $src"
+      host sh -c 'command -v apparmor_parser >/dev/null' || fail "apparmor_parser not found on the host"
+      host test -e "$AA_ABI_FILE" || fail "host has no $AA_ABI_FILE (AppArmor 4.x required)"
+      # -r replace or load, -K skip the cache (same flags containerd uses for its default profile).
+      if ! host apparmor_parser -r -K <"$src"; then
+        fail "apparmor_parser could not load $APPARMOR_NAME"
+      fi
+      state=$(apparmor_state) || fail "cannot inspect the kernel profile list after loading $APPARMOR_NAME"
+      [ "$state" = enforce ] || fail "$APPARMOR_NAME is not loaded in enforce mode after loading (state: $state)"
+      log "loaded apparmor profile $APPARMOR_NAME sha256=$(sha256sum "$src" | cut -d' ' -f1)"
+    }
+
+    write_status() {
+      {
+        printf 'profile=%s\n' "$APPARMOR_NAME"
+        printf 'seccomp=kodama/%s sha256=%s\n' "$SECCOMP_FILE" "$(sha256sum "$HOST_SECCOMP_DIR/$SECCOMP_FILE" | cut -d' ' -f1)"
+        printf 'apparmor=%s sha256=%s\n' "$APPARMOR_NAME" "$(sha256sum "$PROFILES_DIR/$APPARMOR_FILE" | cut -d' ' -f1)"
+        printf 'applied=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      } >"$HOST_SECCOMP_DIR/.installed.$$"
+      mv -f "$HOST_SECCOMP_DIR/.installed.$$" "$HOST_SECCOMP_DIR/INSTALLED"
+    }
+
+    apply() {
+      install_seccomp
+      load_apparmor
+      write_status
+      mkdir -p "$STATE_DIR"
+      : >"$STATE_DIR/ready"
+      log "profiles applied; status in /var/lib/kubelet/seccomp/kodama/INSTALLED"
+    }
+
+    uninstall() {
+      rm -f "$HOST_SECCOMP_DIR/$SECCOMP_FILE" "$HOST_SECCOMP_DIR/INSTALLED"
+      # An unreadable profile list is a failure (the Pod restarts and retries), not proof of absence.
+      state=$(apparmor_state) || fail "cannot inspect the kernel profile list; removal of $APPARMOR_NAME not verified"
+      if [ "$state" != absent ]; then
+        host apparmor_parser -R <"$PROFILES_DIR/$APPARMOR_FILE" || fail "apparmor_parser could not remove $APPARMOR_NAME"
+        state=$(apparmor_state) || fail "cannot inspect the kernel profile list; removal of $APPARMOR_NAME not verified"
+        [ "$state" = absent ] || fail "$APPARMOR_NAME is still loaded (state: $state)"
+      fi
+      mkdir -p "$STATE_DIR"
+      : >"$STATE_DIR/ready"
+      log "profiles removed from this node"
+    }
+
+    # PID 1 ignores signals without a handler; exit promptly on Pod deletion.
+    trap 'log "terminating"; exit 0' TERM INT
+
+    case "$MODE" in
+      install) ;;
+      uninstall)
+        uninstall
+        [ "${RUN_ONCE:-0}" = 1 ] && exit 0
+        while true; do
+          sleep 3600 &
+          wait $! || true
+        done
+        ;;
+      *) fail "unknown MODE $MODE" ;;
+    esac
+
+    apply
+    # RUN_ONCE=1 is a test hook: apply once and exit instead of staying resident.
+    [ "${RUN_ONCE:-0}" = 1 ] && exit 0
+    healthy_interval=$CHECK_INTERVAL
+    checks=0
+    while true; do
+      sleep "$CHECK_INTERVAL" &
+      wait $! || true
+      if state=$(apparmor_state); then
+        if [ "$state" = enforce ]; then
+          install_seccomp
+          # Both profiles verified (seccomp file repaired if it drifted, AppArmor in enforce mode):
+          # restore readiness that a transient inspection failure removed, and the normal interval.
+          cmp -s "$PROFILES_DIR/$SECCOMP_FILE" "$HOST_SECCOMP_DIR/$SECCOMP_FILE" || fail "seccomp profile does not match after installing it"
+          if [ ! -e "$STATE_DIR/ready" ]; then
+            mkdir -p "$STATE_DIR"
+            : >"$STATE_DIR/ready"
+            log "profiles verified again; ready"
+          fi
+          CHECK_INTERVAL=$healthy_interval
+        else
+          # Missing (for example after a reboot) or not in enforce mode (complain): reload.
+          log "apparmor profile $APPARMOR_NAME is $state, not enforce; reloading"
+          rm -f "$STATE_DIR/ready"
+          apply
+        fi
+      else
+        # Health is unknown: report not ready and retry soon rather than assuming either way.
+        log "WARNING: cannot inspect the kernel profile list; will retry"
+        rm -f "$STATE_DIR/ready"
+        CHECK_INTERVAL=10
+      fi
+      # RUN_CHECKS=N is a test hook: exit after N health checks.
+      checks=$((checks + 1))
+      if [ -n "${RUN_CHECKS:-}" ] && [ "$checks" -ge "$RUN_CHECKS" ]; then exit 0; fi
+    done
+  kodama-rootless-build-v1: |
+    # kodama-rootless-build-v1 (profile version 1)
+    #
+    # Derived from the containerd default container profile (template
+    # contrib/apparmor/template.go at containerd v2.3.6, the version the stage nodes run).
+    # Deviations from that template, each deliberate:
+    #   * abi <abi/4.0>   (the template uses abi/3.0, which has no `userns` class).
+    #   * userns,         permits creating user namespaces; on Ubuntu 24.04 with
+    #                     kernel.apparmor_restrict_unprivileged_userns=1 this rule is what lets
+    #                     a confined process create one.
+    #   * `deny mount,` replaced by mount/remount/umount/pivot_root rules, which the kernel
+    #     only honours for namespaces the caller owns (nested user namespace); without
+    #     CAP_SYS_ADMIN in a user namespace the process cannot mount anything.
+    #   * unix,           the abi/4.0 `unix` class is mediated separately from `network,`; the
+    #                     template's abi/3.0 does not mediate it, so it is allowed to keep parity.
+    #   * The daemon and rootlesskit signal peers are fixed (`unconfined` is already allowed;
+    #     no rootlesskit on the nodes) because this file is installed verbatim, not templated.
+    # Everything else, including the denials of host /proc, /sys and kcore writes, is unchanged.
+    abi <abi/4.0>,
+
+    #include <tunables/global>
+
+    profile kodama-rootless-build-v1 flags=(attach_disconnected,mediate_deleted) {
+      #include <abstractions/base>
+
+      network,
+      unix,
+      capability,
+      file,
+      userns,
+
+      # Mounts happen only inside the build's own user+mount namespace.
+      mount,
+      remount,
+      umount,
+      pivot_root,
+
+      # Host (privileged) processes may send signals to container processes.
+      signal (receive) peer=unconfined,
+      # runc may send signals to container processes.
+      signal (receive) peer=runc,
+      # crun may send signals to container processes.
+      signal (receive) peer=crun,
+      # Container processes may send signals amongst themselves.
+      signal (send,receive) peer=kodama-rootless-build-v1,
+
+      deny @{PROC}/* w,   # deny write for all files directly in /proc (not in a subdir)
+      # deny write to files not in /proc/<number>/** or /proc/sys/**
+      deny @{PROC}/{[^1-9/],[^1-9/][^0-9/],[^1-9s/][^0-9y/][^0-9s/],[^1-9/][^0-9/][^0-9/][^0-9/]*}/** w,
+      deny @{PROC}/sys/[^k]** w,  # deny /proc/sys except /proc/sys/k* (effectively /proc/sys/kernel)
+      deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,  # deny everything except shm* in /proc/sys/kernel/
+      deny @{PROC}/sysrq-trigger rwklx,
+      deny @{PROC}/kcore rwklx,
+
+      deny /sys/[^f]*/** wklx,
+      deny /sys/f[^s]*/** wklx,
+      deny /sys/fs/[^c]*/** wklx,
+      deny /sys/fs/c[^g]*/** wklx,
+      deny /sys/fs/cg[^r]*/** wklx,
+      deny /sys/firmware/** rwklx,
+      deny /sys/devices/virtual/powercap/** rwklx,
+      deny /sys/kernel/security/** rwklx,
+
+      # allow processes within the container to trace each other,
+      # provided all other LSM and yama setting allow it.
+      ptrace (trace,tracedby,read,readby) peer=kodama-rootless-build-v1,
+    }
+  kodama-rootless-build-v1.json: |
+    {
+      "defaultAction": "SCMP_ACT_ERRNO",
+      "architectures": [
+        "SCMP_ARCH_X86_64",
+        "SCMP_ARCH_X86",
+        "SCMP_ARCH_X32",
+        "SCMP_ARCH_AARCH64",
+        "SCMP_ARCH_ARM"
+      ],
+      "syscalls": [
+        {
+          "names": [
+            "accept",
+            "accept4",
+            "access",
+            "adjtimex",
+            "alarm",
+            "bind",
+            "brk",
+            "cachestat",
+            "capget",
+            "capset",
+            "chdir",
+            "chmod",
+            "chown",
+            "chown32",
+            "clock_adjtime",
+            "clock_adjtime64",
+            "clock_getres",
+            "clock_getres_time64",
+            "clock_gettime",
+            "clock_gettime64",
+            "clock_nanosleep",
+            "clock_nanosleep_time64",
+            "close",
+            "close_range",
+            "connect",
+            "copy_file_range",
+            "creat",
+            "dup",
+            "dup2",
+            "dup3",
+            "epoll_create",
+            "epoll_create1",
+            "epoll_ctl",
+            "epoll_ctl_old",
+            "epoll_pwait",
+            "epoll_pwait2",
+            "epoll_wait",
+            "epoll_wait_old",
+            "eventfd",
+            "eventfd2",
+            "execve",
+            "execveat",
+            "exit",
+            "exit_group",
+            "faccessat",
+            "faccessat2",
+            "fadvise64",
+            "fadvise64_64",
+            "fallocate",
+            "fanotify_mark",
+            "fchdir",
+            "fchmod",
+            "fchmodat",
+            "fchmodat2",
+            "fchown",
+            "fchown32",
+            "fchownat",
+            "fcntl",
+            "fcntl64",
+            "fdatasync",
+            "fgetxattr",
+            "flistxattr",
+            "flock",
+            "fork",
+            "fremovexattr",
+            "fsetxattr",
+            "fstat",
+            "fstat64",
+            "fstatat64",
+            "fstatfs",
+            "fstatfs64",
+            "fsync",
+            "ftruncate",
+            "ftruncate64",
+            "futex",
+            "futex_requeue",
+            "futex_time64",
+            "futex_wait",
+            "futex_waitv",
+            "futex_wake",
+            "futimesat",
+            "getcpu",
+            "getcwd",
+            "getdents",
+            "getdents64",
+            "getegid",
+            "getegid32",
+            "geteuid",
+            "geteuid32",
+            "getgid",
+            "getgid32",
+            "getgroups",
+            "getgroups32",
+            "getitimer",
+            "getpeername",
+            "getpgid",
+            "getpgrp",
+            "getpid",
+            "getppid",
+            "getpriority",
+            "getrandom",
+            "getresgid",
+            "getresgid32",
+            "getresuid",
+            "getresuid32",
+            "getrlimit",
+            "get_robust_list",
+            "getrusage",
+            "getsid",
+            "getsockname",
+            "getsockopt",
+            "get_thread_area",
+            "gettid",
+            "gettimeofday",
+            "getuid",
+            "getuid32",
+            "getxattr",
+            "getxattrat",
+            "inotify_add_watch",
+            "inotify_init",
+            "inotify_init1",
+            "inotify_rm_watch",
+            "io_cancel",
+            "ioctl",
+            "io_destroy",
+            "io_getevents",
+            "io_pgetevents",
+            "io_pgetevents_time64",
+            "ioprio_get",
+            "ioprio_set",
+            "io_setup",
+            "io_submit",
+            "ipc",
+            "kill",
+            "landlock_add_rule",
+            "landlock_create_ruleset",
+            "landlock_restrict_self",
+            "lchown",
+            "lchown32",
+            "lgetxattr",
+            "link",
+            "linkat",
+            "listen",
+            "listmount",
+            "listxattr",
+            "listxattrat",
+            "llistxattr",
+            "_llseek",
+            "lremovexattr",
+            "lseek",
+            "lsetxattr",
+            "lsm_get_self_attr",
+            "lsm_list_modules",
+            "lsm_set_self_attr",
+            "lstat",
+            "lstat64",
+            "madvise",
+            "membarrier",
+            "memfd_create",
+            "memfd_secret",
+            "mincore",
+            "mkdir",
+            "mkdirat",
+            "mknod",
+            "mknodat",
+            "mlock",
+            "mlock2",
+            "mlockall",
+            "map_shadow_stack",
+            "mmap",
+            "mmap2",
+            "mprotect",
+            "mq_getsetattr",
+            "mq_notify",
+            "mq_open",
+            "mq_timedreceive",
+            "mq_timedreceive_time64",
+            "mq_timedsend",
+            "mq_timedsend_time64",
+            "mq_unlink",
+            "mremap",
+            "mseal",
+            "msgctl",
+            "msgget",
+            "msgrcv",
+            "msgsnd",
+            "msync",
+            "munlock",
+            "munlockall",
+            "munmap",
+            "name_to_handle_at",
+            "nanosleep",
+            "newfstatat",
+            "_newselect",
+            "open",
+            "openat",
+            "openat2",
+            "pause",
+            "pidfd_open",
+            "pidfd_send_signal",
+            "pipe",
+            "pipe2",
+            "pkey_alloc",
+            "pkey_free",
+            "pkey_mprotect",
+            "poll",
+            "ppoll",
+            "ppoll_time64",
+            "prctl",
+            "pread64",
+            "preadv",
+            "preadv2",
+            "prlimit64",
+            "process_mrelease",
+            "pselect6",
+            "pselect6_time64",
+            "pwrite64",
+            "pwritev",
+            "pwritev2",
+            "read",
+            "readahead",
+            "readlink",
+            "readlinkat",
+            "readv",
+            "recv",
+            "recvfrom",
+            "recvmmsg",
+            "recvmmsg_time64",
+            "recvmsg",
+            "remap_file_pages",
+            "removexattr",
+            "removexattrat",
+            "rename",
+            "renameat",
+            "renameat2",
+            "restart_syscall",
+            "rmdir",
+            "rseq",
+            "rt_sigaction",
+            "rt_sigpending",
+            "rt_sigprocmask",
+            "rt_sigqueueinfo",
+            "rt_sigreturn",
+            "rt_sigsuspend",
+            "rt_sigtimedwait",
+            "rt_sigtimedwait_time64",
+            "rt_tgsigqueueinfo",
+            "sched_getaffinity",
+            "sched_getattr",
+            "sched_getparam",
+            "sched_get_priority_max",
+            "sched_get_priority_min",
+            "sched_getscheduler",
+            "sched_rr_get_interval",
+            "sched_rr_get_interval_time64",
+            "sched_setaffinity",
+            "sched_setattr",
+            "sched_setparam",
+            "sched_setscheduler",
+            "sched_yield",
+            "seccomp",
+            "select",
+            "semctl",
+            "semget",
+            "semop",
+            "semtimedop",
+            "semtimedop_time64",
+            "send",
+            "sendfile",
+            "sendfile64",
+            "sendmmsg",
+            "sendmsg",
+            "sendto",
+            "setfsgid",
+            "setfsgid32",
+            "setfsuid",
+            "setfsuid32",
+            "setgid",
+            "setgid32",
+            "setgroups",
+            "setgroups32",
+            "setitimer",
+            "setpgid",
+            "setpriority",
+            "setregid",
+            "setregid32",
+            "setresgid",
+            "setresgid32",
+            "setresuid",
+            "setresuid32",
+            "setreuid",
+            "setreuid32",
+            "setrlimit",
+            "set_robust_list",
+            "setsid",
+            "setsockopt",
+            "set_thread_area",
+            "set_tid_address",
+            "setuid",
+            "setuid32",
+            "setxattr",
+            "setxattrat",
+            "shmat",
+            "shmctl",
+            "shmdt",
+            "shmget",
+            "shutdown",
+            "sigaltstack",
+            "signalfd",
+            "signalfd4",
+            "sigprocmask",
+            "sigreturn",
+            "socketcall",
+            "socketpair",
+            "splice",
+            "stat",
+            "stat64",
+            "statfs",
+            "statfs64",
+            "statmount",
+            "statx",
+            "symlink",
+            "symlinkat",
+            "sync",
+            "sync_file_range",
+            "syncfs",
+            "sysinfo",
+            "tee",
+            "tgkill",
+            "time",
+            "timer_create",
+            "timer_delete",
+            "timer_getoverrun",
+            "timer_gettime",
+            "timer_gettime64",
+            "timer_settime",
+            "timer_settime64",
+            "timerfd_create",
+            "timerfd_gettime",
+            "timerfd_gettime64",
+            "timerfd_settime",
+            "timerfd_settime64",
+            "times",
+            "tkill",
+            "truncate",
+            "truncate64",
+            "ugetrlimit",
+            "umask",
+            "uname",
+            "unlink",
+            "unlinkat",
+            "uretprobe",
+            "utime",
+            "utimensat",
+            "utimensat_time64",
+            "utimes",
+            "vfork",
+            "vmsplice",
+            "wait4",
+            "waitid",
+            "waitpid",
+            "write",
+            "writev"
+          ],
+          "action": "SCMP_ACT_ALLOW"
+        },
+        {
+          "names": [
+            "socket"
+          ],
+          "action": "SCMP_ACT_ALLOW",
+          "args": [
+            {
+              "index": 0,
+              "value": 38,
+              "op": "SCMP_CMP_LT"
+            }
+          ]
+        },
+        {
+          "names": [
+            "socket"
+          ],
+          "action": "SCMP_ACT_ALLOW",
+          "args": [
+            {
+              "index": 0,
+              "value": 39,
+              "op": "SCMP_CMP_EQ"
+            }
+          ]
+        },
+        {
+          "names": [
+            "socket"
+          ],
+          "action": "SCMP_ACT_ALLOW",
+          "args": [
+            {
+              "index": 0,
+              "value": 40,
+              "op": "SCMP_CMP_GT"
+            }
+          ]
+        },
+        {
+          "names": [
+            "personality"
+          ],
+          "action": "SCMP_ACT_ALLOW",
+          "args": [
+            {
+              "index": 0,
+              "value": 0,
+              "op": "SCMP_CMP_EQ"
+            }
+          ]
+        },
+        {
+          "names": [
+            "personality"
+          ],
+          "action": "SCMP_ACT_ALLOW",
+          "args": [
+            {
+              "index": 0,
+              "value": 8,
+              "op": "SCMP_CMP_EQ"
+            }
+          ]
+        },
+        {
+          "names": [
+            "personality"
+          ],
+          "action": "SCMP_ACT_ALLOW",
+          "args": [
+            {
+              "index": 0,
+              "value": 131072,
+              "op": "SCMP_CMP_EQ"
+            }
+          ]
+        },
+        {
+          "names": [
+            "personality"
+          ],
+          "action": "SCMP_ACT_ALLOW",
+          "args": [
+            {
+              "index": 0,
+              "value": 131080,
+              "op": "SCMP_CMP_EQ"
+            }
+          ]
+        },
+        {
+          "names": [
+            "personality"
+          ],
+          "action": "SCMP_ACT_ALLOW",
+          "args": [
+            {
+              "index": 0,
+              "value": 4294967295,
+              "op": "SCMP_CMP_EQ"
+            }
+          ]
+        },
+        {
+          "names": [
+            "process_vm_readv",
+            "process_vm_writev",
+            "ptrace"
+          ],
+          "action": "SCMP_ACT_ALLOW"
+        },
+        {
+          "names": [
+            "arch_prctl",
+            "modify_ldt",
+            "arm_fadvise64_64",
+            "arm_sync_file_range",
+            "sync_file_range2",
+            "breakpoint",
+            "cacheflush",
+            "set_tls"
+          ],
+          "action": "SCMP_ACT_ALLOW"
+        },
+        {
+          "names": [
+            "clone",
+            "clone3",
+            "unshare",
+            "setns",
+            "mount",
+            "umount",
+            "umount2",
+            "pivot_root",
+            "mount_setattr",
+            "open_tree",
+            "move_mount",
+            "fsopen",
+            "fsmount",
+            "fsconfig",
+            "fspick",
+            "keyctl",
+            "chroot",
+            "sethostname",
+            "setdomainname"
+          ],
+          "action": "SCMP_ACT_ALLOW"
+        }
+      ]
+    }
+kind: ConfigMap
+metadata:
+  annotations:
+    kodama.io/profile-version: kodama-rootless-build-v1
+  labels:
+    app.kubernetes.io/component: node-profiles
+    app.kubernetes.io/name: kodama-node-profiles
+    app.kubernetes.io/part-of: kodama
+  name: kodama-node-profiles
+  namespace: kodama-node-profiles
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    kodama.io/profile-version: kodama-rootless-build-v1
+  labels:
+    app.kubernetes.io/component: node-profiles-install
+    app.kubernetes.io/name: kodama-node-profiles
+    app.kubernetes.io/part-of: kodama
+  name: kodama-node-profiles
+  namespace: kodama-node-profiles
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kodama-node-profiles
+  template:
+    metadata:
+      annotations:
+        kodama.io/profiles-sha256: 88e8e041dc42a61f2c64360348b6f21d54852a9304ab4751f0feb4d8d7f5bbdb
+      labels:
+        app.kubernetes.io/name: kodama-node-profiles
+        app.kubernetes.io/part-of: kodama
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - command:
+            - /bin/sh
+            - /scripts/install.sh
+          env:
+            - name: MODE
+              value: install
+          image: docker.io/library/ubuntu@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+          name: installer
+          readinessProbe:
+            exec:
+              command:
+                - test
+                - -f
+                - /run/kodama-node-profiles/ready
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: /profiles
+              name: profiles
+              readOnly: true
+            - mountPath: /scripts
+              name: scripts
+              readOnly: true
+            - mountPath: /host-seccomp
+              name: host-seccomp
+      hostPID: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-node-critical
+      serviceAccountName: kodama-node-profiles
+      terminationGracePeriodSeconds: 10
+      tolerations:
+        - operator: Exists
+      volumes:
+        - configMap:
+            items:
+              - key: kodama-rootless-build-v1.json
+                path: kodama-rootless-build-v1.json
+              - key: kodama-rootless-build-v1
+                path: kodama-rootless-build-v1
+            name: kodama-node-profiles
+          name: profiles
+        - configMap:
+            defaultMode: 365
+            items:
+              - key: install.sh
+                path: install.sh
+            name: kodama-node-profiles
+          name: scripts
+        - hostPath:
+            path: /var/lib/kubelet/seccomp/kodama
+            type: DirectoryOrCreate
+          name: host-seccomp
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 10%
+    type: RollingUpdate

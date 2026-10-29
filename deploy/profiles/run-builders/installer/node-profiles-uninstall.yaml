@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    kodama.io/profile-version: kodama-rootless-build-v1
+  labels:
+    app.kubernetes.io/component: node-profiles-uninstall
+    app.kubernetes.io/name: kodama-node-profiles
+    app.kubernetes.io/part-of: kodama
+  name: kodama-node-profiles-uninstall
+  namespace: kodama-node-profiles
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kodama-node-profiles-uninstall
+  template:
+    metadata:
+      annotations:
+        kodama.io/profiles-sha256: 88e8e041dc42a61f2c64360348b6f21d54852a9304ab4751f0feb4d8d7f5bbdb
+      labels:
+        app.kubernetes.io/name: kodama-node-profiles-uninstall
+        app.kubernetes.io/part-of: kodama
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - command:
+            - /bin/sh
+            - /scripts/install.sh
+          env:
+            - name: MODE
+              value: uninstall
+          image: docker.io/library/ubuntu@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+          name: installer
+          readinessProbe:
+            exec:
+              command:
+                - test
+                - -f
+                - /run/kodama-node-profiles/ready
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: /profiles
+              name: profiles
+              readOnly: true
+            - mountPath: /scripts
+              name: scripts
+              readOnly: true
+            - mountPath: /host-seccomp
+              name: host-seccomp
+      hostPID: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-node-critical
+      serviceAccountName: kodama-node-profiles
+      terminationGracePeriodSeconds: 10
+      tolerations:
+        - operator: Exists
+      volumes:
+        - configMap:
+            items:
+              - key: kodama-rootless-build-v1.json
+                path: kodama-rootless-build-v1.json
+              - key: kodama-rootless-build-v1
+                path: kodama-rootless-build-v1
+            name: kodama-node-profiles
+          name: profiles
+        - configMap:
+            defaultMode: 365
+            items:
+              - key: install.sh
+                path: install.sh
+            name: kodama-node-profiles
+          name: scripts
+        - hostPath:
+            path: /var/lib/kubelet/seccomp/kodama
+            type: DirectoryOrCreate
+          name: host-seccomp
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 10%
+    type: RollingUpdate

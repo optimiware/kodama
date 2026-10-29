@@ -1,7 +1,7 @@
 ---
 id: T-120
 milestone: production
-status: planned
+status: done
 depends_on: [T-111, T-122]
 decision_blockers: []
 owns: [deploy/profiles/run-builders/, docs/operations/run-builder-profile.md]
@@ -28,3 +28,6 @@ Declared check with every named test passing. Installing on stage and the real q
 
 ## Out of scope
 Chart integration (T-116), the qualification run (T-121), BuildKit (T-123).
+
+## Completion evidence
+Implemented on `task/T-120-kubernetes-builder-profile` (`0a4ce3c0`, review repairs `0f1489e1`, `98583caf`). Independent review (`ses_e768fb712ffeGtaq3uzvNoPALI`) approved the first candidate with minor findings, then requested changes on the repair (installer readiness never restored after a transient inspection failure) and approved `98583caf`. Coordinator checks on the final candidate: `make check-go PKGS='./deploy/profiles/run-builders/...'` exit 0, 8/8 tests PASS including the four pinned acceptances; `make docs-check` PASS. Configured, not qualified: nothing was installed on any node; T-121 installs and qualifies on stage. Squashed to one commit; nothing pushed.
