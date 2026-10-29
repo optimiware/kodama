@@ -142,7 +142,7 @@ func gitShim() func() {
 		return func() {}
 	}
 	resolve := filepath.Join(dir, "resolve")
-	script := "#!/bin/sh\nset -- $(sed 's/^/-c http.curloptResolve=/' '" + resolve + "' 2>/dev/null) \"$@\"\nexec '" + real + "' \"$@\"\n"
+	script := "#!/bin/sh\nset -- $(sed 's/^/-c http.curloptResolve=/' " + shQuote(resolve) + " 2>/dev/null) \"$@\"\nexec " + shQuote(real) + " \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
 		os.RemoveAll(dir)
 		return func() {}
@@ -160,6 +160,9 @@ func gitShim() func() {
 		os.RemoveAll(dir)
 	}
 }
+
+// shQuote quotes s as one POSIX shell word.
+func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func requirePodman(t testing.TB) { podmantest.Require(t) }
 

@@ -106,6 +106,7 @@ func NewServerHost(t testing.TB, host string) *Server {
 	}
 	if host == "" || host == "127.0.0.1" || host == "localhost" {
 		s.srv = httptest.NewTLSServer(http.HandlerFunc(s.serve))
+		t.Cleanup(s.close)
 		s.URL = s.srv.URL
 	} else {
 		cert := selfSigned(t, host)
@@ -118,6 +119,7 @@ func NewServerHost(t testing.TB, host string) *Server {
 		s.srv.Listener = ln
 		s.srv.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 		s.srv.StartTLS()
+		t.Cleanup(s.close)
 		_, port, _ := net.SplitHostPort(ln.Addr().String())
 		s.URL = "https://" + net.JoinHostPort(host, port)
 		if file := os.Getenv("KODAMA_TEST_GIT_RESOLVE_FILE"); file != "" {
@@ -134,7 +136,6 @@ func NewServerHost(t testing.TB, host string) *Server {
 			}
 		}
 	}
-	t.Cleanup(s.close)
 	s.CAFile = filepath.Join(t.TempDir(), "ca.pem")
 	if err := os.WriteFile(s.CAFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.srv.Certificate().Raw}), 0o600); err != nil {
 		t.Fatal(err)
