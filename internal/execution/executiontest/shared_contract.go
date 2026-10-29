@@ -547,6 +547,92 @@ func SharedContract(t *testing.T, open func(testing.TB) SharedSubject) {
 		}
 	})
 
+	t.Run("a launch carries only the pinned step role, the bound workspace and the network model", func(t *testing.T) {
+		r := newRig(t)
+		r.admit(twoStep)
+		if _, err := execution.SharedLaunchOf(r.get(), "a"); !errors.Is(err, execution.ErrNotConfigured) {
+			t.Fatalf("a launch before the workspace is bound: %v", err)
+		}
+		r.up()
+		a := r.mustClaim()
+		agg := r.get()
+		launch, err := execution.SharedLaunchOf(agg, a.StepID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := launch.Validate(*a); err != nil {
+			t.Fatal(err)
+		}
+		ws := agg.Resource(execution.KeyWorkspace)
+		pol := agg.Run.Shared.PolicyBody
+		digest, _ := pol.RoleDigest(execution.RoleStep)
+		if launch.Workspace != ws.Handle() || launch.Workspace.UID == "" || launch.RoleDigest != digest ||
+			strings.Join(launch.Role.CapabilitiesAdd, ",") != "SETUID,SETGID" || launch.Network != pol.Network || launch.Policy != agg.Run.Shared.Policy {
+			t.Fatalf("launch %+v", launch)
+		}
+		other := *a
+		other.RunID = "run_other"
+		if launch.Validate(other) == nil {
+			t.Fatal("a launch was accepted for another run's attempt")
+		}
+		// A later policy never changes the launch of a pinned run.
+		p := TenantPolicy()
+		p.Roles[execution.RoleStep] = execution.RoleShape{User: "nonroot", UserNamespace: "pod", CapabilitiesAdd: []string{}, Seccomp: "RuntimeDefault", Devices: []string{}}
+		r.s.Policies.Set(p)
+		again, err := execution.SharedLaunchOf(r.get(), a.StepID)
+		if err != nil || again.RoleDigest != digest || again.Network != pol.Network {
+			t.Fatalf("the launch followed the current policy: %+v %v", again, err)
+		}
+	})
+
+	t.Run("dispatch and redrive hand the runtime the pinned launch", func(t *testing.T) {
+		r := newRig(t)
+		r.admit(twoStep)
+		r.up()
+		lastStart := func() execution.AttemptSpec {
+			starts := r.s.Starts()
+			if len(starts) == 0 {
+				t.Fatal("the runtime received no start")
+			}
+			return starts[len(starts)-1]
+		}
+		check := func(spec execution.AttemptSpec, what string) {
+			t.Helper()
+			ws := r.get().Resource(execution.KeyWorkspace)
+			if spec.Shared == nil || spec.Shared.Workspace != ws.Handle() || spec.Shared.Validate(spec) != nil {
+				t.Fatalf("%s: the runtime did not receive the pinned launch: %+v", what, spec.Shared)
+			}
+		}
+		// First dispatch.
+		first := newRig(t)
+		first.admit(twoStep)
+		first.up()
+		if ok, err := first.s.Svc.DispatchNext(first.ctx(), SharedScope.TenantID); !ok || err != nil {
+			t.Fatalf("dispatch: %v %v", ok, err)
+		}
+		starts := first.s.Starts()
+		if len(starts) != 1 || starts[0].Redrive || starts[0].StepID != "a" || starts[0].Shared == nil ||
+			starts[0].Shared.Workspace != first.get().Resource(execution.KeyWorkspace).Handle() || starts[0].Shared.Validate(starts[0]) != nil {
+			t.Fatalf("first dispatch: %+v", starts)
+		}
+		// A claim whose start never happened is redriven after its lease lapses.
+		claimed := r.mustClaim()
+		before := len(r.s.Starts())
+		r.tick(3 * time.Second)
+		r.passes(2)
+		if len(r.s.Starts()) == before {
+			t.Fatal("the lapsed claim was not redriven")
+		}
+		redriven := lastStart()
+		if redriven.AttemptID != claimed.AttemptID || !redriven.Redrive {
+			t.Fatalf("redrive %+v", redriven)
+		}
+		check(redriven, "redrive")
+		if claimed.Shared != nil {
+			t.Fatal("a claim is not a launch: Shared is set only immediately before Start")
+		}
+	})
+
 	t.Run("the command-begin journal is idempotent, conflicts on a different body and refuses a cancelled attempt", func(t *testing.T) {
 		r := newRig(t)
 		r.admit(twoStep)
@@ -1014,6 +1100,22 @@ func SharedContract(t *testing.T, open func(testing.TB) SharedSubject) {
 		}
 		if c, err := in.DecodeContext(); err != nil || c.Workspace.Access != runtimev1.AccessRead {
 			t.Fatalf("legacy context: %v", err)
+		}
+		r.run = run
+		r.tick(3 * time.Second)
+		r.passes(2)
+		seen := 0
+		for _, s := range r.s.Starts() {
+			if s.AttemptID != in.AttemptID {
+				continue
+			}
+			seen++
+			if s.Shared != nil {
+				t.Fatalf("a legacy attempt received a shared launch: %+v", s.Shared)
+			}
+		}
+		if seen == 0 {
+			t.Fatal("the legacy attempt was never started, so nothing was checked")
 		}
 	})
 }

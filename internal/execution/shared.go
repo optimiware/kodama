@@ -145,17 +145,27 @@ func (r RunShared) Verify() error {
 
 // RequiredResourceCapabilities derives the resource capabilities a run needs
 // from its definition and policy. Every run_shared run, even one with no
-// services, no edges and no egress, needs the normal set including the network
-// isolation and default-deny members: no relaxed production fallback exists.
+// services, no edges and no egress, needs the normal set plus the network
+// members its pinned policy's network model selects (O-30); another backend
+// never substitutes for a missing member.
 func RequiredResourceCapabilities(doc pipeline.Document, sourceBacked bool, policy ExecutionPolicy) ResourceCapabilitySet {
 	req := NormalResourceRequirements | policy.Requires
+	if policy.Network.Isolation != IsolationTenant {
+		req |= ResourceCapabilitySet(CapRunNetworkIsolation)
+	}
+	if !policy.Network.PublicEgress {
+		req |= ResourceCapabilitySet(CapEgressDefaultDeny)
+	}
 	if sourceBacked {
 		req |= ResourceCapabilitySet(CapWorkspacePreparation)
 	}
 	if len(doc.Spec.Services) > 0 {
 		req |= ResourceCapabilitySet(CapRunServices | CapServiceIsolation)
 	}
-	if doc.Spec.Network != nil && len(doc.Spec.Network.Edges) > 0 {
+	// Under the tenant model every workload of the tenant may reach the run's
+	// services, so edges are a document rule (endpoint expressions), not an
+	// enforced boundary; only the run model enforces them.
+	if doc.Spec.Network != nil && len(doc.Spec.Network.Edges) > 0 && policy.Network.Isolation != IsolationTenant {
 		req |= ResourceCapabilitySet(CapDeclaredEdges)
 	}
 	named := false
@@ -182,9 +192,10 @@ func RequiredResourceCapabilities(doc pipeline.Document, sourceBacked bool, poli
 }
 
 // RunGuarantees is the run-level counterpart of step Requirements: the union of
-// the steps' guarantees plus the companion-port marker.
+// the steps' guarantees plus the companion-port marker and the tenant network
+// boundary (network_policy), which no run_shared run may be admitted without.
 func RunGuarantees(doc pipeline.Document, requirements Requirements) Guarantees {
-	g := RunResourcesMarker
+	g := RunResourcesMarker | NetworkPolicy
 	for _, st := range doc.Spec.Steps {
 		g |= requirements(st)
 	}
@@ -513,7 +524,10 @@ func BuildResourceSpecs(run *Run, deadline time.Time) ([]ResourceSpec, error) {
 	for k, v := range sh.EgressDigests {
 		egress[k] = v
 	}
-	net.Network = &NetworkSpec{Services: names, Edges: append([]EdgeSpec{}, sh.Edges...), Egress: egress, Workloads: workloads}
+	net.Network = &NetworkSpec{
+		Services: names, Edges: append([]EdgeSpec{}, sh.Edges...), Egress: egress, Workloads: workloads,
+		Isolation: sh.PolicyBody.Network.Isolation, PublicEgress: sh.PolicyBody.Network.PublicEgress,
+	}
 	out = append(out, net)
 
 	wsSpec, err := base(KindWorkspace, KeyWorkspace, RoleStep)

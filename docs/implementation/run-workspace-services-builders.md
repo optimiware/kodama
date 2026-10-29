@@ -8,6 +8,26 @@
 
 **Reviewed contract checkpoint:** T-109 merged at `9db322ffd37a4279f8a7ac1a404a06e46533527d`. The [pipeline v1alpha2](../contracts/pipeline-format-v1alpha2.md), [runtime v2](../contracts/runtime-v2.md) and [run-resource](../contracts/run-resources.md) contracts there supersede the proposal's detail where explicitly amended. Original executable behavior remains `attempt_private`; no new runtime/build capability is delivered by this documentation checkpoint.
 
+## Scope amendment O-30 (2026-10-29)
+
+[O-30](../decisions.md#revised-scope--2026-10-29-o-30) revises the outcome below: ko and Buildah run as ordinary steps on the regular stage workers under the builder-capable `step` role (narrow ceiling, installed seccomp/AppArmor profiles); BuildKit and builder services move to deferred [T-123](../tasks/T-123-buildkit-builder-service.md); browser work is removed; the stage network model is tenant-level isolation with public HTTP/HTTPS egress, pinned in the policy; Kubernetes is the delivery backend. [T-122](../tasks/T-122-o30-scope-amendment.md) amends the contracts and admission derivation first. Implementation tasks (T-113–T-116, T-120) then merge on reviewed unit/component evidence; T-121 (profile qualification) and T-117 (stage acceptance) run against the merged image and chart. Matrix rows IT-16/IT-A12 are deferred; rows mentioning browser evidence or per-run isolation are read under the amendment.
+
+### Integration seams frozen by T-122
+
+T-113, T-114, T-115, T-120 and T-121 proceed in parallel against these seams; T-116 composes them. A task that needs a different seam stops and asks the integration owner instead of guessing.
+
+| Seam | Frozen shape |
+| --- | --- |
+| S1 Wire selection | A runtime receives `AttemptSpec.Shared` (non-nil exactly for a `run_shared` attempt, set by execution before every `Start`, including redrive) and passes `KODAMA_RUNTIME_API=v2` to `kodama step`; unset or `v1` keeps the v1 routes. The entrypoint refuses a context whose version differs from its selected wire |
+| S2 Attempt mounts | The run workspace named by `Shared.Workspace` (deterministic name, bound UID verified by the adapter) is mounted at `/workspace` (`KODAMA_WORKSPACE_DIR=/workspace`). A v2 attempt receives no checkout credential. Outputs, secrets, identity, scratch, `HOME=/kodama/home`, `TMPDIR=/tmp`, `XDG_RUNTIME_DIR=/kodama/run` and builder storage under `HOME` stay attempt-private and bounded |
+| S3 Security shape | Only `Shared.Role` is applied: `user: nonroot` → non-root, the installation's workload UID/GID; `userNamespace: pod` → `hostUsers: false`; all capabilities dropped, then `capabilitiesAdd`; `allowPrivilegeEscalation` is true exactly when `capabilitiesAdd` is nonempty; `seccomp: RuntimeDefault` or a Localhost profile `kodama/<name>.json`; `lsm` empty → runtime default AppArmor, otherwise Localhost `<name>`; `procMount: unmasked` → `procMount: Unmasked`; `devices` must be empty in this milestone. No other security field is set; adoption verifies these fields |
+| S4 Resource workloads | Preparation: one Job (`backoffLimit: 0`, `restartPolicy: Never`) of the policy's digest-pinned preparation image running `kodama prepare`. A service without secret bindings runs its declared image and argv; a service with bindings runs `kodama service-run -- <command> <args>` through the injected entrypoint binary. Both receive `KODAMA_SERVER_URL`, `KODAMA_CA_FILE`, `KODAMA_RUN_ID`, `KODAMA_RESOURCE_KEY`, `KODAMA_ADMISSION_CREDENTIAL_FILE`, `KODAMA_WORKLOAD_NAME`, `KODAMA_WORKLOAD_UID` and, for a Job-owned Pod only, `KODAMA_POD_NAME`/`KODAMA_POD_UID`; preparation also `KODAMA_WORKSPACE_DIR=/workspace` and `KODAMA_CHECKOUT_CREDENTIAL_FILE` |
+| S5 Resource credentials | `runtimeauth.Service.RegisterResource(ctx, runtimeauth.ResourceRegisterCommand{Scope, RunID, Key, Credential, SpecFingerprint, ExpiresAt}) error`, idempotent for the same credential and conflicting otherwise. Adapters generate the credential, persist it before registering (as for attempts) and declare a consumer-owned port with an adapter-local command type; T-116 bridges the two |
+| S6 Resource identity | `runtimeauth` declares a consumer-owned `ResourceWorkloads` port that confirms a claimed Pod belongs to the committed workload UID; the Kubernetes adapter exports `VerifyResourcePod(ctx, handle, podName, podUID) error`; T-116 bridges them. Execution's committed `(name, UID)` stays the authority |
+| S7 Routes | `internal/runtimeauth/http` serves `/runtime/v2/attempts/{attemptId}/…` and `/runtime/v2/runs/{runId}/resources/{resourceKey}/…`; source/result/artifact handlers reuse the v1 implementations. T-116 mounts them |
+| S8 Network | The tenant namespace keeps its chart-rendered default deny, DNS and callback rules. The Kubernetes `network` resource renders per-run NetworkPolicies selecting the run's Pods by label: under `isolation: tenant`, the tenant's `run_shared` Pods may reach the run's service ports; `publicEgress: true` allows TCP 80/443 to `0.0.0.0/0` except private, link-local, CGNAT and cluster ranges; named profiles add their resolved destinations |
+| S9 Policy source | T-116 loads the installation's execution policies from the chart-rendered settings (append-only list; the newest is `Current`) |
+
 ## Outcome
 
 A run prepares its pinned Git commit once and carries one disposable `/workspace` through all executable steps, each with its own pinned image. Declared database/browser/builder services start with the run, are reachable only through run-scoped policy, and disappear on completion/cancellation. Rootless ko and Buildah work in the tenant baseline; BuildKit works there or through a selected run-exclusive builder service. Preserve expected-tip Git publication, tenant ownership, scoped credentials, external default deny, and uncertain-effect reconciliation.
@@ -31,7 +51,7 @@ These documents record the design baseline, not delivered runtime behavior. The 
 
 | Phase | Task | Checkpoint |
 | --- | --- | --- |
-| P0 | [T-109](../tasks/T-109-run-resource-contracts.md), [T-118](../tasks/T-118-pipeline-version-admission.md), [T-110](../tasks/T-110-run-resource-wire-contracts.md) | Owning specifications and old-executor version fence independently, then executable versioned wire/parser fixtures |
+| P0 | [T-109](../tasks/T-109-run-resource-contracts.md), [T-118](../tasks/T-118-pipeline-version-admission.md), [T-110](../tasks/T-110-run-resource-wire-contracts.md), [T-122](../tasks/T-122-o30-scope-amendment.md) | Owning specifications and old-executor version fence independently, then executable versioned wire/parser fixtures; O-30 amendment |
 | P1 | [T-111](../tasks/T-111-rootless-profile-qualification.md), planned [T-120](../tasks/T-120-kubernetes-builder-profile.md) and [T-121](../tasks/T-121-run-profile-requalification.md) | Driver/blocked findings, then configure Kubernetes and complete real qualification later |
 | P2 | [T-112](../tasks/T-112-run-resource-lifecycle.md) | Execution-owned resources, persistence and frozen companion seam |
 | P3 | [T-113](../tasks/T-113-run-workspace-authority.md) | Preparation, authority, cumulative publication and provenance |
@@ -39,6 +59,7 @@ These documents record the design baseline, not delivered runtime behavior. The 
 | P5 | [T-115](../tasks/T-115-local-run-resources.md) | Podman/Process lifecycle and real Podman evidence |
 | P6 | [T-116](../tasks/T-116-run-resource-assembly.md) | Sole assembly/client/chart/migration owner |
 | P7 | [T-117](../tasks/T-117-run-resource-acceptance.md) | Integrated qualification and staged rollout |
+| Deferred | [T-123](../tasks/T-123-buildkit-builder-service.md) | BuildKit builder service and isolated-worker mode (O-30) |
 
 The source design is commit `0b12febef5b9e092982af74e2c951afe2dd80c19`; executable baseline remains the commit above. OpenForge bootstrap is currently unavailable because the separate checkout is absent. Manual isolated workers and independent candidate review may prepare changes; automated queue/index validation and batch receipts must not be claimed until the harness is available.
 
@@ -243,15 +264,15 @@ These are proposed allocations at the pinned baseline; P0 checks integration-bra
 | WS-14 / WS-A10 | Eligible steps cannot overlap workspace ownership; retry/redrive/partition cannot give a live prior process's volume to another attempt | SQL races/CSI fencing |
 | WS-15 / WS-A11 | Lost scratch fails; rerun gets fresh resources; retained Git/artifacts survive; scratch never creates a checkpoint | Recovery/cleanup |
 | WS-16 / WS-A12 | Cumulative writers use expected-tip CAS; human push conflicts; prior-step edits/secret disclosures handled | Publisher integration |
-| PX-17 / PX-A13 | Two runs with identical service aliases reach only their own endpoints; readiness precedes commands | DB/browser roundtrip |
+| PX-17 / PX-A13 | Two runs with identical service aliases resolve only their own endpoints; readiness precedes commands | DB roundtrip |
 | PX-18 / PX-A14 | Startup timeout/service loss fails without empty-state replacement; restart adopts intact resources | Runtime faults |
 | PX-19 / PX-A15 | Success/failure/timeout/cancel remove resources; lost responses/late creates converge without deleting foreign objects | Inventory/crash injection |
 | PX-20 / PX-A16 | Atomic bounded service/storage reservations; gates retain resources only until run deadline | SQL/deadline teardown |
 | PX-21 / PX-A17 | Context/profile/service pins survive restart; unsupported runtime refused; old hashes/history intact | Contract/capability tests |
 | PX-22 / PX-A18 | Pre-command retry safely reuses scratch; executed/unknown attempts cannot replay partial filesystem/service effects automatically | Retry regressions |
-| IT-14 / IT-A10 | Nested build/service traffic obeys same-run access and outside-run default deny, including other same-tenant runs/platform endpoints | Real CNI traffic |
+| IT-14 / IT-A10 | Traffic obeys the pinned network model: tenant-level access and public egress on stage; foreign tenant/platform/API/metadata/private destinations denied | Real CNI traffic |
 | IT-15 / IT-A11 | ko/Buildah actually build/push; arbitrary privilege/host paths/namespaces/engine sockets/overrides refused | Builds/admission denial |
-| IT-16 / IT-A12 | Selected BuildKit mode runs real `RUN` builds, authenticates run clients, removes daemon/process/cache; privileged mode proves worker disposal if selected | BuildKit profile evidence |
+| IT-16 / IT-A12 (deferred, T-123) | Selected BuildKit mode runs real `RUN` builds, authenticates run clients, removes daemon/process/cache; privileged mode proves worker disposal if selected | BuildKit profile evidence |
 | VS-14 / VS-A11 | Service/preparation resolve only their pinned secrets; foreign/copied/revoked grants fail other resource/attempt/publication actions; manifests omit plaintext | Auth/secret integration |
 | DQ-16 / DQ-A12 | Scratch changes cannot masquerade as approved candidate; source/tool/build-input/image provenance and gate invalidation remain correct | Gate/artifact composition |
 

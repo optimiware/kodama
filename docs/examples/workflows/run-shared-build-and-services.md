@@ -100,6 +100,8 @@ spec:
 
 ## 3. ko, Buildah and BuildKit
 
+**O-30 scope:** ko and Buildah run as ordinary steps under the policy's `step` role and are the delivered target. The BuildKit `role: builder` service shown last is deferred to T-123: until then admission refuses it (`capability_unsupported`). Under the stage network model (tenant isolation, public HTTP/HTTPS egress) a public registry needs no profile; the `registry` profile below stands for a private one.
+
 These run as ordinary steps (ko, Buildah) or a run-exclusive service (BuildKit) under the execution policy; the document has no privilege, device, mapping or storage field. Registry access is the named `registry` egress profile; the push credential is a pinned secret file delivered just in time, outside `/workspace`.
 
 ```yaml
@@ -219,7 +221,7 @@ egressProfiles:
   preview:  {destinations: [{host: preview.example.invalid, ports: [443]}]}
 ```
 
-A browser service with `egress: [preview]` reaches only that destination after name resolution, DNS goes to the installation resolver, and Kodama callbacks/Git/artifact endpoints are granted per workload role.
+A service with `egress: [preview]` reaches that private destination after name resolution, DNS goes to the installation resolver, and Kodama callbacks/Git/artifact endpoints are granted per workload role. Under the run model with `publicEgress: false` nothing else is reachable; under the O-30 stage model public HTTP/HTTPS is reachable as well.
 
 ## Acceptance mapping
 
@@ -227,6 +229,6 @@ A browser service with `egress: [preview]` reaches only that destination after n
 | --- | --- | --- |
 | 1 | Same files across different images, one holder at a time, order with the gate, clean/modified provenance | WS-A09, WS-A10, WS-A12, DQ-A12, PX-A16 |
 | 2 | Run-only endpoints, readiness barrier, declared edge, default deny elsewhere | PX-A13, IT-A10 |
-| 3 | Real ko/Buildah/BuildKit builds and registry push with explicit credentials/egress, refusals when unsupported | IT-A11, IT-A12, VS-A11 |
+| 3 | Real ko/Buildah builds and registry push with explicit credentials/egress, refusal of the deferred builder service (BuildKit evidence: T-123) | IT-A11, VS-A11 |
 | 4 | Source-free defaults and absence of checkout authority | WS-A09, PX-A17 |
 | 5 | Named egress profiles only | IT-A10 |

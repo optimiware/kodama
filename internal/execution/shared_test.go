@@ -36,6 +36,7 @@ func unitPolicy() ExecutionPolicy {
 		EgressProfiles: map[string]EgressProfile{
 			"registry": {Destinations: []EgressDestination{{Host: "registry.example.invalid", Ports: []int64{443}}}},
 		},
+		Network: PolicyNetwork{Isolation: IsolationRun},
 	}
 }
 
@@ -101,13 +102,98 @@ func Test_unit_resource_capability_set_is_a_separate_named_set(t *testing.T) {
 		t.Fatal("an unknown capability must be refused")
 	}
 	missing := Set(CapRunWorkspace).Missing(NormalResourceRequirements)
-	if missing.Has(CapRunWorkspace) || !missing.Has(CapRunNetworkIsolation) || !missing.Has(CapEgressDefaultDeny) {
+	if missing.Has(CapRunWorkspace) || !missing.Has(CapWorkspaceFence) || !missing.Has(CapResourceRecovery) {
 		t.Fatalf("missing %v", missing)
 	}
-	for _, want := range []string{"run_network_isolation", "egress_default_deny", "workspace_fence", "resource_recovery", "run_workspace"} {
-		if !strings.Contains(NormalResourceRequirements.String(), want) {
-			t.Errorf("the normal requirements lack %s", want)
-		}
+	if NormalResourceRequirements.String() != "run_workspace,workspace_fence,resource_recovery" {
+		t.Errorf("the normal requirements are %s", NormalResourceRequirements)
+	}
+}
+
+// Test_unit_shared_launch_role_digest: a launch's role must hash to the pinned
+// digest, so a copy that turns a nil list into an empty one (or any other
+// change) is refused.
+func Test_unit_shared_launch_role_digest(t *testing.T) {
+	role := RoleShape{User: "nonroot", UserNamespace: "pod", CapabilitiesAdd: []string{"SETUID", "SETGID"}, Seccomp: "RuntimeDefault"}
+	digest, err := role.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := ResourceHandle{Scope: unitScope, RunID: "run_01", Kind: KindWorkspace, Key: KeyWorkspace, Name: ResourceName(unitScope, "run_01", KindWorkspace, KeyWorkspace), UID: "u-1"}
+	spec := AttemptSpec{Scope: unitScope, RunID: "run_01"}
+	launch := SharedLaunch{Policy: PolicyPin{ID: "run-unit", Digest: "sha256:" + strings.Repeat("a", 64)}, Role: role, RoleDigest: digest,
+		Workspace: ws, Network: PolicyNetwork{Isolation: IsolationTenant, PublicEgress: true}}
+	if err := launch.Validate(spec); err != nil {
+		t.Fatal(err)
+	}
+	emptied := launch
+	emptied.Role.Devices = []string{}
+	if emptied.Validate(spec) == nil {
+		t.Fatal("a role whose nil list became empty still validated against the pinned digest")
+	}
+	widened := launch
+	widened.Role.CapabilitiesAdd = []string{"SETUID", "SETGID", "SYS_ADMIN"}
+	if widened.Validate(spec) == nil {
+		t.Fatal("a widened role validated against the pinned digest")
+	}
+	unbound := launch
+	unbound.Workspace.UID = ""
+	if unbound.Validate(spec) == nil {
+		t.Fatal("an unbound workspace was accepted")
+	}
+}
+
+// Test_unit_network_model_selects_network_capabilities: O-30. The pinned
+// policy's network model, not the document, decides whether per-run isolation
+// and external default deny are required; the tenant boundary (network_policy)
+// is always required; an unknown model is refused.
+func Test_unit_network_model_selects_network_capabilities(t *testing.T) {
+	doc := pipeline.Document{}
+	for name, tc := range map[string]struct {
+		net          PolicyNetwork
+		run, denyAll bool
+	}{
+		"run isolation, default deny":     {PolicyNetwork{Isolation: IsolationRun}, true, true},
+		"run isolation, public egress":    {PolicyNetwork{Isolation: IsolationRun, PublicEgress: true}, true, false},
+		"tenant isolation, default deny":  {PolicyNetwork{Isolation: IsolationTenant}, false, true},
+		"tenant isolation, public (O-30)": {PolicyNetwork{Isolation: IsolationTenant, PublicEgress: true}, false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pol := unitPolicy()
+			pol.Network = tc.net
+			if err := pol.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			req := RequiredResourceCapabilities(doc, false, pol)
+			if req.Has(CapRunNetworkIsolation) != tc.run || req.Has(CapEgressDefaultDeny) != tc.denyAll {
+				t.Fatalf("requirements %v", req)
+			}
+			if !req.Has(CapRunWorkspace|CapWorkspaceFence|CapResourceRecovery) || req.Has(CapWorkspacePreparation) {
+				t.Fatalf("requirements %v", req)
+			}
+		})
+	}
+	if g := RunGuarantees(doc, func(pipeline.Step) Guarantees { return 0 }); g&NetworkPolicy == 0 || g&RunResourcesMarker == 0 {
+		t.Fatalf("run guarantees %v", g)
+	}
+	// Declared edges are enforced (and so required) only under the run model.
+	edged := mustDoc(t, v2Documents["ordinary with services"]).doc
+	if edged.Spec.Network == nil || len(edged.Spec.Network.Edges) == 0 {
+		edged.Spec.Network = &pipeline.Network{Edges: []pipeline.Edge{{From: "a", To: "b", Ports: []string{"p"}}}}
+	}
+	tenant, run := unitPolicy(), unitPolicy()
+	tenant.Network.Isolation = IsolationTenant
+	if RequiredResourceCapabilities(edged, true, tenant).Has(CapDeclaredEdges) || !RequiredResourceCapabilities(edged, true, run).Has(CapDeclaredEdges) {
+		t.Fatal("declared edges must be required exactly under the run model")
+	}
+	pol := unitPolicy()
+	pol.Network = PolicyNetwork{}
+	if pol.Validate() == nil {
+		t.Fatal("a policy without a network model was accepted")
+	}
+	pol.Network.Isolation = "namespace"
+	if pol.Validate() == nil {
+		t.Fatal("an unknown network isolation was accepted")
 	}
 }
 
@@ -272,6 +358,17 @@ func Test_unit_execution_policy_digest_roles_and_ceilings(t *testing.T) {
 		},
 		"more than eight services": func(p *ExecutionPolicy) { p.Limits.MaxServices = 9 },
 		"a zero ceiling":           func(p *ExecutionPolicy) { p.Limits.MaxRunSeconds = 0 },
+		"an unmasked /proc outside a Pod user namespace": func(p *ExecutionPolicy) {
+			s := p.Roles[RoleStep]
+			s.ProcMount, s.UserNamespace = "unmasked", "host"
+			p.Roles[RoleStep] = s
+		},
+		"an unknown /proc mount": func(p *ExecutionPolicy) {
+			s := p.Roles[RoleStep]
+			s.ProcMount = "raw"
+			p.Roles[RoleStep] = s
+		},
+		"an unknown network model": func(p *ExecutionPolicy) { p.Network.Isolation = "cluster" },
 	} {
 		bad := unitPolicy()
 		mut(&bad)

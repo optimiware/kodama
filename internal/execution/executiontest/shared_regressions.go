@@ -590,6 +590,32 @@ func sharedRegressions(t *testing.T, open func(testing.TB) SharedSubject) {
 				t.Fatalf("a source-free step with workspace access: %v", err)
 			}
 		})
+		t.Run("the tenant network model needs neither run isolation nor default deny (O-30)", func(t *testing.T) {
+			r := newRig(t)
+			r.s.Resources.SetCapabilities(FullResourceSet &^ execution.Set(execution.CapRunNetworkIsolation, execution.CapEgressDefaultDeny))
+			if _, err := admitCleanup(t, r, r.s.Svc, clean); !errors.Is(err, execution.ErrAdmissionRefused) {
+				t.Fatalf("the strict model on a tenant-only backend: %v", err)
+			}
+			r.s.Policies.Set(TenantPolicy())
+			run, err := admitCleanup(t, r, r.s.Svc, clean)
+			if err != nil {
+				t.Fatalf("the tenant model on a tenant-only backend: %v", err)
+			}
+			r.run = run
+			sh := r.get().Run.Shared
+			if sh.ResourceRequires.Has(execution.CapRunNetworkIsolation) || sh.ResourceRequires.Has(execution.CapEgressDefaultDeny) || sh.Policy.ID != "run-test-tenant" {
+				t.Fatalf("pins %v %s", sh.ResourceRequires, sh.Policy.ID)
+			}
+			specs, err := execution.BuildResourceSpecs(r.get().Run, time.Now().Add(time.Hour))
+			if err != nil || specs[0].Kind != execution.KindNetwork || specs[0].Network.Isolation != execution.IsolationTenant || !specs[0].Network.PublicEgress {
+				t.Fatalf("the network spec does not carry the pinned model: %+v %v", specs[0].Network, err)
+			}
+			// A later policy change never rewrites the pin.
+			r.s.Policies.Set(TestPolicy())
+			if got := r.get().Run.Shared; got.Policy.ID != "run-test-tenant" || got.PolicyBody.Network.Isolation != execution.IsolationTenant {
+				t.Fatalf("the pin changed: %+v", got.Policy)
+			}
+		})
 		t.Run("lifecycle without work item, source, checkout or preparation", func(t *testing.T) {
 			r := newRig(t)
 			calls := r.s.SourceCalls()

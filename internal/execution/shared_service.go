@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
@@ -461,36 +462,79 @@ func (s *Service) claimSharedMutation(stepID string, src SourceInfo, lim Limit) 
 // still hold and that the attempt still has live command authority. Any failure
 // means nothing is started; the attempt stays unconfirmed for a later pass, and
 // cancellation and deadlines still end it.
-func (s *Service) sharedDriveCheck(ctx context.Context, spec AttemptSpec) error {
+func (s *Service) sharedDriveCheck(ctx context.Context, spec AttemptSpec) (*SharedLaunch, error) {
 	if s.d.Shared == nil {
 		// No run_shared composition: no run_shared attempt can have been claimed by
 		// this controller, and launchable already refuses one found by redrive.
-		return nil
+		return nil, nil
 	}
 	ref := RunRef{Scope: spec.Scope, ID: spec.RunID}
 	view, err := s.d.Store.Get(ctx, ref.Scope, ref.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if view.Run.Shared == nil {
-		return nil
+		return nil, nil
 	}
 	if _, _, _, err := s.sharedLaunch(ctx, view.Run); err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.refreshResources(ctx, ref, s.o.ResourceRecheck); err != nil {
-		return err
+		return nil, err
 	}
 	view, err = s.d.Store.Get(ctx, ref.Scope, ref.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	now := s.now()
 	at := view.Attempt(spec.AttemptID)
 	if at == nil || !view.CommandAuthorized(at, now) || !view.BarrierOpen(now, s.o.ResourceFreshness) {
-		return fmt.Errorf("%w: the run_shared launch barrier is not open", ErrNotConfigured)
+		return nil, fmt.Errorf("%w: the run_shared launch barrier is not open", ErrNotConfigured)
 	}
-	return nil
+	launch, err := SharedLaunchOf(view, spec.StepID)
+	if err != nil {
+		return nil, err
+	}
+	if err := launch.Validate(spec); err != nil {
+		return nil, err
+	}
+	return launch, nil
+}
+
+// SharedLaunchOf derives the launch description of a run_shared step from the
+// run's verified pins and its workspace's committed identity. The workspace must
+// be bound and not stopping; the role is the pinned policy body's step role.
+func SharedLaunchOf(a *Aggregate, stepID string) (*SharedLaunch, error) {
+	sh := a.Run.Shared
+	if sh == nil {
+		return nil, invalidf("not a run_shared run")
+	}
+	ws := a.Resource(KeyWorkspace)
+	if ws == nil || !ws.Bound() || ws.Stopping() || ws.Removed() {
+		return nil, fmt.Errorf("%w: the run workspace is not bound", ErrNotConfigured)
+	}
+	role, ok := sh.PolicyBody.Roles[RoleStep]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrNotConfigured, ReasonPolicyUnavailable)
+	}
+	digest, err := sh.PolicyBody.RoleDigest(RoleStep)
+	if err != nil {
+		return nil, err
+	}
+	egress := append([]string{}, sh.Egress[stepID]...)
+	digests := map[string]string{}
+	for _, name := range egress {
+		if d, ok := sh.EgressDigests[name]; ok {
+			digests[name] = d
+		}
+	}
+	// slices.Clone keeps nil as nil: the copy must hash to the pinned digest.
+	role.CapabilitiesAdd = slices.Clone(role.CapabilitiesAdd)
+	role.Devices = slices.Clone(role.Devices)
+	return &SharedLaunch{
+		Policy: sh.Policy, Role: role, RoleDigest: digest, PodSecurity: sh.PolicyBody.PodSecurity,
+		Workspace: ws.Handle(), Network: sh.PolicyBody.Network, Egress: egress, EgressDigests: digests,
+	}, nil
 }
 
 // ---- receipt and begin ----

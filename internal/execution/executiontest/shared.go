@@ -66,7 +66,19 @@ func TestPolicy() execution.ExecutionPolicy {
 		EgressProfiles: map[string]execution.EgressProfile{
 			"registry": {Destinations: []execution.EgressDestination{{Host: "registry.example.invalid", Ports: []int64{443}}}},
 		},
+		// The strict model keeps the per-run isolation and default-deny refusals
+		// observable; TenantPolicy is the O-30 stage model.
+		Network: execution.PolicyNetwork{Isolation: execution.IsolationRun, PublicEgress: false},
 	}
+}
+
+// TenantPolicy is TestPolicy under the O-30 network model: tenant-level
+// isolation and public HTTP/HTTPS egress.
+func TenantPolicy() execution.ExecutionPolicy {
+	p := TestPolicy()
+	p.ID = "run-test-tenant"
+	p.Network = execution.PolicyNetwork{Isolation: execution.IsolationTenant, PublicEgress: true}
+	return p
 }
 
 // MutablePolicies is an execution.Policies whose current policy a test replaces.
@@ -650,6 +662,8 @@ type SharedSubject struct {
 	// Cleanup builds the Service used to admit a cleanup run with the explicit
 	// run_shared composition (NewCleanup) or without it (NewClosedCleanup).
 	NewCleanup, NewClosedCleanup func() *execution.Service
+	// Starts lists every spec the runtime's Start received, in order.
+	Starts func() []execution.AttemptSpec
 }
 
 // AllowCleanup is the deployment-bound cleanup authorization double: every
@@ -737,6 +751,7 @@ func NewSharedMem(t testing.TB) (*Mem, SharedSubject) {
 	}
 	s.NewCleanup, s.NewClosedCleanup = s.Restart, s.Closed
 	s.SourceCalls = counter.Calls
+	s.Starts = m.Workloads.Starts
 	s.EvidenceCount = func(attempt domain.AttemptID, kind string) int {
 		rows, err := m.Mem.EvidenceOf(context.Background(), ScopeA, attempt)
 		must(t, err)
@@ -831,6 +846,7 @@ func NewSharedPG(t testing.TB, extra ...Options) (*Env, SharedSubject) {
 	}
 	s.NewCleanup, s.NewClosedCleanup = s.Restart, s.Closed
 	s.SourceCalls = counter.Calls
+	s.Starts = e.Workloads.Starts
 	s.EvidenceCount = func(attempt domain.AttemptID, kind string) int {
 		return e.CountTenant(ScopeA.TenantID, `SELECT count(*) FROM attempt_evidence WHERE attempt_id = $1 AND kind = $2`, string(attempt), kind)
 	}

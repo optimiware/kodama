@@ -28,7 +28,29 @@ type ExecutionPolicy struct {
 	PodSecurity    PolicyPodSecurity        `json:"podSecurity"`
 	Builders       PolicyBuilders           `json:"builders"`
 	EgressProfiles map[string]EgressProfile `json:"egressProfiles"`
+	// Network is the pinned network model of the policy (O-30). It decides
+	// whether a run_shared run additionally needs per-run isolation and
+	// external default deny.
+	Network PolicyNetwork `json:"network"`
 }
+
+// PolicyNetwork is the network model a run_shared run pins.
+type PolicyNetwork struct {
+	// Isolation is "tenant" (workloads of one tenant may reach each other's
+	// run services; other tenants, the control plane and cloud metadata are
+	// denied) or "run" (additionally deny other runs of the same tenant).
+	Isolation string `json:"isolation"`
+	// PublicEgress permits public HTTP/HTTPS destinations through the
+	// installation resolver; private and platform destinations still need a
+	// named egress profile. False is external default deny.
+	PublicEgress bool `json:"publicEgress"`
+}
+
+// Network isolation values.
+const (
+	IsolationTenant = "tenant"
+	IsolationRun    = "run"
+)
 
 // PolicyAdmission selects which formats new admissions accept.
 type PolicyAdmission struct {
@@ -80,6 +102,10 @@ type RoleShape struct {
 	LSM             string   `json:"lsm"`
 	Devices         []string `json:"devices"`
 	Image           string   `json:"image"`
+	// ProcMount is "" (the runtime's masked default) or "unmasked", which is
+	// permitted only inside a Pod user namespace (nested builders mounting
+	// their own /proc).
+	ProcMount string `json:"procMount,omitempty"`
 }
 
 // PolicyPodSecurity pins the Pod Security level.
@@ -162,6 +188,12 @@ func (p ExecutionPolicy) RoleDigest(role string) (string, error) {
 	if !ok {
 		return "", invalidf("the policy has no %s role", role)
 	}
+	return shape.Digest()
+}
+
+// Digest is the canonical digest of the shape. Nil and empty lists encode
+// differently, so a copy of a shape must preserve that distinction.
+func (shape RoleShape) Digest() (string, error) {
 	raw, err := json.Marshal(shape)
 	if err != nil {
 		return "", err
@@ -214,6 +246,11 @@ func (p ExecutionPolicy) Validate() error {
 	default:
 		return invalidf("the policy's run_shared admission is unknown")
 	}
+	switch p.Network.Isolation {
+	case IsolationTenant, IsolationRun:
+	default:
+		return invalidf("the policy's network isolation is unknown")
+	}
 	l := p.Limits
 	for _, v := range []int64{l.MaxRunSeconds, l.MaxServices, l.MaxRunWorkspaceMiB, l.DefaultRunWorkspaceMiB, l.MaxServiceCPUMillis,
 		l.MaxServiceMemoryMiB, l.MaxServiceEphemeralMiB, l.MaxServiceStorageMiB, l.PreparationTimeoutSeconds, l.PreparationAttempts,
@@ -242,6 +279,12 @@ func (p ExecutionPolicy) Validate() error {
 		}
 		if shape.User == "" || shape.UserNamespace == "" {
 			return invalidf("a role names its user and user namespace")
+		}
+		switch {
+		case shape.ProcMount == "":
+		case shape.ProcMount == "unmasked" && shape.UserNamespace == "pod":
+		default:
+			return invalidf("an unmasked /proc is permitted only inside a Pod user namespace")
 		}
 	}
 	if !digestInImage(p.Roles[RolePreparation].Image) {

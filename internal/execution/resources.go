@@ -246,10 +246,12 @@ type ResourceCapabilities struct {
 }
 
 // NormalResourceRequirements are the capabilities every run_shared run needs,
-// including one with no services, no edges and no egress: its steps run user
-// code in a shared trust domain, so the same-run-only reachability and
-// default-deny promise is unconditional and no relaxed fallback exists.
-var NormalResourceRequirements = Set(CapRunWorkspace, CapWorkspaceFence, CapResourceRecovery, CapRunNetworkIsolation, CapEgressDefaultDeny)
+// including one with no services, no edges and no egress. The network members
+// follow the pinned policy's network model (O-30): run isolation adds
+// run_network_isolation and a policy without public egress adds
+// egress_default_deny. The tenant boundary itself is the attempt runtime's
+// network_policy guarantee, which every run_shared run requires.
+var NormalResourceRequirements = Set(CapRunWorkspace, CapWorkspaceFence, CapResourceRecovery)
 
 // ResourcePhase is the observed phase of one resource. It is not a business
 // run, step or attempt status.
@@ -475,6 +477,11 @@ type NetworkSpec struct {
 	// Workloads maps a workload (a step id, "preparation" or "service.NAME") to
 	// the profile names it may use.
 	Workloads map[string][]string `json:"workloads"`
+	// Isolation and PublicEgress are the pinned policy's network model (O-30):
+	// "tenant" or "run" reachability and whether public HTTP/HTTPS egress is
+	// open beside the named profiles.
+	Isolation    string `json:"isolation"`
+	PublicEgress bool   `json:"publicEgress"`
 }
 
 // ResourceSpec is the canonical, provider-neutral desired state of one
@@ -528,7 +535,7 @@ func (s ResourceSpec) Validate() error {
 	case KindService:
 		ok = ok && s.Service != nil && s.Key == ServiceKey(s.Service.Name) && digestInImage(s.Service.Image)
 	case KindNetwork:
-		ok = ok && s.Network != nil
+		ok = ok && s.Network != nil && (s.Network.Isolation == IsolationTenant || s.Network.Isolation == IsolationRun)
 	default:
 		ok = false
 	}

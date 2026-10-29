@@ -2,29 +2,29 @@
 id: T-120
 milestone: production
 status: planned
-depends_on: [T-111]
+depends_on: [T-111, T-122]
 decision_blockers: []
-owns: [deploy/profiles/run-builders/, docs/operations/run-builder-profile.md, docs/contracts/run-resources.md, docs/adr/0010-run-workspace-services-builders.md]
+owns: [deploy/profiles/run-builders/, docs/operations/run-builder-profile.md]
 check: make check-go PKGS='./deploy/profiles/run-builders/...'
 resources: [go]
-acceptance: [unit_builder_profile_render, unit_builder_profile_denials]
+acceptance: [unit_builder_profile_render, unit_builder_profile_denials, unit_builder_profile_seccomp_allows_userns_without_sys_admin, unit_builder_profile_apparmor_rules]
 ---
-# T-120 — Configure the Kubernetes builder/browser execution profile
+# T-120 — Configure the Kubernetes builder step profile
 
 ## Goal
-Configure Kubernetes to run the builders and sandboxed browser blocked by T-111. Planned by the owner; **do not execute as part of the current closeout**. Full build/runtime verification belongs to T-121.
+Provide the installable node profiles that let ordinary `run_shared` step Pods run Buildah rootless on the regular Scaleway stage workers within the O-30 ceiling, which the T-111 probe showed `RuntimeDefault` and the default AppArmor profile deny.
 
 ## Contract
-O-28/O-29, ADR 0010 and the T-111 report. Preserve trusted-engineer scope. The owner permits an explicitly reviewed relaxation of the builder/browser profile rather than treating the initial capability/LSM restrictions as immutable. Ordinary steps keep their restricted profile. No generic privileged-workload switch or automatic fallback.
+O-30 and seam S3. Non-root, `hostUsers: false`, only `SETUID`/`SETGID`, no `SYS_ADMIN`, no privileged tenant Pod, no host namespaces/paths/engine socket. The profiles are installed by installation management (a privileged installer DaemonSet in an installation-owned namespace is installation management, not tenant execution). `attempt_private` workloads and the shared defaults are unchanged.
 
 ## Deliverables
-- Obtain the explicit target/installation handoff before changing live resources. Select dedicated workers or equivalent run-exclusive isolation, workload-role placement, namespaces and admission controls without weakening control-plane or unrelated tenant nodes.
-- Diagnose and configure nested user/mount namespace support, subordinate mappings, AppArmor and seccomp. Prefer narrow node-installed profiles; permit additional user-namespaced capabilities or a less restrictive profile only when required, operator-selected and confined to the reviewed builder/browser boundary. A blanket shared-node relaxation, host engine socket, host namespaces or ordinary privileged tenant Pod is not authorized.
-- Reconcile the owning policy/ADR before applying any exception the current contract forbids. Pin exact settings and versions, install profiles through installation management, and provide narrowly scoped PSA/admission exceptions where needed. Keep sandboxing unless an explicit subsequent owner decision changes that requirement.
-- Supply reproducible installation/rendering, safe negative controls, inventory, rollback/drain instructions and the installation receipt. Retain run/tenant network separation, scoped credentials, expected-tip publication and verified teardown. Report configured, not qualified, until T-121 passes.
+- `seccomp/kodama-rootless-build-v1.json`: the container runtime default plus unconditional `clone`/`clone3`/`unshare`/`setns`/`mount`/`umount2`/`pivot_root`/`mount_setattr`/`open_tree`/`move_mount`/`fsopen`/`fsmount`/`fsconfig`/`keyctl` needed by user-namespaced builders, still denying kernel-module, reboot, kexec, BPF and similar host operations.
+- `apparmor/kodama-rootless-build-v1`: permits `userns` creation and the mount/remount/pivot_root operations inside the user namespace; keeps the runtime default's denials of host `/proc`/`/sys` writes.
+- Installer manifests (`installer/`): a digest-pinned DaemonSet that copies the seccomp profile to `/var/lib/kubelet/seccomp/kodama/` and loads the AppArmor profile, reports installed versions, and an uninstall procedure. Go renderer/validator with tests.
+- `docs/operations/run-builder-profile.md`: install, verify, roll back; the Pod fields that reference the profiles; what stays forbidden.
 
 ## Acceptance
-Scoped render/denial tests and docs checks, reviewed target changes and retained configuration/preflight evidence. No build/browser support claim from rendered YAML alone. If existing deployment files outside `owns` are required, request a bounded ownership transfer first.
+Declared check with every named test passing. Installing on stage and the real qualification belong to T-121; rendered files are not support evidence.
 
 ## Out of scope
-Running this task now, broad production release, untrusted-code qualification, ordinary tenant privilege expansion and declaring P1 passed.
+Chart integration (T-116), the qualification run (T-121), BuildKit (T-123).

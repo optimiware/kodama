@@ -89,11 +89,11 @@ _Avoid_: Profile, mode.
 
 **Run resource**: Execution-owned state a `run_shared` run needs beyond its attempts: the run workspace, preparation, support services and the run's network boundary. It has deterministic identity, a spec fingerprint, a bound instance UID and ready/stopped/removed evidence, but no business status.
 
-**Support service**: A declared, digest-pinned workload (database, browser, builder daemon) that starts with a run, must be ready before any user command, is reachable only by that run's authorized workloads, and is stopped when the run ends. It is neither a step nor a sidecar.
+**Support service**: A declared, digest-pinned workload (for example a database) that starts with a run, must be ready before any user command, has a run-unique endpoint reachable as the pinned network model allows (the tenant's workloads under the tenant model, the run's under the run model), and is stopped when the run ends. It is neither a step nor a sidecar.
 
-**Execution policy**: The versioned, operator-installed definition of workload security shapes, storage, limits, egress profiles and builder modes that a `run_shared` run pins at admission. Pipeline documents cannot supply raw security, mount or network settings.
+**Execution policy**: The versioned, operator-installed definition of workload security shapes, storage, limits, network model, egress profiles and builder modes that a `run_shared` run pins at admission. Pipeline documents cannot supply raw security, mount or network settings.
 
-**Builder**: Tooling that builds and pushes OCI images, such as ko, Buildah or BuildKit, running as an ordinary step or (BuildKit) a run-exclusive support service under the execution policy. A mode is supported only with real qualification evidence.
+**Builder**: Tooling that builds and pushes OCI images, such as ko or Buildah, running as an ordinary step under the execution policy's `step` role. A run-exclusive builder service (BuildKit) is deferred (T-123). A mode is supported only with real qualification evidence.
 
 **Command-begin fence**: The durable server record taken just before an attempt's command starts. Its absence, with the workload verified stopped, is the proof that no user code ran and an automatic retry is safe.
 

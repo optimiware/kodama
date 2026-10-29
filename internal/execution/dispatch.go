@@ -287,9 +287,11 @@ func (s *Service) drive(ctx context.Context, rt Runtime, spec AttemptSpec) error
 	// A run_shared attempt is created or adopted only while the run model, backend,
 	// pins, policy, capabilities and the provisioning barrier all still hold:
 	// first launch and redrive alike.
-	if err := s.sharedDriveCheck(ctx, spec); err != nil {
+	launch, err := s.sharedDriveCheck(ctx, spec)
+	if err != nil {
 		return Unavailablef(err, "the run_shared launch checks do not hold")
 	}
+	spec.Shared = launch
 	w, err := rt.Start(ctx, spec)
 	if err != nil {
 		return Unavailablef(err, "the runtime could not start the workload")

@@ -74,6 +74,54 @@ type AttemptSpec struct {
 	Purpose       Purpose
 	// Redrive is true when the spec was reissued after a lapsed claim.
 	Redrive bool
+	// Shared is set exactly for a run_shared attempt, immediately before each
+	// Start (first launch and redrive), from the run's verified pins and the
+	// workspace's committed identity. It is not part of the fingerprint: it is
+	// derived from data the fingerprint and the run's pins already bind.
+	Shared *SharedLaunch
+}
+
+// SharedLaunch is what a runtime needs to launch a run_shared attempt: the
+// pinned step role shape (the only security shape it may apply), the run's
+// workspace with its bound instance UID (the only volume it may mount at
+// /workspace), the pinned network model and the step's egress profile names.
+// It carries no secret and no provider vocabulary.
+type SharedLaunch struct {
+	Policy      PolicyPin         `json:"policy"`
+	Role        RoleShape         `json:"role"`
+	RoleDigest  string            `json:"roleDigest"`
+	PodSecurity PolicyPodSecurity `json:"podSecurity"`
+	Workspace   ResourceHandle    `json:"workspace"`
+	Network     PolicyNetwork     `json:"network"`
+	Egress      []string          `json:"egress"`
+	// EgressDigests are the resolved destination digests of Egress.
+	EgressDigests map[string]string `json:"egressDigests"`
+}
+
+// Validate checks that the launch names a bound workspace of the attempt's run
+// and a pinned role.
+func (l SharedLaunch) Validate(spec AttemptSpec) error {
+	if err := l.Policy.Validate(); err != nil {
+		return err
+	}
+	if !digestPattern.MatchString(l.RoleDigest) || l.Role.User == "" {
+		return invalidf("the shared launch has no pinned step role")
+	}
+	if d, err := l.Role.Digest(); err != nil || d != l.RoleDigest {
+		return invalidf("the shared launch role does not match its pinned digest")
+	}
+	if err := l.Workspace.Validate(); err != nil {
+		return err
+	}
+	if l.Workspace.Kind != KindWorkspace || l.Workspace.UID == "" || l.Workspace.Scope != spec.Scope || l.Workspace.RunID != spec.RunID {
+		return invalidf("the shared launch names no bound workspace of the attempt's run")
+	}
+	switch l.Network.Isolation {
+	case IsolationTenant, IsolationRun:
+	default:
+		return invalidf("the shared launch has no network model")
+	}
+	return nil
 }
 
 // Workload returns the handle of the spec's workload with the given instance
