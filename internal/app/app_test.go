@@ -46,6 +46,7 @@ func TestCommandExitCodes(t *testing.T) {
 	}{
 		{nil, 2}, {[]string{"step"}, 2}, {[]string{"server", "extra"}, 2}, {[]string{"--help"}, 0},
 		{[]string{"server", "--help"}, 0}, {[]string{"-h"}, 0}, {[]string{"help"}, 0},
+		{[]string{"mcp", "--help"}, 0}, {[]string{"mcp"}, 2},
 		{[]string{"--unknown"}, 2}, {[]string{"server", "--unknown"}, 2},
 		{[]string{"server", "--shutdown-timeout", "bad"}, 2},
 		{[]string{"server", "--http-addr"}, 2}, {[]string{"server", "--http-addr="}, 2},

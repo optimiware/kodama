@@ -11,11 +11,12 @@ These documents make the simplified design concrete before parallel implementati
 - [Step entrypoint contract](step-entrypoint.md)
 - [Environment pinning contract and ownership](environment-pinning.md)
 - [Environments and adapters](environments.md)
+- [External MCP server](mcp-server.md)
 - [Proposed run workspace, services, and builders](run-workspace-services-builders.md)
 - [Local development and testing](development-and-testing.md)
 - [Task graph and agent workflow](../tasks/README.md)
 - [Autonomous task harness](harness.md)
 
-One Go binary provides `server`, `step`, and CLI commands. The server hosts API, orchestration, event delivery, and enabled gateways in one process. Split deployments only after measurements require it. PostgreSQL is authoritative, NATS is durable event transport, Git holds source checkpoints, and S3-compatible storage holds artifacts/logs.
+One Go binary provides `server`, `step`, `mcp`, and CLI commands. The server hosts API, orchestration, event delivery, and enabled gateways in one process. `mcp serve` is a separate client process over the public API and the selected OIDC issuer. Split deployments only after measurements require it. PostgreSQL is authoritative, NATS is durable event transport, Git holds source checkpoints, and S3-compatible storage holds artifacts/logs.
 
 Package boundaries follow real ownership and failure behavior. Prefer hexagonal ports/adapters with module-owned DDD entities and inward dependencies. Small consumer-owned ports, including entity-specific persistence ports, keep use cases independent of infrastructure; concrete adapters are wired at composition. Runtime wire contracts must be frozen before the server and entrypoint diverge; other interfaces evolve through the owning task and its dependents. Avoid a universal repository/service/plugin abstraction.
