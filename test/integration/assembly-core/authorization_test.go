@@ -230,7 +230,7 @@ func Test_core_assembly_authorization(t *testing.T) {
 		}
 	})
 
-	t.Run("definitions admit container steps and file references to existing secrets only", func(t *testing.T) {
+	t.Run("definitions admit container steps and file and environment references to existing secrets only", func(t *testing.T) {
 		def := w.definition("build", nil)
 		again := w.definition("build", nil)
 		if again.Id != def.Id {
