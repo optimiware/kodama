@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -1156,7 +1157,7 @@ func probeDatabase(ctx context.Context, pool *storage.Pool) error {
 }
 
 func probeIssuer(ctx context.Context, client *http.Client, issuer string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, issuer+"/.well-known/openid-configuration", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(issuer, "/")+"/.well-known/openid-configuration", nil)
 	if err != nil {
 		return err
 	}
