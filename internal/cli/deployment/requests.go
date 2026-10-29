@@ -32,10 +32,18 @@ type imageBody struct {
 	Digest     string `json:"digest"`
 }
 
+type artifactBody struct {
+	Kind       string `json:"kind"`
+	ArtifactID string `json:"artifactId"`
+	Digest     string `json:"digest"`
+	MediaType  string `json:"mediaType,omitempty"`
+}
+
 type createBody struct {
-	AttemptID string     `json:"attemptId"`
-	Source    sourceBody `json:"source"`
-	Image     imageBody  `json:"image"`
+	AttemptID string        `json:"attemptId"`
+	Source    sourceBody    `json:"source"`
+	Image     imageBody     `json:"image"`
+	Artifact  *artifactBody `json:"artifact,omitempty"`
 }
 
 func listRequest(scope client.Scope, q url.Values) client.Request {
@@ -59,7 +67,7 @@ func cleanupRequest(scope client.Scope, id string, v domain.Version) client.Requ
 // createInputs checks that every explicit input is present and well formed
 // before any request. It enforces wire syntax only; nothing is defaulted,
 // fetched or recomputed, so the values sent are exactly the ones supplied.
-func createInputs(set map[string]bool, attempt, repo, commit, artifact, digest, key string) (createBody, string, error) {
+func createInputs(set map[string]bool, attempt, repo, commit, artifact, digest, key, kind, mediaType string) (createBody, string, error) {
 	var zero createBody
 	for _, name := range []string{"attempt-id", "repository-url", "commit", "image-artifact-id", "image-digest", "idempotency-key"} {
 		if !set[name] {
@@ -84,9 +92,20 @@ func createInputs(set map[string]bool, attempt, repo, commit, artifact, digest, 
 	if !digestPattern.MatchString(digest) {
 		return zero, "", root.Usagef("--image-digest must be sha256: followed by 64 lowercase hex digits")
 	}
-	return createBody{
+	body := createBody{
 		AttemptID: attempt,
 		Source:    sourceBody{RepositoryURL: repo, Commit: commit},
 		Image:     imageBody{ArtifactID: artifact, Digest: digest},
-	}, key, nil
+	}
+	switch kind {
+	case "", "ociImage":
+	case "bundle":
+		if mediaType == "" {
+			return zero, "", root.Usagef("--artifact-media-type is required for a bundle, for example application/vnd.kodama.bundle.v1+tar+zstd")
+		}
+		body.Artifact = &artifactBody{Kind: kind, ArtifactID: artifact, Digest: digest, MediaType: mediaType}
+	default:
+		return zero, "", root.Usagef("--artifact-kind must be ociImage or bundle")
+	}
+	return body, key, nil
 }

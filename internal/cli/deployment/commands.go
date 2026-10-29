@@ -118,13 +118,15 @@ func bindCreate(fs *flag.FlagSet) root.RunFunc {
 	repo := fs.String("repository-url", "", "candidate source repository URL, https without credentials (required)")
 	commit := fs.String("commit", "", "candidate source commit, 40 or 64 lowercase hex digits (required)")
 	artifact := fs.String("image-artifact-id", "", "the verified image artifact (required)")
-	digest := fs.String("image-digest", "", "the image digest, sha256:<64 hex> (required)")
+	digest := fs.String("image-digest", "", "the artifact digest, sha256:<64 hex> (required; the legacy image projection for a bundle)")
+	kind := fs.String("artifact-kind", "ociImage", "artifact kind: ociImage or bundle")
+	mediaType := fs.String("artifact-media-type", "", "bundle media type (required for --artifact-kind bundle)")
 	key := fs.String("idempotency-key", "", "caller-chosen key that makes a retry replay, never repeat, the registration (required)")
 	return func(ctx context.Context, inv *root.Invocation, args []string) (root.Result, error) {
 		if err := noArgs(args); err != nil {
 			return root.Result{}, err
 		}
-		body, idem, err := createInputs(explicit(fs), *attempt, *repo, *commit, *artifact, *digest, *key)
+		body, idem, err := createInputs(explicit(fs), *attempt, *repo, *commit, *artifact, *digest, *key, *kind, *mediaType)
 		if err != nil {
 			return root.Result{}, err
 		}
