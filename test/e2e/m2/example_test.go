@@ -2,6 +2,7 @@ package m2_test
 
 import (
 	"net/http"
+	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,15 @@ func TestM2ExampleEnvArtifactReference(t *testing.T) {
 // which runs the same step. When the runtime stops needing a root image this
 // test fails by design: switch the fixture to the shipped image and delete it.
 func TestM2ShippedToolsImageOnPodman(t *testing.T) {
+	if goruntime.GOOS == "darwin" {
+		// The runtime's 0600 bootstrap files are host-owned. On a Podman machine the kit's
+		// state directory reaches the VM through a virtiofs share that presents them readable
+		// to the image's uid, so the shipped image runs and the gap this test records cannot
+		// show. On the VM's own filesystem the same file is refused to uid 65532 and read by
+		// container root (checked with `podman run --user 65532:65532` there); run this test
+		// on Linux.
+		t.Skip("the Podman machine's shared directory hides the bootstrap-file permission gap; run on Linux")
+	}
 	e := kit.New(t, kit.Options{Delivery: true, NoProfile: true})
 	run := func(name string, img kit.Image) client.Run {
 		step := kit.ContainerStep("work", `printf '{"outcome":"completed","outputs":{"ran":"yes"}}' > "$KODAMA_RESULTS_FILE"`, map[string]any{"ran": map[string]any{"type": "string"}})

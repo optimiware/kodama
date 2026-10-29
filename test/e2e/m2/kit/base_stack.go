@@ -132,7 +132,7 @@ func NewStack(t *testing.T, o StackOptions) *Stack {
 
 	s.OIDC = oidcfx.Start(t)
 	s.S3 = s3support.New(t)
-	s.Git = gitfx.NewServer(t)
+	s.Git = gitfx.NewServerHost(t, CallbackHost())
 	s.Repo = s.Git.NewRepo(t, Prefix+"-repo")
 
 	broker := eventstest.NewBroker(t)

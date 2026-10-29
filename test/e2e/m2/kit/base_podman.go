@@ -41,6 +41,7 @@ func Main(m *testing.M) int {
 		os.Setenv(k, "1")
 	}
 	cleanup := containersConfig()
+	defer gitShim()()
 	flag.Parse()
 	var warm sync.WaitGroup
 	if f := flag.Lookup("test.run"); f != nil && f.Value.String() == "" {
@@ -117,6 +118,47 @@ func keyringNearlyFull() bool {
 		return max-used < 40
 	}
 	return false
+}
+
+// gitShim puts a `git` first on PATH that resolves the callback host to
+// loopback, when the containers' name for the test process is not loopback
+// itself. The Git server's URL carries the callback host so a container can
+// fetch it; the host cannot resolve that name, and the workspace adapter runs
+// whatever `git` it finds on PATH. The shim adds one http.curloptResolve per
+// entry the servers append to KODAMA_TEST_GIT_RESOLVE_FILE, which maps the
+// server's host and port to 127.0.0.1 without touching the URL (a rewritten
+// URL would no longer match the credential's origin). It returns what removes
+// the shim.
+func gitShim() func() {
+	if CallbackHost() == "127.0.0.1" {
+		return func() {}
+	}
+	real, err := exec.LookPath("git")
+	if err != nil {
+		return func() {}
+	}
+	dir, err := os.MkdirTemp("", "kodama-git-shim-")
+	if err != nil {
+		return func() {}
+	}
+	resolve := filepath.Join(dir, "resolve")
+	script := "#!/bin/sh\nset -- $(sed 's/^/-c http.curloptResolve=/' '" + resolve + "' 2>/dev/null) \"$@\"\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+		os.RemoveAll(dir)
+		return func() {}
+	}
+	oldPath, oldResolve := os.Getenv("PATH"), os.Getenv("KODAMA_TEST_GIT_RESOLVE_FILE")
+	os.Setenv("PATH", dir+string(os.PathListSeparator)+oldPath)
+	os.Setenv("KODAMA_TEST_GIT_RESOLVE_FILE", resolve)
+	return func() {
+		os.Setenv("PATH", oldPath)
+		if oldResolve == "" {
+			os.Unsetenv("KODAMA_TEST_GIT_RESOLVE_FILE")
+		} else {
+			os.Setenv("KODAMA_TEST_GIT_RESOLVE_FILE", oldResolve)
+		}
+		os.RemoveAll(dir)
+	}
 }
 
 func requirePodman(t testing.TB) { podmantest.Require(t) }

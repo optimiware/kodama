@@ -10,10 +10,17 @@ package git
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
 	"io"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/cgi"
 	"net/http/httptest"
@@ -23,6 +30,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Username is the HTTP Basic user the server expects with either token.
@@ -66,7 +74,18 @@ type Server struct {
 
 // NewServer starts a server and removes it when the test ends. It skips the
 // test when Git or git-http-backend is not installed.
-func NewServer(t testing.TB) *Server {
+func NewServer(t testing.TB) *Server { return NewServerHost(t, "") }
+
+// NewServerHost is NewServer for a server that containers reach too. A host
+// other than loopback names the address the containers use for the test
+// process (KODAMA_TEST_SERVER_CALLBACK_HOST with a Podman machine): the server
+// then listens on every interface, its URL carries that host and its
+// certificate covers it and loopback. The test host cannot resolve that name:
+// when KODAMA_TEST_GIT_RESOLVE_FILE names a file, the server appends the curl
+// resolve entry (host:port:127.0.0.1) that a `git` shim on PATH hands to
+// http.curloptResolve, so the URL, the credential's origin and the certificate
+// name stay exactly what a container sees.
+func NewServerHost(t testing.TB, host string) *Server {
 	t.Helper()
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
@@ -85,14 +104,69 @@ func NewServer(t testing.TB) *Server {
 		t: t, Root: root, ReadToken: token(t), WriteToken: token(t),
 		backend: &cgi.Handler{Path: backendPath, Env: []string{"GIT_PROJECT_ROOT=" + root, "GIT_HTTP_EXPORT_ALL=1"}},
 	}
-	s.srv = httptest.NewTLSServer(http.HandlerFunc(s.serve))
+	if host == "" || host == "127.0.0.1" || host == "localhost" {
+		s.srv = httptest.NewTLSServer(http.HandlerFunc(s.serve))
+		s.URL = s.srv.URL
+	} else {
+		cert := selfSigned(t, host)
+		ln, err := net.Listen("tcp", "0.0.0.0:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.srv = httptest.NewUnstartedServer(http.HandlerFunc(s.serve))
+		_ = s.srv.Listener.Close()
+		s.srv.Listener = ln
+		s.srv.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+		s.srv.StartTLS()
+		_, port, _ := net.SplitHostPort(ln.Addr().String())
+		s.URL = "https://" + net.JoinHostPort(host, port)
+		if file := os.Getenv("KODAMA_TEST_GIT_RESOLVE_FILE"); file != "" {
+			f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = f.WriteString(host + ":" + port + ":127.0.0.1\n")
+			if cerr := f.Close(); err == nil {
+				err = cerr
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	t.Cleanup(s.close)
-	s.URL = s.srv.URL
 	s.CAFile = filepath.Join(t.TempDir(), "ca.pem")
 	if err := os.WriteFile(s.CAFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.srv.Certificate().Raw}), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// selfSigned is a certificate that is its own trust root, valid for host,
+// localhost and 127.0.0.1.
+func selfSigned(t testing.TB, host string) tls.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()), Subject: pkix.Name{CommonName: "kodama git fixture"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour),
+		IsCA: true, BasicConstraintsValid: true,
+		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames: []string{"localhost"}, IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		tpl.IPAddresses = append(tpl.IPAddresses, ip)
+	} else {
+		tpl.DNSNames = append(tpl.DNSNames, host)
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 }
 
 func token(t testing.TB) string {
