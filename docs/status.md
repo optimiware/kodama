@@ -28,6 +28,7 @@ Verified by acceptance suites that run the real server against PostgreSQL, NATS 
 | Live model and coding-agent qualification | Agents are tested with scripted responses only |
 | Optimi Platform (hosted) integration | Design target; standalone identity works today |
 | Other agent harnesses, untrusted multi-tenant isolation, UI, Supabase blueprint, browser QA | Deferred |
+| External MCP server | `kodama mcp serve` implements the public API operations as MCP tools (secret-value writes are opt-in) and passes OAuth resource-server, SDK client and executor tests with the in-process issuer. A real authorization server that accepts the MCP `resource` parameter and supports the chosen client registration is still required before claiming a zero-configuration OAuth connection ([spec](specs/mcp-server.md)) |
 
 The full list of remaining work is the [task backlog](tasks/README.md). The technical record of how the server is composed, with every route, worker and unwired capability, is [assembly status](implementation/assembly-status.md).
 

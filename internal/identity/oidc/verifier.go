@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -148,43 +149,80 @@ func (s *callState) isUnavailable() bool {
 
 type stateKey struct{}
 
+// AccessToken is the verified, non-secret part of an API access token that a
+// consumer may need after authentication. It never carries the raw token.
+type AccessToken struct {
+	Principal identity.Principal
+	Expiry    time.Time
+	Scopes    []string
+}
+
 // Verify checks the token and returns its verified (issuer, subject). A bad
 // credential is identity.ErrUnauthenticated; an unreachable issuer, discovery
 // failure or JWKS failure is identity.ErrUnavailable. Neither message contains
 // the token or a provider response body.
 func (v *Verifier) Verify(ctx context.Context, raw string) (identity.Principal, error) {
+	tok, err := v.VerifyAccessToken(ctx, raw)
+	if err != nil {
+		return identity.Principal{}, err
+	}
+	return tok.Principal, nil
+}
+
+// VerifyAccessToken verifies the token and returns the principal together with
+// its expiry and granted scopes. The scopes are informational for the caller:
+// Kodama authorizes by current membership and role, never by an OAuth scope.
+func (v *Verifier) VerifyAccessToken(ctx context.Context, raw string) (AccessToken, error) {
 	if raw == "" || len(raw) > v.cfg.MaxTokenBytes {
-		return identity.Principal{}, unauthenticated("the token is missing or too large")
+		return AccessToken{}, unauthenticated("the token is missing or too large")
 	}
 	state := &callState{}
 	ctx = context.WithValue(ctx, stateKey{}, state)
 	verifier, err := v.discover(ctx)
 	if err != nil {
-		return identity.Principal{}, err
+		return AccessToken{}, err
 	}
 	tok, err := verifier.Verify(ctx, raw)
 	if err != nil {
 		if state.isUnavailable() {
-			return identity.Principal{}, identity.Unavailablef(nil, "the issuer's signing keys could not be fetched")
+			return AccessToken{}, identity.Unavailablef(nil, "the issuer's signing keys could not be fetched")
 		}
-		return identity.Principal{}, unauthenticated(classify(err))
+		return AccessToken{}, unauthenticated(classify(err))
+	}
+	claims := map[string]json.RawMessage{}
+	if err := tok.Claims(&claims); err != nil {
+		return AccessToken{}, unauthenticated("the claims are malformed")
 	}
 	if !v.cfg.AcceptIDTokenClaims {
-		var claims map[string]json.RawMessage
-		if err := tok.Claims(&claims); err != nil {
-			return identity.Principal{}, unauthenticated("the claims are malformed")
-		}
 		for _, name := range []string{"nonce", "at_hash"} {
 			if _, ok := claims[name]; ok {
-				return identity.Principal{}, unauthenticated("an ID token is not an API access token")
+				return AccessToken{}, unauthenticated("an ID token is not an API access token")
 			}
 		}
 	}
 	p := identity.Principal{Issuer: tok.Issuer, Subject: tok.Subject}
 	if err := p.Validate(); err != nil {
-		return identity.Principal{}, unauthenticated("the subject is missing or malformed")
+		return AccessToken{}, unauthenticated("the subject is missing or malformed")
 	}
-	return p, nil
+	return AccessToken{Principal: p, Expiry: tok.Expiry, Scopes: scopesFromClaims(claims)}, nil
+}
+
+func scopesFromClaims(claims map[string]json.RawMessage) []string {
+	for _, name := range []string{"scope", "scp"} {
+		raw, ok := claims[name]
+		if !ok {
+			continue
+		}
+		var one string
+		if err := json.Unmarshal(raw, &one); err == nil {
+			return strings.Fields(one)
+		}
+		var many []string
+		if err := json.Unmarshal(raw, &many); err == nil {
+			return many
+		}
+	}
+	return nil
 }
 
 func unauthenticated(reason string) error {
