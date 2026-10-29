@@ -1,11 +1,14 @@
 package delivery_test
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/delivery"
+	"github.com/optimiware/kodama/internal/domain"
 )
 
 const targetProfilesYAML = `apiVersion: kodama/v1alpha1
@@ -195,5 +198,96 @@ func TestProfileEnvironmentNeedsItsCredentials(t *testing.T) {
 	rec.Secrets = nil
 	if _, err := delivery.NewEnvironment(rec, now); err == nil {
 		t.Fatal("a profile environment without credentials was accepted")
+	}
+}
+
+type targetEnvStore struct {
+	delivery.Store
+	created delivery.Environment
+}
+
+func (s *targetEnvStore) CreateEnvironment(_ context.Context, _ delivery.Mutation, env delivery.Environment) error {
+	s.created = env
+	return nil
+}
+
+type targetAccess struct{}
+
+func (targetAccess) Authorize(context.Context, delivery.Actor, domain.Scope, delivery.Permission) error {
+	return nil
+}
+
+type targetCredentials struct {
+	kind string
+	err  error
+}
+
+func (c targetCredentials) Current(context.Context, domain.Scope, string) (delivery.CredentialInfo, error) {
+	if c.err != nil {
+		return delivery.CredentialInfo{}, c.err
+	}
+	return delivery.CredentialInfo{Ref: "secret://project/cloudflare-token", Kind: c.kind, Version: 1}, nil
+}
+
+func TestCreateProfileEnvironmentPinsTarget(t *testing.T) {
+	profiles, err := delivery.LoadTargetProfilesYAML(strings.NewReader(targetProfilesYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := delivery.NewTargetRegistry(profiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &targetEnvStore{}
+	svc, err := delivery.NewService(delivery.Config{Store: store, Access: targetAccess{}, Credentials: targetCredentials{kind: "generic"}, Targets: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := svc.CreateEnvironment(context.Background(), delivery.Caller{Actor: delivery.Actor{Type: delivery.ActorUser, ID: "u_1"}}, scope,
+		delivery.EnvironmentInput{
+			Name: "production", Kind: delivery.KindProduction, TargetProfile: "cloudflare-worker",
+			TargetConfig: map[string]string{"accountId": "0123456789abcdef0123456789abcdef", "workerName": "website-prod", "route": "optimi.com/*"},
+			Secrets:      []delivery.Credential{{Name: "CLOUDFLARE_API_TOKEN", Ref: "secret://project/cloudflare-token", Delivery: runtimev1.DeliveryFile}},
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := env.Record()
+	if rec.TargetProfile != "cloudflare-worker" || rec.TargetProvider != "cloudflare" || rec.TargetProfileDigest == "" {
+		t.Fatalf("target = %+v", rec)
+	}
+	if len(rec.TargetArtifactKinds) != 1 || rec.TargetArtifactKinds[0] != delivery.ArtifactBundle {
+		t.Fatalf("artifact kinds = %+v", rec.TargetArtifactKinds)
+	}
+	if rec.Namespace != "" || rec.Kubeconfig.Name != "CLOUDFLARE_API_TOKEN" || len(rec.Secrets) != 1 {
+		t.Fatalf("legacy projections = %+v", rec)
+	}
+	if store.created.Name() != "production" {
+		t.Fatal("the environment was not stored")
+	}
+}
+
+func TestCreateProfileEnvironmentRefusesWrongCredentialKind(t *testing.T) {
+	profiles, err := delivery.LoadTargetProfilesYAML(strings.NewReader(targetProfilesYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := delivery.NewTargetRegistry(profiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := delivery.NewService(delivery.Config{Store: &targetEnvStore{}, Access: targetAccess{},
+		Credentials: targetCredentials{kind: "kubeconfig"}, Targets: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.CreateEnvironment(context.Background(), delivery.Caller{Actor: delivery.Actor{Type: delivery.ActorUser, ID: "u_1"}}, scope,
+		delivery.EnvironmentInput{
+			Name: "production", Kind: delivery.KindProduction, TargetProfile: "cloudflare-worker",
+			TargetConfig: map[string]string{"accountId": "0123456789abcdef0123456789abcdef", "workerName": "website-prod", "route": "optimi.com/*"},
+			Secrets:      []delivery.Credential{{Name: "CLOUDFLARE_API_TOKEN", Ref: "secret://project/cloudflare-token", Delivery: runtimev1.DeliveryFile}},
+		})
+	if !errors.Is(err, delivery.ErrCredentialUnavailable) {
+		t.Fatalf("got %v", err)
 	}
 }
