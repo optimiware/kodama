@@ -73,7 +73,7 @@ func (f *fakeDriver) Destroy(context.Context, driver.Request, driver.Checkpoint)
 	return driver.Result{Effect: "confirmed"}, nil
 }
 func (f *fakeDriver) Rollback(context.Context, driver.Request, driver.Checkpoint) (driver.Result, error) {
-	return driver.Result{}, errors.New("unsupported")
+	return driver.Result{Effect: "confirmed", ProviderVersion: "v0"}, nil
 }
 
 func testConfig() Config {
@@ -140,6 +140,24 @@ func TestCleanupKeepsHistoryAndMarksDeleted(t *testing.T) {
 	}
 	if out.Resource.DeletedAt == nil || out.Resource.LastOperation != "cleanup-1" {
 		t.Fatalf("cleanup state: %+v", out.Resource)
+	}
+}
+
+func TestRollbackIsASeparateOperation(t *testing.T) {
+	d := &fakeDriver{applyRes: driver.Result{Effect: "confirmed"}}
+	e, closeFn := newEngine(t, d)
+	defer closeFn()
+	if _, err := e.Apply(context.Background(), testConfig()); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig()
+	cfg.ActionKey = "run:step"
+	out, err := e.Rollback(context.Background(), cfg, "dummy-v0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Operation.Kind != "rollback" || out.Operation.Status != "succeeded" {
+		t.Fatalf("rollback: %+v", out)
 	}
 }
 
