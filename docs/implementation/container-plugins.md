@@ -1219,23 +1219,25 @@ The following slice is implemented and exercised locally:
 | Area | State |
 | --- | --- |
 | `contracts/state/v1` | Implemented with bounded values, keys, artifact references and ETags |
-| `internal/state` | Memory and PostgreSQL stores, conditional lifecycle, runtime HTTP handler and tests |
+| `internal/state` | Memory and PostgreSQL stores, binding-relative keys, conditional lifecycle, project quota trigger, runtime HTTP handler and live PostgreSQL lifecycle/RLS tests |
 | `contracts/pipeline/v1alpha3` | State/artifact-file bindings and no v1alpha3 environment field |
-| Runtime v1alpha3/v3-era bindings | State and artifact descriptors are pinned into v1/v2 contexts; `/runtime/v3` state route is composed |
+| Runtime bindings | State and artifact descriptors are pinned into v1/v2 contexts; `/runtime/v3` state route is composed and checks the run_shared wire |
+| Artifact inputs | Admission pins the verified descriptor, the entrypoint materializes it under `/kodama/inputs`, and the runtime download route checks the pinned attempt context |
 | `pkg/pluginruntime/state` | HTTP client with create/read/update/delete/list and token-file refresh |
-| `images/plugins/deploy` | Shared engine, operation journal, checkpointing, apply/status/reconcile/cleanup/rollback CLI |
-| `drivers/kubernetes` | Bundle manifest apply, rollout and inventory observation, Deployment cleanup |
+| `images/plugins/deploy` | Shared engine, CAS operation claim, durable checkpoints, apply/status/reconcile/cleanup/rollback CLI and result-manifest emission |
+| `drivers/kubernetes` | Bounded manifest validation, ownership annotations, image checks, readiness observation and UID/resourceVersion-preconditioned deletion via kubectl proxy |
 | `drivers/cloudflare` | Wrangler apply/observe/delete/rollback driver with controlled-command tests |
 | `drivers/gcp` | Cloud Run apply/observe/delete/rollback driver with controlled-command tests |
+| Project runs | Source-free `kodama/v1alpha3` admission service and `POST /runs/project`, with a `project` purpose and no work item/workspace/deployment |
 | Templates | Agent-development and Cloudflare-website project shapes |
 | Real local test | `test/integration/deploy-plugins` creates/reuses kind, builds the plugin, applies a dummy nginx Deployment through the plugin, observes readiness and cleans it up |
 
 Not yet implemented in this branch:
 
-- State artifact-reference/quota transaction joins and full RLS qualification.
-- Artifact input materialization in the entrypoint (the descriptor is pinned in the context; the runtime download path is still a follow-up).
-- Generic project/source-free run admission and the Git trigger planner change.
-- Generic gate/QA evidence integration and the legacy delivery-core removal.
+- State audit/outbox events, artifact retention pin/unpin joins and an atomic state-CAS plus runtime-session transaction.
+- A distinct runtime context v3 wire; v1alpha3 currently extends the v2 context additively. The state route is versioned separately.
+- Source-backed CI origins and the Git trigger planner's no-work-item path (source-free project admission exists, but the planner still requires a work item).
+- Generic gate/QA evidence integration and the legacy delivery-core removal. The legacy delivery composition is still constructed by `internal/app`.
 - Real Cloudflare/GCP account qualification; their tests use controlled provider commands.
 
 The local test is intentionally explicit about this boundary. It proves the

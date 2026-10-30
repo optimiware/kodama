@@ -3,15 +3,16 @@
 `internal/state` is the server-side generic persistent state capability. It is
 not a deployment module and does not know any provider or plugin schema.
 
-The in-memory adapter and HTTP handler implement the first vertical slice. A
-PostgreSQL adapter, migration, quota policy and artifact-retention join are the
-next implementation checkpoint; the memory adapter is held to the same
-conditional semantics but is not SQL/RLS evidence.
+The memory and PostgreSQL adapters share the conditional contract. The
+PostgreSQL migration includes forced tenant RLS, binding-relative key checks, a
+per-project entry/byte quota trigger and live lifecycle/RLS tests. Certificate
+retention joins and audit/outbox events remain integration checkpoints.
 
 ## Rules
 
 - Scope is derived from trusted runtime authority, never a caller body.
-- Keys are relative and remain inside the authorized binding prefix.
+- Request keys and list prefixes are relative to the authorized binding prefix;
+  the server resolves the absolute storage key and returns relative keys/cursors.
 - A read returns an opaque JSON value and an ETag.
 - Create uses `If-None-Match: *`; update/delete require `If-Match`.
 - An ETag contains a generation and revision, so deleting and recreating a key
