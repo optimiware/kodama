@@ -136,3 +136,5 @@ this server can fake.
   separate delegation field. The current change carries it through
   authentication and denies human-only routes; persistent audit enrichment
   remains an owning API/schema change.
+- The first exchange profile requires a JWT-verifiable API token because it
+  reuses the issuer/JWKS verifier. Opaque-token introspection is not implemented.

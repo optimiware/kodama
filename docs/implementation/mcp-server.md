@@ -44,8 +44,8 @@ the raw token is available only to the exchange provider.
 
 The executor asks `ExchangeProvider` for a separate API token. The provider sends
 the MCP token only to the configured RFC 8693 endpoint, validates the returned
-token against the API issuer and audience, and checks that the represented
-subject did not change. The executor refuses an empty token, the incoming token,
+JWT against the API issuer and audience, and checks that the represented subject
+did not change. Opaque-token introspection is not implemented in this profile. The executor refuses an empty token, the incoming token,
 or any exchange failure; there is no passthrough fallback. No token is stored or
 refreshed by the MCP server.
 
