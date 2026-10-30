@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/kernel/runtime"
@@ -21,21 +22,31 @@ func (r *Resources) Capabilities(ctx context.Context) (runtime.CapabilitySet, er
 }
 
 // ReleaseEvidence is what the cluster shows about the storage of a removed
-// workspace. A workspace is removed only when the claim and its volume are gone
-// and the volume is not attached; a volume that is kept is retained evidence.
+// workspace. A workspace is removed only when the claim and every volume it was
+// or may have been bound to are gone, no volume is attached, and enough time
+// has passed since the claim disappeared that a binding still in progress would
+// have shown. A volume that is kept is retained evidence.
 type ReleaseEvidence struct {
 	ClaimGone bool `json:"claimGone"`
-	// Volume is the volume the claim was bound to; empty when it never bound.
-	Volume        string `json:"volume,omitempty"`
-	VolumeGone    bool   `json:"volumeGone"`
-	Attached      bool   `json:"attached,omitempty"`
+	// Volumes are the volumes found for the claim: the one it was seen bound to
+	// and every volume whose claimRef names it.
+	Volumes    []string `json:"volumes,omitempty"`
+	VolumeGone bool     `json:"volumeGone"`
+	Attached   bool     `json:"attached,omitempty"`
+	// ReclaimPolicy is the policy of the first surviving volume.
 	ReclaimPolicy string `json:"reclaimPolicy,omitempty"`
-	// Retained means the volume will not be reclaimed by the cluster.
+	// Retained means a surviving volume will not be reclaimed by the cluster.
 	Retained bool `json:"retained,omitempty"`
+	// Unconfirmed means the claim is gone but its binding cannot yet be ruled
+	// out: its deletion was not observed long enough ago for a volume still
+	// being bound to have appeared.
+	Unconfirmed bool `json:"unconfirmed,omitempty"`
 }
 
 // Released reports whether every release condition holds.
-func (e ReleaseEvidence) Released() bool { return e.ClaimGone && e.VolumeGone && !e.Attached }
+func (e ReleaseEvidence) Released() bool {
+	return e.ClaimGone && e.VolumeGone && !e.Attached && !e.Unconfirmed
+}
 
 func (c *core) validateEnsure(spec runtime.ResourceSpec) error {
 	if err := spec.Validate(); err != nil {
@@ -76,7 +87,9 @@ func (c *core) robs(h runtime.ResourceHandle, st runtime.ResourceState, reason r
 }
 
 // Ensure creates or adopts the workspace claim or service. It is idempotent on
-// the identity under the same adoption and fence rules as Runtime.Start.
+// the identity under the same adoption and fence rules as Runtime.Start, and
+// every create runs under the conditional reservation of guarded. An
+// established object that has disappeared is reported lost, never recreated.
 func (r *Resources) Ensure(ctx context.Context, spec runtime.ResourceSpec) (runtime.ResourceObservation, error) {
 	if err := r.validateEnsure(spec); err != nil {
 		return runtime.ResourceObservation{}, notReached(err)
@@ -92,44 +105,20 @@ func (r *Resources) Ensure(ctx context.Context, spec runtime.ResourceSpec) (runt
 			return runtime.ResourceObservation{}, err
 		}
 	}
-	if _, err := r.claim(ctx, t.Namespace, id, spec.Fence); err != nil {
+	rec, err := r.claim(ctx, t.Namespace, id, spec.Fence)
+	if err != nil {
 		return runtime.ResourceObservation{}, notReached(err)
 	}
 	var eerr error
 	if spec.Kind == runtime.ResourceWorkspace {
-		eerr = r.ensureWorkspace(ctx, t, id)
+		eerr = r.ensureWorkspace(ctx, t, id, rec, spec.Fence)
 	} else {
-		eerr = r.ensureService(ctx, t, id, *spec.Service, spec.Fence)
+		eerr = r.ensureService(ctx, t, id, rec, *spec.Service, spec.Fence)
 	}
 	if eerr != nil {
 		return runtime.ResourceObservation{}, eerr
 	}
-	return r.observeResource(ctx, t.Namespace, id, h)
-}
-
-// createGuarded issues one create under the in-flight marker and classifies the
-// outcome: success and a verified existing object adopt, a definite refusal is
-// runtime.ErrNotReached and anything else is uncertain.
-func (c *core) createGuarded(ctx context.Context, ns string, id ident, create func() error, readBack func() error) error {
-	if err := c.markInflight(ctx, ns, id); err != nil {
-		return notReached(err)
-	}
-	err := create()
-	switch {
-	case err == nil:
-		c.clearInflight(ctx, ns, id)
-		return nil
-	case errors.Is(err, kubernetes.ErrAlreadyExists):
-		if rerr := readBack(); rerr != nil {
-			return rerr
-		}
-		c.clearInflight(ctx, ns, id)
-		return nil
-	case kubernetes.Definite(err):
-		c.clearInflight(ctx, ns, id)
-		return notReached(fmt.Errorf("the cluster refused the object: %w", err))
-	}
-	return uncertain(err)
+	return r.observeResource(ctx, t, id, h)
 }
 
 func (c *core) getPVC(ctx context.Context, ns, name string) (kubernetes.PersistentVolumeClaim, bool, error) {
@@ -143,43 +132,70 @@ func (c *core) getPVC(ctx context.Context, ns, name string) (kubernetes.Persiste
 	return p, false, fmt.Errorf("kernelrt: reading the workspace claim: %w", err)
 }
 
-func (c *core) verifyPVC(p kubernetes.PersistentVolumeClaim, id ident) error {
-	if !id.owns(p.Metadata.Labels, p.Metadata.Annotations) {
-		return fmt.Errorf("%w: claim %s", ErrForeign, p.Metadata.Name)
-	}
-	if !id.digestMatches(p.Metadata.Annotations) {
-		return fmt.Errorf("%w: the workspace exists with another specification digest", runtime.ErrSpecMismatch)
-	}
-	if len(p.Spec.AccessModes) != 1 || p.Spec.AccessModes[0] != "ReadWriteOncePod" {
-		return unverified("the claim is not ReadWriteOncePod")
-	}
-	return nil
-}
-
-func (c *core) ensureWorkspace(ctx context.Context, t Target, id ident) error {
-	p, found, err := c.getPVC(ctx, t.Namespace, id.base())
+func (c *core) ensureWorkspace(ctx context.Context, t Target, id ident, rec record, fence runtime.Fence) error {
+	ns := t.Namespace
+	p, found, err := c.getPVC(ctx, ns, id.base())
 	if err != nil {
 		return notReached(err)
 	}
+	if rec, err = c.current(ctx, ns, id, fence); err != nil {
+		return notReached(err)
+	}
 	if found {
-		if err := c.verifyPVC(p, id); err != nil {
+		if err := c.verifyPVC(p, id, rec); err != nil {
 			return notReached(err)
 		}
-		c.clearInflight(ctx, t.Namespace, id)
+		if err := c.establish(ctx, ns, id, rec, opPVC, p.Metadata.UID); err != nil {
+			return notReached(err)
+		}
 		return nil
 	}
-	return c.createGuarded(ctx, t.Namespace, id,
-		func() error { _, err := c.cluster.CreatePVC(ctx, t.Namespace, c.workspaceClaim(id, t)); return err },
-		func() error {
-			p, found, err := c.getPVC(ctx, t.Namespace, id.base())
-			if err != nil || !found {
-				return uncertain(errors.Join(err, errors.New("the claim exists but cannot be read")))
+	if rec.created[opPVC] != "" {
+		return nil // lost; the observation says so
+	}
+	return c.guarded(ctx, ns, id, guard{
+		op: opPVC, fence: fence,
+		create: func() (string, error) {
+			out, err := c.cluster.CreatePVC(ctx, ns, c.workspaceClaim(id, t))
+			return out.Metadata.UID, err
+		},
+		readBack: func() (string, error) {
+			p, ok, err := c.getPVC(ctx, ns, id.base())
+			if err != nil || !ok {
+				return "", uncertain(errors.Join(err, errors.New("the claim exists but cannot be read")))
 			}
-			if err := c.verifyPVC(p, id); err != nil {
-				return notReached(err)
+			rc, _, err := c.readRecord(ctx, ns, id)
+			if err != nil {
+				return "", uncertain(err)
 			}
-			return nil
-		})
+			if err := c.verifyPVC(p, id, rc); err != nil {
+				return "", notReached(err)
+			}
+			return p.Metadata.UID, nil
+		},
+		reap: func() error {
+			_, err := c.deleteClaim(ctx, ns, id)
+			return err
+		},
+	})
+}
+
+// deleteClaim deletes the workspace claim under its UID after re-reading it. It
+// returns the claim it deleted or saw, and whether it is still present.
+func (c *core) deleteClaim(ctx context.Context, ns string, id ident) (kubernetes.PersistentVolumeClaim, error) {
+	p, found, err := c.getPVC(ctx, ns, id.base())
+	if err != nil || !found {
+		return p, err
+	}
+	if !id.owns(p.Metadata.Labels, p.Metadata.Annotations) {
+		return p, fmt.Errorf("%w: claim %s", ErrForeign, p.Metadata.Name)
+	}
+	if p.Metadata.DeletionTimestamp == "" {
+		if err := c.cluster.DeletePVC(ctx, ns, p.Metadata.Name, kubernetes.DeleteOptions{UID: p.Metadata.UID}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
+			return p, fmt.Errorf("kernelrt: deleting the workspace claim: %w", err)
+		}
+	}
+	return p, nil
 }
 
 func (c *core) getPod(ctx context.Context, ns, name string) (kubernetes.Pod, bool, error) {
@@ -204,52 +220,104 @@ func (c *core) getService(ctx context.Context, ns, name string) (kubernetes.Serv
 	return s, false, fmt.Errorf("kernelrt: reading the Service: %w", err)
 }
 
-func (c *core) ensureService(ctx context.Context, t Target, id ident, s runtime.ServiceSpec, fence runtime.Fence) error {
-	pod, found, err := c.getPod(ctx, t.Namespace, id.base())
+// afterPod marks an error from a step that follows the Pod create as uncertain:
+// the Pod exists, so the Ensure as a whole did reach the cluster.
+func afterPod(err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.Join(runtime.ErrUncertain, err)
+}
+
+func (c *core) ensureService(ctx context.Context, t Target, id ident, rec record, s runtime.ServiceSpec, fence runtime.Fence) error {
+	ns := t.Namespace
+	pod, found, err := c.getPod(ctx, ns, id.base())
 	if err != nil {
 		return notReached(err)
 	}
-	if found {
-		if err := c.verifyPod(pod, id); err != nil {
+	if rec, err = c.current(ctx, ns, id, fence); err != nil {
+		return notReached(err)
+	}
+	switch {
+	case found:
+		if err := c.verifyPod(pod, id, t, rec); err != nil {
 			return notReached(err)
 		}
-		c.clearInflight(ctx, t.Namespace, id)
-	} else if err := c.createGuarded(ctx, t.Namespace, id,
-		func() error {
-			_, err := c.cluster.CreatePod(ctx, t.Namespace, c.servicePod(id, s, t, fence))
+		if err := c.establish(ctx, ns, id, rec, opPod, pod.Metadata.UID); err != nil {
+			return notReached(err)
+		}
+	case rec.created[opPod] != "":
+		return nil // the established Pod was lost: never silently replaced
+	default:
+		err := c.guarded(ctx, ns, id, guard{
+			op: opPod, fence: fence,
+			create: func() (string, error) {
+				out, err := c.cluster.CreatePod(ctx, ns, c.servicePod(id, s, t, fence))
+				return out.Metadata.UID, err
+			},
+			readBack: func() (string, error) {
+				p, ok, err := c.getPod(ctx, ns, id.base())
+				if err != nil || !ok {
+					return "", uncertain(errors.Join(err, errors.New("the Pod exists but cannot be read")))
+				}
+				rc, _, err := c.readRecord(ctx, ns, id)
+				if err != nil {
+					return "", uncertain(err)
+				}
+				if err := c.verifyPod(p, id, t, rc); err != nil {
+					return "", notReached(err)
+				}
+				return p.Metadata.UID, nil
+			},
+			reap: func() error { _, err := c.deleteServiceObjects(ctx, ns, id); return err },
+		})
+		if err != nil {
 			return err
-		},
-		func() error {
-			p, ok, err := c.getPod(ctx, t.Namespace, id.base())
-			if err != nil || !ok {
-				return uncertain(errors.Join(err, errors.New("the Pod exists but cannot be read")))
-			}
-			if err := c.verifyPod(p, id); err != nil {
-				return notReached(err)
-			}
-			return nil
-		}); err != nil {
-		return err
+		}
 	}
 	if len(s.Ports) == 0 {
 		return nil
 	}
-	// The Pod now exists, so any failure from here is uncertain, not "not reached".
-	svc, ok, err := c.getService(ctx, t.Namespace, id.base())
+	// The Pod now exists: from here a failure is uncertain, not "not reached".
+	rec, ok, err := c.readRecord(ctx, ns, id)
+	if err != nil || !ok {
+		return afterPod(errors.Join(err, errors.New("the record cannot be read")))
+	}
+	svc, sfound, err := c.getService(ctx, ns, id.base())
+	if err != nil {
+		return afterPod(err)
+	}
 	switch {
-	case err != nil:
-		return uncertain(err)
-	case ok:
-		if !id.owns(svc.Metadata.Labels, svc.Metadata.Annotations) {
-			return fmt.Errorf("%w: service %s", ErrForeign, svc.Metadata.Name)
+	case sfound:
+		if err := c.verifyServiceObject(svc, id, rec); err != nil {
+			return afterPod(err)
 		}
-		return nil
+		return afterPod(c.establish(ctx, ns, id, rec, opService, svc.Metadata.UID))
+	case rec.created[opService] != "":
+		return nil // lost
 	}
-	_, err = c.cluster.CreateService(ctx, t.Namespace, c.serviceObject(id, s, t))
-	if err != nil && !errors.Is(err, kubernetes.ErrAlreadyExists) {
-		return uncertain(err)
-	}
-	return nil
+	return afterPod(c.guarded(ctx, ns, id, guard{
+		op: opService, fence: fence,
+		create: func() (string, error) {
+			out, err := c.cluster.CreateService(ctx, ns, c.serviceObject(id, s, t))
+			return out.Metadata.UID, err
+		},
+		readBack: func() (string, error) {
+			sv, ok, err := c.getService(ctx, ns, id.base())
+			if err != nil || !ok {
+				return "", uncertain(errors.Join(err, errors.New("the Service exists but cannot be read")))
+			}
+			rc, _, err := c.readRecord(ctx, ns, id)
+			if err != nil {
+				return "", uncertain(err)
+			}
+			if err := c.verifyServiceObject(sv, id, rc); err != nil {
+				return "", notReached(err)
+			}
+			return sv.Metadata.UID, nil
+		},
+		reap: func() error { _, err := c.deleteServiceObjects(ctx, ns, id); return err },
+	}))
 }
 
 // Observe reports the resource by its stable identity.
@@ -258,7 +326,7 @@ func (r *Resources) Observe(ctx context.Context, h runtime.ResourceHandle) (runt
 	if err != nil {
 		return runtime.ResourceObservation{}, err
 	}
-	return r.observeResource(ctx, t.Namespace, id, h)
+	return r.observeResource(ctx, t, id, h)
 }
 
 func (c *core) handleTarget(ctx context.Context, h runtime.ResourceHandle) (Target, ident, error) {
@@ -272,15 +340,15 @@ func (c *core) handleTarget(ctx context.Context, h runtime.ResourceHandle) (Targ
 	return t, handleIdent(h, c.cfg.Backend), nil
 }
 
-func (c *core) observeResource(ctx context.Context, ns string, id ident, h runtime.ResourceHandle) (runtime.ResourceObservation, error) {
-	rec, found, err := c.readRecord(ctx, ns, id)
+func (c *core) observeResource(ctx context.Context, t Target, id ident, h runtime.ResourceHandle) (runtime.ResourceObservation, error) {
+	rec, found, err := c.readRecord(ctx, t.Namespace, id)
 	if err != nil {
 		return runtime.ResourceObservation{}, err
 	}
 	if id.kind == kindWorkspace {
-		return c.observeWorkspace(ctx, ns, id, h, rec, found)
+		return c.observeWorkspace(ctx, t.Namespace, id, h, rec, found)
 	}
-	return c.observeService(ctx, ns, id, h, rec, found)
+	return c.observeService(ctx, t, id, h, rec, found)
 }
 
 // absent maps "the object is not there" using the record: nothing was ever
@@ -306,7 +374,7 @@ func (c *core) observeWorkspace(ctx context.Context, ns string, id ident, h runt
 	if !pfound {
 		return c.absent(h, rec, found, runtime.ReasonWorkspaceLost), nil
 	}
-	if err := c.verifyPVC(p, id); err != nil {
+	if err := c.verifyPVC(p, id, rec); err != nil {
 		return runtime.ResourceObservation{}, err
 	}
 	stopped := found && rec.state != recActive
@@ -330,7 +398,8 @@ func (c *core) observeWorkspace(ctx context.Context, ns string, id ident, h runt
 	return c.robs(h, runtime.ResourceStarting, runtime.ReasonNone), nil
 }
 
-func (c *core) observeService(ctx context.Context, ns string, id ident, h runtime.ResourceHandle, rec record, found bool) (runtime.ResourceObservation, error) {
+func (c *core) observeService(ctx context.Context, t Target, id ident, h runtime.ResourceHandle, rec record, found bool) (runtime.ResourceObservation, error) {
+	ns := t.Namespace
 	pod, pfound, err := c.getPod(ctx, ns, id.base())
 	if err != nil {
 		return runtime.ResourceObservation{}, err
@@ -338,7 +407,7 @@ func (c *core) observeService(ctx context.Context, ns string, id ident, h runtim
 	if !pfound {
 		return c.absent(h, rec, found, runtime.ReasonServiceLost), nil
 	}
-	if err := c.verifyPod(pod, id); err != nil {
+	if err := c.verifyPod(pod, id, t, rec); err != nil {
 		return runtime.ResourceObservation{}, err
 	}
 	if found && rec.state != recActive {
@@ -366,9 +435,17 @@ func (c *core) observeService(ctx context.Context, ns string, id ident, h runtim
 		return c.robs(h, runtime.ResourceStarting, runtime.ReasonNone), nil
 	}
 	if len(pod.Spec.Containers[0].Ports) > 0 {
-		if _, ok, err := c.getService(ctx, ns, id.base()); err != nil {
+		svc, ok, err := c.getService(ctx, ns, id.base())
+		switch {
+		case err != nil:
 			return runtime.ResourceObservation{}, err
-		} else if !ok {
+		case ok:
+			if err := c.verifyServiceObject(svc, id, rec); err != nil {
+				return runtime.ResourceObservation{}, err
+			}
+		case rec.created[opService] != "":
+			return c.robs(h, runtime.ResourceFailed, runtime.ReasonServiceLost), nil
+		default:
 			return c.robs(h, runtime.ResourceStarting, runtime.ReasonNone), nil
 		}
 	}
@@ -416,7 +493,7 @@ func (r *Resources) Stop(ctx context.Context, h runtime.ResourceHandle) (runtime
 			return runtime.ResourceObservation{}, err
 		}
 	}
-	return r.observeResource(ctx, t.Namespace, id, h)
+	return r.observeResource(ctx, t, id, h)
 }
 
 // Remove deletes the resource and confirms with ResourceRemoved only when the
@@ -440,7 +517,7 @@ func (c *core) removeResource(ctx context.Context, ns string, id ident, h runtim
 	reason := runtime.ReasonNone
 	if id.kind == kindWorkspace {
 		var ev ReleaseEvidence
-		ev, rec, err = c.deleteWorkspace(ctx, ns, id, rec)
+		ev, _, err = c.deleteWorkspace(ctx, ns, id, rec)
 		if err != nil {
 			return runtime.ResourceObservation{}, err
 		}
@@ -459,10 +536,13 @@ func (c *core) removeResource(ctx context.Context, ns string, id ident, h runtim
 		return c.robs(h, runtime.ResourceFailed, reason), nil
 	case remaining:
 		return c.robs(h, runtime.ResourceStopped, runtime.ReasonNone), nil
-	case !rec.quiet(c.opts.Clock(), c.opts.CreateQuiescence):
-		return c.robs(h, runtime.ResourceUnknown, runtime.ReasonNone), nil
 	}
+	// The closing write re-reads the record: a create reserved since the deletes
+	// above keeps the identity open.
 	if _, err := c.settle(ctx, ns, id, h.Fence, recRemoved); err != nil {
+		if errors.Is(err, errNotQuiet) {
+			return c.robs(h, runtime.ResourceUnknown, runtime.ReasonNone), nil
+		}
 		return runtime.ResourceObservation{}, err
 	}
 	return c.robs(h, runtime.ResourceRemoved, runtime.ReasonNone), nil
@@ -505,8 +585,10 @@ func (c *core) deleteServiceObjects(ctx context.Context, ns string, id ident) (b
 	return pfound, err
 }
 
-// deleteWorkspace deletes the claim under its UID after remembering the volume
-// it is bound to, then gathers the release evidence.
+// deleteWorkspace deletes the claim under its UID. Before it does, the claim's
+// UID and the volume it is bound to are written to the record, because the claim
+// is the only pointer to them; the time the claim was first seen gone is
+// written too, which starts the wait that rules out a binding in progress.
 func (c *core) deleteWorkspace(ctx context.Context, ns string, id ident, rec record) (ReleaseEvidence, record, error) {
 	p, found, err := c.getPVC(ctx, ns, id.base())
 	if err != nil {
@@ -516,57 +598,101 @@ func (c *core) deleteWorkspace(ctx context.Context, ns string, id ident, rec rec
 		if !id.owns(p.Metadata.Labels, p.Metadata.Annotations) {
 			return ReleaseEvidence{}, rec, fmt.Errorf("%w: claim %s", ErrForeign, p.Metadata.Name)
 		}
-		// Remember the volume before the claim goes: the claim is the only
-		// pointer to it.
-		if v := p.Spec.VolumeName; v != "" && rec.volume != v {
-			rec, err = c.mutate(ctx, ns, id, func(r *record) { r.volume = v })
+		uid, vol := p.Metadata.UID, p.Spec.VolumeName
+		if rec.created[opPVC] != uid || (vol != "" && rec.volume != vol) {
+			rec, err = c.mutate(ctx, ns, id, func(r *record) error {
+				r.created[opPVC] = uid
+				if vol != "" {
+					r.volume = vol
+				}
+				return nil
+			})
 			if err != nil {
 				return ReleaseEvidence{}, rec, err
 			}
 		}
-		if p.Metadata.DeletionTimestamp == "" {
-			if err := c.cluster.DeletePVC(ctx, ns, p.Metadata.Name, kubernetes.DeleteOptions{UID: p.Metadata.UID}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
-				return ReleaseEvidence{}, rec, fmt.Errorf("kernelrt: deleting the workspace claim: %w", err)
+		if _, err := c.deleteClaim(ctx, ns, id); err != nil {
+			return ReleaseEvidence{}, rec, err
+		}
+		if _, still, err := c.getPVC(ctx, ns, id.base()); err != nil {
+			return ReleaseEvidence{}, rec, err
+		} else if still {
+			ev, err := c.evidence(ctx, ns, id, rec)
+			return ev, rec, err
+		}
+	}
+	// The claim is gone: remember since when, once.
+	if rec.claimGone.IsZero() && c.issuedClaim(rec) {
+		now := c.opts.Clock()
+		rec, err = c.mutate(ctx, ns, id, func(r *record) error {
+			if r.claimGone.IsZero() {
+				r.claimGone = now
 			}
+			return nil
+		})
+		if err != nil {
+			return ReleaseEvidence{}, rec, err
 		}
 	}
 	ev, err := c.evidence(ctx, ns, id, rec)
 	return ev, rec, err
 }
 
-// evidence reads the release evidence of a workspace.
+// issuedClaim reports whether a claim create was ever issued for the record.
+func (c *core) issuedClaim(rec record) bool {
+	_, marked := rec.markers[opPVC]
+	return marked || rec.created[opPVC] != ""
+}
+
+// evidence reads the release evidence of a workspace. Volumes are discovered by
+// the claimRef that names the claim, not only by the name remembered from the
+// claim: a claim deleted before the adapter saw it bound still leaves its
+// volume behind.
 func (c *core) evidence(ctx context.Context, ns string, id ident, rec record) (ReleaseEvidence, error) {
 	_, found, err := c.getPVC(ctx, ns, id.base())
 	if err != nil {
 		return ReleaseEvidence{}, err
 	}
-	ev := ReleaseEvidence{ClaimGone: !found, Volume: rec.volume, VolumeGone: rec.volume == ""}
-	if rec.volume == "" {
-		return ev, nil
+	ev := ReleaseEvidence{ClaimGone: !found}
+	pvs, err := c.cluster.ListPVs(ctx)
+	if err != nil {
+		return ev, fmt.Errorf("kernelrt: listing volumes: %w", err)
 	}
-	pv, err := c.cluster.GetPV(ctx, rec.volume)
-	switch {
-	case errors.Is(err, kubernetes.ErrNotFound):
-		ev.VolumeGone = true
-	case err != nil:
-		return ev, fmt.Errorf("kernelrt: reading the volume: %w", err)
-	default:
-		ev.ReclaimPolicy = pv.Spec.PersistentVolumeReclaimPolicy
-		ev.Retained = pv.Spec.PersistentVolumeReclaimPolicy == "Retain" && ev.ClaimGone
+	var names []string
+	for _, pv := range pvs {
+		ref := pv.Spec.ClaimRef
+		byClaim := ref != nil && ref.Namespace == ns && ref.Name == id.base() && (rec.created[opPVC] == "" || ref.UID == "" || ref.UID == rec.created[opPVC])
+		if byClaim || (rec.volume != "" && pv.Metadata.Name == rec.volume) {
+			names = append(names, pv.Metadata.Name)
+			ev.Volumes = append(ev.Volumes, pv.Metadata.Name)
+			if ev.ReclaimPolicy == "" {
+				ev.ReclaimPolicy = pv.Spec.PersistentVolumeReclaimPolicy
+			}
+			if pv.Spec.PersistentVolumeReclaimPolicy == "Retain" && ev.ClaimGone {
+				ev.Retained = true
+			}
+		}
+	}
+	slices.Sort(ev.Volumes)
+	ev.VolumeGone = len(names) == 0
+	if ev.ClaimGone && c.issuedClaim(rec) {
+		now := c.opts.Clock()
+		ev.Unconfirmed = rec.claimGone.IsZero() || now.Before(rec.claimGone.Add(c.opts.CreateQuiescence))
 	}
 	attachments, err := c.cluster.ListVolumeAttachments(ctx)
 	if err != nil {
 		return ev, fmt.Errorf("kernelrt: listing volume attachments: %w", err)
 	}
 	for _, a := range attachments {
-		if v := a.Spec.Source.PersistentVolumeName; v != nil && *v == rec.volume && a.Status.Attached {
+		if v := a.Spec.Source.PersistentVolumeName; v != nil && slices.Contains(names, *v) && a.Status.Attached {
 			ev.Attached = true
 		}
 	}
 	return ev, nil
 }
 
-// ReleaseEvidence reports the storage release evidence of a workspace handle.
+// ReleaseEvidence reports the storage release evidence of a workspace handle. It
+// only reads.
 func (r *Resources) ReleaseEvidence(ctx context.Context, h runtime.ResourceHandle) (ReleaseEvidence, error) {
 	t, id, err := r.handleTarget(ctx, h)
 	if err != nil {

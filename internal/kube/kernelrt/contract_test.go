@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -598,11 +599,19 @@ func Test_unit_kube_kernel_runtime_contract(t *testing.T) {
 			t.Fatalf("a claim whose volume still exists and is attached is not removed: %+v %v", rm, err)
 		}
 		ev, err := h.res.ReleaseEvidence(ctx, o.Handle)
-		if err != nil || !ev.ClaimGone || ev.VolumeGone || !ev.Attached || ev.Volume != "pv-1" || ev.Released() {
+		if err != nil || !ev.ClaimGone || ev.VolumeGone || !ev.Attached || !slices.Equal(ev.Volumes, []string{"pv-1"}) || ev.Released() {
 			t.Fatalf("evidence = %+v %v", ev, err)
 		}
 		h.cl.attached = nil
 		delete(h.cl.pvs, "pv-1")
+		rm, err = h.res.Remove(ctx, o.Handle)
+		if err != nil || rm.State != runtime.ResourceStopped {
+			t.Fatalf("the claim vanished moments ago; a binding still in progress is not ruled out: %+v %v", rm, err)
+		}
+		if ev, _ := h.res.ReleaseEvidence(ctx, o.Handle); !ev.Unconfirmed || ev.Released() {
+			t.Fatalf("evidence = %+v", ev)
+		}
+		h.clock.Advance(2 * time.Minute)
 		rm, err = h.res.Remove(ctx, o.Handle)
 		if err != nil || !rm.ConfirmedRemoved() {
 			t.Fatalf("released = %+v %v", rm, err)
@@ -660,14 +669,21 @@ func Test_unit_kube_kernel_runtime_contract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rep.Retained) != 1 || rep.Retained[0].Identity != b2.WorkloadID || rep.Retained[0].Reason != runtime.ReasonCleanupFailed {
+		// The workload is retained by the cluster's refusal, the workspace until a
+		// claim binding still in progress is ruled out; only the service is gone.
+		retained := map[string]bool{}
+		for _, r := range rep.Retained {
+			retained[r.Identity] = r.Reason == runtime.ReasonCleanupFailed
+		}
+		if len(rep.Retained) != 2 || !retained[b2.WorkloadID] || !retained["ws-run-2"] {
 			t.Fatalf("retained = %+v", rep.Retained)
 		}
-		if len(rep.Removed) != 2 {
-			t.Fatalf("removed = %v, want the workspace and the service", rep.Removed)
+		if len(rep.Removed) != 1 || rep.Removed[0] != "svc-db-run-2" {
+			t.Fatalf("removed = %v, want the service", rep.Removed)
 		}
+		h.clock.Advance(2 * time.Minute)
 		rep, err = h.ad.Reconcile(ctx, scopeA, inv)
-		if err != nil || len(rep.Retained) != 0 || len(rep.Removed) != 1 || rep.Removed[0] != b2.WorkloadID {
+		if err != nil || len(rep.Retained) != 0 || len(rep.Removed) != 2 {
 			t.Fatalf("second pass: %+v %v", rep, err)
 		}
 
@@ -687,12 +703,25 @@ func Test_unit_kube_kernel_runtime_contract(t *testing.T) {
 			t.Fatalf("the orphan is %s", o.Phase)
 		}
 
-		// Tombstones outlive the delayed-create window, then go.
+		// Closure evidence is durable: no amount of time lets an old writer recreate
+		// what was removed, and reconciliation never prunes a fence record.
 		before := len(h.cl.names(h.cl.secrets))
-		h.clock.Advance(2 * time.Hour)
+		h.clock.Advance(1000 * time.Hour)
 		rep, err = h.ad.Reconcile(ctx, scopeA, inv)
-		if err != nil || rep.Pruned != 3 || len(h.cl.names(h.cl.secrets)) != before-3 {
-			t.Fatalf("prune: %+v %v secrets %d -> %d", rep, err, before, len(h.cl.names(h.cl.secrets)))
+		if err != nil || rep.Pruned != 0 || len(h.cl.names(h.cl.secrets)) != before {
+			t.Fatalf("reconcile pruned closure evidence: %+v %v secrets %d -> %d", rep, err, before, len(h.cl.names(h.cl.secrets)))
+		}
+		if _, err := h.res.Ensure(ctx, h.workspaceSpec(scopeA, "run-2", 1)); !errors.Is(err, ErrClosed) || !isNotReached(err) {
+			t.Fatalf("an old Ensure of a removed workspace = %v", err)
+		}
+		if _, err := h.res.Ensure(ctx, svc2); !errors.Is(err, ErrClosed) || !isNotReached(err) {
+			t.Fatalf("an old Ensure of a removed service = %v", err)
+		}
+		if _, err := h.start(h.startRequest(b2, ws2)); !isNotReached(err) {
+			t.Fatalf("an old Start of a removed workload = %v", err)
+		}
+		if len(h.cl.names(h.cl.pvcs)) != 2 || len(h.cl.names(h.cl.pods)) != 0 {
+			t.Fatal("a removed identity was recreated")
 		}
 	})
 

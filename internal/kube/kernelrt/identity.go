@@ -85,9 +85,22 @@ const (
 	annDigest   = "kodama.io/spec-digest"
 	annFence    = "kodama.io/fence"
 	annState    = "kodama.io/state"
-	annInflight = "kodama.io/inflight-since"
 	annVolume   = "kodama.io/volume"
 	annSettled  = "kodama.io/state-since"
+	// annMarkerPrefix and annCreatedPrefix carry per-operation evidence: a
+	// marker is a create that was issued and may still land; a created UID is
+	// the instance this identity established.
+	annMarkerPrefix  = "kodama.io/inflight."
+	annCreatedPrefix = "kodama.io/created."
+	annClaimGone     = "kodama.io/claim-gone"
+	annWorkspace     = "kodama.io/workspace-claim"
+
+	// Operations that create one cluster object each.
+	opJob     = "job"
+	opPod     = "pod"
+	opService = "service"
+	opPVC     = "pvc"
+	opSecret  = "secret"
 
 	containerStep = "step"
 	containerSvc  = "service"

@@ -51,21 +51,168 @@ func (c *core) admit(ctx context.Context, scope domain.Scope, required runtime.C
 	return t, nil
 }
 
-// requireDefaultDeny verifies that some policy selects every Pod of the
-// namespace, governs ingress and egress, and allows no ingress. Egress
-// allowances are the operator's; this check does not judge them.
+// requireDefaultDeny verifies the namespace's effective network isolation.
+// NetworkPolicies are additive, so a default-deny policy alone proves nothing:
+// any other policy that selects the adapter's Pods can allow traffic back in.
+// It therefore requires both:
+//
+//   - some policy selects every Pod, governs ingress and egress and allows no
+//     ingress; and
+//   - every policy that selects the adapter's Pods (an empty selector, a
+//     selector of labels the adapter sets, or any expression selector) allows
+//     only these shapes: ingress from Pods of the same namespace; egress to
+//     Pods of the same namespace; egress to anywhere on DNS port 53 only; and
+//     public egress to 0.0.0.0/0 on ports 80 and 443 only with the private,
+//     link-local and CGNAT ranges excepted.
+//
+// An allow-all rule, a namespace selector without the DNS port, or an
+// unexcepted public block overlaps another tenant's traffic and is refused.
+// This judges the policy objects; whether the network plugin enforces them is
+// the operator's attestation (Config.NetworkPolicyEnforced).
 func (c *core) requireDefaultDeny(ctx context.Context, ns string) error {
 	policies, err := c.cluster.ListNetworkPolicies(ctx, ns)
 	if err != nil {
 		return notReached(fmt.Errorf("listing network policies: %w", err))
 	}
+	denied := false
 	for _, p := range policies {
 		s := p.Spec
 		if s.PodSelector.Empty() && slices.Contains(s.PolicyTypes, "Ingress") && slices.Contains(s.PolicyTypes, "Egress") && len(s.Ingress) == 0 {
-			return nil
+			denied = true
+		}
+		if !selectsAdapterPods(s.PodSelector) {
+			continue
+		}
+		if err := allowedShapes(s); err != nil {
+			return unsupported("network policy %s allows more than tenant-scoped traffic: %v", p.Metadata.Name, err)
 		}
 	}
-	return unsupported("namespace %s has no default-deny network policy", ns)
+	if !denied {
+		return unsupported("namespace %s has no default-deny network policy", ns)
+	}
+	return nil
+}
+
+// selectsAdapterPods reports whether a policy's selector may select the
+// adapter's Pods. The Pods carry only the adapter's own labels, so a selector
+// that requires any other label, or another value of the managed-by label,
+// cannot match them. An expression selector cannot be evaluated here and is
+// assumed to match.
+func selectsAdapterPods(sel kubernetes.LabelSelector) bool {
+	if len(sel.MatchExpressions) > 0 {
+		return true
+	}
+	for k, v := range sel.MatchLabels {
+		if !isAdapterLabel(k) || (k == labelManaged && v != valueManaged) {
+			return false
+		}
+	}
+	return true
+}
+
+func isAdapterLabel(k string) bool {
+	switch k {
+	case labelManaged, labelScope, labelRun, labelKind, labelRole, labelObject:
+		return true
+	}
+	return false
+}
+
+var privateRanges = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"}
+
+func allowedShapes(s kubernetes.NetworkPolicySpec) error {
+	for i, rule := range s.Ingress {
+		peers, hasFrom := rule["from"].([]any)
+		if !hasFrom || len(peers) == 0 {
+			return fmt.Errorf("ingress rule %d admits every source", i)
+		}
+		for _, raw := range peers {
+			peer, _ := raw.(map[string]any)
+			if peer["namespaceSelector"] != nil || peer["ipBlock"] != nil || peer["podSelector"] == nil {
+				return fmt.Errorf("ingress rule %d admits sources outside the namespace", i)
+			}
+		}
+	}
+	for i, rule := range s.Egress {
+		ports := portSet(rule.Ports)
+		switch {
+		case len(rule.To) == 0:
+			if !onlyPorts(ports, 53) {
+				return fmt.Errorf("egress rule %d admits every destination", i)
+			}
+		default:
+			for _, peer := range rule.To {
+				if err := egressPeer(peer, ports); err != nil {
+					return fmt.Errorf("egress rule %d: %w", i, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// portSet returns the single ports of a rule; a range or a named port yields a
+// zero entry, which no port allowance accepts.
+func portSet(ps []kubernetes.NetworkPort) map[int]bool {
+	if len(ps) == 0 {
+		return nil
+	}
+	out := map[int]bool{}
+	for _, p := range ps {
+		n := 0
+		switch v := p.Port.(type) {
+		case float64:
+			n = int(v)
+		case int:
+			n = v
+		case int32:
+			n = int(v)
+		}
+		if p.EndPort != nil {
+			n = 0
+		}
+		out[n] = true
+	}
+	return out
+}
+
+func onlyPorts(set map[int]bool, allowed ...int) bool {
+	if len(set) == 0 {
+		return false
+	}
+	for p := range set {
+		if !slices.Contains(allowed, p) {
+			return false
+		}
+	}
+	return true
+}
+
+func egressPeer(p kubernetes.NetworkPeer, ports map[int]bool) error {
+	switch {
+	case p.IPBlock != nil:
+		b := p.IPBlock
+		if b.CIDR != "0.0.0.0/0" && b.CIDR != "::/0" {
+			return nil // a specific range the operator chose
+		}
+		if b.CIDR == "0.0.0.0/0" && onlyPorts(ports, 80, 443) {
+			for _, r := range privateRanges {
+				if !slices.Contains(b.Except, r) {
+					return fmt.Errorf("public egress does not except %s", r)
+				}
+			}
+			return nil
+		}
+		return errors.New("an unrestricted address block")
+	case p.NamespaceSelector != nil:
+		if onlyPorts(ports, 53) {
+			return nil // cluster DNS in another namespace
+		}
+		return errors.New("a namespace selector reaches other namespaces")
+	case p.PodSelector != nil:
+		return nil // Pods of this namespace
+	}
+	return errors.New("an empty peer")
 }
 
 // checkStorage verifies the workspace storage class exists and is usable for a

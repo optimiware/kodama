@@ -36,7 +36,7 @@ type ReconcileReport struct {
 	Removed []string `json:"removed,omitempty"`
 	// Retained are orphans still present or not confirmed absent.
 	Retained []Retained `json:"retained,omitempty"`
-	// Pruned counts tombstones and leftover step secrets deleted.
+	// Pruned counts leftover step secrets deleted. Fence records are never pruned.
 	Pruned int `json:"pruned,omitempty"`
 	// Spared counts unreferenced identities younger than the grace period.
 	Spared int `json:"spared,omitempty"`
@@ -123,15 +123,9 @@ func (a *Adapter) reconcileRecord(ctx context.Context, t Target, scope domain.Sc
 		return
 	}
 	if rec.state == recRemoved {
-		since, ok := parseTime(ann[annSettled])
-		if !ok || a.opts.Clock().Sub(since) < a.opts.TombstoneRetention {
-			return
-		}
-		if err := a.deleteRecord(ctx, t.Namespace, rec); err != nil {
-			retain(err)
-			return
-		}
-		rep.Pruned++
+		// Closure evidence is durable: the record of a removed identity and its
+		// highest fence are never deleted, because they are what rejects a delayed
+		// create from an older writer at any later time.
 		return
 	}
 	if !old {

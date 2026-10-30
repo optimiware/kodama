@@ -2,6 +2,7 @@ package kernelrt
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -36,7 +37,12 @@ type fakeCluster struct {
 	foreground bool
 	// inject decides, per operation name, whether to fail and whether the
 	// mutation is applied anyway (a lost response).
-	inject  map[string][]injected
+	inject map[string][]injected
+	hooks  map[string][]func()
+	// tampers rewrite the server document of one object, as a hostile or
+	// misconfigured actor could: typed fields stay as stored, the raw JSON the
+	// adapter verifies changes.
+	tampers map[string][]func(map[string]any)
 	deletes []string // "<kind> <name> uid=<uid>" for every accepted delete
 	calls   map[string]int
 }
@@ -73,7 +79,7 @@ func newFake(clock *fakeClock) *fakeCluster {
 		pvs:        map[string]kubernetes.PersistentVolume{},
 		jobs:       map[string]any{}, pods: map[string]any{}, secrets: map[string]any{}, pvcs: map[string]any{}, services: map[string]any{},
 		logs:   map[string]string{},
-		inject: map[string][]injected{}, calls: map[string]int{},
+		inject: map[string][]injected{}, hooks: map[string][]func(){}, tampers: map[string][]func(map[string]any){}, calls: map[string]int{},
 	}
 }
 
@@ -156,14 +162,16 @@ func (f *fakeCluster) GetStorageClass(_ context.Context, name string) (kubernete
 	return c, nil
 }
 
-func (f *fakeCluster) GetPV(_ context.Context, name string) (kubernetes.PersistentVolume, error) {
+func (f *fakeCluster) ListPVs(context.Context) ([]kubernetes.PersistentVolume, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	p, ok := f.pvs[name]
-	if !ok {
-		return p, notFound("pv")
+	var out []kubernetes.PersistentVolume
+	for name, pv := range f.pvs {
+		pv.Metadata.Name = name
+		out = append(out, pv)
 	}
-	return p, nil
+	sort.Slice(out, func(i, j int) bool { return out[i].Metadata.Name < out[j].Metadata.Name })
+	return out, nil
 }
 
 func (f *fakeCluster) ListVolumeAttachments(context.Context) ([]kubernetes.VolumeAttachment, error) {
@@ -175,6 +183,7 @@ func (f *fakeCluster) ListVolumeAttachments(context.Context) ([]kubernetes.Volum
 // ---- generic object helpers ----
 
 func get[T any](f *fakeCluster, m map[string]any, op, ns, name string) (T, error) {
+	f.runHook(op)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var zero T
@@ -185,7 +194,136 @@ func get[T any](f *fakeCluster, m map[string]any, op, ns, name string) (T, error
 	if !ok {
 		return zero, notFound(op)
 	}
-	return v.(T), nil
+	return f.attach(v).(T), nil
+}
+
+// runHook runs the next hook registered for op, outside the cluster lock, so a
+// test can interleave another actor at an exact point of a call sequence.
+func (f *fakeCluster) runHook(op string) {
+	f.mu.Lock()
+	q := f.hooks[op]
+	var h func()
+	if len(q) > 0 {
+		h, f.hooks[op] = q[0], q[1:]
+	}
+	f.mu.Unlock()
+	if h != nil {
+		h()
+	}
+}
+
+func (f *fakeCluster) onNext(op string, h func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hooks[op] = append(f.hooks[op], h)
+}
+
+// tamper registers a rewrite of the server document of one object.
+func (f *fakeCluster) tamper(kind, ns, name string, mutate func(map[string]any)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k := kind + "/" + key(ns, name)
+	f.tampers[k] = append(f.tampers[k], mutate)
+}
+
+// attach returns v with the server document set: the typed object marshaled and
+// completed with the defaults a real API server adds, then any tampering.
+func (f *fakeCluster) attach(v any) any {
+	switch o := v.(type) {
+	case kubernetes.Job:
+		o.Raw = f.document("job", o.Metadata, o, defaultJob)
+		return o
+	case kubernetes.Pod:
+		o.Raw = f.document("pod", o.Metadata, o, defaultPod)
+		return o
+	case kubernetes.PersistentVolumeClaim:
+		o.Raw = f.document("pvc", o.Metadata, o, nil)
+		return o
+	case kubernetes.Service:
+		o.Raw = f.document("service", o.Metadata, o, defaultService)
+		return o
+	}
+	return v
+}
+
+func (f *fakeCluster) document(kind string, m kubernetes.ObjectMeta, obj any, defaults func(map[string]any)) json.RawMessage {
+	raw, err := json.Marshal(obj)
+	if err != nil {
+		panic(err)
+	}
+	var d map[string]any
+	if err := json.Unmarshal(raw, &d); err != nil {
+		panic(err)
+	}
+	if defaults != nil {
+		defaults(d)
+	}
+	for _, t := range f.tampers[kind+"/"+key(m.Namespace, m.Name)] {
+		t(d)
+	}
+	out, err := json.Marshal(d)
+	if err != nil {
+		panic(err)
+	}
+	return out
+}
+
+func sub(m map[string]any, k string) map[string]any {
+	x, _ := m[k].(map[string]any)
+	if x == nil {
+		x = map[string]any{}
+		m[k] = x
+	}
+	return x
+}
+
+// podDefaults adds what the API server and scheduler add to a Pod spec.
+func podDefaults(spec map[string]any, scheduled bool) {
+	spec["serviceAccount"] = spec["serviceAccountName"]
+	spec["dnsPolicy"] = "ClusterFirst"
+	spec["schedulerName"] = "default-scheduler"
+	spec["priority"] = 0
+	spec["preemptionPolicy"] = "PreemptLowerPriority"
+	spec["tolerations"] = []any{
+		map[string]any{"key": "node.kubernetes.io/not-ready", "operator": "Exists", "effect": "NoExecute", "tolerationSeconds": 300},
+		map[string]any{"key": "node.kubernetes.io/unreachable", "operator": "Exists", "effect": "NoExecute", "tolerationSeconds": 300},
+	}
+	if scheduled {
+		spec["nodeName"] = "node-1"
+	}
+	cs, _ := spec["containers"].([]any)
+	for _, c := range cs {
+		cm := c.(map[string]any)
+		cm["terminationMessagePath"] = "/dev/termination-log"
+		cm["terminationMessagePolicy"] = "File"
+	}
+}
+
+func defaultPod(d map[string]any) {
+	st, _ := d["status"].(map[string]any)
+	phase, _ := st["phase"].(string)
+	podDefaults(sub(d, "spec"), phase != "")
+}
+
+func defaultJob(d map[string]any) {
+	spec := sub(d, "spec")
+	spec["completionMode"] = "NonIndexed"
+	spec["suspend"] = false
+	spec["podReplacementPolicy"] = "TerminatingOrFailed"
+	spec["selector"] = map[string]any{"matchLabels": map[string]any{"batch.kubernetes.io/controller-uid": "x"}}
+	tpl := sub(spec, "template")
+	tpl["metadata"].(map[string]any)["creationTimestamp"] = nil
+	podDefaults(sub(tpl, "spec"), false)
+}
+
+func defaultService(d map[string]any) {
+	spec := sub(d, "spec")
+	spec["clusterIP"] = "10.96.0.7"
+	spec["clusterIPs"] = []any{"10.96.0.7"}
+	spec["ipFamilies"] = []any{"IPv4"}
+	spec["ipFamilyPolicy"] = "SingleStack"
+	spec["internalTrafficPolicy"] = "Cluster"
+	spec["sessionAffinity"] = "None"
 }
 
 func meta(v any) *kubernetes.ObjectMeta {
@@ -205,6 +343,7 @@ func meta(v any) *kubernetes.ObjectMeta {
 }
 
 func create[T any](f *fakeCluster, m map[string]any, op, ns string, obj T) (T, error) {
+	f.runHook(op)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	in, injectedFault := f.next(op)
@@ -226,6 +365,7 @@ func create[T any](f *fakeCluster, m map[string]any, op, ns string, obj T) (T, e
 // remove deletes under a UID precondition. Foreground deletes of Jobs, Pods and
 // claims stay visible, terminating, until finalize.
 func (f *fakeCluster) remove(kind string, m map[string]any, ns, name string, o kubernetes.DeleteOptions) error {
+	f.runHook("delete " + kind)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	op := "delete " + kind
@@ -349,7 +489,7 @@ func (f *fakeCluster) ListPods(_ context.Context, ns, selector string) ([]kubern
 	for _, v := range f.pods {
 		p := v.(kubernetes.Pod)
 		if p.Metadata.Namespace == ns && selectorMatches(selector, p.Metadata.Labels) {
-			out = append(out, p)
+			out = append(out, f.attach(p).(kubernetes.Pod))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Metadata.Name < out[j].Metadata.Name })
@@ -389,6 +529,7 @@ func (f *fakeCluster) CreateSecret(_ context.Context, ns string, s kubernetes.Se
 }
 
 func (f *fakeCluster) UpdateSecret(_ context.Context, ns string, s kubernetes.Secret) (kubernetes.Secret, error) {
+	f.runHook("update secret")
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	in, injectedFault := f.next("update secret")
@@ -466,7 +607,7 @@ func (f *fakeCluster) job(ns, name string) (kubernetes.Job, bool) {
 	if !ok {
 		return kubernetes.Job{}, false
 	}
-	return v.(kubernetes.Job), true
+	return f.attach(v).(kubernetes.Job), true
 }
 
 func (f *fakeCluster) names(m map[string]any) []string {
@@ -488,6 +629,7 @@ func (f *fakeCluster) startPod(ns, job string) kubernetes.Pod {
 	defer f.mu.Unlock()
 	j := f.jobs[key(ns, job)].(kubernetes.Job)
 	p := kubernetes.Pod{
+		APIVersion: "v1", Kind: "Pod",
 		Metadata: kubernetes.ObjectMeta{
 			Name: job + "-x1", Labels: j.Spec.Template.Metadata.Labels, Annotations: j.Spec.Template.Metadata.Annotations,
 			OwnerReferences: []kubernetes.OwnerReference{{APIVersion: "batch/v1", Kind: "Job", Name: job, UID: j.Metadata.UID, Controller: ctrl()}},

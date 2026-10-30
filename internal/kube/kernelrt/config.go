@@ -40,7 +40,7 @@ type Cluster interface {
 	GetPVC(ctx context.Context, ns, name string) (kubernetes.PersistentVolumeClaim, error)
 	CreatePVC(ctx context.Context, ns string, p kubernetes.PersistentVolumeClaim) (kubernetes.PersistentVolumeClaim, error)
 	DeletePVC(ctx context.Context, ns, name string, o kubernetes.DeleteOptions) error
-	GetPV(ctx context.Context, name string) (kubernetes.PersistentVolume, error)
+	ListPVs(ctx context.Context) ([]kubernetes.PersistentVolume, error)
 	GetStorageClass(ctx context.Context, name string) (kubernetes.StorageClass, error)
 	ListVolumeAttachments(ctx context.Context) ([]kubernetes.VolumeAttachment, error)
 
@@ -203,9 +203,6 @@ type Options struct {
 	CreateQuiescence time.Duration
 	// OrphanGrace spares young unreferenced objects from reconciliation.
 	OrphanGrace time.Duration
-	// TombstoneRetention is how long the record of a removed identity is kept
-	// to reject a delayed create from an older writer.
-	TombstoneRetention time.Duration
 }
 
 func (o Options) withDefaults() (Options, error) {
@@ -218,10 +215,7 @@ func (o Options) withDefaults() (Options, error) {
 	if o.OrphanGrace == 0 {
 		o.OrphanGrace = 2 * time.Minute
 	}
-	if o.TombstoneRetention == 0 {
-		o.TombstoneRetention = 24 * time.Hour
-	}
-	if o.CreateQuiescence < time.Second || o.OrphanGrace < 0 || o.TombstoneRetention < o.CreateQuiescence {
+	if o.CreateQuiescence < time.Second || o.OrphanGrace < 0 {
 		return o, errors.New("kernelrt: options are out of range")
 	}
 	return o, nil

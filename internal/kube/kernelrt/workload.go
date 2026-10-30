@@ -118,7 +118,10 @@ func handleIdent(h runtime.ResourceHandle, backend string) ident {
 // workload id: the same specification digest is adopted, another one is
 // runtime.ErrSpecMismatch, and a writer older than the identity's record is
 // runtime.ErrStaleFence. Every refusal before the create wraps
-// runtime.ErrNotReached.
+// runtime.ErrNotReached. The create itself runs under a conditional
+// reservation (see guarded): a Start that was paused while a newer writer
+// stopped or removed the workload cannot create it, and one whose create lands
+// afterwards deletes it again.
 func (r *Runtime) Start(ctx context.Context, req runtime.StartRequest) (runtime.WorkloadObservation, error) {
 	if err := r.validateStart(req); err != nil {
 		return runtime.WorkloadObservation{}, notReached(err)
@@ -133,26 +136,42 @@ func (r *Runtime) Start(ctx context.Context, req runtime.StartRequest) (runtime.
 	if err := r.requireWorkspace(ctx, t.Namespace, ws); err != nil {
 		return runtime.WorkloadObservation{}, notReached(err)
 	}
-	if _, err := r.claim(ctx, t.Namespace, id, b.Fence); err != nil {
+	rec, err := r.claim(ctx, t.Namespace, id, b.Fence)
+	if err != nil {
 		return runtime.WorkloadObservation{}, notReached(err)
+	}
+	if rec.workspace != "" && rec.workspace != ws.base() {
+		return runtime.WorkloadObservation{}, notReached(invalidf("the workload was started against another workspace"))
 	}
 	job, found, err := r.getJob(ctx, t.Namespace, id.base())
 	if err != nil {
 		return runtime.WorkloadObservation{}, notReached(err)
 	}
+	// The read above may have been preceded by a pause: decide on the record as
+	// it is now, and only while this writer still has authority.
+	if rec, err = r.current(ctx, t.Namespace, id, b.Fence); err != nil {
+		return runtime.WorkloadObservation{}, notReached(err)
+	}
 	if found {
-		if err := r.verifyJob(job, id); err != nil {
+		if err := r.verifyJob(job, id, t, rec); err != nil {
 			return runtime.WorkloadObservation{}, notReached(err)
 		}
-		r.clearInflight(ctx, t.Namespace, id)
-		return r.observe(ctx, t.Namespace, b)
+		if err := r.establish(ctx, t.Namespace, id, rec, opJob, job.Metadata.UID); err != nil {
+			return runtime.WorkloadObservation{}, notReached(err)
+		}
+		return r.observe(ctx, t, b)
+	}
+	if rec.created[opJob] != "" {
+		// An established Job vanished. It is never silently recreated: that would
+		// run the step's commands a second time. The observation reports it.
+		return r.observe(ctx, t, b)
 	}
 
 	material := ""
 	if len(req.Secrets.Refs) > 0 {
-		material, err = r.ensureMaterial(ctx, t.Namespace, id, req.Secrets)
+		material, err = r.ensureMaterial(ctx, t.Namespace, id, b.Fence, req.Secrets)
 		if err != nil {
-			return runtime.WorkloadObservation{}, notReached(err)
+			return runtime.WorkloadObservation{}, err
 		}
 	}
 	var svcs []serviceRef
@@ -160,33 +179,33 @@ func (r *Runtime) Start(ctx context.Context, req runtime.StartRequest) (runtime.
 		svcs = append(svcs, serviceRef{name: s.Name, base: handleIdent(s, r.cfg.Backend).base()})
 	}
 	j := r.stepJob(id, req, t, ws.base(), material, serviceHostEnv(t.Namespace, svcs))
-
-	// The in-flight marker precedes the create: a create whose answer is lost
-	// must never later be mistaken for absence.
-	if err := r.markInflight(ctx, t.Namespace, id); err != nil {
-		return runtime.WorkloadObservation{}, notReached(err)
+	err = r.guarded(ctx, t.Namespace, id, guard{
+		op: opJob, fence: b.Fence,
+		mod: func(rc *record) { rc.workspace = ws.base() },
+		create: func() (string, error) {
+			out, err := r.cluster.CreateJob(ctx, t.Namespace, j)
+			return out.Metadata.UID, err
+		},
+		readBack: func() (string, error) {
+			existing, ok, err := r.getJob(ctx, t.Namespace, id.base())
+			if err != nil || !ok {
+				return "", uncertain(errors.Join(err, errors.New("the Job exists but cannot be read")))
+			}
+			rc, _, err := r.readRecord(ctx, t.Namespace, id)
+			if err != nil {
+				return "", uncertain(err)
+			}
+			if err := r.verifyJob(existing, id, t, rc); err != nil {
+				return "", notReached(err)
+			}
+			return existing.Metadata.UID, nil
+		},
+		reap: func() error { _, err := r.deleteWorkloadObjects(ctx, t.Namespace, id); return err },
+	})
+	if err != nil {
+		return runtime.WorkloadObservation{}, err
 	}
-	_, err = r.cluster.CreateJob(ctx, t.Namespace, j)
-	switch {
-	case err == nil:
-		r.clearInflight(ctx, t.Namespace, id)
-	case errors.Is(err, kubernetes.ErrAlreadyExists):
-		existing, ok, rerr := r.getJob(ctx, t.Namespace, id.base())
-		if rerr != nil || !ok {
-			return runtime.WorkloadObservation{}, uncertain(errors.Join(err, rerr))
-		}
-		if verr := r.verifyJob(existing, id); verr != nil {
-			r.clearInflight(ctx, t.Namespace, id)
-			return runtime.WorkloadObservation{}, notReached(verr)
-		}
-		r.clearInflight(ctx, t.Namespace, id)
-	case kubernetes.Definite(err):
-		r.clearInflight(ctx, t.Namespace, id)
-		return runtime.WorkloadObservation{}, notReached(fmt.Errorf("the cluster refused the Job: %w", err))
-	default:
-		return runtime.WorkloadObservation{}, uncertain(err)
-	}
-	return r.observe(ctx, t.Namespace, b)
+	return r.observe(ctx, t, b)
 }
 
 // requireWorkspace verifies that the run's workspace exists, is owned by this
@@ -210,7 +229,7 @@ func (c *core) requireWorkspace(ctx context.Context, ns string, ws ident) error 
 	case pvc.Metadata.DeletionTimestamp != "" || pvc.Status.Phase == "Lost":
 		return fmt.Errorf("kernelrt: the workspace claim is %s", pvcCondition(pvc))
 	}
-	return nil
+	return checkInstance(rec, true, opPVC, pvc.Metadata.UID)
 }
 
 func pvcCondition(p kubernetes.PersistentVolumeClaim) string {
@@ -221,12 +240,12 @@ func pvcCondition(p kubernetes.PersistentVolumeClaim) string {
 }
 
 // ensureMaterial creates, or reuses, the immutable Secret holding the step's
-// declared secret files.
-func (c *core) ensureMaterial(ctx context.Context, ns string, id ident, m runtime.Materialization) (string, error) {
+// declared secret files, under the same reservation protocol as the Job.
+func (c *core) ensureMaterial(ctx context.Context, ns string, id ident, fence runtime.Fence, m runtime.Materialization) (string, error) {
 	name := id.materialName()
 	files, err := c.secrets.Files(ctx, m)
 	if err != nil || len(files) == 0 {
-		return "", ErrSecretUnavailable
+		return "", notReached(ErrSecretUnavailable)
 	}
 	s := kubernetes.Secret{
 		Metadata:  kubernetes.ObjectMeta{Name: name, Labels: id.labels(roleMaterial), Annotations: id.annotations()},
@@ -234,21 +253,25 @@ func (c *core) ensureMaterial(ctx context.Context, ns string, id ident, m runtim
 		Immutable: ptr(true),
 		Data:      files,
 	}
-	_, err = c.cluster.CreateSecret(ctx, ns, s)
-	switch {
-	case err == nil:
-		return name, nil
-	case errors.Is(err, kubernetes.ErrAlreadyExists), errors.Is(err, kubernetes.ErrUnknownOutcome):
-		got, gerr := c.cluster.GetSecret(ctx, ns, name)
-		if gerr != nil {
-			return "", fmt.Errorf("kernelrt: reading the step secrets: %w", gerr)
-		}
-		if !id.owns(got.Metadata.Labels, got.Metadata.Annotations) || got.Metadata.Labels[labelRole] != roleMaterial {
-			return "", fmt.Errorf("%w: secret %s", ErrForeign, name)
-		}
-		return name, nil
-	}
-	return "", fmt.Errorf("kernelrt: creating the step secrets: %w", err)
+	err = c.guarded(ctx, ns, id, guard{
+		op: opSecret, fence: fence,
+		create: func() (string, error) {
+			out, err := c.cluster.CreateSecret(ctx, ns, s)
+			return out.Metadata.UID, err
+		},
+		readBack: func() (string, error) {
+			got, err := c.cluster.GetSecret(ctx, ns, name)
+			if err != nil {
+				return "", uncertain(fmt.Errorf("kernelrt: reading the step secrets: %w", err))
+			}
+			if !id.owns(got.Metadata.Labels, got.Metadata.Annotations) || got.Metadata.Labels[labelRole] != roleMaterial {
+				return "", notReached(fmt.Errorf("%w: secret %s", ErrForeign, name))
+			}
+			return got.Metadata.UID, nil
+		},
+		reap: func() error { return c.deleteMaterial(ctx, ns, id) },
+	})
+	return name, err
 }
 
 // Observe reports the workload by its stable identity.
@@ -260,7 +283,7 @@ func (r *Runtime) Observe(ctx context.Context, b runtime.RuntimeBinding) (runtim
 	if err != nil {
 		return runtime.WorkloadObservation{}, fmt.Errorf("kernelrt: no target for the scope: %w", err)
 	}
-	return r.observe(ctx, t.Namespace, b)
+	return r.observe(ctx, t, b)
 }
 
 func (c *core) obs(b runtime.RuntimeBinding, phase runtime.WorkloadPhase, res runtime.Result) runtime.WorkloadObservation {
@@ -268,8 +291,10 @@ func (c *core) obs(b runtime.RuntimeBinding, phase runtime.WorkloadPhase, res ru
 }
 
 // observe maps the Job, its Pods and the identity's record to a phase. Absent is
-// reported only when nothing exists and no create can still be in flight.
-func (c *core) observe(ctx context.Context, ns string, b runtime.RuntimeBinding) (runtime.WorkloadObservation, error) {
+// reported only when nothing exists, including Pods whose Job is gone, and no
+// create can still land.
+func (c *core) observe(ctx context.Context, t Target, b runtime.RuntimeBinding) (runtime.WorkloadObservation, error) {
+	ns := t.Namespace
 	id := workloadIdent(b)
 	rec, found, err := c.readRecord(ctx, ns, id)
 	if err != nil {
@@ -280,6 +305,15 @@ func (c *core) observe(ctx context.Context, ns string, b runtime.RuntimeBinding)
 		return runtime.WorkloadObservation{}, err
 	}
 	if !jfound {
+		// Pods outlive a Job that was deleted without garbage collection; they
+		// may still be running the step.
+		orphans, err := c.orphanPods(ctx, ns, id)
+		if err != nil {
+			return runtime.WorkloadObservation{}, err
+		}
+		if len(orphans) > 0 {
+			return c.obs(b, orphanPhase(orphans), runtime.Result{}), nil
+		}
 		now := c.opts.Clock()
 		switch {
 		case !found, rec.state == recRemoved:
@@ -291,15 +325,43 @@ func (c *core) observe(ctx context.Context, ns string, b runtime.RuntimeBinding)
 		}
 		return c.obs(b, runtime.PhaseAbsent, runtime.Result{}), nil
 	}
-	if err := c.verifyJob(job, id); err != nil {
+	if err := c.verifyJob(job, id, t, rec); err != nil {
 		return runtime.WorkloadObservation{}, err
 	}
 	pods, err := c.jobPods(ctx, ns, id, job)
 	if err != nil {
 		return runtime.WorkloadObservation{}, err
 	}
+	material := c.materialFor(id, job)
+	for _, p := range pods {
+		if err := c.verifyJobPod(p, id, t, rec, material); err != nil {
+			return runtime.WorkloadObservation{}, err
+		}
+	}
 	phase, res := jobPhase(job, pods)
 	return c.obs(b, phase, res), nil
+}
+
+// orphanPods lists the Pods that carry the identity's evidence and name its Job
+// as controller, whether or not the Job still exists.
+func (c *core) orphanPods(ctx context.Context, ns string, id ident) ([]kubernetes.Pod, error) {
+	all, err := c.cluster.ListPods(ctx, ns, labelObject+"="+id.base())
+	if err != nil {
+		return nil, fmt.Errorf("kernelrt: listing Pods: %w", err)
+	}
+	return ownedPods(all, id, id.base(), ""), nil
+}
+
+// orphanPhase is what Pods without a Job show: running unless every Pod has
+// terminated, in which case the result is unknown (there is no Job to confirm
+// it). Termination is never inferred from absence of a Job.
+func orphanPhase(pods []kubernetes.Pod) runtime.WorkloadPhase {
+	for _, p := range pods {
+		if p.Metadata.DeletionTimestamp != "" || (p.Status.Phase != "Succeeded" && p.Status.Phase != "Failed") {
+			return runtime.PhaseRunning
+		}
+	}
+	return runtime.PhaseUnknown
 }
 
 func (c *core) jobPods(ctx context.Context, ns string, id ident, job kubernetes.Job) ([]kubernetes.Pod, error) {
@@ -356,18 +418,21 @@ func (r *Runtime) Logs(ctx context.Context, b runtime.RuntimeBinding, _ runtime.
 	if err != nil {
 		return nil, err
 	}
-	if !found {
-		return nil, &domain.Error{Code: domain.CodeNotFound, Message: "the workload has no Job"}
+	var pods []kubernetes.Pod
+	switch {
+	case found:
+		if !id.owns(job.Metadata.Labels, job.Metadata.Annotations) {
+			return nil, fmt.Errorf("%w: job %s", ErrForeign, job.Metadata.Name)
+		}
+		pods, err = r.jobPods(ctx, t.Namespace, id, job)
+	default:
+		pods, err = r.orphanPods(ctx, t.Namespace, id)
 	}
-	if !id.owns(job.Metadata.Labels, job.Metadata.Annotations) {
-		return nil, fmt.Errorf("%w: job %s", ErrForeign, job.Metadata.Name)
-	}
-	pods, err := r.jobPods(ctx, t.Namespace, id, job)
 	if err != nil {
 		return nil, err
 	}
 	if len(pods) == 0 {
-		return nil, &domain.Error{Code: domain.CodeNotFound, Message: "the workload has no Pod yet"}
+		return nil, &domain.Error{Code: domain.CodeNotFound, Message: "the workload has no Pod"}
 	}
 	data, err := r.cluster.PodLog(ctx, t.Namespace, pods[0].Metadata.Name, containerStep)
 	if err != nil {
@@ -377,8 +442,9 @@ func (r *Runtime) Logs(ctx context.Context, b runtime.RuntimeBinding, _ runtime.
 }
 
 // Stop fences the identity (a stale writer is refused and nothing changes),
-// then deletes a Job that has not exited. A Job that already exited is kept so
-// its result stays observable until Remove.
+// then terminates the workload: a Job that has not exited is deleted, and Pods
+// whose Job is gone are deleted too. A Job that already exited is kept so its
+// result stays observable until Remove.
 func (r *Runtime) Stop(ctx context.Context, b runtime.RuntimeBinding) (runtime.WorkloadObservation, error) {
 	if err := r.checkBinding(b); err != nil {
 		return runtime.WorkloadObservation{}, err
@@ -408,8 +474,10 @@ func (r *Runtime) Stop(ctx context.Context, b runtime.RuntimeBinding) (runtime.W
 				return runtime.WorkloadObservation{}, err
 			}
 		}
+	} else if err := r.deleteOrphanPods(ctx, t.Namespace, id); err != nil {
+		return runtime.WorkloadObservation{}, err
 	}
-	return r.observe(ctx, t.Namespace, b)
+	return r.observe(ctx, t, b)
 }
 
 // deleteJob deletes the Job the caller just read, under its UID.
@@ -417,6 +485,24 @@ func (c *core) deleteJob(ctx context.Context, ns string, job kubernetes.Job) err
 	err := c.cluster.DeleteJob(ctx, ns, job.Metadata.Name, kubernetes.DeleteOptions{UID: job.Metadata.UID, Propagation: "Foreground"})
 	if err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
 		return fmt.Errorf("kernelrt: deleting the Job: %w", err)
+	}
+	return nil
+}
+
+// deleteOrphanPods deletes, under their UIDs, the Pods the identity still owns
+// that are not already terminating.
+func (c *core) deleteOrphanPods(ctx context.Context, ns string, id ident) error {
+	pods, err := c.orphanPods(ctx, ns, id)
+	if err != nil {
+		return err
+	}
+	for _, p := range pods {
+		if p.Metadata.DeletionTimestamp != "" {
+			continue
+		}
+		if err := c.cluster.DeletePod(ctx, ns, p.Metadata.Name, kubernetes.DeleteOptions{UID: p.Metadata.UID, Propagation: "Foreground"}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
+			return fmt.Errorf("kernelrt: deleting a Pod: %w", err)
+		}
 	}
 	return nil
 }
@@ -437,8 +523,7 @@ func (r *Runtime) Remove(ctx context.Context, b runtime.RuntimeBinding) (runtime
 }
 
 func (c *core) removeWorkload(ctx context.Context, ns string, id ident, b runtime.RuntimeBinding) (runtime.WorkloadObservation, error) {
-	rec, err := c.settle(ctx, ns, id, b.Fence, recStopped)
-	if err != nil {
+	if _, err := c.settle(ctx, ns, id, b.Fence, recStopped); err != nil {
 		return runtime.WorkloadObservation{}, err
 	}
 	remaining, err := c.deleteWorkloadObjects(ctx, ns, id)
@@ -448,10 +533,12 @@ func (c *core) removeWorkload(ctx context.Context, ns string, id ident, b runtim
 	if remaining {
 		return c.obs(b, runtime.PhaseRunning, runtime.Result{}), nil
 	}
-	if !rec.quiet(c.opts.Clock(), c.opts.CreateQuiescence) {
-		return c.obs(b, runtime.PhaseUnknown, runtime.Result{}), nil
-	}
+	// The closing write re-reads the record: a create reserved since the delete
+	// above keeps the identity open.
 	if _, err := c.settle(ctx, ns, id, b.Fence, recRemoved); err != nil {
+		if errors.Is(err, errNotQuiet) {
+			return c.obs(b, runtime.PhaseUnknown, runtime.Result{}), nil
+		}
 		return runtime.WorkloadObservation{}, err
 	}
 	return c.obs(b, runtime.PhaseAbsent, runtime.Result{}), nil
@@ -476,17 +563,8 @@ func (c *core) deleteWorkloadObjects(ctx context.Context, ns string, id ident) (
 	}
 	// Pods may outlive their Job; the name of the owner is enough evidence
 	// together with the identity's labels and annotations.
-	pods, err := c.cluster.ListPods(ctx, ns, labelObject+"="+id.base())
-	if err != nil {
-		return false, fmt.Errorf("kernelrt: listing Pods: %w", err)
-	}
-	for _, p := range ownedPods(pods, id, id.base(), "") {
-		if p.Metadata.DeletionTimestamp != "" {
-			continue
-		}
-		if err := c.cluster.DeletePod(ctx, ns, p.Metadata.Name, kubernetes.DeleteOptions{UID: p.Metadata.UID, Propagation: "Foreground"}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
-			return false, fmt.Errorf("kernelrt: deleting a Pod: %w", err)
-		}
+	if err := c.deleteOrphanPods(ctx, ns, id); err != nil {
+		return false, err
 	}
 	if err := c.deleteMaterial(ctx, ns, id); err != nil {
 		return false, err
@@ -495,11 +573,8 @@ func (c *core) deleteWorkloadObjects(ctx context.Context, ns string, id ident) (
 	if _, found, err := c.getJob(ctx, ns, id.base()); err != nil || found {
 		return true, err
 	}
-	pods, err = c.cluster.ListPods(ctx, ns, labelObject+"="+id.base())
-	if err != nil {
-		return false, fmt.Errorf("kernelrt: listing Pods: %w", err)
-	}
-	return len(ownedPods(pods, id, id.base(), "")) > 0, nil
+	pods, err := c.orphanPods(ctx, ns, id)
+	return len(pods) > 0, err
 }
 
 func (c *core) deleteMaterial(ctx context.Context, ns string, id ident) error {

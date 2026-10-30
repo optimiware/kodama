@@ -120,7 +120,7 @@ func Test_unit_kube_restricted_workload_and_cleanup(t *testing.T) {
 			t.Fatalf("service host = %q, want %q", env["KODAMA_SERVICE_DB_HOST"], wantHost)
 		}
 		// The adapter accepts what it writes.
-		if err := h.ad.verifyJob(job, workloadIdent(b)); err != nil {
+		if err := h.verifyJob(job, b); err != nil {
 			t.Fatalf("its own Job does not verify: %v", err)
 		}
 		// Job and record carry the full ownership evidence.
@@ -138,7 +138,7 @@ func Test_unit_kube_restricted_workload_and_cleanup(t *testing.T) {
 		}
 		id := workspaceIdentFor(h, spec)
 		pod, _ := h.cl.GetPod(ctx, testNS, id.base())
-		if err := h.ad.verifyPod(pod, id); err != nil {
+		if err := h.verifyPod(pod, id); err != nil {
 			t.Fatal(err)
 		}
 		c := pod.Spec.Containers[0]
@@ -262,7 +262,7 @@ func Test_unit_kube_restricted_workload_and_cleanup(t *testing.T) {
 		if err != nil || o.ConfirmedRemoved() || o.State != runtime.ResourceFailed || o.Reason != runtime.ReasonCleanupFailed {
 			t.Fatalf("a retained volume must be reported, not removed: %+v %v", o, err)
 		}
-		if ev, _ := h.res.ReleaseEvidence(ctx, ws); !ev.ClaimGone || !ev.Retained || ev.Released() || ev.Volume != "pv-1" {
+		if ev, _ := h.res.ReleaseEvidence(ctx, ws); !ev.ClaimGone || !ev.Retained || ev.Released() || !slices.Equal(ev.Volumes, []string{"pv-1"}) {
 			t.Fatalf("evidence = %+v", ev)
 		}
 

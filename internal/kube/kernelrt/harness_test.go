@@ -73,7 +73,7 @@ func newHarness(t *testing.T, mod ...func(*Config)) *harness {
 	}
 	files := &fakeFiles{data: map[string][]byte{"token": []byte("s3cr3t-value")}}
 	ad, err := New(cfg, Dependencies{Cluster: cl, Targets: SingleTarget(Target{Namespace: testNS, ServiceAccount: testSA}), Secrets: files},
-		Options{Clock: clock.Now, CreateQuiescence: time.Minute, OrphanGrace: time.Minute, TombstoneRetention: time.Hour})
+		Options{Clock: clock.Now, CreateQuiescence: time.Minute, OrphanGrace: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,3 +146,21 @@ func (h *harness) mustStart(req runtime.StartRequest) runtime.WorkloadObservatio
 func (h *harness) jobName(b runtime.RuntimeBinding) string { return workloadIdent(b).base() }
 
 func isNotReached(err error) bool { return runtime.ClassifyEffect(err) == runtime.CommandRejected }
+
+func (h *harness) target() Target { return Target{Namespace: testNS, ServiceAccount: testSA} }
+
+func (h *harness) verifyJob(j kubernetes.Job, b runtime.RuntimeBinding) error {
+	rec, _, err := h.ad.readRecord(context.Background(), testNS, workloadIdent(b))
+	if err != nil {
+		return err
+	}
+	return h.ad.verifyJob(j, workloadIdent(b), h.target(), rec)
+}
+
+func (h *harness) verifyPod(p kubernetes.Pod, id ident) error {
+	rec, _, err := h.ad.readRecord(context.Background(), testNS, id)
+	if err != nil {
+		return err
+	}
+	return h.ad.verifyPod(p, id, h.target(), rec)
+}

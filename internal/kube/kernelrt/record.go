@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/optimiware/kodama/internal/kernel/runtime"
@@ -31,21 +32,35 @@ func (s recState) rank() int {
 	return 2
 }
 
-// record is the fence record of one identity. It is created before the first
-// effect on the identity, so a missing record proves this adapter never issued
-// an effect for it. Its Secret carries no data.
+// record is the durable evidence of one identity. It is created before the
+// first effect on the identity, so a missing record proves this adapter never
+// issued one. It is never deleted: a removed identity keeps its closure state
+// and highest fence, which is what rejects a delayed create from an older
+// writer at any later time. Its Secret carries no data.
 type record struct {
-	secret   kubernetes.Secret
-	state    recState
-	fence    runtime.Fence
-	inflight time.Time // a create was issued and its outcome may be unknown
-	volume   string    // the volume a workspace claim was bound to
-	created  time.Time
+	secret kubernetes.Secret
+	state  recState
+	fence  runtime.Fence
+	// markers are the creates that were issued and may still land, one per
+	// operation. A marker is only cleared by the operation that set it, and only
+	// when its outcome is known, so one operation never erases another's
+	// uncertainty.
+	markers map[string]time.Time
+	// created holds the UID of the object each operation established. A missing
+	// object with a recorded UID was lost; it is never silently recreated.
+	created map[string]string
+	// workspace is the workspace claim this workload was started against.
+	workspace string
+	// volume is the volume a workspace claim was seen bound to.
+	volume string
+	// claimGone is when the workspace claim was first observed gone.
+	claimGone time.Time
+	createdAt time.Time
 }
 
 func decodeRecord(s kubernetes.Secret) (record, error) {
 	a := s.Metadata.Annotations
-	r := record{secret: s, state: recState(a[annState])}
+	r := record{secret: s, state: recState(a[annState]), markers: map[string]time.Time{}, created: map[string]string{}}
 	switch r.state {
 	case recActive, recStopped, recRemoved:
 	default:
@@ -56,16 +71,28 @@ func decodeRecord(s kubernetes.Secret) (record, error) {
 		return record{}, fmt.Errorf("kernelrt: record fence %q", a[annFence])
 	}
 	r.fence = runtime.Fence(f)
-	if v := a[annInflight]; v != "" {
+	for k, v := range a {
+		switch {
+		case strings.HasPrefix(k, annMarkerPrefix):
+			t, ok := parseTime(v)
+			if !ok {
+				return record{}, fmt.Errorf("kernelrt: record marker %s %q", k, v)
+			}
+			r.markers[strings.TrimPrefix(k, annMarkerPrefix)] = t
+		case strings.HasPrefix(k, annCreatedPrefix):
+			r.created[strings.TrimPrefix(k, annCreatedPrefix)] = v
+		}
+	}
+	if v := a[annClaimGone]; v != "" {
 		t, ok := parseTime(v)
 		if !ok {
-			return record{}, fmt.Errorf("kernelrt: record in-flight time %q", v)
+			return record{}, fmt.Errorf("kernelrt: record claim time %q", v)
 		}
-		r.inflight = t
+		r.claimGone = t
 	}
-	r.volume = a[annVolume]
+	r.volume, r.workspace = a[annVolume], a[annWorkspace]
 	if t, ok := parseTime(s.Metadata.CreationTimestamp); ok {
-		r.created = t
+		r.createdAt = t
 	}
 	return r, nil
 }
@@ -76,15 +103,23 @@ func (r *record) apply(now time.Time) {
 		r.secret.Metadata.Annotations = map[string]string{}
 	}
 	a := r.secret.Metadata.Annotations
+	for k := range a {
+		if strings.HasPrefix(k, annMarkerPrefix) || strings.HasPrefix(k, annCreatedPrefix) {
+			delete(a, k)
+		}
+	}
 	a[annState] = string(r.state)
 	a[annFence] = strconv.FormatUint(uint64(r.fence), 10)
 	a[annSettled] = formatTime(now)
-	setOrDelete(a, annInflight, r.inflight)
-	if r.volume == "" {
-		delete(a, annVolume)
-	} else {
-		a[annVolume] = r.volume
+	for op, t := range r.markers {
+		a[annMarkerPrefix+op] = formatTime(t)
 	}
+	for op, uid := range r.created {
+		a[annCreatedPrefix+op] = uid
+	}
+	setOrDelete(a, annClaimGone, r.claimGone)
+	setOrEmpty(a, annVolume, r.volume)
+	setOrEmpty(a, annWorkspace, r.workspace)
 }
 
 func setOrDelete(a map[string]string, k string, t time.Time) {
@@ -95,9 +130,34 @@ func setOrDelete(a map[string]string, k string, t time.Time) {
 	a[k] = formatTime(t)
 }
 
-// quiet reports whether no create of this identity can still be in flight.
+func setOrEmpty(a map[string]string, k, v string) {
+	if v == "" {
+		delete(a, k)
+		return
+	}
+	a[k] = v
+}
+
+// quiet reports whether no issued create of any operation can still land.
 func (r record) quiet(now time.Time, quiescence time.Duration) bool {
-	return r.inflight.IsZero() || !now.Before(r.inflight.Add(quiescence))
+	for _, t := range r.markers {
+		if now.Before(t.Add(quiescence)) {
+			return false
+		}
+	}
+	return true
+}
+
+// revoked reports whether a writer holding fence no longer has authority: the
+// identity was stopped or removed, or a newer writer took over.
+func (r record) revoked(fence runtime.Fence) error {
+	switch {
+	case r.state != recActive:
+		return ErrClosed
+	case fence < r.fence:
+		return fmt.Errorf("%w: held %d, record %d", runtime.ErrStaleFence, fence, r.fence)
+	}
+	return nil
 }
 
 // readRecord returns the record for id. found is false only for a definite
@@ -126,7 +186,7 @@ func (c *core) readRecord(ctx context.Context, ns string, id ident) (record, boo
 
 func (c *core) newRecord(id ident, fence runtime.Fence, state recState) record {
 	now := c.opts.Clock()
-	r := record{state: state, fence: fence}
+	r := record{state: state, fence: fence, markers: map[string]time.Time{}, created: map[string]string{}}
 	r.secret = kubernetes.Secret{
 		Metadata: kubernetes.ObjectMeta{Name: id.recordName(), Labels: id.labels(roleRecord), Annotations: id.annotations()},
 		Type:     "Opaque",
@@ -169,11 +229,8 @@ func (c *core) claim(ctx context.Context, ns string, id ident, fence runtime.Fen
 			}
 			return record{}, fmt.Errorf("kernelrt: creating the record: %w", err)
 		}
-		if r.state != recActive {
-			return record{}, ErrClosed
-		}
-		if fence < r.fence {
-			return record{}, fmt.Errorf("%w: held %d, record %d", runtime.ErrStaleFence, fence, r.fence)
+		if err := r.revoked(fence); err != nil {
+			return record{}, err
 		}
 		if fence == r.fence {
 			return r, nil
@@ -193,7 +250,9 @@ func (c *core) claim(ctx context.Context, ns string, id ident, fence runtime.Fen
 
 // settle advances the record to the given state, raising its fence, and
 // creates a tombstone when none exists so a delayed create is refused. A stale
-// writer is refused with runtime.ErrStaleFence and nothing changes.
+// writer is refused with runtime.ErrStaleFence and nothing changes. Markers
+// are preserved: closing an identity never erases the evidence that a create
+// may still land.
 func (c *core) settle(ctx context.Context, ns string, id ident, fence runtime.Fence, to recState) (record, error) {
 	for range recordRetries {
 		r, found, err := c.readRecord(ctx, ns, id)
@@ -215,6 +274,9 @@ func (c *core) settle(ctx context.Context, ns string, id ident, fence runtime.Fe
 		if fence < r.fence {
 			return record{}, fmt.Errorf("%w: held %d, record %d", runtime.ErrStaleFence, fence, r.fence)
 		}
+		if to == recRemoved && !r.quiet(c.opts.Clock(), c.opts.CreateQuiescence) {
+			return r, errNotQuiet
+		}
 		if fence == r.fence && r.state.rank() >= to.rank() {
 			return r, nil
 		}
@@ -234,9 +296,12 @@ func (c *core) settle(ctx context.Context, ns string, id ident, fence runtime.Fe
 	return record{}, fmt.Errorf("kernelrt: the record kept changing: %w", kubernetes.ErrConflict)
 }
 
-// mutate re-reads the record and applies f, retrying a lost race. It never
-// changes the state or fence except through f.
-func (c *core) mutate(ctx context.Context, ns string, id ident, f func(*record)) (record, error) {
+// errNotQuiet: closing was refused because a create may still land.
+var errNotQuiet = errors.New("kernelrt: a create may still land")
+
+// mutate re-reads the record and applies f, retrying a lost race. f may return
+// an error to abandon the change.
+func (c *core) mutate(ctx context.Context, ns string, id ident, f func(*record) error) (record, error) {
 	for range recordRetries {
 		r, found, err := c.readRecord(ctx, ns, id)
 		if err != nil {
@@ -245,7 +310,9 @@ func (c *core) mutate(ctx context.Context, ns string, id ident, f func(*record))
 		if !found {
 			return record{}, fmt.Errorf("kernelrt: the record of %s is gone", id.base())
 		}
-		f(&r)
+		if err := f(&r); err != nil {
+			return r, err
+		}
 		out, err := c.write(ctx, ns, r)
 		switch {
 		case err == nil:
@@ -258,26 +325,155 @@ func (c *core) mutate(ctx context.Context, ns string, id ident, f func(*record))
 	return record{}, fmt.Errorf("kernelrt: the record kept changing: %w", kubernetes.ErrConflict)
 }
 
-// markInflight records that a create is about to be issued. It must succeed
-// before the create, so a lost create is never mistaken for absence.
-func (c *core) markInflight(ctx context.Context, ns string, id ident) error {
-	now := c.opts.Clock()
-	_, err := c.mutate(ctx, ns, id, func(r *record) { r.inflight = now })
-	return err
-}
-
-// clearInflight records that the create's outcome is now known. Failing to do
-// so is harmless: the marker only delays confirmation of absence.
-func (c *core) clearInflight(ctx context.Context, ns string, id ident) {
-	_, _ = c.mutate(ctx, ns, id, func(r *record) { r.inflight = time.Time{} })
-}
-
-// deleteRecord removes a record by UID. Only the reconciler does this, for a
-// removed identity past its retention.
-func (c *core) deleteRecord(ctx context.Context, ns string, r record) error {
-	err := c.cluster.DeleteSecret(ctx, ns, r.secret.Metadata.Name, kubernetes.DeleteOptions{UID: r.secret.Metadata.UID})
-	if errors.Is(err, kubernetes.ErrNotFound) {
+// reserve conditionally records that a create of op is about to be issued. It
+// succeeds only while the record is active and the writer's fence is current,
+// and it is one version-checked write: a Stop or Remove from a newer writer
+// either lands before it (and the create is refused) or after it (and the
+// create is then revoked and reaped). It returns the marker it replaced, which
+// settleMarker restores when this create's outcome is known.
+func (c *core) reserve(ctx context.Context, ns string, id ident, fence runtime.Fence, op string, mod func(*record)) (time.Time, error) {
+	var prior time.Time
+	_, err := c.mutate(ctx, ns, id, func(r *record) error {
+		if err := r.revoked(fence); err != nil {
+			return err
+		}
+		prior = r.markers[op]
+		r.markers[op] = c.opts.Clock()
+		r.fence = max(r.fence, fence)
+		if mod != nil {
+			mod(r)
+		}
 		return nil
-	}
+	})
+	return prior, err
+}
+
+// settleMarker records that this operation's create has a known outcome. The
+// marker returns to what it was before the reservation if that earlier,
+// possibly uncertain, create can still land; otherwise it is cleared. uid, when
+// set, records the instance this operation established.
+func (c *core) settleMarker(ctx context.Context, ns string, id ident, op string, prior time.Time, uid string) error {
+	_, err := c.mutate(ctx, ns, id, func(r *record) error {
+		if !prior.IsZero() && c.opts.Clock().Before(prior.Add(c.opts.CreateQuiescence)) {
+			r.markers[op] = prior
+		} else {
+			delete(r.markers, op)
+		}
+		if uid != "" {
+			r.created[op] = uid
+		}
+		return nil
+	})
 	return err
+}
+
+// establish records the UID of an object this identity found or created. A
+// different UID than the recorded one means the object was replaced.
+func (c *core) establish(ctx context.Context, ns string, id ident, rec record, op, uid string) error {
+	if got := rec.created[op]; got == uid {
+		return nil
+	} else if got != "" {
+		return unverified("the %s was replaced by another instance", op)
+	}
+	_, err := c.mutate(ctx, ns, id, func(r *record) error {
+		if got := r.created[op]; got != "" && got != uid {
+			return unverified("the %s was replaced by another instance", op)
+		}
+		r.created[op] = uid
+		return nil
+	})
+	return err
+}
+
+// checkInstance verifies a live object is the instance this identity
+// established, when one was recorded.
+func checkInstance(rec record, found bool, op, uid string) error {
+	if found {
+		if got := rec.created[op]; got != "" && got != uid {
+			return unverified("the %s was replaced by another instance", op)
+		}
+	}
+	return nil
+}
+
+// current re-reads the record and checks that the writer still has authority.
+// An operation that paused between its first read and its effect calls it
+// again, so it never decides on a record that a newer writer has since changed.
+func (c *core) current(ctx context.Context, ns string, id ident, fence runtime.Fence) (record, error) {
+	r, found, err := c.readRecord(ctx, ns, id)
+	switch {
+	case err != nil:
+		return record{}, err
+	case !found:
+		return record{}, fmt.Errorf("kernelrt: the record of %s is gone", id.base())
+	}
+	return r, r.revoked(fence)
+}
+
+// guard issues one create under the reservation protocol.
+type guard struct {
+	op    string
+	fence runtime.Fence
+	mod   func(*record)
+	// create issues the create and returns the new object's UID.
+	create func() (string, error)
+	// readBack reads an object that already holds the name, verifies it is this
+	// identity's and returns its UID.
+	readBack func() (string, error)
+	// reap deletes what the revoked create left behind.
+	reap func() error
+}
+
+// guarded runs g: reserve, create, then recheck authority. A refused
+// reservation, or a definite refusal by the cluster, is runtime.ErrNotReached.
+// An unknown outcome leaves the marker and is uncertain. A create that landed
+// after the writer lost authority is deleted and reported as that revocation,
+// never as success.
+func (c *core) guarded(ctx context.Context, ns string, id ident, g guard) error {
+	prior, err := c.reserve(ctx, ns, id, g.fence, g.op, g.mod)
+	if err != nil {
+		return notReached(err)
+	}
+	uid, err := g.create()
+	switch {
+	case err == nil:
+	case errors.Is(err, kubernetes.ErrAlreadyExists):
+		u, rerr := g.readBack()
+		if rerr != nil {
+			if errors.Is(rerr, runtime.ErrNotReached) {
+				// The name is held by something else: this create is settled.
+				if serr := c.settleMarker(ctx, ns, id, g.op, prior, ""); serr != nil {
+					return uncertain(errors.Join(rerr, serr))
+				}
+			}
+			return rerr
+		}
+		uid = u
+	case kubernetes.Definite(err):
+		if serr := c.settleMarker(ctx, ns, id, g.op, prior, ""); serr != nil {
+			return uncertain(errors.Join(err, serr))
+		}
+		return notReached(fmt.Errorf("the cluster refused the %s: %w", g.op, err))
+	default:
+		return uncertain(err)
+	}
+	rec, found, err := c.readRecord(ctx, ns, id)
+	if err != nil || !found {
+		return uncertain(errors.Join(err, errors.New("the record cannot be read after the create")))
+	}
+	if rerr := rec.revoked(g.fence); rerr != nil {
+		if g.reap != nil {
+			if derr := g.reap(); derr != nil {
+				return errors.Join(rerr, uncertain(derr))
+			}
+		}
+		if serr := c.settleMarker(ctx, ns, id, g.op, prior, ""); serr != nil {
+			return errors.Join(rerr, uncertain(serr))
+		}
+		return rerr
+	}
+	if err := c.settleMarker(ctx, ns, id, g.op, prior, uid); err != nil {
+		return uncertain(err)
+	}
+	return nil
 }
