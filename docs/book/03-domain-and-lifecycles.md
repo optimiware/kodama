@@ -5,9 +5,14 @@ Use the [glossary](../../CONTEXT.md) for terms and [schema sketch](../implementa
 ```mermaid
 erDiagram
     TENANT ||--o{ PROJECT : owns
+    PROJECT ||--o{ REPOSITORY : hosts
     PROJECT ||--o{ WORK_ITEM : tracks
     WORK_ITEM ||--o| WORKSPACE : pairs
+    WORKSPACE }o--o{ REPOSITORY : "task branches in"
+    REPOSITORY ||--o{ PUSH_RECORD : journals
     WORK_ITEM ||--o{ RUN : motivates
+    PUSH_RECORD ||--o{ RUN : triggers
+    RUN }o--o{ REPOSITORY : "pins commits of"
     PIPELINE_DEFINITION ||--o{ RUN : instantiates
     RUN ||--o{ STEP_RUN : contains
     STEP_RUN ||--o{ ATTEMPT : executes
@@ -16,7 +21,7 @@ erDiagram
     ENVIRONMENT ||--o{ DEPLOYMENT : receives
 ```
 
-Source checkpoints/candidates are Git commits, not separate storage aggregates. Under the designed `run_shared` model a run also owns disposable **run resources** (one shared scratch `/workspace`, preparation, support services, a network boundary); they are execution bookkeeping with their own evidence, not a lifecycle status, an aggregate or a checkpoint ([run resources](../contracts/run-resources.md)). Evidence is artifact metadata/provenance. An agent profile expands into an ordinary executable step. A defect is a work item. A plan is part of the specification.
+Repositories are project resources; under the designed internal hosting of [ADR 0011](../adr/0011-internal-tenant-git-service.md) Kodama serves them itself, records every accepted push, and starts runs from those pushes as well as from work items. A run pins a source set: one exact commit per selected repository. Source checkpoints/candidates are Git commits, not separate storage aggregates. Under the designed `run_shared` model a run also owns disposable **run resources** (one shared scratch `/workspace`, preparation, support services, a network boundary); they are execution bookkeeping with their own evidence, not a lifecycle status, an aggregate or a checkpoint ([run resources](../contracts/run-resources.md)). Evidence is artifact metadata/provenance. An agent profile expands into an ordinary executable step. A defect is a work item. A plan is part of the specification.
 
 [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) adds a small immutable **release** manifest over artifacts and **publication receipts** for destination copies. These are pending implementation. A deployment binds the exact release/artifact set and configuration; rollback creates a new run/deployment rather than changing historical states. The run workspace keeps working/generated files only for its run, while Git and explicitly retained artifacts provide continuity.
 
@@ -25,6 +30,8 @@ Source checkpoints/candidates are Git commits, not separate storage aggregates. 
 | Resource | Persisted status | Authority |
 | --- | --- | --- |
 | Work item | `backlog`, `ready`, `active`, `review`, `done`, `cancelled` | [Work management](../specs/work-management.md) |
+| Repository | `provisioning`, `ready`, `archived` | [Git repositories](../specs/git-repositories.md) |
+| Push record | `authorized`, `applied`, `refused`, `unknown` | Git repositories |
 | Workspace | `provisioning`, `available`, `archived` | [Workspaces](../specs/workspaces.md) |
 | Run | `queued`, `running`, `succeeded`, `failed`, `cancelled` | [Execution](../specs/pipeline-execution.md) |
 | Step | `pending`, `running`, `succeeded`, `failed`, `skipped`, `cancelled` | Execution |

@@ -2,7 +2,7 @@
 id: T-140
 milestone: production
 status: deferred
-depends_on: [T-116]
+depends_on: [T-116, T-131]
 decision_blockers: []
 plan: true
 owns: [contracts/artifacts/, contracts/delivery/, contracts/runtime/, contracts/pipeline/, contracts/events/, api/artifacts.yaml, api/delivery.yaml, api/runtime.yaml, docs/contracts/artifacts-and-releases.md]
@@ -22,7 +22,7 @@ Freeze the smallest executable extension of [ADR 0012](../adr/0012-container-sdl
 - Define canonicalization, unique keys/idempotency, ownership/error mapping, immutable metadata versus version labels, optional external observations and legacy projection/drain boundaries. Reuse one gate and one container primitive.
 
 ## Acceptance
-Named contract vectors cover equivalent ordering, conflicting release contents, absent/foreign inputs, source-free/mixed-source manifests, same/new subject versions and unchanged historical hash vectors. Map AF-01–AF-10, DQ-17–DQ-21, PX-23/PX-24, AR-15/AR-16 and VS-15 to consumer fixtures. Record native Git contract dependency before scheduling.
+Named contract vectors cover equivalent ordering, conflicting release contents, absent/foreign inputs, source-free/mixed-source manifests, same/new subject versions and unchanged historical hash vectors. Map AF-01–AF-10, DQ-18–DQ-22, PX-26/PX-27, AR-16/AR-17 and VS-15 to consumer fixtures.
 
 ## Out of scope
 Server handlers/storage/assembly, new tool-specific step kinds, a provider plugin system, cluster changes or support claims.

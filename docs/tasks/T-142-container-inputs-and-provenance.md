@@ -13,7 +13,7 @@ acceptance: [unit_admitted_artifact_fetch, unit_step_environment_secret_union, u
 # T-142 — Container inputs, secrets and honest output provenance
 
 ## Goal
-Implement AF-05, PX-23/PX-24, AR-15/AR-16, VS-15 and DQ-17/DQ-18 on the ordinary attempt/entrypoint path. Reconcile the native Git source/runtime owner before scheduling as described in the [handoff](../implementation/container-sdlc-refinement.md#coordination-with-native-git-and-active-run-resource-work).
+Implement AF-05, PX-26/PX-27, AR-16/AR-17, VS-15 and DQ-18/DQ-19 on the ordinary attempt/entrypoint path.
 
 ## Deliverables
 - Admit/retain exact artifact/release input identities; authorize bounded runtime fetch of only those inputs, verify bytes before local use, no implicit archive extraction or source overwrite.

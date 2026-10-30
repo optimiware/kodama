@@ -25,6 +25,8 @@ Local `tenants`/`users`/`memberships` and encrypted secret values describe stand
 | `webhook_deliveries` | Provider/project/delivery ID uniqueness, verified event and trigger result | T-036 |
 | `notification_deliveries` | Consumer/event/destination uniqueness, attempts, terminal error, provider receipt | T-041 |
 | `work_item_dependencies` | Same-project predecessor/successor; no self/cycles | T-045 |
+| `repositories` (designed) | Project-unique name, immutable ID, default branch, hosting, status/reason, version | T-127 |
+| `git_push_records` (designed) | Unique repository/receive ID; actor, grant, origin run, per-ref old/new/outcome, status | T-130 |
 | Tenant lifecycle fields / backend deletion receipts | Admission disabled/deletion timestamps and attributable per-backend retention/deletion results | T-056 |
 
 Foreign keys involving execution are added after the run tables exist; T-020 adds writer-attempt references through its own migration contribution. Artifact upload rows created before execution exists in development cannot admit runtime writes until integrated authentication is wired. IDs and ownership still validate through the final relational constraints.
@@ -36,6 +38,7 @@ Foreign keys involving execution are added after the run tables exist; T-020 add
 - Dispatch: lock eligible run/step + check limits/cancellation + insert unique attempt + reserve writer + outbox. No Kubernetes call inside the transaction.
 - Result: validate scoped immutable output references, then lock attempt/run/workspace and commit finalization/audit/outbox. Git publication is reconciled before success is acknowledged; no distributed transaction is assumed.
 - Gate: lock current subject/context, decide once, record audit/outbox. Progression rechecks applicability.
+- Push authorization (designed): check grant/current authority + insert push record and entries. Commit intent: lock the record, move entries `authorized → committing` only if unsettled and the attempt is live; Git commits the refs afterwards. Confirmation marks entries applied with audit/outbox; reconciliation settles the rest from worker evidence.
 - Consumer: inbox claim and local effect commit together. External effects are represented by their existing deployment/notification records before calls.
 
 ## Queue and indexes

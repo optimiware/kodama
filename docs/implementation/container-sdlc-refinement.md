@@ -12,11 +12,11 @@
 
 | Field | Baseline |
 | --- | --- |
-| Repository/source | `github.com/optimiware/kodama`, `5a09022729befc43835a24293713a32089d4fc71` |
+| Repository/source | `github.com/optimiware/kodama`, `2ff20310e4fd5005bfb5c5ba783113e9619fb076` (integrating ADR 0011) |
 | Inspected behavior | `internal/artifacts/`, `internal/app/registry.go`, `internal/delivery/environment.go`, `internal/delivery/provenance.go`, `internal/app/delivery.go`, `internal/entrypoint/`; owning specs at the same commit |
-| Existing invariants | C-02/C-11/C-12/C-14, ADRs 0005/0008/0010, O-19/O-30; tenant authorization, exact pins, shared-workspace fencing, Git authority and unknown-effect handling |
-| Intentional changes | O-34; AF-01–AF-10, PX-23/PX-24, AR-15/AR-16, VS-15, DQ-17–DQ-21; DQ-16 retained only for legacy contexts; managed conformance scoped by DQ-14 |
-| Adjacent source | Native Git ADR 0011 at `bf1b9b2af01b2da212407a06d808a75246899d22`, `docs/adr/0011-internal-tenant-git-service.md` and `docs/implementation/internal-git-service.md` on `task/git-service-design`; inspected, not imported by this change |
+| Existing invariants | C-02/C-11/C-12/C-14, ADRs 0005/0008/0010/0011, O-19/O-30/O-31; tenant authorization, exact pins, shared-workspace fencing, Git authority and unknown-effect handling |
+| Intentional changes | O-34; AF-01–AF-10, PX-26/PX-27, AR-16/AR-17, VS-15, DQ-18–DQ-22; DQ-16 retained only for legacy contexts; managed conformance scoped by DQ-14 (branch-local checkpoint `da47b93c` used PX-23/24, AR-15/16, DQ-17–21 before reconciling with ADR 0011's PX-23–25, AR-15, DQ-17) |
+| Adjacent source | Native Git [ADR 0011](../adr/0011-internal-tenant-git-service.md) and [implementation plan](internal-git-service.md), integrated at `2ff20310e4fd5005bfb5c5ba783113e9619fb076` |
 | Disposition | Intentional owner-approved contract refinement; executable compatibility checkpoint and independent code review remain required before implementation publication. Documentation acceptance is not runtime qualification |
 
 Pin the actual documentation candidate commit before coding; record it in the task review handoff. Never infer that the unchanged current schemas already implement these semantics.
@@ -57,14 +57,14 @@ Every removal must identify remaining readers, admitted runs, cleanup obligation
 ## Ordered implementation tasks
 
 ```text
-T-116 (existing run_shared assembly)
+T-116, T-131 (run_shared assembly + native Git source integration)
   → T-140 executable contracts
   → T-141 artifact/release records
   → T-142 container inputs, secrets, profile and gate integration
   → T-143 generic deployment/cleanup records
   → T-144 publication verification and ordinary tool recipes
-  → T-145 API/CLI/assembly, migration and surface removal
-  → T-146 real acceptance (also after T-117)
+  → T-145 API/CLI/assembly, migration and surface removal (also after T-132)
+  → T-146 real acceptance (also after T-117, T-133)
 ```
 
 | Task | Main responsibility | Required evidence |
@@ -81,9 +81,9 @@ The serial chain deliberately orders overlapping capability, migration and share
 
 ## Coordination with native Git and active run-resource work
 
-ADR 0011's committed sibling design reserves T-125–T-133 and O-31–O-33. This work uses T-140–T-146 and O-34 to avoid collisions. Its internal Git direction remains intact: multi-repository source sets, direct scoped agent pushes, task/default-branch triggers and project-scoped source-free runs belong to that owner.
+ADR 0011 (`T-125–T-133`, `O-31–O-33`) is integrated from `main` at `2ff20310e4fd5005bfb5c5ba783113e9619fb076`. This work uses `T-140–T-146` and `O-34`, with requirement IDs reconciled (`PX-26–PX-27`, `AR-16–AR-17`, `DQ-18–DQ-22`). Its internal Git direction remains intact: multi-repository source sets, direct scoped agent pushes, task/default-branch triggers and project-scoped source-free runs belong to that owner.
 
-Before promoting these deferred tasks to executable scheduling, the plan-mode pass must integrate the reviewed sibling design through the repository's normal workflow and reconcile shared prose. Add the actual dependency edges: T-140 after T-126's source/grant contract, T-142 after T-131's source/runtime integration, T-145 after T-132's assembly, and T-146 after T-133 when claiming the combined native-Git journey. These task IDs are intentionally not dangling frontmatter dependencies while their records are absent from this checkout. A standalone artifact checkpoint can use the current external-source path, but cannot claim native Git acceptance.
+Task dependencies explicitly order shared paths after the native Git tasks: `T-140` depends on `T-116` and `T-131` (transitively `T-126`), `T-145` depends on `T-144` and `T-132`, and `T-146` depends on `T-145`, `T-117` and `T-133`.
 
 T-116 and T-117 retain their existing workspace/service obligations; their owners' worktrees are not edited here. ADR 0012's source/provenance changes take effect only at the later versioned cutover. Do not renumber or reinterpret their frozen schemas to avoid a migration.
 

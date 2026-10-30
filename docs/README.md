@@ -39,6 +39,7 @@ Start with [system architecture](book/05-system-architecture.md), the [decision 
 | [Software design](specs/software-design.md) | SD | Preferred hexagonal ports/adapters, DDD entities, and dependency boundaries |
 | [Work management](specs/work-management.md) | WM | Intent, board flow, dependencies, and revisions |
 | [Workspaces](specs/workspaces.md) | WS | Working continuity, access, checkpoints, and ownership |
+| [Git repositories](specs/git-repositories.md) | GR | Project repositories, the internal tenant Git service, Git access, push events, and integration |
 | [Pipeline execution](specs/pipeline-execution.md) | PX | Durable orchestration and container execution |
 | [Agent runtime](specs/agent-runtime.md) | AR | Harness profiles, tools, budgets, and structured results |
 | [Identity, tenancy, and RBAC](specs/identity-tenancy-and-rbac.md) | IT | Authentication, authorization, and isolation |
@@ -62,6 +63,7 @@ Start with [system architecture](book/05-system-architecture.md), the [decision 
 - [HTTP interface](contracts/http-api.md)
 - [Pipeline format](contracts/pipeline-format.md)
 - [Event catalog](contracts/event-catalog.md)
+- [Git service](contracts/git-service.md)
 - [Example index](examples/README.md)
 
 ## Documentation conventions

@@ -2,7 +2,7 @@
 id: T-117
 milestone: production
 status: planned
-depends_on: [T-116, T-121]
+depends_on: [T-116, T-121, T-125]
 decision_blockers: []
 owns: [test/integration/assembly-execution/, test/integration/kube/stage/, docs/acceptance/run-resources.md, docs/status.md, docs/traceability.md]
 check: test/integration/kube/stage/verify-run-shared.sh

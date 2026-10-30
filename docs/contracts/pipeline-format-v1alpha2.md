@@ -6,7 +6,7 @@
 
 ## Document
 
-**Subsequent refinement:** [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) keeps shared workspace/services and ordinary containers while adding artifact/release inputs and generic delivery. DQ-17/DQ-18 replace the blanket DQ-16 evidence rule only after the [new semantic contract](artifacts-and-releases.md) has an explicit executable version/cutover. This document's canonical vectors, defaults and old gate behavior are not reinterpreted.
+**Subsequent refinement:** [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) keeps shared workspace/services and ordinary containers while adding artifact/release inputs and generic delivery. DQ-18/DQ-19 replace the blanket DQ-16 evidence rule only after the [new semantic contract](artifacts-and-releases.md) has an explicit executable version/cutover. This document's canonical vectors, defaults and old gate behavior are not reinterpreted.
 
 ```yaml
 apiVersion: kodama/v1alpha2

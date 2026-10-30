@@ -10,7 +10,7 @@ status: accepted
 
 **Status:** accepted direction; implementation and acceptance pending. This documentation change does not enable new interfaces or change admitted runs.
 
-**Baseline:** `github.com/optimiware/kodama` at `5a09022729befc43835a24293713a32089d4fc71`. The sibling native Git design, ADR 0011, was inspected at `bf1b9b2af01b2da212407a06d808a75246899d22`; its integration is tracked in the [planning handoff](../implementation/container-sdlc-refinement.md).
+**Baseline:** `github.com/optimiware/kodama` at `2ff20310e4fd5005bfb5c5ba783113e9619fb076` (integrating [ADR 0011](0011-internal-tenant-git-service.md)). Implementation handoff: [container-first SDLC refinement](../implementation/container-sdlc-refinement.md).
 
 **Owners:** [execution](../specs/pipeline-execution.md), [agents](../specs/agent-runtime.md), [artifacts and releases](../specs/artifacts-and-releases.md), [delivery](../specs/delivery-and-quality-gates.md).
 
@@ -68,7 +68,7 @@ Rollback is a new pipeline run selecting an earlier release and an explicit conf
 
 Record source commits, producing pipeline/step images, prior-attempt lineage, observed source/workspace state and consumed artifact digests. A source commit alone is not proof of all build inputs. Generated files are legitimate run state and may become retained artifacts without becoming Git commits.
 
-Keep one human gate mechanism. A source-candidate approval cannot be reused for changed source; an artifact/release approval binds exact artifact/manifest digests and their disclosed provenance. Generated files do not invalidate an already pinned immutable artifact. Unknown or modified source must not be relabeled as clean. The current blanket DQ-16 restriction is superseded for the new contract by DQ-17/DQ-18, with old subjects/hashes kept intact.
+Keep one human gate mechanism. A source-candidate approval cannot be reused for changed source; an artifact/release approval binds exact artifact/manifest digests and their disclosed provenance. Generated files do not invalidate an already pinned immutable artifact. Unknown or modified source must not be relabeled as clean. The current blanket DQ-16 restriction is superseded for the new contract by DQ-18/DQ-19, with old subjects/hashes kept intact.
 
 ## Compatibility and reduction
 

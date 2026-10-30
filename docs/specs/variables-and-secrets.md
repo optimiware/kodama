@@ -63,7 +63,7 @@ Revocation prevents new resolution/proxy use. Redact known injected values and e
 
 ## Interface and authorization
 
-Use project variable CRUD and secret create/metadata/version/revoke operations. Administrative management authority does not imply plaintext read. Resolve is an internal attempt interface. Long-lived Git write credentials are reserved for the control-plane publisher; runtime checkout uses read-only access.
+Use project variable CRUD and secret create/metadata/version/revoke operations. Administrative management authority does not imply plaintext read. Resolve is an internal attempt interface. Long-lived Git write credentials are reserved for the control-plane publisher; runtime checkout uses read-only access. Internally hosted repositories ([ADR 0011](../adr/0011-internal-tenant-git-service.md), designed) need no stored Git secret at all: people and attempts receive short-lived Git grants, so `git`-kind secrets remain only for external repositories.
 
 An already delivered secret cannot be recalled from memory. Revocation prevents further resolution and can trigger consumer termination and external credential rotation. Plain variables may appear in logs; confidential values must be secrets.
 

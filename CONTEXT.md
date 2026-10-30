@@ -17,6 +17,15 @@ In Optimi-hosted operation, the verified Optimi OAuth principal carries the auth
 
 **Project**: A tenant-owned grouping of related work, repositories, and delivery environments.
 
+**Repository**: A project-owned Git repository with an immutable ID, a project-unique name, a default branch and a hosting mode (`internal` or `external`). A project may own several; a repository exists independently of any work item. See [Git repositories](docs/specs/git-repositories.md).
+_Avoid_: Using a clone URL as repository identity.
+
+**Tenant Git service**: The Git worker and durable volume that store and serve one tenant's internally hosted repositories with native Git, behind Kodama's authenticated Git endpoint. It outlives every run.
+
+**Git grant**: A short-lived credential scoped to repositories and the refs it may update, issued to a person through the Kodama login or to one attempt. The Git service checks it against current authority on every push.
+
+**Push record**: The journaled intent and outcome of one Git receive operation; an applied record produces one `git.refs_updated` event.
+
 **Membership**: A person's association with a tenant or project and their granted roles.
 
 **Application tenant**: A customer or organization inside an application produced by the factory, separate from factory tenancy.
@@ -40,11 +49,15 @@ _Avoid_: Ticket as a separate entity.
 
 **WIP limit**: A limit on work items admitted to active work.
 
-**Source workspace**: The legacy durable source-working context paired with an actionable work item. Existing `workspace` API/CLI names retain this meaning until an explicit migration. In execution discussions, use **run workspace** for the shared filesystem ([ADR 0012](docs/adr/0012-container-sdlc-and-artifact-releases.md)); native repository/task-branch associations have their own hosting contract.
+**Workspace** (**Source workspace**): The durable source-working context paired with an actionable work item: its task branch in each repository the work touches. Existing `workspace` API/CLI names retain this meaning; in execution discussions, use **run workspace** for the shared `/workspace` filesystem ([ADR 0012](docs/adr/0012-container-sdlc-and-artifact-releases.md)).
+
+**Task branch**: The branch `kodama/work/<work-item-id>` collecting a work item's changes in one repository; only the reserved writer attempt or an engineer updates it. **Agent branches** `kodama/agents/<work-item-id>/<run-id>/<label>` hold one run's work in progress; any executable attempt of that run may push them, so agents in separate runs can work in parallel and a later writer merges their branches.
 
 **Checkpoint**: A committed source revision preserved for subsequent work or recovery.
 
-**Candidate**: The source commit proposed for review and delivery.
+**Candidate**: The source commit proposed for review and delivery; across several repositories, the set of commits pinned together.
+
+**Integration**: Advancing a repository's protected default branch to an approved candidate from an expected base, performed by an ordinary pipeline step.
 
 **Business analyst**: A person expressing business needs and reviewing delivered outcomes.
 
@@ -59,6 +72,10 @@ _Avoid_: Ticket as a separate entity.
 **Pipeline definition**: An immutable version of a dependency graph of executable steps and human gates.
 
 **Pipeline run**: One execution of a definition with pinned inputs and recorded outcomes.
+
+**Source set**: The repositories, exact commits and checkout paths a run pins at admission.
+
+**Run origin**: What started a run: a work item, an accepted push, a manual request or repository provisioning.
 
 **Step run**: The run-local progression of a step.
 

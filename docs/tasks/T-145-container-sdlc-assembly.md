@@ -2,7 +2,7 @@
 id: T-145
 milestone: production
 status: deferred
-depends_on: [T-144]
+depends_on: [T-144, T-132]
 decision_blockers: []
 plan: true
 owns: [internal/app/, internal/cli/, internal/delivery/, internal/deliverycleanup/, images/deployment-tools/, api/, deploy/helm/kodama/, go.mod, go.sum, docs/operations/, docs/implementation/assembly-status.md]

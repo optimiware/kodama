@@ -13,7 +13,7 @@ acceptance: [unit_tool_neutral_deployment, unit_generic_delivery_unknown_effect,
 # T-143 — Tool-neutral deployment and cleanup records
 
 ## Goal
-Implement DQ-19–DQ-21 with T-140's versioned [generic delivery contract](../contracts/artifacts-and-releases.md#generic-environment-and-deployment).
+Implement DQ-20–DQ-22 with T-140's versioned [generic delivery contract](../contracts/artifacts-and-releases.md#generic-environment-and-deployment).
 
 ## Deliverables
 - Generic target/configuration/secret bindings without mandatory namespace, kubeconfig, `preview|stage` taxonomy or single OCI image. Accept exact release/artifact sets and infrastructure-only delivery.

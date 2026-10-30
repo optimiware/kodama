@@ -1,6 +1,6 @@
 # Software design
 
-**Scope:** M1 onward, within one Go module and one server process. Vertical capability packages use lightweight ports/adapters and domain-driven design (DDD) entities at meaningful boundaries. Preserve working packages and refine concrete seams; shared foundation libraries in [P-16](../decisions.md#implementation-baseline) are confirmed. Module-specific ports remain proposed until their owning task validates them.
+**Scope:** M1 onward, within one Go module and one server process; the designed internal Git service runs the same binary as one additional per-tenant `kodama git serve` role, composed by `internal/app` like the server ([ADR 0011](../adr/0011-internal-tenant-git-service.md)). Vertical capability packages use lightweight ports/adapters and domain-driven design (DDD) entities at meaningful boundaries. Preserve working packages and refine concrete seams; shared foundation libraries in [P-16](../decisions.md#implementation-baseline) are confirmed. Module-specific ports remain proposed until their owning task validates them.
 
 ## Model and responsibilities
 

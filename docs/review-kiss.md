@@ -40,7 +40,7 @@ The new [implementation baseline](implementation/README.md) supplies package own
 
 AR-07 and AR-08 cover deferred agent continuation; DQ-12 and DQ-A08 cover the removed override engine. Their numbers are reserved. Other retained IDs keep their domain intent while reflecting the selected simpler mechanism. The [traceability table](traceability.md) maps active requirements and tasks.
 
-[ADR 0012](adr/0012-container-sdlc-and-artifact-releases.md) supersedes DQ-16/DQ-A12's blanket scratch-cleanliness rule for new contract versions with DQ-17/DQ-18 and DQ-A13; the old IDs remain active for legacy runs until cutover, then reserved. It removes universal Kubernetes/image delivery fields and mandatory managed-agent/tool catalogues from generic container execution. The [removal inventory](implementation/container-sdlc-refinement.md#reuse-reduce-and-retire) keeps compatibility bounded and assigns deletion to implementation tasks.
+[ADR 0012](adr/0012-container-sdlc-and-artifact-releases.md) supersedes DQ-16/DQ-A12's blanket scratch-cleanliness rule for new contract versions with DQ-18/DQ-19 and DQ-A14; the old IDs remain active for legacy runs until cutover, then reserved. It removes universal Kubernetes/image delivery fields and mandatory managed-agent/tool catalogues from generic container execution. The [removal inventory](implementation/container-sdlc-refinement.md#reuse-reduce-and-retire) keeps compatibility bounded and assigns deletion to implementation tasks.
 
 ## Remaining deliberate gaps
 
