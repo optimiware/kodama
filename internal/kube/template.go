@@ -38,12 +38,27 @@ func (r Recipe) containerSecurity(readOnlyRoot bool) *kubernetes.ContainerSecuri
 	}
 }
 
-// ObjectLabels are the labels of the Job and its Pods.
-func (r Recipe) ObjectLabels() map[string]string { return r.identity().Labels() }
+// ObjectLabels are the labels of the Job and its Pods. A run_shared Job adds the
+// labels the run's network policies select its Pods by.
+func (r Recipe) ObjectLabels() map[string]string {
+	l := r.identity().Labels()
+	if r.shared != nil {
+		for k, v := range r.sharedPodLabels() {
+			l[k] = v
+		}
+	}
+	return l
+}
 
 // Annotations record ownership evidence on the Job. They are checked against
 // committed data, never trusted on their own.
-func (r Recipe) Annotations() map[string]string { return r.identity().Annotations() }
+func (r Recipe) Annotations() map[string]string {
+	a := r.identity().Annotations()
+	if r.shared != nil {
+		a[AnnRunModel], a[AnnSharedDigest] = ValueRunShared, sharedDigest(*r.shared)
+	}
+	return a
+}
 
 func (r Recipe) identity() Identity {
 	return Identity{Scope: r.Scope, RunID: r.RunID, StepID: r.StepID, AttemptID: r.AttemptID, JobName: r.JobName, ContextDigest: r.ContextDigest}
@@ -86,7 +101,9 @@ func (r Recipe) Job() kubernetes.Job {
 		"--results-file=" + pathResults + "/results.json",
 		"--scratch-dir=" + pathTmp,
 	}
-	if sourceAccess(r.Access) {
+	if sourceAccess(r.Access) && r.shared == nil {
+		// A run_shared attempt receives no checkout credential: the run's one
+		// preparation checked the source out into the shared workspace (seam S2).
 		// The checkout material lives in the same read-only bootstrap volume as the
 		// admission credential. The paths are fixed text: nothing secret is in the
 		// Job document.
@@ -123,6 +140,35 @@ func (r Recipe) Job() kubernetes.Job {
 		},
 		SecurityContext: r.containerSecurity(false),
 	}
+	podSecurity := &kubernetes.PodSecurity{
+		RunAsNonRoot: ptr(true), RunAsUser: ptr(c.RunAsUser), RunAsGroup: ptr(c.RunAsGroup), FSGroup: ptr(c.RunAsGroup),
+		SeccompProfile: &kubernetes.SeccompProfile{Type: "RuntimeDefault"},
+	}
+	var hostUsers *bool
+	if r.shared != nil {
+		// The run_shared shape (seams S1-S3): the primary container takes exactly
+		// the pinned step role; the injector keeps its restricted shape. HOME, the
+		// XDG runtime directory and TMPDIR are attempt-private and bounded; the
+		// workspace is the run's claim.
+		primary.SecurityContext = r.sharedSec.container
+		podSecurity, hostUsers = r.sharedSec.pod, r.sharedSec.hostUsers
+		primary.Env = []kubernetes.EnvVar{
+			{Name: "KODAMA_JOB_NAME", Value: r.JobName},
+			{Name: "KODAMA_JOB_UID", ValueFrom: fieldRef("metadata.labels['" + PodLabelJobUID + "']")},
+			{Name: "KODAMA_POD_NAME", ValueFrom: fieldRef("metadata.name")},
+			{Name: "KODAMA_POD_UID", ValueFrom: fieldRef("metadata.uid")},
+			{Name: "KODAMA_RUNTIME_API", Value: "v2"},
+			{Name: "KODAMA_WORKSPACE_DIR", Value: pathWorkspace},
+			{Name: "HOME", Value: pathHome},
+			{Name: "TMPDIR", Value: pathTmp},
+			{Name: "XDG_RUNTIME_DIR", Value: pathRun},
+		}
+		primary.VolumeMounts = append(primary.VolumeMounts,
+			kubernetes.VolumeMount{Name: "home", MountPath: pathHome},
+			kubernetes.VolumeMount{Name: "run", MountPath: pathRun},
+		)
+		volumes = r.sharedVolumes(volumes)
+	}
 	grace := int64(c.TerminationGrace.Seconds())
 	return kubernetes.Job{
 		APIVersion: "batch/v1", Kind: "Job",
@@ -133,14 +179,11 @@ func (r Recipe) Job() kubernetes.Job {
 				Metadata: kubernetes.ObjectMeta{Labels: r.ObjectLabels()},
 				Spec: kubernetes.PodSpec{
 					ServiceAccountName: r.Target.ServiceAccount, AutomountServiceAccountToken: ptr(false), EnableServiceLinks: ptr(false),
-					RestartPolicy: "Never", TerminationGracePeriodSeconds: &grace,
-					SecurityContext: &kubernetes.PodSecurity{
-						RunAsNonRoot: ptr(true), RunAsUser: ptr(c.RunAsUser), RunAsGroup: ptr(c.RunAsGroup), FSGroup: ptr(c.RunAsGroup),
-						SeccompProfile: &kubernetes.SeccompProfile{Type: "RuntimeDefault"},
-					},
-					InitContainers: []kubernetes.Container{inject},
-					Containers:     []kubernetes.Container{primary},
-					Volumes:        volumes,
+					RestartPolicy: "Never", TerminationGracePeriodSeconds: &grace, HostUsers: hostUsers,
+					SecurityContext: podSecurity,
+					InitContainers:  []kubernetes.Container{inject},
+					Containers:      []kubernetes.Container{primary},
+					Volumes:         volumes,
 				},
 			},
 		},

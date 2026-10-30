@@ -54,6 +54,14 @@ type AttemptRecord struct {
 	Settled              bool
 	SettledAt            *time.Time
 	Launch               execution.LaunchEvidence
+
+	// Shared is the committed run_shared launch of the attempt (nil for an
+	// attempt_private attempt): the run's pinned step role, its bound workspace
+	// claim and its network model, derived from the run's immutable pins and the
+	// workspace's bound identity. Every expectation of the attempt's workload
+	// (adoption, observation, termination) is rebuilt from it, so a run_shared
+	// Job is verified against the shape it was created with and nothing else.
+	Shared *execution.SharedLaunch
 }
 
 // Attempts reads committed attempts. Implementations scope every read by

@@ -51,6 +51,9 @@ type Identity struct {
 	// claimed through its own annotations); it selects which bootstrap Secret key
 	// sets are accepted (see checkSecretKeys).
 	Access execution.Access
+	// Shared is true for a run_shared attempt: its bootstrap Secret never carries
+	// checkout material, whatever the workspace access.
+	Shared bool
 }
 
 // Labels are the labels of the attempt's objects.

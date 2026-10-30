@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/optimiware/kodama/internal/domain"
+	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/kube/kubernetes"
 )
 
@@ -36,8 +37,43 @@ type Preflight struct {
 	ttl     time.Duration
 	now     func() time.Time
 
+	// ownedPolicy verifies one owned-looking run network policy against its
+	// authoritative record and exact rendering (the run-resource adapter). With none
+	// configured an owned-looking policy cannot be verified and is refused.
+	ownedPolicy OwnedPolicyVerifier
+
 	mu sync.Mutex
-	ok map[domain.TenantID]time.Time
+	ok map[preflightKey]time.Time
+}
+
+// OwnedPolicyVerifier verifies that a NetworkPolicy carrying the run-resource
+// owner label is exactly a policy the committed spec of its resource renders.
+// (*RunResources).VerifyOwnedPolicy implements it.
+type OwnedPolicyVerifier interface {
+	VerifyOwnedPolicy(ctx context.Context, tenant domain.TenantID, pol kubernetes.NetworkPolicy) error
+}
+
+// WithOwnedPolicies sets the verifier of owned run policies and returns p.
+func (p *Preflight) WithOwnedPolicies(v OwnedPolicyVerifier) *Preflight {
+	p.ownedPolicy = v
+	return p
+}
+
+// preflightKey caches a success per tenant and baseline: the attempt_private
+// baseline (restricted Pod Security) and the pinned run_shared one differ.
+type preflightKey struct {
+	tenant    domain.TenantID
+	level     string
+	ver       string
+	runShared bool
+}
+
+// baseline is the Pod Security level (and optionally version) a check requires.
+// A run_shared check also admits the owned per-run network policies and requires
+// that the tenant account cannot create or delete the run-resource kinds.
+type baseline struct {
+	level, version string
+	runShared      bool
 }
 
 // NewPreflight builds a checker. A success is cached for ttl.
@@ -45,7 +81,7 @@ func NewPreflight(c Cluster, p ExecutionPolicy, ttl time.Duration, now func() ti
 	if now == nil {
 		now = time.Now
 	}
-	return &Preflight{cluster: c, policy: p, ttl: ttl, now: now, ok: map[domain.TenantID]time.Time{}}
+	return &Preflight{cluster: c, policy: p, ttl: ttl, now: now, ok: map[preflightKey]time.Time{}}
 }
 
 // forbiddenAccess are the (verb, resource) pairs a tenant service account must
@@ -62,26 +98,53 @@ var forbiddenAccess = []kubernetes.ResourceAttributes{
 	{Verb: "create", Group: "rbac.authorization.k8s.io", Resource: "rolebindings"},
 }
 
+// runForbiddenAccess are the further pairs a tenant account must not hold under
+// the run_shared baseline: it must never create, change or delete the claims,
+// Services and network policies the run-resource adapter owns.
+var runForbiddenAccess = []kubernetes.ResourceAttributes{
+	{Verb: "create", Resource: "persistentvolumeclaims"}, {Verb: "delete", Resource: "persistentvolumeclaims"},
+	{Verb: "create", Resource: "services"}, {Verb: "delete", Resource: "services"},
+	{Verb: "create", Group: "networking.k8s.io", Resource: "networkpolicies"}, {Verb: "delete", Group: "networking.k8s.io", Resource: "networkpolicies"},
+}
+
 var clusterForbidden = []kubernetes.ResourceAttributes{
 	{Verb: "list", Resource: "namespaces"}, {Verb: "list", Resource: "nodes"}, {Verb: "list", Resource: "secrets"},
 }
 
-// Check validates the tenant's namespace; nil means the baseline holds now.
+// Check validates the tenant's namespace against the attempt_private baseline;
+// nil means the baseline holds now.
 func (p *Preflight) Check(ctx context.Context, tenant domain.TenantID) error {
+	return p.run(ctx, tenant, baseline{level: "restricted"})
+}
+
+// CheckRun validates the tenant's namespace against the pinned run_shared
+// baseline: the policy's Pod Security level (and version, when pinned), the
+// same service account, permission, quota and default-deny requirements, and the
+// owned per-run network policies accepted by exact shape. A foreign policy that
+// selects run Pods is judged exactly as for attempt_private runs.
+func (p *Preflight) CheckRun(ctx context.Context, tenant domain.TenantID, ps execution.PolicyPodSecurity) error {
+	if ps.Level != "baseline" && ps.Level != "restricted" {
+		return deny("the pinned policy names an unknown Pod Security level")
+	}
+	return p.run(ctx, tenant, baseline{level: ps.Level, version: ps.Version, runShared: true})
+}
+
+func (p *Preflight) run(ctx context.Context, tenant domain.TenantID, b baseline) error {
+	key := preflightKey{tenant: tenant, level: b.level, ver: b.version, runShared: b.runShared}
 	p.mu.Lock()
-	if t, ok := p.ok[tenant]; ok && p.ttl > 0 && p.now().Sub(t) < p.ttl {
+	if t, ok := p.ok[key]; ok && p.ttl > 0 && p.now().Sub(t) < p.ttl {
 		p.mu.Unlock()
 		return nil
 	}
 	p.mu.Unlock()
-	if err := p.check(ctx, tenant); err != nil {
+	if err := p.check(ctx, tenant, b); err != nil {
 		p.mu.Lock()
-		delete(p.ok, tenant)
+		delete(p.ok, key)
 		p.mu.Unlock()
 		return err
 	}
 	p.mu.Lock()
-	p.ok[tenant] = p.now()
+	p.ok[key] = p.now()
 	p.mu.Unlock()
 	return nil
 }
@@ -95,7 +158,7 @@ func unreadable(what string, err error) error {
 	return wrapCause(ErrUnavailable, err, "%s could not be read", what)
 }
 
-func (p *Preflight) check(ctx context.Context, tenant domain.TenantID) error {
+func (p *Preflight) check(ctx context.Context, tenant domain.TenantID, b baseline) error {
 	tgt, err := p.policy.Tenant(tenant)
 	if err != nil {
 		return err
@@ -107,8 +170,11 @@ func (p *Preflight) check(ctx context.Context, tenant domain.TenantID) error {
 	if ns.Status.Phase != nsActive || ns.Metadata.DeletionTimestamp != "" {
 		return deny("the namespace is not active")
 	}
-	if ns.Metadata.Labels[labelPSAEnforce] != "restricted" {
-		return deny("the namespace does not enforce Pod Security restricted")
+	if ns.Metadata.Labels[labelPSAEnforce] != b.level {
+		return deny("the namespace does not enforce Pod Security %s", b.level)
+	}
+	if b.version != "" && ns.Metadata.Labels[labelPSAEnforce+"-version"] != b.version {
+		return deny("the namespace does not pin the Pod Security version")
 	}
 	if ns.Metadata.Annotations[AnnNamespaceTenant] != string(tenant) {
 		return deny("the namespace is not bound to the tenant")
@@ -122,7 +188,11 @@ func (p *Preflight) check(ctx context.Context, tenant domain.TenantID) error {
 	}
 	user := "system:serviceaccount:" + tgt.Namespace + ":" + tgt.ServiceAccount
 	groups := []string{"system:serviceaccounts", "system:serviceaccounts:" + tgt.Namespace, "system:authenticated"}
-	for _, a := range forbiddenAccess {
+	forbidden := forbiddenAccess
+	if b.runShared {
+		forbidden = append(append([]kubernetes.ResourceAttributes(nil), forbiddenAccess...), runForbiddenAccess...)
+	}
+	for _, a := range forbidden {
 		a.Namespace = tgt.Namespace
 		allowed, err := p.cluster.Allowed(ctx, user, groups, a)
 		if err != nil {
@@ -151,6 +221,9 @@ func (p *Preflight) check(ctx context.Context, tenant domain.TenantID) error {
 	pols, err := p.cluster.ListNetworkPolicies(ctx, tgt.Namespace)
 	if err != nil {
 		return unreadable("the network policies", err)
+	}
+	if b.runShared {
+		return checkRunNetwork(ctx, pols, p.policy.RuntimeEgress(), tenant, p.ownedPolicy)
 	}
 	return checkNetwork(pols, p.policy.RuntimeEgress())
 }

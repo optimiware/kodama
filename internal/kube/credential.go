@@ -65,7 +65,7 @@ func (c *core) verifySecret(id Identity, s kubernetes.Secret) error {
 	if s.Immutable == nil || !*s.Immutable {
 		return bad("data is not immutable")
 	}
-	if err := checkSecretKeys(layoutFor(id.Access), s.Data); err != nil {
+	if err := checkSecretKeys(layoutFor(id), s.Data); err != nil {
 		return bad(err.Error())
 	}
 	return nil

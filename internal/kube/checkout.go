@@ -90,7 +90,7 @@ func sourceAccess(a execution.Access) bool {
 // consumes no source.
 func (e Expectation) Checkout() (CheckoutRequest, bool) {
 	src := e.Context.Workspace.Source
-	if !sourceAccess(e.Recipe.Access) || src == nil {
+	if !sourceAccess(e.Recipe.Access) || src == nil || e.Shared != nil {
 		return CheckoutRequest{}, false
 	}
 	return CheckoutRequest{
@@ -167,8 +167,12 @@ const (
 	layoutCheckout
 )
 
-func layoutFor(a execution.Access) secretLayout {
+func layoutFor(id Identity) secretLayout {
+	a := id.Access
 	switch {
+	case id.Shared:
+		// A run_shared attempt never receives checkout material (seam S2).
+		return layoutBootstrap
 	case a == "":
 		return layoutAny
 	case sourceAccess(a):

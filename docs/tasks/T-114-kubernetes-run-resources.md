@@ -1,7 +1,7 @@
 ---
 id: T-114
 milestone: production
-status: planned
+status: done
 depends_on: [T-112, T-122]
 decision_blockers: []
 owns: [internal/kube/]
@@ -28,3 +28,6 @@ Declared check with every named test passing on the fake cluster. Real CSI/CNI e
 
 ## Out of scope
 Chart, `internal/app`, other runtimes and cluster changes.
+
+## Completion evidence
+Implemented on `task/T-114-kubernetes-run-resources` (`ab121643`…`47631c2a`). A coordinator check before review found that a workspace ready only when `Bound` deadlocks on the stage `WaitForFirstConsumer` class; repaired (`2b2c343a`). Two independent reviews: jobs/network (`ses_e767481d1ffeL9JzaZNC1RTjuE`) requested forged-policy verification, a preflight cache key fix and legacy Job goldens, then approved `04e257e9` and confirmed `47631c2a`; lifecycle (`ses_e7674a98bffeULZacvMMP6tmvt`) requested changes three times (companion creates after removal, resurrection after removal, released without identity, metadata-only deletion, PV naming assumption, fabricated evidence after record loss, concurrent-Ensure uncertainty, tombstone recheck, persisted late UIDs, lost delete response) and approved `47631c2a`. Coordinator check on the final candidate: `make check-go PKGS='./internal/kube/...'` exit 0, 178 `Test_unit_kube_*` PASS including all 13 pinned acceptances, no FAIL. Fake-cluster component evidence only: real CSI/CNI qualification is T-121/T-117. T-116 must wire `kube.NewRunResources`, the `PolicyCatalog`, the registrar and checkout bridges, `VerifyResourcePod`, `Dependencies.OwnedPolicies`, and RBAC: PVC/Service/NetworkPolicy/Pod create/delete in tenant namespaces; get/list persistentvolumes; list volumeattachments; get storageclasses. Squashed to one commit; nothing pushed.

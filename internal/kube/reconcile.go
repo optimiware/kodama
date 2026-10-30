@@ -366,7 +366,7 @@ func (r *Reconciler) scanJob(ctx context.Context, tenant domain.TenantID, tgt Te
 	exp, expErr := r.policy.Expect(rec)
 	aid := Identity{
 		Scope: rec.Scope, RunID: rec.RunID, StepID: rec.StepID, AttemptID: rec.AttemptID, JobName: rec.JobName,
-		Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access,
+		Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access, Shared: rec.Shared != nil,
 	}
 	a, err := r.loadAdmission(ctx, aid)
 	if err != nil {
@@ -526,7 +526,7 @@ func (r *Reconciler) podOwner(ctx context.Context, tenant domain.TenantID, tgt T
 	if hasRec {
 		ident = Identity{
 			Scope: rec.Scope, RunID: rec.RunID, StepID: rec.StepID, AttemptID: rec.AttemptID, JobName: rec.JobName,
-			Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access,
+			Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access, Shared: rec.Shared != nil,
 		}
 	}
 	a, err := r.admissionOf(ident, s)
@@ -584,7 +584,7 @@ func (r *Reconciler) scanSecret(ctx context.Context, tenant domain.TenantID, tgt
 	if found {
 		ident = Identity{
 			Scope: rec.Scope, RunID: rec.RunID, StepID: rec.StepID, AttemptID: rec.AttemptID, JobName: rec.JobName,
-			Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access,
+			Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access, Shared: rec.Shared != nil,
 		}
 	}
 	a, aerr := r.admissionOf(ident, s)

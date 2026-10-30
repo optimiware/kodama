@@ -28,6 +28,10 @@ type Dependencies struct {
 	Checkout CheckoutProvider
 	// Logs reads Pod logs for Runtime.Logs. Optional.
 	Logs PodLogs
+	// OwnedPolicies verifies the run network policies of the namespace for a
+	// run_shared attempt's preflight (the RunResources of the same composition).
+	// Without it a namespace that holds run policies fails that preflight.
+	OwnedPolicies OwnedPolicyVerifier
 }
 
 // Options are mechanical settings with safe defaults. None of them is an
@@ -79,8 +83,11 @@ func (o Options) withDefaults() (Options, error) {
 
 // core is the shared machinery of the runtime, observer and reconciler.
 type core struct {
-	policy    ExecutionPolicy
-	cluster   Cluster
+	policy  ExecutionPolicy
+	cluster Cluster
+	// run is the cluster's run-resource surface, nil for a cluster that has none
+	// (a run_shared attempt is then refused, never started without its claim).
+	run       RunCluster
 	attempts  Attempts
 	registrar Registrar
 	obs       Observations
@@ -103,9 +110,10 @@ func newCore(d Dependencies, o Options, needRegistrar bool) (*core, error) {
 	if d.Cluster == nil || d.Attempts == nil || (needRegistrar && d.Registrar == nil) {
 		return nil, wrap(ErrPolicy, "the cluster, attempt reader and registrar are required")
 	}
+	rc, _ := d.Cluster.(RunCluster)
 	return &core{
-		policy: d.Policy, cluster: d.Cluster, attempts: d.Attempts, registrar: d.Registrar, obs: d.Observations, tenants: d.Tenants, checkout: d.Checkout,
-		preflight: NewPreflight(d.Cluster, d.Policy, opts.PreflightTTL, opts.Clock), opts: opts, log: opts.Logger, now: opts.Clock,
+		policy: d.Policy, cluster: d.Cluster, run: rc, attempts: d.Attempts, registrar: d.Registrar, obs: d.Observations, tenants: d.Tenants, checkout: d.Checkout,
+		preflight: NewPreflight(d.Cluster, d.Policy, opts.PreflightTTL, opts.Clock).WithOwnedPolicies(d.OwnedPolicies), opts: opts, log: opts.Logger, now: opts.Clock,
 	}, nil
 }
 

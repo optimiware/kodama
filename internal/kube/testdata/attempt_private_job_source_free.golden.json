@@ -1,0 +1,280 @@
+{
+  "apiVersion": "batch/v1",
+  "kind": "Job",
+  "metadata": {
+    "name": "kdm-9bb66d3b3a62c746a81466076c4bf8900de01f8d",
+    "namespace": "t021-acme",
+    "labels": {
+      "kodama.optimi.com/job": "kdm-9bb66d3b3a62c746a81466076c4bf8900de01f8d",
+      "kodama.optimi.com/managed-by": "job-executor"
+    },
+    "annotations": {
+      "kodama.optimi.com/attempt": "att_1",
+      "kodama.optimi.com/context-digest": "sha256:3de30acb5b90f472f4da6e4889dd807c8157a743222adcf2f6de2acd835ddfec",
+      "kodama.optimi.com/project": "p_inv",
+      "kodama.optimi.com/run": "run_1",
+      "kodama.optimi.com/spec-fingerprint": "sha256:39c7ff1e4bf492e310d196d2cc9d1853507772592ee4f2e774ce2a879a06c993",
+      "kodama.optimi.com/step": "build",
+      "kodama.optimi.com/tenant": "t021_acme"
+    }
+  },
+  "spec": {
+    "parallelism": 1,
+    "completions": 1,
+    "backoffLimit": 0,
+    "template": {
+      "metadata": {
+        "labels": {
+          "kodama.optimi.com/job": "kdm-9bb66d3b3a62c746a81466076c4bf8900de01f8d",
+          "kodama.optimi.com/managed-by": "job-executor"
+        }
+      },
+      "spec": {
+        "serviceAccountName": "t021-runner",
+        "automountServiceAccountToken": false,
+        "enableServiceLinks": false,
+        "restartPolicy": "Never",
+        "terminationGracePeriodSeconds": 30,
+        "securityContext": {
+          "runAsNonRoot": true,
+          "runAsUser": 65532,
+          "runAsGroup": 65532,
+          "fsGroup": 65532,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "initContainers": [
+          {
+            "name": "inject",
+            "image": "registry.t021.invalid/injector@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "imagePullPolicy": "IfNotPresent",
+            "command": [
+              "cp",
+              "/usr/local/bin/kodama",
+              "/kodama/bin/kodama"
+            ],
+            "resources": {
+              "requests": {
+                "cpu": "10m",
+                "ephemeral-storage": "16Mi",
+                "memory": "16Mi"
+              },
+              "limits": {
+                "cpu": "100m",
+                "ephemeral-storage": "128Mi",
+                "memory": "64Mi"
+              }
+            },
+            "volumeMounts": [
+              {
+                "name": "tools",
+                "mountPath": "/kodama/bin"
+              }
+            ],
+            "securityContext": {
+              "privileged": false,
+              "allowPrivilegeEscalation": false,
+              "readOnlyRootFilesystem": true,
+              "runAsNonRoot": true,
+              "runAsUser": 65532,
+              "runAsGroup": 65532,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            }
+          }
+        ],
+        "containers": [
+          {
+            "name": "workload",
+            "image": "registry.t021.invalid/workload@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "imagePullPolicy": "IfNotPresent",
+            "command": [
+              "/kodama/bin/kodama"
+            ],
+            "args": [
+              "step",
+              "--server-url=https://192.0.2.10:8443",
+              "--attempt-id=att_1",
+              "--identity-dir=/kodama/identity",
+              "--admission-credential-file=/kodama/bootstrap/admission",
+              "--ca-file=/kodama/bootstrap/ca.crt",
+              "--workspace-dir=/workspace",
+              "--outputs-dir=/kodama/outputs",
+              "--secrets-dir=/kodama/secrets",
+              "--results-file=/kodama/results/results.json",
+              "--scratch-dir=/tmp"
+            ],
+            "workingDir": "/tmp",
+            "env": [
+              {
+                "name": "KODAMA_JOB_NAME",
+                "value": "kdm-9bb66d3b3a62c746a81466076c4bf8900de01f8d"
+              },
+              {
+                "name": "KODAMA_JOB_UID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "apiVersion": "v1",
+                    "fieldPath": "metadata.labels['batch.kubernetes.io/controller-uid']"
+                  }
+                }
+              },
+              {
+                "name": "KODAMA_POD_NAME",
+                "valueFrom": {
+                  "fieldRef": {
+                    "apiVersion": "v1",
+                    "fieldPath": "metadata.name"
+                  }
+                }
+              },
+              {
+                "name": "KODAMA_POD_UID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "apiVersion": "v1",
+                    "fieldPath": "metadata.uid"
+                  }
+                }
+              },
+              {
+                "name": "HOME",
+                "value": "/tmp"
+              },
+              {
+                "name": "TMPDIR",
+                "value": "/tmp"
+              }
+            ],
+            "resources": {
+              "requests": {
+                "cpu": "100m",
+                "ephemeral-storage": "128Mi",
+                "memory": "128Mi"
+              },
+              "limits": {
+                "cpu": "1",
+                "ephemeral-storage": "1Gi",
+                "memory": "512Mi"
+              }
+            },
+            "volumeMounts": [
+              {
+                "name": "tools",
+                "mountPath": "/kodama/bin",
+                "readOnly": true
+              },
+              {
+                "name": "workspace",
+                "mountPath": "/workspace"
+              },
+              {
+                "name": "outputs",
+                "mountPath": "/kodama/outputs"
+              },
+              {
+                "name": "results",
+                "mountPath": "/kodama/results"
+              },
+              {
+                "name": "tmp",
+                "mountPath": "/tmp"
+              },
+              {
+                "name": "secrets",
+                "mountPath": "/kodama/secrets"
+              },
+              {
+                "name": "identity",
+                "mountPath": "/kodama/identity"
+              },
+              {
+                "name": "bootstrap",
+                "mountPath": "/kodama/bootstrap",
+                "readOnly": true
+              }
+            ],
+            "securityContext": {
+              "privileged": false,
+              "allowPrivilegeEscalation": false,
+              "readOnlyRootFilesystem": false,
+              "runAsNonRoot": true,
+              "runAsUser": 65532,
+              "runAsGroup": 65532,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            }
+          }
+        ],
+        "volumes": [
+          {
+            "name": "tools",
+            "emptyDir": {
+              "sizeLimit": "64Mi"
+            }
+          },
+          {
+            "name": "workspace",
+            "emptyDir": {
+              "sizeLimit": "256Mi"
+            }
+          },
+          {
+            "name": "outputs",
+            "emptyDir": {
+              "sizeLimit": "64Mi"
+            }
+          },
+          {
+            "name": "results",
+            "emptyDir": {
+              "sizeLimit": "1Mi"
+            }
+          },
+          {
+            "name": "tmp",
+            "emptyDir": {
+              "sizeLimit": "128Mi"
+            }
+          },
+          {
+            "name": "secrets",
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "4Mi"
+            }
+          },
+          {
+            "name": "identity",
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "1Mi"
+            }
+          },
+          {
+            "name": "bootstrap",
+            "secret": {
+              "secretName": "kdm-9bb66d3b3a62c746a81466076c4bf8900de01f8d-adm",
+              "defaultMode": 288,
+              "optional": false
+            }
+          }
+        ]
+      }
+    }
+  },
+  "status": {}
+}

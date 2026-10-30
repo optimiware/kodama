@@ -58,6 +58,11 @@ func checkIntent(in execution.AttemptSpec, rec AttemptRecord) error {
 		in.Access != rec.Access || in.ActionKey != rec.ActionKey {
 		return wrap(ErrNotDispatchable, "the intent does not match the committed attempt")
 	}
+	// A run_shared launch must agree with the committed one: the Job is built from
+	// the committed launch, so an intent that carries another (or none) is refused.
+	if (in.Shared == nil) != (rec.Shared == nil) || (in.Shared != nil && !sameLaunch(*in.Shared, *rec.Shared)) {
+		return wrap(ErrNotDispatchable, "the shared launch does not match the committed attempt")
+	}
 	return nil
 }
 
@@ -121,6 +126,11 @@ func (e *Runtime) start(ctx context.Context, in execution.AttemptSpec) (executio
 // dispatchOnce creates or adopts the Job and returns its verified UID.
 func (e *Runtime) dispatchOnce(ctx context.Context, exp Expectation) (string, error) {
 	id := exp.Identity
+	// A run_shared attempt mounts the run's claim: it must be the bound one before
+	// anything is created or adopted.
+	if err := e.verifyClaim(ctx, exp); err != nil {
+		return "", err
+	}
 	// Read before any effect: an existing Job is verified first, so a collision
 	// with a foreign object creates no Secret and registers no credential.
 	job, found, err := e.readJob(ctx, id.Namespace, id.JobName)
@@ -154,7 +164,7 @@ func (e *Runtime) dispatchOnce(ctx context.Context, exp Expectation) (string, er
 		}
 	}
 	if a == nil {
-		if err := e.preflight.Check(ctx, id.Scope.TenantID); err != nil {
+		if err := e.checkBaseline(ctx, exp); err != nil {
 			return "", err
 		}
 		if a, err = e.createAdmission(ctx, exp); err != nil {
@@ -206,10 +216,20 @@ func (e *Runtime) dispatchOnce(ctx context.Context, exp Expectation) (string, er
 			return "", err
 		}
 	}
-	if err := e.preflight.Check(ctx, id.Scope.TenantID); err != nil {
+	if err := e.checkBaseline(ctx, exp); err != nil {
 		return "", err
 	}
 	return e.create(ctx, exp, a)
+}
+
+// checkBaseline verifies the tenant namespace against the baseline the attempt
+// runs under: the fixed restricted one for attempt_private, the run's pinned Pod
+// Security level for run_shared.
+func (e *Runtime) checkBaseline(ctx context.Context, exp Expectation) error {
+	if exp.Shared != nil {
+		return e.preflight.CheckRun(ctx, exp.Identity.Scope.TenantID, exp.Shared.PodSecurity)
+	}
+	return e.preflight.Check(ctx, exp.Identity.Scope.TenantID)
 }
 
 // create issues the create under a recorded intent and resolves its outcome.
@@ -233,6 +253,13 @@ func (e *Runtime) create(ctx context.Context, exp Expectation, a *admission) (st
 			return "", err
 		}
 		return "", wrap(ErrNotDispatchable, "the attempt was cancelled before the create")
+	}
+	if cerr := e.verifyClaim(ctx, exp); cerr != nil {
+		// The workspace was stopped or replaced after the intent was recorded:
+		// nothing was sent.
+		_ = a.wl.CreateRefused()
+		_ = e.save(ctx, a)
+		return "", cerr
 	}
 	created, err := e.cluster.CreateJob(ctx, id.Namespace, exp.Job)
 	switch {
@@ -433,7 +460,7 @@ func (e *Runtime) deleteAdmission(ctx context.Context, rec AttemptRecord) error 
 	}
 	id := Identity{
 		Scope: rec.Scope, RunID: rec.RunID, StepID: rec.StepID, AttemptID: rec.AttemptID, JobName: rec.JobName,
-		Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access,
+		Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access, Shared: rec.Shared != nil,
 	}
 	a, err := e.loadAdmission(ctx, id)
 	if err != nil {
@@ -505,7 +532,7 @@ func (e *Runtime) terminateOnce(ctx context.Context, rec AttemptRecord) (executi
 	}
 	id := Identity{
 		Scope: rec.Scope, RunID: rec.RunID, StepID: rec.StepID, AttemptID: rec.AttemptID, JobName: rec.JobName,
-		Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access,
+		Namespace: tgt.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: rec.SpecFingerprint, Access: rec.Access, Shared: rec.Shared != nil,
 	}
 	a, err := e.loadAdmission(ctx, id)
 	if err != nil {

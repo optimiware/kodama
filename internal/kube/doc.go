@@ -29,4 +29,18 @@
 //   - kubernetes/: the narrow standard-library HTTP adapter (wire types stay there
 //     and in the template/verification code that must speak them).
 //   - adapters/: bridges to the PostgreSQL execution store and runtimeauth.
+//
+// The run_shared model (T-114, ADR 0010 as amended by O-30) adds the companion
+// execution.RunResources port and the run_shared attempt Job:
+//
+//   - run_resources.go, run_kinds.go, run_record.go: RunResources over a tenant
+//     namespace (network policies, the scratch claim, the one preparation Job,
+//     service Pods with their Services), driven by a per-resource record Secret
+//     that is created first, fences a stopped resource and resolves lost creates.
+//   - run_render.go, run_network.go, shared_security.go: the pure rendering of
+//     those objects from the canonical spec and the pinned execution policy body.
+//   - run_verify.go, run_preflight.go, run_identity.go: ownership and spec
+//     verification, the run_shared namespace baseline and VerifyResourcePod.
+//   - shared_recipe.go, shared_claim.go: the run_shared attempt Job and its claim
+//     verification.
 package kube

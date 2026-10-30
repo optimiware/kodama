@@ -16,6 +16,7 @@ import (
 )
 
 var _ kube.Cluster = (*Fake)(nil)
+var _ kube.RunCluster = (*Fake)(nil)
 
 // Fake is an in-memory Kubernetes API with the semantics the executor depends on
 // and fault injection at every call: not-found, already-exists, UID and
@@ -30,6 +31,22 @@ type Fake struct {
 	jobs    map[string]*kubernetes.Job
 	pods    map[string]*kubernetes.Pod
 	secrets map[string]*kubernetes.Secret
+	pvcs    map[string]*kubernetes.PersistentVolumeClaim
+	pvs     map[string]*kubernetes.PersistentVolume
+	svcs    map[string]*kubernetes.Service
+
+	// VolumeAttachments are the cluster's attachments, listed by
+	// ListVolumeAttachments; tests add and remove them.
+	VolumeAttachments []kubernetes.VolumeAttachment
+	// HoldPods keeps deleted Pods (with a deletion timestamp) until ReleasePods is
+	// called, as a graceful termination does. HoldPVs keeps the volume of a
+	// deleted claim until ReleasePVs (reclaim pending). PendingClaims leaves new
+	// claims unbound (volume binding waits for a consumer).
+	// StorageClasses are the cluster's classes by name (GetStorageClass).
+	StorageClasses map[string]kubernetes.StorageClass
+	HoldPods       bool
+	HoldPVs        bool
+	PendingClaims  bool
 
 	Namespaces      map[string]kubernetes.Namespace
 	ServiceAccounts map[string]kubernetes.ServiceAccount // "ns/name"
@@ -59,6 +76,7 @@ type Fault struct {
 func NewFake() *Fake {
 	return &Fake{
 		Now: time.Now, jobs: map[string]*kubernetes.Job{}, pods: map[string]*kubernetes.Pod{}, secrets: map[string]*kubernetes.Secret{},
+		StorageClasses: map[string]kubernetes.StorageClass{}, pvcs: map[string]*kubernetes.PersistentVolumeClaim{}, pvs: map[string]*kubernetes.PersistentVolume{}, svcs: map[string]*kubernetes.Service{},
 		Namespaces: map[string]kubernetes.Namespace{}, ServiceAccounts: map[string]kubernetes.ServiceAccount{},
 		Quotas: map[string][]kubernetes.ResourceQuota{}, NetPols: map[string][]kubernetes.NetworkPolicy{}, Permitted: map[string]bool{},
 		calls: map[string]int{},
@@ -386,6 +404,10 @@ func (f *Fake) DeletePod(_ context.Context, ns, name string, o kubernetes.Delete
 	}
 	if o.UID == "" || p.Metadata.UID != o.UID {
 		return apiErr("delete pod", kubernetes.ErrConflict, 409)
+	}
+	if f.HoldPods {
+		p.Metadata.DeletionTimestamp = f.Now().UTC().Format(time.RFC3339)
+		return nil
 	}
 	delete(f.pods, key(ns, name))
 	return nil

@@ -218,3 +218,90 @@ No cluster-wide write access is needed.
 ## Assumptions
 
 See [review.md](review.md) (baseline, review checklist and the assumptions the integration owners confirm).
+
+## Run resources and `run_shared` attempts (T-114)
+
+T-114 implements P4 of the [run workspace plan](../../docs/implementation/run-workspace-services-builders.md)
+against the seams S2-S6 and S8 frozen by T-122. It is component evidence on a fake cluster
+(`kubetest.Fake`): real CSI release, CNI traffic and builder profiles are qualified by T-121/T-117, and
+nothing here is wired into the application (T-116).
+
+`kube.NewRunResources(RunResourceDependencies, RunResourceOptions)` implements `execution.RunResources`:
+
+| Resource | Objects | Notes |
+| --- | --- | --- |
+| `workspace` | one `ReadWriteOncePod` PVC of the pinned policy's storage class and size | `ready` when the claim is Bound **or** is Pending with no volume while its class (the policy's, read from the cluster) has `volumeBindingMode: WaitForFirstConsumer`: execution gates the preparation and a source-free run's first attempt on the workspace being ready, and that first consumer is what binds the claim. Any other Pending claim (an Immediate class still provisioning, a missing class) is `pending`, a class whose `reclaimPolicy` is not `Delete` is refused at Ensure and `failed` (`capability_unsupported`) at Observe, and an unreadable class is `unknown`. `Released` only when no Pod of the namespace references the claim (any phase) and no `VolumeAttachment` of its volume remains; `Remove` deletes the claim by UID and confirms the volume is gone (delete reclaim); for a claim that never bound, no volume of its UID (the recorded one or `pvc-<claimUID>`) may exist, and one that appears later keeps cleanup pending |
+| `preparation` | one Job (`backoffLimit: 0`, `restartPolicy: Never`) of the policy's digest-pinned image running `kodama prepare` | claim at `/workspace`, S4 environment, read-only checkout credential in the record Secret |
+| `service` | one Pod (`restartPolicy: Never`) + ClusterIP Service named by the endpoint host + an ingress policy | readiness probe translated to the Pod, bounded ephemeral storage, memory `/dev/shm`, the pinned `service` role; with secret bindings it runs `kodama service-run -- argv` through the injected entrypoint |
+| `network` | per-run NetworkPolicies selected by run labels | clients (`-cli`), service DNS (`-svc`), declared edges (`-eoN`/`-eiN`, run model), public egress (`-pub`), named profiles (`-egN`) |
+
+Every resource has a **record Secret** (`<name>-rec`) created before anything else. It holds the canonical
+spec (never mounted into a workload), the external-effect record and, for a workload with a runtime
+identity, the admission credential (persisted **before** it is registered through the consumer-owned
+`ResourceRegistrar` port, seam S5). The record fences a stopped resource (Ensure then returns
+`ErrResourceFenced`), proves ownership of objects that outlive their parent, and resolves a lost create:
+Stop and Remove wait until a create of unknown outcome can no longer land (`Options.CreateQuiescence`):
+every create, a companion's (a service's Service and ingress policy, each network policy) included, is announced in
+the record and the fence rechecked before it is sent. Cleanup deletes only what is provably ours: a bound UID, a
+companion UID recorded when it was verified, or (nothing recorded) an object that carries our marks **and** equals the
+rendering of the committed spec; a lookalike that copies every label and annotation is left alone. Outstanding creates are tracked **per operation** (an id and a timestamp in the record): an Ensure
+removes only its own entry, after reading its object back, so no concurrent Ensure settles another's uncertainty; Stop and
+Remove wait until every entry is older than the quiescence. A primary object verified by its spec with no committed UID
+(a late create) has its UID persisted in the record (`seen`) before it is deleted, so repeated cleanup still finds its
+volumes. A record that is lost for a bound workload is lost bookkeeping, not "never issued": Stop rebinds a fence to the
+bound UID (the workload is deleted by it), reports `LaunchUnknown`, and Remove succeeds only once the bound workload is
+verifiably gone. A companion whose recorded UID differs from the object found is classified by the committed spec, not assumed foreign (a create that was outstanding while the recorded instance was deleted yields a new instance of ours): an exact rendering is ours and is deleted, anything else is not; a recorded UID found absent is forgotten durably. Companion objects of a resource whose record is lost carry only copyable marks, so they are **never
+deleted**: Remove stays unconfirmed (`ErrCleanupUnverified`) until an operator resolves them. Ensure re-reads the removal
+marker after its record create and before any effect, so a removal that overtakes a planning Ensure is not resurrected.
+
+**Removal tombstone.** `Remove` writes `<name>-tomb` (identity, fingerprint, bound UID; no credential, no spec) before it
+deletes the record, and nothing in the adapter ever deletes it: a removed resource is refused (`ErrResourceFenced`) by
+any later Ensure, from any controller instance, because execution recorded the cleanup and released the capacity. It is
+one small Secret per removed resource and goes away with the tenant namespace at offboarding.
+Ownership is verified by scope, deterministic name, fingerprint annotation **and** the bound UID, and the
+live object's controlled spec is compared with the rendering of the committed spec; a same-name object that
+differs is `ErrResourceCollision` and is never adopted, stopped or deleted. Observe never reports absence
+unless every read said not-found; an outage, an unreadable policy or an unverifiable object is
+`PhaseUnknown`.
+
+The pinned policy body (role shapes, storage class, network model, egress profile destinations) comes from
+a consumer-owned `PolicyCatalog` (seam S9's retained, append-only policy list); the adapter verifies the
+body's id and digest against the run's pin and the spec's role-shape digest, and a profile's destinations
+against the digest the run pinned. Hostname destinations are resolved once through an optional
+`HostResolver` and pinned in the record; without one they are refused.
+
+**Capabilities** advertise exactly what is rendered for every run (`run_workspace`, `workspace_fence`,
+`workspace_preparation`, `resource_recovery`, `run_services`, `service_isolation`, `run_network_isolation`,
+`declared_edges`, `named_egress`, `egress_default_deny`). `builder_service` and `builder_isolated_worker` are
+never advertised; `builder_rootless` only if the installation vouches for it (`RunResourceOptions.Qualified`)
+after qualification.
+
+**`run_shared` attempt Jobs.** `AttemptRecord.Shared` is the committed launch (`adapters.Attempts` derives it
+from the run's pins and the bound workspace). A `run_shared` Job selects the v2 wire, mounts the bound
+claim at `/workspace` (its UID is verified equal to the bound one before anything is created or adopted, the
+claim must not be terminating and its record must not be fenced), keeps outputs, secrets, identity,
+scratch, `HOME=/kodama/home`, `XDG_RUNTIME_DIR=/kodama/run` attempt-private and bounded, receives no checkout
+credential and takes its security shape exactly from the pinned step role (`hostUsers: false`, non-root with
+the installation's UID/GID, all capabilities dropped then `capabilitiesAdd`, escalation iff additions,
+seccomp/AppArmor `RuntimeDefault` or `Localhost`, optional unmasked `/proc`). Adoption, observation and
+termination rebuild the expectation from the committed launch and compare every field. The attempt_private
+Job is unchanged.
+
+**Namespace baseline.** `Preflight.CheckRun` requires the policy's Pod Security level (and version) and accepts
+exactly the owned per-run policies: by shape and, since policies are additive, only when each one equals what the
+committed spec of its resource renders (`RunResources.VerifyOwnedPolicy`); an unrecognized extra also makes the
+resource's observation a collision. The cache key separates the attempt_private and run_shared checks; foreign broad allows selecting run Pods are still refused.
+`(*RunResources).VerifyResourcePod` confirms a claimed Pod is controlled by the preparation Job bound by
+execution (seam S6).
+
+What T-116 wires: `NewRunResources` (+ `RunResourceDependencies`: execution policy, `*kubernetes.Client`, a
+`PolicyCatalog` over the chart-rendered policy list, a `ResourceRegistrar` bridging
+`runtimeauth.RegisterResource`, the existing `CheckoutProvider`, `PodLogs`, optionally a `HostResolver`), passing the `RunResources` also as `Dependencies.OwnedPolicies` of the attempt
+`Runtime` (a `run_shared` attempt's preflight then verifies the run policies against their records; without it a namespace
+holding run policies fails that preflight),
+`VerifyResourcePod` bridged to runtimeauth's `ResourceWorkloads`, `adapters.Attempts` (populates
+`AttemptRecord.Shared`), and the cluster RBAC for claims, Services, NetworkPolicies, Pods and the
+cluster-scoped reads of PersistentVolumes, VolumeAttachments and StorageClasses (`get` and `list` on
+`persistentvolumes`, `list` on `volumeattachments`, `get` on `storageclasses`; volumes are found by their claimRef).
+A preparation checkout request is `CheckoutRequest{Scope, RunID, StepID: "preparation", Access: read,
+RepositoryURL, Commit}` with no attempt and no workspace binding.

@@ -35,6 +35,12 @@ var (
 	ErrUnavailable = errors.New("kube: dependency unavailable")
 	// ErrNotFound: the attempt does not exist in the scope (authoritative).
 	ErrNotFound = errors.New("kube: not found")
+	// ErrCleanupUnverified: an object carrying the marks of a resource's companion
+	// cannot be proven to be that resource's (its record is lost, so neither a
+	// recorded UID nor the committed spec is left to verify it by). It is neither
+	// deleted nor assumed gone: removal stays unconfirmed until it is verified or
+	// resolved by an operator.
+	ErrCleanupUnverified = errors.New("kube: an object of the resource cannot be verified and is left untouched")
 	// ErrInvalidTransition: the workload record does not allow the change.
 	ErrInvalidTransition = errors.New("kube: invalid workload transition")
 )

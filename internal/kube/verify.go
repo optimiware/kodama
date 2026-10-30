@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/kube/kubernetes"
 )
 
@@ -27,6 +28,8 @@ type Expectation struct {
 	Job kubernetes.Job
 	// Context is the committed pinned context.
 	Context runtimev1.Context
+	// Shared is the committed run_shared launch (nil for attempt_private).
+	Shared *execution.SharedLaunch
 }
 
 // Expect rebuilds the expected Job of a committed attempt. It verifies the
@@ -65,11 +68,19 @@ func (p ExecutionPolicy) Expect(rec AttemptRecord) (Expectation, error) {
 	if fp != rec.SpecFingerprint {
 		return Expectation{}, ErrPolicyDrift
 	}
+	// The fingerprint binds the attempt_private recipe the planner computed; the
+	// run_shared shape is selected afterwards from the committed launch.
+	if rec.Shared != nil {
+		if r, err = r.WithShared(*rec.Shared); err != nil {
+			return Expectation{}, err
+		}
+	}
 	return Expectation{
 		Identity: Identity{
 			Scope: rec.Scope, RunID: rec.RunID, StepID: rec.StepID, AttemptID: rec.AttemptID, JobName: r.JobName,
-			Namespace: r.Target.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: fp, Access: rec.Access,
+			Namespace: r.Target.Namespace, ContextDigest: rec.ContextDigest, Fingerprint: fp, Access: rec.Access, Shared: rec.Shared != nil,
 		},
+		Shared:      r.Shared(),
 		WorkspaceID: rec.WorkspaceID,
 		Recipe:      r, Job: r.JobObject(fp), Context: c,
 	}, nil

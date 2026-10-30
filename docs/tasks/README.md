@@ -114,7 +114,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-107 Direct project-secret delivery to ordinary steps](T-107-direct-secret-delivery.md) | T-104 | done |
 | [T-108 Result finalization ordering and actionable dispatch diagnostics](T-108-execution-finalization-diagnostics.md) | T-104 | done |
 | [T-113 One preparation, scoped authority and cumulative publication](T-113-run-workspace-authority.md) | T-112, T-122 | planned |
-| [T-114 Kubernetes run resources and execution policy](T-114-kubernetes-run-resources.md) | T-112, T-122 | planned |
+| [T-114 Kubernetes run resources and execution policy](T-114-kubernetes-run-resources.md) | T-112, T-122 | done |
 | [T-115 Podman and Process run resources](T-115-local-run-resources.md) | T-112, T-122 | planned |
 | [T-116 Resource assembly, chart and migration](T-116-run-resource-assembly.md) | T-113, T-114, T-115, T-120 | planned |
 | [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121 | planned |

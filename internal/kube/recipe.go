@@ -56,6 +56,12 @@ type Recipe struct {
 	Actions       []string
 
 	policy ExecutionPolicy
+	// shared is the run_shared launch (nil for attempt_private): the pinned step
+	// role, the bound workspace claim and the network model. It selects the shared
+	// Job shape and is never part of the fingerprint (execution derives it from
+	// data the fingerprint and the run's pins already bind).
+	shared    *execution.SharedLaunch
+	sharedSec roleSecurity
 }
 
 // SecretName is the attempt-scoped admission Secret, derived from the Job name.

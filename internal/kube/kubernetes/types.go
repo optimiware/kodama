@@ -52,10 +52,12 @@ type Job struct {
 
 // JobSpec is the part of a Job spec the executor controls.
 type JobSpec struct {
-	Parallelism  *int32      `json:"parallelism,omitempty"`
-	Completions  *int32      `json:"completions,omitempty"`
-	BackoffLimit *int32      `json:"backoffLimit,omitempty"`
-	Template     PodTemplate `json:"template"`
+	Parallelism  *int32 `json:"parallelism,omitempty"`
+	Completions  *int32 `json:"completions,omitempty"`
+	BackoffLimit *int32 `json:"backoffLimit,omitempty"`
+	// ActiveDeadlineSeconds bounds the Job's run time (set for preparation only).
+	ActiveDeadlineSeconds *int64      `json:"activeDeadlineSeconds,omitempty"`
+	Template              PodTemplate `json:"template"`
 }
 
 // PodTemplate is a Job's Pod template.
@@ -96,15 +98,17 @@ func (s JobStatus) Condition(kind string) (JobCondition, bool) {
 
 // PodSpec is the Pod spec subset the executor creates and verifies.
 type PodSpec struct {
-	ServiceAccountName            string            `json:"serviceAccountName,omitempty"`
-	AutomountServiceAccountToken  *bool             `json:"automountServiceAccountToken,omitempty"`
-	EnableServiceLinks            *bool             `json:"enableServiceLinks,omitempty"`
-	RestartPolicy                 string            `json:"restartPolicy,omitempty"`
-	DNSPolicy                     string            `json:"dnsPolicy,omitempty"`
-	SchedulerName                 string            `json:"schedulerName,omitempty"`
-	HostNetwork                   bool              `json:"hostNetwork,omitempty"`
-	HostPID                       bool              `json:"hostPID,omitempty"`
-	HostIPC                       bool              `json:"hostIPC,omitempty"`
+	ServiceAccountName           string `json:"serviceAccountName,omitempty"`
+	AutomountServiceAccountToken *bool  `json:"automountServiceAccountToken,omitempty"`
+	EnableServiceLinks           *bool  `json:"enableServiceLinks,omitempty"`
+	RestartPolicy                string `json:"restartPolicy,omitempty"`
+	DNSPolicy                    string `json:"dnsPolicy,omitempty"`
+	SchedulerName                string `json:"schedulerName,omitempty"`
+	HostNetwork                  bool   `json:"hostNetwork,omitempty"`
+	HostPID                      bool   `json:"hostPID,omitempty"`
+	HostIPC                      bool   `json:"hostIPC,omitempty"`
+	// HostUsers false selects a Pod user namespace.
+	HostUsers                     *bool             `json:"hostUsers,omitempty"`
 	ShareProcessNamespace         *bool             `json:"shareProcessNamespace,omitempty"`
 	TerminationGracePeriodSeconds *int64            `json:"terminationGracePeriodSeconds,omitempty"`
 	SecurityContext               *PodSecurity      `json:"securityContext,omitempty"`
@@ -128,6 +132,15 @@ type PodSecurity struct {
 // SeccompProfile selects a seccomp profile.
 type SeccompProfile struct {
 	Type string `json:"type"`
+	// LocalhostProfile is the profile file relative to the kubelet's seccomp
+	// directory; set exactly when Type is Localhost.
+	LocalhostProfile string `json:"localhostProfile,omitempty"`
+}
+
+// AppArmorProfile selects an AppArmor profile (RuntimeDefault or Localhost).
+type AppArmorProfile struct {
+	Type             string `json:"type"`
+	LocalhostProfile string `json:"localhostProfile,omitempty"`
 }
 
 // Container is one container.
@@ -139,22 +152,27 @@ type Container struct {
 	Args                     []string           `json:"args,omitempty"`
 	WorkingDir               string             `json:"workingDir,omitempty"`
 	Env                      []EnvVar           `json:"env,omitempty"`
+	Ports                    []ContainerPort    `json:"ports,omitempty"`
 	Resources                *Resources         `json:"resources,omitempty"`
 	VolumeMounts             []VolumeMount      `json:"volumeMounts,omitempty"`
+	ReadinessProbe           *Probe             `json:"readinessProbe,omitempty"`
 	SecurityContext          *ContainerSecurity `json:"securityContext,omitempty"`
 	TerminationMessagePolicy string             `json:"terminationMessagePolicy,omitempty"`
 }
 
 // ContainerSecurity is the container-level security context.
 type ContainerSecurity struct {
-	Privileged               *bool           `json:"privileged,omitempty"`
-	AllowPrivilegeEscalation *bool           `json:"allowPrivilegeEscalation,omitempty"`
-	ReadOnlyRootFilesystem   *bool           `json:"readOnlyRootFilesystem,omitempty"`
-	RunAsNonRoot             *bool           `json:"runAsNonRoot,omitempty"`
-	RunAsUser                *int64          `json:"runAsUser,omitempty"`
-	RunAsGroup               *int64          `json:"runAsGroup,omitempty"`
-	Capabilities             *Capabilities   `json:"capabilities,omitempty"`
-	SeccompProfile           *SeccompProfile `json:"seccompProfile,omitempty"`
+	Privileged               *bool            `json:"privileged,omitempty"`
+	AllowPrivilegeEscalation *bool            `json:"allowPrivilegeEscalation,omitempty"`
+	ReadOnlyRootFilesystem   *bool            `json:"readOnlyRootFilesystem,omitempty"`
+	RunAsNonRoot             *bool            `json:"runAsNonRoot,omitempty"`
+	RunAsUser                *int64           `json:"runAsUser,omitempty"`
+	RunAsGroup               *int64           `json:"runAsGroup,omitempty"`
+	Capabilities             *Capabilities    `json:"capabilities,omitempty"`
+	SeccompProfile           *SeccompProfile  `json:"seccompProfile,omitempty"`
+	AppArmorProfile          *AppArmorProfile `json:"appArmorProfile,omitempty"`
+	// ProcMount is "Unmasked" only for a user-namespaced builder profile.
+	ProcMount string `json:"procMount,omitempty"`
 }
 
 // Capabilities adds and drops Linux capabilities.
@@ -200,6 +218,14 @@ type Volume struct {
 	EmptyDir  *EmptyDir     `json:"emptyDir,omitempty"`
 	Secret    *SecretVolume `json:"secret,omitempty"`
 	ConfigMap *ConfigVolume `json:"configMap,omitempty"`
+	// PersistentVolumeClaim mounts a claim of the Pod's namespace.
+	PersistentVolumeClaim *PVCVolume `json:"persistentVolumeClaim,omitempty"`
+}
+
+// PVCVolume mounts a PersistentVolumeClaim.
+type PVCVolume struct {
+	ClaimName string `json:"claimName"`
+	ReadOnly  bool   `json:"readOnly,omitempty"`
 }
 
 // EmptyDir is node-local scratch; Medium "Memory" backs it with tmpfs.
@@ -213,6 +239,14 @@ type SecretVolume struct {
 	SecretName  string `json:"secretName"`
 	DefaultMode *int32 `json:"defaultMode,omitempty"`
 	Optional    *bool  `json:"optional,omitempty"`
+	// Items projects only the listed keys (absent: every key).
+	Items []KeyToPath `json:"items,omitempty"`
+}
+
+// KeyToPath projects one Secret key to a relative file path.
+type KeyToPath struct {
+	Key  string `json:"key"`
+	Path string `json:"path"`
 }
 
 // ConfigVolume projects a ConfigMap.
@@ -224,10 +258,12 @@ type ConfigVolume struct {
 
 // Pod is a core/v1 Pod.
 type Pod struct {
-	Metadata ObjectMeta      `json:"metadata"`
-	Spec     PodSpec         `json:"spec"`
-	Status   PodStatus       `json:"status,omitempty"`
-	Raw      json.RawMessage `json:"-"`
+	APIVersion string          `json:"apiVersion,omitempty"`
+	Kind       string          `json:"kind,omitempty"`
+	Metadata   ObjectMeta      `json:"metadata"`
+	Spec       PodSpec         `json:"spec"`
+	Status     PodStatus       `json:"status,omitempty"`
+	Raw        json.RawMessage `json:"-"`
 }
 
 // PodStatus is the observed Pod state.
@@ -251,6 +287,7 @@ type ContainerStatus struct {
 	Name    string         `json:"name"`
 	Image   string         `json:"image,omitempty"`
 	Started *bool          `json:"started,omitempty"`
+	Ready   bool           `json:"ready,omitempty"`
 	State   ContainerState `json:"state,omitempty"`
 	// LastState keeps the previous termination.
 	LastState ContainerState `json:"lastState,omitempty"`
@@ -344,13 +381,20 @@ type ScopedResourceSelectorRequirement struct {
 // NetworkPolicy is a networking.k8s.io/v1 NetworkPolicy. Rules are kept as
 // generic documents: the policy check inspects their content.
 type NetworkPolicy struct {
-	Metadata ObjectMeta `json:"metadata"`
-	Spec     struct {
-		PodSelector LabelSelector    `json:"podSelector"`
-		PolicyTypes []string         `json:"policyTypes,omitempty"`
-		Ingress     []map[string]any `json:"ingress,omitempty"`
-		Egress      []NetworkEgress  `json:"egress,omitempty"`
-	} `json:"spec"`
+	APIVersion string            `json:"apiVersion,omitempty"`
+	Kind       string            `json:"kind,omitempty"`
+	Metadata   ObjectMeta        `json:"metadata"`
+	Spec       NetworkPolicySpec `json:"spec"`
+	// Raw is the document as the server returned it (set by the selecting read).
+	Raw json.RawMessage `json:"-"`
+}
+
+// NetworkPolicySpec is a NetworkPolicy's spec.
+type NetworkPolicySpec struct {
+	PodSelector LabelSelector    `json:"podSelector"`
+	PolicyTypes []string         `json:"policyTypes,omitempty"`
+	Ingress     []map[string]any `json:"ingress,omitempty"`
+	Egress      []NetworkEgress  `json:"egress,omitempty"`
 }
 
 // LabelSelector is a Kubernetes label selector.

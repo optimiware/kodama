@@ -7,6 +7,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/optimiware/kodama/internal/domain"
@@ -52,7 +53,8 @@ func (a *Attempts) Attempt(ctx context.Context, scope domain.Scope, id domain.At
 func record(agg *execution.Aggregate, at *execution.Attempt) kube.AttemptRecord {
 	c := agg.Control(at.ID)
 	return kube.AttemptRecord{
-		Scope: at.Scope, RunID: at.RunID, StepID: at.StepID, AttemptID: at.ID, ActionKey: at.ActionKey,
+		Shared: sharedLaunch(agg, at.StepID),
+		Scope:  at.Scope, RunID: at.RunID, StepID: at.StepID, AttemptID: at.ID, ActionKey: at.ActionKey,
 		Status: at.Status, Live: at.Status == execution.AttemptRunning && c.Live(),
 		WorkspaceID: at.WorkspaceID, JobName: at.WorkloadName, SpecFingerprint: at.SpecFingerprint, ContextDigest: at.ContextDigest, Context: at.Context, Access: at.Access,
 		ObservedJobUID: at.WorkloadUID, StartedAt: at.StartedAt, DispatchConfirmed: c.DispatchConfirmedAt != nil,
@@ -102,4 +104,44 @@ func mapNotFound(err error) error {
 		return kube.ErrNotFound
 	}
 	return err
+}
+
+// sharedLaunch derives the committed run_shared launch of a step from the run's
+// immutable pins and its workspace's bound identity: the pinned step role, the
+// bound claim, the pinned network model and the step's profile digests. Unlike
+// execution's launch derivation it does not refuse a workspace that is stopping or
+// removed: the expectation of an attempt's Job (observation, termination,
+// removal) must stay rebuildable for as long as the Job exists. It is nil for an
+// attempt_private run and for a workspace that was never bound.
+func sharedLaunch(agg *execution.Aggregate, stepID string) *execution.SharedLaunch {
+	sh := agg.Run.Shared
+	if sh == nil {
+		return nil
+	}
+	ws := agg.Resource(execution.KeyWorkspace)
+	if ws == nil || !ws.Bound() {
+		return nil
+	}
+	role, ok := sh.PolicyBody.Roles[execution.RoleStep]
+	if !ok {
+		return nil
+	}
+	digest, err := sh.PolicyBody.RoleDigest(execution.RoleStep)
+	if err != nil {
+		return nil
+	}
+	egress := append([]string{}, sh.Egress[stepID]...)
+	digests := map[string]string{}
+	for _, name := range egress {
+		if d, ok := sh.EgressDigests[name]; ok {
+			digests[name] = d
+		}
+	}
+	// slices.Clone keeps nil as nil: the copy must hash to the pinned digest.
+	role.CapabilitiesAdd = slices.Clone(role.CapabilitiesAdd)
+	role.Devices = slices.Clone(role.Devices)
+	return &execution.SharedLaunch{
+		Policy: sh.Policy, Role: role, RoleDigest: digest, PodSecurity: sh.PolicyBody.PodSecurity,
+		Workspace: ws.Handle(), Network: sh.PolicyBody.Network, Egress: egress, EgressDigests: digests,
+	}
 }
