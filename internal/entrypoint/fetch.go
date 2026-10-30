@@ -45,10 +45,22 @@ func FetchArtifactInput(ctx context.Context, fetcher InputFetcher, destRoot, rel
 	if err != nil {
 		return artifactsv1.InputFetchResponse{}, err
 	}
-	if !overwrite {
-		if _, err := os.Lstat(targetPath); err == nil {
+
+	// Walk and create parent directories step-by-step from destRoot BEFORE any
+	// filesystem write, rejecting any symlinked root or ancestor component.
+	parentDir := filepath.Dir(targetPath)
+	if err := mkdirConfined(destRoot, parentDir); err != nil {
+		return artifactsv1.InputFetchResponse{}, err
+	}
+	if fi, err := os.Lstat(targetPath); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 || fi.IsDir() {
+			return artifactsv1.InputFetchResponse{}, ErrInputPathUnsafe
+		}
+		if !overwrite {
 			return artifactsv1.InputFetchResponse{}, fmt.Errorf("%w: %s", ErrInputExists, relPath)
 		}
+	} else if !os.IsNotExist(err) {
+		return artifactsv1.InputFetchResponse{}, err
 	}
 
 	meta, err := fetcher.FetchInput(ctx, req)
@@ -63,21 +75,16 @@ func FetchArtifactInput(ctx context.Context, fetcher InputFetcher, destRoot, rel
 		return artifactsv1.InputFetchResponse{}, fmt.Errorf("%w: invalid input size %d", ErrInputDigest, wantSize)
 	}
 
-	parentDir := filepath.Dir(targetPath)
-	if err := os.MkdirAll(parentDir, 0o755); err != nil {
-		return artifactsv1.InputFetchResponse{}, err
-	}
-	// Re-verify parentDir has no symlink components escaping destRoot.
-	if err := verifyNoSymlinkEscape(destRoot, parentDir); err != nil {
-		return artifactsv1.InputFetchResponse{}, err
-	}
-
 	rc, err := fetcher.DownloadInput(ctx, *meta.Download)
 	if err != nil {
 		return artifactsv1.InputFetchResponse{}, err
 	}
 	defer rc.Close()
 
+	// Re-verify confinement of parentDir immediately before creating the temp file.
+	if err := mkdirConfined(destRoot, parentDir); err != nil {
+		return artifactsv1.InputFetchResponse{}, err
+	}
 	tmp, err := os.CreateTemp(parentDir, ".kodama-input-*")
 	if err != nil {
 		return artifactsv1.InputFetchResponse{}, err
@@ -109,9 +116,26 @@ func FetchArtifactInput(ctx context.Context, fetcher InputFetcher, destRoot, rel
 	if err := tmp.Close(); err != nil {
 		return artifactsv1.InputFetchResponse{}, err
 	}
+
+	if err := mkdirConfined(destRoot, parentDir); err != nil {
+		return artifactsv1.InputFetchResponse{}, err
+	}
 	if !overwrite {
-		if _, err := os.Lstat(targetPath); err == nil {
-			return artifactsv1.InputFetchResponse{}, fmt.Errorf("%w: %s", ErrInputExists, relPath)
+		// os.Link is atomic in the kernel and fails with os.ErrExist if targetPath
+		// already exists (no TOCTOU race and never follows a terminal symlink).
+		if err := os.Link(tmpPath, targetPath); err != nil {
+			if os.IsExist(err) {
+				return artifactsv1.InputFetchResponse{}, fmt.Errorf("%w: %s", ErrInputExists, relPath)
+			}
+			return artifactsv1.InputFetchResponse{}, err
+		}
+		_ = os.Remove(tmpPath)
+		cleanup = false
+		return meta, nil
+	}
+	if fi, err := os.Lstat(targetPath); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 || fi.IsDir() {
+			return artifactsv1.InputFetchResponse{}, ErrInputPathUnsafe
 		}
 	}
 	if err := os.Rename(tmpPath, targetPath); err != nil {
@@ -142,9 +166,15 @@ func safeInputDestination(destRoot, relPath string) (string, error) {
 	return joined, nil
 }
 
-func verifyNoSymlinkEscape(root, dir string) error {
+func mkdirConfined(root, dir string) error {
 	cleanRoot := filepath.Clean(root)
-	cur := cleanRoot
+	rootInfo, err := os.Lstat(cleanRoot)
+	if err != nil {
+		return err
+	}
+	if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+		return ErrInputPathUnsafe
+	}
 	rel, err := filepath.Rel(cleanRoot, filepath.Clean(dir))
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return ErrInputPathUnsafe
@@ -152,13 +182,20 @@ func verifyNoSymlinkEscape(root, dir string) error {
 	if rel == "." {
 		return nil
 	}
+	cur := cleanRoot
 	for _, part := range strings.Split(rel, string(filepath.Separator)) {
 		cur = filepath.Join(cur, part)
 		fi, err := os.Lstat(cur)
+		if os.IsNotExist(err) {
+			if mkErr := os.Mkdir(cur, 0o755); mkErr != nil && !os.IsExist(mkErr) {
+				return mkErr
+			}
+			fi, err = os.Lstat(cur)
+		}
 		if err != nil {
 			return err
 		}
-		if fi.Mode()&os.ModeSymlink != 0 {
+		if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
 			return ErrInputPathUnsafe
 		}
 	}

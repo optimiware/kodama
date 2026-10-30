@@ -92,23 +92,48 @@ func (s *Store) CreateRelease(ctx context.Context, rel artifacts.Release, _ stri
 			loaded[id] = a
 		}
 
+		producersByID := make(map[string]int, len(rel.Manifest().Producers()))
+		prods := rel.Manifest().Producers()
+		for i, p := range prods {
+			producersByID[string(p.ArtifactID)] = i
+		}
+		hasSource := false
 		for _, n := range names {
 			entry := entries[n]
 			a := loaded[entry.ArtifactID]
-			if string(a.Digest()) != string(entry.Digest) || string(a.Kind()) != string(entry.Kind) {
-				return fmt.Errorf("%w: artifact %s does not match release entry", artifacts.ErrDigestMismatch, entry.ArtifactID)
+			prod := prods[producersByID[string(entry.ArtifactID)]]
+			if err := artifacts.ValidateReleaseEntryProvenance(a, entry, prod, rel.Manifest().Sources()); err != nil {
+				return err
+			}
+			if !a.Provenance().IsZero() {
+				hasSource = true
 			}
 		}
+		if !hasSource && len(rel.Manifest().Sources()) > 0 {
+			return fmt.Errorf("%w: source-free artifacts cannot declare fabricated release sources", artifacts.ErrOutputInvalid)
+		}
 
-		_, err = tx.Exec(ctx, `INSERT INTO artifact_releases (
+		tag, err := tx.Exec(ctx, `INSERT INTO artifact_releases (
 tenant_id, project_id, id, name, version_label, manifest_digest, manifest,
 created_by_type, created_by_id, created_at, updated_at, retired_at, version
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+ON CONFLICT (tenant_id, project_id, name, version_label) DO NOTHING`,
 			string(scope.TenantID), string(scope.ProjectID), string(rel.ID()),
 			rel.Name(), rel.VersionLabel(), string(rel.ManifestDigest()), rel.Manifest().Canonical(),
 			rel.CreatedBy().Type, rel.CreatedBy().ID, rel.CreatedAt(), rel.UpdatedAt(), rel.RetiredAt(), int64(rel.Version()),
 		)
 		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			winner, werr := findReleaseTx(ctx, tx, scope, rel.Name(), rel.VersionLabel(), "FOR SHARE")
+			if werr != nil {
+				return werr
+			}
+			if winner.Manifest().Digest() == rel.Manifest().Digest() && bytes.Equal(winner.Manifest().Canonical(), rel.Manifest().Canonical()) {
+				out, created = winner, false
+				return nil
+			}
 			return artifacts.ErrIdempotencyConflict
 		}
 
@@ -325,16 +350,42 @@ FOR UPDATE`,
 		if err != nil {
 			return artifacts.ErrInvalid
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO artifact_publications (
+		tag, err := tx.Exec(ctx, `INSERT INTO artifact_publications (
 tenant_id, project_id, id, artifact_id, artifact_digest, destination_kind, destination_reference, destination_digest,
 run_id, attempt_id, step_id, complete_graph, verified_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+ON CONFLICT (tenant_id, project_id, artifact_id, destination_kind, destination_reference) DO NOTHING`,
 			string(pub.Scope.TenantID), string(pub.Scope.ProjectID), string(pub.ID),
 			string(pub.ArtifactID), string(pub.ArtifactDigest),
 			string(pub.Destination.Kind), pub.Destination.Reference, string(pub.Destination.Digest),
 			string(pub.RunID), string(pub.AttemptID), pub.StepID, pub.CompleteGraph, ts.UTC(),
 		)
 		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			err := tx.QueryRow(ctx, `SELECT id, artifact_digest, destination_digest, run_id, attempt_id, step_id, complete_graph, verified_at
+FROM artifact_publications
+WHERE tenant_id = $1 AND project_id = $2 AND artifact_id = $3 AND destination_kind = $4 AND destination_reference = $5
+FOR SHARE`,
+				string(pub.Scope.TenantID), string(pub.Scope.ProjectID), string(pub.ArtifactID),
+				string(pub.Destination.Kind), pub.Destination.Reference,
+			).Scan(&existingID, &artDigest, &destDigest, &runID, &attID, &stepID, &complete, &verifiedAt)
+			if err != nil {
+				return err
+			}
+			if artDigest == string(pub.ArtifactDigest) && destDigest == string(pub.Destination.Digest) {
+				rec, rerr := artifacts.NewPublicationReceipt(
+					domain.PublicationID(existingID), pub.Scope, pub.ArtifactID, artDigest,
+					string(pub.Destination.Kind), pub.Destination.Reference, destDigest,
+					domain.RunID(runID), domain.AttemptID(attID), stepID, complete, verifiedAt,
+				)
+				if rerr != nil {
+					return rerr
+				}
+				out, created = rec, false
+				return nil
+			}
 			return artifacts.ErrIdempotencyConflict
 		}
 		out, created = pub, true

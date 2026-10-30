@@ -83,7 +83,19 @@ func Test_unit_admitted_artifact_fetch(t *testing.T) {
 		t.Fatalf("expected ErrInputExists when overwrite=false, got %v", err)
 	}
 
-	// 3. Path traversal and forbidden system roots are refused before any fetch.
+	// 3. Path traversal, symlinked ancestor directories and forbidden system roots
+	//    are refused before any directory creation or fetch outside destRoot.
+	outsideDir := t.TempDir()
+	symlinkParent := filepath.Join(root, "symparent")
+	if err := os.Symlink(outsideDir, symlinkParent); err != nil {
+		t.Fatalf("os.Symlink: %v", err)
+	}
+	if _, err := FetchArtifactInput(t.Context(), fetcher, root, "symparent/sub/escape.tar", req, true); !errors.Is(err, ErrInputPathUnsafe) {
+		t.Fatalf("expected ErrInputPathUnsafe for symlinked ancestor directory, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outsideDir, "sub")); !os.IsNotExist(err) {
+		t.Fatal("symlinked ancestor allowed directory creation outside destRoot")
+	}
 	for _, bad := range []string{"../escape.tar", "/etc/passwd", "."} {
 		if _, err := FetchArtifactInput(t.Context(), fetcher, root, bad, req, true); !errors.Is(err, ErrInputPathUnsafe) {
 			t.Fatalf("expected ErrInputPathUnsafe for %q, got %v", bad, err)

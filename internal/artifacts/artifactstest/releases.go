@@ -100,6 +100,10 @@ func (s *MemStore) CreateRelease(ctx context.Context, rel artifacts.Release, _ s
 
 		// Validate every referenced artifact in deterministic ID order and pin it.
 		entries := rel.Manifest().Entries()
+		producersByArt := make(map[domain.ArtifactID]artifactsv1.ProducerRef, len(rel.Manifest().Producers()))
+		for _, p := range rel.Manifest().Producers() {
+			producersByArt[p.ArtifactID] = p
+		}
 		names := make([]string, 0, len(entries))
 		for n := range entries {
 			names = append(names, n)
@@ -112,11 +116,8 @@ func (s *MemStore) CreateRelease(ctx context.Context, rel artifacts.Release, _ s
 			if err != nil {
 				return err
 			}
-			if !a.Usable() || a.Role() != artifacts.RoleOutput {
-				return fmt.Errorf("%w: artifact %s is not a usable output", artifacts.ErrOutputInvalid, entry.ArtifactID)
-			}
-			if string(a.Digest()) != string(entry.Digest) || string(a.Kind()) != string(entry.Kind) {
-				return fmt.Errorf("%w: artifact %s does not match release entry declaration", artifacts.ErrDigestMismatch, entry.ArtifactID)
+			if err := artifacts.ValidateReleaseEntryProvenance(a, entry, producersByArt[entry.ArtifactID], rel.Manifest().Sources()); err != nil {
+				return err
 			}
 			if err := pinsT.Put(tx, pinRec{Project: scope.ProjectID, Artifact: a.ID(), Owner: owner}); err != nil {
 				return err

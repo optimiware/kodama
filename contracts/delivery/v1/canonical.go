@@ -305,10 +305,31 @@ func NewGateSubjectV2(in GateSubjectV2Input) (GateSubjectV2, error) {
 	}
 	sum := sha256.Sum256(canonical)
 	digest := runtimev1.Digest("sha256:" + hex.EncodeToString(sum[:]))
-	in.Sources = sources
-	in.Artifacts = artifacts
-	in.Evidence = evidence
-	return GateSubjectV2{in: in, canonical: canonical, digest: digest}, nil
+	stored := GateSubjectV2Input{
+		Scope:        in.Scope,
+		Sources:      cloneSubjectSources(sources),
+		Release:      cloneReleasePin(rel),
+		Artifacts:    append([]artifactsv1.ArtifactDigestRef(nil), artifacts...),
+		DefinitionID: in.DefinitionID,
+		Evidence:     append([]artifactsv1.ArtifactDigestRef(nil), evidence...),
+	}
+	if in.WorkItemID != nil {
+		id := *in.WorkItemID
+		stored.WorkItemID = &id
+	}
+	if in.ContentRevision != nil {
+		revVal := *in.ContentRevision
+		stored.ContentRevision = &revVal
+	}
+	if in.DeploymentID != nil {
+		d := *in.DeploymentID
+		stored.DeploymentID = &d
+	}
+	if in.DeploymentConfigDigest != nil {
+		c := *in.DeploymentConfigDigest
+		stored.DeploymentConfigDigest = &c
+	}
+	return GateSubjectV2{in: stored, canonical: canonical, digest: digest}, nil
 }
 
 // ParseGateSubjectV2 restores and verifies a stored canonical v2 gate subject.
@@ -356,17 +377,57 @@ func ParseGateSubjectV2(canonical []byte) (GateSubjectV2, error) {
 	return s, nil
 }
 
-func (s GateSubjectV2) Digest() runtimev1.Digest { return s.digest }
-func (s GateSubjectV2) Canonical() []byte        { return append([]byte(nil), s.canonical...) }
-func (s GateSubjectV2) Sources() []artifactsv1.SourceRef {
-	return append([]artifactsv1.SourceRef(nil), s.in.Sources...)
-}
-func (s GateSubjectV2) Release() *ReleasePin { return s.in.Release }
+func (s GateSubjectV2) Scope() domain.Scope               { return s.in.Scope }
+func (s GateSubjectV2) DefinitionID() domain.DefinitionID { return s.in.DefinitionID }
+func (s GateSubjectV2) Digest() runtimev1.Digest          { return s.digest }
+func (s GateSubjectV2) Canonical() []byte                 { return append([]byte(nil), s.canonical...) }
+func (s GateSubjectV2) Sources() []artifactsv1.SourceRef  { return cloneSubjectSources(s.in.Sources) }
+func (s GateSubjectV2) Release() *ReleasePin              { return cloneReleasePin(s.in.Release) }
 func (s GateSubjectV2) Artifacts() []artifactsv1.ArtifactDigestRef {
 	return append([]artifactsv1.ArtifactDigestRef(nil), s.in.Artifacts...)
 }
 func (s GateSubjectV2) Evidence() []artifactsv1.ArtifactDigestRef {
 	return append([]artifactsv1.ArtifactDigestRef(nil), s.in.Evidence...)
+}
+
+// WorkItem returns deep copies of the optional workItemId and contentRevision.
+func (s GateSubjectV2) WorkItem() (*domain.WorkItemID, *domain.ContentRevision) {
+	if s.in.WorkItemID == nil || s.in.ContentRevision == nil {
+		return nil, nil
+	}
+	id := *s.in.WorkItemID
+	rev := *s.in.ContentRevision
+	return &id, &rev
+}
+
+// Deployment returns deep copies of the optional deploymentId and deploymentConfigDigest.
+func (s GateSubjectV2) Deployment() (*string, *runtimev1.Digest) {
+	if s.in.DeploymentID == nil || s.in.DeploymentConfigDigest == nil {
+		return nil, nil
+	}
+	id := *s.in.DeploymentID
+	cfg := *s.in.DeploymentConfigDigest
+	return &id, &cfg
+}
+
+func cloneReleasePin(p *ReleasePin) *ReleasePin {
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	return &cp
+}
+
+func cloneSubjectSources(in []artifactsv1.SourceRef) []artifactsv1.SourceRef {
+	out := make([]artifactsv1.SourceRef, len(in))
+	for i, s := range in {
+		if s.RepositoryID != nil {
+			id := *s.RepositoryID
+			s.RepositoryID = &id
+		}
+		out[i] = s
+	}
+	return out
 }
 
 func normalizeSubjectSources(in []artifactsv1.SourceRef) ([]artifactsv1.SourceRef, error) {

@@ -142,6 +142,22 @@ func Test_unit_release_identity_conflict(t *testing.T) {
 	if _, _, err := e.Service.CreateRelease(t.Context(), artifacts.Caller{Subject: "usr_eng"}, inConflict, "req_3", e.Store, auth); !errors.Is(err, artifacts.ErrIdempotencyConflict) {
 		t.Fatalf("expected ErrIdempotencyConflict for changed release manifest, got %v", err)
 	}
+
+	// Forged producer attempt/step or missing source provenance is rejected with ErrOutputInvalid.
+	forgedProd := in1
+	forgedProd.VersionLabel = "1.0.1-forged"
+	forgedProd.Producers = []artifactsv1.ProducerRef{
+		{ArtifactID: artA.ID(), AttemptID: "att_forged", RunID: "run_1", StepID: "build"},
+	}
+	if _, _, err := e.Service.CreateRelease(t.Context(), artifacts.Caller{Subject: "usr_eng"}, forgedProd, "req_4", e.Store, auth); !errors.Is(err, artifacts.ErrOutputInvalid) {
+		t.Fatalf("expected ErrOutputInvalid for forged producer attempt, got %v", err)
+	}
+	forgedSrc := in1
+	forgedSrc.VersionLabel = "1.0.2-forged-src"
+	forgedSrc.Sources = nil
+	if _, _, err := e.Service.CreateRelease(t.Context(), artifacts.Caller{Subject: "usr_eng"}, forgedSrc, "req_5", e.Store, auth); !errors.Is(err, artifacts.ErrOutputInvalid) {
+		t.Fatalf("expected ErrOutputInvalid when source-backed artifact provenance is omitted from release sources, got %v", err)
+	}
 }
 
 func Test_unit_release_reference_retention(t *testing.T) {
@@ -160,6 +176,9 @@ func Test_unit_release_reference_retention(t *testing.T) {
 		VersionLabel: "1.0.0",
 		Artifacts: map[string]artifactsv1.ManifestEntry{
 			"bundle": {ArtifactID: art.ID(), Digest: runtimev1.Digest(art.Digest()), Kind: runtimev1.KindFile, MediaType: &mt},
+		},
+		Sources: []artifactsv1.SourceRef{
+			{RepositoryURL: artifactstest.Source.RepositoryURL, Commit: artifactstest.Source.Commit},
 		},
 		Producers: []artifactsv1.ProducerRef{
 			{ArtifactID: art.ID(), AttemptID: "att_01", RunID: "run_1", StepID: "build"},

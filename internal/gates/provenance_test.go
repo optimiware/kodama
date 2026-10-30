@@ -96,4 +96,50 @@ func Test_unit_artifact_gate_provenance(t *testing.T) {
 	if err := gates.CheckApplicabilityV2(srcSubj, movedSourceObs, true); !errors.Is(err, gates.ErrStaleSubject) {
 		t.Fatalf("expected moved candidate commit to invalidate source gate, got %v", err)
 	}
+
+	// 5. WorkItemID / ContentRevision and DeploymentConfigDigest are enforced when bound.
+	wi := domain.WorkItemID("wi_1042")
+	rev2 := domain.ContentRevision(2)
+	rev3 := domain.ContentRevision(3)
+	depID := "dep_01"
+	cfg1 := runtimev1.Digest("sha256:" + strings.Repeat("d", 64))
+	cfg2 := runtimev1.Digest("sha256:" + strings.Repeat("e", 64))
+	boundSubj, err := deliveryv1.NewGateSubjectV2(deliveryv1.GateSubjectV2Input{
+		Scope:                  scope,
+		WorkItemID:             &wi,
+		ContentRevision:        &rev2,
+		Release:                &relPin,
+		DefinitionID:           "pd_release",
+		Evidence:               []artifactsv1.ArtifactDigestRef{{ID: "art_cov", Digest: dCov}},
+		DeploymentID:           &depID,
+		DeploymentConfigDigest: &cfg1,
+	})
+	if err != nil {
+		t.Fatalf("NewGateSubjectV2 bound: %v", err)
+	}
+	boundCur := gates.CurrentApplicabilityV2{
+		WorkItemID:             &wi,
+		ContentRevision:        &rev2,
+		CurrentRelease:         &relPin,
+		DeploymentID:           &depID,
+		DeploymentConfigDigest: &cfg1,
+		EvidenceObservations: map[domain.ArtifactID]gates.ProvenanceObservation{
+			"art_cov": {ArtifactID: "art_cov", Digest: dCov, Sources: src1, WorkspaceState: "modified"},
+		},
+	}
+	if err := gates.CheckApplicabilityV2(boundSubj, boundCur, false); err != nil {
+		t.Fatalf("expected bound gate subject with matching revision and config to pass: %v", err)
+	}
+
+	staleRev := boundCur
+	staleRev.ContentRevision = &rev3
+	if err := gates.CheckApplicabilityV2(boundSubj, staleRev, false); !errors.Is(err, gates.ErrStaleSubject) {
+		t.Fatalf("expected changed contentRevision to invalidate gate subject, got %v", err)
+	}
+
+	staleCfg := boundCur
+	staleCfg.DeploymentConfigDigest = &cfg2
+	if err := gates.CheckApplicabilityV2(boundSubj, staleCfg, false); !errors.Is(err, gates.ErrStaleSubject) {
+		t.Fatalf("expected changed deploymentConfigDigest to invalidate gate subject, got %v", err)
+	}
 }

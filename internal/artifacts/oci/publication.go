@@ -28,10 +28,16 @@ type graphDescriptor struct {
 	URLs      []string `json:"urls"`
 }
 
+type manifestMeta struct {
+	size      int64
+	mediaType string
+}
+
 // VerifyCompleteGraph verifies that an OCI destination repository holds the
 // root manifest or index at dest.Digest AND every referenced child manifest,
 // config blob, and layer/chart blob required for a complete pull. External
-// descriptor URLs, missing blobs, size mismatches, and digest mismatches fail.
+// descriptor URLs, missing blobs, size mismatches, media-type mismatches, and
+// digest mismatches fail.
 func (v *Verifier) VerifyCompleteGraph(ctx context.Context, scope domain.Scope, attempt domain.AttemptID, dest artifactsv1.DestinationRef) error {
 	if dest.Kind != artifactsv1.DestinationOCI {
 		return fmt.Errorf("%w: not an OCI destination", artifacts.ErrInvalid)
@@ -51,9 +57,9 @@ func (v *Verifier) VerifyCompleteGraph(ctx context.Context, scope domain.Scope, 
 		}
 		return fmt.Errorf("%w: repository policy", artifacts.ErrRegistryUnavailable)
 	}
-	seenManifests := map[artifacts.Digest]bool{}
-	seenBlobs := map[artifacts.Digest]bool{}
-	return v.verifyManifestNode(ctx, ep, ref, wantDigest, 0, seenManifests, seenBlobs)
+	seenManifests := map[artifacts.Digest]manifestMeta{}
+	seenBlobs := map[artifacts.Digest]int64{}
+	return v.verifyManifestNode(ctx, ep, ref, wantDigest, nil, "", 0, seenManifests, seenBlobs)
 }
 
 func (v *Verifier) verifyManifestNode(
@@ -61,14 +67,22 @@ func (v *Verifier) verifyManifestNode(
 	ep Endpoint,
 	ref artifacts.RegistryRef,
 	d artifacts.Digest,
+	wantSize *int64,
+	wantMediaType string,
 	depth int,
-	seenManifests map[artifacts.Digest]bool,
-	seenBlobs map[artifacts.Digest]bool,
+	seenManifests map[artifacts.Digest]manifestMeta,
+	seenBlobs map[artifacts.Digest]int64,
 ) error {
 	if depth > 2 {
 		return fmt.Errorf("%w: OCI index nesting exceeds maximum depth", artifacts.ErrRegistryContent)
 	}
-	if seenManifests[d] {
+	if prev, ok := seenManifests[d]; ok {
+		if wantSize != nil && prev.size != *wantSize {
+			return fmt.Errorf("%w: child manifest %s size %d disagrees with verified size %d", artifacts.ErrRegistryContent, d, *wantSize, prev.size)
+		}
+		if wantMediaType != "" && prev.mediaType != wantMediaType {
+			return fmt.Errorf("%w: child manifest %s mediaType %q disagrees with verified %q", artifacts.ErrRegistryContent, d, wantMediaType, prev.mediaType)
+		}
 		return nil
 	}
 	if len(seenManifests) >= DefaultMaxGraphManifests {
@@ -82,10 +96,16 @@ func (v *Verifier) verifyManifestNode(
 	if err != nil {
 		return err
 	}
+	if wantSize != nil && int64(len(body)) != *wantSize {
+		return fmt.Errorf("%w: child manifest %s size %d != declared %d", artifacts.ErrRegistryContent, d, len(body), *wantSize)
+	}
+	if wantMediaType != "" && mediaType != wantMediaType {
+		return fmt.Errorf("%w: child manifest %s mediaType %q != declared %q", artifacts.ErrRegistryContent, d, mediaType, wantMediaType)
+	}
 	if err := validateManifest(body, mediaType); err != nil {
 		return err
 	}
-	seenManifests[d] = true
+	seenManifests[d] = manifestMeta{size: int64(len(body)), mediaType: mediaType}
 
 	var parsed struct {
 		Config    *graphDescriptor  `json:"config"`
@@ -103,10 +123,10 @@ func (v *Verifier) verifyManifestNode(
 				return fmt.Errorf("%w: external manifest URLs are not permitted in verified copies", artifacts.ErrRegistryContent)
 			}
 			cd := artifacts.Digest(child.Digest)
-			if err := cd.Validate(); err != nil || child.Size == nil || *child.Size < 0 {
+			if err := cd.Validate(); err != nil || child.Size == nil || *child.Size < 0 || !isManifestType(child.MediaType) {
 				return fmt.Errorf("%w: invalid child manifest descriptor", artifacts.ErrRegistryContent)
 			}
-			if err := v.verifyManifestNode(ctx, ep, ref, cd, depth+1, seenManifests, seenBlobs); err != nil {
+			if err := v.verifyManifestNode(ctx, ep, ref, cd, child.Size, child.MediaType, depth+1, seenManifests, seenBlobs); err != nil {
 				return err
 			}
 		}
@@ -123,7 +143,10 @@ func (v *Verifier) verifyManifestNode(
 			if err := bd.Validate(); err != nil || blob.Size == nil || *blob.Size < 0 || *blob.Size > DefaultMaxBlobBytes {
 				return fmt.Errorf("%w: invalid blob descriptor", artifacts.ErrRegistryContent)
 			}
-			if seenBlobs[bd] {
+			if prevSize, ok := seenBlobs[bd]; ok {
+				if prevSize != *blob.Size {
+					return fmt.Errorf("%w: blob %s declared with conflicting sizes (%d vs %d)", artifacts.ErrRegistryContent, bd, *blob.Size, prevSize)
+				}
 				continue
 			}
 			if len(seenBlobs) >= DefaultMaxGraphBlobs {
@@ -132,7 +155,7 @@ func (v *Verifier) verifyManifestNode(
 			if err := v.verifyBlob(ctx, ep, ref, bd, *blob.Size); err != nil {
 				return err
 			}
-			seenBlobs[bd] = true
+			seenBlobs[bd] = *blob.Size
 		}
 	}
 	return nil
@@ -143,7 +166,6 @@ func (v *Verifier) verifyBlob(ctx context.Context, ep Endpoint, ref artifacts.Re
 	if err != nil {
 		return err
 	}
-	// Replace /manifests/<digest> with /blobs/<digest>.
 	blobURL := string(bytes.Replace([]byte(base), []byte("/manifests/"+string(want)), []byte("/blobs/"+string(want)), 1))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, blobURL, nil)
 	if err != nil {

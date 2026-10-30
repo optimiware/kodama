@@ -140,4 +140,46 @@ func Test_unit_sdlc_contract_compatibility(t *testing.T) {
 	if _, err := ParseGateSubjectV2(legacyCanonical); err == nil {
 		t.Fatal("ParseGateSubjectV2 must reject legacy v1 subject bytes")
 	}
+
+	// 4. Immutability: mutating caller-owned input pointers or accessor results
+	//    never alters the stored GateSubjectV2.
+	repoID := "repo_01"
+	relInput := &ReleasePin{ID: "rel_01", ManifestDigest: dRel}
+	wiInput := domain.WorkItemID("wi_1042")
+	revInput := domain.ContentRevision(2)
+	depInput := "dep_01"
+	cfgInput := dEv
+	srcInput := []artifactsv1.SourceRef{{RepositoryID: &repoID, RepositoryURL: "https://git.example.invalid/acme/app.git", Commit: strings.Repeat("1", 40)}}
+	immSubj, err := NewGateSubjectV2(GateSubjectV2Input{
+		Scope:                  scope,
+		WorkItemID:             &wiInput,
+		ContentRevision:        &revInput,
+		Sources:                srcInput,
+		Release:                relInput,
+		DefinitionID:           "pd_release",
+		Evidence:               []artifactsv1.ArtifactDigestRef{{ID: "art_tests", Digest: dEv}},
+		DeploymentID:           &depInput,
+		DeploymentConfigDigest: &cfgInput,
+	})
+	if err != nil {
+		t.Fatalf("NewGateSubjectV2 immutability: %v", err)
+	}
+	repoID = "repo_mutated"
+	relInput.ID = "rel_mutated"
+	wiInput = "wi_mutated"
+	revInput = 99
+	depInput = "dep_mutated"
+	if gotRel := immSubj.Release(); gotRel.ID != "rel_01" {
+		t.Fatalf("input pointer mutation leaked into Release(): %+v", gotRel)
+	}
+	gotRel := immSubj.Release()
+	gotRel.ID = "rel_mutated_again"
+	if immSubj.Release().ID != "rel_01" {
+		t.Fatal("accessor pointer mutation leaked into GateSubjectV2.Release()")
+	}
+	gotSrcs := immSubj.Sources()
+	*gotSrcs[0].RepositoryID = "repo_mutated_again"
+	if *immSubj.Sources()[0].RepositoryID != "repo_01" {
+		t.Fatal("accessor pointer mutation leaked into GateSubjectV2.Sources()")
+	}
 }

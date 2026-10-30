@@ -183,6 +183,45 @@ func NewPublicationReceipt(
 	return r, r.Validate()
 }
 
+// AcceptedProducerVerifier is an optional authority extension that verifies an
+// artifact was accepted in the finalized result of its producing attempt and
+// checks any declared toolImage/workspaceState against execution records.
+type AcceptedProducerVerifier interface {
+	VerifyAcceptedProducer(ctx context.Context, scope domain.Scope, artifact Artifact, declared artifactsv1.ProducerRef) error
+}
+
+// ValidateReleaseEntryProvenance checks that a release entry's declared digest,
+// kind, producing attempt/run/step, and source provenance agree with the
+// authoritative Artifact record.
+func ValidateReleaseEntryProvenance(a Artifact, entry artifactsv1.ManifestEntry, prod artifactsv1.ProducerRef, manifestSources []artifactsv1.SourceRef) error {
+	if !a.Usable() || a.Role() != RoleOutput {
+		return fmt.Errorf("%w: artifact %s is not a usable output", ErrOutputInvalid, entry.ArtifactID)
+	}
+	if string(a.Digest()) != string(entry.Digest) || string(a.Kind()) != string(entry.Kind) {
+		return fmt.Errorf("%w: artifact %s does not match release entry declaration", ErrDigestMismatch, entry.ArtifactID)
+	}
+	res := a.Reservation()
+	if a.Attempt() != prod.AttemptID || res.Run != prod.RunID || res.Step != prod.StepID {
+		return fmt.Errorf("%w: artifact %s producer (%s/%s/%s) disagrees with declared producer (%s/%s/%s)",
+			ErrOutputInvalid, entry.ArtifactID, res.Run, a.Attempt(), res.Step, prod.RunID, prod.AttemptID, prod.StepID)
+	}
+	prov := a.Provenance()
+	if !prov.IsZero() {
+		matched := false
+		for _, s := range manifestSources {
+			if s.RepositoryURL == prov.RepositoryURL && s.Commit == prov.Commit {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return fmt.Errorf("%w: artifact %s source provenance (%s@%s) is missing or altered in release sources",
+				ErrOutputInvalid, entry.ArtifactID, prov.RepositoryURL, prov.Commit)
+		}
+	}
+	return nil
+}
+
 // ReleaseAuthority authorizes release, input-fetch and publication operations.
 type ReleaseAuthority interface {
 	AuthorizeReleaseRead(ctx context.Context, caller Caller, scope domain.Scope) error
@@ -257,6 +296,34 @@ func (s *Service) CreateRelease(ctx context.Context, caller Caller, in artifacts
 	manifest, err := artifactsv1.NewReleaseManifest(in)
 	if err != nil {
 		return Release{}, false, invalidf("%v", err)
+	}
+	// Verify every entry's authoritative artifact provenance and optional
+	// accepted-result finalization before creating the release.
+	producersByArtifact := make(map[domain.ArtifactID]artifactsv1.ProducerRef, len(manifest.Producers()))
+	for _, p := range manifest.Producers() {
+		producersByArtifact[p.ArtifactID] = p
+	}
+	hasSource := false
+	for _, entry := range manifest.Entries() {
+		a, err := s.cfg.Repository.Get(ctx, in.Scope, entry.ArtifactID)
+		if err != nil {
+			return Release{}, false, s.releaseDependency("load release entry", err)
+		}
+		prod := producersByArtifact[entry.ArtifactID]
+		if err := ValidateReleaseEntryProvenance(a, entry, prod, manifest.Sources()); err != nil {
+			return Release{}, false, err
+		}
+		if !a.Provenance().IsZero() {
+			hasSource = true
+		}
+		if pv, ok := auth.(AcceptedProducerVerifier); ok {
+			if err := pv.VerifyAcceptedProducer(ctx, in.Scope, a, prod); err != nil {
+				return Release{}, false, classifyAuthErr(err)
+			}
+		}
+	}
+	if !hasSource && len(manifest.Sources()) > 0 {
+		return Release{}, false, fmt.Errorf("%w: source-free artifacts cannot declare fabricated release sources", ErrOutputInvalid)
 	}
 	relID := domain.ReleaseID("rel_" + randomHex(16))
 	if rid, ok := s.cfg.IDs.(interface{ NewReleaseID() domain.ReleaseID }); ok {

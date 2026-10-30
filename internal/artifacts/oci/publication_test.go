@@ -73,6 +73,33 @@ func Test_unit_publication_complete_oci_graph(t *testing.T) {
 	if err := v.VerifyCompleteGraph(t.Context(), scope, "att_pub", dest); !errors.Is(err, artifacts.ErrRegistryContent) {
 		t.Fatalf("expected ErrRegistryContent when a layer blob is missing, got %v", err)
 	}
+
+	// Child manifest descriptor size disagreement with fetched child manifest fails.
+	missingLayer = false
+	badIndexBytes := []byte(fmt.Sprintf(
+		`{"schemaVersion":2,"mediaType":%q,"manifests":[{"mediaType":%q,"digest":%q,"size":%d}]}`,
+		indexMediaType, ociManifest, childDigest, len(childManifest)+99,
+	))
+	badIndexDigest := digestOf(badIndexBytes)
+	srvBadSize := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/acme/inventory/manifests/" + string(badIndexDigest):
+			serveManifest(w, badIndexBytes, indexMediaType, string(badIndexDigest))
+		case "/v2/acme/inventory/manifests/" + string(childDigest):
+			serveManifest(w, childManifest, ociManifest, string(childDigest))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srvBadSize.Close)
+	vBad, _ := verifier(t, srvBadSize.URL, true, "Bearer prod-token", &provenance{prov: prov}, nil)
+	if err := vBad.VerifyCompleteGraph(t.Context(), scope, "att_pub", artifactsv1.DestinationRef{
+		Kind:      artifactsv1.DestinationOCI,
+		Reference: hostOf(t, srvBadSize.URL) + "/acme/inventory",
+		Digest:    runtimev1.Digest(badIndexDigest),
+	}); !errors.Is(err, artifacts.ErrRegistryContent) {
+		t.Fatalf("expected ErrRegistryContent when child manifest descriptor size disagrees, got %v", err)
+	}
 }
 
 func Test_unit_publication_destination_authority(t *testing.T) {

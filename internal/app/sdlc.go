@@ -1,14 +1,12 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	artifactsv1 "github.com/optimiware/kodama/contracts/artifacts/v1"
 	deliveryv1 "github.com/optimiware/kodama/contracts/delivery/v1"
@@ -70,6 +68,8 @@ type ContainerSDLCInputs struct {
 	ReleaseStore      artifacts.ReleaseStore
 	ReleaseAuthority  artifacts.ReleaseAuthority
 	PublicationVerify artifacts.PublicationVerifier
+	GenericStore      delivery.GenericStore
+	GenericDelivery   *delivery.GenericService
 	LegacyMode        LegacyDeliveryMode
 }
 
@@ -77,23 +77,27 @@ type ContainerSDLCInputs struct {
 type ContainerSDLCSlice struct {
 	Handler           http.Handler
 	Effects           execution.EffectReconciler
+	GenericDelivery   *delivery.GenericService
 	LegacyMode        LegacyDeliveryMode
 	mu                sync.Mutex
-	genericByAction   map[string]delivery.GenericDeployment
 	legacyActiveCount int
 }
 
 // AssembleContainerSDLC validates inputs, enforces the production guard against
-// development-only adapters, and wires the ADR-0012 public and runtime routes
-// plus the conservative generic effect reconciler.
+// development-only adapters on both the release store and generic deployment
+// store, and wires the ADR-0012 public and runtime routes plus the conservative
+// generic effect reconciler.
 func AssembleContainerSDLC(in ContainerSDLCInputs) (*ContainerSDLCSlice, error) {
 	if !in.Env.Valid() {
 		return nil, ErrEnvUnknown
 	}
-	if in.Artifacts == nil || in.ReleaseStore == nil || in.ReleaseAuthority == nil || in.PublicationVerify == nil {
-		return nil, errors.New("app/sdlc: artifact service, release store, release authority and publication verifier are required")
+	if in.Artifacts == nil || in.ReleaseStore == nil || in.ReleaseAuthority == nil || in.PublicationVerify == nil || in.GenericStore == nil || in.GenericDelivery == nil {
+		return nil, errors.New("app/sdlc: artifact service, release store, release authority, publication verifier, generic store and generic delivery service are required")
 	}
 	if _, err := Admit(in.Env, PortStore, in.ReleaseStore); err != nil {
+		return nil, err
+	}
+	if _, err := Admit(in.Env, PortStore, in.GenericStore); err != nil {
 		return nil, err
 	}
 	mode := in.LegacyMode
@@ -104,28 +108,17 @@ func AssembleContainerSDLC(in ContainerSDLCInputs) (*ContainerSDLCSlice, error) 
 		return nil, errors.New("app/sdlc: invalid LegacyDeliveryMode")
 	}
 
-	s := &ContainerSDLCSlice{
-		LegacyMode:      mode,
-		genericByAction: map[string]delivery.GenericDeployment{},
-	}
-	effects, err := deliveryadapters.NewGenericEffects(s)
+	effects, err := deliveryadapters.NewGenericEffects(in.GenericStore)
 	if err != nil {
 		return nil, err
 	}
-	s.Effects = effects
+	s := &ContainerSDLCSlice{
+		Effects:         effects,
+		GenericDelivery: in.GenericDelivery,
+		LegacyMode:      mode,
+	}
 	s.Handler = s.routes(in)
 	return s, nil
-}
-
-// FindGenericByAction implements deliveryadapters.GenericDeploymentRecords.
-func (s *ContainerSDLCSlice) FindGenericByAction(_ context.Context, scope domain.Scope, actionKey string) (delivery.GenericDeployment, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	d, ok := s.genericByAction[string(scope.TenantID)+"|"+string(scope.ProjectID)+"|"+actionKey]
-	if !ok {
-		return delivery.GenericDeployment{}, delivery.ErrNotFound
-	}
-	return d, nil
 }
 
 // AdmitLegacyDelivery checks whether a legacy single-image/Kubernetes delivery
@@ -141,12 +134,21 @@ func (s *ContainerSDLCSlice) AdmitLegacyDelivery() error {
 	return nil
 }
 
+func bearerOf(r *http.Request) (string, bool) {
+	h := strings.TrimSpace(r.Header.Get("Authorization"))
+	if !strings.HasPrefix(h, "Bearer ") {
+		return "", false
+	}
+	tok := strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
+	return tok, tok != ""
+}
+
 func (s *ContainerSDLCSlice) routes(in ContainerSDLCInputs) http.Handler {
 	mux := http.NewServeMux()
 
 	callerOf := func(r *http.Request) artifacts.Caller {
-		auth := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer"))
-		return artifacts.Caller{Subject: strings.TrimSpace(auth)}
+		tok, _ := bearerOf(r)
+		return artifacts.Caller{Subject: tok}
 	}
 
 	mux.HandleFunc("GET /api/v1/tenants/{tenantId}/projects/{projectId}/artifacts", func(w http.ResponseWriter, r *http.Request) {
@@ -266,30 +268,152 @@ func (s *ContainerSDLCSlice) routes(in ContainerSDLCInputs) http.Handler {
 		writeSDLCJSON(w, http.StatusOK, map[string]any{"items": items})
 	})
 
-	mux.HandleFunc("POST /runtime/v2/attempts/{attemptId}/deployments/generic", func(w http.ResponseWriter, r *http.Request) {
-		var intent deliveryv1.GenericDeploymentIntent
-		if err := json.NewDecoder(r.Body).Decode(&intent); err != nil {
+	// Runtime admitted-input fetch route (authenticated by attempt runtime token).
+	mux.HandleFunc("POST /runtime/v2/attempts/{attemptId}/inputs/fetch", func(w http.ResponseWriter, r *http.Request) {
+		tok, ok := bearerOf(r)
+		if !ok {
+			writeSDLCJSON(w, http.StatusUnauthorized, map[string]any{"error": "missing runtime bearer token"})
+			return
+		}
+		attempt := domain.AttemptID(r.PathValue("attemptId"))
+		var req artifactsv1.InputFetchRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeSDLCJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
 			return
 		}
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		key := string(intent.Scope.TenantID) + "|" + string(intent.Scope.ProjectID) + "|" + intent.ActionKey
-		if existing, ok := s.genericByAction[key]; ok {
-			if !existing.MatchesIntent(intent) {
-				writeSDLCJSON(w, http.StatusConflict, map[string]any{"error": "idempotency_conflict"})
-				return
-			}
-			writeSDLCJSON(w, http.StatusOK, map[string]any{"id": existing.ID(), "status": existing.Status(), "created": false})
-			return
-		}
-		dep, err := delivery.NewGenericDeployment(intent, delivery.Actor{Type: delivery.ActorWorkload, ID: string(intent.AttemptID)}, 0, time.Now().UTC())
+		resp, err := in.Artifacts.FetchInput(r.Context(), artifacts.Caller{Subject: tok}, attempt, req, in.ReleaseAuthority)
 		if err != nil {
-			writeSDLCJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": err.Error()})
+			writeSDLCError(w, err)
 			return
 		}
-		s.genericByAction[key] = dep
-		writeSDLCJSON(w, http.StatusCreated, map[string]any{"id": dep.ID(), "status": dep.Status(), "created": true})
+		writeSDLCJSON(w, http.StatusOK, resp)
+	})
+
+	// Runtime publication verification and receipt route (authenticated by attempt runtime token).
+	mux.HandleFunc("POST /runtime/v2/attempts/{attemptId}/publications", func(w http.ResponseWriter, r *http.Request) {
+		tok, ok := bearerOf(r)
+		if !ok {
+			writeSDLCJSON(w, http.StatusUnauthorized, map[string]any{"error": "missing runtime bearer token"})
+			return
+		}
+		attempt := domain.AttemptID(r.PathValue("attemptId"))
+		var req struct {
+			ArtifactID  domain.ArtifactID          `json:"artifactId"`
+			Destination artifactsv1.DestinationRef `json:"destination"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeSDLCJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
+			return
+		}
+		receipt, created, err := in.Artifacts.RecordPublication(
+			r.Context(), artifacts.Caller{Subject: tok}, attempt, req.ArtifactID, req.Destination, "req_pub",
+			in.ReleaseStore, in.ReleaseAuthority, in.PublicationVerify,
+		)
+		if err != nil {
+			writeSDLCError(w, err)
+			return
+		}
+		status := http.StatusOK
+		if created {
+			status = http.StatusCreated
+		}
+		writeSDLCJSON(w, status, receipt)
+	})
+
+	// Runtime tool-neutral deployment registration route: authenticates the
+	// runtime deployment.call grant, derives scope/attempt/run/actionKey/pins
+	// from the grant's immutable pinned context, pins referenced artifacts, and
+	// commits to the durable GenericStore.
+	mux.HandleFunc("POST /runtime/v2/attempts/{attemptId}/deployments/generic", func(w http.ResponseWriter, r *http.Request) {
+		tok, ok := bearerOf(r)
+		if !ok {
+			writeSDLCJSON(w, http.StatusUnauthorized, map[string]any{"error": "missing runtime bearer token"})
+			return
+		}
+		attempt := domain.AttemptID(r.PathValue("attemptId"))
+		var req delivery.GenericRuntimeRegisterRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeSDLCJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
+			return
+		}
+		dep, created, err := s.GenericDelivery.RegisterRuntime(r.Context(), attempt, tok, req)
+		if err != nil {
+			writeDeliveryError(w, err)
+			return
+		}
+		status := http.StatusOK
+		if created {
+			status = http.StatusCreated
+		}
+		writeSDLCJSON(w, status, map[string]any{
+			"id":      string(dep.ID()),
+			"status":  string(dep.Status()),
+			"reason":  dep.Reason(),
+			"version": int64(dep.Version()),
+			"created": created,
+		})
+	})
+
+	// Runtime tool-neutral deployment outcome route.
+	mux.HandleFunc("POST /runtime/v2/attempts/{attemptId}/deployments/generic/{id}/outcome", func(w http.ResponseWriter, r *http.Request) {
+		tok, ok := bearerOf(r)
+		if !ok {
+			writeSDLCJSON(w, http.StatusUnauthorized, map[string]any{"error": "missing runtime bearer token"})
+			return
+		}
+		attempt := domain.AttemptID(r.PathValue("attemptId"))
+		id := delivery.DeploymentID(r.PathValue("id"))
+		var out deliveryv1.GenericDeploymentOutcome
+		if err := json.NewDecoder(r.Body).Decode(&out); err != nil {
+			writeSDLCJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
+			return
+		}
+		dep, err := s.GenericDelivery.ReportRuntimeOutcome(r.Context(), attempt, tok, id, out)
+		if err != nil {
+			writeDeliveryError(w, err)
+			return
+		}
+		writeSDLCJSON(w, http.StatusOK, map[string]any{
+			"id":           string(dep.ID()),
+			"status":       string(dep.Status()),
+			"reason":       dep.Reason(),
+			"attribution":  string(dep.Attribution()),
+			"externalRefs": dep.ExternalRefs(),
+			"version":      int64(dep.Version()),
+		})
+	})
+
+	// Human/operator explicit unknown-outcome settlement route.
+	mux.HandleFunc("POST /api/v1/tenants/{tenantId}/projects/{projectId}/deployments/generic/{id}/settle", func(w http.ResponseWriter, r *http.Request) {
+		tok, ok := bearerOf(r)
+		if !ok {
+			writeSDLCJSON(w, http.StatusUnauthorized, map[string]any{"error": "missing bearer token"})
+			return
+		}
+		scope := domain.Scope{TenantID: domain.TenantID(r.PathValue("tenantId")), ProjectID: domain.ProjectID(r.PathValue("projectId"))}
+		id := delivery.DeploymentID(r.PathValue("id"))
+		var body struct {
+			Status       delivery.Status   `json:"status"`
+			Reason       string            `json:"reason"`
+			ExternalRefs map[string]string `json:"externalRefs"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeSDLCJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
+			return
+		}
+		caller := delivery.Caller{Actor: delivery.Actor{Type: delivery.ActorUser, ID: tok}, RequestID: "req_settle"}
+		dep, err := s.GenericDelivery.SettleUnknown(r.Context(), caller, scope, id, body.Status, body.Reason, body.ExternalRefs)
+		if err != nil {
+			writeDeliveryError(w, err)
+			return
+		}
+		writeSDLCJSON(w, http.StatusOK, map[string]any{
+			"id":                string(dep.ID()),
+			"status":            string(dep.Status()),
+			"reason":            dep.Reason(),
+			"explicitlySettled": dep.ExplicitlySettled(),
+			"version":           int64(dep.Version()),
+		})
 	})
 
 	return mux
@@ -323,6 +447,25 @@ func writeSDLCError(w http.ResponseWriter, err error) {
 	case errors.Is(err, artifacts.ErrVersionConflict):
 		status = http.StatusPreconditionFailed
 	case errors.Is(err, artifacts.ErrOutputInvalid), errors.Is(err, artifacts.ErrDigestMismatch):
+		status = http.StatusUnprocessableEntity
+	}
+	writeSDLCJSON(w, status, map[string]any{"error": err.Error()})
+}
+
+func writeDeliveryError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, delivery.ErrInvalid):
+		status = http.StatusBadRequest
+	case errors.Is(err, delivery.ErrUnauthenticated):
+		status = http.StatusUnauthorized
+	case errors.Is(err, delivery.ErrDenied), errors.Is(err, delivery.ErrPinRequired):
+		status = http.StatusForbidden
+	case errors.Is(err, delivery.ErrNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, delivery.ErrConflict), errors.Is(err, delivery.ErrOutcomeUnknown):
+		status = http.StatusConflict
+	case errors.Is(err, delivery.ErrProvenance), errors.Is(err, delivery.ErrCredentialUnavailable):
 		status = http.StatusUnprocessableEntity
 	}
 	writeSDLCJSON(w, status, map[string]any{"error": err.Error()})

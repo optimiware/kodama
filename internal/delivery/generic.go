@@ -325,6 +325,179 @@ func (d *GenericDeployment) SettleUnknown(actor Actor, finalStatus Status, reaso
 	return nil
 }
 
+// GenericRuntimeRegisterRequest is the untrusted runtime request body for
+// registering a tool-neutral v2 deployment. Scope, run, step, attempt, action
+// key, environment pin and script identity are NEVER taken from this request;
+// they are derived from the attempt's verified runtime grant and immutable
+// pinned context.
+type GenericRuntimeRegisterRequest struct {
+	Release                *deliveryv1.ReleasePin          `json:"release"`
+	Artifacts              []artifactsv1.ArtifactDigestRef `json:"artifacts"`
+	Sources                []artifactsv1.SourceRef         `json:"sources"`
+	SupersededDeploymentID *string                         `json:"supersededDeploymentId"`
+}
+
+// GenericStore persists tool-neutral v2 deployment records.
+type GenericStore interface {
+	SaveGeneric(ctx context.Context, dep GenericDeployment) (GenericDeployment, bool, error)
+	GetGeneric(ctx context.Context, scope domain.Scope, id DeploymentID) (GenericDeployment, error)
+	FindGenericByAction(ctx context.Context, scope domain.Scope, actionKey string) (GenericDeployment, error)
+	UpdateGeneric(ctx context.Context, scope domain.Scope, id DeploymentID, fn func(*GenericDeployment) error) (GenericDeployment, error)
+}
+
+// GenericServiceConfig wires the authenticated, durable tool-neutral delivery use cases.
+type GenericServiceConfig struct {
+	Store     GenericStore
+	Access    Access
+	Authority Authority
+	Contexts  PinnedContexts
+	Artifacts Artifacts
+	Clock     func() time.Time
+}
+
+// GenericService coordinates authenticated runtime registration, artifact
+// retention pinning, outcome reporting, and authorized human settlement for
+// tool-neutral v2 deployments.
+type GenericService struct {
+	cfg GenericServiceConfig
+	now func() time.Time
+}
+
+// NewGenericService validates GenericServiceConfig.
+func NewGenericService(cfg GenericServiceConfig) (*GenericService, error) {
+	if cfg.Store == nil || cfg.Access == nil || cfg.Authority == nil || cfg.Contexts == nil || cfg.Artifacts == nil {
+		return nil, Fail(ErrNotConfigured, nil, "generic delivery requires store, access, authority, pinned contexts and artifacts")
+	}
+	now := cfg.Clock
+	if now == nil {
+		now = func() time.Time { return time.Now().UTC() }
+	}
+	return &GenericService{cfg: cfg, now: now}, nil
+}
+
+// RegisterRuntime authenticates the attempt's deployment.call grant, derives
+// scope, run, step, action key, environment pin and script identity from the
+// attempt's immutable pinned context, verifies and pins every referenced
+// artifact in the same scope, and durably registers the pre-apply deployment.
+func (s *GenericService) RegisterRuntime(ctx context.Context, attempt domain.AttemptID, bearer string, req GenericRuntimeRegisterRequest) (GenericDeployment, bool, error) {
+	if err := attempt.Validate(); err != nil {
+		return GenericDeployment{}, false, invalidf("%v", err)
+	}
+	p, err := s.cfg.Authority.Authenticate(ctx, attempt, bearer)
+	if err != nil {
+		return GenericDeployment{}, false, err
+	}
+	if p.Attempt != attempt || p.Scope.Validate() != nil || p.Run.Validate() != nil {
+		return GenericDeployment{}, false, Fail(ErrDenied, nil, "runtime grant does not match route attempt")
+	}
+	pinnedCtx, err := s.cfg.Contexts.Pinned(ctx, p.Scope, p.Attempt)
+	if err != nil {
+		return GenericDeployment{}, false, Fail(ErrPinRequired, err, "pinned context is required")
+	}
+	if pinnedCtx.Scope() != p.Scope || pinnedCtx.RunID != p.Run || pinnedCtx.AttemptID != p.Attempt || pinnedCtx.ActionKey == "" {
+		return GenericDeployment{}, false, Fail(ErrPinRequired, nil, "pinned context disagrees with runtime grant")
+	}
+	if pinnedCtx.Environment == nil {
+		return GenericDeployment{}, false, Fail(ErrPinRequired, nil, "step has no pinned environment")
+	}
+	sources := slices.Clone(req.Sources)
+	if len(sources) == 0 && pinnedCtx.Workspace.Source != nil {
+		sources = []artifactsv1.SourceRef{{
+			RepositoryURL: pinnedCtx.Workspace.Source.RepositoryURL,
+			Commit:        string(pinnedCtx.Workspace.Source.Commit),
+		}}
+	}
+	intent := deliveryv1.GenericDeploymentIntent{
+		Scope:                  p.Scope,
+		ActionKey:              pinnedCtx.ActionKey,
+		RunID:                  p.Run,
+		StepID:                 pinnedCtx.StepID,
+		AttemptID:              p.Attempt,
+		Environment:            *pinnedCtx.Environment,
+		Release:                req.Release,
+		Artifacts:              slices.Clone(req.Artifacts),
+		Sources:                sources,
+		Script:                 deliveryv1.ScriptIdentity{Image: pinnedCtx.Command.Image, Command: slices.Clone(pinnedCtx.Command.Command)},
+		SupersededDeploymentID: req.SupersededDeploymentID,
+	}
+	dep, err := NewGenericDeployment(intent, Actor{Type: ActorWorkload, ID: string(p.Attempt)}, 0, s.now())
+	if err != nil {
+		return GenericDeployment{}, false, err
+	}
+
+	// Verify ownership/usability/digest and pin every referenced artifact BEFORE
+	// committing the deployment record.
+	for _, a := range intent.Artifacts {
+		ev, err := s.cfg.Artifacts.Evidence(ctx, p.Scope, a.ID)
+		if err != nil || ev.Scope != p.Scope || !ev.Usable || ev.Digest != a.Digest {
+			return GenericDeployment{}, false, Fail(ErrProvenance, err, "deployment artifact is missing, foreign, incomplete or mismatched")
+		}
+		if err := s.cfg.Artifacts.Protect(ctx, p.Scope, a.ID, dep.ID()); err != nil {
+			return GenericDeployment{}, false, err
+		}
+	}
+
+	boundCtx, err := s.cfg.Authority.Bind(ctx, p)
+	if err != nil {
+		return GenericDeployment{}, false, err
+	}
+	saved, created, err := s.cfg.Store.SaveGeneric(boundCtx, dep)
+	if err != nil {
+		return GenericDeployment{}, false, err
+	}
+	return saved, created, nil
+}
+
+// ReportRuntimeOutcome authenticates the attempt's grant, verifies the deployment
+// belongs to the attempt's own action key and scope, and records the outcome.
+func (s *GenericService) ReportRuntimeOutcome(ctx context.Context, attempt domain.AttemptID, bearer string, id DeploymentID, out deliveryv1.GenericDeploymentOutcome) (GenericDeployment, error) {
+	if err := attempt.Validate(); err != nil {
+		return GenericDeployment{}, invalidf("%v", err)
+	}
+	if err := id.Validate(); err != nil {
+		return GenericDeployment{}, err
+	}
+	p, err := s.cfg.Authority.Authenticate(ctx, attempt, bearer)
+	if err != nil {
+		return GenericDeployment{}, err
+	}
+	pinnedCtx, err := s.cfg.Contexts.Pinned(ctx, p.Scope, p.Attempt)
+	if err != nil || pinnedCtx.Scope() != p.Scope || pinnedCtx.AttemptID != p.Attempt {
+		return GenericDeployment{}, Fail(ErrPinRequired, err, "pinned context is required")
+	}
+	if DeploymentIDFor(p.Scope, pinnedCtx.ActionKey) != id {
+		return GenericDeployment{}, Fail(ErrDenied, nil, "deployment does not belong to this attempt's action")
+	}
+	boundCtx, err := s.cfg.Authority.Bind(ctx, p)
+	if err != nil {
+		return GenericDeployment{}, err
+	}
+	actor := Actor{Type: ActorWorkload, ID: string(p.Attempt)}
+	return s.cfg.Store.UpdateGeneric(boundCtx, p.Scope, id, func(d *GenericDeployment) error {
+		return d.ApplyOutcome(out, actor, p.Attempt, s.now())
+	})
+}
+
+// SettleUnknown authorizes a human operator with deployment:manage and settles
+// an unknown-outcome generic deployment.
+func (s *GenericService) SettleUnknown(ctx context.Context, caller Caller, scope domain.Scope, id DeploymentID, finalStatus Status, reason string, externalRefs map[string]string) (GenericDeployment, error) {
+	if err := scope.Validate(); err != nil {
+		return GenericDeployment{}, invalidf("%v", err)
+	}
+	if err := id.Validate(); err != nil {
+		return GenericDeployment{}, err
+	}
+	if err := caller.Actor.Validate(); err != nil {
+		return GenericDeployment{}, Fail(ErrDenied, err, "invalid caller")
+	}
+	if err := s.cfg.Access.Authorize(ctx, caller.Actor, scope, PermDeploymentManage); err != nil {
+		return GenericDeployment{}, err
+	}
+	return s.cfg.Store.UpdateGeneric(ctx, scope, id, func(d *GenericDeployment) error {
+		return d.SettleUnknown(caller.Actor, finalStatus, reason, externalRefs, s.now())
+	})
+}
+
 func cloneGenericIntent(in deliveryv1.GenericDeploymentIntent) deliveryv1.GenericDeploymentIntent {
 	if in.Release != nil {
 		r := *in.Release
