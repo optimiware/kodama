@@ -1,27 +1,50 @@
-# Pipeline format
+# Pipeline format (`.kodama/<processname>.yaml`)
 
-**Status:** `kodama/v1alpha1`, an API-managed document rather than a CRD. This is the **current executable format** and the `attempt_private` run model: each attempt clones its pinned commit into private scratch. It stays valid, readable and executable (frozen canonical bytes, digests and result hashes) until the documented cutover. [`kodama/v1alpha2`](pipeline-format-v1alpha2.md) is the separate, normative `run_shared` format (one shared `/workspace` per run, support services, total run deadline); it is not accepted by this validator and not enabled by default. Statements below describe `v1alpha1` unless they say otherwise.
+**Status:** Core Layer 1 pipeline contract under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md), inspired by Drone CI.
+
+Pipelines live in a repository under `.kodama/<processname>.yaml` (for example `.kodama/plan.yaml`, `.kodama/implement.yaml`, `.kodama/review.yaml`, `.kodama/test.yaml`, `.kodama/preview.yaml`, `.kodama/promote.yaml`) or are registered via API / `kodactl`. The complete parsed document is persisted once in `pipelines.definition` (JSONB). Runs snapshot it; Git retains original YAML comments/formatting. This is a proposed authoring contract for Phase 3, not the legacy validator's accepted syntax.
+
+## Example `.kodama/implement.yaml`
 
 ```yaml
-apiVersion: kodama/v1alpha1
-kind: Pipeline
-metadata:
-  name: test
-spec:
-  inputs: {}
-  steps:
-    - id: test
-      kind: container
-      image: registry.example.invalid/go-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111
-      workspace: {access: read, from: run}
-      command: ["/bin/sh", "-ec"]
-      args: ["cd /workspace && go test -json ./... > /kodama/outputs/tests.json"]
-      timeoutSeconds: 600
-      outputs:
-        report: {type: artifact, path: /kodama/outputs/tests.json}
-```
+name: implement
+triggers:
+  git:
+    branches: [main]
 
-Images/digests are placeholders. This is the `v1alpha1` example; the `v1alpha2` equivalent has no `workspace.from` ([migration](pipeline-format-v1alpha2.md#migration-from-v1alpha1)). Source repository comes from the work item's workspace; `sourceCommit` is pinned at run creation. Commands execute through [kodama step](../implementation/step-entrypoint.md). Read access means no publication, not a filesystem incapable of holding build-tool scratch changes.
+services:
+  db:
+    scope: pipeline
+    image: postgres:16-alpine
+    env:
+      POSTGRES_USER: kodama
+      POSTGRES_DB: app
+    secrets: [TEST_DB_PASSWORD]
+    ports: [5432]
+
+steps:
+  - name: code
+    image: ghcr.io/sst/opencode:latest
+    secrets: [ANTHROPIC_API_KEY]
+    commands:
+      - opencode run "Implement task ${KODAMA_TASK_ID} following /workspace/.context"
+
+  - name: test
+    depends_on: [code]
+    image: golang:1.27-alpine
+    env:
+      DATABASE_URL: "postgres://kodama:${TEST_DB_PASSWORD}@db:5432/app?sslmode=disable"
+    secrets: [TEST_DB_PASSWORD]
+    commands:
+      - go test -v ./...
+
+  - name: review-and-transition
+    depends_on: [test]
+    image: ghcr.io/optimiware/kodama:latest
+    commands:
+      - git add -A && git commit -m "Implement ${KODAMA_TASK_ID}" && git push origin HEAD
+      - kodama agent run --skill review --on-pass review --on-fail implement
+```
 
 ## Fields
 
@@ -29,63 +52,28 @@ Images/digests are placeholders. This is the `v1alpha1` example; the `v1alpha2` 
 
 | Field | Rule |
 | --- | --- |
-| `metadata.name` / step `id` | Lowercase letter followed by lowercase letters/digits/hyphens; maximum 63 |
-| `spec.inputs` | Map of declarations with `type`, optional `default`, `required`; string/boolean/integer/artifact |
-| `kind` | `container`, `agent`, `gate` |
-| `needs` | Ancestor IDs; empty by default |
-| `when` | Optional `{input: name, equals: scalar}` for executable steps only |
-| `workspace` | `access` is `none`, `read`, or `write`; `from` is `run` or an ancestor writer ID for read/write |
-| `environment` | Optional project environment ID for a delivery step; admission pins its configuration and grants only its scoped actions/credentials |
-| `image`, `command`, `args`, `env` | Container definition; image digest required, command/args are arrays |
-| `timeoutSeconds` | Positive execution deadline within configured limits |
-| `retry` | `maxAttempts` including first; `backoffSeconds`; `on: [infrastructure, transient]` |
-| `outputs` | Named string/boolean/integer/artifact/ociArtifact declarations |
+| `name` | Process name matching the `.kodama/<name>.yaml` filename (`^[a-z][a-z0-9_-]{0,62}$`) |
+| Task triggers | Stored once in `projects.task_workflow.triggers`, keyed by state; apply on creation, state entry and resumption |
+| `triggers.git` | Optional `branches`, `tags`, or `events` (`push`, `tag`, `merge`) that trigger this pipeline |
+| `services` | Optional map of support containers (`scope`: `pipeline` [default], `project`, or `tenant`; `image`, `env`, `secrets`, `ports`) |
+| `steps` | Ordered list of container execution steps sharing `/workspace` |
+| `steps[].name` | Unique step key within the pipeline (`run_steps.step_key`) |
+| `steps[].depends_on` | Optional list of prerequisite step names; defaults to sequential execution |
+| `steps[].image` | Container image to run (`opencode`, `claude-code`, `golang`, `kodama`, `ko`, `buildah`, etc.) |
+| `steps[].commands` | Shell commands executed inside `/workspace` |
+| `steps[].env` | Plaintext environment variables injected into the step container |
+| `steps[].secrets` | Names of project or tenant `secrets` injected into the step container |
+| `steps[].timeout` | Optional step timeout (for example `30m`, default `15m`) |
 
-Default attempt count is one. Command failures and unknown external outcomes are not automatically retryable. Runtime resources and startup deadlines come from fixed project/platform settings with bounded CPU/memory requests. File outputs must be inside `/kodama/outputs`; paths and symlinks cannot escape the root.
+## Built-in runtime environment
 
-`env` accepts nonsecret scalars, full-scalar expressions, or `{secretRef: "secret://project/name"}` where explicitly permitted. O-19 explicitly permits declared secret-to-ENV bindings for ordinary build/script steps: pin the authorized version at admission, audit resolution and inject only into the intended child process, never as plaintext in the Kubernetes Job/Pod manifest. Prefer `secretFiles: {name: "secret://project/name"}` mounted under `/kodama/secrets`; secret files never enter commits/outputs. Profiles and run admission pin all declared secret versions. Agent model/tool credentials normally stay in their proxies; an agent does not implicitly inherit a build step's secrets. This specifies intended delivery semantics, not a change to the frozen runtime DTOs without their owner's implementation/qualification.
-
-## Agent and gate forms
-
-```yaml
-id: implement
-kind: agent
-agent: {profile: coding-v1}
-workspace: {access: write, from: run}
-timeoutSeconds: 1800
-```
-
-The immutable profile supplies the image/wrapper and pinned work-item instruction context. No new executor is introduced. `needs_input` fails the attempt with a question; continuation is a new run.
-
-```yaml
-id: review
-kind: gate
-needs: [test]
-gate:
-  evidence: ["${{ steps.test.outputs.report }}"]
-```
-
-Gates are unconditional, require one project reviewer, and have no image, retries, workspace, or Pod. Optional `gate.deploymentId` binds a prior deployment output for application review. The server adds source/content/definition and configuration to the subject. Every successful path through a gate's successors must pass that gate.
-
-## Expressions and source
-
-Only whole-scalar `${{ inputs.name }}` and `${{ steps.id.outputs.name }}` references are supported. Producer references require a dependency path and successful finalized outputs. Artifact references resolve to registered IDs, not raw arbitrary URLs. Use argument arrays/environment variables, not interpolation into shell programs.
-
-In `v1alpha1`, `workspace.from: run` selects the original source commit; a writer ID selects its published commit. Writers must be totally ordered in the DAG. A write after approval requires a new applicable gate before protected successors. Each successful writer has an implicit `commit` output. Branch movement does not change existing read inputs. `from` is removed in `v1alpha2`: a shared tree cannot be rewound to an ancestor snapshot, so later steps consume the cumulative scratch and the writer's `commit` output only identifies the published commit.
-
-## Result outputs
-
-The [entrypoint](../implementation/step-entrypoint.md) owns the runtime protocol. A command can write `/kodama/results.json` for scalar/OCI outputs; declared files are collected by the wrapper. Scalars and object metadata must match declarations. OCI registrations verify ownership, registry digest, and source provenance.
-
-```json
-{
-  "outcome": "completed",
-  "outputs": {"image": {"digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "registryRef": "registry.example.invalid/inventory"}}
-}
-```
-
-This example requires an `image: {type: ociArtifact}` declaration. Failed steps can still retain diagnostics; their success outputs do not become available to descendants.
+Every step automatically mounts `/workspace` (with the repository checked out and `<tenant>/context` + `<tenant>/<project>/context` available in `/workspace/.context`) and receives:
+- `KODAMA_URL`: Internal Kodama API / AI Gateway / MCP Gateway URL
+- `KODAMA_TOKEN`: Project-space run token authorizing Git push/fetch, task state transitions, artifact registration, AI Gateway, and MCP Gateway access
+- `KODAMA_TENANT`, `KODAMA_PROJECT`, `KODAMA_REPO`, `KODAMA_RUN_ID`, `KODAMA_STEP_KEY`, `KODAMA_TASK_ID`, `KODAMA_COMMIT_SHA`, `KODAMA_BRANCH`
 
 ## Validation
 
-Reject unknown fields, cycles, invalid types, missing ancestors, parallel writers, mutable image tags, undeclared secret access, unsupported profile versions, and conditional gates. Registration validates then stores an immutable canonical definition/digest; repeating identical content returns its existing version. Local CLI validation uses the same structural/semantic rules; no validation-only server resource is needed.
+Pipeline YAML is validated on `git push` (for `.kodama/*.yaml`) and on `kodactl pipeline apply`:
+- Rejects unknown top-level fields, duplicate step names, dependency cycles in `depends_on`, and invalid service scopes.
+- Persists the validated YAML/JSONB directly on the `pipelines` table.

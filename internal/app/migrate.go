@@ -6,38 +6,14 @@ import (
 	"fmt"
 	"net/url"
 
-	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
-	execpg "github.com/optimiware/kodama/internal/execution/postgres"
-	runtimeauthpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 )
 
-// Contributions lists the schema contributions of the core assembly in the
-// order they must be applied.
-//
-// It is the squashed baseline first: 001_schema.sql holds every capability's
-// tables, views, functions, indexes and policies in dependency order, and
-// 002_grants.sql holds every GRANT and REVOKE that names the runtime role. A
-// PUBLIC revocation stays in the schema migration beside the definition it
-// protects, so an interrupted run is fail-closed.
-//
-// Later schema changes append one contribution per change after it; the
-// migration ledger refuses a pending migration ordered before an applied one,
-// so the list is part of the deployed contract and only ever grows at the end.
-// The additive run_shared resource tables and columns (T-112) follow the last
-// contribution an earlier release applied. The execution store reads their
-// columns unconditionally, so they must exist before the store serves a run;
-// the migration enables nothing: no route, backend, policy or admission of the
-// new format is wired by it. The runtime grants of those resources (T-113: the
-// preparation workload's and the services' credentials and sessions, in their own
-// table) are the one contribution after it, for the same reason and with the same
-// guarantee: nothing serves the resource routes until the assembly wires them.
-// The workspace provenance of artifacts a run_shared attempt produces (T-116: the
-// state the server recorded when the attempt's command began, in its own table) is
-// the last: an artifact store over a database without it keeps serving
-// attempt_private artifacts and refuses to record provenance it cannot keep.
+// Contributions is the ADR 0013 fresh-database baseline. Legacy execution,
+// runtime-grant and artifact migrations refer to removed tables and must not be
+// appended. Phase 3 ports the server adapters to this schema.
 func Contributions() []storage.Contribution {
-	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations(), runtimeauthpg.ResourceMigrations(), artifactspg.ProvenanceMigrations()}
+	return []storage.Contribution{storage.BaseContribution()}
 }
 
 // Manifest validates the contribution list.

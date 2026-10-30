@@ -1,6 +1,8 @@
 # Container-first SDLC: implementation and planning handoff
 
-**Status:** owner-approved design on 2026-10-30; documentation prepared for the next plan-mode session. Implementation tasks are recorded as deferred for that planning pass, not dispatched. Keep using this task's worktree as the owner requested.
+> **Superseded by [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md).** Historical planning handoff; the container primitive and tool-neutral delivery survive, the added catalogue/receipt/compatibility work does not. See the [Phase 2 handoff](simplification-phase-2.md) for the current reset.
+
+**Status:** historical owner-approved design on 2026-10-30, superseded by ADR 0013. Its tasks are not scheduled under the simplified plan.
 
 **Worktree:** `.work/artifact-vision-review`, branch `task/artifact-vision-review`.
 

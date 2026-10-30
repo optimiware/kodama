@@ -1,55 +1,36 @@
-# 6. Application blueprints
+# 6. Knowledge base and blueprints
 
-## Markdown chassis strategy
+## Git-native Knowledge Base
 
-**Confirmed (O-17):** the application chassis is Markdown-only engineering guidance. It can describe microservice architecture, approved stacks/libraries and cloud deployment methods. Tenant/project guidance lives in a scoped Git repository, normally one repository per selected scope, and agent context pins the immutable commit and selected paths. Applications own their runtime and deployment configuration; chassis does not become a shared runtime SDK.
+Instead of storing skills, prompts, blueprints, and engineering standards in custom database tables, Kodama uses its **native Git service** and a Gerrit-style path convention ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)):
 
-A blueprint is a versioned package of conventions. The first packages describe [Go + PostgreSQL](../examples/blueprints/go-postgres.md) and [Supabase + Hono + Vite](../examples/blueprints/supabase-hono-vite.md).
+```text
+<tenant>/context                     # Tenant-wide guidelines, security policies, global skills, blueprints
+<tenant>/<project>/context           # Project architecture, domain glossary, component map, conventions
+<tenant>/<project>/<component-a>     # Component source repo + component-specific Markdown context
+<tenant>/<project>/<component-b>     # Component source repo + component-specific Markdown context
+<tenant>/<project>/deploy            # Deployment manifests, infrastructure configs, promotion pipelines
+```
 
-## Blueprint contents
+### How it works
 
-| Section | Required guidance |
-| --- | --- |
-| Purpose | Suitable problems, deployment assumptions, and relevant trade-offs |
-| Layout | Application modules, migrations, tests, deployment files, and agent entry points |
-| Identity | Application users, application tenants, membership, and authorization conventions |
-| Data | Tenant ownership, schema evolution, seed data, backup, and legacy integration |
-| Interfaces | Error conventions, pagination, compatibility, and integration contracts |
-| Delivery | Build outputs, preview setup, stage promotion, smoke tests, and cleanup |
-| Quality | Acceptance evidence, testing strategy, review expectations, and operational checks |
-| Agent guidance | Expected workflow, contextual reading, allowed tools, and completion evidence |
-| Evolution | Version, change history, compatibility notes, and adoption procedure |
+1. **Automatic project association:** Any repository created or pushed under `<tenant>/<project>/*` is automatically associated with `<project>`. `<tenant>/context` is scoped to the tenant and readable by all projects in that tenant.
+2. **Standard Markdown & Git:** Engineers and agents read and update knowledge using standard Git commits, branches, and merges or via the Kodama MCP / API endpoints.
+3. **Mounted or queried by agents:**
+   - **Mode A (External harnesses like `opencode`, `claude-code`, `pi`):** The pipeline step or workspace preparation checks out `<tenant>/context` and `<tenant>/<project>/context` alongside the component repository (for example under `/workspace/.context/`), so the harness reads them as ordinary local Markdown files.
+   - **Mode B (Native `kodama agent`):** Can read `/workspace/.context/` directly or query knowledge-base files, skills, and blueprints via native tools and the MCP Gateway.
 
-These are guidance requirements for blueprint authors. Blueprints may supply executable application templates separately; that does not turn the Markdown chassis into an application runtime dependency or authority source.
+## Recommended repository layout for `context` repos
 
-## Tenant conventions
+```text
+context/
+├── README.md                # High-level overview and index
+├── architecture.md          # System boundaries, data ownership, and service map
+├── conventions.md           # Coding style, testing rules, error handling
+├── blueprints/              # Stack templates and starter guides (e.g., go-postgres.md)
+└── skills/                  # Reusable agent skill instructions (plan, review, guardrail, release)
+```
 
-A factory tenant owns the development project. An application tenant belongs to the application's own domain. A blueprint explains how authenticated application identity determines application-tenant access and how tenant-owned data is isolated.
+## Updating knowledge as part of the SDLC
 
-Applications may federate to an external identity provider. They should document their runtime dependencies explicitly. The initial chassis does not require application requests to pass through Kodama.
-
-## Legacy modernization pattern
-
-Use the first example application to describe an incremental modernization approach:
-
-1. Identify one gap and the existing system of record.
-2. Specify the smallest useful workflow and its acceptance criteria.
-3. Define an adapter to the legacy system, including data ownership and write permissions.
-4. Model synchronization, stale reads, duplicate requests, and reconciliation.
-5. Build and validate the new application with realistic but appropriately scoped test data.
-6. Roll out to a bounded group and observe actual usage.
-7. Decide whether to expand, replace another gap, or retire the application.
-
-Blueprints should make data ownership explicit so a gap-filling app does not silently become a competing source of truth.
-
-## Version adoption
-
-A work item records the blueprint identity and version used when its workspace is initialized. Its specification and agent instructions reference that version. Updating guidance is an ordinary reviewed work-item change.
-
-Template updates may be applied to existing applications as ordinary work items with diffs, migration plans and tests. Guidance updates likewise produce an explicit reviewed revision; moving the guidance repository's branch cannot silently change an admitted run. Shared application chassis-library extraction is outside the selected O-17 scope.
-
-## Agent skill packaging
-
-Skills should provide a focused workflow with task-specific context pointers and observable completion criteria. Shared conventions have one authoritative location inside the blueprint; skill instructions refer to that location rather than duplicating the full rules.
-
-The repository contains blueprint design examples, with [backlog](../tasks/README.md) template tasks for both stacks. T-059 supplies the Markdown guidance-repository conventions and pinned-context examples; it replaces the former library-extraction assessment. Existing small Kodama infrastructure helpers are independent of this application-chassis scope.
+Because the knowledge base is a Git repository in the project space, agents and engineers can propose updates to `<tenant>/<project>/context` as part of normal task execution when architecture or conventions evolve.

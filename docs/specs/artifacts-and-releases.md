@@ -1,6 +1,8 @@
 # Artifacts, releases and publication
 
-**Scope:** accepted direction under [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md); extension implementation pending. Existing verified file/OCI storage is implemented in `internal/artifacts`; release/version discovery, workload fetch and publication receipts are new work. [Contract](../contracts/artifacts-and-releases.md), [tasks and handoff](../implementation/container-sdlc-refinement.md).
+> **Superseded for product direction by [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md).** Retained as the O-34 design history. The governing model is metadata-only external artifacts recorded in `artifacts`; release and promotion behavior is an ordinary pipeline plus role-inbox task, not a Kodama-hosted catalogue or receipt state machine.
+
+**Scope:** historical direction under [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md); superseded by ADR 0013. Existing verified file/OCI storage is implemented in `internal/artifacts`; release/version discovery, workload fetch and publication receipts are not carried into the ADR 0013 scope. [Contract](../contracts/artifacts-and-releases.md), [tasks and handoff](../implementation/container-sdlc-refinement.md).
 
 ## Purpose and small model
 

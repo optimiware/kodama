@@ -1,120 +1,48 @@
-# HTTP interface contract
+# HTTP and MCP interface contract
 
-**Status:** simplified proposed interface. Commands and endpoints become executable only as their tasks are completed.
+**Status:** Proposed Phase 3 REST and MCP interface for the 15-table model under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md). Phase 2 implements persistence, not these routes.
 
 ## Conventions
 
-Base URL is `https://factory.example.invalid/api/v1`. Let `P` mean `/tenants/{tenantId}/projects/{projectId}`. Use bearer access tokens, JSON, opaque IDs, UTC timestamps, and ETags equal to quoted integer resource versions. Lists return `{items, nextCursor}` with default limit 50 and maximum 200.
-
-`If-Match` is required for editable content/settings, transitions, and gate decisions. Use idempotency keys for run/deployment creation and gate decisions. Unique key: `(principal, tenant, method, canonical route, key)`; store/compare the request hash separately. Replay authorization is checked before returning the prior response. Changed body gives `409 idempotency_conflict`; stale version gives `412 version_conflict`; missing required version gives `428 version_required`.
+Base URL is `/api/v1`. Let `T` mean `/tenants/{tenantKey}` and `P` mean `/tenants/{tenantKey}/projects/{projectKey}`.
+- **Authentication:** Bearer OAuth access token for users/operators (governed by RBAC `memberships`); Bearer `KODAMA_TOKEN` for in-run steps and agents (governed by project-space permissions).
+- **MCP Endpoint:** `POST /api/v1/mcp` (Streamable HTTP Model Context Protocol exposing core tools and federated `mcp_servers`).
+- **AI Gateway Endpoint:** `POST /api/v1/ai/v1/chat/completions` (OpenAI-compatible proxy for agents and steps).
 
 ## Routes
 
+### Identity & Tenancy
 | Route | Purpose |
 | --- | --- |
-| `GET /me`, `GET /tenants` | Verified identity and authorized tenant discovery |
-| `GET, POST /tenants/{tenantId}/memberships` | Membership management |
-| `PATCH, DELETE /tenants/{tenantId}/memberships/{id}` | Change/revoke roles |
-| `GET, POST /tenants/{tenantId}/projects` | Project discovery/creation |
-| `GET, PATCH P` | Project settings, active WIP limit, fixed role bindings |
-| `GET, POST P/work-items` | Work list/create |
-| `GET, PATCH P/work-items/{id}` | Work summary/spec/acceptance/blocking edits |
-| `GET P/work-items/{id}/history` | Immutable content and transition history |
-| `POST P/work-items/{id}/transitions` | Explicit business transition |
-| `POST P/work-items/{id}/workspace` | Idempotent primary-workspace provision |
-| `GET P/workspaces/{id}` | Branch, accepted commit, writer, state/error |
-| `POST P/workspaces/{id}/archive`, `POST P/workspaces/{id}/restore` | Change admission after settling publication |
-| `POST P/workspaces/{id}/sync` | Observe authorized human Git updates |
-| `GET, POST P/pipeline-definitions` | List/register validated immutable versions |
-| `GET P/pipeline-definitions/{id}` | Definition/digest |
-| `GET, POST P/runs` | List/start work runs |
-| `GET P/runs/{id}`, `GET P/runs/{id}/steps` | State, input snapshot, attempts/results; for a `run_shared` run also `runModel`, `deadlineAt`, `executionOrder`, effective workspace access and safe `resources` observations ([run resources](run-resources.md#observations-and-api-projection)) |
-| `POST P/runs/{id}/cancel` | Idempotently set cancellation request |
-| `GET P/events`, `GET P/runs/{id}/events` | Authorized durable SSE observations |
-| `GET P/runs/{id}/logs` | Bounded live/retained log retrieval; `resource=preparation\|service.NAME` selects run-resource diagnostics |
-| `GET, POST P/variables`, `GET, PATCH, DELETE P/variables/{id}` | Project nonsecret configuration |
-| `GET, POST P/secrets`, `GET, DELETE P/secrets/{id}` | Secret metadata/create/deletion |
-| `GET, POST P/secrets/{id}/versions` | Metadata list/new encrypted value version |
-| `POST P/secrets/{id}/versions/{version}/revoke` | Set revocation timestamp |
-| `GET P/artifacts/{id}` | Scoped metadata/download |
-| `GET, POST P/agent-profiles` | M2 immutable profile versions |
-| `GET, PUT P/model-settings` | M2 endpoint/model/credential reference and limits |
-| `GET, POST P/mcp-servers`, `PATCH, DELETE P/mcp-servers/{id}` | M2 endpoint/tool registrations |
-| `GET P/gates`, `GET P/gates/{id}`, `POST P/gates/{id}/decisions` | M2 review and immutable decision |
-| `GET, POST P/environments`, `GET, PATCH P/environments/{id}` | M2 explicit target/configuration |
-| `GET, POST P/deployments`, `GET P/deployments/{id}` | M2 durable deployment record before apply |
-| `POST P/deployments/{id}/cleanup` | M2 scoped cleanup request |
-| `GET, POST P/work-items/{id}/dependencies`, `DELETE P/work-items/{id}/dependencies/{dependencyId}` | M3 dependency links |
-| `GET, POST P/repositories`, `GET, PATCH P/repositories/{id}` | Designed internal hosting ([Git service](git-service.md#repository-resource)): repository create (idempotent), read, default branch and policy |
-| `POST P/repositories/{id}/archive`, `POST P/repositories/{id}/restore` | Designed: change push/run admission |
-| `GET P/repositories/{id}/refs`, `GET P/repositories/{id}/pushes`, `GET P/repositories/{id}/pushes/{pushId}` | Designed: branch/tag tips and push records |
-| `POST /tenants/{tenantId}/git-credentials` | Designed: short-lived Git credential for the caller |
+| `GET /me`, `GET /tenants` | Verified caller identity and accessible tenants |
+| `GET, POST T/memberships`, `DELETE T/memberships/{id}` | Manage tenant and project RBAC role bindings |
+| `GET, POST T/projects`, `GET, PATCH P` | List, create, and update projects (including `task_workflow` state machine and `settings`) |
 
-M3 metrics are SQL views exposed as summary fields/query options on work lists. Defects use work-item routes and evidence links. There are no operation, candidate, finding, session, handoff, revision, or generic connection resources.
+### Layer 1: Core Primitives
+| Route | Purpose |
+| --- | --- |
+| `GET, POST T/repositories`, `GET, POST P/repositories` | List or create repositories (`<tenant>/context` or `<tenant>/<project>/<name>`) |
+| `GET, POST P/pipelines`, `GET, PUT, DELETE P/pipelines/{name}` | List or register `.kodama/<processname>.yaml` definitions |
+| `GET, POST P/runs`, `GET P/runs/{id}` | List or trigger pipeline runs; inspect run and `run_steps` |
+| `POST P/runs/{id}/cancel` | Cancel an active pipeline run |
+| `GET P/runs/{id}/logs` | Stream or fetch step logs |
+| `GET, POST T/services`, `GET, POST P/services`, `DELETE P/services/{name}` | Manage scoped container services (`tenant`, `project`, or `pipeline`) |
+| `GET, POST P/tasks`, `GET, PATCH P/tasks/{id}` | List, create, and update tasks (`filter`: `state`, `kind`, `inbox_role`) |
+| `POST P/tasks/{id}/transition` | Transition task state along `projects.task_workflow` (emits `task.transitioned` on NATS) |
+| `POST P/tasks/{id}/park` | Park a task (`state: parked`) and create a blocking `decision`/`promotion`/`incident` task in a role inbox |
+| `POST P/tasks/{id}/resolve` | Resolve a role-inbox task, unblocking the parked parent task (emits `task.resolved` on NATS) |
+| `GET, POST P/artifacts`, `GET P/artifacts/{id}` | Register and query metadata for external production artifacts |
+| `GET, POST T/secrets`, `GET, POST P/secrets`, `DELETE P/secrets/{name}` | Set, list (metadata only), or delete encrypted secrets |
 
-Membership/bootstrap routes implement standalone authority or explicitly supported hosted SDLC bindings only. They cannot grant platform membership or entitlements. [Platform integration](../specs/platform-integration.md) governs hosted mapping and credentials; a missing upstream operation is not permission to implement it under a local route. Conformance reports use existing artifact/evidence references, not a new resource.
-
-## Work and execution examples
-
-Create work:
-
-```json
-{
-  "kind": "story",
-  "title": "Resolve inventory exceptions",
-  "spec": "# Plan\nAdd a scoped review flow.\n\n# Behavior\nReviewers record ERP acknowledgments.",
-  "acceptanceCriteria": [{"id": "AC-1", "text": "A reviewer resolves an exception with an audit record."}]
-}
-```
-
-Creation returns `201`, state `backlog`, `version:1`, `contentRevision:1`. PATCH replaces supplied content fields under `If-Match`, appends history, and increments content revision when spec/criteria change. Transitions increment resource version but not content revision.
-
-Start a run with `Idempotency-Key`:
-
-```json
-{
-  "workItemId": "wi_1042",
-  "definitionId": "pd_01",
-  "contentRevision": 2,
-  "sourceCommit": "1111111111111111111111111111111111111111",
-  "inputs": {}
-}
-```
-
-The source commit must belong to the project's configured repository and retained workspace history. For internally hosted repositories a run may instead pin a `sources` list ([source set](git-service.md#source-set)), designed and owned by T-131. The server resolves and pins spec, configuration, credentials, and profile. The candidate for a read-only delivery run is this commit; a writer can produce a new commit output before gates. No redundant candidate/checkpoint IDs are submitted.
-
-Run admission can refuse a definition with `422` and a stable code such as `format_retired`, `capability_unsupported`, `policy_unavailable`, `limit_exceeds_policy` or `egress_profile_unknown` ([admission refusals](pipeline-format-v1alpha2.md#format-availability-and-admission-refusals)); `details` names only causes, never document content. The `v1alpha2` additions are optional response fields and codes; existing clients keep working.
-
-Cancel returns `202` with the run's current status and `cancelRequestedAt`. Poll/watch that run until terminal. Workspace provisioning similarly returns the workspace, not an operation handle.
-
-## Gate decision
-
-```json
-{
-  "decision": "approve",
-  "subjectDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "reason": "Reviewed the identified source and test evidence."
-}
-```
-
-Use `If-Match` and `Idempotency-Key`. The server derives the human actor. The [delivery spec](../specs/delivery-and-quality-gates.md) owns subject construction and applicability. A stale or expired subject returns `409 stale_gate_subject` without changing the prior decision.
+### Layer 2: Agentic Software Factory
+| Route | Purpose |
+| --- | --- |
+| `POST /api/v1/ai/v1/chat/completions` | OpenAI-compatible AI Gateway |
+| `POST /api/v1/mcp` | MCP Gateway for native Kodama tools and registered `mcp_servers` |
+| `GET, POST P/agent-sessions`, `GET P/agent-sessions/{id}` | Record and inspect `kodama agent` sessions, messages, and token usage |
+| `GET, POST T/mcp-servers`, `GET, POST P/mcp-servers`, `DELETE P/mcp-servers/{id}` | Register or remove external MCP servers |
 
 ## Runtime and observation
 
-### ADR 0012 extension boundary
-
-Planned artifact lists, release create/list/resolve/retire and publication receipts are specified semantically in the [artifact/release contract](artifacts-and-releases.md#public-and-workload-operations). Generic deployment requests remove the universal image/Kubernetes assumptions through an explicitly versioned compatibility path. T-140 supplies module OpenAPI and runtime shapes; T-145 publishes the aggregate/client and CLI. The current route table remains the executable baseline, and `GET P/artifacts/{id}` alone is not a release catalogue or workload download grant.
-
-Git transport is not under `/api/v1`: the designed internal Git endpoint is `/git/<tenant-key>/<project-key>/<repository>.git`, and Git workers call `/internal/git/v1` with their own audience ([Git service](git-service.md#git-endpoint)). Internal runtime endpoints are defined in the [step entrypoint contract](../implementation/step-entrypoint.md) (`/runtime/v1`; `run_shared` runs use [runtime v2](runtime-v2.md)), with an attempt-token audience distinct from human access. Runtime deployment creation uses the same underlying module with restricted authorization.
-
-SSE uses a durable project event sequence/cursor retained with outbox/event history. `Last-Event-ID` resumes within retention. An expired cursor returns `410 cursor_expired`; snapshot reads return a new observation cursor so clients can resynchronize. NATS delivery is not itself a client cursor.
-
-Live logs proxy the Kubernetes API; finished logs are artifacts. Log loss is visible separately from command outcome. Responses never expose arbitrary Kubernetes selectors or raw storage credentials.
-
-## Errors and implementation
-
-Errors use `{error:{code,message,requestId,details}}`. In addition to the codes above, use 400 invalid request/cursor, 401 invalid credential, 403 authorized-scope denial, 404 hidden/not found, 409 writer/WIP/conflicting result, 422 graph/transition/type failure, 429 throttling with `Retry-After`, and 503 unavailable dependency.
-
-Each module owns its OpenAPI fragment and examples. Integration tasks assemble/validate a published document and generate types with `oapi-codegen`; runtime schemas are frozen before server/entrypoint tasks run in parallel. Detailed request schemas are part of the owning task's deliverables, not guessed independently by clients.
-
-T-027 also generates a portable public Go HTTP client under `api/client/`, with pinned generator/configuration and regeneration-drift checks; later composition tasks regenerate it as the API evolves. The published OpenAPI lets Platform generate a client in its own repository. Server selection, HTTP transport and authentication are injected; no internal server/domain packages or runtime-audience routes leak into the public client. Run-submission retries preserve the idempotency key and request, then observe the same run resource. Client generation does not select hosted delegation or credential custody.
+- **Git smart HTTP:** Served at `/git/<tenant>/<path>.git` (for example `/git/acme/context.git` and `/git/acme/erp/backend.git`).
+- **Event stream (SSE):** `GET P/events` streams live NATS JetStream signals (`git.*`, `task.*`, `run.*`, `artifact.*`) for authorized callers and `kodactl run watch`.

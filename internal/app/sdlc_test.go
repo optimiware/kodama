@@ -188,8 +188,8 @@ func Test_unit_container_sdlc_composition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SDLCManifest: %v", err)
 	}
-	if len(m.Migrations()) != 6 {
-		t.Fatalf("expected 6 migrations in SDLCManifest, got %d", len(m.Migrations()))
+	if len(m.Migrations()) != 3 {
+		t.Fatalf("expected 3 migrations in SDLCManifest, got %d", len(m.Migrations()))
 	}
 }
 

@@ -1,63 +1,63 @@
 # 3. Domain and lifecycles
 
-Use the [glossary](../../CONTEXT.md) for terms and [schema sketch](../implementation/database-schema.md) for persistence. Work item, legacy source workspace, run, and review are separate lifecycles. The diagram's `WORKSPACE` is the legacy durable source association, not the shared `/workspace` filesystem.
+Use the [glossary](../../CONTEXT.md) for terms and [database schema](../implementation/database-schema.md) for persistence.
+
+## Core entity hierarchy
+
+At the core, Kodama's relational domain model is **15 tables** (14 domain tables plus audit/outbox) spanning Identity, Layer 1 (Core Primitives), and Layer 2 (Agentic Factory):
 
 ```mermaid
 erDiagram
+    TENANT ||--o{ MEMBERSHIP : grants
     TENANT ||--o{ PROJECT : owns
-    PROJECT ||--o{ REPOSITORY : hosts
-    PROJECT ||--o{ WORK_ITEM : tracks
-    WORK_ITEM ||--o| WORKSPACE : pairs
-    WORKSPACE }o--o{ REPOSITORY : "task branches in"
-    REPOSITORY ||--o{ PUSH_RECORD : journals
-    WORK_ITEM ||--o{ RUN : motivates
-    PUSH_RECORD ||--o{ RUN : triggers
-    RUN }o--o{ REPOSITORY : "pins commits of"
-    PIPELINE_DEFINITION ||--o{ RUN : instantiates
-    RUN ||--o{ STEP_RUN : contains
-    STEP_RUN ||--o{ ATTEMPT : executes
-    STEP_RUN ||--o| GATE : waits
-    ATTEMPT ||--o{ ARTIFACT : produces
-    ENVIRONMENT ||--o{ DEPLOYMENT : receives
+    TENANT ||--o{ REPOSITORY : "hosts (tenant/context)"
+    TENANT ||--o{ SERVICE : "runs (tenant scope)"
+    TENANT ||--o{ SECRET : "stores (tenant scope)"
+    PROJECT ||--o{ REPOSITORY : "auto-links (tenant/project/*)"
+    PROJECT ||--o{ PIPELINE : "defines (.kodama/*.yaml)"
+    PROJECT ||--o{ SERVICE : "runs (project scope)"
+    PROJECT ||--o{ SECRET : "stores (project scope)"
+    PROJECT ||--o{ TASK : tracks
+    TASK ||--o| TASK : "blocked_by (role inbox)"
+    PIPELINE ||--o{ RUN : executes
+    TASK ||--o{ RUN : motivates
+    RUN ||--o{ RUN_STEP : "executes (shared /workspace)"
+    RUN ||--o{ SERVICE : "runs (pipeline scope)"
+    RUN_STEP ||--o{ ARTIFACT : "records metadata"
+    RUN_STEP ||--o{ AGENT_SESSION : "tracks (Layer 2)"
+    PROJECT ||--o{ MCP_SERVER : "registers (Layer 2)"
 ```
 
-Repositories are project resources; under the designed internal hosting of [ADR 0011](../adr/0011-internal-tenant-git-service.md) Kodama serves them itself, records every accepted push, and starts runs from those pushes as well as from work items. A run pins a source set: one exact commit per selected repository. Source checkpoints/candidates are Git commits, not separate storage aggregates. Under the designed `run_shared` model a run also owns disposable **run resources** (one shared scratch `/workspace`, preparation, support services, a network boundary); they are execution bookkeeping with their own evidence, not a lifecycle status, an aggregate or a checkpoint ([run resources](../contracts/run-resources.md)). Evidence is artifact metadata/provenance. An agent profile expands into an ordinary executable step. A defect is a work item. A plan is part of the specification.
+## Resource lifecycles
 
-[ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) adds a small immutable **release** manifest over artifacts and **publication receipts** for destination copies. These are pending implementation. A deployment binds the exact release/artifact set and configuration; rollback creates a new run/deployment rather than changing historical states. The run workspace keeps working/generated files only for its run, while Git and explicitly retained artifacts provide continuity.
-
-## States
-
-| Resource | Persisted status | Authority |
+| Resource | States | Authority |
 | --- | --- | --- |
-| Work item | `backlog`, `ready`, `active`, `review`, `done`, `cancelled` | [Work management](../specs/work-management.md) |
-| Repository | `provisioning`, `ready`, `archived` | [Git repositories](../specs/git-repositories.md) |
-| Push record | `authorized`, `applied`, `refused`, `unknown` | Git repositories |
-| Workspace | `provisioning`, `available`, `archived` | [Workspaces](../specs/workspaces.md) |
-| Run | `queued`, `running`, `succeeded`, `failed`, `cancelled` | [Execution](../specs/pipeline-execution.md) |
-| Step | `pending`, `running`, `succeeded`, `failed`, `skipped`, `cancelled` | Execution |
-| Attempt | `running`, `succeeded`, `failed`, `cancelled` | Execution |
-| Gate | `pending`, `approved`, `rejected` | [Delivery](../specs/delivery-and-quality-gates.md) |
-| Deployment | `pending`, `running`, `succeeded`, `failed` | Delivery |
+| **Task** | Project-defined in `projects.task_workflow` (default: `backlog`, `plan`, `implement`, `review`, `test`, `deploy_preview`, `promote`, `done`, `parked`, `cancelled`) | [Task tracker](../specs/work-management.md) |
+| **Run** | `queued`, `running`, `succeeded`, `failed`, `cancelled` | [Pipeline execution](../specs/pipeline-execution.md) |
+| **Step (`run_step`)** | `pending`, `running`, `succeeded`, `failed`, `skipped`, `cancelled` | [Pipeline execution](../specs/pipeline-execution.md) |
+| **Service** | `starting`, `ready`, `failed`, `stopped` | [Pipeline execution](../specs/pipeline-execution.md) |
+| **Agent session** | `running`, `completed`, `parked`, `failed`, `cancelled` | [Agent runtime](../specs/agent-runtime.md) |
 
-Waiting, startup, timeout, unknown outcome, cancellation request, expiry, and deletion use reasons/timestamps. They are not additional status enums. This preserves uncertainty instead of hiding it behind an assumed success/failure.
+## Task state machine and Role Inbox
+
+Each project defines its task state machine in `projects.task_workflow` (stored in PostgreSQL), mapping states and transitions to `.kodama/<processname>.yaml` pipelines via NATS events:
 
 ```mermaid
 stateDiagram-v2
     [*] --> backlog
-    backlog --> ready
-    ready --> backlog
-    ready --> active
-    active --> ready
-    active --> review
-    review --> active
-    review --> done
-    done --> active
-    backlog --> cancelled
-    ready --> cancelled
-    active --> cancelled
-    review --> cancelled
+    backlog --> plan : triggers .kodama/plan.yaml
+    plan --> implement : triggers .kodama/implement.yaml
+    implement --> review : triggers .kodama/review.yaml
+    review --> implement : rework needed
+    review --> test : triggers .kodama/test.yaml
+    test --> deploy_preview : triggers .kodama/preview.yaml
+    deploy_preview --> parked : creates promotion task in role inbox
+    parked --> promote : inbox task resolved (.kodama/promote.yaml)
+    promote --> done
+    plan --> parked : creates decision task in role inbox
+    implement --> parked : creates decision task in role inbox
+    parked --> plan : inbox task resolved
+    parked --> implement : inbox task resolved
 ```
 
-All entries to active check WIP capacity. Completion is a human decision against current content/source. A passing run does not move the card automatically. A failed run leaves the work branch and published commits available. A gate wait retains a database record without a Job; in the current `attempt_private` model it retains no compute, while in `run_shared` the run's services and scratch persist through the wait, bounded by the run's total deadline.
-
-Content revision changes only when specification/acceptance changes; resource version changes on every mutation. Runs pin content revision and source commit. Gates additionally bind evidence and deployment configuration. Historical runs/decisions remain immutable after rework.
+The diagram illustrates workflow behavior. In the Phase 2 model, parking preserves the business state and sets `parked_at`, `blocked_by_id` and `resume_state`. Inbox states are project-defined. Resolution records an explicit outcome; an applicable approval or clarification answer can resume the task, while rejection cannot promote it. See the [task specification](../specs/work-management.md).

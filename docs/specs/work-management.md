@@ -1,63 +1,61 @@
-# Work management
+# Task tracker and role inbox
 
-**Scope:** M1 work items and human completion; M3 dependency links and flow reporting. This is the simplified implementation baseline.
+**Scope:** project-defined task workflows and asynchronous inbox requests under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md). Phase 2 implements the model and transactional persistence; API dispatch and NATS consumers follow in Phase 3.
 
 ## Model
 
-A work item has tenant/project ownership, kind (`epic`, `story`, `task`, `defect`), title, `spec` Markdown, structured `acceptance_criteria`, assignee, state, `blocked_reason`, `version`, and `content_revision`. The plan is a section of `spec`. Each content edit appends the previous/current content to history and increments `content_revision`; every mutation increments `version`.
+`tasks` holds a unit of work or a decision/promotion/incident request. A task has tenant/project ownership, title, Markdown body, state, optional parent, role/user assignment, context and one optimistic version. Repository and branch references are optional. A task's state comes from its project's workflow, not a product-wide enum.
 
-A project has `wip_limit_active`. Roles grant transitions; there is no configurable flow-policy engine. A defect is an ordinary work item with evidence links. An epic groups children and has no workspace. M3 adds same-project dependency edges and cycle detection.
+Example project workflow (illustrative process names; configured pipelines are resolved by Phase 3):
 
-## Transitions
+```json
+{
+  "initialState": "plan",
+  "states": ["plan", "implement", "review", "test", "preview", "promote", "done", "question"],
+  "terminalStates": ["done"],
+  "inbox": {"openState": "question", "resolvedState": "done"},
+  "transitions": [
+    {"from": "plan", "to": "implement"},
+    {"from": "implement", "to": "review"},
+    {"from": "review", "to": "implement"},
+    {"from": "review", "to": "test"},
+    {"from": "test", "to": "preview"},
+    {"from": "preview", "to": "promote"},
+    {"from": "promote", "to": "done"}
+  ],
+  "triggers": {"plan": "plan", "implement": "implement", "review": "review", "test": "test", "preview": "preview", "promote": "promote"}
+}
+```
 
-| From | To | Condition |
-| --- | --- | --- |
-| `backlog` | `ready` | Specification and acceptance supplied |
-| `ready` | `backlog` | Reason supplied |
-| `ready` | `active` | Active WIP capacity; no `blocked_reason`; M3 dependencies satisfied |
-| `active` | `ready` | No unsettled writer attempt; reason supplied |
-| `active` | `review` | Candidate and evidence available, or child summary for an epic |
-| `review` | `active` | Rework reason; active WIP capacity |
-| `review` | `done` | Human with `work_item:complete` records acceptance and any acknowledged findings |
-| `done` | `active` | Reopen reason; active WIP capacity |
-| Any unfinished state | `cancelled` | Authorized cancellation and reason |
+State triggers have one source: the workflow's `triggers` map. They apply on initial creation, entry into a state and resumption in that state. A request's inbox state has no automatic coding trigger. Resolved inbox requests use the dedicated resolution operation rather than a general task transition.
 
-Blocked items still count toward active WIP. Admission locks the project row and checks/counts in the same transaction as the transition. A request to leave active while a writer remains returns `409 workspace_busy`; the caller cancels the run and retries after settlement. Business cancellation may commit immediately while runtime cancellation proceeds separately.
+## Parking and resolution
+
+Parking preserves the business state and sets `parked_at`, `blocked_by_id` and `resume_state`. These are fields on the same task, not a second workspace/gate lifecycle. A role inbox is a query for unresolved request tasks assigned to the caller's authorized role.
+
+1. Create a decision/promotion/incident task in the project's inbox open state, assigned to a role. In the same transaction, park the work task behind that request and record an event.
+2. End the current run normally; a human wait does not retain scratch or a running step.
+3. Resolution records the verified actor, assigned role, an `approved`, `rejected` or `answered` outcome, answer and timestamp. Human-only production approval is enforced by the use case's actor policy, not merely by a role string supplied by a workload.
+4. An approval may resume the blocked task. An `answered` decision may resume clarification work. A rejected request or an `answered` promotion cannot resume production promotion. Explicit rework creates a fresh request or follows another project transition.
+5. Resume rechecks the current workflow edge and task version, clears parking fields and emits the next state trigger. Resuming the same state can start its pipeline again with the recorded answer.
+
+The request remains linked by history/events after resumption. Resolved decisions are immutable through the store. Candidate context/repository/branch cannot change while a task is parked; changed inputs need a new applicable request. Duplicate delivery cannot repeat a transition against a newer task version.
 
 ## Requirements
 
 | ID | Requirement |
 | --- | --- |
-| WM-01 | Ownership and relationships MUST be tenant/project consistent. |
-| WM-02 | Content changes MUST append history and use `If-Match`; conflicting edits MUST NOT overwrite each other. |
-| WM-03 | Transitions MUST check allowed edges, role, expected version, and current prerequisites transactionally. |
-| WM-04 | All entries into active MUST enforce `wip_limit_active` under contention. |
-| WM-05 | M3 dependency edges MUST be same-project, acyclic, and evaluated at admission. |
-| WM-06 | Setting/clearing `blocked_reason` MUST retain actor and timing in history/audit. |
-| WM-07 | Completion MUST be an explicit human decision bound to the observed content revision and candidate; a passing run cannot complete work. |
-| WM-08 | Mutations MUST atomically record audit and outbox events. |
-| WM-09 | Cancellation MUST prevent new work dispatch and request cancellation of current work runs. |
-| WM-10 | Reads/lists MUST be authorized, filtered, and cursor-paginated. |
-| WM-11 | Each actionable item MUST have at most one logical workspace; epics have none. |
-| WM-12 | M3 SQL reports MUST derive active/review/blocked intervals and reopens from recorded history. |
-
-The human is the business completion policy. Required pipeline gates still guard the corresponding pipeline actions. Completion does not create a generic gate override; waived business findings are named in the completion reason.
-
-## Interface and recovery
-
-Use work-item CRUD, `GET history`, and `POST transitions` in the [HTTP contract](../contracts/http-api.md). State changes emit `work_item.transitioned`; content/blocking changes emit `work_item.updated`. No separate revisions, blockers, findings, or flow-policy resources are needed.
-
-Analysts edit intent, engineers initiate technical work, and reviewers accept outcomes. Database commit is the mutation boundary. On uncertain responses, reread the resource/version before retrying an edit. Run creation has a separate idempotency contract.
+| WM-01 | Each project MUST persist its states, terminal states, edges, state triggers and inbox states in `projects.task_workflow`. |
+| WM-02 | Transitions MUST validate the workflow and expected version; a parked task MUST NOT advance through an ordinary transition. |
+| WM-03 | Parking MUST link a same-project unresolved request assigned to a role. Parent, request and event changes MUST commit atomically. |
+| WM-04 | Resolution MUST verify caller authority and record an explicit immutable outcome. Only an applicable affirmative result MAY resume the blocked task; rejection MUST NOT promote it. |
 
 ## Acceptance
 
 | ID | Scenario | Requirements |
 | --- | --- | --- |
-| WM-A01 | Cross-tenant relations and copied cursors reveal no data | WM-01, WM-10 |
-| WM-A02 | Concurrent content edits preserve one accepted edit and one conflict | WM-02, WM-08 |
-| WM-A03 | Two admissions compete for one WIP slot; rework/reopen use the same guard | WM-03, WM-04 |
-| WM-A04 | M3 rejects dependency cycles and blocks dependent admission | WM-05 |
-| WM-A05 | A passing build cannot complete work; a current authorized human can | WM-07 |
-| WM-A06 | Cancellation persists through a broker outage and stops new dispatch | WM-08, WM-09 |
-| WM-A07 | Concurrent provisioning yields one workspace; epic provisioning fails | WM-11 |
-| WM-A08 | Blocking/unblocking and reopen history produce correct SQL intervals | WM-06, WM-12 |
+| WM-A01 | A project with entirely custom state names validates its transitions; duplicate/unknown states, stale versions and invalid edges fail | WM-01, WM-02 |
+| WM-A02 | Park, resolve and resume persist with their events; rollback loses neither half; concurrent updates have one winner | WM-02, WM-03, WM-04 |
+| WM-A03 | Rejection, wrong-role resolution, changed parked context and cross-project blockers cannot promote a task; answering a clarification can re-trigger the same state's process | WM-03, WM-04 |
+
+The shared memory/PostgreSQL contract under `internal/tasks/taskstest` verifies persistence and scope. Transport identity checks, human-only actor policy and real NATS-triggered execution remain Phase 3 acceptance.

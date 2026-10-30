@@ -1,18 +1,19 @@
-# 4. Lean flow and governance
+# 4. Autonomous flow and role inbox
 
-Use a few observable mechanisms rather than a generic governance engine.
+Kodama maximizes autonomous SDLC execution while keeping human intervention simple, explicit, and asynchronous.
 
-| Principle | Mechanism |
+## Core mechanisms
+
+| Mechanism | How it works |
 | --- | --- |
-| Kanban | Explicit states, human pull, one active WIP limit per project |
-| JIT | Start private execution compute when a step is eligible |
-| Jidoka / autonomation | Stop dependent progression on failed evidence or unknown external outcome; expose a reason |
-| Kaizen | Review SQL flow summaries and create an ordinary improvement work item |
+| **Per-project state machine** | Each project defines its states, valid transitions, and pipeline triggers in `projects.task_workflow` in PostgreSQL. |
+| **NATS coordination bus** | Every Git push/tag/merge, task state transition, inbox resolution, and release signal is published to NATS JetStream, triggering the matching `.kodama/<processname>.yaml` pipeline. |
+| **Layer 2 validation & guardrails** | Instead of pausing for humans at every step, native `kodama agent` steps validate plans, code diffs, tests, and security guardrails autonomously, looping tasks back (`review -> implement`) when fixes are needed. |
+| **Parked tasks & Role Inbox** | When human judgment is genuinely required (ambiguous requirements, production promotion, or incident triage), the task is set to `parked` and linked via `blocked_by_id` to a new task assigned to a role inbox (`assigned_role`). |
 
-Work-item WIP and runtime concurrency are independent. Blocked active items still count toward WIP. A pending gate can hold business WIP without consuming a Job. All admission/reopen/rework entries to active use the same transactional limit.
+## Why Role Inbox replaces a separate Gate engine
 
-Humans decide business acceptance. One-reviewer pipeline gates protect explicit execution progression. No quorum/override/flow-policy language is needed initially. Authorized completion records current candidate/content and a reason, including acknowledged business findings.
-
-M3 derives lead time, active time, blocked time, review time, and reopen intervals from work history using SQL views. Model/compute telemetry can be correlated with work without introducing a billing subsystem. Define observation windows and incomplete-item handling alongside reports.
-
-Improvement work follows the same ordinary path: observe friction, create a task, change a pipeline/blueprint, apply the new immutable version, and compare results. Existing runs retain their pinned definitions. See [work management](../specs/work-management.md) and [roadmap](07-delivery-roadmap.md).
+Traditional CI/CD platforms bolt on a separate approval/gate subsystem that holds pipeline runs in limbo or requires complex digest matching. In Kodama:
+1. A pipeline run finishes cleanly after parking the task and creating the blocking inbox task. No container or run slot stays idle waiting for a human.
+2. Humans inspect their inbox (`kodactl tasks inbox --role reviewer`, MCP, or API), where decision requests, promotion approvals, and incident actions appear in one uniform queue with links to the commit, diff, and external artifact metadata.
+3. Resolving the inbox task records the human's decision in PostgreSQL and emits `task.resolved` on NATS, which unblocks the parent task and starts the next pipeline (such as `.kodama/promote.yaml`).

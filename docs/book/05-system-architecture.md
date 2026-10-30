@@ -1,80 +1,63 @@
 # 5. System architecture
 
-## Company core and agent layer
+## Functional layers
 
-Optimi Platform owns company-core tenant authority and domain operations. Kodama owns the agent/SDLC lifecycle for those tenants. In hosted operation, narrow adapters resolve current core authority and invoke supported core operations; standalone installations explicitly supply local identity/credential adapters. See [platform integration](../specs/platform-integration.md) for the ownership table, reviewed upstream baseline, current gaps, and acceptance.
-
-The topology below describes Kodama's execution subsystem and local dependency profile. It does not select company-wide database/process colocation or prove a hosted platform connection. Core integration and untrusted-code isolation are separate qualification boundaries.
-
-## Small deployment, explicit state
-
-One Go binary provides `kodama server`, `kodama step`, and user CLI commands; the designed internal Git service adds a `kodama git serve` role run once per tenant ([ADR 0011](../adr/0011-internal-tenant-git-service.md)). The server hosts API, reconciliation, event publication/consumption, the authenticated Git endpoint, and enabled gateways. Start with one server replica; database claims allow additional replicas without creating separate product services.
+Kodama is structured as a two-layer system ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)) running alongside Optimi Platform ([platform integration](../specs/platform-integration.md)):
 
 ```mermaid
-flowchart LR
-    Users[CLI and integrations] --> Server[Go server]
-    Server --> PG[(PostgreSQL state and outbox)]
-    Server <--> NATS[NATS JetStream and inbox dedup]
-    Server --> K8s[Kubernetes Jobs]
-    K8s --> Step[kodama step in workload image]
-    Step --> Server
-    Server --> Git[Git source and retained refs]
-    Users -->|"git clone and push"| Server
-    Step -->|"git fetch and push"| Server
-    Server -->|"authorized forward"| GitWorker[Tenant Git worker and volume]
-    GitWorker -->|"hooks: authorize, confirm"| Server
-    Step --> S3[S3 artifacts and logs]
-    Server --> S3
-    Server --> KMS[KMS for secrets]
-    Server --> IdP[OIDC issuer]
-    Server --> Models[Model provider and MCP servers]
-    K8s --> Targets[Scoped deployment scripts]
+flowchart TB
+    subgraph Access["Unified Access Surface (OAuth + RBAC)"]
+        CLI["kodactl CLI"]
+        API["HTTP REST API"]
+        MCP["MCP Server"]
+    end
+
+    subgraph Layer2["Layer 2: Agentic Software Factory (Shell)"]
+        ModeA["Mode A: Container Harnesses (opencode, claude-code, pi)"]
+        ModeB["Mode B: Native kodama agent Runtime (skills, guardrails, decisions)"]
+        AIGW["AI Gateway (OpenAI-compatible)"]
+        MCPGW["MCP Gateway (Tool routing)"]
+    end
+
+    subgraph Layer1["Layer 1: Core Kernel (Drone CI-inspired Primitives)"]
+        Pipes["Pipelines (.kodama/*.yaml) & Runs / Steps"]
+        Svcs["Scoped Container Services (Tenant / Project / Pipeline)"]
+        Git["Native Git Service (<tenant>/<project>/* & Knowledge Base)"]
+        Tasks["Task Tracker (Project State Machine & Role Inbox)"]
+        Meta["Secrets (Encrypted) & Artifacts (Metadata Only)"]
+        NATS["NATS JetStream Message Bus"]
+        PG[("PostgreSQL (15-table model + RLS)")]
+    end
+
+    CLI & API & MCP --> Layer1
+    CLI & API & MCP --> Layer2
+    ModeA & ModeB --> Layer1
+    ModeB --> AIGW & MCPGW
+    Pipes & Svcs & Git & Tasks & Meta <--> NATS
+    Pipes & Svcs & Git & Tasks & Meta --> PG
 ```
 
-The [package layout](../implementation/repository-layout.md) defines modules within this process. Each module owns its state transitions and failure behavior; a module is not a separate deployment requirement.
+## Single binary, clean roles
 
-Hosted core adapters implement consumer-owned ports at composition; they do not query platform tables or ingestion streams directly. Platform jobs and Kodama runs retain distinct lifecycle owners and explicit correlation rather than competing retry loops.
-
-## Preferred internal design
-
-Prefer a lightweight hexagonal ports-and-adapters design with DDD entities. Module-owned entities protect business invariants and transitions; application use cases coordinate them through small consumer-owned ports. HTTP/CLI/event adapters invoke use cases, and PostgreSQL/Git/Kubernetes/provider adapters implement outbound ports. `internal/app` wires concrete implementations; dependencies point inward so domain entities remain independent of transport and infrastructure. See the [software design specification](../specs/software-design.md) for scope, transaction/RLS obligations, and acceptance.
-
-## Environments
-
-One required variable, `KODAMA_ENV`, selects the adapters behind the same ports ([ADR 0009](../adr/0009-environments.md), [environments](../implementation/environments.md)). `development` is purely in memory with the Process runtime and exists for fast tests and the loopback developer server. `test` runs PostgreSQL, JetStream, S3, Git, OIDC and a registry on Podman with the Podman runtime and no cluster. `production` is Kubernetes: kind for conformance, then the stage cluster. `production` refuses development and test adapters.
+One static Go binary (`kodama` / `kodactl`) provides:
+- `kodama server`: HTTP API, MCP server, pipeline/service scheduler, NATS consumers, AI Gateway, and MCP Gateway.
+- `kodama git serve`: Per-tenant native Git smart-HTTP worker (`git http-backend`, receive/upload-pack, hooks) over the tenant's repository volume.
+- `kodama step`: Thin in-container wrapper that prepares/mounts `/workspace`, injects authorized secrets, runs step commands, and reports outputs.
+- `kodama agent`: Native Layer 2 agent runtime for planning, filtering, guardrails, validation, Git operations, knowledge-base lookup, and task state transitions.
+- `kodactl`: User, operator, and in-container CLI.
 
 ## Responsibilities
 
-| System | Authority |
+| Component | Responsibility |
 | --- | --- |
-| PostgreSQL | Kodama work/history, run/attempt/gate state, project configuration, artifact/deployment metadata, outbox/inbox; standalone identity/credential state or explicit hosted projections under the core contract |
-| NATS JetStream | Durable asynchronous event delivery, redelivery, and notifications |
-| Git | Published source checkpoints and per-run retained commits. External repositories today; internally hosted repositories, one worker and volume per tenant, under the designed ADR 0011 |
-| S3-compatible storage | Reports, transcripts, images of test results, retained logs; temporary bundle transfer |
-| OCI registry | Built image manifests/blobs addressed by digest |
-| Kubernetes | Actual workload execution and observed Job/Pod state |
-| KMS | Required. Wrapping KEKs for scope keys; Go derives per-revision value keys |
+| **PostgreSQL** | 15-table relational store with tenant RLS (`tenants`, `users`, `memberships`, `projects`, `repositories`, `pipelines`, `runs`, `run_steps`, `services`, `tasks`, `artifacts`, `secrets`, `agent_sessions`, `mcp_servers`, `audit_events`). |
+| **NATS JetStream** | Internal message bus capturing and relaying Git push/tag/merge triggers, task state transitions, step/agent coordination signals, releases, and promotions. |
+| **Native Git service** | Hosts code and Markdown knowledge-base repositories under `<tenant>/context` and `<tenant>/<project>/*`; auto-indexes `.kodama/<processname>.yaml`. |
+| **Container runtime** | Runs pipeline steps (`run_steps`) with a shared `/workspace` and support `services` (scoped to tenant, project, or pipeline) on Kubernetes (`production`), Podman (`test`), or Process (`development`). |
+| **KMS / Keyfile** | Wraps encryption keys for `secrets` (AWS KMS, GCP Cloud KMS, or Scaleway Key Manager in `production`; local keyfile in `test`/`development`). |
+| **External registries & targets** | Store published production artifacts (OCI images, packages, bundles); Kodama tracks metadata and digests in `artifacts`. |
 
-`attempt_private` (current): no shared writable source volume is required and attempts use private clones. `run_shared` ([ADR 0010](../adr/0010-run-workspace-services-builders.md); designed, not delivered): one bounded disposable scratch volume per run, prepared once, mounted by one attempt at a time, plus run-scoped support services and a pinned execution policy; it is never a source or recovery authority. Publication passes through a control-plane Git writer using expected-tip CAS; a database row alone does not fence a remote writer. See [workspaces](../specs/workspaces.md).
+## Permission model
 
-## Internal Git service (designed)
-
-Under [ADR 0011](../adr/0011-internal-tenant-git-service.md) Kodama hosts project repositories itself. Each tenant has one Git worker running native Git (`git http-backend`, receive/upload-pack, hooks, maintenance) over one durable volume, in a Kodama-managed service namespace that mounts nothing else and holds no database or broker credentials. Every clone and push, from people and from steps, goes to the server's `/git/` endpoint, which authenticates the Git grant, authorizes the repository and forwards to the tenant's worker. Before Git moves any ref, the worker's `pre-receive` hook asks the server to authorize each update and record a push record; with the refs locked, its `reference-transaction` hook journals the transaction and obtains commit intent or aborts; `post-receive` confirms, and the server commits a `git.refs_updated` event through the outbox, which pipeline triggers consume. PostgreSQL owns repository metadata, permissions and push records; Git owns history. The contract is [Git service](../contracts/git-service.md); the current external-host model stays in force until the T-133 cutover.
-
-## Dispatch and completion
-
-1. API commits run/input snapshot and outbox event.
-2. Publisher durably publishes to JetStream; a crash may cause duplicate delivery.
-3. Consumer deduplicates local effects; the reconciler also periodically scans nonterminal state.
-4. A short transaction claims an eligible attempt and writer/capacity. External Kubernetes calls occur afterward.
-5. The runtime (Kubernetes in staging and production) creates/observes a deterministic Job with `backoffLimit: 0` and injected `kodama step`.
-6. Entrypoint admits, clones (`attempt_private`; in `run_shared` it verifies the already prepared shared workspace), executes, collects outputs, and requests source publication where applicable.
-7. Result verification commits final state/evidence/outbox. Gates retain pending records without Pods.
-
-A Job is not an exactly-once guarantee. Unknown outcomes remain explicit until observed or resolved. External scripts use stable action keys; deployment rows precede apply. [Runtime contract](../implementation/step-entrypoint.md) and [event contract](../contracts/event-catalog.md) define the seams.
-
-## Installation and isolation
-
-Helm installs the server and configuration on Kubernetes. AWS, GCP, and Scaleway are the supported clouds. PostgreSQL and that cloud's KMS are required; NATS, Git, S3, registry, and OIDC are declared integrations. Development pins a local keyfile instead of a cloud KMS. Kubernetes live log access and retained log artifacts work without Loki; operators can add Loki for aggregation.
-
-O-07 starts with mutually trusting tenant engineers on regular Kubernetes containers, using tenant namespaces, RLS, scoped credentials, restricted Pods (the pinned rootless-builder execution policy for `run_shared` runs once qualified), network policies and quotas. gVisor, Substrate and other isolation/security options are deferred extensions requiring their own qualification. The current trusted-engineer scope does not wait for those backends. On-premises/hosted authority contracts remain shared; execution trust and supported capacity are declared separately.
+1. **User RBAC (`memberships`):** External OAuth/OIDC authenticates users; roles (`admin`, `engineer`, `reviewer`, `operator`, `viewer`) control what a user can configure or resolve in a tenant or project.
+2. **Project-space workload access:** Any step or agent running in a project is issued a scoped run token granting access to the resources provisioned and configured in that project space (the project's Git repositories, tenant/project knowledge base, mounted secrets, scoped services, tasks, and gateways) while isolating it from other tenants.

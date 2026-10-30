@@ -27,6 +27,7 @@ import (
 const (
 	AssemblyScaffold = "scaffold"
 	AssemblyCore     = "core"
+	AssemblyKernel   = "kernel"
 )
 
 // CoreConfig is the complete, explicit configuration of the core assembly.

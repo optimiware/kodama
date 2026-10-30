@@ -1,14 +1,21 @@
 ---
-status: accepted
+status: superseded by ADR 0013
 ---
 
 # ADR 0012: Container-first SDLC and artifact releases
+
+> **Superseded by [ADR 0013](0013-two-layer-architecture-and-domain-simplification.md) (2026-10-30).**
+> ADR 0013 keeps this record's container primitive, metadata-only external
+> artifacts and tool-neutral delivery. It replaces the artifact catalogue,
+> release-receipt and versioned-compatibility scope with the two-layer model and
+> the 15-table schema. The text below is retained as history, not current
+> implementation direction.
 
 **Date:** 2026-10-30
 
 **Decision:** owner-approved in the artifact/design discussion; [O-34](../decisions.md#container-first-sdlc-and-artifacts--2026-10-30-o-34).
 
-**Status:** accepted direction; implementation and acceptance pending. This documentation change does not enable new interfaces or change admitted runs.
+**Status:** superseded by [ADR 0013](0013-two-layer-architecture-and-domain-simplification.md). Historical: accepted direction with implementation and acceptance pending at the time of decision.
 
 **Baseline:** `github.com/optimiware/kodama` at `2ff20310e4fd5005bfb5c5ba783113e9619fb076` (integrating [ADR 0011](0011-internal-tenant-git-service.md)). Implementation handoff: [container-first SDLC refinement](../implementation/container-sdlc-refinement.md).
 

@@ -55,10 +55,10 @@ func newEnv(t *testing.T) *env {
 	e := &env{db: db, mig: mig}
 	e.exec(t, `
 INSERT INTO tenants (id, key, display_name) VALUES ('tenant-a', 'a', 'Tenant A'), ('tenant-b', 'b', 'Tenant B');
-INSERT INTO projects (tenant_id, id, key, active_wip_limit)
-  SELECT 'tenant-a', 'pa' || n, 'pa' || n, 3 FROM generate_series(1, 3) n;
-INSERT INTO projects (tenant_id, id, key, active_wip_limit)
-  SELECT 'tenant-b', 'pb' || n, 'pb' || n, 3 FROM generate_series(1, 5) n;
+INSERT INTO projects (tenant_id, id, key, task_workflow)
+  SELECT 'tenant-a', 'pa' || n, 'pa' || n, '{}' FROM generate_series(1, 3) n;
+INSERT INTO projects (tenant_id, id, key, task_workflow)
+  SELECT 'tenant-b', 'pb' || n, 'pb' || n, '{}' FROM generate_series(1, 5) n;
 INSERT INTO users (id, issuer, subject) VALUES
   ('u1', 'https://issuer.example', 'subject-1'), ('u2', 'https://issuer.example', 'subject-2'),
   ('u3', 'https://other.example', 'subject-1');
@@ -67,7 +67,7 @@ INSERT INTO memberships (tenant_id, id, user_id, project_id, role) VALUES
   ('tenant-a', 'm2', 'u1', 'pa1', 'engineer'),
   ('tenant-b', 'm3', 'u1', NULL, 'viewer'),
   ('tenant-b', 'm4', 'u2', NULL, 'reviewer');
-INSERT INTO audit (tenant_id, id, actor_type, actor_id, action, resource_type, resource_id)
+INSERT INTO audit_events (tenant_id, id, actor_type, actor_id, event_type, resource_type, resource_id)
   VALUES ('tenant-a', 'au-a', 'system', 'system', 'seed', 'project', 'pa1'),
          ('tenant-b', 'au-b', 'system', 'system', 'seed', 'project', 'pb1');`)
 	return e

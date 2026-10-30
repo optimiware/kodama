@@ -22,8 +22,8 @@ type Config struct {
 func LoadConfig(getenv func(string) string) (Config, error) {
 	c := Config{HTTPAddr: ":8080", LogLevel: slog.LevelInfo, ShutdownTimeout: 10 * time.Second, Assembly: AssemblyScaffold}
 	if v := getenv("KODAMA_ASSEMBLY"); v != "" {
-		if v != AssemblyScaffold && v != AssemblyCore {
-			return c, fmt.Errorf("KODAMA_ASSEMBLY must be %q or %q", AssemblyScaffold, AssemblyCore)
+		if v != AssemblyScaffold && v != AssemblyCore && v != AssemblyKernel {
+			return c, fmt.Errorf("KODAMA_ASSEMBLY must be %q, %q or %q", AssemblyScaffold, AssemblyCore, AssemblyKernel)
 		}
 		c.Assembly = v
 	}

@@ -1,52 +1,66 @@
-# Database schema sketch
+# Database schema
 
-This is the shared schema baseline. `internal/storage/migrations/001_schema.sql` is the squashed schema of every capability in dependency order and `002_grants.sql` the runtime role's grants over it; capability packages own queries, and later schema changes append one contribution each. All tenant-owned relations use explicit `tenant_id`, and project-owned relations additionally use `project_id`. Composite foreign keys enforce matching ownership. Times are UTC; IDs are opaque; integer versions drive optimistic concurrency.
+**Phase 2 implementation of [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md).** There are **14 domain tables plus `audit_events`: 15 product tables**. The migration runner's `schema_migrations` ledger is separate. The earlier “14 total” was a counting error; audit/outbox persistence is required.
 
-Local `tenants`/`users`/`memberships` and encrypted secret values describe standalone authority. In Optimi-hosted operation, selected O-18 uses the verified Optimi OAuth UUID `tenant_id` as the tenant ownership/RLS identity, with qualified role claims and current access checks. T-061 defines any compatibility constraints or migrations; existing opaque-ID fixtures are not hosted UUID acceptance. Selected O-19 reuses the KMS-encrypted PostgreSQL secrets module with immutable pins, scoped delivery and an agreed hosted read-for-use interface. Local projections do not independently grant access, and Platform tables are not queried as a shortcut. Project/workflow state remains Kodama-owned in either profile.
+The executable schema is [001_schema.sql](../../internal/storage/migrations/001_schema.sql), with runtime privileges in [002_grants.sql](../../internal/storage/migrations/002_grants.sql). [Phase 2 handoff](simplification-phase-2.md) records implementation boundaries and verification. Existing server queries are ported in Phase 3.
 
-| Tables | Key data and constraints | Owner |
-| --- | --- | --- |
-| `tenants`, `projects` | Unique tenant/project keys; project settings and active WIP limit | T-002 |
-| `users`, `memberships` | Unique issuer/subject; tenant/project role binding uniqueness | T-002 schema, T-010 behavior |
-| `audit` | Actor/action/resource/version/reason; append-oriented safe metadata | T-002 |
-| `outbox`, `inbox` | Stable event ID; durable publication claim/status; unique consumer/event result | T-005 |
-| `idempotency` | Unique principal/scope/method/route/key, separate request hash, response and expiry | T-004 |
-| `work_items`, `work_item_history` | State, spec/criteria, content revision, blocked reason, parent, version; history is immutable | T-011 |
-| `variables`, `variable_versions`, `secrets`, `secret_versions` | Project/name uniqueness; secret envelopes and `revoked_at`; immutable logical values | T-012 |
-| `workspaces` | Unique work item, repo/ref, accepted commit, writer attempt, pending publication refs, state/error | T-013 |
-| `pipeline_definitions` | Project/name/version and content digest uniqueness; canonical body | T-014 |
-| `artifacts` | Attempt/producer, kind, digest, size, storage key, upload completion, source provenance | T-015 |
-| `runs`, `step_runs`, `step_attempts` | Pinned inputs, purpose, status/reason, cancellation, definition step identity, attempt ordinal, deterministic Job name/UID | T-020 |
-| `agent_profiles` | Immutable project/profile version, image/wrapper, model/tool limits | T-030 |
-| `model_requests`, `model_usage` | Run/attempt, one-in-flight claim, request count, observed/estimated tokens | T-032 |
-| `mcp_servers`, `mcp_sessions` | Scoped registration, endpoint/tool list, caller-bound remote-session mapping/expiry | T-033 |
-| `gates` | Run/step, unique subject digest/context, pending/approved/rejected, decision actor/reason, expiry/invalidation | T-034 |
-| `environments`, `deployments` | Target namespace, secret ref, config; unique step action key, artifact/source/config, expiry/deletion | T-035 |
-| `webhook_deliveries` | Provider/project/delivery ID uniqueness, verified event and trigger result | T-036 |
-| `notification_deliveries` | Consumer/event/destination uniqueness, attempts, terminal error, provider receipt | T-041 |
-| `work_item_dependencies` | Same-project predecessor/successor; no self/cycles | T-045 |
-| `repositories` (designed) | Project-unique name, immutable ID, default branch, hosting, status/reason, version | T-127 |
-| `git_push_records` (designed) | Unique repository/receive ID; actor, grant, origin run, per-ref old/new/outcome, status | T-130 |
-| Tenant lifecycle fields / backend deletion receipts | Admission disabled/deletion timestamps and attributable per-backend retention/deletion results | T-056 |
+## Tables
 
-Foreign keys involving execution are added after the run tables exist; T-020 adds writer-attempt references through its own migration contribution. Artifact upload rows created before execution exists in development cannot admit runtime writes until integrated authentication is wired. IDs and ownership still validate through the final relational constraints.
+| Table | Ownership and principal data |
+| --- | --- |
+| `tenants` | Unique tenant key, display name, settings, version |
+| `users` | Global external principal mapping, unique `(issuer, subject)`; tenant-filtered visibility |
+| `memberships` | Tenant/project role binding; tenant-wide bindings have null project; null-safe uniqueness |
+| `projects` | Tenant-owned key, settings, complete `task_workflow` JSON object, version |
+| `repositories` | Tenant/project owner, relative `name`, default branch, provisioning/ready/archived status. Full Git path is rendered from owner keys, rather than stored redundantly |
+| `pipelines` | Project, optional repository, process name, one complete `definition` JSON object, `source` (`git` or `api`), Git `source_commit`, version |
+| `tasks` | Project, kind, title/body, project-defined state, parent, optional blocker, `parked_at`, `resume_state`, role/user assignment, optional repository/branch, context, resolution, version |
+| `runs` | Pipeline and optional task, immutable definition/input/source/binding snapshots, trigger/request deduplication keys, status, cancellation and cleanup progress |
+| `run_steps` | Run, step key and ordinal, image, runtime identity, status/exit code, log URI, outputs. One row per step per run; no agent-specific kind |
+| `services` | Tenant/project/run scope, image/configuration, endpoint/runtime identity, status; scope and nullable owners are checked together |
+| `secrets` | Tenant/project name, ciphertext, self-contained encryption envelope and key reference, version, revocation timestamp |
+| `artifacts` | Immutable external metadata, producing run/optional step/task, URI, kind and digest. Preview URLs may have no content digest |
+| `agent_sessions` | Project/run/step, optional task, model, status, usage counters, messages or transcript reference, result |
+| `mcp_servers` | Tenant/project registration, URL, allowed tools, optional same-project or tenant-shared secret |
+| `audit_events` | Immutable actor/resource/payload/time plus mutable publication timestamps, retry count and next attempt time |
+
+JSON is for documents and snapshots. Ownership, identities, queryable states, versions and references remain relational. No independently editable `steps` definition table, raw-YAML mirror or separate trigger document duplicates `pipelines.definition`. YAML presentation is reconstructed from the stored document; comments/formatting remain in Git.
+
+## Ownership and constraints
+
+- Every tenant-owned relation has explicit `tenant_id`; project records also carry `project_id`. Composite foreign keys reject cross-project references even within one tenant.
+- A repository's relative name may contain nested slash-separated segments; tenant-level repositories use `context`. Routing resolves existing tenant/project keys and authorizes creation before associating the repository. A path is not permission to create a project.
+- Null-safe unique constraints cover tenant-level memberships, repositories, services, secrets and MCP registrations, and API-managed pipelines with no repository.
+- `services.scope = pipeline` means **one run's lifetime**: both project and run are required. Project services have no run; tenant services have neither. Long-lived service reconciliation is Phase 3.
+- Artifact/session step references include the producing run ID, preventing attribution to a step in a different run.
+- MCP secret references carry the secret's project scope separately. A project may select its own or a tenant-shared secret, never another project's. Tenant-wide MCP registrations cannot select a project's private secret.
+- Runtime cannot rewrite run inputs, source/binding/definition snapshots, artifact metadata or event payloads. State updates have narrow column grants. Runtime cannot truncate tables or access the migration ledger.
+
+## Project workflows and decisions
+
+`projects.task_workflow` stores the [task workflow](../specs/work-management.md): initial state, states, terminal states, allowed edges, state-to-pipeline triggers and inbox open/resolved states. No SQL enum fixes a project's workflow. `internal/tasks` validates it and protects transitions.
+
+Parking is represented by `parked_at`, `blocked_by_id` and `resume_state`; all three must be set or all absent. The business state is retained, so projects need not invent a universal `parked` state. A resolution stores `approved`, `rejected` or `answered`, actor, role, answer and time. Rejection never promotes a task. Resolved requests are immutable through the task store; changed decisions require a new request. Parked candidate context cannot be silently edited.
+
+The task persistence port has memory and PostgreSQL adapters with one shared contract. Its transaction joins parent/request updates and audit/outbox appends. SQL locks the project before reading its workflow; memory uses one `memdb.Update`. The store checks versions; authorization, trigger dispatch, reference-peer wiring and API operations are Phase 3.
 
 ## Transaction boundaries
 
-- Work mutation: version check + work/history + audit + outbox.
-- WIP transition: lock project + count active + transition/history/audit/outbox.
-- Dispatch: lock eligible run/step + check limits/cancellation + insert unique attempt + reserve writer + outbox. No Kubernetes call inside the transaction.
-- Result: validate scoped immutable output references, then lock attempt/run/workspace and commit finalization/audit/outbox. Git publication is reconciled before success is acknowledged; no distributed transaction is assumed.
-- Gate: lock current subject/context, decide once, record audit/outbox. Progression rechecks applicability.
-- Push authorization (designed): check grant/current authority + insert push record and entries. Commit intent: lock the record, move entries `authorized → committing` only if unsettled and the attempt is live; Git commits the refs afterwards. Confirmation marks entries applied with audit/outbox; reconciliation settles the rest from worker evidence.
-- Consumer: inbox claim and local effect commit together. External effects are represented by their existing deployment/notification records before calls.
+- Task mutation: project/workflow lock, expected task version, related task changes and event append commit together. No network call runs in that transaction.
+- Admission: persist the entire run snapshot and its step records together. `runs.trigger_key` identifies one logical trigger delivery per pipeline. User submission deduplicates `(project, principal, request_key)`; `request_hash` is compared, not part of the unique key.
+- Outbox: commit the event with state, publish outside SQL using its stable ID, then update publication progress. A crash may redeliver. Consumers use resource uniqueness or transactional version checks; JetStream alone does not make database effects exactly once.
+- Git and container effects remain outside SQL transactions. Durable reconciliation of external effects is a Phase 3 responsibility, not removed by the smaller schema.
 
-## Queue and indexes
+## Secrets and run history
 
-Index nonterminal runs, pending steps/next-attempt time, unpublished outbox age, active writer, tenant/project list sort keys, and expiring previews. Use short row-lock transactions and durable claim timestamps for external dispatch/publication work; never hold SQL locks across network requests. Polling repairs lost wakeups while NATS delivers durable domain events.
+The single secret row contains ciphertext and envelope metadata sufficient to decrypt it with its referenced KMS/keyfile wrapper. Authenticated data continues to bind ownership, secret ID and revision. Ordinary configuration lives in the project or pipeline document.
+
+Runs retain secret identity/revision references, not plaintext. If a current-only secret has rotated or been revoked before use, resolution fails rather than silently substituting its new value. A new run can bind the new revision. Historical secret-value recovery is not supplied by this schema.
 
 ## RLS and migration policy
 
-Use a non-owner application role and transaction-local validated tenant context. Global user mapping and membership discovery have narrow principal-filtered queries; worker tenant enumeration exposes tenant IDs only. Production tasks test grants and RLS with real pooled connections.
+All 15 product tables enable and force RLS. `WithTenant` sets validated transaction-local context under a non-owner role. Global user visibility is filtered through memberships; principal discovery and worker tenant enumeration use narrow, PUBLIC-revoked definer functions. Tenant RLS is supplemented by project predicates and operation authorization.
 
-Schema changes are reviewed before dependent agents start. The baseline and every later migration are immutable once merged: the runner refuses an edited checksum, an applied ID missing from the manifest, and a pending migration ordered before an applied one. Component tests that exercise one module without the rows another module owns drop the cross-module foreign key explicitly; composition tests cover those links against real rows. Production recovery verifies database/Git/blob/KMS consistency together.
+This is an intentional **fresh-database prerelease reset**. Existing checksums are rejected before applying changes; the migration runner never drops or rewrites an existing database. Use a new isolated database for the reset. Later migrations append to this new baseline. The application manifest contains only these two migrations; legacy run-resource/grant/provenance contributions are not appended.
+
+No deployed database was reset as part of Phase 2. The legacy server explicitly refuses the new schema until Phase 3 replaces its adapters.

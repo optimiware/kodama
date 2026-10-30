@@ -5,16 +5,17 @@ Use an ADR when a choice is costly to reverse, surprising without context, and t
 | ADR | Status | Decision |
 | --- | --- | --- |
 | [0001](0001-native-kubernetes-jobs.md) | Accepted | Native Kubernetes Jobs for step execution |
-| [0002](0002-postgres-state-and-events.md) | Accepted | PostgreSQL state with an outbox and NATS event delivery |
+| [0002](0002-postgres-state-and-events.md) | Simplified by [0013](0013-two-layer-architecture-and-domain-simplification.md) | PostgreSQL state with NATS JetStream event bus |
 | [0003](0003-shared-control-plane.md) | Accepted | Shared control plane with tenant-scoped execution |
-| [0004](0004-logical-workspaces.md) | Accepted | Durable logical workspaces paired with actionable work items |
-| [0005](0005-git-backed-workspaces.md) | Accepted | Git checkpoints, private clones, and controlled source publication |
+| [0004](0004-logical-workspaces.md) | Superseded by [0013](0013-two-layer-architecture-and-domain-simplification.md) | Durable logical workspaces paired with actionable work items |
+| [0005](0005-git-backed-workspaces.md) | Superseded by [0013](0013-two-layer-architecture-and-domain-simplification.md) | Git checkpoints, private clones, and controlled source publication |
 | [0006](0006-hexagonal-domain-design.md) | Accepted | Prefer lightweight hexagonal ports/adapters and DDD entities |
 | [0007](0007-platform-core-and-agent-layer.md) | Accepted | Platform is the company core; Kodama owns the agent/SDLC layer |
 | [0008](0008-runtime-seam.md) | Accepted | One runtime seam: Process for tests, Podman locally, Kubernetes for staging |
 | [0009](0009-environments.md) | Accepted | Three environments: development in memory, test on Podman, production on Kubernetes |
-| [0010](0010-run-workspace-services-builders.md) | Accepted (contract; delivery pending) | One disposable run workspace, run-scoped support services, and a rootless builder baseline |
-| [0011](0011-internal-tenant-git-service.md) | Accepted (design; delivery pending) | Internal tenant Git service: project repositories hosted with native Git, one worker and volume per tenant |
-| [0012](0012-container-sdlc-and-artifact-releases.md) | Accepted (direction; implementation pending) | Ordinary containers/secrets, optional agent profiles, immutable artifact releases and tool-neutral publication/deployment |
+| [0010](0010-run-workspace-services-builders.md) | Simplified by [0013](0013-two-layer-architecture-and-domain-simplification.md) | Shared run workspace, scoped container services, and rootless builders |
+| [0011](0011-internal-tenant-git-service.md) | Simplified by [0013](0013-two-layer-architecture-and-domain-simplification.md) | Internal tenant Git service with Gerrit-style `<tenant>/<project>/*` hierarchy |
+| [0012](0012-container-sdlc-and-artifact-releases.md) | Superseded by [0013](0013-two-layer-architecture-and-domain-simplification.md) | Container-first SDLC and metadata-only external artifacts |
+| [0013](0013-two-layer-architecture-and-domain-simplification.md) | Accepted | Two-layer functional architecture (Core Kernel + Agentic Shell), 14 domain tables plus audit/outbox |
 
-Accepted records capture owner-confirmed choices. [ADR 0011](0011-internal-tenant-git-service.md) amends [ADR 0004](0004-logical-workspaces.md) and [ADR 0005](0005-git-backed-workspaces.md) for internally hosted repositories only; external repositories and admitted runs keep their current model until the T-133 cutover. Proposed records capture the baseline recommended for implementation. Detailed behavior remains in the relevant specifications. [ADR 0010](0010-run-workspace-services-builders.md) amends [ADR 0005](0005-git-backed-workspaces.md) and [ADR 0008](0008-runtime-seam.md) for the versioned `run_shared` model only (see their amendment sections); their original decisions and the `attempt_private` model remain current until the documented cutover, and acceptance records the contract, not delivery or qualification.
+[ADR 0013](0013-two-layer-architecture-and-domain-simplification.md) is the governing architecture baseline for Kodama. Earlier ADRs remain in this directory for historical context.

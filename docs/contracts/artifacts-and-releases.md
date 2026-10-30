@@ -1,6 +1,8 @@
 # Artifact/release and generic delivery contract refinement
 
-**Status:** ADR 0012 semantic contract; executable shapes are frozen by T-140 before implementation. Existing `api/artifacts.yaml`, `api/delivery.yaml`, pipeline/runtime schemas and hashes remain authoritative for the current executable path. Illustrations below are conceptual, not accepted request payloads or new pipeline fields.
+> **Superseded by [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md).** Historical proposal; no wire shape below is a current contract. The Phase 3 contract is the metadata-only artifact record and the simplified HTTP/MCP interface.
+
+**Status:** historical ADR 0012 semantic contract, superseded. Existing `api/artifacts.yaml`, `api/delivery.yaml`, pipeline/runtime schemas and hashes remain the legacy executable path until Phase 3 porting.
 
 ## Immutable references
 
