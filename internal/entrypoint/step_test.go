@@ -353,7 +353,8 @@ func TestChildEnvLayering(t *testing.T) {
 	}
 	want := map[string]string{
 		"KODAMA_ATTEMPT_ID": "att_unit01", "KODAMA_RUN_ID": "run_01", "KODAMA_STEP_ID": "spoofed", // context env is applied after the base layer
-		"KODAMA_WORKSPACE": u.cfg.WorkspaceDir, "KODAMA_OUTPUTS_DIR": u.cfg.OutputsDir, "KODAMA_RESULTS_FILE": u.cfg.ResultsFile,
+		"KODAMA_SERVER_URL": u.cfg.ServerURL,
+		"KODAMA_WORKSPACE":  u.cfg.WorkspaceDir, "KODAMA_OUTPUTS_DIR": u.cfg.OutputsDir, "KODAMA_RESULTS_FILE": u.cfg.ResultsFile,
 		"KODAMA_SECRETS_DIR": u.cfg.SecretsDir, "KODAMA_INPUT_MY_NAME": "x y", "KODAMA_INPUT_COUNT": "5", "KODAMA_INPUT_FLAG": "true",
 		"PATH": "/override", "CUSTOM": "from-secret", "DB_PASS": "p", "HOME": u.cfg.ChildEnv["HOME"],
 		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": u.cfg.WorkspaceDir,

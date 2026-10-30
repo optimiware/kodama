@@ -52,7 +52,7 @@ func main() {
 	cmd := os.Args[1]
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	c := common{}
-	fs.StringVar(&c.stateURL, "state-url", os.Getenv("KODAMA_STATE_URL"), "state API base URL")
+	fs.StringVar(&c.stateURL, "state-url", envFirst("KODAMA_STATE_URL", "KODAMA_SERVER_URL"), "state API base URL")
 	fs.StringVar(&c.attempt, "state-attempt", os.Getenv("KODAMA_ATTEMPT_ID"), "runtime attempt ID")
 	fs.StringVar(&c.binding, "state-binding", "", "declared state binding alias")
 	fs.StringVar(&c.tokenFile, "state-token-file", os.Getenv("KODAMA_TOKEN_FILE"), "runtime token file")
@@ -216,6 +216,15 @@ func envOr(name, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envFirst(names ...string) string {
+	for _, name := range names {
+		if v := os.Getenv(name); strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func usage() {

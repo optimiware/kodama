@@ -466,6 +466,7 @@ func (a *attempt) childEnv(secrets *secretSet) []string {
 	env["KODAMA_ATTEMPT_ID"] = string(c.AttemptID)
 	env["KODAMA_RUN_ID"] = string(c.RunID)
 	env["KODAMA_STEP_ID"] = c.StepID
+	env["KODAMA_SERVER_URL"] = cfg.ServerURL
 	env["KODAMA_WORKSPACE"] = cfg.WorkspaceDir
 	env["KODAMA_OUTPUTS_DIR"] = cfg.OutputsDir
 	env["KODAMA_RESULTS_FILE"] = cfg.ResultsFile
