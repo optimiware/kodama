@@ -115,6 +115,15 @@ Hooks are bounded commands in the declared workload image with normal execution 
 
 **Goal:** make the kernel a standalone pipeline runtime that can execute, pause, recover, and clean up without PostgreSQL, NATS, Git, HTTP, tasks, identity, or agents.
 
+#### P1.0 Boundary relocation
+
+One ordered owner moves the shell responsibilities out of the kernel before parallel replacement work starts. Relocation alone does not prove isolation.
+
+- Move `internal/kernel/{api,bus,dispatch,store,secret,serve}` into explicitly enumerated shell packages, and keep the existing blocking runner under an explicit transitional owner until the replacement engine is ready.
+- Keep pure pipeline definitions in `internal/kernel/pipeline`; move Git trigger interpretation to the shell.
+- Include every affected consumer in the relocation manifest: `internal/app`, `dev/internal/devenv`, and any test or tooling import.
+- Freeze the destination manifest so later tasks have stable owned paths; do not refactor runner or store behavior in the same change.
+
 #### P1.1 Kernel-owned model and ports
 
 Define a small `internal/kernel` API that is independent of the shell:
@@ -152,9 +161,12 @@ Required behavior:
 
 - One executable step holds the workspace at a time.
 - A prior step must settle and release the workspace before the next starts.
+- A claim is a lease: owner identity, expiry, renewal, takeover and a monotonic fence. A stale writer cannot commit a transition after takeover.
+- Database fencing is not enough for external effects: workloads carry a stable identity and immutable specification identity, launch evidence is conservative, and delayed creates are rejected.
 - Retries are allowed only when launch is affirmatively known not to have reached the command; uncertain outcomes are reconciled, not replayed.
-- Cancellation blocks new claims and drives stop/removal.
-- A run is terminal only after owned resources are confirmed stopped and removed, or cleanup remains visibly pending.
+- Cancellation blocks new execution claims but still permits stop, removal and reconciliation claims.
+- Execution outcome and cleanup are tracked separately. A run is terminal only after owned resources are confirmed stopped and removed, or cleanup remains visibly pending with retained resource identities and bounded retries.
+- Authority for a step is revoked when its workload settles, not only when the run ends.
 - Fail-fast and dependency ordering are deterministic and tested.
 
 #### P1.4 Waits, signals, and conditions
@@ -162,8 +174,9 @@ Required behavior:
 - Freeze the wait contract: identity, assignment/correlation, expected input, accepted schema, deadline, consumed signal identity, result, and continuation.
 - Freeze a bounded condition grammar over declared inputs, prior step results, and wait outcomes. It must not execute arbitrary code or read shell state.
 - Persist the wait before announcing it.
-- Make consumption idempotent: duplicate, late, stale, cancelled, or foreign signals cannot advance a run twice.
+- Make consumption idempotent: duplicate, late, stale, cancelled, or foreign signals cannot advance a run twice. The guarantee is one committed consumption with idempotent continuation; command side effects are not exactly-once.
 - Define deadline behavior: expire the wait and take the declared timeout branch, or fail the run when no branch exists.
+- Resolution, expiry and cancellation race on one version-checked decision. A duplicate request returns the recorded result instead of creating a second continuation.
 - Define workspace/service lifetime during a wait. Loss of required state fails the run; it never silently replays prior commands.
 - Add tests for restart between open/announce/consume, lost acknowledgment, and concurrent resolution.
 
@@ -186,11 +199,12 @@ Required behavior:
 #### P1.7 Exit gate
 
 - A plain multi-step pipeline runs with memory state and the Process adapter.
-- A waiting pipeline survives restart and resumes exactly once.
-- Cancellation, timeout, service loss, and uncertain launch are covered.
+- A waiting pipeline reconstructs from retained state and continues after one committed consumption; duplicate and lost signals converge on the same result.
+- Cancellation, timeout, service loss, uncertain launch and cleanup recovery are covered.
 - Kernel transitive imports contain no shell, SQL/NATS/HTTP client, Git-hosting, task, identity, or agent package.
 - The kernel contract suite passes with no service and no container.
-- **Merge slices:** P1.1/P1.2 together; P1.3/P1.5 together; P1.4; P1.6; P1.7 verification. Each slice is independently reviewable and leaves the current executable composition intact until P3 cutover.
+- **Evidence distinction:** memory tests prove reconstruction over retained state. A real controller-crash restart needs PostgreSQL and a recovery-capable backend and is qualified at P3, not claimed here.
+- **Merge slices:** P1.0/P1.1 together; P1.2; P1.3/P1.4 (one engine owner); P1.5 per backend; P1.6; P1.7 verification. Each slice is independently reviewable and leaves the current executable composition intact until P3 cutover.
 
 ### P2 — Persistence and native shell
 
@@ -198,25 +212,22 @@ Required behavior:
 
 #### P2.1 Schema contribution
 
-Prefer one appended migration (for example `004_pipeline_runtime.sql`) over rewriting the baseline. If the owner chooses a fresh baseline, preserve the same logical changes and refuse an existing checksum rather than transforming data silently.
+Use one ordered schema owner for migration numbering, the manifest, RLS, grants, constraints and schema documentation. Other workstreams submit reviewed requirements; they do not add migrations.
 
-Required changes:
+Sequence the schema in three reviewed stages instead of dropping columns up front:
 
-- `projects`: remove `task_workflow`.
-- `pipelines`: enforce `UNIQUE (tenant_id, project_id, name)`; remove the repository-qualified uniqueness rule; retain repository/source metadata.
-- `tasks`:
-  - add required same-project `pipeline_id`;
-  - add `current_run_id` with same-task/same-project validation;
-  - add `status`, `current_step_key`, `waiting_for`, `assigned_role`, `result`, `progress_version`, `progress_run_version`;
-  - remove `state`, `parked_at`, `resume_state`, `blocked_by_id`, `resolution`, and `resolved_at`;
-  - keep title/body, parent, repository/branch, context, assignment, and optimistic content version.
-- `run_steps`:
-  - add `step_kind` (`container`, `wait`, `condition`);
-  - add wait columns for identity, assignment/correlation, expected input, state, result, deadline, consumed signal, and version;
-  - relax image/command requirements for non-container steps;
-  - add indexes for due waits and task current-run lookup.
-- RLS/grants: preserve tenant predicates, composite ownership, narrow runtime column grants, and forced RLS.
-- Add a migration test for duplicate pipeline names, cross-project references, wait-state constraints, and removed-column absence.
+1. **Expand.** Append nullable/new fields, indexes and compatible grants. Cover the complete P1 execution representation: lease owner/expiry/fence, command intent, workload and resource identities, workspace exclusion, wait state and cleanup evidence. Add `tasks.pipeline_id`, `current_run_id` and the projection fields. Keep `projects.task_workflow` and the existing task state columns readable by the current composition.
+2. **Validate and map.** Detect duplicate `(tenant_id, project_id, name)` pipeline rows and conflicting definition sources. Require an explicit task-to-pipeline mapping for existing tasks; refuse ambiguous mappings rather than inventing a pipeline. Enforce `UNIQUE (tenant_id, project_id, name)` on `pipelines` only after duplicates are resolved.
+3. **Contract.** After the replacement composition and consumers are live and active executions are drained or explicitly settled, enforce required references and remove `projects.task_workflow`, `state`, `parked_at`, `resume_state`, `blocked_by_id`, `resolution`, `resolved_at` and their obsolete grants and indexes.
+
+A fresh isolated database is an explicit owner choice that skips stages 1–2; it is not permission to rewrite a deployed checksum.
+
+Required final shape:
+
+- `tasks`: required same-project `pipeline_id`; `current_run_id` constrained to belong to **that task and project**, not merely the project; `status`, `current_step_key`, `waiting_for`, `assigned_role`, `result`, `progress_version`, `progress_run_version`; title/body, parent, repository/branch, context, assignment and optimistic content version retained. A task has no current run before its first execution and at most one afterwards.
+- `run_steps`: `step_kind` (`container`, `wait`, `condition`); wait identity, assignment, correlation, expected input, state, result, deadline, consumed signal and version; image/command requirements relaxed for non-container steps; indexes for due waits and task current-run lookup.
+- RLS/grants: preserve tenant predicates, composite ownership, narrow runtime column grants, forced RLS, and narrow grants over immutable run snapshots and wait results.
+- Migration tests for duplicate pipeline names, cross-project and cross-task references, wait-state constraints, and removed-column absence at the contract stage.
 
 #### P2.2 Pipeline registry and task use cases
 
@@ -259,14 +270,15 @@ Required changes:
 - Preserve source-free and multi-repository run behavior.
 - Test revoked credentials, unavailable secret versions, and lost workspace state.
 
-#### P2.6 API, CLI, and MCP
+#### P2.6 API, CLI, and MCP adapters
 
-- Publish task operations: create, get, list, start, rerun, inbox, resolve.
-- Remove workflow, transition, park, and blocking-request routes.
+P2 implements transport adapters and their package tests only. P3 owns route/command registration and public interface generation.
+
+- Implement task operations: create, get, list, start, rerun, inbox, resolve.
+- Remove workflow, transition, park, and blocking-request handlers.
 - Add wait inspection and resolution through the same shell use cases.
-- Update `kodactl` command groups and output.
-- Update the native Kodama MCP tools for the same operations.
-- Regenerate the OpenAPI document and Go client; do not publish transitional routes.
+- Implement `kodactl` command handlers and the native Kodama MCP tools over those use cases.
+- Hand constructors and operation contracts to the composition owner; do not regenerate the client or edit app registration here.
 
 #### P2.7 Cutover and exit gate
 
@@ -305,11 +317,11 @@ Required changes:
 
 #### P3.4 Interface publication
 
-- Publish only served HTTP routes in `api/openapi.yaml`.
+- Publish only served HTTP routes in `api/openapi.yaml`; the served-route inventory must match the document.
 - Regenerate `api/client` and verify with `make api-check`.
-- Port CLI and native MCP callers to the same use cases.
+- Register CLI and native MCP commands over the P2 use cases and retire legacy registrations.
 - Remove operations for workflow transitions, gates, release receipts, and legacy delivery.
-- Add contract tests for error envelopes, idempotency, and tenant isolation.
+- Add contract tests for error envelopes, idempotency, tenant isolation and served-interface parity.
 
 #### P3.5 Deployment and developer workflow
 
@@ -333,6 +345,13 @@ Required changes:
 
 #### P4.1 Deletion order
 
+Deletion is dependency-driven, not phase-driven. A package becomes deletable only when its replacement is executable, every retained consumer (including agentic services, adapters, tests and fixtures) has migrated, required recovery and security regressions have moved, and no admitted execution still needs it.
+
+Record a retirement inventory with one row per retired component:
+
+| Retired component | Replacement | Retained consumers migrated | Regression evidence | Deletion owner |
+| --- | --- | --- | --- | --- |
+
 Delete in dependency order, with imports and tests checked after each slice:
 
 1. Workflow/task transition code and its schema consumers.
@@ -341,6 +360,8 @@ Delete in dependency order, with imports and tests checked after each slice:
 4. Legacy work-item, workspace, metrics, and QA engines whose behavior moved to tasks, pipelines, or recipes.
 5. Legacy composition wiring and settings.
 6. Retired API fragments, generated client operations, contract schemas, aliases, and fixtures.
+
+Independent deletion tasks may run on disjoint packages. Shared cleanup stays ordered: composition and API cleanup belong to the composition owner, schema contraction to the schema owner, configuration and chart cleanup to the operations owner, and `go.mod`/`go.sum` cleanup to one final dependency owner after import deletion.
 
 #### P4.2 Preserve before deleting
 
@@ -377,11 +398,16 @@ Do not keep a package only because it has tests; port the behavior that still be
 - The migration baseline is the only schema source; no legacy migration directory remains.
 - The generated API and client contain no retired operations.
 - The codebase reports the before/after package, line, table, and wire-version counts from the completion report.
-- Full unit and scoped integration checks pass after each deletion batch; a failed batch pauses further deletion.
+- Scoped checks pass for each deletion task; the repository batch (`make lint-go test-go-unit`) runs every five merges and at queue drain. A failed batch pauses further merges until repaired.
 
 ### P5 — Externalization and layer completion
 
 **Goal:** finish the layer boundaries and move specialized behavior out of core code.
+
+P5 splits into two portions so deletion is not blocked by late adaptation:
+
+- **P5-A, retained-consumer adaptation.** Starts once kernel/shell contracts are stable and may run alongside P2 and P3. It gates deletion of the legacy packages those consumers import.
+- **P5-B, recipes, knowledge and closeout.** Authors may prepare examples once authoring and public-operation contracts freeze; execution claims wait for real integrated evidence.
 
 #### P5.1 Agentic services on shell contracts
 
@@ -436,17 +462,82 @@ Each recipe must state required images, secrets, shell APIs, and which behavior 
 - Status and traceability match the implemented surface.
 - **Merge slices:** agent adaptation; gateway/proxy separation; recipe set; knowledge conventions; status/acceptance closeout.
 
-## Phase dependencies and review gates
+## Parallel execution model
+
+P0–P5 are acceptance milestones. Implementation runs as dependency-gated workstreams that reintegrate into one branch, so several agents can work at once without competing for the same paths.
 
 ```text
-P0 → P1 → P2 → P3 → P4 → P5
+P0 reviewed documentation
+          │
+P1.0 relocation + P1.1 executable contract checkpoint
+          │
+          ├─ kernel state suite → progression/waits/recovery/cleanup
+          ├─ PostgreSQL schema and native-shell capabilities
+          ├─ Process / Podman / Kubernetes adapters
+          ├─ HTTP / MCP / CLI adapters
+          └─ P5-A retained-consumer adaptation + recipe preparation
+                         │
+                P3 composition and qualification
+                         │
+                     Cutover
+                         │
+          P4 deletion as each dependency is released
+                         │
+             P5-B recipe evidence and final closeout
 ```
 
-- P1 contracts may start after P0 review, but P2 schema work waits for the P1 state/wait contract.
-- P2 may implement the shell while P1 adapters are still being ported, provided the kernel contract is frozen.
-- P3 cutover requires P1 lifecycle evidence and P2 shell evidence.
-- P4 starts only after P3 has a working replacement; deletion is not a substitute for implementation.
-- P5 may begin only after the kernel/shell boundary is stable; agentic work must not block P1–P4.
+A workstream starts when its actual prerequisites are merged, not when an entire numbered phase finishes. P2 may proceed while P1 adapters are still being ported, provided the kernel contract is frozen. P3 cutover needs P1 lifecycle evidence and P2 shell evidence. P4 deletion is not a substitute for implementation and waits for every retained consumer, including P5-A. P5-B closes status and evidence last.
+
+### Reintegration protocol
+
+The integration branch is `task/adr13-pipeline-runtime` in `.work/adr13-pipeline-runtime`. Child tasks branch from a recorded integration checkpoint and reintegrate there; publication to `main` remains a separate explicit decision.
+
+1. The coordinator records the integration checkpoint commit and the task's `owns`, dependencies, check, resources and acceptance names.
+2. The implementer works only in its own worktree and owned paths, runs the declared check and commits. It never pushes, rebases, merges or touches another worktree.
+3. The coordinator rebases the clean candidate onto the current integration tip and renews affected evidence if relevant inputs moved.
+4. An independent reviewer approves the exact candidate diff and the recorded checks.
+5. One serialized merge lane reintegrates the approved candidate, then the coordinator updates the task record and removes only that task's worktree and branch.
+6. `make lint-go test-go-unit` runs on the integration tip every five merges and at queue drain; a failed batch pauses further merges until repaired.
+
+### Workstream ownership
+
+One writer per path. A relocation task owns both source and destination. Existing mixed packages stay read-only to parallel replacement tasks until their extraction or deletion owner acts. Shared interfaces change through a bounded prerequisite task.
+
+| Workstream | Exclusive ownership (target) | Notes |
+| --- | --- | --- |
+| Boundary extraction | `internal/kernel/{api,bus,dispatch,store,secret,serve}` and their consumers; transitional runner | One ordered owner before broad fan-out |
+| Kernel contract | `internal/kernel/pipeline`, new kernel model/port packages, `internal/kernel/runtime` | Freezes C1–C5 and the contract decision table |
+| Kernel engine | `internal/kernel/runner` | One owner delivers progression, waits, recovery and cleanup sequentially |
+| State persistence | `internal/shell/runstate` (memory and PostgreSQL split by subdirectory), `test/support/kernelcontracts` | Shared suites have one owner; backends consume them |
+| Pipeline registry | `internal/shell/pipelines` | Project-unique names, indexing, source conflicts |
+| Task tracking | `internal/shell/tasks` | Content, current execution, projection, inbox |
+| Messaging | `internal/natsbus`, `internal/shell/outbox` | Outbox, deduplication, reconciliation |
+| Git authority | `internal/shell/git`, explicitly assigned `internal/gitservice` and `contracts/git` files | Exact step, candidate and ref authority |
+| Preparation and custody | `internal/shell/sources`, `internal/shell/secrets` | Pinned preparation and scoped credentials |
+| Runtime backends | `internal/runtime/process`, `internal/runtime/podman`, `internal/kube` | Each consumes the shared lifecycle suites |
+| Transports | `internal/shell/api`, `internal/shell/mcp`, `internal/shell/cli` | Adapters and package tests only |
+| Composition and interfaces | `internal/app` (including `apispec`), `cmd/kodama`, `cmd/kodactl`, `api/openapi.yaml`, `api/client`, shared API fragments | One ordered owner; P2 hands over constructors |
+| Operations | `deploy/`, `dev/`, Make/CI targets | Changes to app settings registration pass through composition |
+| Schema | `internal/storage`, schema documentation | Sole migration numbering and grants owner |
+| Agentic adaptation | `internal/agents`, `internal/gateway`, `internal/mcpproxy` | P5-A; gates deletion of legacy consumers |
+
+### Contract decisions to freeze before fan-out
+
+Parallel agents must not independently decide these. The listed resolution is the proposed initial scope; the owning specification records the final choice before parser, engine, SQL and agent adapters implement it.
+
+| Decision | Proposed initial scope |
+| --- | --- |
+| Rework loops | Keep execution acyclic; express rework as declared forward steps or an explicit new run with explicit source/output continuity, never reuse of a discarded workspace |
+| Agent-requested waits | The container settles, records a bounded request/result, then a declared wait consumes it; no mid-command suspension |
+| Meaning of resume | Continue the same run through a declared next step with persisted references; do not replay the previous command |
+| Conditions | Use bounded `when` predicates over declared inputs, prior step results and wait outcomes; add a condition step kind only when a requirement demands it |
+| Rejection and joins | A rejected input is a recorded outcome, not infrastructure failure; skipped prerequisites and joins have explicit semantics; protected steps cannot be reached unconditionally |
+| Deadline races | One atomic version-checked decision across resolution, expiry and cancellation; duplicates return the recorded result |
+| Assignment and correlation | Represent separately; every changed candidate needs a fresh wait identity and decision |
+
+### Capacity
+
+Start with four implementers and scale to six after the contract checkpoint. Reserve reviewer capacity so approved work does not queue behind integration. Give each concurrent session its own `DEV_SCOPE`; serialize jobs that share a service stack or cluster.
 
 Every work package is one or more task-sized merges with its own owned paths, scoped checks, and independent review. A phase gate is not satisfied by a green unit run alone when the phase claims real PostgreSQL, NATS, container, or Kubernetes behavior.
 
