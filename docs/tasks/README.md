@@ -155,6 +155,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-178 Kubernetes runtime behind the kernel contract](T-178-kubernetes-runtime.md) | T-171 | planned |
 | [T-179 Pipeline runtime schema expansion](T-179-schema-expansion.md) | T-172 | planned |
 | [T-180 Traceability for the frozen pipeline-runtime contract](T-180-traceability.md) | T-172 | planned |
+| [T-181 Repair the legacy run_shared fixture](T-181-legacy-run-shared-fixture.md) | T-176 | planned |
 | [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | deferred (parked until stage access) |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
 | [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | done |
