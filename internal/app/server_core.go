@@ -147,6 +147,12 @@ func (c *Core) Handler() http.Handler {
 	// its own authentication (the attempt's session token, never a user
 	// credential) and is not covered by the public router's chain.
 	mux.Handle(runtimePrefix+"/", c.runtime)
+	// The run_shared runtime API (/runtime/v2): preparation and service subjects,
+	// the command-begin and the shared bodies behind the v2 wire guard. Present
+	// only when the installation composed run_shared.
+	if c.runtimeV2 != nil {
+		mux.Handle(runtimeV2Prefix+"/", c.runtimeV2)
+	}
 	// The workload routes of the model gateway and the MCP proxy (T-039), when the
 	// installation selected them: the attempt's runtime token is their only
 	// credential. Unselected, the router below answers its deny-by-default 404.
@@ -159,7 +165,11 @@ func (c *Core) Handler() http.Handler {
 	if c.Triggers != nil {
 		mux.Handle(c.Triggers.Pattern, c.Triggers.Handler)
 	}
-	mux.Handle("/", releaseCreated(c.router))
+	var public http.Handler = c.router
+	if c.sharedPublic != nil {
+		public = c.sharedPublic.Wrap(public)
+	}
+	mux.Handle("/", releaseCreated(public))
 	return mux
 }
 

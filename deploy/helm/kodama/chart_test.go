@@ -1259,3 +1259,89 @@ func Test_helm_preflight_access_review_rbac(t *testing.T) {
 		t.Fatal("no ClusterRole lets the server create SubjectAccessReviews: the tenant preflight would refuse every dispatch")
 	}
 }
+
+// Test_helm_run_shared_render checks the run_shared model (O-30) with real Helm. Disabled (the
+// default) the chart renders none of it and the tenant namespaces stay `restricted`. Enabled it
+// renders the settings section, `baseline` namespaces at the pinned version, the PVC/Service quota
+// and the controller RBAC (namespaced rules for claims, Services, Pods and policies; read-only
+// cluster-scoped rules for volumes, attachments and storage classes); lint passes; and the chart
+// refuses to render it without the record Secrets the run resources need.
+func Test_helm_run_shared_render(t *testing.T) {
+	helmBinary(t)
+	enable := []string{
+		"--set", "runShared.enabled=true", "--set", "runShared.nodeProfilesInstalled=true", "--set", "runShared.admission.runShared=open", "--set", "execution.rbac.manageSecrets=true",
+		"--set-json", `runShared.clusterCIDRs=["10.32.0.0/12"]`,
+	}
+	base := []string{"template", releaseName, ".", "--namespace", releaseNamespace}
+
+	off, stderr, err := helm(t, base...)
+	if err != nil {
+		t.Fatalf("helm template failed: %v\n%s", err, stderr)
+	}
+	if strings.Contains(off, "runShared:") || strings.Contains(off, "persistentvolumeclaims") || strings.Contains(off, "volumeattachments") {
+		t.Fatal("the default render carries run_shared")
+	}
+
+	stdout, stderr, err := helm(t, append(append([]string{}, base...), enable...)...)
+	if err != nil {
+		t.Fatalf("helm template failed: %v\n%s", err, stderr)
+	}
+	docs := parseDocuments(t, stdout)
+	for _, ns := range ofKind(docs, "Namespace") {
+		labels := asMap(dig(ns, "metadata", "labels"))
+		if labels["pod-security.kubernetes.io/enforce"] != "baseline" || labels["pod-security.kubernetes.io/enforce-version"] != "v1.31" {
+			t.Errorf("namespace %s labels %v", nameOf(ns), labels)
+		}
+	}
+	var settings string
+	for _, cm := range ofKind(docs, "ConfigMap") {
+		if strings.HasSuffix(nameOf(cm), "-config") {
+			settings = str(dig(cm, "data", "config.yaml"))
+		}
+	}
+	for _, want := range []string{"runShared:", "legacyFormat: open", "runShared: open", "storageClass: \"sbs-default\"", "isolation: tenant", "publicEgress: true",
+		"seccomp: \"kodama-rootless-build-v1\"", "capabilitiesAdd: [\"SETUID\",\"SETGID\"]", "fsGroup: 1000"} {
+		if !strings.Contains(settings, want) {
+			t.Errorf("the settings document lacks %q", want)
+		}
+	}
+	for _, q := range ofKind(docs, "ResourceQuota") {
+		hard := asMap(dig(q, "spec", "hard"))
+		if hard["persistentvolumeclaims"] == nil || hard["requests.storage"] == nil {
+			t.Errorf("quota %v", hard)
+		}
+	}
+	var clusterReads int
+	for _, role := range ofKind(docs, "ClusterRole") {
+		for _, r := range asList(role["rules"]) {
+			rule := asMap(r)
+			for _, res := range strList(rule["resources"]) {
+				switch res {
+				case "persistentvolumes", "volumeattachments", "storageclasses":
+					clusterReads++
+					for _, verb := range strList(rule["verbs"]) {
+						if verb != "get" && verb != "list" {
+							t.Errorf("ClusterRole %s grants %q on %s", nameOf(role), verb, res)
+						}
+					}
+				}
+			}
+		}
+	}
+	if clusterReads != 3 {
+		t.Errorf("want read rules for persistentvolumes, volumeattachments and storageclasses, got %d", clusterReads)
+	}
+
+	if _, stderr, err := helm(t, append([]string{"lint", "."}, enable...)...); err != nil {
+		t.Fatalf("helm lint with run_shared enabled failed: %v\n%s", err, stderr)
+	}
+	if _, stderr, err := helm(t, append(append([]string{}, base...), "--set", "runShared.enabled=true", "--set", "runShared.nodeProfilesInstalled=true")...); err == nil || !strings.Contains(stderr, "manageSecrets") {
+		t.Fatalf("run_shared rendered without record Secrets: %v\n%s", err, stderr)
+	}
+	if _, stderr, err := helm(t, append(append([]string{}, base...), "--set", "runShared.enabled=true", "--set", "execution.rbac.manageSecrets=true")...); err == nil || !strings.Contains(stderr, "node profiles") {
+		t.Fatalf("run_shared rendered without the node profiles attested: %v\n%s", err, stderr)
+	}
+	if _, _, err := helm(t, append(append([]string{}, base...), "--set", "runShared.enabled=true", "--set", "runShared.podSecurity.version=latest")...); err == nil {
+		t.Fatal("an unpinned Pod Security version was accepted")
+	}
+}

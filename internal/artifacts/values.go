@@ -108,12 +108,36 @@ func (d Digest) Base64() string {
 // Provenance is the trusted source a producing attempt worked from. It is
 // resolved by the execution module, never taken from the caller or from
 // registry annotations. The zero value means the producer had no source.
+//
+// A run_shared attempt works in a scratch workspace that earlier steps may have
+// changed, so its provenance also carries what the server recorded when the
+// attempt's command began (DQ-16): WorkspaceState is clean when the workspace was
+// exactly the commit, and modified when it was not (head moved, tracked files
+// changed or untracked files present); IgnoredPresent discloses ignored files;
+// Lineage is the digest of the lineage the attempt's pinned context carried (the
+// earlier attempts that touched the scratch). They are empty for an
+// attempt_private producer, whose checkout is the pinned commit. A modified
+// workspace is never the commit it started from (Modified), so an artifact built
+// there cannot stand for the approved candidate.
 type Provenance struct {
-	RepositoryURL string
-	Commit        string
+	RepositoryURL  string
+	Commit         string
+	WorkspaceState string
+	IgnoredPresent bool
+	Lineage        string
 }
 
+// Workspace states of a recorded begin.
+const (
+	WorkspaceClean    = "clean"
+	WorkspaceModified = "modified"
+)
+
 func (p Provenance) IsZero() bool { return p == Provenance{} }
+
+// Modified reports that the producing workspace was not the commit it started
+// from: the artifact does not stand for that commit.
+func (p Provenance) Modified() bool { return p.WorkspaceState == WorkspaceModified }
 
 func (p Provenance) Validate() error {
 	if p.IsZero() {
@@ -122,8 +146,21 @@ func (p Provenance) Validate() error {
 	if !repoURLRe.MatchString(p.RepositoryURL) || !commitRe.MatchString(p.Commit) {
 		return invalidf("provenance needs a credential-free HTTPS repository URL and a Git commit")
 	}
+	switch p.WorkspaceState {
+	case "", WorkspaceClean, WorkspaceModified:
+	default:
+		return invalidf("provenance names an unknown workspace state")
+	}
+	if p.WorkspaceState == "" && (p.IgnoredPresent || p.Lineage != "") {
+		return invalidf("workspace provenance needs a recorded state")
+	}
+	if p.Lineage != "" && !lineageRe.MatchString(p.Lineage) {
+		return invalidf("the lineage reference is not a digest")
+	}
 	return nil
 }
+
+var lineageRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // Limits bound what one attempt may keep. OutputBytes, OutputFiles and
 // DiagnosticBytes come from the attempt's immutable context, never from the

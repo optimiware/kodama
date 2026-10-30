@@ -43,10 +43,16 @@ func (a *Artifacts) Evidence(ctx context.Context, scope domain.Scope, id domain.
 	if err != nil {
 		return delivery.ImageEvidence{}, mapArtifacts(err)
 	}
-	return delivery.ImageEvidence{
+	ev := delivery.ImageEvidence{
 		ID: r.ID, Scope: r.Scope, Attempt: r.Attempt, Kind: runtimev1.ArtifactKind(r.Kind), Role: runtimev1.ArtifactRole(r.Role), Usable: r.Usable,
 		Digest: runtimev1.Digest(r.Digest), Provenance: delivery.Source{RepositoryURL: r.Provenance.RepositoryURL, Commit: r.Provenance.Commit},
-	}, nil
+	}
+	if r.Provenance.Modified() {
+		// An image built in a workspace that was not the commit it started from is
+		// not an output of that commit (DQ-16): it matches no deployment source.
+		ev.Provenance = delivery.Source{}
+	}
+	return ev, nil
 }
 
 // Protect implements delivery.Artifacts: an idempotent pin owned by the

@@ -113,17 +113,33 @@ type Registrar struct {
 	digests map[domain.AttemptID]runtimeauth.Digest
 	revoked map[domain.AttemptID]bool
 	Calls   int
+	V2      []runtimeauth.RegisterCommandV2
 	// Fail returns an error for the n-th call (1-based) before it is applied;
 	// FailAfter applies the registration and then fails (a lost response).
 	Fail      func(n int) error
 	FailAfter func(n int) error
 }
 
-var _ kube.Registrar = (*Registrar)(nil)
+var (
+	_ kube.Registrar   = (*Registrar)(nil)
+	_ kube.RegistrarV2 = (*Registrar)(nil)
+)
 
 // NewRegistrar builds an empty registrar.
 func NewRegistrar() *Registrar {
 	return &Registrar{digests: map[domain.AttemptID]runtimeauth.Digest{}, revoked: map[domain.AttemptID]bool{}}
+}
+
+// RegisterV2 implements kube.RegistrarV2 with the semantics of Register; V2 lists
+// the v2 contexts it registered, in order.
+func (r *Registrar) RegisterV2(ctx context.Context, cmd runtimeauth.RegisterCommandV2) (runtimeauth.Registration, error) {
+	reg, err := r.Register(ctx, runtimeauth.RegisterCommand{Scope: cmd.Scope, AttemptID: cmd.AttemptID, Credential: cmd.Credential, Actions: cmd.Actions})
+	if err == nil {
+		r.mu.Lock()
+		r.V2 = append(r.V2, cmd)
+		r.mu.Unlock()
+	}
+	return reg, err
 }
 
 // Register implements kube.Registrar.

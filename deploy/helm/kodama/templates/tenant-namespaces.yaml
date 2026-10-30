@@ -1,5 +1,6 @@
 {{- /*
-Tenant execution namespaces: Pod Security `restricted` (enforce, audit, warn) and a dedicated
+Tenant execution namespaces: Pod Security `restricted` (enforce, audit, warn; `baseline` at a pinned
+version when runShared.enabled) and a dedicated
 execution service account whose token is never mounted. Retained evidence may live in these
 namespaces, so they and their guardrails carry helm.sh/resource-policy: keep (they survive
 `helm uninstall` and removal from execution.tenants).
@@ -13,12 +14,23 @@ metadata:
   labels:
     {{- include "kodama.labels" $ | nindent 4 }}
     app.kubernetes.io/component: tenant-execution
+    {{- if $.Values.runShared.enabled }}
+    # run_shared steps add SETUID/SETGID and node-installed seccomp/AppArmor profiles, which
+    # `restricted` forbids: the namespace enforces `baseline` at the version the execution policy pins.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: {{ $.Values.runShared.podSecurity.version }}
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/audit-version: {{ $.Values.runShared.podSecurity.version }}
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/warn-version: {{ $.Values.runShared.podSecurity.version }}
+    {{- else }}
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
+    {{- end }}
   annotations:
     helm.sh/resource-policy: keep
     # Binds the namespace to its tenant: the server's namespace preflight refuses a namespace

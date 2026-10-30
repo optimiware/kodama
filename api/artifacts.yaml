@@ -134,6 +134,22 @@ components:
         commit:
           type: string
           pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+        workspaceState:
+          type: string
+          description: |
+            Present when the producer was a run_shared attempt: the state of its shared workspace
+            that the server recorded when the attempt's command began. `clean` means the workspace
+            was exactly `commit`; `modified` means it was not (the head moved, tracked files
+            changed or untracked files were present), so the artifact does not stand for `commit`
+            and is never evidence of an approved commit. Absent for an attempt_private producer.
+            A plain string: clients must tolerate values they do not know.
+        ignoredPresent:
+          type: boolean
+          description: 'Present with `workspaceState`, whether ignored files were present when the command began.'
+        lineage:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+          description: 'Present with `workspaceState`, the digest of the canonical lineage (the earlier attempts that touched the shared workspace) the producing attempt''s context carried.'
     ArtifactDownload:
       type: object
       required: [method, url, expiresAt]

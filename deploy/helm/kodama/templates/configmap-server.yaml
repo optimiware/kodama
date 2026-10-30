@@ -83,3 +83,25 @@ data:
         {{- toYaml .Values.execution.job.injectorResources | nindent 8 }}
       volumes:
         {{- toYaml .Values.execution.volumes | nindent 8 }}
+    {{- if .Values.runShared.enabled }}
+    {{- if not .Values.execution.rbac.manageSecrets }}
+    {{- fail "runShared.enabled requires execution.rbac.manageSecrets=true: every run resource keeps its record and admission credential in a Secret of the tenant namespace" }}
+    {{- end }}
+    {{- $step := .Values.runShared.policy.roles.step }}
+    {{- if and (or (ne $step.seccomp "RuntimeDefault") $step.lsm) (not .Values.runShared.nodeProfilesInstalled) }}
+    {{- fail "runShared.enabled needs the node profiles named by the step role (seccomp, lsm) installed on every worker node: install deploy/profiles/run-builders (docs/operations/run-builder-profile.md), confirm one Ready installer Pod per node, then set runShared.nodeProfilesInstalled=true" }}
+    {{- end }}
+    # The run_shared model (O-30). Present only when runShared.enabled: an installation without it keeps
+    # kodama/v1alpha2 registration and admission closed. The policies are the append-only list of
+    # execution policies (the last is current); `admission` inside them decides whether new runs are
+    # admitted.
+    runShared:
+      identity:
+        runAsUser: {{ .Values.runShared.identity.runAsUser }}
+        runAsGroup: {{ .Values.runShared.identity.runAsGroup }}
+        fsGroup: {{ .Values.runShared.identity.fsGroup }}
+      clusterCIDRs: {{ toJson .Values.runShared.clusterCIDRs }}
+      builderRootless: {{ .Values.runShared.builderRootless }}
+      policies:
+        {{- include "kodama.runSharedPolicies" . | trim | nindent 8 }}
+    {{- end }}

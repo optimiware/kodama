@@ -46,11 +46,12 @@ func newSharedEnv(t *testing.T, role func(execution.RoleShape) execution.RoleSha
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := kubetest.Context(t, kubetest.ContextSpec{
+	// A run_shared attempt persists a v2 context and execution's own fingerprint.
+	c := kubetest.ContextV2(t, kubetest.ContextSpec{
 		Tenant: re.specs.Scope.TenantID, Project: re.specs.Scope.ProjectID, Run: re.specs.Run, Step: "build", Attempt: "att_1",
-		Image: kubetest.WorkloadImage, Access: runtimev1.AccessRead,
-	})
-	rec := kubetest.Record(t, re.policy, c)
+		Image: kubetest.WorkloadImage,
+	}, re.specs.Pin)
+	rec := kubetest.RecordShared(t, c, re.specs.Pin)
 	launch := execution.SharedLaunch{
 		Policy: re.specs.Pin, Role: body.Roles[execution.RoleStep], RoleDigest: roleDigest, PodSecurity: body.PodSecurity,
 		Workspace: ws.Handle, Network: body.Network, Egress: []string{}, EgressDigests: map[string]string{},
@@ -440,9 +441,11 @@ func Test_unit_kube_shared_attempt_adoption_verifies_security(t *testing.T) {
 	})
 	t.Run("an attempt_private Job is not a run_shared one", func(t *testing.T) {
 		s := newSharedEnv(t, nil)
-		legacy := s.rec
-		legacy.Shared = nil
-		exp, err := s.policy.Expect(legacy)
+		c := kubetest.Context(t, kubetest.ContextSpec{
+			Tenant: s.rec.Scope.TenantID, Project: s.rec.Scope.ProjectID, Run: s.rec.RunID, Step: "build", Attempt: s.rec.AttemptID,
+			Image: kubetest.WorkloadImage, Access: runtimev1.AccessRead,
+		})
+		exp, err := s.policy.Expect(kubetest.Record(t, s.policy, c))
 		if err != nil {
 			t.Fatal(err)
 		}

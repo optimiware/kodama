@@ -85,6 +85,15 @@ type Registrar interface {
 	Register(ctx context.Context, cmd runtimeauth.RegisterCommand) (runtimeauth.Registration, error)
 }
 
+// RegistrarV2 is the optional second half of a Registrar: it registers the
+// admission credential of a run_shared attempt, whose pinned context is the v2 one.
+// runtimeauth.Service implements it. A registrar without it cannot admit a
+// run_shared attempt, and the dispatch is refused rather than registered on the
+// wrong wire.
+type RegistrarV2 interface {
+	RegisterV2(ctx context.Context, cmd runtimeauth.RegisterCommandV2) (runtimeauth.Registration, error)
+}
+
 // Cluster is the bounded Kubernetes surface: get, list, create, conditional
 // update, UID-preconditioned delete, and read-only policy inspection.
 // *kubernetes.Client implements it.

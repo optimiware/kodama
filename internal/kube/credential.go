@@ -191,9 +191,21 @@ func (c *core) register(ctx context.Context, exp Expectation, cred runtimeauth.C
 	if err != nil {
 		return err
 	}
-	_, err = c.registrar.Register(ctx, runtimeauth.RegisterCommand{
-		Scope: exp.Identity.Scope, AttemptID: exp.Identity.AttemptID, Credential: cred, Actions: actions, Context: exp.Context,
-	})
+	if exp.ContextV2 != nil {
+		// A run_shared attempt registers on the v2 wire: its grant is bound to the
+		// v2 routes and refused by the v1 ones.
+		r2, ok := c.registrar.(RegistrarV2)
+		if !ok {
+			return wrap(ErrPolicy, "the registrar cannot register a run_shared attempt")
+		}
+		_, err = r2.RegisterV2(ctx, runtimeauth.RegisterCommandV2{
+			Scope: exp.Identity.Scope, AttemptID: exp.Identity.AttemptID, Credential: cred, Actions: actions, Context: *exp.ContextV2,
+		})
+	} else {
+		_, err = c.registrar.Register(ctx, runtimeauth.RegisterCommand{
+			Scope: exp.Identity.Scope, AttemptID: exp.Identity.AttemptID, Credential: cred, Actions: actions, Context: exp.Context,
+		})
+	}
 	switch {
 	case err == nil:
 		return nil

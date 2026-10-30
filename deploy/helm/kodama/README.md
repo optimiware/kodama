@@ -182,6 +182,20 @@ Helm renders `scw.credentialsFile` into the server document; credential bytes st
 - `standalone`: local OIDC memberships and credential custody. This is the only supported value and the bootstrap sequence in the [installation guide](../../../docs/operations/installation-and-configuration.md#installation-acceptance) describes it.
 - `hosted` (Optimi-hosted): **unsupported until T-061** (which depends on O-18/O-19). Selecting it **fails rendering** with an explanatory error. The chart never falls back to standalone, and a standalone install does not create a platform tenant. See [platform integration](../../../docs/specs/platform-integration.md).
 
+## The `run_shared` model (T-116, off by default)
+
+`runShared.enabled=true` renders the O-30 `run_shared` model: the `runShared:` section of the settings document (the opt-in that composes it in the server), the append-only execution-policy list, tenant namespaces at Pod Security `baseline` at a pinned version, PVC/Service quota and the controller RBAC for claims, Services, Pods and per-run policies plus read-only cluster rules for volumes, attachments and storage classes. Disabled (the default) none of it is rendered and the namespaces stay `restricted`. It is composed and rendered, **not qualified**: the node profiles are installed and the product is accepted by T-121/T-117. The procedure, stage values, policy rules and rollback are in [Enabling `run_shared`](../../../docs/operations/run-shared.md).
+
+| Value | Meaning |
+| --- | --- |
+| `runShared.enabled` | Render the model. Requires `execution.rbac.manageSecrets=true` and, for a named step profile, `runShared.nodeProfilesInstalled=true` (an operator attestation); the chart fails rendering otherwise |
+| `runShared.admission.runShared` / `.legacyFormat` | `closed\|open` new run_shared admission; `open\|drain\|closed` for new `kodama/v1alpha1` runs. The namespaces are `baseline` once enabled and the attempt_private preflight requires `restricted`, so enable with `drain` after draining attempt_private runs (the chart prints a notice for `open`) |
+| `runShared.identity` | Non-root user, group and volume group of run_shared workloads (default 1000: Buildah's subordinate ranges); the legacy identity is unchanged |
+| `runShared.podSecurity.version` | The pinned Pod Security version of the namespaces and the policy (never `latest`) |
+| `runShared.clusterCIDRs`, `runShared.builderRootless`, `runShared.quota` | Ranges public egress never reaches, the `builder_rootless` vouch, claim/storage/Service quota |
+| `runShared.policy` | The current execution policy: `id`, `limits`, `requires`, `workspace` (`storageClass`), `roles.step` (SETUID/SETGID, seccomp/AppArmor profile names), `builders`, `network` (`isolation`, `publicEgress`), `egressProfiles`; the preparation image defaults to the digest-pinned release image |
+| `runShared.retainedPolicies` | Previous complete policy bodies, oldest first. A changed policy gets a new `policy.id`; never edit a retained body |
+
 ## Migration ordering
 
 The migration is a Helm `pre-install,pre-upgrade` hook, so it completes before the server Deployment is created or rolled:

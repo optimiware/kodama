@@ -8,8 +8,10 @@ import (
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/artifacts"
 	"github.com/optimiware/kodama/internal/domain"
+	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/results"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 )
@@ -124,9 +126,10 @@ func parsePrincipal(subject string) (domain.TenantID, runtimeauth.SessionID, boo
 // authority for reserving and completing artifacts, derived from the verified
 // grant and the attempt's pinned context. It is re-read on every call.
 type ArtifactAuthority struct {
-	store runtimeauth.Store
-	gens  Generations
-	clock func() time.Time
+	store  runtimeauth.Store
+	gens   Generations
+	clock  func() time.Time
+	begins Begins
 }
 
 var _ artifacts.AttemptAuthority = (*ArtifactAuthority)(nil)
@@ -142,6 +145,16 @@ func NewArtifactAuthority(store runtimeauth.Store, gens Generations, clock func(
 	return &ArtifactAuthority{store: store, gens: gens, clock: clock}, nil
 }
 
+// WithBegins returns the authority that also attributes the output of a
+// run_shared attempt to the workspace state the server recorded at its command
+// begin. A v2 attempt is refused without it (fail closed): its artifacts' source
+// provenance would otherwise claim a clean checkout nobody verified.
+func (a *ArtifactAuthority) WithBegins(b Begins) *ArtifactAuthority {
+	c := *a
+	c.begins = b
+	return &c
+}
+
 // Grant implements artifacts.AttemptAuthority. The router has verified the
 // token under the current signing key; the grant check here still requires the
 // grant's generation to be the current one, the session to belong to the
@@ -152,6 +165,7 @@ func (a *ArtifactAuthority) Grant(ctx context.Context, caller artifacts.Caller, 
 		return artifacts.AttemptGrant{}, artifacts.ErrAuthorityMissing
 	}
 	var out artifacts.AttemptGrant
+	var v2 *runtimev2.ContextV2
 	err := a.store.Do(ctx, tenant, func(ctx context.Context, tx runtimeauth.GrantTx) error {
 		gen := a.gens.Generation()
 		g, _, err := runtimeauth.CheckSession(ctx, tx, runtimeauth.SessionCheck{
@@ -160,7 +174,8 @@ func (a *ArtifactAuthority) Grant(ctx context.Context, caller artifacts.Caller, 
 		if err != nil {
 			return err
 		}
-		pinned, err := runtimev1.DecodeRequest[runtimev1.Context](g.Context)
+		pinned, c2, err := DecodePinned(g.Context)
+		v2 = c2
 		if err != nil {
 			return errors.Join(runtimeauth.ErrUnavailable, err)
 		}
@@ -170,8 +185,13 @@ func (a *ArtifactAuthority) Grant(ctx context.Context, caller artifacts.Caller, 
 		out = artifactGrant(g, pinned)
 		return nil
 	})
+	if err == nil && v2 != nil {
+		err = a.attribute(ctx, &out, *v2)
+	}
 	if err != nil {
 		switch {
+		case errors.Is(err, ErrBeginNotRecorded):
+			return artifacts.AttemptGrant{}, artifacts.ErrForbidden
 		case errors.Is(err, runtimeauth.ErrAttemptRevoked):
 			return artifacts.AttemptGrant{}, artifacts.ErrAttemptInactive
 		case errors.Is(err, runtimeauth.ErrForbidden):
@@ -182,6 +202,35 @@ func (a *ArtifactAuthority) Grant(ctx context.Context, caller artifacts.Caller, 
 		return artifacts.AttemptGrant{}, fmt.Errorf("%w: %v", artifacts.ErrUnavailable, err)
 	}
 	return out, nil
+}
+
+// attribute replaces the source provenance of a run_shared attempt's grant with
+// the one carrying the server-recorded begin state. It runs outside the grant
+// transaction (it reads execution's own store).
+func (a *ArtifactAuthority) attribute(ctx context.Context, out *artifacts.AttemptGrant, c runtimev2.ContextV2) error {
+	if c.Workspace.Source == nil {
+		return nil
+	}
+	if a.begins == nil {
+		return errors.Join(runtimeauth.ErrUnavailable, errors.New("no begin records back the provenance of a run_shared attempt"))
+	}
+	rec, ok, err := a.begins.Begin(ctx, out.Scope, out.Attempt)
+	if err != nil {
+		return errors.Join(runtimeauth.ErrUnavailable, err)
+	}
+	var begin *execution.BeginRecord
+	if ok {
+		begin = &rec
+	}
+	prov, err := V2Provenance(c, begin)
+	if err != nil {
+		if errors.Is(err, ErrBeginNotRecorded) {
+			return err
+		}
+		return errors.Join(runtimeauth.ErrUnavailable, err)
+	}
+	out.Source = prov
+	return nil
 }
 
 // artifactGrant derives what the artifact module needs from verified facts

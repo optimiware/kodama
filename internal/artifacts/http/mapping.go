@@ -26,7 +26,18 @@ func toDTO(v artifacts.View) Artifact {
 		out.Registry = &reg
 	}
 	if p := a.Provenance(); !p.IsZero() {
-		out.Source = &SourceProvenance{RepositoryUrl: p.RepositoryURL, Commit: p.Commit}
+		src := &SourceProvenance{RepositoryUrl: p.RepositoryURL, Commit: p.Commit}
+		if p.WorkspaceState != "" {
+			// A run_shared producer: what the server recorded at its command begin,
+			// so a modified workspace is never mistaken for the commit (DQ-16).
+			state, ignored := p.WorkspaceState, p.IgnoredPresent
+			src.WorkspaceState, src.IgnoredPresent = &state, &ignored
+			if p.Lineage != "" {
+				lineage := p.Lineage
+				src.Lineage = &lineage
+			}
+		}
+		out.Source = src
 	}
 	if t := a.VerifiedAt(); t != nil {
 		vt := t.UTC()

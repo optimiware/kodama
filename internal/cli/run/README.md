@@ -21,6 +21,7 @@ c, err := run.NewCommands(run.Config{
 | `run cancel ID` | Bodyless `POST .../cancel`. Reports the returned state; the text says cancellation is a request and the run stays non-terminal until the server settles it |
 | `run watch ID [--exit-on-terminal]` | Observes until the run is terminal (below) |
 | `run logs ID [--step S] [--attempt A] [--tail N] [--follow] [--source auto\|live\|wrapper\|controller]` | Reads one attempt's bounded log (below) |
+| `run logs ID --resource preparation\|service.NAME [--tail N]` | Reads the bounded log of a `run_shared` run's preparation or a support service (T-116); excludes `--step`, `--attempt`, `--follow` and `--source`; same meta/chunk/summary protocol with `resource` in the meta record, rendered only when it is the requested resource's and complete |
 
 ## Watch
 
@@ -54,3 +55,7 @@ Uses the shared client's bounded raw-body mode and checks the NDJSON protocol `m
 Historical baseline `14f4132` (initial implementation); reassessed at `d683fe18a889b60b4da81fcab0d00ad1f15b7704` and amended in this task. Requirements AC-01–AC-06. Evidence here is component evidence: contract-shaped HTTP fixtures plus the real runner, client and shared validators; it is not an assembled M1 certification, which belongs to the integration owner (T-026/T-027). Server modules own entities, authorization, transactions, history, audit, idempotency and every state transition; this package owns only flag parsing, bounded local input and rendering. Acceptance: `Test_watch_terminal_exit`, `Test_watch_resume_resync`, `Test_observer_retry_after_parity`, `Test_logs_protocol`, `Test_mutation_recovery`.
 
 Assumptions for T-025 review and the integration owner: `run.Observer` stays a separate read-only adapter because the shared client has no streaming or `Last-Event-ID`; its reconnect, idle and frame bounds are client-local defaults; output stays buffered (watch returns one final document, `logs --follow` one bounded document).
+
+## `run_shared` view (T-116)
+
+`run get` additionally renders, when the server returns them for a `run_shared` run, `runModel`, `deadlineAt`, `executionOrder` with each step's effective workspace access, `cleanupReason` and the safe `resources` (key, phase, reason, ready/stopped/removed times). The JSON output keeps every member the server sent, including ones the CLI does not know. An `attempt_private` run renders exactly as before. Evidence: `Test_unit_cli_run_resources_view`.

@@ -35,6 +35,10 @@ Optional, strict JSON (unknown members are errors), in the secrets directory or 
 
 Real service and Podman qualification (T-038), Kubernetes forms of the ceiling and checkout (T-089) and production KMS wiring (T-029).
 
+## run_shared composition (T-116)
+
+`runshared*.go` compose the run_shared model for Kubernetes when the settings document carries a `runShared` section: the policy list (`PolicyList`), the resource authority and `/runtime/v2` routes, the Kubernetes run-resource adapter, prior disclosures, the additive run view and resource logs (`SharedPublic`). `AssembleExecution` binds the resource port of the runtime's own backend and refuses a half-composed model. See the [assembly status](../../docs/implementation/assembly-status.md#run_shared-assembly-t-116) and the [runbook](../../docs/operations/run-shared.md). Evidence: `Test_unit_app_run_shared_*`, `Test_unit_app_execution_policy_settings`, `Test_unit_app_runtime_v2_routes_served`, `Test_unit_app_prepare_and_service_run_commands`, `Test_unit_chart_run_shared_render`.
+
 ## Tests
 
 `make check-go PKGS="./internal/app/..."`. The T-101 acceptance tests are `Test_app_action_ceiling_bound`, `Test_app_delivery_joins_bound`, `Test_app_podman_checkout_bound`, `Test_app_registry_verifier_bound` and `Test_app_git_trigger_mounted`; they use injected adapters, the modules' memory doubles and `httptest`, and prove no SQL, transaction or container behavior (T-073/T-038).

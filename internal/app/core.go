@@ -117,7 +117,12 @@ type Core struct {
 	// runtime serves the runtime API under /runtime/v1; closers release the
 	// runtime's own resources after the workers stopped.
 	runtime http.Handler
-	closers []func()
+	// runtimeV2 serves /runtime/v2 when run_shared is composed (nil otherwise).
+	runtimeV2 http.Handler
+	// sharedPublic decorates the public handler with the run_shared run view and
+	// resource logs (nil unless run_shared is composed).
+	sharedPublic *SharedPublic
+	closers      []func()
 	// Exported collaborators for the integration evidence and later assembly
 	// tasks (T-071 and T-072 extend this composition).
 	Events    *eventspg.Store
@@ -379,6 +384,14 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	if err != nil {
 		return err
 	}
+	// The version source reads the exact pinned versions of delivered secrets: the
+	// runtime secret route resolves through it, service secrets resolve through it
+	// and, scan-capable, the prior disclosures of a run_shared run are read through
+	// it for comparison only.
+	secretVersions, err := secretspg.NewVersionSource(secretStore, provider, cfg.InstallationID)
+	if err != nil {
+		return err
+	}
 
 	// ---- agent profiles (T-072) ----
 	// The profile service is constructed with the selected authority and a
@@ -436,6 +449,9 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	validator, err := pipeline.NewValidator(pipeline.Config{
 		Capabilities: kinds, Profiles: profileLookup,
 		References: pipelineReferences{authority: authority, catalog: secretStore, environments: envRefs},
+		// kodama/v1alpha2 is registrable exactly when run_shared is composed; the
+		// execution service refuses it independently when it is not.
+		EnableV1Alpha2: cfg.runSharedConfigured(),
 	})
 	if err != nil {
 		return err
@@ -532,6 +548,7 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	rtSet, err := cons.Runtime(RuntimeSettings{
 		Config: cfg.Runtime, Registrar: late, Store: execStore, Logger: c.log,
 		Checkout: checkoutProvider{repos: repositories, creds: creds, gitCA: gitCA}, Ceiling: ceiling,
+		ResourceRegistrar: kubeResourceRegistrar{late: late},
 	})
 	if err != nil {
 		return fmt.Errorf("runtime: %w", err)
@@ -561,6 +578,27 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 		return err
 	}
 
+	// ---- run_shared (O-30): the resource subjects' persistence and the prior
+	// disclosures, composed only when the runtime contributes the model ----
+	var (
+		sharedInputs *SharedInputs
+		disclosures  *secrets.Disclosures
+	)
+	if rtSet.Shared != nil {
+		resAuthority, err := newResourceAuthority(execStore, nil)
+		if err != nil {
+			return err
+		}
+		resStore, err := rtpg.NewResourceStore(pool, resAuthority)
+		if err != nil {
+			return err
+		}
+		sharedInputs = &SharedInputs{Store: resStore, State: resAuthority, Tokens: signer, Verifier: rtVerifier, Secrets: secretVersions}
+		if disclosures, err = secrets.NewDisclosures(runBindings{runs: execStore}, secretVersions); err != nil {
+			return err
+		}
+	}
+
 	// The result and source routes run over the guarded stores: every mutation
 	// they make repeats the runtime session check inside its own transaction,
 	// under the run lock (T-062). Trusted background work keeps the plain ones.
@@ -578,6 +616,14 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	}
 	guardedDeps := wsDeps
 	guardedDeps.Store = guardedWS
+	if disclosures != nil {
+		// A source proposal is scanned for the values injected into the attempt AND
+		// for every value the run disclosed to its other steps and services: the
+		// scratch outlives a step, so a writer can carry another's secret into source.
+		if guardedDeps.Secrets, err = workspace.WithPriorDisclosures(wsDeps.Secrets, disclosures); err != nil {
+			return err
+		}
+	}
 	guardedWSSvc, err := workspace.NewService(guardedDeps, wsOpts)
 	if err != nil {
 		return err
@@ -598,6 +644,13 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	if err != nil {
 		return err
 	}
+	// A run_shared attempt's artifacts carry the workspace state the server
+	// recorded at its command begin (execution's own record).
+	artifactBegins, err := resultsadapters.NewExecutionBegins(execStore)
+	if err != nil {
+		return err
+	}
+	artifactAuthority = artifactAuthority.WithBegins(artifactBegins)
 	// The registry verifier of `ociArtifact` outputs: the real OCI verifier over
 	// the configured registries, provenance from the producing attempt's pinned
 	// source. Without a registry statement every registration is refused.
@@ -665,10 +718,6 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	if joins.DeploymentReader, err = gatesadapters.NewDeployments(deliveryStore); err != nil {
 		return err
 	}
-	secretVersions, err := secretspg.NewVersionSource(secretStore, provider, cfg.InstallationID)
-	if err != nil {
-		return err
-	}
 	secretRoute, err := execadapters.NewSecretRoute(rtVerifier, rtKeys, grants, deliveryStore, secretVersions, nil)
 	if err != nil {
 		return err
@@ -729,15 +778,23 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 		return err
 	}
 	lt := tune.Logs
+	var redactions logs.Redactions
+	if disclosures != nil {
+		if redactions, err = logs.WithPriorDisclosures(noOwnRedactions{}, disclosures); err != nil {
+			return err
+		}
+	}
 	logSvc, err := logs.NewService(logs.Config{
-		Authority: logAuthority, Attempts: logAttempts, Workloads: logWorkloads, Live: live, Retained: retained, Store: logStore,
+		Redactions: redactions,
+		Authority:  logAuthority, Attempts: logAttempts, Workloads: logWorkloads, Live: live, Retained: retained, Store: logStore,
 		Limits: logs.Limits{MaxLines: lt.MaxLines, MaxBytes: lt.MaxBytes, MaxDuration: lt.MaxDuration, MaxStreams: lt.MaxStreams, WriteTimeout: lt.WriteTimeout},
 	})
 	if err != nil {
 		return err
 	}
 	logController, err := logs.NewController(logs.ControllerConfig{
-		Attempts: logAttempts, Workloads: logWorkloads, Live: live, Retained: retained, Store: logStore,
+		Redactions: redactions,
+		Attempts:   logAttempts, Workloads: logWorkloads, Live: live, Retained: retained, Store: logStore,
 		CaptureBytes: lt.CaptureBytes, CaptureTimeout: lt.CaptureTimeout, Lease: lt.Lease, SpoolDir: logSpoolDir(cfg),
 	})
 	if err != nil {
@@ -861,12 +918,26 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 			Store: grants, Attempts: rtAttempts, Tokens: signer, Verifier: rtVerifier,
 			Wrapper: runtimeauth.ExactWrapperPolicy{Supported: []string{entrypoint.Version}}, Policy: policy,
 		},
-		Late: late, Artifacts: artSvc, Logs: logSvc, Capture: logController,
+		Late: late, Artifacts: artSvc, Logs: logSvc, Capture: logController, Shared: sharedInputs,
 	})
 	if err != nil {
 		return fmt.Errorf("execution assembly: %w", err)
 	}
-	c.Slice, c.Execution, c.runtime = slice, slice.Trusted, slice.Runtime
+	c.Slice, c.Execution, c.runtime, c.runtimeV2 = slice, slice.Trusted, slice.Runtime, slice.RuntimeV2
+	if rtSet.Shared != nil {
+		// The additive run view and the resource logs of the run_shared model, in
+		// front of the unchanged public router.
+		diagnostics, err := logsadapters.NewAuthority(authority, idStore)
+		if err != nil {
+			return err
+		}
+		if c.sharedPublic, err = NewSharedPublic(SharedPublicInputs{
+			Log: c.log, Authenticator: authn, Authority: authority, Reader: diagnostics, Runs: execStore, Resources: rtSet.Shared.Resources,
+			Secrets: secretVersions, RateLimit: tune.RateLimitPerMinute, Logs: tune.Logs,
+		}); err != nil {
+			return err
+		}
+	}
 	execSvc := slice.Trusted
 
 	// ---- model gateway and MCP proxy (T-039): selected together by the

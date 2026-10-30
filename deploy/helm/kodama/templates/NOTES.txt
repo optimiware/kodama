@@ -31,3 +31,10 @@ Uninstall keeps tenant namespaces and their guardrails, and never deletes databa
 keys, artifacts or external deployments. See README.md ("Retention-aware uninstall").
 
 Next steps: kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "kodama.fullname" . }}
+{{- if and .Values.runShared.enabled (eq .Values.runShared.admission.legacyFormat "open") }}
+
+NOTICE: runShared is enabled with admission.legacyFormat=open. The tenant namespaces are Pod Security
+`baseline`, where the server's attempt_private preflight refuses to dispatch: kodama/v1alpha1 runs are
+admitted but cannot start. Drain attempt_private runs and set admission.legacyFormat=drain
+(docs/operations/run-shared.md, "Order of operations").
+{{- end }}

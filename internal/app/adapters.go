@@ -18,7 +18,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/agents"
 	"github.com/optimiware/kodama/internal/artifacts"
 	"github.com/optimiware/kodama/internal/delivery"
@@ -445,11 +444,11 @@ func (n attemptNeedles) Needles(ctx context.Context, scope domain.Scope, attempt
 	if at == nil || at.Scope != scope || at.RunID != run {
 		return nil, workspace.ErrNotFound
 	}
-	pinned, err := runtimev1.DecodeRequest[runtimev1.Context](at.Context)
-	if err != nil || pinned.Scope() != scope || pinned.AttemptID != attempt || pinned.RunID != run {
+	pinned, err := decodePinned(at.Context)
+	if err != nil || pinned.Scope != scope || pinned.AttemptID != attempt || pinned.RunID != run {
 		return nil, fmt.Errorf("%w: the attempt's pinned context is not readable", workspace.ErrUnavailable)
 	}
-	if len(pinned.Secrets) > 0 || pinned.Environment != nil {
+	if len(pinned.Secrets) > 0 || pinned.HasEnvironment {
 		return nil, fmt.Errorf("%w: the attempt declares secrets whose injected values are bound by the secret delivery assembly", workspace.ErrUnavailable)
 	}
 	return [][]byte{}, nil

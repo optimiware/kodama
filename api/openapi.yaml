@@ -1954,7 +1954,7 @@ paths:
       summary: Start a work run
   /tenants/{tenantId}/projects/{projectId}/runs/{id}:
     get:
-      description: Requires run:read. A run of another tenant or project is 404.
+      description: Requires run:read. A run of another tenant or project is 404. A run admitted under the run_shared model also carries runModel, deadlineAt, executionOrder, effectiveAccess and resources.
       operationId: getRun
       responses:
         "200":
@@ -2079,6 +2079,13 @@ paths:
           required: false
           schema:
             $ref: '#/components/schemas/LogSource'
+        - description: Read the bounded log of the preparation (`preparation`) or of one support service (`service.NAME`) of a `run_shared` run instead of an attempt's. It excludes attemptId, follow and source; only `tail` combines with it. The stream is the same meta/chunk/summary NDJSON with `resource` in the meta record in place of `attemptId` and `stepId`, and known disclosed secret values are replaced with `[REDACTED]`. A resource that does not exist, or a run that is not run_shared, is 404.
+          in: query
+          name: resource
+          required: false
+          schema:
+            pattern: ^(preparation|service\.[a-z][a-z0-9-]{0,29})$
+            type: string
       responses:
         "200":
           content:
@@ -6983,11 +6990,12 @@ components:
       type: object
     PipelineDocument:
       additionalProperties: true
-      description: One pipeline document of apiVersion kodama/v1alpha1. The authoritative structural schema is contracts/pipeline/v1/schema.json; it is not duplicated here. Unknown fields, duplicate keys, YAML-only constructs and mutable image references are rejected.
+      description: One pipeline document of apiVersion kodama/v1alpha1, or of kodama/v1alpha2 when the installation enabled the run_shared model (registration of a v1alpha2 document is refused otherwise). The authoritative structural schemas are contracts/pipeline/v1/schema.json and contracts/pipeline/v1alpha2/schema.json; they are not duplicated here. Unknown fields, duplicate keys, YAML-only constructs and mutable image references are rejected.
       properties:
         apiVersion:
           enum:
             - kodama/v1alpha1
+            - kodama/v1alpha2
           type: string
         kind:
           enum:
@@ -7216,6 +7224,49 @@ components:
         - expression
         - producer
       type: object
+    ResourceLogMeta:
+      additionalProperties: false
+      description: The `meta` record of a log read with `resource` (see the query parameter).
+      properties:
+        completeness:
+          $ref: '#/components/schemas/LogCompleteness'
+        follow:
+          type: boolean
+        limits:
+          $ref: '#/components/schemas/LogLimits'
+        origin:
+          $ref: '#/components/schemas/LogOrigin'
+        reasons:
+          items:
+            $ref: '#/components/schemas/LogReason'
+          maxItems: 8
+          type: array
+        resource:
+          pattern: ^(preparation|service\.[a-z][a-z0-9-]{0,29})$
+          type: string
+        runId:
+          $ref: '#/components/schemas/ID'
+        tail:
+          minimum: 1
+          type: integer
+        terminal:
+          description: The run had finished when the read began.
+          type: boolean
+        type:
+          description: Always `meta`.
+          type: string
+      required:
+        - type
+        - runId
+        - resource
+        - origin
+        - completeness
+        - reasons
+        - tail
+        - follow
+        - terminal
+        - limits
+      type: object
     ResyncRequired:
       additionalProperties: false
       properties:
@@ -7348,6 +7399,10 @@ components:
           format: date-time
           nullable: true
           type: string
+        cleanupReason:
+          description: Why a draining run is held nonterminal by its resources (resource_stop_unconfirmed or cleanup_pending); null otherwise. It is derived, never a business status.
+          nullable: true
+          type: string
         contentRevision:
           format: int64
           nullable: true
@@ -7355,11 +7410,26 @@ components:
         createdAt:
           format: date-time
           type: string
+        deadlineAt:
+          description: The run's pinned total deadline; it covers gate waits and bounds every resource.
+          format: date-time
+          nullable: true
+          type: string
         definitionDigest:
           pattern: ^sha256:[0-9a-f]{64}$
           type: string
         definitionId:
           $ref: '#/components/schemas/ID'
+        effectiveAccess:
+          additionalProperties:
+            type: string
+          description: 'The effective workspace access of every executable step, by step ID: none, read or write. (Plain strings, not an enum: a new enum would rename released client constants.)'
+          type: object
+        executionOrder:
+          description: The frozen order in which executable steps and gates are processed.
+          items:
+            type: string
+          type: array
         failureReason:
           allOf:
             - $ref: '#/components/schemas/Reason'
@@ -7383,6 +7453,14 @@ components:
           $ref: '#/components/schemas/Reason'
         requestedBy:
           $ref: '#/components/schemas/RunsActor'
+        resources:
+          description: Safe observations of the run's resources (the network boundary, the workspace, the preparation and the support services), for the caller's current authorization. A UID, fingerprint, spec, endpoint, log or credential is never part of it.
+          items:
+            $ref: '#/components/schemas/RunResource'
+          type: array
+        runModel:
+          description: The value is run_shared. Present only when the run was admitted under the run_shared model (one disposable workspace carried through its steps, run-scoped support services; docs/contracts/run-resources.md) and only in the answer of getRun. A run without it is an attempt_private run, which behaves as before. The members below are present exactly when this one is.
+          type: string
         sourceCommit:
           nullable: true
           type: string
@@ -7438,6 +7516,43 @@ components:
       required:
         - items
         - nextCursor
+      type: object
+    RunResource:
+      additionalProperties: false
+      properties:
+        key:
+          description: network, workspace, preparation or service.NAME.
+          type: string
+        kind:
+          description: network, workspace, preparation or service.
+          type: string
+        phase:
+          description: 'The observed phase of the resource: pending, ready, failed, stopped, absent or unknown. It is not a run, step or attempt status.'
+          type: string
+        readyAt:
+          format: date-time
+          nullable: true
+          type: string
+        reason:
+          description: A safe, stable reason code (for example preparation_failed, service_lost, policy_unavailable).
+          nullable: true
+          type: string
+        removedAt:
+          format: date-time
+          nullable: true
+          type: string
+        stoppedAt:
+          format: date-time
+          nullable: true
+          type: string
+      required:
+        - kind
+        - key
+        - phase
+        - reason
+        - readyAt
+        - stoppedAt
+        - removedAt
       type: object
     RunStatus:
       enum:
@@ -7668,8 +7783,24 @@ components:
         commit:
           pattern: ^([0-9a-f]{40}|[0-9a-f]{64})$
           type: string
+        ignoredPresent:
+          description: Present with `workspaceState`, whether ignored files were present when the command began.
+          type: boolean
+        lineage:
+          description: Present with `workspaceState`, the digest of the canonical lineage (the earlier attempts that touched the shared workspace) the producing attempt's context carried.
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
         repositoryUrl:
           pattern: ^https://[^\s@/?#]+(/[^\s@?#]*)?$
+          type: string
+        workspaceState:
+          description: |
+            Present when the producer was a run_shared attempt: the state of its shared workspace
+            that the server recorded when the attempt's command began. `clean` means the workspace
+            was exactly `commit`; `modified` means it was not (the head moved, tracked files
+            changed or untracked files were present), so the artifact does not stand for `commit`
+            and is never evidence of an approved commit. Absent for an attempt_private producer.
+            A plain string: clients must tolerate values they do not know.
           type: string
       required:
         - repositoryUrl

@@ -124,6 +124,15 @@ type EgressRule struct {
 	Ports    []int32
 }
 
+// RunSharedIdentity is the identity of run_shared workloads. Every member must be
+// a non-root ID; FSGroup is the group that owns the Pod's volumes (the run's
+// workspace claim included).
+type RunSharedIdentity struct {
+	RunAsUser  int64
+	RunAsGroup int64
+	FSGroup    int64
+}
+
 // PolicyConfig is the input of NewExecutionPolicy.
 type PolicyConfig struct {
 	// Tenants maps each tenant allowed to execute to its target. A tenant
@@ -150,6 +159,12 @@ type PolicyConfig struct {
 	// and the Pod's fsGroup.
 	RunAsUser  int64
 	RunAsGroup int64
+	// RunShared is the non-root identity of run_shared workloads (step attempts,
+	// preparation and service Pods). Nil keeps RunAsUser/RunAsGroup: the
+	// installation sets it when the images of run_shared steps carry their
+	// subordinate ID ranges for another user than the legacy identity (the builder
+	// image's `build` user, UID 1000). It never applies to attempt_private Jobs.
+	RunShared *RunSharedIdentity `json:",omitempty"`
 	// TerminationGrace is the Pod's termination grace period.
 	TerminationGrace time.Duration
 	// ReaderActions and WriterActions are the explicit runtime action
@@ -162,6 +177,16 @@ type PolicyConfig struct {
 // DefaultActions returns runtime admission's default ceilings
 // (runtimeauth.DefaultActions).
 func DefaultActions(writer bool) []runtimeauth.Action { return runtimeauth.DefaultActions(writer) }
+
+// runSharedIdentity is the user, group and volume group of run_shared workloads:
+// the configured RunShared identity, or the legacy one (with the group as the
+// volume group, as attempt_private Pods use) when none is set.
+func (c PolicyConfig) runSharedIdentity() (user, group, fsGroup int64) {
+	if id := c.RunShared; id != nil {
+		return id.RunAsUser, id.RunAsGroup, id.FSGroup
+	}
+	return c.RunAsUser, c.RunAsGroup, c.RunAsGroup
+}
 
 // ExecutionPolicy is the validated, immutable execution policy. The zero value
 // denies everything.
@@ -256,6 +281,12 @@ func NewExecutionPolicy(cfg PolicyConfig) (ExecutionPolicy, error) {
 	}
 	if c.RunAsUser < 1 || c.RunAsGroup < 1 {
 		return ExecutionPolicy{}, wrap(ErrPolicy, "the workload identity must be a non-root user and group")
+	}
+	if id := cfg.RunShared; id != nil {
+		if id.RunAsUser < 1 || id.RunAsGroup < 1 || id.FSGroup < 1 {
+			return ExecutionPolicy{}, wrap(ErrPolicy, "the run_shared workload identity must be a non-root user, group and volume group")
+		}
+		c.RunShared = &RunSharedIdentity{RunAsUser: id.RunAsUser, RunAsGroup: id.RunAsGroup, FSGroup: id.FSGroup}
 	}
 	if c.TerminationGrace < time.Second || c.TerminationGrace > 10*time.Minute {
 		return ExecutionPolicy{}, wrap(ErrPolicy, "the termination grace period must be between 1s and 10m")

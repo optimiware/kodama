@@ -33,11 +33,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/artifacts"
 	"github.com/optimiware/kodama/internal/artifacts/oci"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
+	resultsadapters "github.com/optimiware/kodama/internal/results/adapters"
 )
 
 // RegistryConfig is the operator's registry statement (registry.json, strict
@@ -253,15 +253,28 @@ func (p attemptProvenance) Resolve(ctx context.Context, q oci.ProvenanceQuery) (
 	if at.ContextDigest != fmt.Sprintf("sha256:%x", sum) {
 		return artifacts.Provenance{}, artifacts.ErrProvenanceMissing
 	}
-	c, err := runtimev1.DecodeRequest[runtimev1.Context](at.Context)
-	if err != nil || c.Scope() != q.Scope || c.RunID != q.Run || c.AttemptID != q.Attempt {
+	c, err := decodePinned(at.Context)
+	if err != nil || c.Scope != q.Scope || c.RunID != q.Run || c.AttemptID != q.Attempt {
 		return artifacts.Provenance{}, artifacts.ErrProvenanceMissing
 	}
-	src := c.Workspace.Source
-	if src == nil || src.RepositoryURL == "" || src.Commit == "" {
+	if c.SourceURL == "" || c.SourceCommit == "" {
 		return artifacts.Provenance{}, artifacts.ErrProvenanceMissing
 	}
-	prov := artifacts.Provenance{RepositoryURL: src.RepositoryURL, Commit: string(src.Commit)}
+	if c.Shared {
+		// A run_shared producer worked in a scratch workspace: the registration's
+		// provenance carries the state the server recorded when its command began
+		// and its lineage reference (DQ-16), from execution's own begin record.
+		_, c2, derr := resultsadapters.DecodePinned(at.Context)
+		if derr != nil || c2 == nil {
+			return artifacts.Provenance{}, artifacts.ErrProvenanceMissing
+		}
+		prov, perr := resultsadapters.V2Provenance(*c2, resultsadapters.BeginOf(agg, q.Attempt))
+		if perr != nil || prov.Validate() != nil || prov.IsZero() {
+			return artifacts.Provenance{}, artifacts.ErrProvenanceMissing
+		}
+		return prov, nil
+	}
+	prov := artifacts.Provenance{RepositoryURL: c.SourceURL, Commit: c.SourceCommit}
 	if prov.Validate() != nil {
 		return artifacts.Provenance{}, artifacts.ErrProvenanceMissing
 	}

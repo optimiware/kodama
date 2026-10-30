@@ -101,6 +101,9 @@ type Options struct {
 	WrapRepository func(artifacts.Repository) artifacts.Repository
 	// RuntimeConns sizes the runtime pool (default 12).
 	RuntimeConns int32
+	// Extra lists contributions applied after the baseline (for example the
+	// workspace provenance of run_shared artifacts).
+	Extra []storage.Contribution
 }
 
 // NewDB creates the migrated database, the store and the authorities without
@@ -116,7 +119,7 @@ func NewDB(t testing.TB, opts Options) *Env {
 	}
 	e := &Env{T: t, DB: db, Owner: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, conns), Clock: &Clock{},
 		Authority: NewAuthority(), Reader: NewReader(), HTTP: &http.Client{Timeout: 20 * time.Second}}
-	manifest, err := storage.NewManifest(storage.BaseContribution())
+	manifest, err := storage.NewManifest(append([]storage.Contribution{storage.BaseContribution()}, opts.Extra...)...)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -90,6 +91,14 @@ func IsDevelopmentAdapter(adapter any) bool {
 	// runs workloads only on Kubernetes.
 	if rt, ok := adapter.(execution.Runtime); ok {
 		switch rt.Capabilities().Backend {
+		case process.Backend, podman.Backend:
+			return true
+		}
+	}
+	// The run-resource port is identified the same way: production composes the
+	// run_shared model on Kubernetes only, whatever wraps the companion port.
+	if rr, ok := adapter.(execution.RunResources); ok {
+		switch rr.Capabilities(context.Background()).Backend {
 		case process.Backend, podman.Backend:
 			return true
 		}

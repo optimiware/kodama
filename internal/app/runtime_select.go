@@ -48,7 +48,11 @@ type RuntimeSettings struct {
 	// (T-096/T-101); nil keeps the default actions. The Kubernetes runtime
 	// registers under its execution policy's action lists and refuses one.
 	Ceiling *CeilingBinding
-	Logger  *slog.Logger
+	// ResourceRegistrar registers run-resource admission credentials with
+	// runtime admission (seam S5); it is bound, like Registrar, after the
+	// authority exists. Only the Kubernetes runtime uses it.
+	ResourceRegistrar kube.ResourceRegistrar
+	Logger            *slog.Logger
 }
 
 // issuer is the admission credential issuer of the Process and Podman
@@ -102,6 +106,9 @@ type RuntimeSet struct {
 	Workers func(RuntimeHooks) ([]NamedWorker, error)
 	// Close releases the runtime's resources.
 	Close func()
+	// Shared is the backend's contribution to the run_shared model; nil when the
+	// installation did not configure it or the backend cannot enforce it.
+	Shared *SharedRuntime
 }
 
 // NamedWorker is one background loop of the assembly.
@@ -271,6 +278,15 @@ func newKubeRuntime(s RuntimeSettings) (RuntimeSet, error) {
 	}
 	deps := kube.Dependencies{Policy: policy, Cluster: client, Attempts: attempts, Registrar: s.Registrar, Checkout: s.Checkout, Logs: client}
 	opts := kube.Options{Logger: s.Logger}
+	// The run_shared model (O-30) is composed only when the installation's
+	// settings document carries its section; otherwise nothing of it exists and
+	// new-format admission stays closed.
+	var shared *SharedRuntime
+	if rs := k.RunShared; rs != nil {
+		if shared, err = newKubeShared(s, rs, policy, client, opts, &deps); err != nil {
+			return RuntimeSet{}, err
+		}
+	}
 	rt, err := kube.NewRuntime(deps, opts)
 	if err != nil {
 		return RuntimeSet{}, err
@@ -283,12 +299,16 @@ func newKubeRuntime(s RuntimeSettings) (RuntimeSet, error) {
 	if err != nil {
 		return RuntimeSet{}, err
 	}
+	var runtime execution.Runtime = rt
+	if shared != nil {
+		runtime = withRunResources{rt}
+	}
 	return RuntimeSet{
-		Runtime: rt, Jobs: jobs, Planner: kube.NewPlanner(policy),
+		Runtime: runtime, Jobs: jobs, Planner: kube.NewPlanner(policy),
 		Authority: func(store *execpg.Store) (rtpg.AttemptAuthority, error) {
 			return kubeadapters.NewAuthority(store, policy)
 		},
-		Placement: kubePlacement{policy: policy}, Live: live,
+		Placement: kubePlacement{policy: policy}, Live: live, Shared: shared,
 		Workers: func(h RuntimeHooks) ([]NamedWorker, error) {
 			d := deps
 			d.Observations, d.Tenants = h.Observations, h.Tenants
@@ -301,6 +321,48 @@ func newKubeRuntime(s RuntimeSettings) (RuntimeSet, error) {
 			}}}, nil
 		},
 	}, nil
+}
+
+// newKubeShared builds the Kubernetes run-resource adapter over the retained
+// policy list and joins it to the attempt runtime's dependencies: the same
+// adapter verifies the per-run network policies of the namespace during a
+// run_shared attempt's preflight (Dependencies.OwnedPolicies), without which a
+// namespace holding run policies would fail it. The Kubernetes API client is the
+// cluster of both.
+func newKubeShared(s RuntimeSettings, rs *RunSharedConfig, policy kube.ExecutionPolicy, client *kubernetes.Client, opts kube.Options, deps *kube.Dependencies) (*SharedRuntime, error) {
+	if s.ResourceRegistrar == nil {
+		return nil, errors.New("run_shared needs the runtime admission registrar of run resources")
+	}
+	list, err := NewPolicyList(*rs)
+	if err != nil {
+		return nil, err
+	}
+	var qualified execution.ResourceCapabilitySet
+	if rs.BuilderRootless {
+		qualified = execution.Set(execution.CapBuilderRootless)
+	}
+	rr, err := kube.NewRunResources(kube.RunResourceDependencies{
+		Policy: policy, Cluster: client, Catalog: list, Registrar: s.ResourceRegistrar, Checkout: s.Checkout, Logs: client,
+	}, kube.RunResourceOptions{Options: opts, ClusterCIDRs: rs.ClusterCIDRs, Qualified: qualified})
+	if err != nil {
+		return nil, fmt.Errorf("run resources: %w", err)
+	}
+	deps.OwnedPolicies = rr
+	return &SharedRuntime{Resources: rr, Workloads: kubeWorkloads{rr: rr}, Policies: list}, nil
+}
+
+// withRunResources declares the run-resources marker on a runtime whose backend
+// also implements the companion port. The attempt runtime's own capabilities are
+// the original six guarantees; every run_shared run requires the marker too
+// ([run resources](docs/contracts/run-resources.md#capabilities)), so without this
+// declaration a composed Kubernetes backend would refuse every run_shared
+// admission with capability_unsupported.
+type withRunResources struct{ execution.Runtime }
+
+func (w withRunResources) Capabilities() execution.Capabilities {
+	c := w.Runtime.Capabilities()
+	c.Guarantees = c.Guarantees.WithRunResources()
+	return c
 }
 
 // kubePlacement resolves the trusted namespace of an attempt's Job from the

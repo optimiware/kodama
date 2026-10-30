@@ -275,3 +275,115 @@ execution:
     # Grant the control plane create/get/delete on Secrets in tenant namespaces. Off until T-021
     # needs it to deliver admission material.
     manageSecrets: false
+
+# The run_shared model (O-30, ADR 0010): one disposable /workspace per run carried through every step,
+# generic run-scoped support services, and ko/Buildah as ordinary steps under a builder-capable step
+# role. DISABLED by default: nothing below is rendered and the server keeps refusing
+# kodama/v1alpha2. Enabling it is not qualifying it: the stage cluster needs the node profiles of
+# docs/operations/run-builder-profile.md installed (T-120/T-121) and T-117 accepts the assembled product.
+# See docs/operations/run-shared.md before enabling.
+#
+# The execution policy is APPEND-ONLY: change a value that belongs to the policy body (limits, roles,
+# network, storage class, admission) by giving it a NEW policy.id and moving the previous body, as
+# rendered, into retainedPolicies. A run pins {id, digest}; a pin that is no longer in the list stops
+# its resources and fails with policy_unavailable.
+runShared:
+  enabled: false
+  # `runShared` closed|open: whether NEW runs of kodama/v1alpha2 are admitted. `legacyFormat`
+  # open|drain|closed: open admits kodama/v1alpha1 too; drain refuses new v1alpha1 runs with
+  # format_retired; closed records that no attempt_private run remains. A tenant namespace has ONE Pod
+  # Security level: enabled puts the namespaces at `baseline`, where the server's attempt_private
+  # preflight (it requires `restricted`) refuses to dispatch. Drain attempt_private runs first and
+  # enable with `drain` (docs/operations/run-shared.md, "Order of operations").
+  admission:
+    runShared: closed
+    legacyFormat: open
+  # Non-root identity of run_shared workloads. Buildah's subordinate ID ranges exist only for the
+  # builder image's `build` user (UID 1000); the legacy identity (execution.job.runAsUser) is unchanged.
+  identity:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  # Pod Security level of the tenant namespaces when enabled is `baseline` (the step role adds
+  # SETUID/SETGID and installed seccomp/AppArmor profiles, which `restricted` forbids). The version is
+  # pinned: the namespace labels and the execution policy carry the same one, and the server's
+  # namespace preflight refuses a namespace whose level or version differs.
+  podSecurity:
+    version: v1.31
+  # Address blocks public egress never reaches beyond the private, link-local and CGNAT ranges it
+  # always excludes: the cluster's Pod, Service and node ranges that are not private. PLACEHOLDER.
+  clusterCIDRs: []
+  # Attestation that the node profiles the step role names (seccomp and lsm) are installed and ready on
+  # EVERY worker node: the installer DaemonSet of docs/operations/run-builder-profile.md reports one Ready Pod
+  # per node. The server cannot read node files, and a missing profile is refused by the kubelet (container
+  # creation fails; a missing AppArmor profile rejects the Pod) before anything runs, never inside Buildah and
+  # never with a weaker profile. The chart therefore refuses to render run_shared with a named profile until
+  # an operator has attested the installation here.
+  nodeProfilesInstalled: false
+  # Vouch for builder_rootless only after T-121 qualified a real rootless build under the step role.
+  # While false a policy that requires the capability refuses admission.
+  builderRootless: false
+  # Added to the tenant ResourceQuota when enabled: the run scratch claims and their storage, and
+  # the Services of run support services. Pods and CPU/memory stay under execution.quota.
+  quota:
+    persistentvolumeclaims: 20
+    requests.storage: 80Gi
+    services: 20
+  # The CURRENT execution policy (the newest in the list). The stage policy of O-30.
+  policy:
+    id: run-v1
+    limits:
+      maxRunSeconds: 21600
+      maxServices: 8
+      maxRunWorkspaceMiB: 8192
+      defaultRunWorkspaceMiB: 2048
+      maxServiceCpuMillis: 4000
+      maxServiceMemoryMiB: 8192
+      maxServiceEphemeralMiB: 8192
+      maxServiceStorageMiB: 8192
+      preparationTimeoutSeconds: 600
+      preparationAttempts: 2
+      preparationMaxBytes: 1073741824
+      stopGraceSeconds: 30
+      preparationCpuMillis: 500
+      preparationMemoryMiB: 512
+      stepCpuMillis: 2000
+      stepMemoryMiB: 2048
+      stepEphemeralMiB: 8192
+    # Extra resource capabilities every run_shared run needs (for example builder_rootless).
+    requires: []
+    workspace:
+      # The run scratch claim: ReadWriteOncePod, delete reclaim, this storage class
+      # (WaitForFirstConsumer on the stage cluster). The class must exist; the adapter refuses a class whose
+      # reclaim policy is not Delete.
+      storageClass: sbs-default
+      idmapped: true
+    roles:
+      # The builder-capable step baseline: non-root, a Pod user namespace, SETUID/SETGID only and the
+      # node-installed profiles of deploy/profiles/run-builders. A nonempty procMount ("unmasked") is
+      # the documented follow-up, not a default.
+      step:
+        capabilitiesAdd: [SETUID, SETGID]
+        seccomp: kodama-rootless-build-v1
+        lsm: kodama-rootless-build-v1
+        procMount: ""
+      # The preparation image runs `kodama prepare`: it defaults to the release image (it contains git).
+      # Override with another digest-pinned reference only if it provides git and the kodama binary.
+      preparationImage: ""
+    # Pipeline-visible builder modes (ko and Buildah run in ordinary steps; the builder service mode is
+    # `none` until T-123).
+    builders:
+      rootless: [ko, buildah]
+    # The pinned network model. Stage: tenant-level isolation with public HTTP/HTTPS egress.
+    network:
+      isolation: tenant
+      publicEgress: true
+    # Named destinations a pipeline may add per workload (registry, package mirrors). Hosts resolve
+    # through the installation resolver; the adapter refuses a host it cannot pin.
+    egressProfiles: {}
+    #  registry:
+    #    destinations: [{host: registry.example.invalid, ports: [443]}]
+  # Previous complete policy bodies, oldest first, as they were rendered (the keys of the policy
+  # contract: id, admission, limits, requires, workspace, roles, podSecurity, builders, egressProfiles,
+  # network). Never edit one: a body that changes is a different policy.
+  retainedPolicies: []
