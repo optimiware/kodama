@@ -16,7 +16,7 @@ import (
 	"github.com/optimiware/kodama/internal/domain"
 	gitjwt "github.com/optimiware/kodama/internal/gitauth/jwt"
 	"github.com/optimiware/kodama/internal/gitservice"
-	"github.com/optimiware/kodama/internal/kernel/serve"
+	"github.com/optimiware/kodama/internal/shell/serve"
 )
 
 // gitCommandUsage documents the two Git commands registered in the binary.
