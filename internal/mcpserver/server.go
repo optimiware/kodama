@@ -88,6 +88,9 @@ func filterOperations(operations []Operation, cfg Config) ([]Operation, error) {
 		if op.Sensitive && !cfg.EnableSecretWrites {
 			continue
 		}
+		if op.Credential && !cfg.EnableCredentialTools {
+			continue
+		}
 		if len(allowed) > 0 && !allowed[op.Toolset] {
 			continue
 		}

@@ -101,3 +101,24 @@ func TestFilterOperations(t *testing.T) {
 		t.Fatalf("default mode = %d, want %d", len(withoutSecrets), len(all)-2)
 	}
 }
+
+func TestCredentialToolsAreOptIn(t *testing.T) {
+	ops := []Operation{
+		{ID: "getMe", Toolset: "identity"},
+		{ID: "createGitCredential", Toolset: "repo", Credential: true},
+	}
+	got, err := filterOperations(ops, Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "getMe" {
+		t.Fatalf("default tools = %+v", got)
+	}
+	got, err = filterOperations(ops, Config{EnableCredentialTools: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("credential tools = %+v", got)
+	}
+}

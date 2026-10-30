@@ -85,6 +85,7 @@ prerequisite, not something this server can fake.
 | MS-10 | `--read-only` and `--toolsets` MUST hide tools; hiding a tool MUST NOT be used as an authorization boundary. |
 | MS-11 | The server MUST advertise only the `tools` MCP capability and a pinned protocol revision. |
 | MS-12 | A deployment MUST document the OAuth resource/audience form and the authorization-server client-registration prerequisite. |
+| MS-13 | Operations that return Git credentials MUST be hidden unless the installation explicitly enables credential tools; the MCP server MUST NOT make a credential value the default result of a model-facing tool. |
 
 ## Acceptance
 
@@ -99,6 +100,7 @@ prerequisite, not something this server can fake.
 | MS-A07 | API error envelopes keep `code`, `requestId` and status; oversized responses and `follow=true` are refused. | MS-07, MS-08 |
 | MS-A08 | The process starts without a database, broker, object store, KMS or Kubernetes credential. | MS-09 |
 | MS-A09 | The deployment guide states the resource/audience and client-registration requirements. | MS-12 |
+| MS-A10 | A Git-credential-returning operation is absent by default and appears only with `--enable-credential-tools`; enabling it still does not log the value. | MS-13 |
 
 ## Unresolved decisions
 

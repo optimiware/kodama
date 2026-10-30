@@ -41,6 +41,7 @@ type Operation struct {
 	Destructive bool
 	Idempotent  bool
 	Sensitive   bool
+	Credential  bool
 	Streaming   bool
 }
 
@@ -97,6 +98,7 @@ func buildOperation(root map[string]any, path, method, id string, raw map[string
 		ReadOnly: method == "get", Idempotent: method == "get" || method == "delete" || method == "put",
 		Destructive: method == "delete" || containsAny(id, "cancel", "cleanup", "revoke", "delete"),
 		Sensitive:   id == "createSecret" || id == "createSecretVersion",
+		Credential:  strings.Contains(path, "/git-credentials") || containsAny(id, "gitcredential", "git-credential"),
 		Streaming:   id == "observeProjectEvents" || id == "observeRunEvents" || id == "getRunLogs",
 	}
 	if id == "replayChatopsDelivery" {

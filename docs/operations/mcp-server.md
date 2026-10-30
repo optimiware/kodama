@@ -29,6 +29,7 @@ URL in a real installation.
 | `--read-only` | `KODAMA_MCP_READ_ONLY` | Expose only GET tools |
 | `--toolsets` | `KODAMA_MCP_TOOLSETS` | Comma-separated groups: `identity`, `work`, `workspace`, `pipeline`, `runs`, `gates`, `delivery`, `configuration`, `artifacts`, `model`, `repo`, `chatops` |
 | `--enable-secret-writes` | `KODAMA_MCP_ENABLE_SECRET_WRITES` | Expose `createSecret`/`createSecretVersion` |
+| `--enable-credential-tools` | `KODAMA_MCP_ENABLE_CREDENTIAL_TOOLS` | Expose tools that return Git credentials |
 | `--api-ca-file` | `KODAMA_MCP_API_CA_FILE` | PEM trust roots for the API |
 | `--oidc-ca-file` | `KODAMA_MCP_OIDC_CA_FILE` | PEM trust roots for discovery and JWKS |
 | `--default-tenant` | `KODAMA_MCP_DEFAULT_TENANT` | Optional default tenant argument |

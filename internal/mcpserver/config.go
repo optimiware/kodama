@@ -23,9 +23,10 @@ type Config struct {
 	Issuer   string
 	Listen   string
 
-	ReadOnly           bool
-	Toolsets           []string
-	EnableSecretWrites bool
+	ReadOnly              bool
+	Toolsets              []string
+	EnableSecretWrites    bool
+	EnableCredentialTools bool
 
 	APICAFile  string
 	OIDCCAFile string
@@ -65,6 +66,7 @@ func ParseServeConfig(args []string, getenv func(string) string, output io.Write
 	defaultProject := str("default-project", "KODAMA_MCP_DEFAULT_PROJECT", "", "optional default project ID")
 	readOnly := boolFlag("read-only", "KODAMA_MCP_READ_ONLY", false, "expose only read-only API operations")
 	secretWrites := boolFlag("enable-secret-writes", "KODAMA_MCP_ENABLE_SECRET_WRITES", false, "expose secret-value write tools")
+	credentialTools := boolFlag("enable-credential-tools", "KODAMA_MCP_ENABLE_CREDENTIAL_TOOLS", false, "expose tools that return Git credentials")
 	allowInsecure := boolFlag("allow-insecure-http", "KODAMA_MCP_ALLOW_INSECURE_HTTP", false, "allow http URLs for loopback development only")
 	timeout := fs.Duration("http-timeout", envDuration(getenv, "KODAMA_MCP_HTTP_TIMEOUT", 30*time.Second), "per-call HTTP timeout (KODAMA_MCP_HTTP_TIMEOUT)")
 	maxBytes := fs.Int64("max-response-bytes", envInt64(getenv, "KODAMA_MCP_MAX_RESPONSE_BYTES", 4<<20), "maximum API response bytes (KODAMA_MCP_MAX_RESPONSE_BYTES)")
@@ -78,7 +80,7 @@ func ParseServeConfig(args []string, getenv func(string) string, output io.Write
 	cfg = Config{
 		APIURL: strings.TrimSpace(*apiURL), Resource: strings.TrimRight(strings.TrimSpace(*resource), "/"),
 		Audience: strings.TrimSpace(*audience), Issuer: strings.TrimSpace(*issuer), Listen: strings.TrimSpace(*listen),
-		ReadOnly: *readOnly, EnableSecretWrites: *secretWrites,
+		ReadOnly: *readOnly, EnableSecretWrites: *secretWrites, EnableCredentialTools: *credentialTools,
 		APICAFile: strings.TrimSpace(*apiCA), OIDCCAFile: strings.TrimSpace(*oidcCA),
 		AllowInsecureHTTP: *allowInsecure, DefaultTenant: strings.TrimSpace(*defaultTenant), DefaultProject: strings.TrimSpace(*defaultProject),
 		HTTPTimeout: *timeout, MaxResponseBytes: *maxBytes,
