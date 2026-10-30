@@ -28,6 +28,7 @@ Verified by acceptance suites that run the real server against PostgreSQL, NATS 
 | Live model and coding-agent qualification | Agents are tested with scripted responses only |
 | Optimi Platform (hosted) integration | Design target; standalone identity works today |
 | Other agent harnesses, untrusted multi-tenant isolation, UI, Supabase blueprint, browser QA | Deferred |
+| Shared run workspace, support services and ko/Buildah builds (`run_shared`, ADR 0010 / O-30) | Implemented and composed for Kubernetes (off by default); the builder node profiles are installed and qualified on the stage cluster ([profile report](acceptance/run-resource-profile.md)). The assembled-product stage acceptance and cutover (T-117) is **parked** until stage access is provisioned on the operator machine; see [resume checklist](tasks/T-117-run-resource-acceptance.md#parked-2026-10-30-resume-checklist). BuildKit is deferred (T-123) |
 | Native release/version catalogue and tool-neutral delivery | [ADR 0012](adr/0012-container-sdlc-and-artifact-releases.md) accepted as direction; [T-140–T-146](implementation/container-sdlc-refinement.md) prepared for planning. Existing verified file/OCI artifacts are implemented; release discovery/fetch/publication and generic deployment/rollback are not yet delivered |
 
 The full list of remaining work is the [task backlog](tasks/README.md). The technical record of how the server is composed, with every route, worker and unwired capability, is [assembly status](implementation/assembly-status.md).

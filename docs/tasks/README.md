@@ -36,6 +36,8 @@ T-119 is merged at `b75dca74`. T-112's repaired lifecycle/persistence component 
 
 **Owner scope revision (O-30, 2026-10-29):** [O-30](../decisions.md#revised-scope--2026-10-29-o-30) supersedes the O-29 gating. [T-122](T-122-o30-scope-amendment.md) amends the contracts and admission derivation and freezes the integration seams. Then T-113 (authority/entrypoint), T-114 (Kubernetes), T-115 (local runtimes), T-120 (node profiles) and [T-124](T-124-runprofile-driver-o30.md) (driver update) proceed in parallel on unit/component evidence; T-116 assembles; T-121 installs and qualifies the profile on stage and T-117 accepts the merged image and chart there. BuildKit moves to deferred [T-123](T-123-buildkit-builder-service.md); browser work is removed.
 
+**Run-shared status and parked work (2026-10-30):** T-122, T-120, T-124, T-114, T-113, T-116, T-121 and T-115 are reviewed, checked and merged; `run_shared` is composed for Kubernetes (off by default) and the builder profile is qualified on stage, with the owner's AppArmor amendment (versioned step profile `kodama-rootless-build-v2`) and immediate-cutover decision recorded under [O-30](../decisions.md#revised-scope--2026-10-29-o-30). **Parked by the owner** until stage access is provisioned on the operator machine: [T-117](T-117-run-resource-acceptance.md) (stage acceptance and cutover; see its resume checklist). **Outstanding, unparked:** [T-134](T-134-local-run-shared-wiring.md) (Podman/Process composition; local lifecycle evidence only), the v1-only context readers of agent, QA and delivery steps inside `run_shared` runs (no task yet; they fail closed), and deferred [T-123](T-123-buildkit-builder-service.md) (BuildKit).
+
 ```text
 T-122 ─┬─ T-113 ─┐
        ├─ T-114 ─┼─ T-116 ─┐
@@ -145,7 +147,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-115 Podman and Process run resources](T-115-local-run-resources.md) | T-112, T-122 | done |
 | [T-116 Resource assembly, chart and migration](T-116-run-resource-assembly.md) | T-113, T-114, T-115, T-120 | done |
 | [T-134 Wire the Podman and Process run-resource ports](T-134-local-run-shared-wiring.md) | T-115, T-116 | planned |
-| [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | planned |
+| [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | deferred (parked until stage access) |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
 | [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | done |
 | [T-122 O-30 scope amendment](T-122-o30-scope-amendment.md) | T-109, T-110, T-112 | done |
