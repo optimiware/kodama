@@ -151,12 +151,32 @@ type Fence struct {
 	Fenced bool
 }
 
+// Hosting says how a workspace's source is hosted: by an external Git host
+// through the publisher (the model of this specification up to T-113) or by the
+// internal tenant Git service (ADR 0011), where attempts push and the workspace
+// holds one task-branch association per repository.
+type Hosting string
+
+const (
+	HostingExternal Hosting = "external"
+	HostingInternal Hosting = "internal"
+)
+
 // Workspace is the aggregate. Fields are exported for adapters; mutate it only
 // through its methods so every invariant and transition stays in one place.
+//
+// For an internally hosted workspace RepositoryID, RepositoryURL, WorkBranch
+// and AcceptedCommit describe its primary repository (the first one it was
+// provisioned for); the associations of every repository, the primary
+// included, are separate records (RepositoryAssociation).
 type Workspace struct {
 	ID         ID
 	Scope      domain.Scope
 	WorkItemID domain.WorkItemID
+
+	// Hosting is HostingExternal for every workspace created by New and
+	// HostingInternal for one created by NewInternal. It never changes.
+	Hosting Hosting
 
 	RepositoryID  RepositoryID
 	RepositoryURL string
@@ -211,7 +231,7 @@ func New(p NewParams, now time.Time) (*Workspace, error) {
 		return nil, err
 	}
 	return &Workspace{
-		ID: p.ID, Scope: p.Scope, WorkItemID: p.WorkItemID,
+		ID: p.ID, Scope: p.Scope, WorkItemID: p.WorkItemID, Hosting: HostingExternal,
 		RepositoryID: p.RepositoryID, RepositoryURL: p.RepositoryURL,
 		CheckoutSecretRef: p.CheckoutSecretRef, PublisherSecretRef: p.PublisherSecretRef,
 		WorkBranch: branch, State: StateProvisioning, Version: 1,

@@ -39,6 +39,47 @@ generated aggregate and client) is **not** changed here and still documents only
 T-116 adds the `v1alpha2` document description, the `format_disabled` and `workspace_from_removed`
 diagnostics and the regenerated aggregate/client together, behind the installation's explicit enablement.
 
+## kodama/v1alpha3 (run_shared with a source set)
+
+The sibling directory `v1alpha3/` (package `pipelinev1alpha3`), delivered by T-131, is the
+executable schema, fixtures and goldens of the additive `kodama/v1alpha3` format of
+[ADR 0011](../../docs/adr/0011-internal-tenant-git-service.md) (PX-23). It is the `kodama/v1alpha2`
+document plus an optional `spec.sources` and nothing else (a test asserts the schemas are equal
+apart from `$id`, `apiVersion`, the description and the three source definitions). Like `v1alpha2` it is
+a separate document version: judged by the schema of its own `apiVersion`, never valid under another
+version's schema and the reverse, default off in the validator (`Config.EnableV1Alpha3`, independent of
+`EnableV1Alpha2`) and refused by run admission until the execution tasks implement it. Every
+`v1/` and `v1alpha2/` file is byte-identical (`Test_unit_pipeline_old_formats_unchanged` pins their
+trees). The prose contract of the format is
+[`pipeline-format-v1alpha3.md`](../../docs/contracts/pipeline-format-v1alpha3.md); the Git contract's
+[source set](../../docs/contracts/git-service.md#source-set) defines the set admission builds from it.
+
+```yaml
+spec:
+  sources:
+    - {repository: backend, path: backend, access: write}
+    - {repository: frontend, path: frontend, access: read}
+```
+
+| Member | Rule |
+| --- | --- |
+| `spec.sources` | Optional list of 1–32 sources, in declaration order (the order is part of the canonical form). Absent is **not filled**: a run without sources has the project's one default repository at `.` (the single-source case), so a single-source document stays valid without it and keeps one digest in every project |
+| `repository` | Logical repository name within the project (`^[a-z][a-z0-9-]{0,62}$`), unique in the document. Resolved, authorized and pinned to one commit at run admission; a document never names a commit, branch, ref, URL or repository ID |
+| `path` | Checkout path relative to `/workspace`: exactly `gitv1.ValidateSourcePath` (clean, components start with a letter, digit or underscore so never `.git` or a hidden name, no `..`, at most 255 bytes). Unique, no path inside another, and `.` only as the sole entry |
+| `access` | `read` or `write`. `write` is a **ceiling**: only the step holding the writer reservation may publish, to the repository's branch and nowhere else; a `read` source can never be written. A step that writes the workspace needs at least one `write` source and a `write` source needs a writing step |
+
+New diagnostic codes: `invalid_source_path`, `source_path_overlap`, `duplicate_source_repository` (syntax
+stage), `source_write_undeclared`, `source_write_unused` (semantic stage); admission refusals
+`source_repository_unknown` and `sources_source_free` (spelled by `internal/pipeline`, decided by run
+admission). `v1alpha3/fixtures/cases.json` is generated from the validator tests
+(`KODAMA_UPDATE_GOLDEN=1 go test ./internal/pipeline -run Test_unit_pipeline_sources_declaration`),
+and the canonical goldens by the same test; `service-test` is the `v1alpha2` reference vector with the
+`apiVersion` replaced, digest `sha256:4ac7d72393f64a79ae72d17bdfe1e8962c4ac5b521b6c1cf369e5f9b938267c2`
+derived independently with Python.
+
+`api/pipeline.yaml` is **not** changed here; T-158 adds the `v1alpha3` description with the regenerated
+aggregate and client.
+
 ## Schema versus enabled behavior
 
 The schema says which shapes exist. It does not say which step kinds an

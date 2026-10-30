@@ -557,8 +557,17 @@ func TestM1CompositionSmoke(t *testing.T) {
 		if len(published) < 30 {
 			t.Fatalf("only %d operations in the aggregate", len(published))
 		}
+		kernelOps := 0
 		for _, op := range published {
 			path := servedPath(concrete(op.Path))
+			if isKernelGitOperation(op.Method + " " + op.Path) {
+				// Served by the kernel assembly, not by this composition: absent here.
+				kernelOps++
+				if status, _ := d.probe(op.Method, path, devAdminToken); status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
+					t.Errorf("%s %s belongs to the kernel assembly but this composition answered %d", op.Method, op.Path, status)
+				}
+				continue
+			}
 			if status, code := d.probe(op.Method, path, ""); status != http.StatusUnauthorized || code != "invalid_credential" {
 				t.Errorf("%s %s without a credential: %d %q (a route that is unregistered or open)", op.Method, op.Path, status, code)
 			}
@@ -571,6 +580,9 @@ func TestM1CompositionSmoke(t *testing.T) {
 					t.Errorf("%s %s for a caller without a binding: %d", op.Method, op.Path, status)
 				}
 			}
+		}
+		if kernelOps != 15 {
+			t.Errorf("the aggregate lists %d kernel Git operations, want 15", kernelOps)
 		}
 	})
 

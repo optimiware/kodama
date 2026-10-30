@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -24,6 +25,10 @@ type Pipeline struct {
 	Disabled   bool             `json:"disabled"`
 	CreatedAt  time.Time        `json:"createdAt"`
 	UpdatedAt  time.Time        `json:"updatedAt"`
+	// RepositoryID and SourceCommit are set for a pipeline indexed from a
+	// repository (source git): the repository and the exact commit read.
+	RepositoryID string `json:"repositoryId,omitempty"`
+	SourceCommit string `json:"sourceCommit,omitempty"`
 }
 
 // PutPipeline registers or replaces an API-managed definition by name.
@@ -48,10 +53,11 @@ func (s *Store) PutPipeline(ctx context.Context, p Pipeline) (Pipeline, error) {
 func (s *Store) GetPipelineByName(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, name string) (Pipeline, error) {
 	p := Pipeline{TenantID: tenant, ProjectID: project, Name: name}
 	err := s.inTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT id,source,definition::jsonb,version,disabled_at IS NOT NULL,created_at,updated_at
+		return tx.QueryRow(ctx, `SELECT id,source,definition::jsonb,version,disabled_at IS NOT NULL,created_at,updated_at,
+			coalesce(repo_id,''),coalesce(source_commit,'')
 			FROM pipelines WHERE tenant_id=$1 AND project_id=$2 AND name=$3
 			ORDER BY repo_id NULLS FIRST LIMIT 1`, tenant, project, name).
-			Scan(&p.ID, &p.Source, &p.Definition, &p.Version, &p.Disabled, &p.CreatedAt, &p.UpdatedAt)
+			Scan(&p.ID, &p.Source, &p.Definition, &p.Version, &p.Disabled, &p.CreatedAt, &p.UpdatedAt, &p.RepositoryID, &p.SourceCommit)
 	})
 	return p, translate(err)
 }
@@ -59,7 +65,8 @@ func (s *Store) GetPipelineByName(ctx context.Context, tenant domain.TenantID, p
 func (s *Store) ListPipelines(ctx context.Context, tenant domain.TenantID, project domain.ProjectID) ([]Pipeline, error) {
 	var out []Pipeline
 	err := s.inTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT id,name,source,definition::jsonb,version,disabled_at IS NOT NULL,created_at,updated_at
+		rows, err := tx.Query(ctx, `SELECT id,name,source,definition::jsonb,version,disabled_at IS NOT NULL,created_at,updated_at,
+			coalesce(repo_id,''),coalesce(source_commit,'')
 			FROM pipelines WHERE tenant_id=$1 AND project_id=$2 ORDER BY name,id`, tenant, project)
 		if err != nil {
 			return err
@@ -67,7 +74,7 @@ func (s *Store) ListPipelines(ctx context.Context, tenant domain.TenantID, proje
 		defer rows.Close()
 		for rows.Next() {
 			p := Pipeline{TenantID: tenant, ProjectID: project}
-			if err := rows.Scan(&p.ID, &p.Name, &p.Source, &p.Definition, &p.Version, &p.Disabled, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			if err := rows.Scan(&p.ID, &p.Name, &p.Source, &p.Definition, &p.Version, &p.Disabled, &p.CreatedAt, &p.UpdatedAt, &p.RepositoryID, &p.SourceCommit); err != nil {
 				return err
 			}
 			out = append(out, p)
@@ -94,24 +101,47 @@ type Step struct {
 }
 
 type Run struct {
-	TenantID          domain.TenantID  `json:"tenantId"`
-	ProjectID         domain.ProjectID `json:"projectId"`
-	ID                string           `json:"id"`
-	PipelineID        string           `json:"pipelineId"`
-	PipelineName      string           `json:"pipelineName"`
-	TaskID            string           `json:"taskId,omitempty"`
-	Status            string           `json:"status"`
-	Reason            string           `json:"reason,omitempty"`
-	Backend           string           `json:"backend,omitempty"`
-	ExecutionOrder    []string         `json:"executionOrder"`
-	Inputs            json.RawMessage  `json:"inputs"`
-	Definition        json.RawMessage  `json:"definition"`
-	CancelRequestedAt *time.Time       `json:"cancelRequestedAt,omitempty"`
-	CreatedAt         time.Time        `json:"createdAt"`
-	StartedAt         *time.Time       `json:"startedAt,omitempty"`
-	FinishedAt        *time.Time       `json:"finishedAt,omitempty"`
-	Version           domain.Version   `json:"version"`
-	Steps             []Step           `json:"steps,omitempty"`
+	TenantID       domain.TenantID  `json:"tenantId"`
+	ProjectID      domain.ProjectID `json:"projectId"`
+	ID             string           `json:"id"`
+	PipelineID     string           `json:"pipelineId"`
+	PipelineName   string           `json:"pipelineName"`
+	TaskID         string           `json:"taskId,omitempty"`
+	Status         string           `json:"status"`
+	Reason         string           `json:"reason,omitempty"`
+	Backend        string           `json:"backend,omitempty"`
+	ExecutionOrder []string         `json:"executionOrder"`
+	Inputs         json.RawMessage  `json:"inputs"`
+	Definition     json.RawMessage  `json:"definition"`
+	// Sources are the run's pinned sources (runs.sources), in the shape of
+	// gitv1.SourceSet.Sources; empty for a run without a repository.
+	Sources []gitv1.Source `json:"sources,omitempty"`
+	// TenantKey and ProjectKey address the run's repositories under /git/; they
+	// are read with the run and never serialized.
+	TenantKey         string         `json:"-"`
+	ProjectKey        string         `json:"-"`
+	CancelRequestedAt *time.Time     `json:"cancelRequestedAt,omitempty"`
+	CreatedAt         time.Time      `json:"createdAt"`
+	StartedAt         *time.Time     `json:"startedAt,omitempty"`
+	FinishedAt        *time.Time     `json:"finishedAt,omitempty"`
+	Version           domain.Version `json:"version"`
+	Steps             []Step         `json:"steps,omitempty"`
+}
+
+// decodeSources reads runs.sources. A malformed or invalid pinned set is an
+// error: a run never starts from sources it cannot trust.
+func decodeSources(raw []byte) ([]gitv1.Source, error) {
+	if len(raw) == 0 || string(raw) == "[]" || string(raw) == "null" {
+		return nil, nil
+	}
+	var out []gitv1.Source
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	if err := (gitv1.SourceSet{Sources: out}).Validate(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // AdmitRun inserts the run and one row per step, with the immutable definition
@@ -146,15 +176,24 @@ func (s *Store) AdmitRun(ctx context.Context, r Run, steps []Step, triggerKey, r
 func (s *Store) GetRun(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, id string) (Run, error) {
 	r := Run{TenantID: tenant, ProjectID: project, ID: id}
 	err := s.inTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var sources []byte
 		if err := tx.QueryRow(ctx, `SELECT r.pipeline_id,p.name,coalesce(r.task_id,''),r.status,coalesce(r.reason,''),
-			coalesce(r.backend,''),r.execution_order,r.inputs::jsonb,r.definition_snapshot::jsonb,
-			r.cancel_requested_at,r.created_at,r.started_at,r.finished_at,r.version
+			coalesce(r.backend,''),r.execution_order,r.inputs::jsonb,r.definition_snapshot::jsonb,r.sources::jsonb,
+			t.key,pr.key,r.cancel_requested_at,r.created_at,r.started_at,r.finished_at,r.version
 			FROM runs r JOIN pipelines p ON p.tenant_id=r.tenant_id AND p.project_id=r.project_id AND p.id=r.pipeline_id
+			JOIN tenants t ON t.id=r.tenant_id
+			JOIN projects pr ON pr.tenant_id=r.tenant_id AND pr.id=r.project_id
 			WHERE r.tenant_id=$1 AND r.project_id=$2 AND r.id=$3`, tenant, project, id).
 			Scan(&r.PipelineID, &r.PipelineName, &r.TaskID, &r.Status, &r.Reason, &r.Backend, &r.ExecutionOrder,
-				&r.Inputs, &r.Definition, &r.CancelRequestedAt, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Version); err != nil {
+				&r.Inputs, &r.Definition, &sources, &r.TenantKey, &r.ProjectKey, &r.CancelRequestedAt, &r.CreatedAt,
+				&r.StartedAt, &r.FinishedAt, &r.Version); err != nil {
 			return err
 		}
+		pinned, err := decodeSources(sources)
+		if err != nil {
+			return fmt.Errorf("run %s: sources: %w", id, err)
+		}
+		r.Sources = pinned
 		rows, err := tx.Query(ctx, `SELECT id,step_key,ordinal,image,status,coalesce(reason,''),exit_code,coalesce(log_uri,''),
 			outputs::jsonb,started_at,finished_at FROM run_steps
 			WHERE tenant_id=$1 AND project_id=$2 AND run_id=$3 ORDER BY ordinal`, tenant, project, id)
@@ -286,7 +325,12 @@ func (s *Store) FinishRun(ctx context.Context, tenant domain.TenantID, project d
 		_, err := tx.Exec(ctx, `UPDATE runs SET status=$4, reason=nullif($5,''), finished_at=now(), version=version+1
 			WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND status IN ('queued','running')`,
 			tenant, project, runID, status, reason)
-		return err
+		if err != nil {
+			return err
+		}
+		// A run's Git credentials end with it (GR-06); liveness is re-read at
+		// every use as well, so this only closes the window early.
+		return revokeRunCredentialsTx(ctx, tx, tenant, project, runID)
 	}))
 }
 

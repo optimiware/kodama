@@ -109,6 +109,9 @@ func (s *Store) mutateInTx(ctx context.Context, tx pgx.Tx, scope domain.Scope, i
 	if err := s.revokeGrants(ctx, tx, scope, agg, env.Now()); err != nil {
 		return nil, err
 	}
+	if err := s.revokeGitGrants(ctx, tx, scope, agg, env.Now()); err != nil {
+		return nil, err
+	}
 	for _, after := range fx.After {
 		if err := after(ctx, env); err != nil {
 			return nil, err
@@ -159,6 +162,37 @@ func (s *Store) revokeGrants(ctx context.Context, tx pgx.Tx, scope domain.Scope,
 	for _, id := range ids {
 		if _, err := s.grants(ctx, tx, scope, id, now); err != nil {
 			return execution.Unavailablef(err, "the runtime grants of attempt %s could not be revoked", id)
+		}
+	}
+	return nil
+}
+
+// revokeGitGrants ends the Git grants of every attempt of a source-set run whose
+// authority this transaction ended, in attempt ID order, in the transaction
+// itself (lock level 4, with the runtime grants): the run row is locked, the
+// attempt's authority recorded, and only then are its grants revoked, so a push
+// that races the cancellation either already obtained commit intent (and
+// completes) or is refused. It is idempotent.
+func (s *Store) revokeGitGrants(ctx context.Context, tx pgx.Tx, scope domain.Scope, agg *execution.Aggregate, now time.Time) error {
+	if !agg.Run.SourceRun() {
+		return nil
+	}
+	var ids []domain.AttemptID
+	for _, at := range agg.Attempts {
+		if c, ok := agg.Controls[at.ID]; ok && c.AuthorityEnded() {
+			if at.Scope != scope {
+				return fmt.Errorf("%w: an attempt of another scope was revoked", execution.ErrNotFound)
+			}
+			ids = append(ids, at.ID)
+		}
+	}
+	if len(ids) > 0 && s.peers.GitGrants == nil {
+		return fmt.Errorf("%w: the Git grant revoker is required to end the authority of a source-set attempt", execution.ErrNotConfigured)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	for _, id := range ids {
+		if _, err := s.peers.GitGrants(ctx, tx, scope, id, now); err != nil {
+			return execution.Unavailablef(err, "the Git grants of attempt %s could not be revoked", id)
 		}
 	}
 	return nil

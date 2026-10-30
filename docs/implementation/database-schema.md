@@ -1,8 +1,10 @@
 # Database schema
 
-**Phase 2 implementation of [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md).** There are **14 domain tables plus `audit_events`: 15 product tables**. The migration runner's `schema_migrations` ledger is separate. The earlier “14 total” was a counting error; audit/outbox persistence is required.
+**Phase 2 implementation of [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md).** There are **14 domain tables plus `audit_events`: 15 product tables** in the baseline (16 with the appended Git credentials table). The migration runner's `schema_migrations` ledger is separate. The earlier “14 total” was a counting error; audit/outbox persistence is required.
 
 The executable schema is [001_schema.sql](../../internal/storage/migrations/001_schema.sql), with runtime privileges in [002_grants.sql](../../internal/storage/migrations/002_grants.sql). [Phase 2 handoff](simplification-phase-2.md) records implementation boundaries and verification. Existing server queries are ported in Phase 3.
+
+**Appended contribution (O-36, T-167):** [003_git_hosting.sql](../../internal/storage/migrations/003_git_hosting.sql) is the only migration after the baseline. It adds `repositories.policy` (`directPushToDefault`, `integrationPipeline`), `repositories.empty` (the tenant worker's report) and `repositories.journal_ack` (the acknowledged receive-journal sequence), and one table, `git_credentials` (below, 16 product tables in total). No push-record, grant or workspace-association table exists; a receive is one `git.refs_updated` row in `audit_events` and the worker's local journal recovers a lost outcome. The baseline statements above describe `001`/`002`; the sections below name the Git additions where they apply.
 
 ## Tables
 
@@ -12,7 +14,8 @@ The executable schema is [001_schema.sql](../../internal/storage/migrations/001_
 | `users` | Global external principal mapping, unique `(issuer, subject)`; tenant-filtered visibility |
 | `memberships` | Tenant/project role binding; tenant-wide bindings have null project; null-safe uniqueness |
 | `projects` | Tenant-owned key, settings, complete `task_workflow` JSON object, version |
-| `repositories` | Tenant/project owner, relative `name`, default branch, provisioning/ready/archived status. Full Git path is rendered from owner keys, rather than stored redundantly |
+| `repositories` | Tenant/project owner, relative `name`, default branch, provisioning/ready/archived status; (`003`) `policy`, `empty` and `journal_ack`. Full Git path is rendered from owner keys, rather than stored redundantly |
+| `git_credentials` | (`003`) Short-lived Git credentials: the SHA-256 digest of the opaque secret (never the secret), `kind` (`human`, `seed`, `run`, `integration`), claims, tenant/optional project/repository, optional user or run, `issued_at`, `expires_at`, `revoked_at`, seed `consumed_at`/`consumed_receive`/`settled_at`, version. Composite ownership keys for the run, and a scope trigger (`git_credentials_owner`) rather than a composite key for the repository, whose project may be null: a credential names the same project scope as its repository, except that a `run` credential may be issued for the tenant-level repository (the tenant's context, read-only, never naming an update) while carrying the run's own project, so that the run's liveness is read with the credential; null-safe, unique per tenant by digest; forced RLS on `kodama_tenant_id()`; the runtime role may only change the lifecycle columns |
 | `pipelines` | Project, optional repository, process name, one complete `definition` JSON object, `source` (`git` or `api`), Git `source_commit`, version |
 | `tasks` | Project, kind, title/body, project-defined state, parent, optional blocker, `parked_at`, `resume_state`, role/user assignment, optional repository/branch, context, resolution, version |
 | `runs` | Pipeline and optional task, immutable definition/input/source/binding snapshots, trigger/request deduplication keys, status, cancellation and cleanup progress |
@@ -59,8 +62,8 @@ Runs retain secret identity/revision references, not plaintext. If a current-onl
 
 ## RLS and migration policy
 
-All 15 product tables enable and force RLS. `WithTenant` sets validated transaction-local context under a non-owner role. Global user visibility is filtered through memberships; principal discovery and worker tenant enumeration use narrow, PUBLIC-revoked definer functions. Tenant RLS is supplemented by project predicates and operation authorization.
+All product tables, including `git_credentials`, enable and force RLS. `WithTenant` sets validated transaction-local context under a non-owner role. Global user visibility is filtered through memberships; principal discovery and worker tenant enumeration use narrow, PUBLIC-revoked definer functions. Tenant RLS is supplemented by project predicates and operation authorization.
 
-This is an intentional **fresh-database prerelease reset**. Existing checksums are rejected before applying changes; the migration runner never drops or rewrites an existing database. Use a new isolated database for the reset. Later migrations append to this new baseline. The application manifest contains only these two migrations; legacy run-resource/grant/provenance contributions are not appended.
+This is an intentional **fresh-database prerelease reset**. Existing checksums are rejected before applying changes; the migration runner never drops or rewrites an existing database. Use a new isolated database for the reset. Later migrations append to this new baseline. The application manifest contains the two baseline migrations plus the one Git hosting contribution `003_git_hosting.sql`; legacy run-resource/grant/provenance contributions are not appended.
 
 No deployed database was reset as part of Phase 2. The legacy server explicitly refuses the new schema until Phase 3 replaces its adapters.

@@ -116,6 +116,14 @@ func NewService(d Dependencies, o Options) (*Service, error) {
 	if err := d.Shared.validate(d.Runtime); err != nil {
 		return nil, err
 	}
+	if d.GitGrants != nil {
+		// Issuing Git grants without a store that revokes them in the transaction
+		// that ends an attempt would leave cancelled attempts a usable credential.
+		// A store that cannot say (a wrapper) is not checked.
+		if rs, ok := d.Store.(GitRevokingStore); ok && !rs.RevokesGitGrants() {
+			return nil, fmt.Errorf("%w: the store cannot revoke Git grants, so none may be issued", ErrNotConfigured)
+		}
+	}
 	o, err := o.withDefaults()
 	if err != nil {
 		return nil, err

@@ -86,7 +86,7 @@ func TestMigrationReapply(t *testing.T) {
 		for _, line := range ledger(t, e) {
 			got = append(got, strings.SplitN(line, "|", 2)[0])
 		}
-		if fmt.Sprint(got) != "[001_schema.sql 002_grants.sql]" {
+		if fmt.Sprint(got) != "[001_schema.sql 002_grants.sql 003_git_hosting.sql]" {
 			t.Fatalf("ledger = %v", got)
 		}
 	})

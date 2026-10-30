@@ -19,6 +19,7 @@ integration is claimed.
 | `validate.go`, `graph.go`, `references.go` | `Validator`: DAG, source/writer ordering, whole-scalar references, typing, images, outputs, gates, capability and reference lookups |
 | `canonical.go` | Canonical bytes and `Digest` (frozen by golden fixtures) |
 | `document_v2.go`, `validate_v2.go`, `references_v2.go`, `parse_v2.go`, `errors_v2.go` | The `kodama/v1alpha2` (`run_shared`) branch: types, normalization and canonical tree, shape and semantic rules, endpoint expressions, schema-error code mapping, new diagnostic and admission-refusal codes. `document.go`, `validate.go` and `canonical.go` dispatch on `apiVersion`; no `kodama/v1alpha1` branch changed behavior |
+| `sources.go` | The `kodama/v1alpha3` source declarations: shape rules (`checkSourcesShape`, path rules are the Git contract's `gitv1.ValidateSourcePath`), writer relation (`checkSourceWriters`) and `EffectiveSources` for run admission |
 | `order.go`, `run_defaults.go` | `ExecutionOrder` (declaration-order topological order, gates included), `EffectiveAccess` (source-backed/source-free defaults) and `EffectiveArgv` (the argv matrix): pure functions for run admission and the runtime adapters |
 | `definition.go`, `errors.go` | `Definition` entity, `Candidate`, failure classes, bounded diagnostics |
 | `ports.go`, `service.go` | Consumer-owned ports and the `Register`/`Get`/`List` use cases |
@@ -196,3 +197,41 @@ tasks rely on:
   type-mismatch findings with constant text; the `v1alpha1` messages are unchanged. A typed
   `Scalar` whose type is not string, boolean or integer, and storage paths that overlap on a
   component boundary anywhere in the list, are refused.
+
+## kodama/v1alpha3 (run_shared with a source set), delivered by T-131, not enabled
+
+`kodama/v1alpha3` is the `kodama/v1alpha2` document plus an optional `spec.sources`
+([`contracts/pipeline`](../../contracts/pipeline/README.md#kodamav1alpha3-run_shared-with-a-source-set)).
+It shares every `run_shared` code path: `Document.IsRunShared()` is true for both versions and
+`normalize`, `tree`, `Validate` and the schema-error mapping dispatch on it; `IsV1Alpha2()` and
+`IsV1Alpha3()` tell them apart. No `kodama/v1alpha1` or `kodama/v1alpha2` behavior, canonical byte
+or digest changed (`Test_unit_pipeline_old_formats_unchanged` pins the frozen contract trees).
+
+* **Opt-in, off by default, independent.** `Config.EnableV1Alpha3` (zero value `false`) is separate
+  from `EnableV1Alpha2`; neither implies the other. A disabled installation gets `format_disabled`
+  as the single semantic finding and no lookup, exactly like `v1alpha2`. Execution refuses the
+  version (`checkDefinitionVersion` admits exactly `kodama/v1alpha1`, and the shared-model guard
+  exactly `kodama/v1alpha2`), so enabling registration is not enabling runs.
+* **Sources are declarations, not resolutions.** A source is `{repository, path, access}`: a logical
+  repository name in the project, a checkout path under `/workspace` and `read`/`write`. The
+  validator cannot know the project's repositories, so `Validate` never fails on an unknown name:
+  run admission resolves each name to a repository, pins one commit and builds the run's
+  `gitv1.SourceSet`, and refuses with `AdmissionSourceRepositoryUnknown`
+  (`source_repository_unknown`; a foreign repository is indistinguishable) or
+  `AdmissionSourcesSourceFree` (`sources_source_free`, a document with sources for a source-free run).
+* **Rules.** Syntax stage: 1 to 32 sources, names `^[a-z][a-z0-9-]{0,62}$` unique
+  (`duplicate_source_repository`), paths exactly the Git contract's source path rules
+  (`invalid_source_path`), paths unique, no path inside another and `.` only as the sole entry
+  (`source_path_overlap`), no field but the three (a commit, branch, ref or URL is `unknown_field`).
+  Semantic stage: a step that writes the workspace needs a `write` source
+  (`source_write_undeclared`) and a `write` source needs a writing step (`source_write_unused`).
+  Writers stay totally ordered by `needs` (`parallel_writers`). `access: write` is a ceiling: the
+  writer reservation, not the document, decides which attempt may publish.
+* **Absent means one default source, and is never filled.** `EffectiveSources` returns the declared
+  sources, or one implicit source at `.` (write exactly when a step writes; `Repository` empty for
+  admission to fill from the project's default repository). The canonical form leaves an absent
+  `sources` absent, so one definition has one digest in every project, and a `v1alpha3` document
+  without sources is the `v1alpha2` canonical form with a different `apiVersion` (published vector
+  `service-test`, `sha256:4ac7d7…67c2`, derived independently with Python).
+* **Typed documents.** `Spec.Sources []Source` exists only in `v1alpha3`; an earlier version that
+  sets it is `unknown_field`, never silently reduced.

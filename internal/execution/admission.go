@@ -115,7 +115,7 @@ func (s *Service) Prepare(ctx context.Context, caller Caller, cmd AdmitCommand) 
 	runID := domain.RunID(s.d.NewID("run"))
 	var pins *RunShared
 	if shared {
-		if pins, binding, err = s.planShared(ctx, cmd.Scope, runID, doc, true, src, snap); err != nil {
+		if pins, binding, err = s.planShared(ctx, cmd.Scope, runID, doc, true, src, snap, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -204,7 +204,7 @@ func (s *Service) PrepareCleanup(ctx context.Context, cmd CleanupCommand) (*Admi
 		// No work item, no source lookup, no repository, no checkout credential and
 		// no preparation exists for this run: the scratch starts empty and only
 		// earlier steps of the run change it.
-		if pins, binding, err = s.planShared(ctx, cmd.Scope, runID, doc, false, SourceInfo{}, snap); err != nil {
+		if pins, binding, err = s.planShared(ctx, cmd.Scope, runID, doc, false, SourceInfo{}, snap, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -416,6 +416,9 @@ func (s *Service) plan(run *Run, doc pipeline.Document, src SourceInfo, actor Ac
 		sum := sha256.Sum256([]byte(digest + "|" + sd))
 		digest = "sha256:" + hex.EncodeToString(sum[:])
 	}
+	if run.Sources != nil {
+		digest = digestOfSources(digest, run.Origin, run.Sources)
+	}
 	run.SnapshotDigest = digest
 	agg := &Aggregate{Run: run}
 	for i, st := range doc.Spec.Steps {
@@ -475,6 +478,9 @@ func (s *Service) ConfirmSource(ctx context.Context, scope domain.Scope, id doma
 	run := view.Run
 	if run.SourceRetention != RetentionPending {
 		return run, nil
+	}
+	if run.Sources != nil {
+		return s.confirmSourceSet(ctx, scope, run)
 	}
 	ref, err := s.d.Sources.Retain(ctx, scope, run.WorkspaceID, run.ID, run.SourceCommit)
 	if err != nil {

@@ -1,18 +1,19 @@
-BUN ?= bun
 GO ?= go
 DEV_SCOPE ?= t-001-local
 DEV_PROVIDER ?= podman
 export DEV_PROVIDER
 DEVCTL = $(GO) run ./dev/cmd/devctl
 REPOCTL = $(GO) run ./dev/cmd/repoctl
-OPENFORGE_DIR ?= ../openforge
-OPENFORGE = $(BUN) --no-install $(OPENFORGE_DIR)/src/cli.ts
+# Optional external harness: set OPENFORGE to the launcher command of an
+# OpenForge installation you provide (see docs/implementation/harness.md).
+# Nothing else in this Makefile needs it.
+OPENFORGE ?=
 CHECK_PACKAGES ?=
 GO_CORE_PACKAGES = ./cmd/... ./internal/... ./api/... ./contracts/... ./pkg/... ./test/support/...
 PKGS ?= $(GO_CORE_PACKAGES)
 INTEGRATION_PKGS ?= ./test/e2e/m1/... ./test/integration/assembly-execution/...
 
-.PHONY: fmt fmt-check lint lint-openforge test test-go test-go-unit test-go-json check-devtools openforge-install test-openforge check-openforge check-go check-go-integration test-podman test-task check-task build tools dev-up dev-down dev-preflight dev-integration dev-runtime test-integration dev-smoke test-assembly test-m1 test-m2 test-m3 test-chart api-generate api-check dev-teardown-check dev-diagnostics docs-check validate-tasks openforge-telegram
+.PHONY: fmt fmt-check lint test test-go test-go-unit test-go-json check-devtools check-go check-go-integration test-podman test-task check-task build tools dev-up dev-down dev-git-worker dev-preflight dev-integration dev-runtime test-integration dev-smoke test-assembly test-m1 test-m2 test-m3 test-chart api-generate api-check dev-teardown-check dev-diagnostics docs-check validate-tasks openforge-telegram
 
 fmt:
 	$(GO) fmt ./...
@@ -49,20 +50,10 @@ check-devtools:
 	$(GO) vet ./dev/...
 	$(GO) test -race -count=1 ./dev/...
 
-openforge-install:
-	cd $(OPENFORGE_DIR) && $(BUN) install --frozen-lockfile
-
+# Optional: the external OpenForge Telegram operator. Requires OPENFORGE.
 openforge-telegram:
+	@test -n "$(OPENFORGE)" || { echo 'OPENFORGE is not set: set OPENFORGE to your OpenForge launcher command (see docs/implementation/harness.md)' >&2; exit 2; }
 	$(OPENFORGE) telegram
-
-test-openforge:
-	cd $(OPENFORGE_DIR) && $(BUN) --no-install test test
-
-lint-openforge:
-	cd $(OPENFORGE_DIR) && $(BUN) --no-install run typecheck
-	cd $(OPENFORGE_DIR) && $(BUN) --no-install run lint
-
-check-openforge: lint-openforge test-openforge
 
 check-go:
 	$(REPOCTL) go $(PKGS)
@@ -74,13 +65,14 @@ check-go-integration:
 test-podman:
 	KODAMA_REQUIRE_PODMAN=1 $(GO) test -count=1 ./internal/runtime/podman/...
 
-test-task:
-	@test -n "$(TASK)" || { echo 'usage: make test-task TASK=T-080'; exit 2; }
-	$(OPENFORGE) check-task $(TASK)
+# A task's declared check and acceptance names, run locally; no scheduling,
+# worktrees, review or merge. An unavailable environment prints
+# "infrastructure unavailable" (repoctl exits 75; make reports 2).
+test-task: check-task
 
 check-task:
 	@test -n "$(TASK)" || { echo 'usage: make check-task TASK=T-080'; exit 2; }
-	$(OPENFORGE) check-task $(TASK)
+	$(REPOCTL) check-task $(TASK)
 
 build:
 	@mkdir -p dev/.state/bin
@@ -94,6 +86,12 @@ dev-up:
 
 dev-down:
 	$(DEVCTL) down
+
+# One tenant's native Git worker container (a scope created with DEV_GIT=native):
+#   make dev-git-worker DEV_SCOPE=t170 GIT_TENANT=<tenant-id> [GIT_CONTROL_URL=http://host.containers.internal:8080]
+dev-git-worker:
+	@test -n "$(GIT_TENANT)" || { echo 'GIT_TENANT=<tenant-id> is required'; exit 2; }
+	$(DEVCTL) git-worker --tenant '$(GIT_TENANT)' $(if $(GIT_CONTROL_URL),--control-url '$(GIT_CONTROL_URL)')
 
 dev-preflight:
 	$(DEVCTL) preflight
@@ -177,8 +175,8 @@ dev-diagnostics:
 docs-check:
 	$(REPOCTL) docs
 
-# Needs the separate OpenForge checkout (OPENFORGE_DIR, default ../openforge).
+# Task frontmatter, dependency graph, active ownership and the README index.
 validate-tasks:
-	$(OPENFORGE) validate
+	$(REPOCTL) tasks
 
 .PHONY: lint-go config-check dev-preflight test-go-unit-json

@@ -94,3 +94,82 @@ store. Engineering bounds chosen here where the contract is silent: lineage at m
 go test -race -count=1 ./contracts/runtime/...
 KODAMA_UPDATE_GOLDEN=1 go test ./contracts/runtime/v2   # after changing a base, then review the diff
 ```
+
+## Runtime contract v3 (`run_shared` with a source set): shapes only, not enabled
+
+[`v3/`](v3/) (package `runtimev3`, delivered by T-131) is the executable form of the source-set additions of
+[ADR 0011](../../docs/adr/0011-internal-tenant-git-service.md) (PX-23–PX-25, GR-06) for **attempts**.
+`v1/` and `v2/` are untouched: their schemas, fixtures, canonical vectors, validators, operation tables and
+`api/runtime.yaml` are byte-identical (`Test_unit_runtime_old_hashes_unchanged` pins the trees), and
+`api/runtime.yaml` stays the frozen v1 table until T-158 integrates the v3 fragments. The prose contract is
+[runtime v3](../../docs/contracts/runtime-v3.md).
+
+| Path | Contents |
+| --- | --- |
+| `v3/schema.json` | `ContextV3`, `AdmitResponseV3`, `Origin`, `SourceV3`, `WorkspaceV3`, `PreparationV3`, `LineageEntryV3`, `CommitOutput`, `GitDelivery`, `BeginRequestV3`/`BeginResponseV3`, `ResultV3`, `ResultRequestV3`, `ResourceContextV3`, `PreparationContextV3`, `PreparationGit`, `ResourceAdmitResponseV3`, `PreparationReceiptRequestV3`. Everything shared is referenced from the unchanged v1 and v2 schema resources, and Git value syntaxes from the Git contract schema; consumers compile all four |
+| `v3/*.go` | The DTOs, `DecodeRequest`/`DecodeResponse` (the v1 decoders), `Operations`, `Patterns`, the pure `DeriveBegin`, `CheckBeginResponse`, `CheckResult`, `CanonicalResult`, `ResultHash`, and the context helpers `AgentPattern`, `GitAccess`, `GitDelivery.GrantRepositories`, `WorkspaceV3.SourceSet` |
+| `v3/fixtures/cases.json` | Generated from typed bases and path mutations (`KODAMA_UPDATE_GOLDEN=1 go test ./contracts/runtime/v3`); the schema judges every payload independently and a drift test pins the file |
+| `v3/fixtures/canonical.json` | Result canonical forms and hashes derived independently with Python `json`/`hashlib` |
+
+Rules specific to v3 (the context version is `3`, the run model is `run_shared`, the token audience is the unchanged
+`kodama-runtime`):
+
+- **Origin.** `{kind, workItemId, pushId, repositoryId, ref}`, every member present and null unless its kind needs it: `work_item`
+  has `workItemId` and the pinned `workItem` snapshot (the only kind with one); `push` has `pushId`, `repositoryId` and the update's
+  `ref` (never a server ref) and pins a source of that repository, with no work item; `manual` and `provision` have none. A
+  `provision` run is the only one that may be source-free and still hold a Git credential, for the repositories it creates.
+  `repositoryId` is an addition to the minimal origin: a push record is read by repository.
+- **Source set.** `workspace.sources` is empty exactly for a source-free run, otherwise it projects (`WorkspaceV3.SourceSet`) to a valid
+  `gitv1.SourceSet`: ordered by path, unique non-overlapping safe paths, `.` only alone, non-zero commits, a write source with a branch
+  and a read source with null. `sourceSetDigest` is that set's digest (`gitv1.SourceSet.Digest`), so evidence and gate subjects identify
+  a multi-repository run, and it does not change as the run's head moves. Each source adds the clone URL (`https`, no credentials),
+  `headCommit` (the latest commit published to the source's own branch in this run, the pinned commit before any) and `expectedTip`, non-null
+  only for a write source of the attempt holding the writer reservation (`workspace.access: write`, which then needs a write source).
+  A write source's branch is the work item's task branch (work-item origin only) or a branch inside the run's own namespace; never the
+  default branch or another run's. `preparation` is one receipt per source (same order and path, the pinned commit, the observed tree)
+  and one digest. A single source at `.` is the single-repository case.
+- **Git delivery.** `git` is non-null exactly when the attempt holds a Git grant or may request one (a source-backed or provisioning run) and is a
+  **location, never a secret**: `grantId` (reference, for correlation and revocation; null for a provisioning run without sources, which has no static grant because no grant can name a repository that does not exist yet), `baseUrl` (`https`, no credentials, query or trailing
+  slash; every source URL lies beneath it, so a helper scoped to it never offers the credential to another host), `credentialFile`
+  and `caFile` (null for the system roots), each a file directly under `/kodama/git`, written by the runtime adapter before the entrypoint
+  starts, readable only by the workload and revoked with the attempt. The file holds the opaque credential and the username is `kodama`.
+  `repositories` mirrors the grant's repository claims exactly (`GitAccess`, `GrantRepositories`): per repository in order of first
+  appearance, the run's **agent-branch namespace** (`refs/heads/kodama/agents/<workItemId>/<runId>/*`, or `refs/heads/kodama/runs/<runId>/*`
+  without a work item) and, **only for the attempt holding the writer reservation**, the exact sorted branches of that repository's write
+  sources (the task branch), and `runtimeGrants {seed, integration}` the grants requested during the attempt (see below). Validation requires equality, so a reader's context can never list the task branch and no context lists
+  `refs/heads/*`, a default branch, another run's namespace or anything under `refs/kodama/`.
+- **Runtime-issued grants.** `POST .../git/seed {repositoryId}` (provisioning only: the repository this run created in its project; the response is the Git
+  contract's seed claim, one repository, `seed: true`, update exactly `refs/heads/<defaultBranch>`) and `POST .../git/integration {repositoryId, gateId}` (after the gate
+  approved; the response is the integration claim `{ref, from: approved base, to: approved candidate, gateId}`; no approval is `403`, a moved base `409 publication_conflict`)
+  return `GitGrantResponse {grant, credential, credentialFile}`: claims, the secret credential (never logged) and the file advertised in `runtimeGrants`. `CheckSeedGrant` and
+  `CheckIntegrationGrant` apply the order of checks against what the control plane knows; `CheckResult(..., issued...)` accepts a commit output outside the attempt's own grant only
+  when an issued seed claim covers its ref or an issued integration claim has the same repository and ref and `to` equal to the commit.
+- **Begin** observes every source by path, in order (`BeginRequestV3.sources`, empty for a source-free attempt); `DeriveBegin` is `clean`
+  exactly when every source is at its `headCommit`, tracked-clean and has no untracked file, otherwise `modified`; `ignoredPresent` is the
+  disjunction and never makes the state `modified` alone.
+- **Result.** `ResultV3` is the v1 `Result` with `commits` in place of `sourceCommit`: `[{repositoryId, ref, commit, pushId}]`, each a branch
+  updated by the attempt, the commit the ref pointed to afterwards and the applied push record that made it, strictly ordered by repository
+  and ref (one per ref) so a result has one hash; only a completed attempt reports any. `CheckResult` requires every output to name a
+  repository of the grant and a ref one of its update patterns selects (a reader reporting the task branch is `output_invalid`). That the
+  push record exists, was applied, moved the ref to the commit and belongs to this attempt's grant is verified by the consuming module
+  against the record; this package never reaches Git. There is no source-proposal route: the entrypoint pushes with the grant.
+  `ResultHash` is the v1 canonicalization of the v3 result object, so no historical hash changes and a v3 hash never equals a v1 hash.
+- **Resource subjects** (`/runtime/v3/runs/{runId}/resources/{resourceKey}`, audience `kodama-runtime-resource`): `ResourceContextV3` has
+  `contextVersion: 3`. The **preparation** (`resourceKey: preparation`) is **one workload for the whole source set**:
+  `PreparationContextV3 {sources, mountPath, timeoutSeconds, maxBytes, maxAttempts, deadlineAt, git}` with `sources` listing every
+  `{repositoryId, repositoryUrl, commit, path}` in path order (a valid source set; `WorkspaceV3.SourcePreparation` derives it from an attempt context,
+  `CheckPreparationMatches` requires equality) and `git` the attempt's delivery **without update rights**: `{grantId, baseUrl, credentialFile, caFile,
+  repositories}` with `repositories` the plain repository IDs once each; its grant is kind `preparation` (read-only, `GrantRepositories`), revoked when
+  the preparation ends. `PreparationReceiptRequestV3 {sources: [{path, commit, treeId}], hooksDisabled, submodules, credentialsRemoved, attempts}`
+  records one receipt per source, in order, at the pinned commits (`CheckReceipt`); the response is the unchanged v2 `PreparationReceiptResponse` and its
+  `receiptDigest` is what the attempt context's `workspace.preparation` carries. **Services reuse the v2 messages unchanged** (`ServiceContext`,
+  `ResourceAdmitRequest`, tokens, `SecretResolveRequest`): a service never mounts `/workspace`, holds no Git credential and does not depend on the
+  source set; `ResourceContextV3` only changes their context version, so a v3 run's service reaching a v2 route (or the reverse) is `context_version_mismatch`.
+- **Operations** (`Operations`, attempt routes relative to `/runtime/v3/attempts/{attemptId}`, resource routes to the path above): admit, token, context,
+  begin, secrets, artifacts and result for attempts; admit, token, context, secrets (services) and `preparation/complete` for resources. Audience and
+  kind rules are the v2 ones (`runtimev2.CheckAudience`, `CheckResourceCall`).
+
+```sh
+go test -race -count=1 ./contracts/runtime/...
+KODAMA_UPDATE_GOLDEN=1 go test ./contracts/runtime/v3   # after changing a base, then review the diff
+```

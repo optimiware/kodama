@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -406,6 +408,20 @@ type PreparationSpec struct {
 	TimeoutSecs   int64  `json:"timeoutSeconds"`
 	MaxBytes      int64  `json:"maxBytes"`
 	MaxAttempts   int64  `json:"maxAttempts"`
+	// Sources lists every checkout of a source-set run (runtime v3: one
+	// preparation workload checks out the whole set, in path order). It is
+	// omitted for a single-repository run, whose spec, fingerprint and stored
+	// shape are unchanged; then RepositoryURL and Commit name the one checkout.
+	// For a source-set run both are empty and Sources is the whole assignment.
+	Sources []PreparationSourceSpec `json:"sources,omitempty"`
+}
+
+// PreparationSourceSpec is one checkout of a source-set preparation.
+type PreparationSourceSpec struct {
+	RepositoryID  string `json:"repositoryId"`
+	RepositoryURL string `json:"repositoryUrl"`
+	Commit        string `json:"commit"`
+	Path          string `json:"path"`
 }
 
 // SecretPin is a service's pinned secret binding (no value).
@@ -531,7 +547,7 @@ func (s ResourceSpec) Validate() error {
 	case KindWorkspace:
 		ok = ok && s.Workspace != nil && s.Workspace.SizeMiB > 0 && (s.Workspace.Initial == "git" || s.Workspace.Initial == "empty")
 	case KindPreparation:
-		ok = ok && s.Preparation != nil && digestInImage(s.Preparation.Image) && commitPattern.MatchString(s.Preparation.Commit)
+		ok = ok && s.Preparation != nil && digestInImage(s.Preparation.Image) && s.Preparation.validCheckouts()
 	case KindService:
 		ok = ok && s.Service != nil && s.Key == ServiceKey(s.Service.Name) && digestInImage(s.Service.Image)
 	case KindNetwork:
@@ -543,6 +559,23 @@ func (s ResourceSpec) Validate() error {
 		return invalidf("the resource spec body does not match its kind")
 	}
 	return nil
+}
+
+// validCheckouts: a single-repository preparation names one commit; a
+// source-set preparation names none of its own and a well formed source each.
+func (p *PreparationSpec) validCheckouts() bool {
+	if len(p.Sources) == 0 {
+		return commitPattern.MatchString(p.Commit)
+	}
+	if p.Commit != "" || p.RepositoryURL != "" || len(p.Sources) > gitv1.MaxSources {
+		return false
+	}
+	for _, s := range p.Sources {
+		if !commitPattern.MatchString(s.Commit) || s.RepositoryID == "" || s.RepositoryURL == "" || gitv1.ValidateSourcePath(s.Path) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 var imageDigestPattern = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
@@ -603,7 +636,26 @@ type PreparationReceiptObject struct {
 
 // Digest is "sha256:" + SHA-256 of the canonical JSON of the object.
 func (o PreparationReceiptObject) Digest() (string, error) {
-	if o.WorkspaceUID == "" || o.RunID.Validate() != nil || o.ResourceKey != KeyPreparation {
+	return receiptDigest(o, o.WorkspaceUID, o.RunID, o.ResourceKey)
+}
+
+// PreparationReceiptObjectV3 is the same frozen object for the receipt of a
+// source-set preparation (runtime v3): the request carries one receipt per
+// source.
+type PreparationReceiptObjectV3 struct {
+	Request      runtimev3.PreparationReceiptRequestV3 `json:"request"`
+	RunID        domain.RunID                          `json:"runId"`
+	ResourceKey  string                                `json:"resourceKey"`
+	WorkspaceUID string                                `json:"workspaceUid"`
+}
+
+// Digest is "sha256:" + SHA-256 of the canonical JSON of the object.
+func (o PreparationReceiptObjectV3) Digest() (string, error) {
+	return receiptDigest(o, o.WorkspaceUID, o.RunID, o.ResourceKey)
+}
+
+func receiptDigest(o any, workspaceUID string, run domain.RunID, key string) (string, error) {
+	if workspaceUID == "" || run.Validate() != nil || key != KeyPreparation {
 		return "", invalidf("the receipt is not bound to a run, the preparation resource and a workspace UID")
 	}
 	raw, err := json.Marshal(o)

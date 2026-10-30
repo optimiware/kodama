@@ -26,7 +26,7 @@ required table/column operations. See [schema documentation](../../docs/implemen
 Errors, panics and cancellation roll back. Pooled connections retain no tenant
 context. Callbacks pass their transaction to peers and perform no network I/O.
 
-`BaseContribution()` embeds the two baseline SQL files. `NewManifest` validates
+`BaseContribution()` embeds the baseline SQL files (schema, grants and the Git hosting contribution). `NewManifest` validates
 explicit contribution order, IDs and uniqueness. `Migrate` serializes runners
 with a database advisory lock and verifies every existing checksum before
 applying a pending migration atomically with its ledger entry. Role placeholders

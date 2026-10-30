@@ -2,10 +2,13 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/agents"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
@@ -48,33 +51,91 @@ func (s storeSource) Attempt(ctx context.Context, scope domain.Scope, run domain
 	return *at, nil
 }
 
+// pinnedContext is the version-independent view of an attempt's frozen context
+// the agent readers need: ownership, the frozen command and the agent pins. It
+// is a projection, never a second source of truth: every field is read from the
+// immutable document the attempt was admitted with.
+type pinnedContext struct {
+	// Version is the runtime context version the attempt was pinned to: 1 (the
+	// original context, which has no version member), 2 (run_shared) or 3 (run_shared
+	// with a source set).
+	Version        int64
+	Scope          domain.Scope
+	RunID          domain.RunID
+	StepID         string
+	AttemptID      domain.AttemptID
+	Command        runtimev1.Command
+	Profile        *runtimev1.Profile
+	DesignBaseline *runtimev1.DesignBaseline
+	// V3 is the whole context when Version is 3, nil otherwise.
+	V3 *runtimev3.ContextV3
+}
+
+// decodePinned reads the frozen context of an attempt by its version. A context of
+// a version this reader does not know is unavailable (fail closed): the policy
+// of an attempt is never guessed from a document of another shape. Each version
+// is decoded by its own strict contract decoder, so a v1 context cannot be read
+// as a looser v2 or v3 one and the reverse.
+func decodePinned(raw []byte) (pinnedContext, error) {
+	var head struct {
+		ContextVersion *int64 `json:"contextVersion"`
+	}
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return pinnedContext{}, agents.Unavailablef(err, "the pinned context is unreadable")
+	}
+	switch {
+	case head.ContextVersion == nil:
+		c, err := runtimev1.DecodeRequest[runtimev1.Context](raw)
+		if err != nil {
+			return pinnedContext{}, agents.Unavailablef(err, "the pinned context is unreadable")
+		}
+		return pinnedContext{Version: 1, Scope: c.Scope(), RunID: c.RunID, StepID: c.StepID, AttemptID: c.AttemptID, Command: c.Command, Profile: c.Profile, DesignBaseline: c.DesignBaseline}, nil
+	case *head.ContextVersion == runtimev2.ContextVersion:
+		c, err := runtimev2.DecodeRequest[runtimev2.ContextV2](raw)
+		if err != nil {
+			return pinnedContext{}, agents.Unavailablef(err, "the pinned context is unreadable")
+		}
+		return pinnedContext{Version: 2, Scope: domain.Scope{TenantID: c.TenantID, ProjectID: c.ProjectID}, RunID: c.RunID, StepID: c.StepID, AttemptID: c.AttemptID, Command: c.Command, Profile: c.Profile, DesignBaseline: c.DesignBaseline}, nil
+	case *head.ContextVersion == runtimev3.ContextVersion:
+		c, err := runtimev3.DecodeRequest[runtimev3.ContextV3](raw)
+		if err != nil {
+			return pinnedContext{}, agents.Unavailablef(err, "the pinned context is unreadable")
+		}
+		return pinnedContext{Version: 3, Scope: c.Scope(), RunID: c.RunID, StepID: c.StepID, AttemptID: c.AttemptID, Command: c.Command, Profile: c.Profile, DesignBaseline: c.DesignBaseline, V3: &c}, nil
+	}
+	return pinnedContext{}, agents.Unavailablef(nil, "the pinned context has an unsupported version")
+}
+
 // pinned decodes the agent configuration frozen into an attempt's context and
 // checks that the context belongs to the requested scope and is consistent with
-// the attempt record.
-func pinned(at execution.Attempt, scope domain.Scope) (agents.WrapperConfig, error) {
+// the attempt record. The checks are the same for every context version: the
+// scope, run, step and attempt must match, the payload must verify against the
+// frozen command, and the profile and design baseline pins must be the ones the
+// payload implies.
+func pinned(at execution.Attempt, scope domain.Scope) (agents.WrapperConfig, pinnedContext, error) {
 	notFound := fmt.Errorf("%w: no agent attempt in this scope", agents.ErrNotFound)
-	c, err := runtimev1.DecodeRequest[runtimev1.Context](at.Context)
+	c, err := decodePinned(at.Context)
 	if err != nil {
-		return agents.WrapperConfig{}, agents.Unavailablef(err, "the pinned context is unreadable")
+		return agents.WrapperConfig{}, pinnedContext{}, err
 	}
-	if c.Scope() != scope || c.AttemptID != at.ID || c.RunID != at.RunID || c.StepID != at.StepID {
-		return agents.WrapperConfig{}, notFound
+	if c.Scope != scope || c.AttemptID != at.ID || c.RunID != at.RunID || c.StepID != at.StepID {
+		return agents.WrapperConfig{}, pinnedContext{}, notFound
 	}
 	cfg, present, err := agents.DecodeArgs(c.Command.Args)
 	if err != nil {
-		return agents.WrapperConfig{}, agents.Unavailablef(err, "the pinned agent payload is invalid")
+		return agents.WrapperConfig{}, pinnedContext{}, agents.Unavailablef(err, "the pinned agent payload is invalid")
 	}
 	if !present {
-		return agents.WrapperConfig{}, notFound
+		return agents.WrapperConfig{}, pinnedContext{}, notFound
 	}
 	if err := cfg.Verify(c.Command.Image, c.Command.Command); err != nil {
-		return agents.WrapperConfig{}, agents.Unavailablef(err, "the pinned agent payload does not match its command")
+		return agents.WrapperConfig{}, pinnedContext{}, agents.Unavailablef(err, "the pinned agent payload does not match its command")
 	}
 	profile, baseline := cfg.Pins()
 	if c.Profile == nil || *c.Profile != profile || c.DesignBaseline == nil || c.DesignBaseline.Digest != baseline.Digest {
-		return agents.WrapperConfig{}, agents.Unavailablef(nil, "the pinned context lacks the agent pins")
+		return agents.WrapperConfig{}, pinnedContext{}, agents.Unavailablef(nil, "the pinned context lacks the agent pins")
 	}
-	return cfg, nil
+	return cfg, c, nil
 }
 
 // PolicyReader serves the immutable, pinned policy of one agent attempt to the
@@ -99,7 +160,7 @@ func (r PolicyReader) PolicyOf(ctx context.Context, scope domain.Scope, run doma
 	if err != nil {
 		return agents.Policy{}, mapAttemptError(err)
 	}
-	cfg, err := pinned(at, scope)
+	cfg, _, err := pinned(at, scope)
 	if err != nil {
 		return agents.Policy{}, err
 	}
@@ -124,6 +185,13 @@ type AttemptMetadata struct {
 	// design baseline of the attempt.
 	WrapperVersion       string
 	DesignBaselineDigest runtimev1.Digest
+	// ContextVersion is the runtime context version the attempt was pinned to (1, 2
+	// or 3). SourceSetDigest and Checkouts are set only under version 3: the digest
+	// identifies the run's pinned source set, and the checkouts are where each
+	// source's changes are committed, in path order.
+	ContextVersion  int64
+	SourceSetDigest runtimev1.Digest
+	Checkouts       []agents.Checkout
 	// TranscriptRecorded reports the pinned transcript policy. Whether content
 	// exists is decided by the diagnostic artifacts, never by this flag.
 	TranscriptRecorded bool
@@ -155,14 +223,28 @@ func (r MetadataReader) MetadataOf(ctx context.Context, scope domain.Scope, run 
 	if err != nil {
 		return AttemptMetadata{}, mapAttemptError(err)
 	}
-	cfg, err := pinned(at, scope)
+	cfg, c, err := pinned(at, scope)
 	if err != nil {
 		return AttemptMetadata{}, err
 	}
 	_, baseline := cfg.Pins()
 	m := AttemptMetadata{
 		AttemptID: at.ID, Profile: cfg.Profile, WrapperVersion: cfg.Content.Wrapper.Version, DesignBaselineDigest: baseline.Digest,
-		TranscriptRecorded: cfg.Content.Transcript.Record, Status: at.Status, Reason: at.Reason,
+		TranscriptRecorded: cfg.Content.Transcript.Record, Status: at.Status, Reason: at.Reason, ContextVersion: c.Version,
+	}
+	if c.V3 != nil {
+		// A source-set attempt is attributed to its source set and to the checkouts
+		// the wrapper plans for it: the candidate is the set of their commits, not
+		// one commit. A context the wrapper could not plan is not an agent attempt
+		// anyone can attribute a candidate to.
+		plan, err := agents.PlanCheckouts(*c.V3)
+		if err != nil {
+			return AttemptMetadata{}, agents.Unavailablef(err, "the pinned source set cannot be planned for an agent")
+		}
+		m.Checkouts = plan
+		if c.V3.Workspace.SourceSetDigest != nil {
+			m.SourceSetDigest = *c.V3.Workspace.SourceSetDigest
+		}
 	}
 	if at.Result != nil {
 		m.Outcome = at.Result.Outcome

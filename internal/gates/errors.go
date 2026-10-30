@@ -99,13 +99,17 @@ const (
 	CodeConformanceBaselineMissing = "conformance_baseline_missing"
 	CodeConformanceEvidenceInvalid = "conformance_evidence_invalid"
 	CodeConformanceMalformed       = "conformance_malformed"
+	// CodeConformanceSourceSet: an agent-produced candidate spans several
+	// writable repositories, and a conformance report names one candidate commit.
+	// Approval is refused until the report format identifies a source set.
+	CodeConformanceSourceSet = "conformance_source_set_unsupported"
 )
 
 // IsBusinessError reports whether err is one of the module's classified
 // failures.
 func IsBusinessError(err error) bool {
 	for _, s := range []error{ErrInvalid, ErrNotFound, ErrDenied, ErrHidden, ErrVersionConflict, ErrStaleSubject, ErrInvalidTransition,
-		ErrConformance, ErrEvidence, ErrReviewerAuthority, ErrUnavailable, ErrNotConfigured, ErrConflict} {
+		ErrConformance, ErrEvidence, ErrReviewerAuthority, ErrUnavailable, ErrNotConfigured, ErrConflict, ErrNoApproval, ErrAlreadyIntegrated} {
 		if errors.Is(err, s) {
 			return true
 		}

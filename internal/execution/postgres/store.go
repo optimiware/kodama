@@ -104,6 +104,14 @@ type Peers struct {
 	// begin or a preparation receipt. NewRuntimeStore defaults it to
 	// SQLGrantFence; a component store has none, and refuses those records.
 	GrantFence GrantFencer
+	// GitGrants ends every Git grant of an attempt in the caller's open tenant
+	// transaction (gitauth's postgres.RevokeAttempt has exactly this shape). The
+	// store calls it, in attempt ID order and in the same transaction, for every
+	// attempt of a source-set run whose authority the transaction ended:
+	// cancellation, failure, timeout, supersession and an accepted result alike,
+	// so a cancelled attempt can never push after the commit. It must not open
+	// another transaction. Optional: without it no Git grant is revoked here.
+	GitGrants AttemptGrantRevoker
 }
 
 // AttemptGrantRevoker revokes every runtime grant of an attempt inside the
@@ -117,6 +125,13 @@ type AttemptGrantRevoker func(ctx context.Context, tx pgx.Tx, scope domain.Scope
 type Options struct {
 	Clock func() time.Time
 	NewID func(prefix string) string
+	// RunSources declares that the composition applied migration 011
+	// (RunSourceMigrations, which needs the repositories of migration 007): the
+	// store then reads and writes the origin and source set of a run. Without it
+	// the store uses exactly the earlier schema and refuses to admit a run that
+	// carries an origin or a source set (ErrNotConfigured), so a composition that
+	// has not applied the migration keeps working unchanged.
+	RunSources bool
 }
 
 // Store implements execution.Store.
@@ -162,6 +177,13 @@ func newStore(db storage.TxBeginner, appender EventAppender, peers Peers, grants
 	if db == nil || appender == nil || peers.Authority == nil || peers.Workspaces == nil || peers.Secrets == nil {
 		return nil, fmt.Errorf("%w: database, event appender, authority, workspace and secret bindings are required", execution.ErrNotConfigured)
 	}
+	if opts.RunSources && peers.GitGrants == nil {
+		// A store that admits source-set runs must be able to revoke their Git
+		// grants in the transaction that ends an attempt: without the revoker a
+		// cancelled attempt would keep a usable credential. Like NewRuntimeStore
+		// refusing a nil runtime revoker, this fails closed.
+		return nil, fmt.Errorf("%w: the Git grant revoker is required when run sources are enabled", execution.ErrNotConfigured)
+	}
 	if peers.Work == nil {
 		peers.Work = workpg.LockActionable
 	}
@@ -182,6 +204,9 @@ func newStore(db storage.TxBeginner, appender EventAppender, peers Peers, grants
 	}
 	return &Store{db: db, events: appender, peers: peers, grants: grants, opts: opts}, nil
 }
+
+// RevokesGitGrants implements execution.GitRevokingStore.
+func (s *Store) RevokesGitGrants() bool { return s.peers.GitGrants != nil }
 
 // AdmitsEnvironments implements execution.EnvironmentStore: admission binds
 // environments in its transaction exactly when the delivery peer is configured.

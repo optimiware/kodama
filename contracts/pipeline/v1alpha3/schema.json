@@ -1,0 +1,891 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kodama.invalid/contracts/pipeline/v1alpha3/schema.json",
+  "title": "Kodama pipeline definition (kodama/v1alpha3)",
+  "description": "Structural contract of one run_shared pipeline document with a declared source set (ADR 0010, ADR 0011): kodama/v1alpha2 plus spec.sources. It states which shapes exist; it does not say whether an installation enables the format, whether a repository exists in the project, or whether a path, writer or source set is consistent across steps. Those are enforced by the shared validator in internal/pipeline and at run admission.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "kodama/v1alpha3"
+    },
+    "kind": {
+      "const": "Pipeline"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timeoutSeconds",
+        "steps"
+      ],
+      "properties": {
+        "timeoutSeconds": {
+          "description": "Total run deadline in seconds, covering preparation, service startup, every attempt, retry backoff and gate waits.",
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 604800
+        },
+        "runWorkspace": {
+          "$ref": "#/$defs/runWorkspace"
+        },
+        "sources": {
+          "description": "Optional ordered list of the repositories a run checks out, each at its own path under /workspace. Absent is not filled: a run without sources has the one default repository of its project at the path '.', which is the single-source case. A source never selects a commit; admission pins one.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        },
+        "inputs": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-z][a-z0-9_-]{0,62}$": {
+              "$ref": "#/$defs/input"
+            }
+          },
+          "additionalProperties": false
+        },
+        "services": {
+          "type": "object",
+          "maxProperties": 8,
+          "patternProperties": {
+            "^[a-z][a-z0-9-]{0,29}$": {
+              "$ref": "#/$defs/service"
+            }
+          },
+          "additionalProperties": false
+        },
+        "network": {
+          "$ref": "#/$defs/network"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "description": "Lowercase letter followed by lowercase letters, digits or hyphens; at most 63 characters.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "identifier": {
+      "description": "Input and output names. Whole-scalar references address them as inputs.NAME and steps.ID.outputs.NAME.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 8192
+    },
+    "integer": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "scalar": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/text"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/integer"
+        }
+      ]
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "string",
+            "boolean",
+            "integer",
+            "artifact"
+          ]
+        },
+        "default": {
+          "$ref": "#/$defs/scalar"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "needs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/name"
+      }
+    },
+    "when": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "equals"
+      ],
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/identifier"
+        },
+        "equals": {
+          "$ref": "#/$defs/scalar"
+        }
+      }
+    },
+    "serviceName": {
+      "description": "Service names; they share no namespace with step IDs.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,29}$"
+    },
+    "portName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,14}$"
+    },
+    "egressName": {
+      "description": "Name of an installation-authorized egress profile; never a host, CIDR or port.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "egress": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/egressName"
+      }
+    },
+    "runWorkspace": {
+      "description": "Optional bound of the run scratch filesystem. Absent means the pinned policy default, which is not filled into the canonical form.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sizeMiB"
+      ],
+      "properties": {
+        "sizeMiB": {
+          "type": "integer",
+          "minimum": 64,
+          "maximum": 1048576
+        }
+      }
+    },
+    "repositoryName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "sourcePath": {
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^(\\.|[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*)$",
+      "allOf": [
+        {
+          "not": {
+            "pattern": "\\.\\."
+          }
+        }
+      ]
+    },
+    "source": {
+      "description": "One repository of the run's source set. repository is the repository's logical name within the project; admission resolves it and pins one commit. path is relative to /workspace; '.' checks the repository out at /workspace itself and is then the only source. access write is a ceiling: only the step holding the writer reservation may publish to the repository's branch, a read source can never be written.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "path",
+        "access"
+      ],
+      "properties": {
+        "repository": {
+          "$ref": "#/$defs/repositoryName"
+        },
+        "path": {
+          "$ref": "#/$defs/sourcePath"
+        },
+        "access": {
+          "enum": [
+            "read",
+            "write"
+          ]
+        }
+      }
+    },
+    "workspace": {
+      "description": "Publication authority of a step. Absent is not filled: source-backed runs default to read, source-free runs to none, at admission. There is no from. A write step may publish only to the sources declared write.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "access"
+      ],
+      "properties": {
+        "access": {
+          "enum": [
+            "none",
+            "read",
+            "write"
+          ]
+        }
+      }
+    },
+    "environment": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+    },
+    "image": {
+      "description": "Digest-pinned image reference; a tag alone is mutable and rejected.",
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^[a-z0-9][A-Za-z0-9._/:-]*@sha256:[0-9a-f]{64}$"
+    },
+    "secretRef": {
+      "type": "string",
+      "pattern": "^secret://project/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "envValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "secretRef"
+          ],
+          "properties": {
+            "secretRef": {
+              "$ref": "#/$defs/secretRef"
+            }
+          }
+        }
+      ]
+    },
+    "env": {
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_]{0,127}$": {
+          "$ref": "#/$defs/envValue"
+        }
+      },
+      "additionalProperties": false
+    },
+    "secretFiles": {
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$": {
+          "$ref": "#/$defs/secretRef"
+        }
+      },
+      "additionalProperties": false
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "backoffSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "infrastructure",
+              "transient"
+            ]
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]{0,62}$": {
+          "$ref": "#/$defs/output"
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "description": "Artifact outputs are files below /kodama/outputs; scalar and OCI outputs come from the result manifest and carry no path.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "string",
+            "boolean",
+            "integer",
+            "artifact",
+            "ociArtifact"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "artifact"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "path"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "path"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "service": {
+      "description": "A run-lifetime support workload; neither a step nor a sidecar of any attempt.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image",
+        "ports",
+        "resources",
+        "readiness"
+      ],
+      "properties": {
+        "image": {
+          "$ref": "#/$defs/image"
+        },
+        "role": {
+          "enum": [
+            "general",
+            "builder"
+          ]
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "args": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "env": {
+          "type": "object",
+          "maxProperties": 64,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]{0,127}$": {
+              "$ref": "#/$defs/envValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        "secretFiles": {
+          "type": "object",
+          "maxProperties": 16,
+          "patternProperties": {
+            "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$": {
+              "$ref": "#/$defs/secretRef"
+            }
+          },
+          "additionalProperties": false
+        },
+        "ports": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 8,
+          "patternProperties": {
+            "^[a-z][a-z0-9-]{0,14}$": {
+              "$ref": "#/$defs/port"
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources": {
+          "$ref": "#/$defs/serviceResources"
+        },
+        "storage": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/storage"
+          }
+        },
+        "readiness": {
+          "$ref": "#/$defs/readiness"
+        },
+        "egress": {
+          "$ref": "#/$defs/egress"
+        }
+      }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "port"
+      ],
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "protocol": {
+          "enum": [
+            "TCP"
+          ]
+        }
+      }
+    },
+    "serviceResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpuMillis",
+        "memoryMiB",
+        "ephemeralMiB"
+      ],
+      "properties": {
+        "cpuMillis": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 16000
+        },
+        "memoryMiB": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 65536
+        },
+        "ephemeralMiB": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 262144
+        },
+        "shmMiB": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        }
+      }
+    },
+    "storage": {
+      "description": "Absolute normalized path rules beyond length (no .., no overlap, forbidden roots) are enforced by the validator.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sizeMiB"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "sizeMiB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 262144
+        }
+      }
+    },
+    "readiness": {
+      "description": "Exactly one of tcp, http or exec, plus the startup budget.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timeoutSeconds"
+      ],
+      "properties": {
+        "tcp": {
+          "$ref": "#/$defs/portName"
+        },
+        "http": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "port",
+            "path"
+          ],
+          "properties": {
+            "port": {
+              "$ref": "#/$defs/portName"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^/[^\\s#\\p{Cc}\\p{Z}]*$"
+            }
+          }
+        },
+        "exec": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 600
+        },
+        "periodSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "probeTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "lossSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 600
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "tcp"
+          ]
+        },
+        {
+          "required": [
+            "http"
+          ]
+        },
+        {
+          "required": [
+            "exec"
+          ]
+        }
+      ]
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "edges": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "ports"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/serviceName"
+        },
+        "to": {
+          "$ref": "#/$defs/serviceName"
+        },
+        "ports": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/portName"
+          }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/name"
+        },
+        "kind": {
+          "enum": [
+            "container",
+            "agent",
+            "gate"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "container"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/containerStep"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "agent"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/agentStep"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "gate"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/gateStep"
+          }
+        }
+      ]
+    },
+    "containerStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "image",
+        "command",
+        "timeoutSeconds"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/name"
+        },
+        "kind": {
+          "const": "container"
+        },
+        "needs": {
+          "$ref": "#/$defs/needs"
+        },
+        "when": {
+          "$ref": "#/$defs/when"
+        },
+        "workspace": {
+          "$ref": "#/$defs/workspace"
+        },
+        "environment": {
+          "$ref": "#/$defs/environment"
+        },
+        "image": {
+          "$ref": "#/$defs/image"
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "env": {
+          "$ref": "#/$defs/env"
+        },
+        "secretFiles": {
+          "$ref": "#/$defs/secretFiles"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800
+        },
+        "retry": {
+          "$ref": "#/$defs/retry"
+        },
+        "outputs": {
+          "$ref": "#/$defs/outputs"
+        },
+        "egress": {
+          "$ref": "#/$defs/egress"
+        }
+      }
+    },
+    "agentStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "agent",
+        "timeoutSeconds"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/name"
+        },
+        "kind": {
+          "const": "agent"
+        },
+        "needs": {
+          "$ref": "#/$defs/needs"
+        },
+        "when": {
+          "$ref": "#/$defs/when"
+        },
+        "workspace": {
+          "$ref": "#/$defs/workspace"
+        },
+        "agent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profile"
+          ],
+          "properties": {
+            "profile": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$"
+            }
+          }
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800
+        },
+        "retry": {
+          "$ref": "#/$defs/retry"
+        },
+        "outputs": {
+          "$ref": "#/$defs/outputs"
+        }
+      }
+    },
+    "gateStep": {
+      "description": "Gates are unconditional and carry no image, retry, workspace, outputs or Pod.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/name"
+        },
+        "kind": {
+          "const": "gate"
+        },
+        "needs": {
+          "$ref": "#/$defs/needs"
+        },
+        "gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/text"
+              }
+            },
+            "deploymentId": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      }
+    }
+  }
+}

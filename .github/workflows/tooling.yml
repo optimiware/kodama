@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
-      - run: make docs-check config-check
+      - run: make docs-check config-check validate-tasks
       - name: Qualify changed tooling only
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

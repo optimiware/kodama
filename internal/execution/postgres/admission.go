@@ -51,7 +51,17 @@ func (s *Store) AdmitInTx(ctx context.Context, tx pgx.Tx, p *execution.Admission
 	if err := scope.Validate(); err != nil {
 		return nil, false, execution.Invalidf("%v", err)
 	}
+	// Admissions of one run ID are serialized: of two concurrent admissions with
+	// different declarations the second waits for the first's commit and then
+	// finds its row, instead of racing to the unique key.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+		"execution/admit/"+string(scope.TenantID)+"/"+string(scope.ProjectID)+"/"+string(run.ID)); err != nil {
+		return nil, false, err
+	}
 	if existing, err := s.loadRun(ctx, tx, scope, run.ID, lockNone); err == nil {
+		if err := execution.CheckReplay(existing, run); err != nil {
+			return nil, false, err
+		}
 		return existing, false, nil
 	} else if !errors.Is(err, execution.ErrNotFound) {
 		return nil, false, err
@@ -63,15 +73,17 @@ func (s *Store) AdmitInTx(ctx context.Context, tx pgx.Tx, p *execution.Admission
 	}
 	var pinID string
 	if run.Purpose == execution.PurposeWork {
-		if err := env.takeWork(ctx, run.WorkItemID); err != nil {
-			return nil, false, err
-		}
-		adm, err := env.Work()
-		if err != nil {
-			return nil, false, err
-		}
-		if adm.ContentRevision != p.WorkRevision {
-			return nil, false, fmt.Errorf("%w: the work item's specification changed during admission", execution.ErrConflict)
+		if run.WorkItemID != "" {
+			if err := env.takeWork(ctx, run.WorkItemID); err != nil {
+				return nil, false, err
+			}
+			adm, err := env.Work()
+			if err != nil {
+				return nil, false, err
+			}
+			if adm.ContentRevision != p.WorkRevision {
+				return nil, false, fmt.Errorf("%w: the work item's specification changed during admission", execution.ErrConflict)
+			}
 		}
 		if err := env.Authorize(ctx, p.Actor, scope, execution.PermRunManage); err != nil {
 			switch {
@@ -80,8 +92,10 @@ func (s *Store) AdmitInTx(ctx context.Context, tx pgx.Tx, p *execution.Admission
 			}
 			return nil, false, execution.Unavailablef(err, "the authority is unavailable")
 		}
-		pinID = s.opts.NewID("pin")
-		run.RetainedRefID = pinID
+		if !run.SourceRun() {
+			pinID = s.opts.NewID("pin")
+			run.RetainedRefID = pinID
+		}
 	}
 	// Revalidate every pinned environment (current authority; the retained,
 	// unrevoked snapshot and its exact credential bindings) through this same
@@ -112,7 +126,7 @@ func (s *Store) AdmitInTx(ctx context.Context, tx pgx.Tx, p *execution.Admission
 			return nil, false, err
 		}
 	}
-	if run.Purpose == execution.PurposeWork {
+	if run.Purpose == execution.PurposeWork && !run.SourceRun() {
 		if err := s.retainSource(ctx, tx, run, pinID); err != nil {
 			return nil, false, err
 		}

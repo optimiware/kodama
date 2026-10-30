@@ -42,6 +42,30 @@ func (s *Store) writeEffects(ctx context.Context, tx pgx.Tx, w *workspace.Worksp
 			return fmt.Errorf("workspace: save retained reference: %w", err)
 		}
 	}
+	for _, a := range fx.Associations {
+		// Only the mutable columns move on conflict; identity and base never change.
+		if _, err := tx.Exec(ctx, `INSERT INTO workspace_repositories
+			(tenant_id, project_id, workspace_id, repository_id, task_branch, base_commit, accepted_commit, state, last_error, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			ON CONFLICT (tenant_id, project_id, workspace_id, repository_id) DO UPDATE SET
+			  accepted_commit = EXCLUDED.accepted_commit, state = EXCLUDED.state, last_error = EXCLUDED.last_error, updated_at = EXCLUDED.updated_at`,
+			w.Scope.TenantID, w.Scope.ProjectID, w.ID, a.RepositoryID, a.TaskBranch, a.BaseCommit, nstr(string(a.AcceptedCommit)), a.State,
+			nstr(a.LastError), a.CreatedAt, a.UpdatedAt); err != nil {
+			return fmt.Errorf("workspace: save repository association: %w", err)
+		}
+	}
+	for _, c := range fx.Checkpoints {
+		if _, err := tx.Exec(ctx, `INSERT INTO workspace_checkpoints
+			(tenant_id, project_id, workspace_id, repository_id, push_id, ref, commit_oid, previous_commit, advanced, attempt_id, run_id,
+			 pin_ref, pin_status, created_at, pinned_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+			ON CONFLICT (tenant_id, project_id, workspace_id, repository_id, push_id, ref) DO UPDATE SET
+			  pin_ref = EXCLUDED.pin_ref, pin_status = EXCLUDED.pin_status, pinned_at = EXCLUDED.pinned_at`,
+			w.Scope.TenantID, w.Scope.ProjectID, w.ID, c.RepositoryID, c.PushID, c.Ref, c.Commit, c.PreviousCommit, c.Advanced, c.AttemptID, c.RunID,
+			c.PinRef, c.PinStatus, c.CreatedAt, utcPtr(c.PinnedAt)); err != nil {
+			return fmt.Errorf("workspace: save checkpoint: %w", err)
+		}
+	}
 	for _, a := range fx.Audit {
 		if err := s.writeAudit(ctx, tx, w, a); err != nil {
 			return err
@@ -104,7 +128,11 @@ func (s *Store) writeEvent(ctx context.Context, tx pgx.Tx, w *workspace.Workspac
 	case workspace.EventStateChanged:
 		data = eventsv1.WorkspaceStateChanged{From: e.From, To: e.To, Reason: e.Reason}
 	case workspace.EventCheckpointCreated:
-		p := eventsv1.WorkspaceCheckpointCreated{Repository: string(w.RepositoryID), NewCommit: string(e.NewCommit), HumanSynchronization: e.HumanSynchronization}
+		repository := w.RepositoryID
+		if e.Repository != "" {
+			repository = e.Repository
+		}
+		p := eventsv1.WorkspaceCheckpointCreated{Repository: string(repository), NewCommit: string(e.NewCommit), HumanSynchronization: e.HumanSynchronization}
 		if e.PreviousCommit != "" {
 			prev := string(e.PreviousCommit)
 			p.PreviousCommit = &prev

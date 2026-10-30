@@ -23,6 +23,7 @@ import (
 	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	arts3 "github.com/optimiware/kodama/internal/artifacts/s3"
 	"github.com/optimiware/kodama/internal/domain"
+	repositorypg "github.com/optimiware/kodama/internal/repository/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 	pgtest "github.com/optimiware/kodama/test/support/postgres"
 	s3support "github.com/optimiware/kodama/test/support/s3"
@@ -48,6 +49,19 @@ const Commit = "1111111111111111111111111111111111111111"
 
 // Source is the trusted provenance the default grants carry.
 var Source = artifacts.Provenance{RepositoryURL: "https://git.example.test/acme/app.git", Commit: Commit}
+
+// SourceSet is the trusted provenance of an attempt of a two-repository run:
+// the digest of the pinned set and the commit of each repository the attempt
+// worked from (ordered by repository ID).
+var SourceSet = func() artifacts.Provenance {
+	set, err := artifacts.NewSourceSet("sha256:"+strings.Repeat("a", 64), []artifacts.SourceCommit{
+		{RepositoryID: "repo_web", Commit: strings.Repeat("2", 40)}, {RepositoryID: "repo_api", Commit: Commit},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return artifacts.Provenance{SourceSet: set}
+}()
 
 // Clock is the shared test clock: the wall clock plus an adjustable offset, so
 // signed URLs (which use real signing time) stay consistent with it.
@@ -119,7 +133,11 @@ func NewDB(t testing.TB, opts Options) *Env {
 	}
 	e := &Env{T: t, DB: db, Owner: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, conns), Clock: &Clock{},
 		Authority: NewAuthority(), Reader: NewReader(), HTTP: &http.Client{Timeout: 20 * time.Second}}
-	manifest, err := storage.NewManifest(append([]storage.Contribution{storage.BaseContribution()}, opts.Extra...)...)
+	// The baseline, the repositories a source set names, the caller's extra
+	// contributions, then the source-set columns (013 follows every earlier slot).
+	contributions := append([]storage.Contribution{storage.BaseContribution(), repositorypg.Migrations()}, opts.Extra...)
+	contributions = append(contributions, artifactspg.SourceProvenanceMigrations())
+	manifest, err := storage.NewManifest(contributions...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +151,10 @@ func NewDB(t testing.TB, opts Options) *Env {
 	pgtest.DropExecutionLinks(t, e.Owner, "artifacts", "artifacts_producer_attempt_fk")
 	e.seed(TenantA, ProjectA, ProjectA2)
 	e.seed(TenantB, ProjectB)
-	if e.Store, err = artifactspg.NewStore(artifactspg.Config{DB: e.Runtime}); err != nil {
+	// The repositories of the fixture source set (SourceSet): a source set may name
+	// only repositories of the artifact's own project.
+	e.seedRepositories(ScopeA, "repo_api", "repo_web")
+	if e.Store, err = artifactspg.NewStore(artifactspg.Config{DB: e.Runtime, SourceProvenance: true}); err != nil {
 		t.Fatal(err)
 	}
 	e.Registry = NewRegistry()
@@ -196,6 +217,16 @@ func (e *Env) seed(tenant domain.TenantID, projects ...domain.ProjectID) {
 	for _, p := range projects {
 		if _, err := e.Owner.Exec(ctx, `INSERT INTO projects (tenant_id, id, key, active_wip_limit) VALUES ($1::text, $2::text, $2::text, 5)`, string(tenant), string(p)); err != nil {
 			e.T.Fatalf("seed project: %v", err)
+		}
+	}
+}
+
+func (e *Env) seedRepositories(scope domain.Scope, ids ...string) {
+	e.T.Helper()
+	for _, id := range ids {
+		if _, err := e.Owner.Exec(context.Background(), `INSERT INTO repositories (tenant_id, project_id, id, name, default_branch, hosting, status, created_by_type, created_by_id, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,'main','internal','ready','user','u',now(),now())`, string(scope.TenantID), string(scope.ProjectID), id, strings.ReplaceAll(id, "_", "-")); err != nil {
+			e.T.Fatalf("seed repository: %v", err)
 		}
 	}
 }

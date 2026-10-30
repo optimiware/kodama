@@ -32,6 +32,10 @@ func (p Process) Execute(ctx context.Context, spec Spec, log io.Writer) (int, er
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-ec", shellCommands(spec.Commands))
 	cmd.Dir = spec.Workspace
 	cmd.Env = append(os.Environ(), "KODAMA_SECRETS_DIR="+spec.SecretsDir)
+	if spec.GitDir != "" {
+		cmd.Env = append(cmd.Env, "KODAMA_GIT_DIR="+spec.GitDir,
+			"GIT_CONFIG_GLOBAL="+filepath.Join(spec.GitDir, GitConfigFile), "GIT_TERMINAL_PROMPT=0")
+	}
 	for k, v := range spec.Env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
@@ -55,6 +59,9 @@ func (p Process) Execute(ctx context.Context, spec Spec, log io.Writer) (int, er
 type Podman struct {
 	Root   string
 	Binary string
+	// CheckoutImage runs the source checkout helper; KODAMA_GIT_CHECKOUT_IMAGE
+	// when empty. Without either, a run with sources is refused.
+	CheckoutImage string
 }
 
 func (p Podman) Name() string { return "podman" }
@@ -102,6 +109,11 @@ func (p Podman) Execute(ctx context.Context, spec Spec, log io.Writer) (int, err
 		args = append(args, "-e", k+"="+v)
 	}
 	args = append(args, "-e", "KODAMA_SECRETS_DIR=/kodama/secrets")
+	if spec.GitDir != "" {
+		args = append(args, "-v", spec.GitDir+":"+GitContainerDir+":ro",
+			"-e", "KODAMA_GIT_DIR="+GitContainerDir,
+			"-e", "GIT_CONFIG_GLOBAL="+GitContainerDir+"/"+GitConfigFile, "-e", "GIT_TERMINAL_PROMPT=0")
+	}
 	args = append(args, spec.Image, "/bin/sh", "-ec", shellCommands(spec.Commands))
 
 	cmd := exec.CommandContext(ctx, p.bin(), args...)

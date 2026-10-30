@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
 )
@@ -61,11 +62,27 @@ func scanResource(row pgx.Row, scope domain.Scope, run domain.RunID) (*execution
 		return nil, fmt.Errorf("execution: stored resource spec: %w", err)
 	}
 	if receipt != nil {
-		var rc runtimev2.PreparationReceiptRequest
-		if err := json.Unmarshal(receipt, &rc); err != nil {
+		// A source-set receipt (runtime v3) carries one entry per source; the
+		// earlier receipt a single commit. The stored shape tells them apart.
+		var probe struct {
+			Sources json.RawMessage `json:"sources"`
+		}
+		if err := json.Unmarshal(receipt, &probe); err != nil {
 			return nil, fmt.Errorf("execution: stored receipt: %w", err)
 		}
-		r.Receipt = &rc
+		if probe.Sources != nil {
+			var rc runtimev3.PreparationReceiptRequestV3
+			if err := json.Unmarshal(receipt, &rc); err != nil {
+				return nil, fmt.Errorf("execution: stored receipt: %w", err)
+			}
+			r.ReceiptV3 = &rc
+		} else {
+			var rc runtimev2.PreparationReceiptRequest
+			if err := json.Unmarshal(receipt, &rc); err != nil {
+				return nil, fmt.Errorf("execution: stored receipt: %w", err)
+			}
+			r.Receipt = &rc
+		}
 	}
 	return r, nil
 }
@@ -154,7 +171,14 @@ func (s *Store) persistShared(ctx context.Context, tx pgx.Tx, agg *execution.Agg
 			return err
 		}
 		var receipt any
-		if r.Receipt != nil {
+		switch {
+		case r.ReceiptV3 != nil:
+			b, err := jsonb(r.ReceiptV3)
+			if err != nil {
+				return err
+			}
+			receipt = b
+		case r.Receipt != nil:
 			b, err := jsonb(r.Receipt)
 			if err != nil {
 				return err

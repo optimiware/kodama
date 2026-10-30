@@ -1,0 +1,13 @@
+apiVersion: kodama/v1alpha3
+kind: Pipeline
+metadata: {name: default-repository}
+spec:
+  timeoutSeconds: 1800
+  steps:
+    - id: build
+      kind: container
+      image: registry.example.invalid/go-tools@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      workspace: {access: write}
+      command: [/bin/sh, -ec]
+      args: ["cd /workspace && make build"]
+      timeoutSeconds: 600

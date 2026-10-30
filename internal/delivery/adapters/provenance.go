@@ -43,9 +43,23 @@ func (a *Artifacts) Evidence(ctx context.Context, scope domain.Scope, id domain.
 	if err != nil {
 		return delivery.ImageEvidence{}, mapArtifacts(err)
 	}
+	src := delivery.Source{RepositoryURL: r.Provenance.RepositoryURL, Commit: r.Provenance.Commit}
+	if !r.Provenance.SourceSet.IsZero() {
+		// The artifact's source set, in the same canonical form the registration
+		// compares: a stored set that cannot be rebuilt is an outage, not a match.
+		commits := make([]delivery.SourceCommit, 0, len(r.Provenance.SourceSet.Commits()))
+		for _, c := range r.Provenance.SourceSet.Commits() {
+			commits = append(commits, delivery.SourceCommit{RepositoryID: c.RepositoryID, Commit: c.Commit})
+		}
+		set, err := delivery.NewSourceSet(r.Provenance.SourceSet.Digest, commits)
+		if err != nil {
+			return delivery.ImageEvidence{}, delivery.Fail(delivery.ErrUnavailable, err, "the artifact's source set is invalid")
+		}
+		src = delivery.Source{SourceSet: set}
+	}
 	ev := delivery.ImageEvidence{
 		ID: r.ID, Scope: r.Scope, Attempt: r.Attempt, Kind: runtimev1.ArtifactKind(r.Kind), Role: runtimev1.ArtifactRole(r.Role), Usable: r.Usable,
-		Digest: runtimev1.Digest(r.Digest), Provenance: delivery.Source{RepositoryURL: r.Provenance.RepositoryURL, Commit: r.Provenance.Commit},
+		Digest: runtimev1.Digest(r.Digest), Provenance: src,
 	}
 	if r.Provenance.Modified() {
 		// An image built in a workspace that was not the commit it started from is

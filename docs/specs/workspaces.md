@@ -8,8 +8,8 @@ Under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md
 
 ### Internally hosted repositories
 
-- Each task works on a normal Git branch (by convention `task/<task-id>` or `main`) in the project's repository (`<tenant>/<project>/<repo>`).
-- Engineers and container steps (Mode A coding harnesses or Mode B `kodama agent`) clone, fetch, commit, and push directly to the native Git endpoint (`/git/<tenant>/<project>/<repo>.git`) using their OAuth credential or project-space run token (`KODAMA_TOKEN`).
+- Each task works on a normal Git branch (by convention `refs/heads/kodama/work/<task-id>`) in the project's repository (`<tenant>/<project>/<repo>`).
+- Engineers and container steps (Mode A coding harnesses or Mode B `kodama agent`) clone, fetch, commit, and push directly to the native Git endpoint (`/git/<tenant>/<project>/<repo>.git`) using their OAuth credential or the run's scoped Git credential (`KODAMA_TOKEN` and the credential helper).
 - Parallel agents or runs can push to their own branches and merge via standard Git steps.
 
 ### Run scratch (`run_shared`)
@@ -25,6 +25,15 @@ Under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md
 | WS-01 | Each pipeline run MUST provide a shared `/workspace` mounted across its steps and cleaned up when the run finishes. |
 | WS-02 | Initial checkout MUST populate `/workspace` from the native Git service at the run's target branch/commit and optionally mount tenant/project `context` repositories. |
 | WS-03 | Steps and agents pushing commits MUST authenticate with their project-space run token against the native Git service; injected secret files under `/kodama/secrets` MUST remain outside `/workspace`. |
+
+**WS-03 limitation.** A step is given a usable Git credential by design: it must be able to fetch and push, so code running in the step can read the credential file and copy it. Kodama does not claim to prevent that. What it guarantees is where the credential is *not*, and when it ends:
+
+- it is not inside `/workspace`: the run's credential directory (`KODAMA_GIT_DIR`, mounted read-only at `/kodama/git` in a container) lies outside the workspace volume;
+- it is not in any repository's `.git/config` and not in a remote URL: remotes are plain endpoints, and a generated Git configuration (`GIT_CONFIG_GLOBAL`) holds only a per-repository credential helper that reads the credential file when Git asks, never the secret;
+- it is not in the step's environment: the step receives the *path* `KODAMA_GIT_DIR`, not the credential;
+- it is removed when the run ends, and removed at once when the run is cancelled or finished (the runner checks the run's liveness on every refresh tick and deletes the files; a failure to learn the answer keeps them and is retried). The server also revokes the credential when the run ends, so a copied credential stops working at that point. It is read-only for the tenant and project `context` repositories and can update only the run's own branches for a source the run may write.
+
+Anything a step copies out of the credential file before the run ends works until the run ends or the credential expires; limiting that exposure is the job of the credential's narrow scope and short lifetime, not of hiding it from the step.
 
 ## Acceptance
 

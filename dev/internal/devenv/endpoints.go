@@ -74,6 +74,7 @@ func (e *Environment) HostEnv() (map[string]string, error) {
 		"DEV_PROVIDER":                   e.Provider,
 		"DEV_SCOPE":                      e.Scope,
 		"DEV_STACK":                      e.Stack,
+		"DEV_GIT":                        e.GitMode(),
 		"KODAMA_TEST_POSTGRES_ADMIN_URL": fmt.Sprintf("postgres://postgres:%s@127.0.0.1:%s/postgres?sslmode=disable", url.QueryEscape(password), ports["postgres"]),
 		"KODAMA_NATS_URL":                fmt.Sprintf("nats://%s@127.0.0.1:%s", url.QueryEscape(token), ports["nats"]),
 		"KODAMA_S3_ENDPOINT":             "http://127.0.0.1:" + ports["localstack"],
@@ -88,6 +89,9 @@ func (e *Environment) HostEnv() (map[string]string, error) {
 	} else {
 		values["KODAMA_TEST_PODMAN_NETWORK"] = e.State.Network
 		values["KODAMA_TEST_SERVER_CALLBACK_HOST"] = CallbackHosts[e.Provider]
+	}
+	if e.GitMode() == GitNative {
+		e.nativeHostEnv(values)
 	}
 	return values, nil
 }

@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -103,8 +104,14 @@ func Test_resource_grants_migration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ms := manifest.Migrations(); len(ms) != 3 || ms[2].ID != rtpg.ResourceGrantsMigrationID {
-		t.Fatalf("the contribution is not appended last: %+v", ms)
+	var manifestIDs []string
+	for _, m := range manifest.Migrations() {
+		manifestIDs = append(manifestIDs, m.ID)
+	}
+	baseline := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql"}
+	at := slices.Index(manifestIDs, rtpg.ResourceGrantsMigrationID)
+	if at != len(baseline) || !slices.Equal(manifestIDs[:at], baseline) {
+		t.Fatalf("the contribution is not appended directly after the three-file baseline: %v", manifestIDs)
 	}
 	s := rtest.New(t, rtest.Options{})
 	opts := storage.MigrateOptions{RuntimeRole: s.DB.RuntimeRole}
@@ -137,8 +144,10 @@ func Test_resource_grants_migration(t *testing.T) {
 		applied = append(applied, id)
 	}
 	rows.Close()
-	if len(applied) != 3 || applied[0] != "001_schema.sql" || applied[2] != rtpg.ResourceGrantsMigrationID {
-		t.Fatalf("ledger = %v", applied)
+	// The ledger is exactly the manifest, and the contribution is found by its ID.
+	if !slices.Equal(applied, manifestIDs) || !slices.Contains(applied, rtpg.ResourceGrantsMigrationID) ||
+		!slices.Equal(applied[:3], []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql"}) {
+		t.Fatalf("ledger = %v, manifest = %v", applied, manifestIDs)
 	}
 }
 

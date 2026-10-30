@@ -2,9 +2,9 @@
 # Do not edit: run `make api-generate` and commit the result.
 openapi: 3.0.3
 info:
-  description: 'The supported subset of the Kodama HTTP API served by the core, execution, manual delivery, M2 and business-loop assemblies (T-070, T-071, T-072, T-039, T-075): identity, work items, variables and secrets, pipeline definitions, run admission/reads/cancellation, workspaces, artifact metadata, event observation and attempt logs, the manual agent, gate and delivery slice (T-072): agent profiles, human gates, environments and deployment records, and the M2 model and tool management routes (T-039): project model settings and MCP server registrations, and the business-loop routes (T-075): business dependency links between work items and ChatOps notification destinations and delivery history. Generated from the module fragments in api/ by internal/app/apispec; do not edit by hand. Runtime (attempt) routes, the gateway''s chat-completions stream, the MCP proxy endpoint, the Git receive hook, the outbound ChatOps webhook payload and the flow-summary list options are not part of this subset. Paths are relative to the server URL, which must include the /api/v1 prefix.'
+  description: 'The supported subset of the Kodama HTTP API served by the core, execution, manual delivery, M2 and business-loop assemblies (T-070, T-071, T-072, T-039, T-075): identity, work items, variables and secrets, pipeline definitions, run admission/reads/cancellation, workspaces, artifact metadata, event observation and attempt logs, the manual agent, gate and delivery slice (T-072): agent profiles, human gates, environments and deployment records, and the M2 model and tool management routes (T-039): project model settings and MCP server registrations, and the business-loop routes (T-075): business dependency links between work items and ChatOps notification destinations and delivery history, and the kernel Git hosting routes (T-170): the repository resource of a tenant and of a project and the Git credential exchange; the Git smart-HTTP endpoint (/git/<tenant>/<project>/<repository>.git) is a non-JSON transport for the git client, authenticated with the exchanged credential as the HTTP Basic password, and is not an API operation. Generated from the module fragments in api/ by internal/app/apispec; do not edit by hand. Runtime (attempt) routes, the gateway''s chat-completions stream, the MCP proxy endpoint, the Git receive hook, the outbound ChatOps webhook payload and the flow-summary list options are not part of this subset. Paths are relative to the server URL, which must include the /api/v1 prefix.'
   title: Kodama public API (core assembly subset)
-  version: 0.3.0
+  version: 0.4.0
 servers:
   - url: /api/v1
 security:
@@ -27,6 +27,7 @@ x-kodama-fragments:
   - mcp
   - work-dependencies
   - chatops
+  - kernel-git
 paths:
   /me:
     get:
@@ -88,6 +89,53 @@ paths:
         "503":
           $ref: '#/components/responses/Unavailable'
       summary: Discover the caller's tenants
+  /tenants/{tenantId}/git-credentials:
+    parameters:
+      - $ref: '#/components/parameters/GitTenantKey'
+    post:
+      description: |-
+        Issues a human credential (`seed: false`) that reads the repository, and pushes it where the caller's role allows (an `engineer`, within the repository's ref policy), or the single-use seed credential (`seed: true`) of an empty repository: exactly one receive whose only update creates the repository's default branch (docs/specs/git-repositories.md, "Bootstrap by push"). The credential names exactly this project and repository. It is returned once, never cached and stored only as a hash. Use it with `git` as the HTTP Basic password with any username, against the repository's `cloneUrl` (the Git transport is described in the introduction of this document).
+
+        The caller is the verified person of the access token; the body never names a user. A person's current role is checked again at every Git request, so the credential carries no frozen permission and a removed role takes effect at the next request even while the credential is unexpired. A seed requires the `engineer` role (`403 forbidden` otherwise), and a new seed credential revokes the repository's earlier unused one. `404 not_found` when no role reaches the project or the repository is foreign or unknown; `409 repository_not_ready` while provisioning and for an archived repository, `409 repository_not_empty` for a seed when the repository already has a ref, and `409 seed_pending` while an earlier seed push is not recorded yet. `projectId` is empty for the tenant-level repository.
+      operationId: exchangeGitCredential
+      requestBody:
+        content:
+          application/json:
+            example:
+              projectId: p_inventory
+              repositoryId: repo_0f3a5c9e1b7d4a6e8c2b4d6f8a0c2e4a
+              seed: true
+            schema:
+              $ref: '#/components/schemas/GitCredentialRequest'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              example:
+                expiresAt: "2026-10-30T10:10:00Z"
+                grantId: gg_0f3a5c9e1b7d4a6e8c2b4d6f8a0c2e4a
+                password: gitc_EXAMPLE_PLACEHOLDER_NOT_A_CREDENTIAL_0123456
+                username: kodama
+              schema:
+                $ref: '#/components/schemas/GitCredential'
+          description: The credential. Shown once.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema:
+                type: string
+        "400":
+          $ref: '#/components/responses/GitBadRequest'
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "403":
+          $ref: '#/components/responses/GitForbidden'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+      summary: Exchange the caller's access token for a Git credential
   /tenants/{tenantId}/memberships:
     get:
       description: 'Lists the bindings of every scope the caller administers: all of the tenant for a tenant-wide administrator, otherwise only the administered projects. The projectId and userId filters narrow the result and never widen it. Ordered by ID; the cursor is bound to the caller, tenant and filters.'
@@ -1833,6 +1881,208 @@ paths:
       - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/DefinitionId'
+  /tenants/{tenantId}/projects/{projectId}/repositories:
+    get:
+      description: 'Every repository of the project, ordered by creation. The list is not paginated: `nextCursor` is always null. Any role bound to the project may read.'
+      operationId: listProjectGitRepositories
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepositoryList'
+          description: The project's repositories.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+      summary: List the project's repositories
+    parameters:
+      - $ref: '#/components/parameters/GitTenantKey'
+      - $ref: '#/components/parameters/GitProjectSegment'
+    post:
+      description: 'Idempotent on `name`. The reservation commits first and is returned as `provisioning` with `201`; the kernel then asks the tenant''s Git worker to initialize the bare repository, outside any transaction, and returns the repository as `ready` when the worker confirmed within the call. When the worker is unavailable the repository stays `provisioning` (with `reason: provisioning`) and the worker''s assignment poll finishes it; poll `getProjectGitRepository` until `status` is `ready`. An equivalent repository of that name (same default branch and policy) is returned with `200`; the same name with another default branch or policy is `409 repository_name_taken`. An omitted `defaultBranch` is `main`; an omitted policy is `directPushToDefault: false`. A name is slash-separated segments of letters, digits, underscores and hyphens. Requires the `engineer` or `admin` role on the project.'
+      operationId: createProjectGitRepository
+      requestBody:
+        content:
+          application/json:
+            example:
+              defaultBranch: main
+              name: backend
+            schema:
+              $ref: '#/components/schemas/CreateGitRepositoryRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: An equivalent repository already exists.
+        "201":
+          content:
+            application/json:
+              example:
+                cloneUrl: https://git.example.invalid/git/acme/inventory/backend.git
+                createdAt: "2026-10-30T10:00:00Z"
+                defaultBranch: main
+                empty: true
+                id: repo_0f3a5c9e1b7d4a6e8c2b4d6f8a0c2e4a
+                path: acme/inventory/backend
+                policy:
+                  directPushToDefault: false
+                projectId: p_inventory
+                reason: null
+                status: ready
+                tenantId: t_acme
+                version: 2
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The reservation was created.
+        "400":
+          $ref: '#/components/responses/GitBadRequest'
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "403":
+          $ref: '#/components/responses/GitForbidden'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+        "422":
+          $ref: '#/components/responses/GitUnprocessable'
+      summary: Reserve and provision a repository
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}:
+    get:
+      operationId: getProjectGitRepository
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The repository.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+      summary: Read a repository
+    parameters:
+      - $ref: '#/components/parameters/GitTenantKey'
+      - $ref: '#/components/parameters/GitProjectSegment'
+      - $ref: '#/components/parameters/GitRepositoryId'
+    patch:
+      description: A patch names `defaultBranch`, `policy` or both. A patched `policy` states `directPushToDefault`. `If-Match` carries the repository's `version`; a stale version is `412 version_conflict` and a missing header `428 version_required`. A changed default branch puts the repository back into `provisioning` so that the worker re-applies `HEAD`; the kernel asks the worker at once and the assignment poll repeats it. Requires the `engineer` or `admin` role on the project.
+      operationId: patchProjectGitRepository
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchGitRepositoryRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The updated repository.
+        "400":
+          $ref: '#/components/responses/GitBadRequest'
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "403":
+          $ref: '#/components/responses/GitForbidden'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+        "412":
+          $ref: '#/components/responses/GitPreconditionFailed'
+        "422":
+          $ref: '#/components/responses/GitUnprocessable'
+        "428":
+          $ref: '#/components/responses/GitPreconditionRequired'
+      summary: Change the default branch or the policy
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}/archive:
+    post:
+      description: 'A ready repository becomes `archived` (`reason: archived`); it stays readable, accepts no push and no new credential. Archiving an already archived repository is idempotent: it answers `200` with the repository unchanged. `409 repository_not_ready` while the repository is still provisioning. Requires the `engineer` or `admin` role on the project.'
+      operationId: archiveProjectGitRepository
+      parameters:
+        - $ref: '#/components/parameters/GitTenantKey'
+        - $ref: '#/components/parameters/GitProjectSegment'
+        - $ref: '#/components/parameters/GitRepositoryId'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The repository, now archived.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "403":
+          $ref: '#/components/responses/GitForbidden'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+      summary: Archive a repository
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}/refs:
+    get:
+      description: Read through the tenant's Git worker, one namespace per call (`prefix` is `heads`, the default, or `tags`; the server namespace `refs/kodama/` is never listed), bounded and cursor-paginated. `empty` is true when the repository has no refs at all. `409 repository_not_ready` while the repository is provisioning; `503` while the worker is unavailable.
+      operationId: listProjectGitRepositoryRefs
+      parameters:
+        - $ref: '#/components/parameters/GitTenantKey'
+        - $ref: '#/components/parameters/GitProjectSegment'
+        - $ref: '#/components/parameters/GitRepositoryId'
+        - $ref: '#/components/parameters/GitRefsPrefix'
+        - $ref: '#/components/parameters/GitRefsLimit'
+        - $ref: '#/components/parameters/GitRefsCursor'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRefsPage'
+          description: One page of ref tips.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+        "422":
+          $ref: '#/components/responses/GitUnprocessable'
+        "503":
+          $ref: '#/components/responses/GitUnavailable'
+      summary: Current branch or tag tips
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}/restore:
+    post:
+      description: 'An archived repository becomes `ready` again. Restoring a repository that is already ready is idempotent: it answers `200` with the repository unchanged. `409 repository_not_ready` while the repository is still provisioning. Requires the `engineer` or `admin` role on the project.'
+      operationId: restoreProjectGitRepository
+      parameters:
+        - $ref: '#/components/parameters/GitTenantKey'
+        - $ref: '#/components/parameters/GitProjectSegment'
+        - $ref: '#/components/parameters/GitRepositoryId'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The repository, now ready.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "403":
+          $ref: '#/components/responses/GitForbidden'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+      summary: Restore an archived repository
   /tenants/{tenantId}/projects/{projectId}/runs:
     get:
       description: Ordered by (created_at, id). Requires run:read. The optional status filter may be repeated; workItemId restricts the list to one work item. A cursor is bound to the tenant, project, filters and ordering that issued it, and every page is authorized again.
@@ -3149,9 +3399,11 @@ paths:
                     archiveRequestedAt: null
                     branch: refs/heads/kodama/work/wi_1042
                     createdAt: "2026-10-19T10:00:00Z"
+                    hosting: external
                     id: ws_01
                     lastError: provision_unavailable
                     publication: null
+                    repositories: []
                     repositoryId: repo_1
                     state: provisioning
                     updatedAt: "2026-10-19T10:00:02Z"
@@ -3280,7 +3532,7 @@ paths:
       summary: Reopen the same workspace and branch after settlement
   /tenants/{tenantId}/projects/{projectId}/workspaces/{id}/sync:
     post:
-      description: Refreshes the remote branch tip and records an authorized human fast-forward as the accepted commit. A rewritten or diverged branch is never adopted (409 branch_diverged); there is no merge and no rewind. The If-Match version is compared atomically with the write.
+      description: Refreshes the remote branch tip and records an authorized human fast-forward as the accepted commit. A rewritten or diverged branch is never adopted (409 branch_diverged); there is no merge and no rewind. For an internally hosted workspace a fast-forward is adopted only when applied push records show every step was an engineer's (or a checkpoint already accepted) and no push of the task branch is unsettled; a workload push that was refused or never reported is never adopted (409 workspace_state_conflict, lastError unaccepted_push) and a push still in flight keeps it pending (409 workspace_state_conflict). The If-Match version, the workspace state and the observed accepted commits are compared atomically with the write.
       operationId: syncWorkspace
       parameters:
         - $ref: '#/components/parameters/TenantId'
@@ -3315,6 +3567,186 @@ paths:
         "503":
           $ref: '#/components/responses/Unavailable'
       summary: Observe authorized human Git updates
+  /tenants/{tenantId}/repositories:
+    get:
+      description: 'The repositories that belong to the tenant rather than to a project: the tenant knowledge base, `context`. The caller needs a tenant-level role. The list is not paginated: `nextCursor` is always null.'
+      operationId: listTenantGitRepositories
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepositoryList'
+          description: The tenant-level repositories.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+      summary: List the tenant-level repositories
+    parameters:
+      - $ref: '#/components/parameters/GitTenantKey'
+    post:
+      description: The tenant-level repository is named `context`. Behaves as `createProjectGitRepository`. Requires the tenant-level `engineer` or `admin` role.
+      operationId: createTenantGitRepository
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGitRepositoryRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: An equivalent repository already exists.
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The reservation was created.
+        "400":
+          $ref: '#/components/responses/GitBadRequest'
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "403":
+          $ref: '#/components/responses/GitForbidden'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+        "422":
+          $ref: '#/components/responses/GitUnprocessable'
+      summary: Reserve and provision the tenant knowledge base
+  /tenants/{tenantId}/repositories/{id}:
+    get:
+      operationId: getTenantGitRepository
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The repository.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+      summary: Read a tenant-level repository
+    parameters:
+      - $ref: '#/components/parameters/GitTenantKey'
+      - $ref: '#/components/parameters/GitRepositoryId'
+    patch:
+      description: As `patchProjectGitRepository`.
+      operationId: patchTenantGitRepository
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchGitRepositoryRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The updated repository.
+        "400":
+          $ref: '#/components/responses/GitBadRequest'
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "403":
+          $ref: '#/components/responses/GitForbidden'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+        "412":
+          $ref: '#/components/responses/GitPreconditionFailed'
+        "422":
+          $ref: '#/components/responses/GitUnprocessable'
+        "428":
+          $ref: '#/components/responses/GitPreconditionRequired'
+      summary: Change a tenant-level repository's default branch or policy
+  /tenants/{tenantId}/repositories/{id}/archive:
+    post:
+      description: As `archiveProjectGitRepository`.
+      operationId: archiveTenantGitRepository
+      parameters:
+        - $ref: '#/components/parameters/GitTenantKey'
+        - $ref: '#/components/parameters/GitRepositoryId'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The repository, now archived.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "403":
+          $ref: '#/components/responses/GitForbidden'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+      summary: Archive a tenant-level repository
+  /tenants/{tenantId}/repositories/{id}/refs:
+    get:
+      description: As `listProjectGitRepositoryRefs`.
+      operationId: listTenantGitRepositoryRefs
+      parameters:
+        - $ref: '#/components/parameters/GitTenantKey'
+        - $ref: '#/components/parameters/GitRepositoryId'
+        - $ref: '#/components/parameters/GitRefsPrefix'
+        - $ref: '#/components/parameters/GitRefsLimit'
+        - $ref: '#/components/parameters/GitRefsCursor'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRefsPage'
+          description: One page of ref tips.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+        "422":
+          $ref: '#/components/responses/GitUnprocessable'
+        "503":
+          $ref: '#/components/responses/GitUnavailable'
+      summary: Current branch or tag tips of a tenant-level repository
+  /tenants/{tenantId}/repositories/{id}/restore:
+    post:
+      description: As `restoreProjectGitRepository`.
+      operationId: restoreTenantGitRepository
+      parameters:
+        - $ref: '#/components/parameters/GitTenantKey'
+        - $ref: '#/components/parameters/GitRepositoryId'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+          description: The repository, now ready.
+        "401":
+          $ref: '#/components/responses/GitUnauthorized'
+        "403":
+          $ref: '#/components/responses/GitForbidden'
+        "404":
+          $ref: '#/components/responses/GitNotFound'
+        "409":
+          $ref: '#/components/responses/GitConflict'
+      summary: Restore an archived tenant-level repository
 components:
   examples:
     CancellingRun:
@@ -3866,6 +4298,57 @@ components:
       required: true
       schema:
         $ref: '#/components/schemas/ID'
+    GitProjectSegment:
+      description: The project's key or identifier; both name the same project.
+      in: path
+      name: projectId
+      required: true
+      schema:
+        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$
+        type: string
+    GitRefsCursor:
+      description: 'The `nextCursor` of the previous page, passed back unchanged. It is the name of the last ref returned, so it has the shape of a ref name (for example `refs/heads/b2`), not of the opaque authenticated cursor of the other lists. It grants no permission: the repository is authorized again on every page.'
+      in: query
+      name: cursor
+      required: false
+      schema:
+        $ref: '#/components/schemas/GitRefsCursorValue'
+    GitRefsLimit:
+      description: Page size, 1 to 1000; a value outside the range is `422 invalid_request`.
+      in: query
+      name: limit
+      required: false
+      schema:
+        default: 100
+        maximum: 1000
+        minimum: 1
+        type: integer
+    GitRefsPrefix:
+      description: The namespace to list.
+      in: query
+      name: prefix
+      required: false
+      schema:
+        default: heads
+        enum:
+          - heads
+          - tags
+        type: string
+    GitRepositoryId:
+      description: Repository identifier, not its name.
+      in: path
+      name: id
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+    GitTenantKey:
+      description: The tenant key (the short name of the tenant), as it appears in clone URLs.
+      in: path
+      name: tenantId
+      required: true
+      schema:
+        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$
+        type: string
     IdempotencyKey:
       description: Client-chosen key for run/deployment creation and gate decisions. The stored lookup key is (principal, tenant, method, canonical route, key); the request hash is stored and compared separately. A different request for the same key is 409 idempotency_conflict.
       in: header
@@ -4076,6 +4559,60 @@ components:
       headers:
         X-Request-ID:
           $ref: '#/components/headers/RequestId'
+    GitBadRequest:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GitErrorEnvelope'
+      description: The request body is not valid JSON or has an unknown member (`invalid_request`), or a header is malformed.
+    GitConflict:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GitErrorEnvelope'
+      description: 'Conflict. Codes: `repository_name_taken` (the name belongs to a repository with another configuration), `repository_not_ready`, `repository_archived`, `repository_not_empty`, `seed_pending`, `conflict`.'
+    GitForbidden:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GitErrorEnvelope'
+      description: The caller's role in the scope does not suffice (`forbidden`).
+    GitNotFound:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GitErrorEnvelope'
+      description: Not found, or hidden because the caller has no role in the scope (`not_found`); an unknown tenant, project, repository and a foreign repository are the same answer.
+    GitPreconditionFailed:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GitErrorEnvelope'
+      description: The `If-Match` version is stale or not a version (`version_conflict`).
+    GitPreconditionRequired:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GitErrorEnvelope'
+      description: The `If-Match` header is missing (`version_required`).
+    GitUnauthorized:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GitErrorEnvelope'
+      description: Missing or invalid bearer credential (`invalid_credential`).
+    GitUnavailable:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GitErrorEnvelope'
+      description: The tenant's Git worker could not be reached (`unavailable`). The same request may be retried.
+    GitUnprocessable:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GitErrorEnvelope'
+      description: '`invalid_request`: a name, branch, process name, `prefix` or `limit` that is not valid, or a patch that changes nothing.'
     InternalError:
       content:
         application/json:
@@ -4335,14 +4872,50 @@ components:
                 archiveRequestedAt: null
                 branch: refs/heads/kodama/work/wi_1042
                 createdAt: "2026-10-19T10:00:00Z"
+                hosting: external
                 id: ws_01
                 lastError: null
                 publication: null
+                repositories: []
                 repositoryId: repo_1
                 state: available
                 updatedAt: "2026-10-19T10:05:00Z"
                 version: 4
                 workItemId: wi_1042
+                writerAttemptId: null
+            internal:
+              summary: An internally hosted workspace with a task branch in two repositories.
+              value:
+                acceptedCommit: "2222222222222222222222222222222222222222"
+                archiveRequestedAt: null
+                branch: refs/heads/kodama/work/wi_1043
+                createdAt: "2026-10-19T10:00:00Z"
+                hosting: internal
+                id: ws_02
+                lastError: null
+                publication: null
+                repositories:
+                  - acceptedCommit: "2222222222222222222222222222222222222222"
+                    baseCommit: "2222222222222222222222222222222222222222"
+                    createdAt: "2026-10-19T10:00:00Z"
+                    lastError: null
+                    repositoryId: repo_app
+                    state: created
+                    taskBranch: refs/heads/kodama/work/wi_1043
+                    updatedAt: "2026-10-19T10:00:01Z"
+                  - acceptedCommit: "3333333333333333333333333333333333333333"
+                    baseCommit: "3333333333333333333333333333333333333333"
+                    createdAt: "2026-10-19T10:00:00Z"
+                    lastError: null
+                    repositoryId: repo_docs
+                    state: created
+                    taskBranch: refs/heads/kodama/work/wi_1043
+                    updatedAt: "2026-10-19T10:00:01Z"
+                repositoryId: repo_app
+                state: available
+                updatedAt: "2026-10-19T10:00:01Z"
+                version: 5
+                workItemId: wi_1043
                 writerAttemptId: null
           schema:
             $ref: '#/components/schemas/Workspace'
@@ -4569,6 +5142,10 @@ components:
           allOf:
             - $ref: '#/components/schemas/SourceProvenance'
           nullable: true
+        sourceSet:
+          allOf:
+            - $ref: '#/components/schemas/ArtifactSourceSet'
+          description: Present only for an artifact of a source-set run, in place of source.
         state:
           $ref: '#/components/schemas/ArtifactState'
         stepId:
@@ -4639,6 +5216,35 @@ components:
         - diagnostic
         - bundle
       type: string
+    ArtifactSourceCommit:
+      additionalProperties: false
+      properties:
+        commit:
+          pattern: ^([0-9a-f]{40}|[0-9a-f]{64})$
+          type: string
+        repositoryId:
+          $ref: '#/components/schemas/ID'
+      required:
+        - repositoryId
+        - commit
+      type: object
+    ArtifactSourceSet:
+      additionalProperties: false
+      description: 'The trusted source set of a multi-repository run the producing attempt worked from: the canonical digest of the run''s pinned set and, for every repository of it, the commit the attempt worked from. Present instead of source, never together with it (DQ-17).'
+      properties:
+        commits:
+          description: Ordered by repositoryId.
+          items:
+            $ref: '#/components/schemas/ArtifactSourceCommit'
+          maxItems: 32
+          minItems: 1
+          type: array
+        digest:
+          $ref: '#/components/schemas/Digest'
+      required:
+        - digest
+        - commits
+      type: object
     ArtifactState:
       description: 'reserved: a file whose bytes are not verified (never usable). registered: an OCI registration verified against its registry. usable: a file whose bytes were verified and sealed.'
       enum:
@@ -4997,6 +5603,23 @@ components:
       required:
         - total
         - pending
+      type: object
+    CreateGitRepositoryRequest:
+      additionalProperties: false
+      properties:
+        defaultBranch:
+          description: Optional; `main` when omitted.
+          maxLength: 200
+          type: string
+        name:
+          description: The tenant-level repository is named `context`.
+          maxLength: 512
+          pattern: ^[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*$
+          type: string
+        policy:
+          $ref: '#/components/schemas/GitRepositoryPolicyInput'
+      required:
+        - name
       type: object
     CreateMembership:
       additionalProperties: false
@@ -5488,6 +6111,11 @@ components:
           $ref: '#/components/schemas/ID'
         source:
           $ref: '#/components/schemas/Source'
+          description: The candidate's repository and commit. For a deployment of a run with a source set they are those of the set's primary source (the first writable source ordered by repositoryId, else the first), so clients that do not read source sets keep working; clients that understand source sets read sourceSet, which defines the candidate.
+        sourceSet:
+          allOf:
+            - $ref: '#/components/schemas/DeploymentSourceSet'
+          description: Present only for a deployment of a run with a source set.
         status:
           $ref: '#/components/schemas/DeploymentStatus'
         stepId:
@@ -5520,6 +6148,7 @@ components:
       type: object
     DeploymentCreate:
       additionalProperties: false
+      description: Exactly one of source and sourceSet names the candidate.
       properties:
         attemptId:
           $ref: '#/components/schemas/ID'
@@ -5527,9 +6156,10 @@ components:
           $ref: '#/components/schemas/Image'
         source:
           $ref: '#/components/schemas/Source'
+        sourceSet:
+          $ref: '#/components/schemas/DeploymentSourceSet'
       required:
         - attemptId
-        - source
         - image
       type: object
     DeploymentID:
@@ -5568,6 +6198,34 @@ components:
         - deployment
         - annotations
         - created
+      type: object
+    DeploymentSourceCommit:
+      additionalProperties: false
+      properties:
+        commit:
+          pattern: ^([0-9a-f]{40}|[0-9a-f]{64})$
+          type: string
+        repositoryId:
+          $ref: '#/components/schemas/ID'
+      required:
+        - repositoryId
+        - commit
+      type: object
+    DeploymentSourceSet:
+      additionalProperties: false
+      description: 'The candidate of a multi-repository run: the canonical digest of the run''s pinned source set and one commit for every repository of it, ordered by repositoryId. A request names it instead of source and it must equal the source set of the originating attempt and of the image''s provenance (DQ-17).'
+      properties:
+        commits:
+          items:
+            $ref: '#/components/schemas/DeploymentSourceCommit'
+          maxItems: 32
+          minItems: 1
+          type: array
+        digest:
+          $ref: '#/components/schemas/Digest'
+      required:
+        - digest
+        - commits
       type: object
     DeploymentStatus:
       enum:
@@ -6109,6 +6767,195 @@ components:
     GitCommit:
       pattern: ^([0-9a-f]{40}|[0-9a-f]{64})$
       type: string
+    GitCredential:
+      properties:
+        expiresAt:
+          description: Shortly after issue; minutes for a seed, at most one hour for a human credential.
+          format: date-time
+          type: string
+        grantId:
+          type: string
+        password:
+          description: 'The opaque credential: the HTTP Basic password. Shown once and stored only as a hash; never log it.'
+          type: string
+        username:
+          description: Conventional only; any username is accepted at use.
+          type: string
+      required:
+        - username
+        - password
+        - grantId
+        - expiresAt
+      type: object
+    GitCredentialRequest:
+      additionalProperties: false
+      properties:
+        projectId:
+          description: The repository's project identifier; the empty string for the tenant-level repository.
+          type: string
+        repositoryId:
+          $ref: '#/components/schemas/ID'
+        seed:
+          default: false
+          description: False for an ordinary human credential, true for the single-use seed credential of an empty repository.
+          type: boolean
+      required:
+        - projectId
+        - repositoryId
+      type: object
+    GitError:
+      additionalProperties: false
+      description: 'The error body the kernel writes. It carries a stable `code` and a message and nothing else: no request identifier and no details object.'
+      properties:
+        code:
+          pattern: ^[a-z][a-z0-9_]*$
+          type: string
+        message:
+          maxLength: 1024
+          type: string
+      required:
+        - code
+        - message
+      type: object
+    GitErrorEnvelope:
+      additionalProperties: false
+      properties:
+        error:
+          $ref: '#/components/schemas/GitError'
+      required:
+        - error
+      type: object
+    GitRefTip:
+      properties:
+        commit:
+          pattern: ^([0-9a-f]{40}|[0-9a-f]{64})$
+          type: string
+        ref:
+          maxLength: 255
+          type: string
+      required:
+        - ref
+        - commit
+      type: object
+    GitRefsCursorValue:
+      description: 'A continuation position in a refs listing: the name of the last ref of the page. This is the Git contract''s cursor (contracts/git/v1), not the common authenticated cursor.'
+      maxLength: 512
+      minLength: 1
+      pattern: ^[A-Za-z0-9._~+/=-]{1,512}$
+      type: string
+    GitRefsPage:
+      properties:
+        empty:
+          description: True when the repository has no refs at all.
+          type: boolean
+        nextCursor:
+          allOf:
+            - $ref: '#/components/schemas/GitRefsCursorValue'
+          description: The cursor of the next page, or null when the listing is exhausted.
+          nullable: true
+        refs:
+          items:
+            $ref: '#/components/schemas/GitRefTip'
+          type: array
+      required:
+        - refs
+        - nextCursor
+        - empty
+      type: object
+    GitRepository:
+      properties:
+        cloneUrl:
+          description: The Git endpoint of the repository. Never carries credentials.
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        defaultBranch:
+          description: A branch name, not a ref path, outside the reserved kodama namespace.
+          maxLength: 200
+          type: string
+        empty:
+          description: 'Reported by the tenant''s worker: the repository has no refs. Decides whether a seed credential can be issued.'
+          type: boolean
+        id:
+          $ref: '#/components/schemas/ID'
+        path:
+          description: '`<tenant key>/<project key>/<name>`, or `<tenant key>/context` for the tenant-level repository. It is the path of the Git endpoint without `.git`.'
+          type: string
+        policy:
+          $ref: '#/components/schemas/GitRepositoryPolicy'
+        projectId:
+          description: The owning project's identifier; null for the tenant-level repository.
+          nullable: true
+          type: string
+        reason:
+          description: Null for a ready repository; `provisioning` while the worker has not confirmed it; `archived` after an archive.
+          nullable: true
+          type: string
+        status:
+          $ref: '#/components/schemas/GitRepositoryStatus'
+        tenantId:
+          $ref: '#/components/schemas/ID'
+        version:
+          $ref: '#/components/schemas/Version'
+      required:
+        - id
+        - tenantId
+        - projectId
+        - path
+        - defaultBranch
+        - status
+        - reason
+        - cloneUrl
+        - policy
+        - empty
+        - version
+        - createdAt
+      type: object
+    GitRepositoryList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/GitRepository'
+          type: array
+        nextCursor:
+          description: Always null, the list is not paginated.
+          nullable: true
+          type: string
+      required:
+        - items
+        - nextCursor
+      type: object
+    GitRepositoryPolicy:
+      additionalProperties: false
+      properties:
+        directPushToDefault:
+          description: Whether a current engineer may fast-forward the default branch directly.
+          type: boolean
+        integrationPipeline:
+          description: The process an integration run executes; absent when none is set.
+          pattern: ^[a-z][a-z0-9_-]{0,62}$
+          type: string
+      required:
+        - directPushToDefault
+      type: object
+    GitRepositoryPolicyInput:
+      additionalProperties: false
+      properties:
+        directPushToDefault:
+          description: Omitted means false on creation; a patch that names a policy states it.
+          type: boolean
+        integrationPipeline:
+          pattern: ^[a-z][a-z0-9_-]{0,62}$
+          type: string
+      type: object
+    GitRepositoryStatus:
+      description: 'Transitions: provisioning to ready (the worker confirmed), ready to archived, archived to ready; a changed default branch returns a ready repository to provisioning until the worker re-applies it. A provisioning failure is a `reason`, never another status.'
+      enum:
+        - provisioning
+        - ready
+        - archived
+      type: string
     Harness:
       additionalProperties: false
       properties:
@@ -6192,6 +7039,12 @@ components:
         - items
         - nextCursor
       type: object
+    Hosting:
+      description: How the workspace's source is hosted. An external workspace has one repository and the publisher model; an internal workspace (ADR 0011) has a task branch in each repository its work item touches, and its commits are pushed by attempts and accepted from applied push records. A workspace never changes hosting.
+      enum:
+        - external
+        - internal
+      type: string
     ID:
       description: Opaque identifier. Ownership, kind and ordering must not be inferred from it.
       pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$
@@ -6228,6 +7081,20 @@ components:
         - digest
         - inputs
         - secrets
+      type: object
+    IntegrationBase:
+      additionalProperties: false
+      description: The default branch of a writable repository and the tip the approval is given over.
+      properties:
+        commit:
+          $ref: '#/components/schemas/GitCommit'
+        ref:
+          maxLength: 255
+          pattern: ^refs/heads/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$
+          type: string
+      required:
+        - ref
+        - commit
       type: object
     Invalidation:
       additionalProperties: false
@@ -6883,6 +7750,16 @@ components:
         - items
         - nextCursor
       type: object
+    PatchGitRepositoryRequest:
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        defaultBranch:
+          maxLength: 200
+          type: string
+        policy:
+          $ref: '#/components/schemas/GitRepositoryPolicyInput'
+      type: object
     PinnedInput:
       additionalProperties: false
       properties:
@@ -7183,6 +8060,52 @@ components:
       required:
         - reason
       type: object
+    RepositoryAssociation:
+      additionalProperties: false
+      description: 'One repository of an internally hosted workspace: its task branch and the commit last accepted there. Safe reason codes in lastError are repository_unavailable, provision_unavailable, branch_exists, branch_missing, branch_diverged and unaccepted_push.'
+      properties:
+        acceptedCommit:
+          description: The commit last accepted on the task branch; null until the branch is created.
+          nullable: true
+          pattern: ^([0-9a-f]{40}|[0-9a-f]{64})$
+          type: string
+        baseCommit:
+          $ref: '#/components/schemas/Commit'
+        createdAt:
+          format: date-time
+          type: string
+        lastError:
+          nullable: true
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+          type: string
+        repositoryId:
+          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$
+          type: string
+        state:
+          $ref: '#/components/schemas/RepositoryAssociationState'
+        taskBranch:
+          description: Task branch refs/heads/kodama/work/<work-item-id> in this repository.
+          pattern: ^refs/heads/kodama/work/[A-Za-z0-9][A-Za-z0-9_-]{0,127}$
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - repositoryId
+        - taskBranch
+        - baseCommit
+        - acceptedCommit
+        - state
+        - lastError
+        - createdAt
+        - updatedAt
+      type: object
+    RepositoryAssociationState:
+      description: 'intent: the base commit is recorded and the task branch is not yet confirmed created; created: the task branch exists and acceptedCommit is recorded. Independent of the workspace state.'
+      enum:
+        - intent
+        - created
+      type: string
     Required:
       additionalProperties: false
       properties:
@@ -7443,6 +8366,8 @@ components:
           $ref: '#/components/schemas/ID'
         inputSnapshot:
           $ref: '#/components/schemas/InputSnapshot'
+        origin:
+          $ref: '#/components/schemas/RunOrigin'
         purpose:
           description: Only work runs are created through this API.
           enum:
@@ -7471,6 +8396,8 @@ components:
             - pending
             - confirmed
           type: string
+        sourceSet:
+          $ref: '#/components/schemas/RunSourceSet'
         startedAt:
           format: date-time
           nullable: true
@@ -7501,6 +8428,40 @@ components:
         - createdAt
         - startedAt
         - finishedAt
+      type: object
+    RunOrigin:
+      additionalProperties: false
+      description: How the run started, pinned at admission (PX-23-PX-25). Present only for a run admitted by the internal Git service; absent for every earlier run. A run that did not start from a work item has none and consumes no work-in-progress.
+      properties:
+        kind:
+          enum:
+            - work_item
+            - push
+            - manual
+            - provision
+          type: string
+        pushId:
+          description: The applied push record of a push origin.
+          nullable: true
+          type: string
+        ref:
+          description: The updated ref of a push origin; never under refs/kodama/.
+          nullable: true
+          type: string
+        repositoryId:
+          description: The pushed repository of a push origin.
+          nullable: true
+          type: string
+        workItemId:
+          description: Set exactly for a work_item origin.
+          nullable: true
+          type: string
+      required:
+        - kind
+        - workItemId
+        - pushId
+        - repositoryId
+        - ref
       type: object
     RunPage:
       properties:
@@ -7554,6 +8515,58 @@ components:
         - stoppedAt
         - removedAt
       type: object
+    RunSource:
+      additionalProperties: false
+      properties:
+        access:
+          description: The run-level access ceiling; only the writer attempt may update the source's branch.
+          enum:
+            - read
+            - write
+          type: string
+        branch:
+          description: The branch a write source updates (the work item's task branch or a branch of the run's own namespace); null for a read source.
+          nullable: true
+          type: string
+        commit:
+          description: The commit pinned at admission, never a later tip.
+          pattern: ^([0-9a-f]{40}|[0-9a-f]{64})$
+          type: string
+        path:
+          description: The checkout path relative to /workspace; "." only for a single source.
+          maxLength: 255
+          type: string
+        repository:
+          description: The repository's name within the project.
+          type: string
+        repositoryId:
+          $ref: '#/components/schemas/ID'
+      required:
+        - repositoryId
+        - repository
+        - path
+        - commit
+        - access
+        - branch
+      type: object
+    RunSourceSet:
+      additionalProperties: false
+      description: 'The run''s pinned source set: one exact commit per repository of its project and a unique checkout path each, ordered by path. Present only for a run admitted by the internal Git service. It never changes after admission.'
+      properties:
+        digest:
+          description: The canonical digest of the set that evidence and gate subjects use; null for a source-free run.
+          nullable: true
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+        sources:
+          items:
+            $ref: '#/components/schemas/RunSource'
+          maxItems: 32
+          type: array
+      required:
+        - digest
+        - sources
+      type: object
     RunStatus:
       enum:
         - queued
@@ -7590,11 +8603,14 @@ components:
           type: integer
     RuntimeDeploymentRegister:
       additionalProperties: false
+      description: '`source` stays a required member of the published contract, so that a client generated before source sets existed keeps working (AC-10), and `sourceSet` is the additive member that defines the candidate of a multi-repository run. The server accepts exactly one of them: a source-set candidate is sent as `sourceSet` alone.'
       properties:
         image:
           $ref: '#/components/schemas/Image'
         source:
           $ref: '#/components/schemas/Source'
+        sourceSet:
+          $ref: '#/components/schemas/DeploymentSourceSet'
       required:
         - source
         - image
@@ -7907,10 +8923,11 @@ components:
       type: string
     Subject:
       additionalProperties: false
-      description: The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate.
+      description: The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate. For a run of several repositories the subject also carries sourceSet (DQ-17), which defines it; candidateCommit then presents the primary source.
       properties:
         candidateCommit:
           $ref: '#/components/schemas/GitCommit'
+          description: The candidate commit. For a candidate that spans repositories it is the commit of the primary source (the first writable source ordered by repositoryId, else the first source) so that clients which do not read source sets keep working; clients that understand source sets read sourceSet, which defines the subject.
         contentRevision:
           $ref: '#/components/schemas/Version'
         definitionId:
@@ -7929,6 +8946,10 @@ components:
           type: array
         projectId:
           $ref: '#/components/schemas/ID'
+        sourceSet:
+          allOf:
+            - $ref: '#/components/schemas/SubjectSourceSet'
+          description: 'Present only for a candidate that spans repositories: the digest of the run''s pinned source set and, for every repository (ordered by repositoryId), the commit under review and, for a repository the run may write, the integration base (the default branch and the tip the approval is given over). A moved base makes the subject not applicable (base_moved).'
         tenantId:
           $ref: '#/components/schemas/ID'
         workItemId:
@@ -7943,6 +8964,37 @@ components:
         - evidence
         - deploymentId
         - deploymentConfigDigest
+      type: object
+    SubjectSource:
+      additionalProperties: false
+      properties:
+        base:
+          allOf:
+            - $ref: '#/components/schemas/IntegrationBase'
+          nullable: true
+        commit:
+          $ref: '#/components/schemas/GitCommit'
+        repositoryId:
+          $ref: '#/components/schemas/ID'
+      required:
+        - repositoryId
+        - commit
+        - base
+      type: object
+    SubjectSourceSet:
+      additionalProperties: false
+      properties:
+        digest:
+          $ref: '#/components/schemas/Digest'
+        sources:
+          items:
+            $ref: '#/components/schemas/SubjectSource'
+          maxItems: 32
+          minItems: 1
+          type: array
+      required:
+        - digest
+        - sources
       type: object
     Tenant:
       additionalProperties: false
@@ -8262,7 +9314,7 @@ components:
       additionalProperties: false
       properties:
         acceptedCommit:
-          description: The last published or synchronized commit; null while provisioning.
+          description: The last published or synchronized commit; null while provisioning. For an internal workspace, the primary repository's accepted commit.
           nullable: true
           pattern: ^([0-9a-f]{40}|[0-9a-f]{64})$
           type: string
@@ -8278,6 +9330,8 @@ components:
         createdAt:
           format: date-time
           type: string
+        hosting:
+          $ref: '#/components/schemas/Hosting'
         id:
           pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$
           type: string
@@ -8288,7 +9342,13 @@ components:
           type: string
         publication:
           $ref: '#/components/schemas/Publication'
+        repositories:
+          description: The repository associations of an internal workspace, ordered by repositoryId; empty for an external workspace.
+          items:
+            $ref: '#/components/schemas/RepositoryAssociation'
+          type: array
         repositoryId:
+          description: The workspace's repository; for an internal workspace its primary repository (the first one it was provisioned for).
           pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$
           type: string
         state:
@@ -8309,9 +9369,11 @@ components:
       required:
         - id
         - workItemId
+        - hosting
         - repositoryId
         - branch
         - acceptedCommit
+        - repositories
         - state
         - writerAttemptId
         - publication

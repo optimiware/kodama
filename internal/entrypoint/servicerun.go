@@ -99,6 +99,18 @@ func ExecuteServiceRun(ctx context.Context, cfg ResourceConfig, argv []string, s
 		}
 		return ExitUsage
 	}
+	if cfg.RuntimeAPI == RuntimeAPIv3 {
+		// The service message is unchanged on the v3 wire; only the routes and the
+		// context version differ (serviceAdapterV3).
+		client, err := NewResourceClientV3(cfg.ServerURL, domain.RunID(cfg.RunID), cfg.Key, cfg.CAFile, cfg.Retry, cfg.Logger)
+		if err != nil {
+			if cfg.Logger != nil {
+				cfg.Logger.Error("cannot create runtime client", "error", err.Error())
+			}
+			return ExitUsage
+		}
+		return newServiceRun(cfg, serviceAdapterV3{c: client}, stdout, stderr).run(ctx, argv)
+	}
 	client, err := NewResourceClient(cfg.ServerURL, domain.RunID(cfg.RunID), cfg.Key, cfg.CAFile, cfg.Retry, cfg.Logger)
 	if err != nil {
 		if cfg.Logger != nil {

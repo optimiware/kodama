@@ -165,6 +165,19 @@ func (a *Aggregate) ConfirmRetention(refID string, now time.Time) error {
 	return nil
 }
 
+// ConfirmSourceSetRetention applies the confirmation that a source-set run's
+// pinned commits are retained and its run branches exist.
+func (a *Aggregate) ConfirmSourceSetRetention(now time.Time) error {
+	changed, err := a.Run.ConfirmSourceSetRetention(now)
+	if err != nil {
+		return err
+	}
+	if changed {
+		a.Transitions = append(a.Transitions, Transition{Subject: SubjectRun, ID: string(a.Run.ID), From: string(a.Run.Status), To: string(a.Run.Status), Reason: ReasonRetained, At: now.UTC()})
+	}
+	return nil
+}
+
 // ---- cancellation and fail-fast draining ----
 
 // drain stops the run's remaining work: pending steps are cancelled and live
@@ -261,6 +274,16 @@ func (a *Aggregate) Claim(p ClaimParams, now time.Time) (*Attempt, error) {
 	for _, at := range a.AttemptsOf(s.ID) {
 		if !a.control(at.ID).Settled() {
 			return nil, transitionf("step %s has an unsettled attempt", s.ID)
+		}
+	}
+	if a.Run.Shared != nil {
+		// A run_shared run executes one attempt at a time, whatever its step: the
+		// one scratch is held by one attempt and the run's Git authority (its run
+		// branch, its agent namespace) belongs to one executable attempt.
+		for _, at := range a.Attempts {
+			if !a.control(at.ID).Settled() {
+				return nil, transitionf("run %s has an unsettled attempt", a.Run.ID)
+			}
 		}
 	}
 	fromStep := s.Status

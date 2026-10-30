@@ -57,6 +57,11 @@ func (e *Environment) Fixtures() (string, error) {
 			return "", err
 		}
 	}
+	if e.GitMode() == GitNative {
+		if err := e.nativeGitFixtures(); err != nil {
+			return "", err
+		}
+	}
 	database := e.Database()
 	urls := []struct{ name, user, password string }{
 		{"database-migration-url", "kodama_migration", stable["migration-password"]},

@@ -38,6 +38,9 @@ type Event struct {
 	PreviousCommit, NewCommit Commit
 	PublishingAttempt         domain.AttemptID
 	HumanSynchronization      bool
+	// Repository names the repository of a checkpoint of an internally hosted
+	// workspace; empty means the workspace's own (primary) repository.
+	Repository RepositoryID
 }
 
 // Effects are the records a mutation writes with the aggregate.
@@ -48,6 +51,11 @@ type Effects struct {
 	Receipt *Publication
 	// Pins are inserted or updated.
 	Pins []*RetainedRef
+	// Associations and Checkpoints are the internal-hosting records: inserted,
+	// or updated in their mutable fields (an association's state, accepted
+	// commit and reason; a checkpoint's retained ref and its status).
+	Associations []*RepositoryAssociation
+	Checkpoints  []*InternalCheckpoint
 }
 
 // Aggregate is what a mutation sees: the locked workspace plus the optional
@@ -56,6 +64,10 @@ type Aggregate struct {
 	Workspace *Workspace
 	Receipt   *Publication
 	Pins      []*RetainedRef
+	// Associations and Checkpoints are set when Load asked for them, ordered by
+	// repository (associations) and creation (checkpoints).
+	Associations []*RepositoryAssociation
+	Checkpoints  []*InternalCheckpoint
 }
 
 // Load names the optional records a mutation needs.
@@ -64,6 +76,10 @@ type Load struct {
 	Receipt domain.AttemptID
 	// Pins loads every retained reference of the workspace.
 	Pins bool
+	// Associations loads the repository associations of an internally hosted
+	// workspace; Checkpoints its accepted push entries.
+	Associations bool
+	Checkpoints  bool
 }
 
 // Mutation changes a locked aggregate. It must be pure: no network or process
@@ -115,6 +131,8 @@ const (
 	ActionRemove    Action = "workspace.remove_ref"
 	ActionFence     Action = "workspace.fence"
 	ActionAdmit     Action = "workspace.reserve_writer"
+	// ActionCheckpoint accepts an applied push as an internal checkpoint.
+	ActionCheckpoint Action = "workspace.accept_checkpoint"
 )
 
 // Resource names the addressed resource of an authorization question.

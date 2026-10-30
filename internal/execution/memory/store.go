@@ -44,6 +44,9 @@ func NewStore(db *memdb.Store, peers Peers, opts Options) (*Store, error) {
 	return &Store{db: db, peers: peers, opts: opts}, nil
 }
 
+// RevokesGitGrants implements execution.GitRevokingStore.
+func (s *Store) RevokesGitGrants() bool { return s.peers.GitGrants != nil }
+
 func (s *Store) now() time.Time { return s.opts.Clock().UTC().Truncate(time.Microsecond) }
 
 // nextSeq allocates the next sort key of an append-only row from the kernel's

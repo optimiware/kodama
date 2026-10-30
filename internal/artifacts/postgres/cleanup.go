@@ -42,7 +42,7 @@ func (s *Store) Tenants(ctx context.Context) ([]domain.TenantID, error) {
 func (s *Store) AbandonExpired(ctx context.Context, tenant domain.TenantID, now time.Time, p artifacts.CleanupPolicy) (int, error) {
 	n := 0
 	err := s.write(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT `+artifactColumns+` FROM artifacts
+		rows, err := tx.Query(ctx, `SELECT `+s.columns()+` FROM artifacts
 WHERE tenant_id = $1 AND state = 'reserved' AND disposition = 'active' AND kind = 'file'
   AND transfer_expires_at + make_interval(secs => $2) <= $3
   AND (claim_until IS NULL OR claim_until + make_interval(secs => $2) <= $3)
@@ -162,7 +162,7 @@ WHERE tenant_id = $1 AND project_id = $2 AND artifact_id = $3 AND key = $4 AND s
 func (s *Store) RetentionCandidates(ctx context.Context, tenant domain.TenantID, after domain.ArtifactID, limit int) ([]artifacts.RetentionSubject, error) {
 	var out []artifacts.RetentionSubject
 	err := s.read(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT `+artifactColumns+` FROM artifacts a
+		rows, err := tx.Query(ctx, `SELECT `+s.columns()+` FROM artifacts a
 WHERE tenant_id = $1 AND state IN ('usable', 'registered') AND disposition = 'active' AND id > $2
   AND NOT EXISTS (SELECT 1 FROM artifact_pins p WHERE p.tenant_id = a.tenant_id AND p.project_id = a.project_id AND p.artifact_id = a.id)
 ORDER BY id LIMIT $3`, string(tenant), string(after), limit)
@@ -192,7 +192,7 @@ ORDER BY id LIMIT $3`, string(tenant), string(after), limit)
 // arriving later waits and then finds the artifact removed.
 func (s *Store) BeginRetentionDeletion(ctx context.Context, scope domain.Scope, id domain.ArtifactID, now time.Time, actor artifacts.Actor) error {
 	return s.write(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		a, err := getArtifact(ctx, tx, scope, id, "FOR UPDATE")
+		a, err := s.getArtifact(ctx, tx, scope, id, "FOR UPDATE")
 		if err != nil {
 			return err
 		}

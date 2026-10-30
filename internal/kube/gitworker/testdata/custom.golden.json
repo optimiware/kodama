@@ -1,0 +1,499 @@
+{
+  "claim": {
+    "metadata": {
+      "name": "git-data",
+      "namespace": "kodama-git-ef7e6cc4223bba717625f5e4",
+      "labels": {
+        "kodama.optimi.com/git-hosting": "tenant-worker",
+        "kodama.optimi.com/git-object": "volume-claim",
+        "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+      },
+      "annotations": {
+        "kodama.optimi.com/git-fingerprint": "sha256:8780430fa998fd30c795407eafe3e5a6cd3b66d17c7b0010a05038e2ab130871",
+        "kodama.optimi.com/git-tenant-id": "t_Beta-2"
+      }
+    },
+    "spec": {
+      "accessModes": [
+        "ReadWriteOncePod"
+      ],
+      "storageClassName": "retained-rwop",
+      "resources": {
+        "requests": {
+          "storage": "100Gi"
+        }
+      },
+      "volumeMode": "Filesystem"
+    },
+    "status": {}
+  },
+  "deployment": {
+    "metadata": {
+      "name": "git-worker",
+      "namespace": "kodama-git-ef7e6cc4223bba717625f5e4",
+      "labels": {
+        "app.kubernetes.io/name": "kodama-git-worker",
+        "kodama.optimi.com/git-hosting": "tenant-worker",
+        "kodama.optimi.com/git-object": "worker",
+        "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+      },
+      "annotations": {
+        "kodama.optimi.com/git-fingerprint": "sha256:8a58b3b425a75944f7ce1f2c91b32ccfaec15da32a61b7a4978b143ad6e419c0",
+        "kodama.optimi.com/git-tenant-id": "t_Beta-2"
+      }
+    },
+    "spec": {
+      "replicas": 1,
+      "selector": {
+        "matchLabels": {
+          "app.kubernetes.io/name": "kodama-git-worker",
+          "kodama.optimi.com/git-hosting": "tenant-worker",
+          "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+        }
+      },
+      "strategy": {
+        "type": "Recreate"
+      },
+      "revisionHistoryLimit": 2,
+      "progressDeadlineSeconds": 600,
+      "template": {
+        "metadata": {
+          "labels": {
+            "app.kubernetes.io/name": "kodama-git-worker",
+            "kodama.optimi.com/git-hosting": "tenant-worker",
+            "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+          }
+        },
+        "spec": {
+          "serviceAccountName": "git-worker",
+          "automountServiceAccountToken": false,
+          "enableServiceLinks": false,
+          "restartPolicy": "Always",
+          "dnsPolicy": "ClusterFirst",
+          "schedulerName": "default-scheduler",
+          "terminationGracePeriodSeconds": 30,
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 10001,
+            "runAsGroup": 10002,
+            "fsGroup": 10002,
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "volumes": [
+            {
+              "name": "data",
+              "persistentVolumeClaim": {
+                "claimName": "git-data"
+              }
+            },
+            {
+              "name": "tmp",
+              "emptyDir": {
+                "sizeLimit": "128Mi"
+              }
+            },
+            {
+              "name": "identity",
+              "secret": {
+                "secretName": "git-worker-identity",
+                "defaultMode": 288,
+                "optional": false,
+                "items": [
+                  {
+                    "key": "token",
+                    "path": "token"
+                  },
+                  {
+                    "key": "public-keys",
+                    "path": "public-keys"
+                  },
+                  {
+                    "key": "ca.crt",
+                    "path": "ca.crt"
+                  }
+                ]
+              }
+            }
+          ],
+          "containers": [
+            {
+              "name": "git-worker",
+              "image": "registry.example/kodama/kodama@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+              "imagePullPolicy": "IfNotPresent",
+              "command": [
+                "/bin/worker"
+              ],
+              "args": [
+                "--serve"
+              ],
+              "env": [
+                {
+                  "name": "KODAMA_GIT_TENANT_ID",
+                  "value": "t_Beta-2"
+                },
+                {
+                  "name": "KODAMA_GIT_DATA_ROOT",
+                  "value": "/data"
+                },
+                {
+                  "name": "KODAMA_GIT_LISTEN_ADDR",
+                  "value": ":9000"
+                },
+                {
+                  "name": "KODAMA_GIT_CONTROL_URL",
+                  "value": "https://kodama-server.kodama.svc:8080"
+                },
+                {
+                  "name": "KODAMA_GIT_IDENTITY_TOKEN_FILE",
+                  "value": "/var/run/kodama/identity/token"
+                },
+                {
+                  "name": "KODAMA_GIT_PUBLIC_KEYS_FILE",
+                  "value": "/var/run/kodama/identity/public-keys"
+                },
+                {
+                  "name": "KODAMA_GIT_CA_FILE",
+                  "value": "/var/run/kodama/identity/ca.crt"
+                },
+                {
+                  "name": "KODAMA_GIT_WORKER_INSTANCE",
+                  "valueFrom": {
+                    "fieldRef": {
+                      "apiVersion": "v1",
+                      "fieldPath": "metadata.uid"
+                    }
+                  }
+                },
+                {
+                  "name": "HOME",
+                  "value": "/tmp"
+                },
+                {
+                  "name": "TMPDIR",
+                  "value": "/tmp"
+                }
+              ],
+              "ports": [
+                {
+                  "name": "git",
+                  "containerPort": 9000,
+                  "protocol": "TCP"
+                }
+              ],
+              "resources": {
+                "requests": {
+                  "cpu": "100m",
+                  "ephemeral-storage": "64Mi",
+                  "memory": "128Mi"
+                },
+                "limits": {
+                  "cpu": "1",
+                  "ephemeral-storage": "256Mi",
+                  "memory": "512Mi"
+                }
+              },
+              "volumeMounts": [
+                {
+                  "name": "data",
+                  "mountPath": "/data"
+                },
+                {
+                  "name": "tmp",
+                  "mountPath": "/tmp"
+                },
+                {
+                  "name": "identity",
+                  "mountPath": "/var/run/kodama/identity",
+                  "readOnly": true
+                }
+              ],
+              "readinessProbe": {
+                "httpGet": {
+                  "path": "/healthz",
+                  "port": 9000,
+                  "scheme": "HTTP"
+                },
+                "timeoutSeconds": 2,
+                "periodSeconds": 5,
+                "successThreshold": 1,
+                "failureThreshold": 3
+              },
+              "securityContext": {
+                "privileged": false,
+                "allowPrivilegeEscalation": false,
+                "readOnlyRootFilesystem": true,
+                "runAsNonRoot": true,
+                "runAsUser": 10001,
+                "runAsGroup": 10002,
+                "capabilities": {
+                  "drop": [
+                    "ALL"
+                  ]
+                },
+                "seccompProfile": {
+                  "type": "RuntimeDefault"
+                }
+              },
+              "terminationMessagePolicy": "File",
+              "livenessProbe": {
+                "httpGet": {
+                  "path": "/healthz",
+                  "port": 9000,
+                  "scheme": "HTTP"
+                },
+                "timeoutSeconds": 2,
+                "periodSeconds": 20,
+                "successThreshold": 1,
+                "failureThreshold": 3,
+                "initialDelaySeconds": 10
+              }
+            }
+          ]
+        }
+      }
+    },
+    "status": {}
+  },
+  "endpoint": "http://git-worker.kodama-git-ef7e6cc4223bba717625f5e4.svc:9000",
+  "namespace": {
+    "metadata": {
+      "name": "kodama-git-ef7e6cc4223bba717625f5e4",
+      "labels": {
+        "kodama.optimi.com/git-hosting": "tenant-worker",
+        "kodama.optimi.com/git-object": "namespace",
+        "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4",
+        "pod-security.kubernetes.io/audit": "restricted",
+        "pod-security.kubernetes.io/audit-version": "v1.32",
+        "pod-security.kubernetes.io/enforce": "restricted",
+        "pod-security.kubernetes.io/enforce-version": "v1.32",
+        "pod-security.kubernetes.io/warn": "restricted",
+        "pod-security.kubernetes.io/warn-version": "v1.32"
+      },
+      "annotations": {
+        "kodama.optimi.com/git-fingerprint": "sha256:859e32cb2b09442d702a5f3cd66e9f8c20d0a40b425dce8656a054989ebe5b4e",
+        "kodama.optimi.com/git-tenant-id": "t_Beta-2"
+      }
+    },
+    "status": {}
+  },
+  "policies": [
+    {
+      "metadata": {
+        "name": "git-default-deny",
+        "namespace": "kodama-git-ef7e6cc4223bba717625f5e4",
+        "labels": {
+          "kodama.optimi.com/git-hosting": "tenant-worker",
+          "kodama.optimi.com/git-object": "network-policy",
+          "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+        },
+        "annotations": {
+          "kodama.optimi.com/git-fingerprint": "sha256:c6509712f088369ebc551ccfee2fcc48b27347ba089bc3f0b560e63cd30f6c8e",
+          "kodama.optimi.com/git-tenant-id": "t_Beta-2"
+        }
+      },
+      "spec": {
+        "podSelector": {},
+        "policyTypes": [
+          "Ingress",
+          "Egress"
+        ]
+      }
+    },
+    {
+      "metadata": {
+        "name": "git-allow-control-plane-ingress",
+        "namespace": "kodama-git-ef7e6cc4223bba717625f5e4",
+        "labels": {
+          "kodama.optimi.com/git-hosting": "tenant-worker",
+          "kodama.optimi.com/git-object": "network-policy",
+          "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+        },
+        "annotations": {
+          "kodama.optimi.com/git-fingerprint": "sha256:5ea6d1e603f2c257117b5ba93a1bcb3da711a91ef9c0c02ff957ec818611a22f",
+          "kodama.optimi.com/git-tenant-id": "t_Beta-2"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "kodama-git-worker",
+            "kodama.optimi.com/git-hosting": "tenant-worker",
+            "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "kodama"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app": "server",
+                    "tier": "control"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 9000
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "metadata": {
+        "name": "git-allow-control-plane-egress",
+        "namespace": "kodama-git-ef7e6cc4223bba717625f5e4",
+        "labels": {
+          "kodama.optimi.com/git-hosting": "tenant-worker",
+          "kodama.optimi.com/git-object": "network-policy",
+          "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+        },
+        "annotations": {
+          "kodama.optimi.com/git-fingerprint": "sha256:e20c2c73053e7e9312d1d0f6836153a520880c953c5c47fcdf9d82c26ec1a9e4",
+          "kodama.optimi.com/git-tenant-id": "t_Beta-2"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "kodama-git-worker",
+            "kodama.optimi.com/git-hosting": "tenant-worker",
+            "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+          }
+        },
+        "policyTypes": [
+          "Egress"
+        ],
+        "egress": [
+          {
+            "to": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "kodama"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app": "server",
+                    "tier": "control"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 8080
+              }
+            ]
+          },
+          {
+            "to": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "kube-system"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "k8s-app": "kube-dns"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "UDP",
+                "port": 53
+              },
+              {
+                "protocol": "TCP",
+                "port": 53
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "secret": {
+    "metadata": {
+      "name": "git-worker-identity",
+      "namespace": "kodama-git-ef7e6cc4223bba717625f5e4",
+      "labels": {
+        "kodama.optimi.com/git-hosting": "tenant-worker",
+        "kodama.optimi.com/git-object": "identity",
+        "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+      },
+      "annotations": {
+        "kodama.optimi.com/git-fingerprint": "sha256:2ac6b29bcb6e6c08cb531abf89882010725399e6e73c4197d3879251ba91417c",
+        "kodama.optimi.com/git-tenant-id": "t_Beta-2"
+      }
+    },
+    "type": "Opaque"
+  },
+  "service": {
+    "metadata": {
+      "name": "git-worker",
+      "namespace": "kodama-git-ef7e6cc4223bba717625f5e4",
+      "labels": {
+        "kodama.optimi.com/git-hosting": "tenant-worker",
+        "kodama.optimi.com/git-object": "service",
+        "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+      },
+      "annotations": {
+        "kodama.optimi.com/git-fingerprint": "sha256:3f42c92057769d9c116299161d11175926c6d71303500b6e1410a4321018a85e",
+        "kodama.optimi.com/git-tenant-id": "t_Beta-2"
+      }
+    },
+    "spec": {
+      "type": "ClusterIP",
+      "selector": {
+        "app.kubernetes.io/name": "kodama-git-worker",
+        "kodama.optimi.com/git-hosting": "tenant-worker",
+        "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+      },
+      "ports": [
+        {
+          "name": "git",
+          "protocol": "TCP",
+          "port": 9000,
+          "targetPort": 9000
+        }
+      ]
+    }
+  },
+  "serviceAccount": {
+    "metadata": {
+      "name": "git-worker",
+      "namespace": "kodama-git-ef7e6cc4223bba717625f5e4",
+      "labels": {
+        "kodama.optimi.com/git-hosting": "tenant-worker",
+        "kodama.optimi.com/git-object": "service-account",
+        "kodama.optimi.com/git-tenant": "ef7e6cc4223bba717625f5e4"
+      },
+      "annotations": {
+        "kodama.optimi.com/git-fingerprint": "sha256:db247e416ad98873239b4f66584789a0d52dfedb3207209fa11f8197e4835a56",
+        "kodama.optimi.com/git-tenant-id": "t_Beta-2"
+      }
+    },
+    "automountServiceAccountToken": false
+  },
+  "specFingerprint": "sha256:53773446ebeff4729e5eef0a95e98e8eb27b8a144052f4e6ee53f07ec5e2ab5e"
+}

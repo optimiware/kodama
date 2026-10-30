@@ -72,6 +72,10 @@ func (a *Authority) Authenticate(ctx context.Context, req results.AuthRequest) (
 		if g.Scope.TenantID != claims.Tenant {
 			return errors.Join(runtimeauth.ErrInvalidCredential, errors.New("token of another tenant"))
 		}
+		if req.Wire != 0 && g.Wire() != req.Wire {
+			// An attempt of another runtime wire: nothing is read or changed.
+			return errors.Join(runtimeauth.ErrContextVersionMismatch, errors.New("the attempt belongs to another runtime version"))
+		}
 		p = results.Principal{Scope: g.Scope, RunID: g.RunID, AttemptID: g.AttemptID, Action: req.Action, Proof: sess}
 		return nil
 	})
@@ -96,6 +100,8 @@ func MapAuthority(err error) error {
 	switch {
 	case err == nil:
 		return nil
+	case errors.Is(err, runtimeauth.ErrContextVersionMismatch):
+		return results.Fail(results.ErrContextVersionMismatch, err, "the attempt belongs to another runtime version")
 	case errors.Is(err, runtimeauth.ErrAttemptRevoked):
 		return results.Fail(results.ErrAttemptRevoked, err, "the attempt is no longer authorized")
 	case errors.Is(err, runtimeauth.ErrForbidden):
@@ -107,7 +113,7 @@ func MapAuthority(err error) error {
 }
 
 func isAuthority(err error) bool {
-	for _, k := range []error{runtimeauth.ErrInvalidCredential, runtimeauth.ErrForbidden, runtimeauth.ErrAttemptRevoked, runtimeauth.ErrNotFound, runtimeauth.ErrInvalidRequest} {
+	for _, k := range []error{runtimeauth.ErrContextVersionMismatch, runtimeauth.ErrInvalidCredential, runtimeauth.ErrForbidden, runtimeauth.ErrAttemptRevoked, runtimeauth.ErrNotFound, runtimeauth.ErrInvalidRequest} {
 		if errors.Is(err, k) {
 			return true
 		}

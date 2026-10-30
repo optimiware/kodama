@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 
 	"github.com/optimiware/kodama/internal/entrypoint"
 )
@@ -19,6 +20,8 @@ const usageText = `Usage: kodama <command> [flags]
 Commands:
   server     Run the HTTP process (--assembly scaffold|core|kernel)
   seed       Create the first tenant and administrator (operator only)
+  git        Run a tenant's native Git worker (kodama git serve)
+  git-hook   The worker's server-owned Git hooks (run by Git, not by hand)
   migrate    Apply the core schema through the owner database identity
   bootstrap  Provision the first tenant and administrator (operator only)
   step       Run one attempt's command inside its workload (used by the runtimes)
@@ -61,6 +64,16 @@ func Main(ctx context.Context, args []string, getenv func(string) string, stdout
 			if command[0] == c.Name {
 				return c.Run(ctx, command[1:], getenv, stdout, stderr)
 			}
+		}
+	}
+	if len(command) > 0 {
+		switch command[0] {
+		case "git":
+			return runGit(ctx, command[1:], getenv, stdout, stderr)
+		case "git-hook":
+			// Like the workload commands, a hook reads no environment selection and
+			// builds no adapter: it is a client of its worker.
+			return runGitHook(command[1:], os.Stdin, stdout, stderr, os.Environ())
 		}
 	}
 	if len(command) == 0 || (command[0] != "server" && command[0] != "migrate" && command[0] != "bootstrap" && command[0] != "seed") {

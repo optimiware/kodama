@@ -74,6 +74,9 @@ func (s *Service) ProposeSource(ctx context.Context, in ProposeInput) (ProposeRe
 		return ProposeResult{}, ErrNotWriter
 	}
 	w := agg.Workspace
+	if err := w.requireExternal("a bundle proposal"); err != nil {
+		return ProposeResult{}, err
+	}
 	switch {
 	case w.Fence.Fenced:
 		return ProposeResult{}, ErrFenced

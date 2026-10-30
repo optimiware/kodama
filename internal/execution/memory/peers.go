@@ -32,6 +32,13 @@ type Workspaces interface {
 	RetainSource(tx memdb.Tx, run *execution.Run, pinID string) error
 }
 
+// InternalWorkspaces is the optional peer of a work item's internally hosted
+// workspace (runtime context v3): the writer slot is reserved at the workspace
+// version the writer gate was checked at, in the claim's transaction.
+type InternalWorkspaces interface {
+	ReserveInternalWriter(tx memdb.Tx, at *execution.Attempt, observed domain.Version) error
+}
+
 // SecretPins is the secrets peer: exact-version consumer pins of a run.
 type SecretPins interface {
 	// RegisterPins pins the bindings for the run. A missing or revoked version is
@@ -81,6 +88,13 @@ type Peers struct {
 	Secrets    SecretPins
 	Events     EventAppender
 	Grants     GrantRevoker
+	// GitGrants ends every Git grant of an attempt inside the caller's
+	// transaction, for each attempt whose authority the transaction ended (the
+	// gitauth memory adapter's RevokeAttempt). Optional: a store without it
+	// revokes no Git grants.
+	GitGrants GrantRevoker
+	// Internal reserves a work item's internal writer; optional.
+	Internal InternalWorkspaces
 	// GrantFence is the runtime grant check joined to the transaction that records
 	// a begin or a preparation receipt.
 	GrantFence GrantFencer

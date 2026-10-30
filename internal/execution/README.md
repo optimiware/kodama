@@ -369,3 +369,154 @@ stable `Refusedf` messages prefixed `capability_unsupported`, `policy_unavailabl
 * The memory store does not model locks or RLS; the claims about them rest on the PostgreSQL suites. Its guards mirror the SQL triggers.
 * No provider, HTTP route, app composition or client exists; those are P3–P6.
 * Real Kubernetes/CSI/CNI behavior (collision semantics of a real adapter, volume release) is the providers' and P7's evidence.
+
+## Run origins and source sets (T-148, ADR 0011)
+
+Implements [PX-23–PX-25](../../docs/specs/pipeline-execution.md#requirements) and seams S5/S6 of the
+[internal Git service plan](../../docs/implementation/internal-git-service.md) in execution. **Not wired and not
+enabled**: nothing in `internal/app` composes it, migration `011_run_sources.sql` is not yet registered (T-132), no route
+creates such a run, and no runtime adapter renders runtime context v3 (T-152). Every earlier run model, context, digest,
+definition version and admission path is unchanged: `Test_unit_old_run_models_unchanged` compares the attempt_private and
+run_shared v2 contexts, digests and workload fingerprints byte for byte with goldens captured from the release before
+this task (`executiontest/testdata/old_contexts.json`).
+
+| File | Purpose |
+| --- | --- |
+| `origin.go` | `Origin` (`work_item`, `push`, `manual`, `provision`) and `OriginOf` (the implicit origin of an earlier run; a cleanup run is `manual`) |
+| `sources.go` | `RunSources` (the immutable pin), `NewRunSources`, and the consumer-owned ports `SourceSets` (resolve, pin, retain) and `InternalWorkspaces` (provision, writer gate, checkpoints) |
+| `source_admission.go` | `PrepareSourceRun` / `AdmitSourceRun`: admission of any origin; `ConfirmSource` retains the set |
+| `shared_v3.go` | The aggregate side of context v3: `BuildContextV3`, receipt per source, begin over every source, `SourceHeads`, lineage, `CompleteAttemptV3` |
+| `source_service.go` | The v3 use cases for the runtime routes: `RecordPreparationReceiptV3`, `RecordBeginV3`, `CommitResultV3` |
+| `source_grants.go` | The `GitGrants` port, `AttemptGrantFor`/`PreparationGrantFor`, the redacting `GitSecret`, the grant requested at start |
+| `adapters/sourcesets.go`, `adapters/internalworkspaces.go` | `execution.SourceSets` over the repository, gitpush and Git worker ports and `execution.InternalWorkspaces` over the workspace module (T-147) |
+| `postgres/migrations/011_run_sources.sql`, `postgres.RunSourceMigrations()` | `runs.origin_*`/`source_*`, `run_sources`, `attempt_commits`, the relaxed run and attempt shapes, one unsettled attempt per run |
+
+### Admission
+
+`PrepareSourceRun` is not the public `POST /runs`: it takes a `SourceRunCommand` (origin, a `kodama/v1alpha3`
+definition, optional stable `RunID`, optional default `Repository`, per-repository `Pins`) and is refused unless the
+installation composed `Dependencies.Shared`, `Runtime` **and** `SourceSets`. Outside any transaction it authorizes
+`run:manage`, resolves the repositories of the project (a foreign or unknown repository is the stable refusal
+`source_repository_unknown`; a non-internal, not-ready or archived one `hosting_mismatch`/`repository_not_ready`/
+`repository_archived`), provisions the work item's internal workspace (only a work item's run that writes a source: the
+task branch must exist before its tip is read), pins **one exact commit per source** (`SourceSets.Pin`: the push origin's
+source pins `gitv1.PinnedCommit` of the applied entry, a work item's writable source the task branch's accepted tip, any
+other source its command pin or the default branch tip, read once) and builds the validated `gitv1.SourceSet`. A push
+origin whose pushed repository is not a source, a refused/deleted/unapplied entry, a duplicate or nested path and an
+unreachable commit are all refusals that create and retain nothing. No work item is fabricated: a push, manual or
+provisioning run has no work item, workspace, specification or source commit, takes no work-item lock, consumes no WIP and
+emits `run.state_changed` (not `run.created`, whose payload names a work item) at creation.
+
+The run commits with its origin and sources (`runs` columns plus `run_sources`, with a composite foreign key to the
+project's own repositories) and `source_retention` `pending`; `ConfirmSource` then calls `SourceSets.Retain` (every pinned
+commit reachable for the run's retention, the run branch of each write source created at its commit) and records the
+confirmation, so dispatch waits for it and a crash is repeated by reconciliation. A source-free run (provisioning, or manual
+without sources) is `not_required`. **Replay:** (concurrent admissions of one run ID are serialized by an advisory lock; a store that finds the run with another
+declaration answers `ErrConflict`: `CheckReplay`) with the same `RunID` and declaration the stored run is returned with its
+pinned commits whatever the branches did since and nothing is read again; another declaration under that ID is
+`ErrConflict`. Trigger admission (T-137) derives the `RunID` from `(trigger, push record, ref)`.
+
+Write sources update `refs/heads/kodama/work/<workItemId>` (work_item origin) or `refs/heads/kodama/runs/<runId>/work`
+(every other origin; `Origin.Branch`). Only the former has a workspace and a writer reservation.
+
+### Context and attempts
+
+A source-set run pins `RunShared.ContextVersion = 3` (`Supported` accepts 2 and 3; an older controller refuses it).
+`BuildContextV3` carries the origin, the sources with per-source `headCommit` (what prior successful attempts published to
+that source's own branch; `Attempt.Commits`/`attempt_commits`) and the writer's `expectedTip`, the source set digest, the
+recorded per-source preparation receipt (`PreparationReceiptObjectV3`, same frozen digest object) and the Git delivery whose
+`repositories` equal what `ContextV3.GitAccess` derives (the run's agent namespace; plus the write branches only for the
+writer). `PreparationSpec.Sources` lists every checkout of the one preparation (omitted for a single repository, so earlier
+fingerprints are unchanged). A v3 attempt reaching the v1/v2 receipt, begin or result use cases is
+`ErrContextVersionMismatch` (409, no side effects).
+
+**One executable attempt per shared run:** `Aggregate.Claim` refuses while *any* attempt of a `run_shared` run is unsettled
+and a database trigger (`step_attempts_one_per_run_guard`) says the same; the existing workspace-holder uniqueness remains.
+
+**Agent pins (T-163).** `Dependencies.AgentPins` (`execution.AgentPins`, implemented by `agents/adapters.Pinner`) is consulted by
+`BuildContextV2` and `BuildContextV3` (through `sharedContextCore`, so the two versions cannot drift) with the run's tenant and
+the step's frozen command; the returned `profile` and `designBaseline` are set before the context is validated, canonicalized and
+digested, so they are part of the frozen context, its digest and the workload fingerprint. The port performs no I/O and reads the
+frozen payload only, so rebuilding the context for the same step yields the same bytes. `ok=false` (no payload) leaves the context
+exactly as before (`"profile":null`, `"designBaseline":null`; the earlier-model goldens are unchanged); an invalid payload is
+`ErrInvalid`. A nil port keeps every non-agent step unchanged, and a step of kind `agent` is refused with `ErrAdmissionRefused`
+(the step fails as `step_failed`, no attempt is created): it never runs without pins. The v1 path keeps the `Planner` decoration.
+
+### Git grants
+
+The Git authority is a consumer-owned port. `drive` calls `GitGrants.IssueAttempt` after the attempt is committed and
+**before** the runtime creates the workload, never under a lock, and **only when the runtime affirms (Observe →
+`ErrNotFound`) that no workload exists**: a redrive finding one adopts it with `spec.Git == nil` (issuing again would
+replace the credential it holds; `Runtime.Start` must not need a new one to adopt). After issuing, the attempt is read again; one
+that ended meanwhile (the authority reads its lease outside the grant's transaction) gets its grant revoked through
+`GitGrants.RevokeAttempt` and nothing is started. The adapter's lease deadline must not be earlier than the run's, which caps the
+grant; the request is exactly the pinned context's grant (`AttemptGrantFor`: kind `attempt`, workload actor with run and
+attempt, the context's repositories and ref patterns, expiry bounded by the run deadline and 24 h). The handle reaches the
+runtime only as `AttemptSpec.Git` (`GitSecret` prints and encodes `[redacted]`, is never persisted or put in the context).
+A failure starts nothing; the unconfirmed attempt is redriven. **Revocation is transactional with the transition:**
+`Control.AuthorityEnded` marks each attempt whose authority this mutation ended (cancellation, failure drain, timeout,
+revocation, a failed result **and an accepted one**), and the stores call their `GitGrants` peer for each, in attempt ID
+order, in the same transaction (lock level 4 beside the runtime grants): `postgres.Peers.GitGrants` is
+`AttemptGrantRevoker` shaped (`gitauth/postgres.RevokeAttempt` is exactly that function), `memory.Peers.GitGrants`
+`GrantRevoker` shaped (`gitauth/memory.RevokeAttempt`). A revocation failure rolls the cancellation back. **Fail closed:** `execpg.NewStore` with `RunSources` refuses (`ErrNotConfigured`)
+without `Peers.GitGrants`; either store refuses a mutation that ends a source-set attempt's authority without a revoker;
+`NewService` refuses `Dependencies.GitGrants` over a store that reports `RevokesGitGrants() == false`
+(`GitRevokingStore`). The real gitauth store joined this way is proved in `Test_source_git_grants_revoked_with_the_attempt`. A receive that
+already obtained commit intent completes; any later one is refused by the push authorizer.
+`context.git.grantId` is the deterministic reference `GitGrantRef(scope, attempt)`, because the context is pinned before a
+grant can exist; it is not gitauth's grant ID.
+
+### Results and the workspace
+
+`CommitResultV3` accepts a completed writer's task-branch commit outputs through `InternalWorkspaces.AcceptCheckpoint`
+**before** the transaction that settles the writer, then settles it without a source commit. `ErrBusy` (the push is not
+settled) leaves the attempt running and repeatable; a refused output fails the attempt as `output_invalid`; outputs on a run or agent
+branch are not checkpoints (they move the source head). A writer's claim runs `InternalWorkspaces.AdmitWriter` outside the
+transaction (synchronize, writer gate) and reserves the slot with `workspace.ReserveInternalWriterMutation` at the version
+the gate was read at (`InternalWriterEnv`), so a reservation never commits against a stale gate answer (`ErrStale`/
+`ErrBusy`: the run waits, nothing is claimed).
+
+### Compatibility and the migration
+
+An origin run admits only a `kodama/v1alpha3` definition (`checkSourceSetVersion`).
+
+`execpg.Options.RunSources` declares that the composition applied migration 011 (which needs 007 repositories); without it
+the store uses exactly the earlier schema, reads and writes no new column and refuses an origin run (`ErrNotConfigured`), so
+no existing composition changes. `Env`/`executiontest` apply 007, 010 and 009. The relaxed shapes keep every earlier row valid and every earlier run strict (triggers on `origin_kind IS NULL`: a read/write
+attempt still binds a workspace, a receipt stays within 4096 bytes):
+`runs_purpose_shape` (origin runs only), `step_attempts_workspace_shape` (a read/write attempt without a workspace binds
+none), `run_resources_receipt_bounds` (65536).
+
+### Evidence
+
+`Test_unit_admission_pins_source_set`, `…_push_origin_without_work_item`, `…_provisioning_run`, `…_manual_origin`,
+`…_cleanup_purpose_unchanged`, `Test_unit_context_carries_source_set`, `Test_unit_attempt_grant_requested_and_revoked`,
+`Test_unit_old_run_models_unchanged` (memory, `executiontest.Source*`), the same scenarios on PostgreSQL in
+`Test_source_contract` and the database guards in `Test_source_run_sql_guards`
+(`make check-go-integration DEV_SCOPE=t148 DEV_STACK=services PKGS='./internal/execution/...'`).
+
+### Handoff and limits
+
+* **T-132:** register `RunSourceMigrations()` after the repository (007) and workspace (010) contributions and set
+  `Options.RunSources`; bind `Peers.GitGrants`; compose `SourceSets`, `InternalWorkspaces` and `GitGrants` (adapters below);
+  `execpg.NewAttemptAuthority` is unchanged and answers `workspace.Attempts` for an attempt without a workspace as an empty
+  workspace id.
+* **T-137:** call `AdmitSourceRun`/`PrepareSourceRun` with `Origin{push}` and a `RunID` derived from the trigger, push and ref;
+  `Repository` is not needed for a push (the pushed repository is the implicit source).
+* **T-150:** implement `GitGrants` over `gitauth.Service.IssueAttempt` (convert `AttemptGrantRequest`/`GitGrantHandle`) and its
+  `Attempts.Lease`; deliver `AttemptSpec.Git` and `PreparationGrantFor` to the runtime, call the `*V3` use cases with the
+  verified `GrantClaim`; load the issued seed/integration grants for `ResultCommitV3.Issued`. The runtime-issued seed grant
+  (PX-25: only for a repository this run created) is not issued here.
+* **T-149:** gate steps are still refused for a source-set run (`GateInputs` needs a work run with a source commit); gate
+  subjects and integration need `Run.Sources.Digest` and the per-source heads.
+* **T-152:** read `AttemptSpec.DecodeContextV3`, `PreparationSpec.Sources` and `AttemptSpec.Git`; the workload fingerprint
+  already binds the context digest, hence the source set.
+* **Adapters delivered here, unwired:** `adapters.NewSourceSets` (repository store, clone URLs, the worker's
+  `ReadRefValues`/`SetRetainedRef`/`CreateBranch`, `gitpush.Service.Reload`; the pin of an exact commit is verified by the
+  worker only when `Retain` asks it to pin the commit, because the worker port has no object read yet) and
+  `adapters.NewInternalWorkspaces` (`workspace.Service` and its store; the execution service actor needs
+  `workspace.provision`, `workspace.sync`, `workspace.admit` and `workspace.accept_checkpoint`). T-138's `gitops.Pins` may later
+  replace the numbered retained refs `Retain` creates; a checkpoint that finds a number taken moves to the next.
+* **Not delivered:** the preparation grant is built (`PreparationGrantFor`) but not issued by any driver; the real workspace
+  writer reservation is exercised by the workspace module's own tests (here by a fake that models the version guard and,
+  for the adapter, by unit tests of its mapping).

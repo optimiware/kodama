@@ -36,12 +36,14 @@ import (
 	deliverypg "github.com/optimiware/kodama/internal/delivery/postgres"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
+	execadapters "github.com/optimiware/kodama/internal/execution/adapters"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	"github.com/optimiware/kodama/internal/identity"
 	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
+	repositorypg "github.com/optimiware/kodama/internal/repository/postgres"
 	rpg "github.com/optimiware/kodama/internal/results/postgres"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 	rtjwt "github.com/optimiware/kodama/internal/runtimeauth/jwt"
@@ -49,6 +51,7 @@ import (
 	"github.com/optimiware/kodama/internal/runtimeauth/rtest"
 	"github.com/optimiware/kodama/internal/secrets"
 	"github.com/optimiware/kodama/internal/storage"
+	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 // Resource prefix and fixed scopes of the task's tests.
@@ -97,9 +100,12 @@ type Options struct {
 
 // Contributions is the migration manifest the component tests apply: the
 // squashed baseline, which already holds every table, view, function, index,
-// policy and runtime grant the delivery fixtures exercise.
+// policy and runtime grant the delivery fixtures exercise, the contributions the
+// execution fixture applied before it (the ledger lists every applied migration
+// in order) and the source provenance columns (T-149, slot 013) after them.
 func Contributions() []storage.Contribution {
-	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations()}
+	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations(), repositorypg.Migrations(), workspacepg.Migrations(),
+		execpg.RunSourceMigrations(), artifactspg.SourceProvenanceMigrations()}
 }
 
 // Manifest builds the ordered manifest of Contributions.
@@ -200,7 +206,16 @@ func New(t testing.TB, o Options) *Env {
 	must(t, err)
 	cleanup, err := adapters.NewCleanup(e.Svc)
 	must(t, err)
-	x.Svc = x.NewService(executiontest.Options{Environments: resolver, Cleanup: cleanup})
+	// The run admission that pins an environment revalidates it through delivery's
+	// transaction-bound reader (execution/adapters.BindDeliveryEnvironments): the
+	// execution fixture's own store has no such peer, so a store with it admits
+	// the environment-declaring runs. Every other read goes through x.Store.
+	envStore, err := execpg.NewStore(x.Runtime, x.Events, execpg.Peers{
+		Authority: execadapters.BindAuthority, Workspaces: x.Workspaces, Secrets: x.Secrets, GrantFence: executiontest.OpenSQLFence{},
+		GitGrants: executiontest.TableGitRevoker, Environments: execadapters.BindDeliveryEnvironments,
+	}, execpg.Options{Clock: x.Clock.Now, RunSources: true})
+	must(t, err)
+	x.Svc = x.NewService(executiontest.Options{Store: envStore, Environments: resolver, Cleanup: cleanup})
 
 	e.Registry = NewRegistry(t)
 
@@ -243,7 +258,7 @@ func (e *Env) wire() {
 	if e.opts.WrapAppender != nil {
 		appender = e.opts.WrapAppender(appender)
 	}
-	e.Store, err = deliverypg.NewStore(deliverypg.Config{DB: db, Events: appender, Guard: e.Guard, Clock: x.Clock.Now})
+	e.Store, err = deliverypg.NewStore(deliverypg.Config{DB: db, Events: appender, Guard: e.Guard, Clock: x.Clock.Now, SourceProvenance: true})
 	must(e.T, err)
 
 	reader, err := identitypg.NewStore(x.Runtime, x.Events)
@@ -261,7 +276,7 @@ func (e *Env) wire() {
 	e.Execution, err = adapters.NewExecution(x.Store)
 	must(e.T, err)
 	e.Pins.inner = e.Execution
-	e.ArtStore, err = artifactspg.NewStore(artifactspg.Config{DB: x.Runtime})
+	e.ArtStore, err = artifactspg.NewStore(artifactspg.Config{DB: x.Runtime, SourceProvenance: true})
 	must(e.T, err)
 	var arts delivery.Artifacts
 	arts, err = adapters.NewArtifacts(&artifactShim{store: e.ArtStore, clock: x.Clock.Now})

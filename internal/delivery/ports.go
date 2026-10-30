@@ -111,6 +111,30 @@ type PinnedContexts interface {
 	Pinned(ctx context.Context, scope domain.Scope, attempt domain.AttemptID) (runtimev1.Context, error)
 }
 
+// PinnedSource is an attempt's pinned source set and its primary source: the
+// first writable source in repository order, else the first, with the URL of its
+// repository and the commit the attempt began from. The primary is what a
+// consumer that reads one repository and commit sees (AC-A08).
+type PinnedSource struct {
+	Set           SourceSet
+	PrimaryURL    string
+	PrimaryCommit string
+}
+
+// PinnedSourceSets reads the source set an attempt of a run of the internal Git
+// service works from (ADR 0011, DQ-17): the digest of the run's pinned set and,
+// for each repository of it, the head commit the attempt began from, taken from
+// the attempt's immutable runtime context. It is optional: without it a source
+// set is never accepted for a deployment (a refusal, not a fallback to a single
+// commit).
+type PinnedSourceSets interface {
+	// PinnedSourceSet returns the attempt's source set with its primary source
+	// and found=true, or
+	// found=false for an attempt without one (every earlier run model). An
+	// unknown or foreign attempt is ErrNotFound.
+	PinnedSourceSet(ctx context.Context, scope domain.Scope, attempt domain.AttemptID) (pin PinnedSource, found bool, err error)
+}
+
 // Producers reads the execution owner's persisted attempts and results.
 type Producers interface {
 	// Produced describes the attempt that produced the artifact. It reports

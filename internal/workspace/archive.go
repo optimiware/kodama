@@ -69,19 +69,47 @@ func (s *Service) Archive(ctx context.Context, actor Actor, scope domain.Scope, 
 	}
 }
 
-// finishArchive completes an archive whose publication has settled.
+// finishArchive completes an archive whose publication has settled. An
+// internally hosted workspace additionally waits until no push of any created
+// task branch is unsettled (authorized, committing or unknown): the writer's
+// last push may still land, and archiving would report completion over work the
+// workspace has not accepted. The check reads gitpush outside SQL, after the
+// workspace version, and the completion requires the version unchanged.
 func (s *Service) finishArchive(ctx context.Context, actor Actor, scope domain.Scope, id ID) (*Workspace, error) {
-	agg, err := s.d.Store.Update(ctx, scope, id, Load{}, func(a *Aggregate) (Effects, error) {
-		changed, err := a.Workspace.CompleteArchive(s.now())
-		if err != nil || !changed {
-			return Effects{}, err
+	var agg *Aggregate
+	err := retry(admissionRetries, func() error {
+		var observed domain.Version
+		view, err := s.d.Store.View(ctx, scope, id, Load{Associations: true})
+		if err != nil {
+			return err
 		}
-		return Effects{
-			Audit:  audit1(actor, "workspace.archived", ""),
-			Events: []Event{stateEvent(actor, string(StateAvailable), string(StateArchived), "archived")},
-		}, nil
+		if w := view.Workspace; w.Internal() && w.State != StateArchived && w.ArchiveRequestedAt != nil {
+			observed = w.Version
+			for _, a := range view.Associations {
+				if a.State != AssociationCreated {
+					continue
+				}
+				if err := s.requireSettled(ctx, scope, a); err != nil {
+					return err
+				}
+			}
+		}
+		agg, err = s.d.Store.Update(ctx, scope, id, Load{}, func(a *Aggregate) (Effects, error) {
+			if observed != 0 && a.Workspace.Version != observed {
+				return Effects{}, ErrStale
+			}
+			changed, err := a.Workspace.CompleteArchive(s.now())
+			if err != nil || !changed {
+				return Effects{}, err
+			}
+			return Effects{
+				Audit:  audit1(actor, "workspace.archived", ""),
+				Events: []Event{stateEvent(actor, string(StateAvailable), string(StateArchived), "archived")},
+			}, nil
+		})
+		return err
 	})
-	if errors.Is(err, ErrPublicationPending) {
+	if errors.Is(err, ErrPublicationPending) || errors.Is(err, ErrPushPending) {
 		cur, gerr := s.d.Store.Get(ctx, scope, id)
 		if gerr != nil {
 			return nil, gerr

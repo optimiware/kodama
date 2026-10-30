@@ -34,18 +34,28 @@ kodama.v1.<tenant-key>.<project-key>.<domain>.<action>
 
 | Event type | Emitted when | Key payload fields & coordination role |
 | --- | --- | --- |
-| `git.push` | Commits pushed to native Git service | `repoId`, `path`, `branch`, `oldSha`, `newSha`, `originRunId`; indexes `.kodama/*.yaml` and triggers matching pipelines |
-| `git.merge` | Branch merged into target branch | `repoId`, `sourceBranch`, `targetBranch`, `commitSha` |
-| `git.tag` | Release tag created | `repoId`, `tag`, `commitSha`; triggers release pipelines |
-| `task.created` | New task or inbox item created | `taskId`, `kind`, `state`, `assignedRole`; triggers initial state pipeline if configured |
-| `task.transitioned` | Task moves between states in `projects.task_workflow` | `taskId`, `from`, `to`, `triggerPipeline`; starts `.kodama/<trigger>.yaml` |
-| `task.parked` | Task is parked waiting on a role-inbox task | `taskId`, `blockedByTaskId`, `assignedRole`, `kind` (`decision`\|`promotion`\|`incident`) |
-| `task.resolved` | Human resolves a blocking role-inbox task | `inboxTaskId`, `unblockedTaskId`, `decision`, `resumeState`; unblocks parent task and triggers next pipeline |
-| `run.queued` / `run.started` / `run.completed` | Pipeline run lifecycle changes | `runId`, `pipelineName`, `taskId`, `status`, `commitSha` |
-| `step.completed` | Individual `run_steps` container finishes | `runId`, `stepKey`, `status`, `exitCode`, `outputs` |
-| `service.ready` / `service.stopped` | Scoped container service changes state | `serviceId`, `scope` (`tenant`\|`project`\|`pipeline`), `name`, `endpoint` |
-| `artifact.published` | Step records external artifact metadata | `artifactId`, `name`, `kind`, `uri`, `digest`, `runId`, `taskId` |
-| `release.promoted` | Promotion pipeline completes | `taskId`, `runId`, `artifactId`, `target` |
+| `work_item.created` | Work item | Kind, initial state |
+| `work_item.updated` | Work item | Changed field names, content revision where applicable |
+| `work_item.transitioned` | Work item | Previous/new state, transition ID |
+| `workspace.state_changed` | Workspace | Previous/new state, reason code |
+| `workspace.checkpoint_created` | Workspace | Repository, previous/new commit, publishing attempt or human synchronization |
+| `run.created` | Run | Work item, definition ID, input-snapshot digest |
+| `run.state_changed` | Run | Previous/new state, classified reason |
+| `step_attempt.state_changed` | Attempt | Run/step IDs, previous/new state, classified reason |
+| `run_resource.state_changed` | Run resource (`run_shared` runs; envelope resource type `run_resource`; resource ID [`rr-…`](#run-resource-events); project required) | Run ID, kind (`network`, `workspace`, `preparation`, `service`), key, previous/new phase, safe reason code ([catalog](run-resources.md#reasons)), spec fingerprint, whether a runtime UID is bound |
+| `repository.created` | Repository (designed internal hosting) | Name, default branch, hosting |
+| `repository.state_changed` | Repository | Previous/new status, reason code |
+| `git.refs_updated` | An accepted receive (`resource.type` `git_push`, `resource.id` the payload's `receiveId`: the push is its receive); exactly one per receive that applied an update | `receiveId`, repository, actor, origin run and the applied `(ref, old, new, kind)` updates inline, never a server ref ([Git service](git-service.md#push-events)); trigger admission and pipeline indexing consume it ([triggers](git-service.md#trigger-configuration)) |
+| `gate.requested` | Gate | Subject digest, content revision, reviewer scope, deadline |
+| `gate.decided` | Gate | Actor, decision, resulting state, subject digest |
+| `gate.invalidated` | Gate | Subject digest, reason, superseding commit/revision when present |
+| `deployment.state_changed` | Deployment | Environment, previous/new state, source/artifact references |
+| `membership.changed` | Membership | User ID, changed binding references, effective version |
+| `project.settings_changed` | Project | Changed setting names, version |
+| `configuration.changed` | Variable/secret | Resource kind, value/wrapping version, change kind, scope |
+| `usage.recorded` | Usage record | Run/attempt, model, observed or estimated usage, uncertainty |
+
+`run_resource.state_changed` carries references only: no endpoints beyond the logical key, logs, credentials, secret values or scratch contents, and scratch changes never produce `workspace.checkpoint_created`. Gate expiry is an applicability check against its deadline, not a status transition; a run deadline that expires while a gate is pending invalidates it with reason `run_deadline_exceeded`. Agent results and defects use attempt/work-item events. No separate session, candidate, finding, or policy subsystem is introduced.
 
 ## Run resource events
 

@@ -21,6 +21,13 @@ type SourceInfo struct {
 	Branch string
 	// AcceptedTip is the workspace's accepted commit, freshly refreshed.
 	AcceptedTip string
+	// Tips are the accepted commits of an internally hosted workspace by
+	// repository ID, and WorkspaceVersion the workspace version the writer gate
+	// was checked at (runtime context v3, writer claims only). The claim
+	// transaction reserves the writer only while the workspace still has that
+	// version.
+	Tips             map[string]string
+	WorkspaceVersion domain.Version
 }
 
 // WorkloadPlan is the stable identity and spec evidence of one attempt's

@@ -2,7 +2,6 @@
   "tasks": "docs/tasks/T-*.md",
   "index": "docs/tasks/README.md",
   "base": "main",
-  "setup": "make openforge-install",
   "check": "make check-go",
   "mainCheck": [
     "make lint-go",

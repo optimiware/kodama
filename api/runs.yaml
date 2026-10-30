@@ -521,6 +521,10 @@ components:
           type: string
           enum: [not_required, pending, confirmed]
           description: A work run dispatches only after its retained source reference is confirmed.
+        origin:
+          $ref: '#/components/schemas/RunOrigin'
+        sourceSet:
+          $ref: '#/components/schemas/RunSourceSet'
         version:
           $ref: 'common.yaml#/components/schemas/Version'
         createdAt:
@@ -604,6 +608,77 @@ components:
           type: string
           format: date-time
           nullable: true
+    RunOrigin:
+      type: object
+      additionalProperties: false
+      required: [kind, workItemId, pushId, repositoryId, ref]
+      description: >-
+        How the run started, pinned at admission (PX-23-PX-25). Present only for a run admitted by the internal Git service;
+        absent for every earlier run. A run that did not start from a work item has none and consumes no work-in-progress.
+      properties:
+        kind:
+          type: string
+          enum: [work_item, push, manual, provision]
+        workItemId:
+          type: string
+          nullable: true
+          description: Set exactly for a work_item origin.
+        pushId:
+          type: string
+          nullable: true
+          description: The applied push record of a push origin.
+        repositoryId:
+          type: string
+          nullable: true
+          description: The pushed repository of a push origin.
+        ref:
+          type: string
+          nullable: true
+          description: The updated ref of a push origin; never under refs/kodama/.
+    RunSourceSet:
+      type: object
+      additionalProperties: false
+      required: [digest, sources]
+      description: >-
+        The run's pinned source set: one exact commit per repository of its project and a unique checkout path each,
+        ordered by path. Present only for a run admitted by the internal Git service. It never changes after admission.
+      properties:
+        digest:
+          type: string
+          nullable: true
+          pattern: '^sha256:[0-9a-f]{64}$'
+          description: The canonical digest of the set that evidence and gate subjects use; null for a source-free run.
+        sources:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/RunSource'
+    RunSource:
+      type: object
+      additionalProperties: false
+      required: [repositoryId, repository, path, commit, access, branch]
+      properties:
+        repositoryId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        repository:
+          type: string
+          description: The repository's name within the project.
+        path:
+          type: string
+          maxLength: 255
+          description: The checkout path relative to /workspace; "." only for a single source.
+        commit:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+          description: The commit pinned at admission, never a later tip.
+        access:
+          type: string
+          enum: [read, write]
+          description: The run-level access ceiling; only the writer attempt may update the source's branch.
+        branch:
+          type: string
+          nullable: true
+          description: The branch a write source updates (the work item's task branch or a branch of the run's own namespace); null for a read source.
     RunPage:
       type: object
       required: [items, nextCursor]

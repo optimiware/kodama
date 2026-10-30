@@ -1,0 +1,2467 @@
+[
+  {
+    "name": "authorized_is_refused",
+    "note": "An entry without commit intent may be refused at any time; a late prepared hook is refused commit intent and aborts.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "authorized"
+    },
+    "evidence": {
+      "liveness": "running",
+      "journalReadable": true,
+      "journalHead": 0,
+      "knownHead": 0,
+      "journal": [],
+      "current": null
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "no_commit_intent"
+    }
+  },
+  {
+    "name": "authorized_is_refused_even_when_nothing_can_be_read",
+    "note": "Refusing an authorized entry needs no evidence.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "authorized"
+    },
+    "evidence": {
+      "liveness": "unavailable",
+      "journalReadable": false,
+      "journalHead": 0,
+      "knownHead": 0,
+      "journal": [],
+      "current": null
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "no_commit_intent"
+    }
+  },
+  {
+    "name": "committing_receive_still_running_waits",
+    "note": "The worker enforces the deadline by terminating the receive; until then wait, even if the journal looks decisive.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "running",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "wait",
+      "reason": "receive_running"
+    }
+  },
+  {
+    "name": "committing_liveness_unavailable_waits",
+    "note": "Neither liveness nor a stopped worker is established.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "unavailable",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "wait",
+      "reason": "liveness_unavailable"
+    }
+  },
+  {
+    "name": "own_committed_is_applied",
+    "note": "The transaction's own committed entry is positive evidence.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "own_committed_when_worker_verified_stopped",
+    "note": "A worker instance verified stopped is as good as an ended receive.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "worker_stopped",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "own_aborted_is_refused",
+    "note": "The transaction's own aborted entry proves it changed nothing.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "aborted",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "receive_aborted"
+    }
+  },
+  {
+    "name": "own_committed_beats_a_later_conflicting_value",
+    "note": "A committed entry settles its own transaction whatever the ref holds now.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 3
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "prepared_only_next_prepared_observed_new_is_applied",
+    "note": "The next prepared entry for the ref observed the new value: this transaction committed.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "prepared_only_next_prepared_observed_old_is_refused",
+    "note": "The next prepared entry for the ref observed the old value: this transaction did not commit.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "prepared_only_next_prepared_observed_other_is_unknown",
+    "note": "Neither the old nor the new value.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "cccccccccccccccccccccccccccccccccccccccc",
+          "new": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observed": "cccccccccccccccccccccccccccccccccccccccc",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "ref_diverged"
+    }
+  },
+  {
+    "name": "prepared_only_next_prepared_wins_over_current_value",
+    "note": "The next prepared entry decides even when the current value says otherwise.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "prepared_only_current_value_new_is_applied",
+    "note": "No later prepared entry: the current value under the lock decides.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "prepared_only_current_value_old_is_refused",
+    "note": "No later prepared entry: the ref still has the old value.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "prepared_only_current_value_other_is_unknown",
+    "note": "The ref holds a third value and no prepared entry explains it.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "cccccccccccccccccccccccccccccccccccccccc",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "ref_diverged"
+    }
+  },
+  {
+    "name": "prepared_only_current_value_not_quiescent_waits",
+    "note": "A value read while a receive was in progress is not a consistent boundary.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": false
+      }
+    },
+    "expect": {
+      "resolution": "wait",
+      "reason": "ref_not_quiescent"
+    }
+  },
+  {
+    "name": "prepared_only_current_value_not_read_waits",
+    "note": "The value must be read under the lock with no receive in progress.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "wait",
+      "reason": "ref_not_quiescent"
+    }
+  },
+  {
+    "name": "journal_unreadable_is_unknown",
+    "note": "Never decide from refs alone.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": false,
+      "journalHead": 0,
+      "knownHead": 0,
+      "journal": [],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "journal_unreadable"
+    }
+  },
+  {
+    "name": "journal_without_own_entry_is_unknown",
+    "note": "A committing entry always has its prepared entry first; its absence means a lost or older journal.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 0,
+      "knownHead": 0,
+      "journal": [],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "evidence_missing"
+    }
+  },
+  {
+    "name": "aba_successor_prepared_then_predecessor_committed_late",
+    "note": "Ref A. R1 A->B prepared, R2 B->A prepared (it saw B), R1's committed entry is appended after R2's prepared entry, R2 crashed. R2 is refused, not applied.",
+    "entry": {
+      "receiveId": "rcv_2",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "new": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 3
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "aba_predecessor_is_applied_by_its_own_late_committed_entry",
+    "note": "The same journal settles the predecessor applied.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 3
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "aba_successor_that_really_committed_is_applied",
+    "note": "The value read under the lock shows the successor's result.",
+    "entry": {
+      "receiveId": "rcv_2",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "new": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 3
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "aba_later_prepared_entry_decides_the_successor",
+    "note": "R3 prepared after R2 and observed B, so R2 (B->A) did not commit; late outcome entries are ignored.",
+    "entry": {
+      "receiveId": "rcv_2",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "new": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 5,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_3",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 3
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 4
+        },
+        {
+          "receiveId": "rcv_3",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": null,
+          "state": "committed",
+          "sequence": 5
+        }
+      ],
+      "current": {
+        "commit": "cccccccccccccccccccccccccccccccccccccccc",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "identical_tuples_crashed_receive_is_refused_not_confused_with_the_other",
+    "note": "R1 and R2 both A->B; R1 crashed after prepared, R2 committed. The ref holds B, yet R1 is refused: R2's prepared entry observed A.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 3
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "identical_tuples_committed_receive_is_applied",
+    "note": "The receive that committed is applied by its own entry.",
+    "entry": {
+      "receiveId": "rcv_2",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 3
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "identical_tuples_first_committed_second_contradicted",
+    "note": "R1 committed A->B but lost its outcome entry; R2 (A->B) then observed B, which contradicts its old value.",
+    "entry": {
+      "receiveId": "rcv_2",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "identical_tuples_first_committed_applied_by_next_prepared",
+    "note": "The same journal settles R1 applied from R2's observed value.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "restored_older_journal_is_unknown_never_refused",
+    "note": "The control plane saw journal head 10; the volume now reports head 6 with only the prepared entry and the old value: a restore, so unknown.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 6,
+      "knownHead": 10,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 5
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "journal_regressed"
+    }
+  },
+  {
+    "name": "restored_older_journal_without_the_entry_is_unknown",
+    "note": "The restored journal lacks the entry entirely; the regression, not the missing entry, is the finding.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 6,
+      "knownHead": 10,
+      "journal": [],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "journal_regressed"
+    }
+  },
+  {
+    "name": "restored_older_journal_committed_entry_is_unknown",
+    "note": "Even an own committed entry from a journal older than one already seen is not accepted (GR-A13).",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 6,
+      "knownHead": 10,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 5
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 6
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "journal_regressed"
+    }
+  },
+  {
+    "name": "restored_older_journal_aborted_entry_is_unknown_never_refused",
+    "note": "An own aborted entry from an older journal never settles the entry refused.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 100,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "aborted",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "journal_regressed"
+    }
+  },
+  {
+    "name": "restored_older_journal_next_prepared_is_unknown",
+    "note": "A later prepared entry from an older journal does not decide either.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 3,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "journal_regressed"
+    }
+  },
+  {
+    "name": "committed_with_observed_contradicting_old_is_unknown",
+    "note": "An outcome entry does not rescue an entry whose observed value contradicts old.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "cccccccccccccccccccccccccccccccccccccccc",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "aborted_with_observed_equal_to_new_is_unknown",
+    "note": "The same guard for an aborted entry.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "aborted",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "journal_head_equal_to_known_head_is_not_a_regression",
+    "note": "The control plane's own last read.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 5,
+      "knownHead": 5,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 5
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "own_committed_and_aborted_conflict",
+    "note": "Contradictory evidence is never resolved by guessing.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "aborted",
+          "sequence": 3
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "own_entry_with_other_tuple_conflicts",
+    "note": "The journal attributes a different update to this receive and ref.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "two_own_prepared_entries_conflict",
+    "note": "One ref transaction per receive and ref.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "forced_update_with_zero_old_uses_the_observed_value",
+    "note": "Old is all-zero for a forced update; the value observed under the lock is the before-value: the next prepared entry observing it means refused.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "0000000000000000000000000000000000000000",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "forced_update_with_zero_old_applied",
+    "note": "The next prepared entry observed the new value.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "0000000000000000000000000000000000000000",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "observed_contradicting_old_is_unknown",
+    "note": "Git verified old under the lock, so a different observed value contradicts the entry.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "cccccccccccccccccccccccccccccccccccccccc",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "observed_equal_to_new_is_ambiguous",
+    "note": "A transaction that changes nothing cannot be told from one that did not run.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "duplicate_sequence_conflicts",
+    "note": "A journal cannot append two entries at one position.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "outcome_without_prepared_conflicts",
+    "note": "The prepared entry is always written first.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "outcome_before_prepared_conflicts",
+    "note": "An outcome cannot precede its own prepared entry.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "invalid_journal_entry_conflicts",
+    "note": "A prepared entry without its observed value is malformed evidence.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "entry_beyond_journal_head_conflicts",
+    "note": "An entry past the reported head is inconsistent.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 5
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "conflicting_evidence"
+    }
+  },
+  {
+    "name": "delete_applied_by_next_prepared_observing_absence",
+    "note": "Deleting a ref: the next prepared entry observed the all-zero value.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "new": "0000000000000000000000000000000000000000",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "0000000000000000000000000000000000000000",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "0000000000000000000000000000000000000000",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "0000000000000000000000000000000000000000",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "delete_refused_by_current_value",
+    "note": "Deleting a ref: it still has the old value.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "new": "0000000000000000000000000000000000000000",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "0000000000000000000000000000000000000000",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "outcome_of_another_receive_never_settles_this_one",
+    "note": "Another receive committed the identical tuple later; this one only prepared, and the ref still has the old value.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_9",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 2
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "outcome_entries_never_order_other_transactions",
+    "note": "A late aborted entry of another receive between prepared entries is ignored; the next prepared entry decides.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_9",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": null,
+          "state": "aborted",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 3
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "entries_of_other_refs_are_ignored",
+    "note": "The same receive's committed entry for another ref is not evidence for this ref.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 3,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/feature/other",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 2
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/feature/other",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 3
+        }
+      ],
+      "current": {
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "next_prepared_is_the_lowest_sequence_after_the_entry",
+    "note": "Journal order in the input does not matter; the smallest later sequence decides.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 4,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_3",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "cccccccccccccccccccccccccccccccccccccccc",
+          "state": "prepared",
+          "sequence": 4
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_2",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "cccccccccccccccccccccccccccccccccccccccc",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": "ref_unchanged"
+    }
+  },
+  {
+    "name": "server_operation_prepared_entry_orders_like_a_receive",
+    "note": "A server operation's prepared entry is the next transaction on the ref.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": null,
+          "operationId": "op_1",
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "new": "0000000000000000000000000000000000000000",
+          "observed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "prepared",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "sha256_object_ids",
+    "note": "Object IDs of 64 digits behave the same.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "committing"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 1,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        }
+      ],
+      "current": {
+        "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "quiescent": true
+      }
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "applied_entry_stays_applied",
+    "note": "A final entry is returned unchanged.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "applied"
+    },
+    "evidence": {
+      "liveness": "unavailable",
+      "journalReadable": false,
+      "journalHead": 0,
+      "knownHead": 0,
+      "journal": [],
+      "current": null
+    },
+    "expect": {
+      "resolution": "applied",
+      "reason": ""
+    }
+  },
+  {
+    "name": "refused_entry_stays_refused",
+    "note": "A final entry is returned unchanged.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "refused"
+    },
+    "evidence": {
+      "liveness": "unavailable",
+      "journalReadable": false,
+      "journalHead": 0,
+      "knownHead": 0,
+      "journal": [],
+      "current": null
+    },
+    "expect": {
+      "resolution": "refused",
+      "reason": ""
+    }
+  },
+  {
+    "name": "unknown_entry_waits_for_an_operator",
+    "note": "Reconciliation never resolves an unknown entry by itself.",
+    "entry": {
+      "receiveId": "rcv_1",
+      "ref": "refs/heads/kodama/work/wi_1",
+      "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "state": "unknown"
+    },
+    "evidence": {
+      "liveness": "ended",
+      "journalReadable": true,
+      "journalHead": 2,
+      "knownHead": 0,
+      "journal": [
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "prepared",
+          "sequence": 1
+        },
+        {
+          "receiveId": "rcv_1",
+          "operationId": null,
+          "ref": "refs/heads/kodama/work/wi_1",
+          "old": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "new": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observed": null,
+          "state": "committed",
+          "sequence": 2
+        }
+      ],
+      "current": null
+    },
+    "expect": {
+      "resolution": "unknown",
+      "reason": "operator_required"
+    }
+  }
+]

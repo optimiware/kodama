@@ -74,6 +74,27 @@ var (
 	ErrInvalidValue = domain.ErrInvalidValue
 	// ErrStale: an observation raced with another change; retry.
 	ErrStale = errors.New("workspace: concurrent change; retry")
+	// ErrWrongHosting: the operation belongs to the other hosting model: the
+	// publisher path to an external workspace, the push/association path to an
+	// internal one. A workspace never switches between them.
+	ErrWrongHosting = errors.New("workspace: operation does not apply to this workspace's hosting")
+	// ErrRepositoryNotReady: an internal repository is not ready and unarchived,
+	// so no task branch is created in it.
+	ErrRepositoryNotReady = errors.New("workspace: repository is not ready")
+	// ErrWriterBlocked: an unknown push outcome on the repository's task branch
+	// blocks writer reassignment until it is resolved (WS-11, GR-09).
+	ErrWriterBlocked = errors.New("workspace: an unknown push outcome blocks writer reassignment")
+	// ErrCheckpointRequired: a workload (attempt) push on the task branch is not
+	// an accepted checkpoint. It is never adopted as human work: a push that was
+	// refused (a secret in its objects, a diverged history) or whose output was
+	// never reported stays unaccepted until an engineer rewrites the branch.
+	ErrCheckpointRequired = errors.New("workspace: a workload push on the task branch is not an accepted checkpoint")
+	// ErrPushPending: the push record is not settled (authorized, committing or
+	// unknown): the commit output stays pending; retry after reconciliation.
+	ErrPushPending = errors.New("workspace: the push is not settled")
+	// ErrPushNotApplied: the push record does not show the commit applied to the
+	// ref (refused, another commit, another repository or another actor).
+	ErrPushNotApplied = errors.New("workspace: the push did not apply this commit")
 )
 
 // ConflictError is a lost expected-tip race. ObservedTip is the remote tip

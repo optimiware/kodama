@@ -35,8 +35,12 @@ type Spec struct {
 	Commands   []string
 	Env        map[string]string
 	SecretsDir string
-	Workspace  string
-	Timeout    time.Duration
+	// GitDir is the host directory of the run's Git configuration and credential
+	// files, outside the workspace; empty for a run without Git sources. A
+	// backend exports it to the step as KODAMA_GIT_DIR.
+	GitDir    string
+	Workspace string
+	Timeout   time.Duration
 }
 
 // Result is the observed outcome of one step.
@@ -65,6 +69,12 @@ type Config struct {
 	// SecretDir is where per-step secret files are materialized. It must be a
 	// path the container backend can bind mount (a shared path on macOS Podman).
 	SecretDir string
+	// Git prepares the run's pinned sources, knowledge base and Git credential.
+	// Without it a run that pins sources fails before any step.
+	Git *GitSources
+	// GitRefresh is how often a running step's Git credential is checked for
+	// rotation; a minute by default.
+	GitRefresh time.Duration
 }
 
 type Runner struct{ cfg Config }
@@ -87,6 +97,14 @@ func New(cfg Config) (*Runner, error) {
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	if cfg.GitRefresh <= 0 {
+		cfg.GitRefresh = time.Minute
+	}
+	if cfg.Git != nil {
+		if err := cfg.Git.validate(); err != nil {
+			return nil, err
+		}
 	}
 	return &Runner{cfg: cfg}, nil
 }
@@ -113,6 +131,14 @@ func (r *Runner) Execute(ctx context.Context, q store.QueuedRun) error {
 		}
 	}()
 
+	// Sources are in place, or the run fails here: a step never runs against an
+	// empty or partial workspace. The credential files end with the run.
+	rg, err := r.prepareGit(ctx, run, workspace)
+	if err != nil {
+		return r.failSource(ctx, run, err)
+	}
+	defer func() { _ = rg.Close() }()
+
 	steps := map[string]store.Step{}
 	for _, s := range run.Steps {
 		steps[s.StepKey] = s
@@ -137,7 +163,7 @@ func (r *Runner) Execute(ctx context.Context, q store.QueuedRun) error {
 		if err != nil {
 			return r.fail(ctx, run, "log_unavailable", err)
 		}
-		code, runErr := r.runStep(ctx, run, def, row, workspace, logFile)
+		code, runErr := r.runStep(ctx, run, def, row, workspace, rg, logFile)
 		_ = logFile.Close()
 		status, reason := "succeeded", ""
 		if runErr != nil {
@@ -161,7 +187,7 @@ func (r *Runner) Execute(ctx context.Context, q store.QueuedRun) error {
 
 // runStep resolves secrets and executes. It returns the exit code and an
 // infrastructure error distinct from a command's own non-zero exit.
-func (r *Runner) runStep(ctx context.Context, run store.Run, def pipeline.Document, row store.Step, workspace string, log io.Writer) (int, error) {
+func (r *Runner) runStep(ctx context.Context, run store.Run, def pipeline.Document, row store.Step, workspace string, rg *RunGit, log io.Writer) (int, error) {
 	var step pipeline.Step
 	for _, s := range def.Steps {
 		if s.Name == row.StepKey {
@@ -197,10 +223,16 @@ func (r *Runner) runStep(ctx context.Context, run store.Run, def pipeline.Docume
 	}
 	sctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	// A credential past half its lifetime is rotated before the step and while it
+	// runs; one the run's end revoked is removed, never reused.
+	if err := rg.Refresh(sctx); err != nil {
+		r.cfg.Logger.Warn("run Git credential refresh failed", "run", run.ID, "step", row.StepKey, "error", err)
+	}
+	defer rg.Keep(sctx, r.cfg.GitRefresh)()
 	code, err := r.cfg.Backend.Execute(sctx, Spec{
 		Scope: domain.Scope{TenantID: run.TenantID, ProjectID: run.ProjectID}, RunID: run.ID,
 		StepKey: row.StepKey, Image: row.Image, Commands: step.Commands, Env: env,
-		SecretsDir: secretsDir, Workspace: workspace, Timeout: timeout,
+		SecretsDir: secretsDir, GitDir: rg.Dir(), Workspace: workspace, Timeout: timeout,
 	}, log)
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(sctx.Err(), context.DeadlineExceeded) {
 		return code, fmt.Errorf("%w: step deadline exceeded", ErrTimeout)
@@ -253,6 +285,40 @@ func (r *Runner) materializeSecrets(ctx context.Context, run store.Run, names []
 		clear(plain)
 	}
 	return dir, cleanup, nil
+}
+
+// prepareGit checks the run's pinned sources and context repositories out and
+// materializes its Git credential outside the workspace. A run that pins sources
+// without a configured checkout is refused rather than started on an empty
+// workspace. It returns nil when the run has nothing in Git.
+func (r *Runner) prepareGit(ctx context.Context, run store.Run, workspace string) (*RunGit, error) {
+	if r.cfg.Git == nil {
+		if len(run.Sources) > 0 {
+			return nil, fmt.Errorf("%w: the runner has no Git checkout configured", ErrCheckoutUnconfigured)
+		}
+		return nil, nil
+	}
+	return r.cfg.Git.Prepare(ctx, run, workspace)
+}
+
+// failSource ends a run whose sources could not be prepared. A run that was
+// cancelled meanwhile ends cancelled, because its authority is gone; any other
+// failure has a stable reason.
+func (r *Runner) failSource(ctx context.Context, run store.Run, cause error) error {
+	if errors.Is(cause, store.ErrConflict) {
+		if current, err := r.cfg.Store.GetRun(ctx, run.TenantID, run.ProjectID, run.ID); err == nil && current.CancelRequestedAt != nil {
+			return r.cfg.Store.FinishRun(ctx, run.TenantID, run.ProjectID, run.ID, "cancelled", "cancel_requested")
+		}
+	}
+	return r.fail(ctx, run, sourceReason(cause), cause)
+}
+
+// sourceReason is the stable reason of a run whose sources could not be prepared.
+func sourceReason(cause error) string {
+	if errors.Is(cause, ErrCheckoutUnconfigured) {
+		return ReasonSourceUnconfigured
+	}
+	return ReasonSourceUnavailable
 }
 
 func (r *Runner) fail(ctx context.Context, run store.Run, reason string, cause error) error {

@@ -26,7 +26,7 @@ func advance(env Env, agg *Aggregate, settle ...*Attempt) ([]func(context.Contex
 		}
 		at := at
 		after = append(after, func(ctx context.Context, env Env) error { return env.ReleaseCapacity(ctx, at) })
-		if at.Writer() {
+		if at.Writer() && at.WorkspaceID != "" {
 			outcome, source := WriterFailed, ""
 			switch at.Status {
 			case AttemptSucceeded:
@@ -292,6 +292,12 @@ func (s *Service) drive(ctx context.Context, rt Runtime, spec AttemptSpec) error
 		return Unavailablef(err, "the run_shared launch checks do not hold")
 	}
 	spec.Shared = launch
+	// A source-set attempt is created only with the Git credential its context
+	// promises (issued now: the attempt is committed and live); an existing
+	// workload is adopted without issuing another.
+	if spec.Git, err = s.requestAttemptGrant(ctx, rt, spec); err != nil {
+		return Unavailablef(err, "the attempt's Git grant could not be issued")
+	}
 	w, err := rt.Start(ctx, spec)
 	if err != nil {
 		return Unavailablef(err, "the runtime could not start the workload")

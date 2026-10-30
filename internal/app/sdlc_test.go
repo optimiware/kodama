@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -188,8 +189,12 @@ func Test_unit_container_sdlc_composition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SDLCManifest: %v", err)
 	}
-	if len(m.Migrations()) != 3 {
-		t.Fatalf("expected 3 migrations in SDLCManifest, got %d", len(m.Migrations()))
+	var ids []string
+	for _, mig := range m.Migrations() {
+		ids = append(ids, mig.ID)
+	}
+	if len(ids) != 4 || fmt.Sprint(ids[:3]) != "[001_schema.sql 002_grants.sql 003_git_hosting.sql]" {
+		t.Fatalf("SDLCManifest must be the three-file baseline plus the release migration, got %v", ids)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 
 	pipelinev1 "github.com/optimiware/kodama/contracts/pipeline/v1"
 	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -51,7 +52,7 @@ var storageForbiddenRoots = []string{"/workspace", "/kodama", "/proc", "/sys", "
 // document beyond the format name, and runs no lookup.
 func (v *Validator) validateV2(ctx context.Context, scope domain.Scope, actor Actor, doc Document) (Validated, error) {
 	var d diagnostics
-	if !v.v2 {
+	if !v.FormatEnabled(doc.APIVersion) {
 		d.add(CodeFormatDisabled, "$.apiVersion", "the pipeline format is not enabled in this installation")
 		return Validated{}, d.err(StageSemantic)
 	}
@@ -120,8 +121,11 @@ func svcPath(name string) string { return childPath("$.spec.services", name) }
 // kodama/v1alpha2 document. Shape findings (checkShapeV2) end the pass: the
 // semantic rules assume sane services, ports and edges.
 func (v *Validator) checkDocumentV2(doc Document, d *diagnostics) {
-	if doc.APIVersion != pipelinev1alpha2.APIVersion {
-		d.add(CodeInvalidValue, "$.apiVersion", "apiVersion must be %s", pipelinev1alpha2.APIVersion)
+	if !doc.IsRunShared() {
+		d.add(CodeInvalidValue, "$.apiVersion", "apiVersion must be %s or %s", pipelinev1alpha2.APIVersion, pipelinev1alpha3.APIVersion)
+	}
+	if doc.Spec.Sources != nil && !doc.IsV1Alpha3() {
+		d.add(CodeUnknownField, "$.spec.sources", "the field is not part of this pipeline format version")
 	}
 	if doc.Kind != pipelinev1.Kind {
 		d.add(CodeInvalidValue, "$.kind", "kind must be %s", pipelinev1.Kind)
@@ -186,6 +190,7 @@ func (v *Validator) checkDocumentV2(doc Document, d *diagnostics) {
 		}
 	}
 	v.checkServicesV2(doc, r)
+	checkSourceWriters(doc, d)
 }
 
 // checkExecutableV2 validates what container and agent steps share in
@@ -242,6 +247,7 @@ func checkShapeV2(doc Document, d *diagnostics) {
 		checkServiceShape(p, sp.Services[name], &builders, d)
 	}
 	checkEdges(sp, d)
+	checkSourcesShape(sp.Sources, d)
 	for i, s := range doc.Spec.Steps {
 		if s.Kind == KindContainer {
 			checkEgressNames(stepPath(i)+".egress", s.Egress, d)

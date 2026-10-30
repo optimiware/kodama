@@ -1,0 +1,395 @@
+[
+  {
+    "name": "journal_prepared_receive",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "journal_prepared_forced_update_observed_differs",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "1111111111111111111111111111111111111111",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 2,
+      "state": "prepared"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "journal_prepared_server_operation",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "1111111111111111111111111111111111111111",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": "op_01",
+      "receiveId": null,
+      "ref": "refs/kodama/runs/run_01/1",
+      "sequence": 3,
+      "state": "prepared"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "journal_committed",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": null,
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 4,
+      "state": "committed"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "journal_aborted",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": null,
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 5,
+      "state": "aborted"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "journal_delete_prepared",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "0000000000000000000000000000000000000000",
+      "observed": "1111111111111111111111111111111111111111",
+      "old": "1111111111111111111111111111111111111111",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 6,
+      "state": "prepared"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "journal_sha256",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "1111111111111111111111111111111111111111111111111111111111111111",
+      "observed": "0000000000000000000000000000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 7,
+      "state": "prepared"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "journal_unknown_field",
+    "type": "JournalEntry",
+    "payload": {
+      "at": "2026-10-30T10:00:00Z",
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_receive_and_operation",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": "op_01",
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_neither_receive_nor_operation",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": null,
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_prepared_without_observed",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": null,
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_observed_omitted",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_committed_with_observed",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 4,
+      "state": "committed"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_aborted_with_observed",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "1111111111111111111111111111111111111111",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 5,
+      "state": "aborted"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_observed_other_length",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "journal_observed_uppercase",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_sequence_zero",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 0,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_sequence_negative",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": -4,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_sequence_beyond_safe_integer",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 9007199254740992,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_unknown_state",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "applied"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_malformed_ref",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/a..b",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_no_change",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "4444444444444444444444444444444444444444",
+      "old": "4444444444444444444444444444444444444444",
+      "operationId": null,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "journal_receive_not_an_id",
+    "type": "JournalEntry",
+    "payload": {
+      "new": "4444444444444444444444444444444444444444",
+      "observed": "0000000000000000000000000000000000000000",
+      "old": "0000000000000000000000000000000000000000",
+      "operationId": null,
+      "receiveId": "rcv 8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "sequence": 1,
+      "state": "prepared"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "journal_sequence_float",
+    "type": "JournalEntry",
+    "raw": "{\"receiveId\":\"rcv_8f2c\",\"operationId\":null,\"ref\":\"refs/heads/x\",\"old\":\"0000000000000000000000000000000000000000\",\"new\":\"1111111111111111111111111111111111111111\",\"observed\":\"0000000000000000000000000000000000000000\",\"state\":\"prepared\",\"sequence\":1.0}",
+    "valid": false,
+    "code": "invalid_request"
+  }
+]

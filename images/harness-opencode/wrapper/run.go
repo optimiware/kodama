@@ -3,14 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -135,7 +131,7 @@ func execute(ctx context.Context, o options, log *slog.Logger) verdict {
 		return failedV(log, spec.ReasonContextMismatch, "the pinned context could not be read: "+red.String(err.Error()))
 	}
 	prof, base := cfg.Pins()
-	if string(rctx.AttemptID) != attempt || rctx.DesignBaseline == nil || rctx.DesignBaseline.Digest != base.Digest ||
+	if rctx.AttemptID != attempt || rctx.DesignBaseline == nil || rctx.DesignBaseline.Digest != base.Digest ||
 		rctx.Profile == nil || *rctx.Profile != prof {
 		return failedV(log, spec.ReasonContextMismatch, "the payload does not match the pinned attempt context")
 	}
@@ -149,6 +145,23 @@ func execute(ctx context.Context, o options, log *slog.Logger) verdict {
 	if d.Transcript.Record {
 		if od, ok := declared[spec.TranscriptOutput]; !ok || od.Type != runtimev1.OutputArtifact || od.Path == nil || *od.Path != spec.DeclaredOutputPath(spec.TranscriptFile) {
 			return failedV(log, spec.ReasonOutputUndeclared, "the profile records transcripts but the step does not declare the transcript output")
+		}
+	}
+
+	// 2b. A source-set attempt (runtime context v3) works in one checkout per source.
+	// The plan says where each checkout's changes are committed; it must be one the
+	// attempt's own Git grant lets the entrypoint publish, or nothing is run. The
+	// commit each checkout starts on is read from the checkout itself.
+	var (
+		plan   []agents.Checkout
+		starts map[string]runtimev1.GitCommit
+	)
+	if rctx.V3 != nil {
+		if plan, err = agents.PlanCheckouts(*rctx.V3); err != nil {
+			return failedV(log, spec.ReasonSourceInvalid, err.Error())
+		}
+		if starts, err = startCommits(ctx, workspace, plan); err != nil {
+			return failedV(log, spec.ReasonSourceInvalid, err.Error())
 		}
 	}
 
@@ -356,9 +369,28 @@ func execute(ctx context.Context, o options, log *slog.Logger) verdict {
 
 	// completed: commit what the agent changed, then bind the conformance report
 	// to that candidate and to the pinned baseline.
-	candidate, cerr := commitWorkspace(ctx, workspace, res.Summary, red.String)
-	if cerr != nil {
-		return failedV(log, spec.ReasonCommitFailed, cerr.Error())
+	var candidate string
+	if plan != nil {
+		// The candidate of a source-set attempt is the commit of every checkout, not
+		// one commit. The conformance report names the primary source's commit; the
+		// whole set is identified by its digest and published by the entrypoint.
+		set, cerr := commitSources(ctx, workspace, plan, starts, res.Summary, red.String)
+		if cerr != nil {
+			var se *sourceError
+			if errors.As(cerr, &se) {
+				// A checkout the agent left in a state the wrapper will not run Git in.
+				return failedV(log, spec.ReasonSourceInvalid, cerr.Error())
+			}
+			return failedV(log, spec.ReasonCommitFailed, cerr.Error())
+		}
+		digest, _ := set.Digest()
+		candidate = string(set.Primary().Commit)
+		log.Info("candidate committed", "sources", len(set.Sources), "changed", len(set.Changed()), "digest", digest)
+	} else {
+		var cerr error
+		if candidate, cerr = commitWorkspace(ctx, workspace, res.Summary, red.String); cerr != nil {
+			return failedV(log, spec.ReasonCommitFailed, cerr.Error())
+		}
 	}
 	rep, notes, berr := buildReport(*rctx.DesignBaseline, candidate, res.Conformance, red.String)
 	if berr != nil {
@@ -417,47 +449,10 @@ func childEnv(get func(string) string, home string, xdg map[string]string) []str
 	return env
 }
 
-// fetchContext reads the attempt's pinned context with the current token.
-func fetchContext(ctx context.Context, platform, attempt, tokenFile, caFile string) (runtimev1.Context, error) {
-	tok, err := os.ReadFile(tokenFile)
-	if err != nil || strings.TrimSpace(string(tok)) == "" {
-		return runtimev1.Context{}, errors.New("no runtime token")
-	}
-	pool := x509.NewCertPool()
-	pem, err := os.ReadFile(caFile)
-	if err != nil || !pool.AppendCertsFromPEM(pem) {
-		return runtimev1.Context{}, errors.New("the platform CA is unreadable")
-	}
-	hc := &http.Client{
-		Timeout:       30 * time.Second,
-		Transport:     &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(platform, "/")+"/runtime/v1/attempts/"+attempt+"/context", nil)
-	if err != nil {
-		return runtimev1.Context{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(tok)))
-	resp, err := hc.Do(req)
-	if err != nil {
-		return runtimev1.Context{}, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return runtimev1.Context{}, fmt.Errorf("context request: HTTP %d", resp.StatusCode)
-	}
-	c, err := runtimev1.DecodeRequest[runtimev1.Context](body)
-	if err != nil {
-		return runtimev1.Context{}, errors.New("the context is not valid")
-	}
-	return c, nil
-}
-
 // prompt is the instruction context, fully derived from pinned inputs: the
 // profile's instructions, the baseline's references (never resolved again), the
 // pinned work item and the completion protocol.
-func prompt(cfg agents.WrapperConfig, c runtimev1.Context) string {
+func prompt(cfg agents.WrapperConfig, c pinnedContext) string {
 	var b bytes.Buffer
 	b.WriteString(strings.TrimSpace(cfg.Content.Instructions))
 	b.WriteString("\n\n## Pinned design baseline\n")
@@ -480,6 +475,21 @@ func prompt(cfg agents.WrapperConfig, c runtimev1.Context) string {
 		b.WriteString("\n## Work item " + string(c.WorkItem.ID) + "\n" + strings.TrimSpace(c.WorkItem.Spec) + "\n")
 		for _, ac := range c.WorkItem.AcceptanceCriteria {
 			b.WriteString("- " + ac.ID + ": " + ac.Text + "\n")
+		}
+	}
+	if c.V3 != nil {
+		if plan, err := agents.PlanCheckouts(*c.V3); err == nil {
+			b.WriteString("\n## Repositories\n")
+			b.WriteString("Each repository is checked out under the workspace at the path shown (`.` is the workspace itself). " +
+				"Edit files in place. Do not run `git push`, `git fetch`, `git remote`, `git config` or any credential command, " +
+				"and do not switch branches: you hold no Git credential, and the platform commits and publishes your changes after you finish.\n")
+			for _, co := range plan {
+				where := "published to a run-scoped agent branch"
+				if co.Mode == agents.ModeHead {
+					where = "published to the work item's task branch"
+				}
+				b.WriteString("- `" + co.Path + "` (repository " + co.RepositoryID + ", " + string(co.Access) + " access): changes are " + where + "\n")
+			}
 		}
 	}
 	b.WriteString("\n## Completion protocol (this run has no human)\n")

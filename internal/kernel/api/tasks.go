@@ -189,7 +189,7 @@ func (s *Server) parkTask(w http.ResponseWriter, r *http.Request, tenant domain.
 			kind = tasks.Decision
 		}
 		blocker := tasks.Task{
-			Scope: parent.Scope, ID: domain.TaskID(blockerID), Kind: kind,
+			Scope: parent.Scope, ID: domain.TaskID(blockerID), Kind: kind, ParentID: parent.ID,
 			Title: body.Blocker.Title, Body: body.Blocker.Body, State: wf.Inbox.OpenState,
 			AssignedRole: body.Blocker.AssignedRole, Context: body.Blocker.Context,
 			Version: 1, CreatedAt: now, UpdatedAt: now,

@@ -3,6 +3,12 @@
 # standard library and its own ./internal/runtime helpers.
 package: client
 output: client.gen.go
+# Every enum constant is prefixed with its type name. Without it the generator
+# prefixes a constant only when two enums share a value, so adding a fragment
+# renames constants of unrelated types (T-075, T-170); the unprefixed names the
+# client released are kept by the aliases of compat.go.
+compatibility:
+  always-prefix-enum-values: true
 generate:
   models: true
   client: true

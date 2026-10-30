@@ -124,6 +124,12 @@ func DecodeData(e Envelope) (any, error) {
 		target = new(StepAttemptStateChanged)
 	case TypeRunResourceStateChanged:
 		target = new(RunResourceStateChanged)
+	case TypeRepositoryCreated:
+		target = new(RepositoryCreated)
+	case TypeRepositoryStateChanged:
+		target = new(RepositoryStateChanged)
+	case TypeGitRefsUpdated:
+		target = new(GitRefsUpdated)
 	case TypeGateRequested:
 		target = new(GateRequested)
 	case TypeGateDecided:

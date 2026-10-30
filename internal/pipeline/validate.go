@@ -13,6 +13,7 @@ import (
 
 	pipelinev1 "github.com/optimiware/kodama/contracts/pipeline/v1"
 	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -92,6 +93,13 @@ type Config struct {
 	// with format_disabled. Enabling it states only that registration accepts
 	// the format; it is never evidence that run admission supports it.
 	EnableV1Alpha2 bool
+	// EnableV1Alpha3 opts the validator in to the kodama/v1alpha3 document
+	// format: run_shared plus a declared source set. It is independent of
+	// EnableV1Alpha2 and default off for the same reason: a disabled
+	// installation rejects the format with format_disabled, and enabling it
+	// states only that registration accepts it, never that run admission or a
+	// runtime implements it.
+	EnableV1Alpha3 bool
 }
 
 // Validator is the one structural and semantic validation library. The API and
@@ -104,6 +112,7 @@ type Validator struct {
 	prof   ProfileLookup
 	refs   ReferencePolicy
 	v2     bool
+	v3     bool
 }
 
 // NewValidator validates cfg.
@@ -115,18 +124,21 @@ func NewValidator(cfg Config) (*Validator, error) {
 	if l.MaxSteps > maxStepsCeiling {
 		return nil, fmt.Errorf("pipeline: MaxSteps must not exceed %d", maxStepsCeiling)
 	}
-	return &Validator{parse: cfg.Parse.withDefaults(), limits: l, caps: cfg.Capabilities, prof: cfg.Profiles, refs: cfg.References, v2: cfg.EnableV1Alpha2}, nil
+	return &Validator{parse: cfg.Parse.withDefaults(), limits: l, caps: cfg.Capabilities, prof: cfg.Profiles, refs: cfg.References, v2: cfg.EnableV1Alpha2, v3: cfg.EnableV1Alpha3}, nil
 }
 
 // FormatEnabled reports whether this validator registers documents of the given
 // apiVersion. kodama/v1alpha1 is always enabled; kodama/v1alpha2 only when
-// Config.EnableV1Alpha2 was set.
+// Config.EnableV1Alpha2 was set and kodama/v1alpha3 only when
+// Config.EnableV1Alpha3 was set.
 func (v *Validator) FormatEnabled(apiVersion string) bool {
 	switch apiVersion {
 	case pipelinev1.APIVersion:
 		return true
 	case pipelinev1alpha2.APIVersion:
 		return v.v2
+	case pipelinev1alpha3.APIVersion:
+		return v.v3
 	}
 	return false
 }
@@ -180,7 +192,7 @@ func (v *Validator) Validate(ctx context.Context, scope domain.Scope, actor Acto
 	if err := actor.Validate(); err != nil {
 		return Validated{}, err
 	}
-	if doc.APIVersion == pipelinev1alpha2.APIVersion {
+	if doc.IsRunShared() {
 		return v.validateV2(ctx, scope, actor, doc)
 	}
 	var d diagnostics

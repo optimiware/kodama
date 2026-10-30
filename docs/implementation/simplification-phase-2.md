@@ -7,7 +7,7 @@
 ## Delivered
 
 - Two-file PostgreSQL baseline: 14 domain tables and required audit/outbox (15 total), scoped keys, RLS, null-safe uniqueness, service scopes, immutable run snapshots and evidence, encrypted-secret envelopes and metadata-only artifacts.
-- Application migration manifest uses only that baseline. Existing database checksums are refused without modifying old data; no deployed database has been reset.
+- Application migration manifest uses only that baseline (`001_schema.sql`, `002_grants.sql`); T-167 later appends the single Git hosting contribution `003_git_hosting.sql`, so the manifest is now three files. Existing database checksums are refused without modifying old data; no deployed database has been reset.
 - Shared ID and optional owner values; project-defined task workflow/entity with optimistic transitions, parking, explicit decisions and guarded resumption.
 - Task transaction port with PostgreSQL and memdb adapters; one shared contract tests rollback, concurrent updates and tenant/project isolation.
 - `memdb.NewClonedTable` isolates mutable JSON/slices/pointers so editing a caller value cannot mutate committed state or escape rollback.
@@ -43,7 +43,7 @@ Tests create their own databases and owner/non-owner roles and remove them after
 ```sh
 # Set KODAMA_TEST_POSTGRES_ADMIN_URL to the isolated task instance.
 KODAMA_REQUIRE_POSTGRES=1 go test -race -count=1 ./internal/domain/... ./internal/memdb/... ./internal/storage/... ./internal/tasks/...
-KODAMA_REQUIRE_POSTGRES=1 go test -race -count=1 ./internal/app -run 'TestMigrationBaselineIsTwoFiles|TestSimplifiedManifestMigration|TestMigrateRefusesUnsafeIdentities'
+KODAMA_REQUIRE_POSTGRES=1 go test -race -count=1 ./internal/app -run 'TestMigrationBaselineIsThreeFiles|TestSimplifiedManifestMigration|TestMigrateRefusesUnsafeIdentities'
 go vet ./internal/domain/... ./internal/memdb/... ./internal/storage/... ./internal/tasks/... ./internal/app/...
 make build
 make docs-check

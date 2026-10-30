@@ -11,10 +11,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/kernel/api"
+	"github.com/optimiware/kodama/internal/kernel/bus"
 	"github.com/optimiware/kodama/internal/kernel/runner"
 	"github.com/optimiware/kodama/internal/kernel/store"
 	"github.com/optimiware/kodama/internal/storage"
@@ -39,6 +42,26 @@ type Config struct {
 
 	OIDCIssuer   string
 	OIDCClientID string
+
+	// Git hosting (O-36). PublicURL renders clone URLs. WorkerURL addresses the
+	// tenants' workers ({tenantId} is replaced); empty hosts one worker per tenant
+	// in this process, in development only. The signing keys and the control
+	// token are required in production.
+	PublicURL            string
+	GitWorkerURL         string
+	GitControlToken      string
+	GitForwardingKeyFile string
+	GitIdentityKeyFile   string
+	GitPollInterval      time.Duration
+
+	// Events (T-168). NATSURL selects JetStream for the outbox publisher and the
+	// dispatcher; empty delivers in process (the outbox rows stay the durable
+	// state). EventInterval is the outbox poll period. Bus replaces the broker
+	// (tests).
+	NATSURL       string
+	NATSToken     string
+	EventInterval time.Duration
+	Bus           bus.Bus
 }
 
 // Run blocks until ctx is cancelled or the listener fails.
@@ -84,6 +107,12 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		if err := os.MkdirAll(filepath.Join(cfg.StateDir, "secret-tmp"), 0o750); err != nil {
 			return fmt.Errorf("kernel: state directory: %w", err)
 		}
+		// Run Git credentials: private to this process, never inside a workspace.
+		// Files left by a process that died are stale: their runs are over.
+		_ = os.RemoveAll(filepath.Join(cfg.StateDir, "git-credentials"))
+		if err := os.MkdirAll(filepath.Join(cfg.StateDir, "git-credentials"), 0o700); err != nil {
+			return fmt.Errorf("kernel: state directory: %w", err)
+		}
 	}
 
 	wake := make(chan struct{}, 1)
@@ -94,17 +123,42 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		}
 	}
 
-	r, err := runner.New(runner.Config{
-		Store: st, Backend: backend, Keys: keys, InstallationID: cfg.InstallationID,
-		LogDir: filepath.Join(cfg.LogDir, "runs"), Logger: log,
-		SecretDir: filepath.Join(cfg.StateDir, "secret-tmp"),
+	broker, closeBroker, err := connectBus(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer closeBroker()
+	// The publisher exists before the Git routes so that a committed receive can
+	// wake it; the dispatcher needs the workers and is attached after them.
+	kick := make(chan struct{}, 1)
+	git, workers, publicURL, err := buildGit(cfg, st, auth, log, func() {
+		select {
+		case kick <- struct{}{}:
+		default:
+		}
 	})
 	if err != nil {
 		return err
 	}
+	defer workers.Close()
+	r, err := runner.New(runner.Config{
+		Store: st, Backend: backend, Keys: keys, InstallationID: cfg.InstallationID,
+		LogDir: filepath.Join(cfg.LogDir, "runs"), Logger: log,
+		SecretDir: filepath.Join(cfg.StateDir, "secret-tmp"),
+		Git:       runGitSources(backend, st, git, publicURL, cfg.StateDir, log),
+	})
+	if err != nil {
+		return err
+	}
+	events, err := NewEvents(ctx, EventsConfig{Store: st, Files: workers, Bus: broker, Interval: cfg.EventInterval, Wake: notify, Logger: log})
+	if err != nil {
+		return err
+	}
+	defer events.Close()
 	srv, err := api.New(api.Config{
 		Store: st, Auth: auth, Tasks: taskpg.Store{DB: pool.Pool}, Keys: keys,
 		InstallationID: cfg.InstallationID, Backend: backend.Name(), Wake: notify, Logger: log,
+		Git: git,
 	})
 	if err != nil {
 		return err
@@ -121,6 +175,34 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	go func() {
 		defer wg.Done()
 		loop(loopCtx, st, r, log, wake)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reconcileLoop(loopCtx, workers, st.TenantIDs, func(ctx context.Context, tenant domain.TenantID) bool {
+			if repos, err := st.ProvisioningRepositories(ctx, tenant, 1); err == nil && len(repos) > 0 {
+				return true
+			}
+			repos, err := st.ReconcilableRepositories(ctx, tenant, "", 1)
+			return err == nil && len(repos) > 0
+		}, cfg.GitPollInterval, log)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-loopCtx.Done():
+				return
+			case <-kick:
+				events.Publisher.Kick()
+			}
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		events.Run(loopCtx)
 	}()
 	wg.Add(1)
 	go func() {
@@ -224,4 +306,36 @@ func verifyRuntimeRole(ctx context.Context, pool *storage.Pool) error {
 		return errors.New("kernel: the runtime role must not be a superuser or bypass RLS")
 	}
 	return nil
+}
+
+// buildGit assembles the Git hosting routes and the tenants' workers. Outside
+// development without a worker address the in-process adapter is refused: the
+// routes are served with workers that fail closed, and the refusal is logged.
+func buildGit(cfg Config, st *store.Store, auth api.Authenticator, log *slog.Logger, onEvent func()) (*api.GitServer, *GitWorkers, string, error) {
+	signer, err := NewGitSigner(cfg.Env, cfg.GitForwardingKeyFile, cfg.GitIdentityKeyFile)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	workers, err := NewGitWorkers(GitWorkersConfig{Env: cfg.Env, StateDir: cfg.StateDir, WorkerURL: cfg.GitWorkerURL,
+		ControlToken: cfg.GitControlToken, Verifier: signer.Verifier(), Logger: log})
+	if err != nil {
+		if !errors.Is(err, ErrInProcessInProduction) {
+			return nil, nil, "", err
+		}
+		log.Error("Git hosting is unavailable", "error", err)
+	}
+	publicURL := cfg.PublicURL
+	if publicURL == "" {
+		publicURL = "http://localhost" + cfg.Addr
+		if !strings.HasPrefix(cfg.Addr, ":") {
+			publicURL = "http://" + cfg.Addr
+		}
+	}
+	git, err := api.NewGit(api.GitConfig{Store: st, Auth: auth, Workers: workers, Signer: signer,
+		Identities: signer.Verifier(), PublicURL: publicURL, Logger: log, OnEvent: onEvent})
+	if err != nil {
+		return nil, nil, "", err
+	}
+	workers.BindControl(git.Control())
+	return git, workers, publicURL, nil
 }

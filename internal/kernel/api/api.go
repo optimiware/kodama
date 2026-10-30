@@ -33,6 +33,9 @@ type Config struct {
 	Backend        string
 	Wake           func()
 	Logger         *slog.Logger
+	// Git mounts the repository routes, the credential exchange, /git/ and the
+	// worker's internal routes when set (internal Git hosting, O-36).
+	Git *GitServer
 }
 
 type Server struct{ cfg Config }
@@ -56,6 +59,9 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.Handle("/api/v1/", s.authed(http.HandlerFunc(s.route)))
+	if s.cfg.Git != nil {
+		s.cfg.Git.mount(mux)
+	}
 	return mux
 }
 
@@ -76,6 +82,9 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	parts := split(path)
 	if len(parts) == 0 {
 		writeErr(w, http.StatusNotFound, "not_found", "unknown route")
+		return
+	}
+	if s.cfg.Git != nil && s.cfg.Git.serveAPI(w, r, parts) {
 		return
 	}
 	switch parts[0] {

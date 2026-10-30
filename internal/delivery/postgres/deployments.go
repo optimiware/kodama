@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,20 +14,85 @@ import (
 	"github.com/optimiware/kodama/internal/domain"
 )
 
-const deploymentColumns = `tenant_id, project_id, id, environment_id, config_digest, namespace, source_repository_url, source_commit,
+const deploymentColumnsBase = `tenant_id, project_id, id, environment_id, config_digest, namespace, source_repository_url, source_commit,
 image_artifact_id, image_digest, producer_attempt_id, producer_run_id, producer_step_id, tool_image, run_id, step_id, action_key, attempt_id,
 request_fingerprint, status, reason, objects, expires_at, cleanup_requested_at, cleanup_state, cleanup_reason, deleted_at, version, created_at, updated_at`
+
+// columns lists the deployment columns scanDeployment reads: the source-set pair
+// is selected only when the schema has it, NULL otherwise.
+func (s *Store) columns() string {
+	if s.sets {
+		return deploymentColumnsBase + `, source_set_digest, source_commits`
+	}
+	return deploymentColumnsBase + `, NULL::text, NULL::jsonb`
+}
+
+// sourceCommitJSON is the stored form of one source-set commit.
+type sourceCommitJSON struct {
+	RepositoryID string `json:"repositoryId"`
+	Commit       string `json:"commit"`
+}
+
+// encodeSourceSet returns the stored digest and commits of a source set, both
+// nil for a deployment of a single source.
+func encodeSourceSet(set delivery.SourceSet) (*string, []byte, error) {
+	if set.IsZero() {
+		return nil, nil, nil
+	}
+	commits := set.Commits()
+	out := make([]sourceCommitJSON, len(commits))
+	for i, c := range commits {
+		out[i] = sourceCommitJSON{RepositoryID: c.RepositoryID, Commit: c.Commit}
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return nil, nil, err
+	}
+	d := set.Digest
+	return &d, raw, nil
+}
+
+// scanSource rebuilds the deployment's source: a repository and commit, and, for a
+// source set, the set (the repository and commit are then its primary source's).
+// A row that has no repository and commit, or half a set, is invalid, never usable.
+func scanSource(url, commit, digest *string, commits []byte) (delivery.Source, error) {
+	if url == nil || commit == nil || (digest == nil) != (commits == nil) {
+		return delivery.Source{}, errors.New("a deployment source is a repository and commit, with its source set when it has one")
+	}
+	if digest == nil {
+		return delivery.Source{RepositoryURL: *url, Commit: *commit}, nil
+	}
+	var stored []sourceCommitJSON
+	dec := json.NewDecoder(bytes.NewReader(commits))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&stored); err != nil {
+		return delivery.Source{}, err
+	}
+	list := make([]delivery.SourceCommit, len(stored))
+	for i, c := range stored {
+		list[i] = delivery.SourceCommit{RepositoryID: c.RepositoryID, Commit: c.Commit}
+	}
+	set, err := delivery.NewSourceSet(*digest, list)
+	if err != nil {
+		return delivery.Source{}, err
+	}
+	return delivery.Source{RepositoryURL: *url, Commit: *commit, SourceSet: set}, nil
+}
 
 func scanDeployment(row pgx.Row) (delivery.Deployment, error) {
 	var rec delivery.DeploymentRecord
 	var tenant, project, id, env, digest, imageArtifact, imageDigest, prodAttempt, prodRun, run, attempt, fp, status, cleanup string
-	var objects []byte
+	var objects, setCommits []byte
+	var srcURL, srcCommit, setDigest *string
 	var version int64
-	err := row.Scan(&tenant, &project, &id, &env, &digest, &rec.Namespace, &rec.Source.RepositoryURL, &rec.Source.Commit,
+	err := row.Scan(&tenant, &project, &id, &env, &digest, &rec.Namespace, &srcURL, &srcCommit,
 		&imageArtifact, &imageDigest, &prodAttempt, &prodRun, &rec.Producer.Step, &rec.Producer.ToolImage, &run, &rec.Step, &rec.ActionKey, &attempt,
-		&fp, &status, &rec.Reason, &objects, &rec.ExpiresAt, &rec.CleanupRequestedAt, &cleanup, &rec.CleanupReason, &rec.DeletedAt, &version, &rec.CreatedAt, &rec.UpdatedAt)
+		&fp, &status, &rec.Reason, &objects, &rec.ExpiresAt, &rec.CleanupRequestedAt, &cleanup, &rec.CleanupReason, &rec.DeletedAt, &version, &rec.CreatedAt, &rec.UpdatedAt, &setDigest, &setCommits)
 	if err != nil {
 		return delivery.Deployment{}, err
+	}
+	if rec.Source, err = scanSource(srcURL, srcCommit, setDigest, setCommits); err != nil {
+		return delivery.Deployment{}, delivery.Fail(delivery.ErrUnavailable, err, "a stored deployment source is invalid")
 	}
 	rec.Scope = domain.Scope{TenantID: domain.TenantID(tenant), ProjectID: domain.ProjectID(project)}
 	rec.ID, rec.Environment, rec.ConfigDigest = delivery.DeploymentID(id), domain.EnvironmentID(env), runtimev1.Digest(digest)
@@ -40,6 +106,14 @@ func scanDeployment(row pgx.Row) (delivery.Deployment, error) {
 		return delivery.Deployment{}, err
 	}
 	return delivery.RestoreDeployment(rec)
+}
+
+// nullableJSON passes a NULL jsonb for no content.
+func nullableJSON(b []byte) any {
+	if b == nil {
+		return nil
+	}
+	return string(b)
 }
 
 func objectsJSON(objs []delivery.ObjectRef) (string, error) {
@@ -96,13 +170,28 @@ func (s *Store) registerTx(ctx context.Context, tx pgx.Tx, cmd delivery.Register
 	if err != nil {
 		return delivery.RegisterResult{}, err
 	}
-	tag, err := tx.Exec(ctx, `INSERT INTO deployments (`+deploymentColumns+`)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23, NULL, '', '', NULL, $24, $25, $26)
-ON CONFLICT DO NOTHING`,
+	setDigest, setCommits, err := encodeSourceSet(rec.Source.SourceSet)
+	if err != nil {
+		return delivery.RegisterResult{}, err
+	}
+	srcURL, srcCommit := rec.Source.RepositoryURL, rec.Source.Commit
+	cols, vals := deploymentColumnsBase, `$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23, NULL, '', '', NULL, $24, $25, $26`
+	args := []any{
 		string(rec.Scope.TenantID), string(rec.Scope.ProjectID), string(rec.ID), string(rec.Environment), string(rec.ConfigDigest), rec.Namespace,
-		rec.Source.RepositoryURL, rec.Source.Commit, string(rec.Image.ArtifactID), string(rec.Image.Digest), string(rec.Producer.Attempt),
+		srcURL, srcCommit, string(rec.Image.ArtifactID), string(rec.Image.Digest), string(rec.Producer.Attempt),
 		string(rec.Producer.Run), rec.Producer.Step, rec.Producer.ToolImage, string(rec.Run), rec.Step, rec.ActionKey, string(rec.Attempt),
-		string(rec.Fingerprint), string(rec.Status), rec.Reason, objs, rec.ExpiresAt, int64(rec.Version), rec.CreatedAt, rec.UpdatedAt)
+		string(rec.Fingerprint), string(rec.Status), rec.Reason, objs, rec.ExpiresAt, int64(rec.Version), rec.CreatedAt, rec.UpdatedAt,
+	}
+	switch {
+	case s.sets:
+		cols, vals = cols+`, source_set_digest, source_commits`, vals+`, $27, $28::jsonb`
+		args = append(args, setDigest, nullableJSON(setCommits))
+	case setDigest != nil:
+		return delivery.RegisterResult{}, delivery.Fail(delivery.ErrUnavailable, nil, "source set provenance needs the source provenance migration")
+	}
+	tag, err := tx.Exec(ctx, `INSERT INTO deployments (`+cols+`)
+VALUES (`+vals+`)
+ON CONFLICT DO NOTHING`, args...)
 	if err != nil {
 		return delivery.RegisterResult{}, err
 	}
@@ -125,7 +214,7 @@ ON CONFLICT DO NOTHING`,
 		}
 		return delivery.RegisterResult{Deployment: cmd.Deployment, Created: true}, nil
 	}
-	existing, err := scanDeployment(tx.QueryRow(ctx, `SELECT `+deploymentColumns+` FROM deployments
+	existing, err := scanDeployment(tx.QueryRow(ctx, `SELECT `+s.columns()+` FROM deployments
 WHERE tenant_id = $1 AND project_id = $2 AND action_key = $3 FOR SHARE`, string(rec.Scope.TenantID), string(rec.Scope.ProjectID), rec.ActionKey))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return delivery.RegisterResult{}, delivery.Fail(delivery.ErrUnavailable, err, "the deployment could not be read back")
@@ -147,7 +236,7 @@ WHERE tenant_id = $1 AND project_id = $2 AND action_key = $3 FOR SHARE`, string(
 func (s *Store) GetDeployment(ctx context.Context, scope domain.Scope, id delivery.DeploymentID) (d delivery.Deployment, err error) {
 	err = s.read(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		var e error
-		d, e = scanDeployment(tx.QueryRow(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE tenant_id = $1 AND project_id = $2 AND id = $3`,
+		d, e = scanDeployment(tx.QueryRow(ctx, `SELECT `+s.columns()+` FROM deployments WHERE tenant_id = $1 AND project_id = $2 AND id = $3`,
 			string(scope.TenantID), string(scope.ProjectID), string(id)))
 		if errors.Is(e, pgx.ErrNoRows) {
 			return delivery.Fail(delivery.ErrNotFound, e, "not found")
@@ -161,7 +250,7 @@ func (s *Store) GetDeployment(ctx context.Context, scope domain.Scope, id delive
 func (s *Store) FindByAction(ctx context.Context, scope domain.Scope, actionKey string) (d delivery.Deployment, err error) {
 	err = s.read(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		var e error
-		d, e = scanDeployment(tx.QueryRow(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE tenant_id = $1 AND project_id = $2 AND action_key = $3`,
+		d, e = scanDeployment(tx.QueryRow(ctx, `SELECT `+s.columns()+` FROM deployments WHERE tenant_id = $1 AND project_id = $2 AND action_key = $3`,
 			string(scope.TenantID), string(scope.ProjectID), actionKey))
 		if errors.Is(e, pgx.ErrNoRows) {
 			return delivery.Fail(delivery.ErrNotFound, e, "not found")
@@ -174,7 +263,7 @@ func (s *Store) FindByAction(ctx context.Context, scope domain.Scope, actionKey 
 // ListDeployments implements delivery.Store.
 func (s *Store) ListDeployments(ctx context.Context, scope domain.Scope, f delivery.DeploymentFilter, afterID delivery.DeploymentID, limit int) (out []delivery.Deployment, err error) {
 	err = s.read(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `SELECT `+deploymentColumns+` FROM deployments
+		rows, e := tx.Query(ctx, `SELECT `+s.columns()+` FROM deployments
 WHERE tenant_id = $1 AND project_id = $2 AND id > $3 AND ($4 = '' OR environment_id = $4) AND ($5 = '' OR status = $5)
 ORDER BY id LIMIT $6`, string(scope.TenantID), string(scope.ProjectID), string(afterID), string(f.Environment), string(f.Status), limit)
 		if e != nil {
@@ -196,7 +285,7 @@ ORDER BY id LIMIT $6`, string(scope.TenantID), string(scope.ProjectID), string(a
 // Expired implements delivery.Store.
 func (s *Store) Expired(ctx context.Context, scope domain.Scope, now time.Time, limit int) (out []delivery.Deployment, err error) {
 	err = s.read(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `SELECT `+deploymentColumns+` FROM deployments
+		rows, e := tx.Query(ctx, `SELECT `+s.columns()+` FROM deployments
 WHERE tenant_id = $1 AND project_id = $2 AND expires_at IS NOT NULL AND expires_at <= $3 AND deleted_at IS NULL
 ORDER BY expires_at, id LIMIT $4`, string(scope.TenantID), string(scope.ProjectID), now.UTC(), limit)
 		if e != nil {
@@ -228,7 +317,7 @@ func (s *Store) Update(ctx context.Context, scope domain.Scope, id delivery.Depl
 		if e := s.guardRuntime(ctx, tx, scope, m); e != nil {
 			return e
 		}
-		d, e := scanDeployment(tx.QueryRow(ctx, `SELECT `+deploymentColumns+` FROM deployments WHERE tenant_id = $1 AND project_id = $2 AND id = $3 FOR UPDATE`,
+		d, e := scanDeployment(tx.QueryRow(ctx, `SELECT `+s.columns()+` FROM deployments WHERE tenant_id = $1 AND project_id = $2 AND id = $3 FOR UPDATE`,
 			string(scope.TenantID), string(scope.ProjectID), string(id)))
 		if errors.Is(e, pgx.ErrNoRows) {
 			return delivery.Fail(delivery.ErrNotFound, e, "not found")

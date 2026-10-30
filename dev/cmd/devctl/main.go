@@ -7,6 +7,13 @@
 //	make dev-preflight DEV_SCOPE=t026
 //	make dev-down DEV_SCOPE=t026
 //	make tools
+//
+// A services scope may host Git with the kernel's own workers instead of the
+// compatibility fixture. It is selected explicitly, once per scope, and each
+// tenant's worker is a container started on its own:
+//
+//	make dev-up DEV_SCOPE=t026 DEV_STACK=services DEV_GIT=native
+//	go run ./dev/cmd/devctl git-worker --scope t026 --tenant t_acme [--control-url http://host.containers.internal:8080]
 package main
 
 import (
@@ -25,20 +32,28 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: devctl <up|down|preflight|integration|smoke|runtime|diagnostics|teardown-check|tools> [flags]")
+		return fmt.Errorf("usage: devctl <up|down|preflight|integration|smoke|runtime|diagnostics|teardown-check|git-worker|tools> [flags]")
 	}
 	command := args[0]
 	if command == "tools" {
 		return tools(args[1:])
 	}
-	scope, provider, stack, rest, err := parseScopeFlags(args[1:])
+	options, err := parseScopeFlags(args[1:])
 	if err != nil {
 		return err
 	}
-	if len(rest) > 0 {
-		return fmt.Errorf("unexpected arguments: %v", rest)
+	scope, provider := options.scope, options.provider
+	if len(options.rest) > 0 {
+		return fmt.Errorf("unexpected arguments: %v", options.rest)
 	}
-	requested, err := devenv.RequestedStack(stack, os.Environ())
+	if command != "git-worker" && (options.tenant != "" || options.controlURL != "") {
+		return fmt.Errorf("--tenant and --control-url belong to the git-worker command")
+	}
+	requested, err := devenv.RequestedStack(options.stack, os.Environ())
+	if err != nil {
+		return err
+	}
+	requestedGit, err := devenv.RequestedGitHosting(options.git, os.Environ())
 	if err != nil {
 		return err
 	}
@@ -51,7 +66,8 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	err = execute(environment, command)
+	environment.RequestedGit = requestedGit
+	err = execute(environment, command, options)
 	if err != nil && command != "diagnostics" && command != "preflight" {
 		if diagnosticErr := environment.Diagnostics(); diagnosticErr != nil {
 			fmt.Fprintln(os.Stderr, "Diagnostic collection failed: "+diagnosticErr.Error())
@@ -60,8 +76,13 @@ func run(args []string) error {
 	return err
 }
 
-func execute(e *devenv.Environment, command string) error {
+func execute(e *devenv.Environment, command string, options flags) error {
 	switch command {
+	case "git-worker":
+		if options.tenant == "" {
+			return fmt.Errorf("git-worker needs --tenant <tenant-id>")
+		}
+		return e.GitWorker(options.tenant, options.controlURL)
 	case "up":
 		return e.Up()
 	case "down":
@@ -83,9 +104,16 @@ func execute(e *devenv.Environment, command string) error {
 	}
 }
 
-func parseScopeFlags(args []string) (scope, provider, stack string, rest []string, err error) {
-	scope = envOr("DEV_SCOPE", "t-001-local")
-	provider = envOr("DEV_PROVIDER", "podman")
+// flags are the command line of every devctl command.
+type flags struct {
+	scope, provider, stack, git string
+	tenant, controlURL          string
+	rest                        []string
+}
+
+func parseScopeFlags(args []string) (options flags, err error) {
+	options.scope = envOr("DEV_SCOPE", "t-001-local")
+	options.provider = envOr("DEV_PROVIDER", "podman")
 	for index := 0; index < len(args); index++ {
 		value := args[index]
 		next := func() (string, error) {
@@ -97,23 +125,35 @@ func parseScopeFlags(args []string) (scope, provider, stack string, rest []strin
 		}
 		switch value {
 		case "--scope":
-			if scope, err = next(); err != nil {
+			if options.scope, err = next(); err != nil {
 				return
 			}
 		case "--provider":
-			if provider, err = next(); err != nil {
+			if options.provider, err = next(); err != nil {
 				return
 			}
 		case "--stack":
-			if stack, err = next(); err != nil {
+			if options.stack, err = next(); err != nil {
+				return
+			}
+		case "--git":
+			if options.git, err = next(); err != nil {
+				return
+			}
+		case "--tenant":
+			if options.tenant, err = next(); err != nil {
+				return
+			}
+		case "--control-url":
+			if options.controlURL, err = next(); err != nil {
 				return
 			}
 		default:
-			rest = append(rest, value)
+			options.rest = append(options.rest, value)
 		}
 	}
-	if err = devenv.ValidateScope(scope); err == nil {
-		err = devenv.ValidateProvider(provider)
+	if err = devenv.ValidateScope(options.scope); err == nil {
+		err = devenv.ValidateProvider(options.provider)
 	}
 	return
 }

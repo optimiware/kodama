@@ -21,6 +21,7 @@ import (
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -89,6 +90,10 @@ type Client struct {
 	// wire2 selects the run_shared wire: routes under /runtime/v2/attempts and the
 	// v2 error envelope (which adds codes the v1 envelope rejects).
 	wire2 bool
+	// wire3 additionally marks the v3 wire (a source set; wire2 stays true because it
+	// is not the frozen v1 wire): routes under /runtime/v3 and the v3 error
+	// envelope, which also accepts the Git contract's repository codes.
+	wire3 bool
 	// disposed is set by dispose: the client holds no bearer token and sends no
 	// request any more.
 	disposed bool
@@ -350,7 +355,11 @@ func doOnce[Resp any, P interface {
 		}
 	}
 	apiErr := &APIError{Op: op, Status: resp.StatusCode}
-	if c.wire2 {
+	if c.wire3 {
+		if e, derr := runtimev3.DecodeResponse[runtimev3.ErrorResponse](data); derr == nil {
+			apiErr.Code, apiErr.Message, apiErr.RequestID, apiErr.Details = e.Error.Code, e.Error.Message, e.Error.RequestID, e.Error.Details
+		}
+	} else if c.wire2 {
 		if e, derr := runtimev2.DecodeResponse[runtimev2.ErrorResponse](data); derr == nil {
 			apiErr.Code, apiErr.Message, apiErr.RequestID, apiErr.Details = e.Error.Code, e.Error.Message, e.Error.RequestID, e.Error.Details
 		}
@@ -527,7 +536,7 @@ func (c *Client) uploadOnce(ctx context.Context, target runtimev1.Upload, body i
 // stores the attempt token. The response carries the ContextV2; a v1 context is a
 // contract violation here (it fails validation) and starts nothing.
 func (c *Client) AdmitV2(ctx context.Context, req runtimev1.AdmitRequest) (runtimev2.AdmitResponseV2, error) {
-	if !c.wire2 {
+	if !c.wire2 || c.wire3 {
 		return runtimev2.AdmitResponseV2{}, &ProtocolError{Op: "admit", Err: errors.New("the client speaks the v1 wire")}
 	}
 	if err := req.Validate(); err != nil {
@@ -543,7 +552,7 @@ func (c *Client) AdmitV2(ctx context.Context, req runtimev1.AdmitRequest) (runti
 
 // ContextV2 fetches the immutable ContextV2.
 func (c *Client) ContextV2(ctx context.Context) (runtimev2.ContextV2, error) {
-	if !c.wire2 {
+	if !c.wire2 || c.wire3 {
 		return runtimev2.ContextV2{}, &ProtocolError{Op: "getContext", Err: errors.New("the client speaks the v1 wire")}
 	}
 	r, err := call[runtimev2.ContextV2](ctx, c, "getContext", http.MethodGet, "/context", nil, true, http.StatusOK)
@@ -553,7 +562,7 @@ func (c *Client) ContextV2(ctx context.Context) (runtimev2.ContextV2, error) {
 // Begin records the command-begin fence. The command may start only after the
 // acknowledgment returned here.
 func (c *Client) Begin(ctx context.Context, req runtimev2.BeginRequest) (runtimev2.BeginResponse, error) {
-	if !c.wire2 {
+	if !c.wire2 || c.wire3 {
 		return runtimev2.BeginResponse{}, &ProtocolError{Op: "begin", Err: errors.New("the client speaks the v1 wire")}
 	}
 	if err := req.Validate(); err != nil {

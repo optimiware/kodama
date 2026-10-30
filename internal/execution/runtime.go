@@ -30,7 +30,11 @@ type Runtime interface {
 	// created. It returns ErrConflict for another spec or a foreign object at
 	// the workload name, and never launches a workload that was stopped first.
 	// Any other error leaves the outcome unknown: Start is repeated with the
-	// same spec.
+	// same spec. Adopting an existing workload must not require a new
+	// credential: spec.Git is set only when Observe affirmed that no workload
+	// exists (a redrive finding one passes none, because issuing again would
+	// replace the credential the workload already holds), and an adopting Start
+	// leaves what the workload holds untouched.
 	Start(ctx context.Context, spec AttemptSpec) (Workload, error)
 	// Observe reports verified evidence about a running workload: dispatched,
 	// started or failed. ErrNotFound means the workload is affirmatively
@@ -79,6 +83,12 @@ type AttemptSpec struct {
 	// workspace's committed identity. It is not part of the fingerprint: it is
 	// derived from data the fingerprint and the run's pins already bind.
 	Shared *SharedLaunch
+	// Git is set exactly for an attempt of a source-set run that holds a static
+	// Git grant (runtime context v3), immediately before each Start: the issued
+	// grant and its credential, to be delivered to the context's credential file
+	// and nowhere else. It is not part of the fingerprint (the context digest
+	// binds the grant's reference and repositories) and is never persisted.
+	Git *AttemptGit
 }
 
 // SharedLaunch is what a runtime needs to launch a run_shared attempt: the

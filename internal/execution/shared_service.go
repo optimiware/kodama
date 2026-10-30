@@ -86,7 +86,7 @@ func sharedEnvOf(env Env) (SharedEnv, error) {
 // unavailable or closed, or a ceiling is exceeded. A source-free run (an
 // internal deployment cleanup run) has no repository, no checkout credential and
 // no preparation: it needs no source information.
-func (s *Service) planShared(ctx context.Context, scope domain.Scope, runID domain.RunID, doc pipeline.Document, sourceBacked bool, src SourceInfo, snap Snapshot) (*RunShared, *RuntimeBinding, error) {
+func (s *Service) planShared(ctx context.Context, scope domain.Scope, runID domain.RunID, doc pipeline.Document, sourceBacked bool, src SourceInfo, snap Snapshot, sources *RunSources) (*RunShared, *RuntimeBinding, error) {
 	if s.d.Shared == nil || s.d.Runtime == nil {
 		return nil, nil, Refusedf("the pipeline definition version is not supported for execution")
 	}
@@ -116,7 +116,7 @@ func (s *Service) planShared(ctx context.Context, scope domain.Scope, runID doma
 	}
 	shared, err := planSharedPins(sharedInput{
 		Scope: scope, RunID: runID, Doc: doc, Policy: pol, PolicyPin: pin, Backend: rt.Backend, Requires: required,
-		ResourceReq: needs, SourceBacked: sourceBacked, RepositoryURL: src.RepositoryURL, Snapshot: snap,
+		ResourceReq: needs, SourceBacked: sourceBacked, RepositoryURL: src.RepositoryURL, Snapshot: snap, Sources: sources,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -139,7 +139,24 @@ func (s *Service) checkVersion(version string, allowShared bool) error {
 	return checkDefinitionVersion(version)
 }
 
-const sharedAPIVersion = "kodama/v1alpha2"
+const (
+	sharedAPIVersion    = "kodama/v1alpha2"
+	sourceSetAPIVersion = "kodama/v1alpha3"
+)
+
+// checkSourceSetVersion is the execution guard of the origin admission path: a
+// kodama/v1alpha3 document only, and only when the installation composed the
+// run_shared ports and the source set seam explicitly. The earlier admission
+// paths (Prepare, PrepareCleanup) never see this version: checkVersion refuses
+// it exactly as before.
+func (s *Service) checkSourceSetVersion(version string) error {
+	if s.d.Shared != nil && s.d.SourceSets != nil && version == sourceSetAPIVersion {
+		return nil
+	}
+	// Any other version, kodama/v1alpha1 and kodama/v1alpha2 included, is
+	// refused: an origin run executes under runtime context v3 only.
+	return Refusedf("the pipeline definition version is not supported for execution")
+}
 
 // ownsModel is the pre-mutation guard of every entry that could change a
 // persisted run_shared run (reconciliation, results, begin, receipts, attempt
@@ -224,7 +241,8 @@ func (s *Service) startSharedMutation(lim Limit) Mutation {
 	return func(ctx context.Context, env Env, agg *Aggregate) (Effects, error) {
 		run := agg.Run
 		now := env.Now()
-		if run.Purpose == PurposeWork {
+		switch {
+		case run.WorkItemID != "":
 			if _, err := env.Work(); err != nil {
 				if errors.Is(err, ErrWorkCancelled) {
 					agg.RequestCancel(ReasonWorkCancelled, now)
@@ -233,10 +251,15 @@ func (s *Service) startSharedMutation(lim Limit) Mutation {
 				}
 				return Effects{}, err
 			}
+			fallthrough
+		case run.Purpose == PurposeWork:
+			// A work run started for a work item is rechecked against it; one that
+			// was not (a push, manual or provisioning origin) has no work item to
+			// lock or cancel and only its requester's current authority to recheck.
 			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
 				return Effects{}, normalizeAuth(err)
 			}
-		} else if run.DeploymentID == "" {
+		case run.DeploymentID == "":
 			return Effects{}, ErrDenied
 		}
 		if run.Status != RunQueued || len(agg.Resources) != 0 || run.Draining() {
@@ -343,9 +366,16 @@ func (s *Service) claimShared(ctx context.Context, ref RunRef, view *Aggregate) 
 	}
 	var src SourceInfo
 	if access := view.Run.Shared.Access[step.ID]; access != AccessNone {
-		src, err = s.d.Sources.Describe(ctx, ref.Scope, view.Run.WorkspaceID, access == AccessWrite)
+		if view.Run.Sources != nil {
+			src, err = s.describeSourceSet(ctx, view.Run, access)
+		} else {
+			src, err = s.d.Sources.Describe(ctx, ref.Scope, view.Run.WorkspaceID, access == AccessWrite)
+			if err != nil {
+				err = mapLookup(err, "source")
+			}
+		}
 		if err != nil {
-			return nil, mapLookup(err, "source")
+			return nil, err
 		}
 	}
 	opts := UpdateOptions{Quota: true, LockWork: view.Run.Purpose == PurposeWork, SkipLocked: true}
@@ -376,7 +406,8 @@ func (s *Service) claimSharedMutation(stepID string, src SourceInfo, lim Limit) 
 			after, err := advance(env, agg)
 			return Effects{After: after, Result: claimOutcome{}}, err
 		}
-		if run.Purpose == PurposeWork {
+		switch {
+		case run.WorkItemID != "":
 			if _, err := env.Work(); err != nil {
 				if errors.Is(err, ErrWorkCancelled) {
 					agg.RequestCancel(ReasonWorkCancelled, now)
@@ -384,10 +415,12 @@ func (s *Service) claimSharedMutation(stepID string, src SourceInfo, lim Limit) 
 				}
 				return Effects{}, err
 			}
+			fallthrough
+		case run.Purpose == PurposeWork:
 			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
 				return Effects{}, normalizeAuth(err)
 			}
-		} else if run.DeploymentID == "" {
+		case run.DeploymentID == "":
 			return Effects{}, ErrDenied
 		}
 		if err := run.Shared.Verify(); err != nil {
@@ -416,27 +449,44 @@ func (s *Service) claimSharedMutation(stepID string, src SourceInfo, lim Limit) 
 		if err != nil {
 			return s.failStep(env, agg, step, ReasonInvalidRef)
 		}
-		c, err := BuildContextV2(agg, step, attemptID, rs, src, lim)
-		if err != nil {
-			if errors.Is(err, ErrAdmissionRefused) {
-				return s.failStep(env, agg, step, ReasonStepFailed)
-			}
-			return Effects{}, err
-		}
-		plan, err := planSharedAttempt(agg, c)
-		if err != nil {
-			return Effects{}, err
-		}
+		var plan WorkloadPlan
+		var limits runtimev1.Limits
 		access := run.Shared.Access[step.ID]
 		input, tip := "", ""
 		workspaceID := ""
-		if access != AccessNone {
-			input, workspaceID = agg.HeadCommit(), run.WorkspaceID
+		if run.Sources != nil {
+			c3, err := BuildContextV3(agg, step, attemptID, rs, src, lim, s.d.AgentPins)
+			if err != nil {
+				if errors.Is(err, ErrAdmissionRefused) {
+					return s.failStep(env, agg, step, ReasonStepFailed)
+				}
+				return Effects{}, err
+			}
+			if plan, err = planSharedAttemptV3(agg, c3); err != nil {
+				return Effects{}, err
+			}
+			limits = c3.Limits
+			input, tip, workspaceID = sourceAttemptShape(agg, access, src)
+		} else {
+			c, err := BuildContextV2(agg, step, attemptID, rs, src, lim, s.d.AgentPins)
+			if err != nil {
+				if errors.Is(err, ErrAdmissionRefused) {
+					return s.failStep(env, agg, step, ReasonStepFailed)
+				}
+				return Effects{}, err
+			}
+			if plan, err = planSharedAttempt(agg, c); err != nil {
+				return Effects{}, err
+			}
+			limits = c.Limits
+			if access != AccessNone {
+				input, workspaceID = agg.HeadCommit(), run.WorkspaceID
+			}
+			if access == AccessWrite {
+				tip = src.AcceptedTip
+			}
 		}
-		if access == AccessWrite {
-			tip = src.AcceptedTip
-		}
-		timeout := time.Duration(c.Limits.TimeoutSeconds) * time.Second
+		timeout := time.Duration(limits.TimeoutSeconds) * time.Second
 		at, err := agg.Claim(ClaimParams{
 			StepID: step.ID, AttemptID: attemptID, Plan: plan, Access: access, Workspace: workspaceID, Input: input, Tip: tip,
 			Timeout: timeout, Startup: lim.StartupBudget, Lease: s.o.ClaimLease,
@@ -449,7 +499,7 @@ func (s *Service) claimSharedMutation(stepID string, src SourceInfo, lim Limit) 
 		}
 		var after []func(context.Context, Env) error
 		if at.Writer() {
-			after = append(after, func(ctx context.Context, env Env) error { return env.ReserveWriter(ctx, at) })
+			after = append(after, writerReservation(run, at, src))
 		}
 		spec := at.spec(run.Purpose, false)
 		return Effects{After: after, Result: claimOutcome{Intent: &spec}}, nil
@@ -606,6 +656,9 @@ func (s *Service) RecordPreparationReceipt(ctx context.Context, scope domain.Sco
 		if err := s.ownsModel(agg.Run); err != nil {
 			return Effects{}, err
 		}
+		if agg.Run.SourceRun() {
+			return Effects{}, ErrContextVersionMismatch
+		}
 		fence, err := fenceOf(env)
 		if err != nil {
 			return Effects{}, err
@@ -666,6 +719,9 @@ func (s *Service) RecordBegin(ctx context.Context, scope domain.Scope, attempt d
 		if at == nil {
 			return Effects{}, ErrNotFound
 		}
+		if isContextV3(at.Context) {
+			return Effects{}, ErrContextVersionMismatch
+		}
 		pinned, err := runtimev2.DecodeRequest[runtimev2.ContextV2](at.Context)
 		if err != nil {
 			return Effects{}, Unavailablef(err, "the pinned context is unreadable")
@@ -700,6 +756,9 @@ func (s *Service) RecordBegin(ctx context.Context, scope domain.Scope, attempt d
 // projection result checking needs: outputs, the effective access and the
 // ownership fields, for either context version.
 func decodeAttemptContext(at *Attempt) (runtimev1.Context, error) {
+	if isContextV3(at.Context) {
+		return runtimev1.Context{}, ErrContextVersionMismatch
+	}
 	if isContextV2(at.Context) {
 		c, err := runtimev2.DecodeRequest[runtimev2.ContextV2](at.Context)
 		if err != nil {

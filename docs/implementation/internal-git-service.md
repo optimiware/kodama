@@ -1,73 +1,95 @@
 # Internal Git service: implementation plan
 
-**Status:** scheduled by the owner on 2026-10-30 (O-31). Normative design: [ADR 0011](../adr/0011-internal-tenant-git-service.md), [Git repositories](../specs/git-repositories.md), [Git service contract](../contracts/git-service.md). Nothing here is delivered until its task merges; nothing is qualified until T-133 passes.
+**Status:** revised by the owner on 2026-10-30 (O-36) after the ADR 0013 simplification. Normative design: [ADR 0011](../adr/0011-internal-tenant-git-service.md) as simplified by [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md), [Git repositories](../specs/git-repositories.md), [Git service contract](../contracts/git-service.md). Nothing here is delivered until its task merges into `integration/native-git`; publication to `main` is a separate owner decision.
 
 ## Goal
 
 ```text
-Create project → provision repositories → submit tasks
-    → agents implement on branches → review/test/integrate
-    → default-branch update → build/deploy
-
-Developer git push → the same CI/CD machinery
+Create project → create repository → engineer seeds by push
+    → agents and engineers push branches → review/integrate
+    → default-branch update → build/deploy pipeline
 ```
 
-Tenant isolation holds from the first usable checkpoint.
+This slice targets the ADR 0013 kernel (`kodama server --assembly kernel`) over the 15-table schema. Hosting installation on Kubernetes and full acceptance follow on `main` after the merge.
+
+## What changed from the earlier plan
+
+The earlier graph (T-126–T-164, migrations `007`–`016`) assumed the pre-ADR 0013 server: a push-record journal, Git grants as a separate subsystem, attempt/workspace associations, gate-bound integration and runtime-v3 source admission. ADR 0013 removed the tables and subsystems those tasks persist into. This plan therefore:
+
+- **Keeps** the native worker (`internal/gitservice`), its Git transport, hooks, process fencing, generation lock, request bounds and local receive journal.
+- **Keeps** the repository lifecycle concepts (provisioning, seed, archive, policy) but persists them in the existing `repositories` row.
+- **Keeps** the tenant hosting renderer (`internal/kube/gitworker`) as implementation, without installation.
+- **Replaces** the push-record journal with the worker's local journal plus one acknowledged sequence per repository.
+- **Replaces** the grant subsystem with short-lived credentials derived from current membership and run state.
+- **Replaces** gate-bound integration with the repository's configured integration pipeline plus the task's approved state.
+- **Defers** backups, restore, offboarding, sharding, managed-agent integration and MCP wiring.
+
+Nothing from the earlier work is deleted; the dormant packages stay in the tree and their retirement is part of the wider simplification cleanup.
 
 ## Phases and tasks
 
-```text
-T-125 docs + ADR                         → T-126 contracts
-T-126                                    → T-127 lifecycle, T-128 worker, T-129 hosting
-T-127, T-128                             → T-130 push journal + triggers
-T-113 (run_shared authority), T-130      → T-131 task/agent/source integration
-T-116 (run_shared assembly), T-127…T-131 → T-132 API/CLI/MCP assembly
-T-117 (run_shared acceptance), T-132     → T-133 Kubernetes acceptance + cutover
-```
+| Phase | Tasks | Output |
+| --- | --- | --- |
+| 1. Contracts | [T-166](../tasks/T-166-kernel-git-contracts.md) | Specification, contract, event payload, this plan and the revised backlog |
+| 2. Hosting | [T-167](../tasks/T-167-kernel-git-hosting.md) | Repository store and routes, `/git/` forwarding, worker command, credentials, ref policy, receive outcome and event |
+| 3. Dispatch | [T-168](../tasks/T-168-push-run-dispatch.md) | Outbox publisher, `.kodama` indexing, trigger matching, run admission pinned to the pushed commit |
+| 4. Sources | [T-169](../tasks/T-169-run-git-sources.md) | Pinned checkout, context repositories, run Git credentials in the workspace |
+| 5. Runnability | [T-170](../tasks/T-170-kernel-git-closeout.md) | Development and test hosting, bootstrap example, API generation, status |
 
-| Task | Phase | Owns (summary) | Evidence |
-| --- | --- | --- | --- |
-| [T-125](../tasks/T-125-git-service-architecture.md) | Documentation and ADR | Specs, contracts, ADRs, glossary, book, examples, task graph | `make docs-check`, review |
-| [T-126](../tasks/T-126-git-service-contracts.md) | Contract checkpoint | `contracts/git/`, `contracts/events/` additions | Schema/fixture tests |
-| [T-127](../tasks/T-127-repository-lifecycle.md) | Repository lifecycle and persistence | `internal/repository/`, one appended migration | Unit + real PostgreSQL/RLS |
-| [T-128](../tasks/T-128-git-worker.md) | Native Git worker | `internal/gitservice/` | Unit + real Git |
-| [T-129](../tasks/T-129-tenant-git-hosting.md) | Tenant hosting on Kubernetes | `internal/kube/gitworker/` | Unit + kind |
-| [T-130](../tasks/T-130-git-push-events.md) | Push journal, events, triggers | `internal/gitpush/`, `internal/integrations/gitwebhook/` | Unit + real PostgreSQL/Git |
-| [T-131](../tasks/T-131-git-source-integration.md) | Task, agent and source integration | Execution, workspace, runtime authority, entrypoint, results, gates | Unit + local checkpoint |
-| [T-132](../tasks/T-132-git-service-assembly.md) | API, CLI, MCP, chart assembly | `internal/app/`, CLI, API/client, chart, operations docs | `make api-check`, composition tests |
-| [T-133](../tasks/T-133-git-service-acceptance.md) | Kubernetes acceptance and cutover | Acceptance suites, status, traceability | Two-tenant stage acceptance |
+## One Git service in every environment
 
-T-127, T-128 and T-129 work on disjoint new packages and can proceed in parallel after T-126. T-131 and T-132 edit files that T-113 and T-116 own for the shared run workspace, so they are ordered after those tasks rather than racing them.
+There is one implementation, `internal/gitservice` (`kodama git serve`); environments differ only in how it is hosted ([ADR 0009](../adr/0009-environments.md)):
+
+| Environment | Hosting | Notes |
+| --- | --- | --- |
+| `development` | In the server process, one instance per tenant with a temporary data root | Ephemeral; needs the `git` binary |
+| `test` | One `kodama git serve` container per tenant on the Podman services network | Real HTTPS and forwarding assertions |
+| `production` | One Deployment and volume per tenant on Kubernetes (T-129, retained) | Installation is deferred with the Kubernetes executor |
+
+Steps reach Git only through the server's `/git/` endpoint with their run credential, whichever backend runs them. `production` refuses the in-process and temporary-directory adapters.
+
+## Persistence
+
+The baseline stays `internal/storage/migrations/001_schema.sql` and `002_grants.sql`. T-167 appends **one** contribution, `003_git_hosting.sql`, adding to `repositories`:
+
+- `policy jsonb NOT NULL DEFAULT '{}'` — `directPushToDefault`, `integrationPipeline`;
+- `empty boolean NOT NULL DEFAULT true` — the worker's report;
+- `journal_ack bigint NOT NULL DEFAULT 0` — the acknowledged receive-journal sequence.
+
+It also adds the runtime-role grants for the lifecycle columns and the `git_credentials` table holding only credential hashes and their claims. No push-record, grant, workspace-association, gate or attempt-Git table is created; those subsystems belong to the superseded design.
+
+## Migration numbering
+
+The baseline stays `001_schema.sql` and `002_grants.sql`. This slice appends exactly one contribution, `003_git_hosting.sql` (T-167), and nothing else. The earlier reservation of `007`–`016` for repositories, grants, pushes, workspace associations, run sources, triggers, provenance, attempt Git state, push operations and recovery belonged to the superseded design; those numbers are not reused, and the packages that own them keep their code without registering a contribution.
 
 ## Seams
 
-| Seam | Owner | Transaction / failure rule | Frozen by |
-| --- | --- | --- | --- |
-| S1 `repository.Store` and lifecycle use cases | T-127 | Repository row, audit and outbox commit together; Git initialization happens outside SQL and is confirmed by the worker | T-126 DTOs |
-| S2 `repository.Hosts` port (initialize, read refs, read ref journal and receive liveness, retained refs, maintain) | T-127 consumer, T-128/T-129 adapters | Every call idempotent on repository ID; unknown outcome retried, never assumed | T-126 |
-| S3 Forwarding assertion and worker identity | T-126 schema, T-128 verifier, T-132 issuer | Short-lived, audience per tenant worker; the worker resolves paths itself | T-126 |
-| S4 Push authorization and journal (`pre-receive`, `reference-transaction`, `post-receive`) | T-130 (control plane), T-128 (hooks) | Authorize and create the record before refs change; commit intent with refs locked, aborting on refusal; confirm with audit and outbox; settle unconfirmed entries from the ref journal and receive liveness | T-126 |
-| S5 Git grants for humans and attempts | T-131 (attempt issuance), T-132 (human exchange) | Checked against current authority at every push; revoked with the attempt | T-126 |
-| S6 Source set in run admission and runtime context | T-131 | Pinned at admission; versioned context addition; old contexts unchanged | T-126 |
-| S7 Trigger admission from `git.refs_updated` | T-130 | Inbox deduplication by `(trigger, push, ref)`; exact pushed commit | Existing gitwebhook admission ledger |
+| Seam | Owner | Transaction / failure rule |
+| --- | --- | --- |
+| Repository store and lifecycle | T-167 | The row, audit and outbox commit together; Git initialization happens outside SQL and is confirmed by the worker |
+| Worker control-plane port | T-167 | Every call idempotent on repository ID; unknown outcomes retried, never assumed |
+| Forwarding assertion and worker identity | T-167 | Short-lived, audience per tenant worker; the worker resolves the on-disk path itself |
+| Push authorization (`pre-receive`) | T-167 | Authorize before refs change; any denial fails the whole receive |
+| Receive outcome and event | T-167 | The outcome commits the `git.refs_updated` row and `journal_ack` together; the event ID is deterministic per `(repository, receiveId)` |
+| Credentials | T-167 | Hashes only; current membership and run liveness are re-read at every use |
+| Trigger admission | T-168 | Inbox deduplication by `(pipeline, push event, ref)` through `runs.trigger_key`; the pushed commit is pinned, never a later tip |
+| Source pinning and checkout | T-169 | Pinned once in `runs.sources`; a run never follows a moved branch |
 
 ## Reuse
 
-- `dev/gitserver/main.go`: the smart-HTTP wrapper around `git http-backend`, its default-deny endpoint list and its handling of chunked pushes become the starting point of `internal/gitservice/`; fixture tokens are replaced by forwarding assertions and request bodies are streamed with a size limit instead of buffered.
-- `test/support/git/`: the HTTPS `git-http-backend` fixture stays the test double for external hosting.
-- `internal/integrations/gitwebhook/`: its delivery claim, admission lease, refusal ledger and exact-commit admission are reused for internal push events; the HMAC endpoint stays for external hosts.
-- `internal/workspace/`: CAS publication, retained refs and reconciliation stay for external repositories and admitted runs; T-131 adds the internal-hosting path beside them.
-- `internal/kube/`: client, preflight and ownership-verification patterns are reused by the new `gitworker` subpackage.
+- `internal/gitservice/`: the smart-HTTP wrapper, hooks, journal, gate, fencing and object operations, with a new control-plane adapter and a kernel-facing configuration.
+- `internal/kube/gitworker/`: the tenant renderer, retained for the deferred installation.
+- `internal/integrations/gitwebhook/`: the delivery-claim and deduplication ideas, reimplemented against `audit_events` and `runs.trigger_key` rather than its own tables.
+- `internal/repository/` and `internal/gitauth/`: reference implementations for lifecycle and credential shape; their persistence is not reused.
+- `dev/gitserver`: the fixture for external-repository compatibility tests only.
 
 ## Migration and cutover
 
-1. T-127 adds repository records and maps each project's current configured repository to a `hosting: external` record.
-2. T-132 enables internal hosting for newly created repositories.
-3. Import (GR-17, scope pending O-32) copies an external repository, verifies refs and commits, settles active writers and switches `hosting`.
-4. T-131's direct agent pushes apply only to internal repositories and to runs admitted after the switch.
-5. T-133 accepts the assembled product on two tenants and makes internal hosting the default for new repositories.
-6. The bundle/publisher path stays as long as any repository is `hosting: external`, because those repositories keep admitting publishing runs. Retiring it requires a separate owner decision removing external hosting (or disabling publishing runs on external repositories), followed by draining every remaining consumer.
+1. T-167 adds repository records and the `/git/` route for newly created repositories.
+2. T-170 enables internal hosting in development and test; the external fixture stays as an explicit compatibility profile.
+3. Existing codebases are bootstrapped by an engineer's push into a new, empty repository under a seed grant (O-32). There is no provider import or mirroring.
+4. The bundle/publisher path stays as long as any repository is `hosting: external`.
 
 ## Out of scope
 
-Provider webhooks and mirroring to external hosts (O-32), a web UI, a direct network path from execution namespaces to workers, sharding a tenant across workers, and untrusted-code isolation (T-055).
+Provider import, mirroring and webhooks (O-32), a web UI, sharding a tenant across workers, Kubernetes installation (T-156/T-157), backup/restore/offboarding (T-138), managed-agent and MCP Git tools (T-153/T-155), and untrusted-code isolation (T-055).

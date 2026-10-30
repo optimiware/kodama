@@ -24,6 +24,9 @@ type Service interface {
 	Sync(ctx contextT, actor workspace.Actor, scope domain.Scope, id workspace.ID, ifMatch domain.Version) (*workspace.Workspace, error)
 	Archive(ctx contextT, actor workspace.Actor, scope domain.Scope, id workspace.ID, ifMatch domain.Version) (*workspace.Workspace, error)
 	Restore(ctx contextT, actor workspace.Actor, scope domain.Scope, id workspace.ID, ifMatch domain.Version) (*workspace.Workspace, error)
+	// Repositories returns the repository associations of an internally hosted
+	// workspace (empty for an external one).
+	Repositories(ctx contextT, actor workspace.Actor, scope domain.Scope, id workspace.ID) ([]*workspace.RepositoryAssociation, error)
 }
 
 // Authorization actions registered with each route.
@@ -123,7 +126,7 @@ func (h *Handler) provision(w stdhttp.ResponseWriter, r *stdhttp.Request, c *htt
 	case created:
 		status = stdhttp.StatusCreated
 	}
-	writeWorkspace(w, r, status, ws)
+	h.write(w, r, c, status, ws)
 }
 
 func (h *Handler) get(w stdhttp.ResponseWriter, r *stdhttp.Request, c *httpapi.Call) {
@@ -137,7 +140,7 @@ func (h *Handler) get(w stdhttp.ResponseWriter, r *stdhttp.Request, c *httpapi.C
 		httpapi.WriteError(w, r, mapError(err, nil))
 		return
 	}
-	writeWorkspace(w, r, stdhttp.StatusOK, ws)
+	h.write(w, r, c, stdhttp.StatusOK, ws)
 }
 
 // mutate runs a use case that needs If-Match and no body.
@@ -160,7 +163,7 @@ func (h *Handler) mutate(w stdhttp.ResponseWriter, r *stdhttp.Request, c *httpap
 		httpapi.WriteError(w, r, mapError(err, ws))
 		return
 	}
-	writeWorkspace(w, r, stdhttp.StatusOK, ws)
+	h.write(w, r, c, stdhttp.StatusOK, ws)
 }
 
 func (h *Handler) archive(w stdhttp.ResponseWriter, r *stdhttp.Request, c *httpapi.Call) {
@@ -176,10 +179,30 @@ func (h *Handler) sync(w stdhttp.ResponseWriter, r *stdhttp.Request, c *httpapi.
 }
 
 // toResource renders the workspace as the contract's resource.
-func toResource(ws *workspace.Workspace) Workspace {
+func toResource(ws *workspace.Workspace, assocs []*workspace.RepositoryAssociation) Workspace {
+	hosting := External
+	if ws.Internal() {
+		hosting = Internal
+	}
 	out := Workspace{
-		Id: string(ws.ID), WorkItemId: string(ws.WorkItemID), RepositoryId: string(ws.RepositoryID), Branch: ws.WorkBranch,
+		Id: string(ws.ID), WorkItemId: string(ws.WorkItemID), Hosting: hosting, RepositoryId: string(ws.RepositoryID), Branch: ws.WorkBranch,
 		State: WorkspaceState(ws.State), Version: int64(ws.Version), CreatedAt: ws.CreatedAt.UTC(), UpdatedAt: ws.UpdatedAt.UTC(),
+		Repositories: make([]RepositoryAssociation, 0, len(assocs)),
+	}
+	for _, a := range assocs {
+		r := RepositoryAssociation{
+			RepositoryId: string(a.RepositoryID), TaskBranch: a.TaskBranch, BaseCommit: string(a.BaseCommit),
+			State: RepositoryAssociationState(a.State), CreatedAt: a.CreatedAt.UTC(), UpdatedAt: a.UpdatedAt.UTC(),
+		}
+		if a.AcceptedCommit != "" {
+			s := string(a.AcceptedCommit)
+			r.AcceptedCommit = &s
+		}
+		if a.LastError != "" {
+			s := a.LastError
+			r.LastError = &s
+		}
+		out.Repositories = append(out.Repositories, r)
 	}
 	if ws.AcceptedCommit != "" {
 		s := string(ws.AcceptedCommit)
@@ -203,10 +226,19 @@ func toResource(ws *workspace.Workspace) Workspace {
 	return out
 }
 
-func writeWorkspace(w stdhttp.ResponseWriter, r *stdhttp.Request, status int, ws *workspace.Workspace) {
+// write renders the workspace with its repository associations.
+func (h *Handler) write(w stdhttp.ResponseWriter, r *stdhttp.Request, c *httpapi.Call, status int, ws *workspace.Workspace) {
+	var assocs []*workspace.RepositoryAssociation
+	if ws.Internal() {
+		var err error
+		if assocs, err = h.svc.Repositories(requestContext(r, c), actorOf(c), ws.Scope, ws.ID); err != nil {
+			httpapi.WriteError(w, r, mapError(err, nil))
+			return
+		}
+	}
 	if err := httpapi.SetETag(w, ws.Version); err != nil {
 		httpapi.WriteError(w, r, httpapi.InternalServerError(err))
 		return
 	}
-	httpapi.WriteJSON(w, r, status, toResource(ws))
+	httpapi.WriteJSON(w, r, status, toResource(ws, assocs))
 }

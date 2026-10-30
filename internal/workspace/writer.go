@@ -27,6 +27,9 @@ type ReserveWriterInput struct {
 // reservation joins attempt creation, so both apply identical rules.
 func ReserveWriterMutation(in ReserveWriterInput, now func() time.Time) Mutation {
 	return func(a *Aggregate) (Effects, error) {
+		if err := a.Workspace.requireExternal("the publisher writer reservation"); err != nil {
+			return Effects{}, err
+		}
 		input := in.InputCommit
 		if input == "" {
 			input = in.ExpectedTip
@@ -59,7 +62,10 @@ type SettleWriterInput struct {
 // request the attempt's receipt.
 func SettleWriterMutation(in SettleWriterInput, now func() time.Time) Mutation {
 	return func(a *Aggregate) (Effects, error) {
-		if in.Outcome == OutcomeSucceeded && in.SourceCommit != "" {
+		// An internally hosted writer's commits are accepted one by one from
+		// their push records (AcceptCheckpoint), so there is no single published
+		// commit to verify here.
+		if in.Outcome == OutcomeSucceeded && in.SourceCommit != "" && !a.Workspace.Internal() {
 			if err := a.Workspace.VerifyWriterSource(in.AttemptID, in.SourceCommit, a.Receipt); err != nil {
 				return Effects{}, err
 			}

@@ -40,6 +40,12 @@ type receiptRec struct {
 
 type pinRec struct{ P workspace.RetainedRef }
 
+type assocRec struct {
+	A workspace.RepositoryAssociation
+}
+
+type checkpointRec struct{ C workspace.InternalCheckpoint }
+
 type auditRec struct {
 	ID          string
 	WorkspaceID workspace.ID
@@ -63,6 +69,17 @@ var (
 		func(r pinRec) string { return string(r.P.WorkspaceID) + "/" + string(r.P.ID) },
 		func(r pinRec) string { return string(r.P.WorkspaceID) + "|" + r.P.RefName })
 	auditT = memdb.NewTable("workspace_audit", func(r auditRec) string { return r.ID })
+
+	associationsT = memdb.NewTable("workspace_repositories",
+		func(r assocRec) string { return string(r.A.WorkspaceID) + "/" + string(r.A.RepositoryID) },
+		func(r assocRec) string {
+			return string(r.A.Scope.ProjectID) + "|" + string(r.A.RepositoryID) + "|" + r.A.TaskBranch
+		})
+	checkpointsT = memdb.NewTable("workspace_checkpoints",
+		func(r checkpointRec) string { return string(r.C.WorkspaceID) + "/" + r.C.Key() },
+		func(r checkpointRec) string {
+			return string(r.C.Scope.ProjectID) + "|" + string(r.C.RepositoryID) + "|" + r.C.PinRef
+		})
 )
 
 // MemStore implements workspace.Store over memdb. Insert and Update are one
@@ -146,6 +163,17 @@ func clonePin(p *workspace.RetainedRef) *workspace.RetainedRef {
 	return &c
 }
 
+func cloneAssociation(a *workspace.RepositoryAssociation) *workspace.RepositoryAssociation {
+	c := *a
+	return &c
+}
+
+func cloneCheckpoint(c *workspace.InternalCheckpoint) *workspace.InternalCheckpoint {
+	x := *c
+	x.PinnedAt = cloneTime(c.PinnedAt)
+	return &x
+}
+
 func loadWorkspace(tx memdb.Tx, scope domain.Scope, id workspace.ID) (*workspace.Workspace, error) {
 	r, ok := workspacesT.Get(tx, string(id))
 	if !ok || r.W.Scope != scope {
@@ -176,6 +204,33 @@ func (s *MemStore) loadAggregate(tx memdb.Tx, w *workspace.Workspace, load works
 			return pins[i].ID < pins[j].ID
 		})
 		agg.Pins = pins
+	}
+	if load.Associations {
+		var out []*workspace.RepositoryAssociation
+		associationsT.Scan(tx, func(r assocRec) bool {
+			if r.A.WorkspaceID == w.ID {
+				out = append(out, cloneAssociation(&r.A))
+			}
+			return true
+		})
+		sort.Slice(out, func(i, j int) bool { return out[i].RepositoryID < out[j].RepositoryID })
+		agg.Associations = out
+	}
+	if load.Checkpoints {
+		var out []*workspace.InternalCheckpoint
+		checkpointsT.Scan(tx, func(r checkpointRec) bool {
+			if r.C.WorkspaceID == w.ID {
+				out = append(out, cloneCheckpoint(&r.C))
+			}
+			return true
+		})
+		sort.Slice(out, func(i, j int) bool {
+			if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+				return out[i].CreatedAt.Before(out[j].CreatedAt)
+			}
+			return out[i].Key() < out[j].Key()
+		})
+		agg.Checkpoints = out
 	}
 	return agg
 }
@@ -337,6 +392,29 @@ func (s *MemStore) writeEffects(ctx context.Context, tx memdb.Tx, w *workspace.W
 			return fmt.Errorf("workspace: save retained reference: %w", err)
 		}
 	}
+	for _, a := range fx.Associations {
+		key := string(w.ID) + "/" + string(a.RepositoryID)
+		rec := assocRec{A: *cloneAssociation(a)}
+		if cur, ok := associationsT.Get(tx, key); ok {
+			// Only the mutable fields move; the identity and the base commit never change.
+			cur.A.State, cur.A.AcceptedCommit, cur.A.LastError, cur.A.UpdatedAt = a.State, a.AcceptedCommit, a.LastError, a.UpdatedAt
+			rec = cur
+		}
+		if err := associationsT.Put(tx, rec); err != nil {
+			return fmt.Errorf("workspace: save repository association: %w", err)
+		}
+	}
+	for _, c := range fx.Checkpoints {
+		key := string(w.ID) + "/" + c.Key()
+		rec := checkpointRec{C: *cloneCheckpoint(c)}
+		if cur, ok := checkpointsT.Get(tx, key); ok {
+			cur.C.PinRef, cur.C.PinStatus, cur.C.PinnedAt = c.PinRef, c.PinStatus, cloneTime(c.PinnedAt)
+			rec = cur
+		}
+		if err := checkpointsT.Put(tx, rec); err != nil {
+			return fmt.Errorf("workspace: save checkpoint: %w", err)
+		}
+	}
 	for _, a := range fx.Audit {
 		if err := s.writeAudit(ctx, tx, w, a); err != nil {
 			return err
@@ -383,7 +461,11 @@ func (s *MemStore) writeEvent(ctx context.Context, tx memdb.Tx, w *workspace.Wor
 	case workspace.EventStateChanged:
 		data = eventsv1.WorkspaceStateChanged{From: e.From, To: e.To, Reason: e.Reason}
 	case workspace.EventCheckpointCreated:
-		p := eventsv1.WorkspaceCheckpointCreated{Repository: string(w.RepositoryID), NewCommit: string(e.NewCommit), HumanSynchronization: e.HumanSynchronization}
+		repository := w.RepositoryID
+		if e.Repository != "" {
+			repository = e.Repository
+		}
+		p := eventsv1.WorkspaceCheckpointCreated{Repository: string(repository), NewCommit: string(e.NewCommit), HumanSynchronization: e.HumanSynchronization}
 		if e.PreviousCommit != "" {
 			prev := string(e.PreviousCommit)
 			p.PreviousCommit = &prev
@@ -429,6 +511,19 @@ func (s *MemStore) Reconcilable(ctx context.Context, tenant domain.TenantID, aft
 			}
 			return true
 		})
+		intent := map[workspace.ID]bool{} // an archived workspace creates no more task branches
+		associationsT.Scan(tx, func(r assocRec) bool {
+			if r.A.State == workspace.AssociationIntent {
+				intent[r.A.WorkspaceID] = true
+			}
+			return true
+		})
+		checkpointsT.Scan(tx, func(r checkpointRec) bool {
+			if r.C.PinStatus == workspace.CheckpointPinIntent {
+				busy[r.C.WorkspaceID] = true
+			}
+			return true
+		})
 		workspacesT.Scan(tx, func(r wsRec) bool {
 			w := r.W
 			if len(out) >= limit {
@@ -437,7 +532,7 @@ func (s *MemStore) Reconcilable(ctx context.Context, tenant domain.TenantID, aft
 			if w.ID <= after {
 				return true
 			}
-			if w.State == workspace.StateProvisioning || (w.ArchiveRequestedAt != nil && w.State == workspace.StateAvailable) || w.Pending != nil || busy[w.ID] {
+			if w.State == workspace.StateProvisioning || (w.ArchiveRequestedAt != nil && w.State == workspace.StateAvailable) || w.Pending != nil || busy[w.ID] || (intent[w.ID] && w.State != workspace.StateArchived) {
 				out = append(out, workspace.Candidate{Scope: w.Scope, ID: w.ID})
 			}
 			return true

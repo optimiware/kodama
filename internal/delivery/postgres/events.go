@@ -41,9 +41,16 @@ func EventsFrom(store *eventspg.Store) EventAppender {
 func stateChanged(m delivery.Mutation, d delivery.Deployment, fromName string) (eventsv1.Envelope, error) {
 	rec := d.Record()
 	commit, digest := rec.Source.Commit, string(rec.Image.Digest)
+	// The event carries one commit only for a single source. A deployment of a
+	// source set names every repository and commit in its record, which a
+	// consumer reloads by the reference; no one commit stands for the set.
+	var sourceCommit *string
+	if commit != "" {
+		sourceCommit = &commit
+	}
 	data, err := json.Marshal(eventsv1.DeploymentStateChanged{
 		EnvironmentID: string(rec.Environment), From: fromName, To: string(rec.Status),
-		SourceCommit: &commit, ArtifactIDs: []string{string(rec.Image.ArtifactID)}, ImageDigest: &digest,
+		SourceCommit: sourceCommit, ArtifactIDs: []string{string(rec.Image.ArtifactID)}, ImageDigest: &digest,
 	})
 	if err != nil {
 		return eventsv1.Envelope{}, err

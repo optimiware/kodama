@@ -1,0 +1,24 @@
+apiVersion: kodama/v1alpha3
+kind: Pipeline
+metadata: {name: two-repositories}
+spec:
+  timeoutSeconds: 3600
+  sources:
+    - {repository: backend, path: backend, access: write}
+    - {repository: frontend, path: frontend, access: read}
+  steps:
+    - id: generate
+      kind: container
+      image: registry.example.invalid/go-tools@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      workspace: {access: write}
+      command: ["/bin/sh", "-ec"]
+      args: ["cd /workspace/backend && go generate ./..."]
+      timeoutSeconds: 600
+    - id: contract-test
+      kind: container
+      needs: [generate]
+      image: registry.example.invalid/go-tools@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      workspace: {access: read}
+      command: ["/bin/sh", "-ec"]
+      args: ["cd /workspace/backend && go test ./... && cd ../frontend && ./check-contract.sh"]
+      timeoutSeconds: 900

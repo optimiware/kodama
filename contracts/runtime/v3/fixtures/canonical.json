@@ -1,0 +1,106 @@
+[
+  {
+    "name": "completed_without_commits",
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "commits": [],
+      "outputs": {
+        "report": "art_0001"
+      },
+      "diagnosticArtifactIds": []
+    },
+    "canonical": "{\"commits\":[],\"diagnosticArtifactIds\":[],\"exitCode\":0,\"outcome\":\"completed\",\"outputs\":{\"report\":\"art_0001\"},\"question\":null,\"reason\":null}",
+    "sha256": "sha256:0e18abd914f749948202d4bb5377cef6d81d5fa0b117ec8c790098cf91fe0693"
+  },
+  {
+    "name": "completed_writer_one_repository",
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "commits": [
+        {
+          "repositoryId": "repo_01",
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "commit": "3333333333333333333333333333333333333333",
+          "pushId": "pu_07"
+        }
+      ],
+      "outputs": {
+        "report": "art_0001"
+      },
+      "diagnosticArtifactIds": []
+    },
+    "canonical": "{\"commits\":[{\"commit\":\"3333333333333333333333333333333333333333\",\"pushId\":\"pu_07\",\"ref\":\"refs/heads/kodama/work/wi_1042\",\"repositoryId\":\"repo_01\"}],\"diagnosticArtifactIds\":[],\"exitCode\":0,\"outcome\":\"completed\",\"outputs\":{\"report\":\"art_0001\"},\"question\":null,\"reason\":null}",
+    "sha256": "sha256:d57f5cbfdb03b63330ce96e7744a87380f025d0709c359a6df63272e59937f57"
+  },
+  {
+    "name": "completed_two_repositories_and_an_agent_branch",
+    "result": {
+      "outcome": "completed",
+      "exitCode": 0,
+      "reason": null,
+      "question": null,
+      "commits": [
+        {
+          "repositoryId": "repo_01",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/notes",
+          "commit": "4444444444444444444444444444444444444444",
+          "pushId": "pu_08"
+        },
+        {
+          "repositoryId": "repo_01",
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "commit": "3333333333333333333333333333333333333333",
+          "pushId": "pu_07"
+        },
+        {
+          "repositoryId": "repo_02",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/notes",
+          "commit": "2222222222222222222222222222222222222222",
+          "pushId": "pu_09"
+        }
+      ],
+      "outputs": {
+        "report": "art_0001"
+      },
+      "diagnosticArtifactIds": []
+    },
+    "canonical": "{\"commits\":[{\"commit\":\"4444444444444444444444444444444444444444\",\"pushId\":\"pu_08\",\"ref\":\"refs/heads/kodama/agents/wi_1042/run_01/notes\",\"repositoryId\":\"repo_01\"},{\"commit\":\"3333333333333333333333333333333333333333\",\"pushId\":\"pu_07\",\"ref\":\"refs/heads/kodama/work/wi_1042\",\"repositoryId\":\"repo_01\"},{\"commit\":\"2222222222222222222222222222222222222222\",\"pushId\":\"pu_09\",\"ref\":\"refs/heads/kodama/agents/wi_1042/run_01/notes\",\"repositoryId\":\"repo_02\"}],\"diagnosticArtifactIds\":[],\"exitCode\":0,\"outcome\":\"completed\",\"outputs\":{\"report\":\"art_0001\"},\"question\":null,\"reason\":null}",
+    "sha256": "sha256:7fe148bf6d314e3e8a90cb21733dd100219ebca65f8c977451f1ee49aebb0599"
+  },
+  {
+    "name": "failed",
+    "result": {
+      "outcome": "failed",
+      "exitCode": 2,
+      "reason": "command_failed",
+      "question": null,
+      "commits": [],
+      "outputs": {},
+      "diagnosticArtifactIds": [
+        "art_0002"
+      ]
+    },
+    "canonical": "{\"commits\":[],\"diagnosticArtifactIds\":[\"art_0002\"],\"exitCode\":2,\"outcome\":\"failed\",\"outputs\":{},\"question\":null,\"reason\":\"command_failed\"}",
+    "sha256": "sha256:8cbaca304c2f9d38719b3a45c32847d7cb1b8c119ceba47a4c334c6f137a33ed"
+  },
+  {
+    "name": "needs_input_unicode_question",
+    "result": {
+      "outcome": "needs_input",
+      "exitCode": null,
+      "reason": null,
+      "question": "Quel index écrire / use <a> &  ?",
+      "commits": [],
+      "outputs": {},
+      "diagnosticArtifactIds": []
+    },
+    "canonical": "{\"commits\":[],\"diagnosticArtifactIds\":[],\"exitCode\":null,\"outcome\":\"needs_input\",\"outputs\":{},\"question\":\"Quel index écrire / use <a> &  ?\",\"reason\":null}",
+    "sha256": "sha256:a56bba6677506bca89e2b08ee93990c924369204040390fef69ce55d61525ef2"
+  }
+]

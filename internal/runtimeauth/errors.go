@@ -3,6 +3,9 @@ package runtimeauth
 import (
 	"errors"
 	"fmt"
+
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	"github.com/optimiware/kodama/internal/domain"
 )
 
 // Failure classes. Every error leaving the application layer is, or wraps, one
@@ -44,6 +47,20 @@ var (
 	// ErrIdempotencyConflict is a repeat of a once-only exchange (the begin of an
 	// attempt) with a different body (409 idempotency_conflict).
 	ErrIdempotencyConflict = errors.New("runtimeauth: idempotency conflict")
+	// ErrRefused is a business refusal of the Git grant routes that carries the
+	// contract's own code (a *runtimev1.ContractError: not_found, forbidden,
+	// hosting_mismatch, repository_not_empty, ...). The handler renders the code
+	// the operation's inventory permits.
+	ErrRefused = errors.New("runtimeauth: refused")
+	// ErrPublicationConflict is an integration grant that cannot be issued because
+	// the target ref no longer is what the approval was given over (base_moved) or
+	// already is the approved candidate (already_integrated). The concrete error is
+	// a *PublicationConflict (409 publication_conflict); no grant exists.
+	ErrPublicationConflict = errors.New("runtimeauth: publication conflict")
+	// ErrAlreadyIntegrated is the PublicationConflict whose default branch already
+	// is the approved candidate: the integration was applied, nothing is left to
+	// authorize and no grant is issued. A Go caller may treat it as success.
+	ErrAlreadyIntegrated = errors.New("runtimeauth: already integrated")
 	// ErrUnavailable is a dependency (database, signing key, execution state,
 	// Kubernetes observation) that could not give a conclusive answer. Callers
 	// retry; nothing was granted.
@@ -73,7 +90,36 @@ func failWith(kind error, cause error, format string, args ...any) error {
 	return &classified{kind: kind, msg: fmt.Sprintf(format, args...), cause: cause}
 }
 
-var kinds = []error{ErrInvalidRequest, ErrInvalidCredential, ErrForbidden, ErrAttemptRevoked, ErrAdmissionConsumed, ErrProfileUnsupported, ErrConflict, ErrNotFound, ErrResourceRevoked, ErrResourceUnbound, ErrContextVersionMismatch, ErrReceiptConflict, ErrIdempotencyConflict, ErrUnavailable}
+// refusal carries a contract error as an ErrRefused.
+type refusal struct{ ce *runtimev1.ContractError }
+
+func (r *refusal) Error() string        { return ErrRefused.Error() + ": " + string(r.ce.Code) }
+func (r *refusal) Is(target error) bool { return target == ErrRefused }
+func (r *refusal) Unwrap() error        { return r.ce }
+
+// Refused classifies a contract error (a gitauth or gates refusal, or one built
+// here) as ErrRefused, keeping it reachable with errors.As.
+func Refused(ce *runtimev1.ContractError) error { return &refusal{ce: ce} }
+
+func refuse(code domain.ErrorCode, msg string) error {
+	return Refused(&runtimev1.ContractError{Code: code, Message: msg})
+}
+
+// PublicationConflict is the 409 publication_conflict of the integration route.
+type PublicationConflict struct {
+	// Reason is "base_moved" or "already_integrated".
+	Reason string
+	// ObservedTip is the target ref's tip the control plane read (the superseding
+	// commit for base_moved, the approved candidate for already_integrated).
+	ObservedTip string
+}
+
+func (e *PublicationConflict) Error() string { return ErrPublicationConflict.Error() + ": " + e.Reason }
+func (e *PublicationConflict) Is(target error) bool {
+	return target == ErrPublicationConflict || (target == ErrAlreadyIntegrated && e.Reason == "already_integrated")
+}
+
+var kinds = []error{ErrRefused, ErrPublicationConflict, ErrInvalidRequest, ErrInvalidCredential, ErrForbidden, ErrAttemptRevoked, ErrAdmissionConsumed, ErrProfileUnsupported, ErrConflict, ErrNotFound, ErrResourceRevoked, ErrResourceUnbound, ErrContextVersionMismatch, ErrReceiptConflict, ErrIdempotencyConflict, ErrUnavailable}
 
 // Classify returns err unchanged when it belongs to a known failure class and
 // otherwise wraps it as ErrUnavailable (fail closed).

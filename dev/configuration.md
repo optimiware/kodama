@@ -26,6 +26,7 @@ For environment-only test startup set `KODAMA_SECRETS_ADAPTER=keyfile`; it defau
 | --- | --- | --- |
 | `DEV_PROVIDER` | `podman` on every OS | Explicit `docker` override for Docker/CI; no runtime auto-selection |
 | `DEV_SCOPE` | `t-001-local` | 2–31 lowercase letters/digits/hyphens; starts with letter, ends alphanumeric |
+| `DEV_GIT` | `fixture` | `fixture` (the external `git-http-backend`, the compatibility profile) or `native` (one `kodama git serve` container per tenant, services stack only). Chosen once per scope; an existing scope refuses another value, and a scope created before the selection existed is a `fixture` scope |
 
 Make variables become explicit arguments to `dev/cmd/devctl`, which also reads them from the environment when invoked directly. Go and Make 3.81 are the minimum host prerequisites; the development tooling is Go. Go, kind, kubectl, the kind node image, client libraries, actionlint, and the additional Git package have exact locks; Compose and the Containerfile pin the fixture images by digest.
 
@@ -47,6 +48,8 @@ Make variables become explicit arguments to `dev/cmd/devctl`, which also reads t
 | `KODAMA_REGISTRY_URL` | `http://registry.kodama-deps.svc.cluster.local:5000` |
 | `KODAMA_REGISTRY_SOURCE` | `<scope>/scaffold`; source manifest tag `dev` |
 
+A `DEV_GIT=native` scope replaces `KODAMA_GIT_URL` (there is no fixture) with `KODAMA_GIT_WORKER_URL`, the template `http://<project>-git-{tenantId}:8443` that names each tenant's worker container; `{tenantId}` must be a lowercase identifier (`[a-z][a-z0-9_-]{0,39}`) so that the container, its Compose project and the server's template spell it the same way. Its `host-env.json` also records `DEV_GIT` and, for the server under test, `KODAMA_GIT_FORWARDING_KEY_FILE`, `KODAMA_GIT_IDENTITY_KEY_FILE` and `KODAMA_GIT_CONTROL_TOKEN`; `git-workers.json` lists the started workers with their workload and loopback URLs. `devctl git-worker --scope <scope> --tenant <id> [--control-url <url>]` starts or refreshes one tenant's worker.
+
 These are development endpoints. The product's repository ownership, credentials, and authorization remain module responsibilities. S3 uses SigV4, `us-east-1`, path-style URLs, and static development credentials. LocalStack does not establish production IAM enforcement. HTTP is confined to this local fixture profile; Git specifically exercises HTTPS and CA verification.
 
 ## Secret-file contract
@@ -64,6 +67,15 @@ Local files are under `dev/.state/environments/<scope>/fixtures/` (directory 075
 | `ca.crt` | PEM-encoded development CA certificate |
 | `tls.crt`, `tls.key` | Git service certificate and PKCS#8 EC private key; one-year development certificate |
 | `master-key` | Exactly 32 random bytes, kept outside PostgreSQL; the development KEK for T-012's keyfile adapter. It wraps scope keys and does not encrypt secret values directly |
+
+A `DEV_GIT=native` scope adds these files, none of them in `fixtures/` (which other containers mount). The signing keys and the control token belong to the server under test and live in `<scope>/git-server/` (mode 0700, files 0600); a worker is given only the public key, the control token and its own tenant-bound identity token, in `<scope>/git-workers/<tenant-id>/`:
+
+| File | Format / purpose |
+| --- | --- |
+| `git-forwarding-key.pem`, `git-identity-key.pem` | PKCS#8 P-256 private keys (`KODAMA_GIT_FORWARDING_KEY_FILE`, `KODAMA_GIT_IDENTITY_KEY_FILE`): the control plane signs forwarding assertions with the first and worker identities with the second. Never mounted into a worker |
+| `git-forwarding-public.pem` | The forwarding public key a worker verifies assertions with |
+| `git-control-token` | Random hexadecimal token (`KODAMA_GIT_CONTROL_TOKEN`) the server presents to a worker's RPC |
+| `git-workers/<tenant-id>/{identity-token,control-token,forwarding-public.pem}` (scope directory) | What one worker container mounts read-only; the identity token is valid for 55 minutes and is renewed by running `devctl git-worker` again |
 
 `postgres-password`, `migration-password`, `runtime-password`, `init.sql`, `nats.conf`, and `oauthsonas.yaml` are container-bootstrap files that never reach the probe. Stable generated credentials are reused on repeated setup. Deleting credential files while keeping dependency volumes is not a credential-rotation procedure; recreate that development scope instead.
 

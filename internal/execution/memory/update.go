@@ -84,6 +84,9 @@ func (s *Store) mutate(ctx context.Context, tx memdb.Tx, scope domain.Scope, id 
 	if err := s.revokeGrants(tx, scope, agg, env.Now()); err != nil {
 		return nil, err
 	}
+	if err := s.revokeGitGrants(tx, scope, agg, env.Now()); err != nil {
+		return nil, err
+	}
 	for _, after := range fx.After {
 		if err := after(ctx, env); err != nil {
 			return nil, err
@@ -125,6 +128,35 @@ func (s *Store) revokeGrants(tx memdb.Tx, scope domain.Scope, agg *execution.Agg
 	for _, id := range ids {
 		if err := s.peers.Grants(tx, scope, id, now); err != nil {
 			return execution.Unavailablef(err, "the runtime grants of attempt %s could not be revoked", id)
+		}
+	}
+	return nil
+}
+
+// revokeGitGrants ends the Git grants of every attempt of a source-set run whose
+// authority this transaction ended (cancellation, failure, timeout, supersession
+// and an accepted result alike), in attempt ID order, in the transaction itself: a
+// cancelled attempt can never push after the commit. It is idempotent.
+func (s *Store) revokeGitGrants(tx memdb.Tx, scope domain.Scope, agg *execution.Aggregate, now time.Time) error {
+	if !agg.Run.SourceRun() {
+		return nil
+	}
+	var ids []domain.AttemptID
+	for _, at := range agg.Attempts {
+		if c, ok := agg.Controls[at.ID]; ok && c.AuthorityEnded() {
+			if at.Scope != scope {
+				return fmt.Errorf("%w: an attempt of another scope was revoked", execution.ErrNotFound)
+			}
+			ids = append(ids, at.ID)
+		}
+	}
+	if len(ids) > 0 && s.peers.GitGrants == nil {
+		return fmt.Errorf("%w: the Git grant revoker is required to end the authority of a source-set attempt", execution.ErrNotConfigured)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	for _, id := range ids {
+		if err := s.peers.GitGrants(tx, scope, id, now); err != nil {
+			return execution.Unavailablef(err, "the Git grants of attempt %s could not be revoked", id)
 		}
 	}
 	return nil
@@ -270,6 +302,17 @@ func (e *txEnv) SettleWriter(_ context.Context, at *execution.Attempt, outcome e
 		return nil
 	}
 	return settle()
+}
+
+var _ execution.InternalWriterEnv = (*txEnv)(nil)
+
+// ReserveInternalWriter reserves the writer slot of the work item's internally
+// hosted workspace at the version the writer gate was checked at.
+func (e *txEnv) ReserveInternalWriter(_ context.Context, at *execution.Attempt, observed domain.Version) error {
+	if e.s.peers.Internal == nil {
+		return fmt.Errorf("%w: the store has no internal workspace binding", execution.ErrNotConfigured)
+	}
+	return e.s.peers.Internal.ReserveInternalWriter(e.tx, at, observed)
 }
 
 var _ execution.GrantFence = (*txEnv)(nil)

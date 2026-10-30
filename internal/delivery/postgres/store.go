@@ -38,6 +38,13 @@ type Config struct {
 	IDs   delivery.IDs
 	// Clock defaults to the UTC wall clock.
 	Clock func() time.Time
+	// SourceProvenance enables the source-set columns of migration
+	// 013_source_provenance.sql (artifacts/postgres.SourceProvenanceMigrations):
+	// a deployment whose source is a source set is read and written. Without it
+	// the store reads and writes only a single repository URL and commit, so a
+	// composition whose schema lacks the migration is unaffected, and a source
+	// set is refused instead of being recorded as another source.
+	SourceProvenance bool
 }
 
 // Store implements delivery.Store.
@@ -47,6 +54,7 @@ type Store struct {
 	guard    *Guard
 	ids      delivery.IDs
 	now      func() time.Time
+	sets     bool
 }
 
 var _ delivery.Store = (*Store)(nil)
@@ -56,7 +64,7 @@ func NewStore(cfg Config) (*Store, error) {
 	if cfg.DB == nil || cfg.Events == nil {
 		return nil, errors.New("delivery/postgres: DB and Events are required")
 	}
-	s := &Store{db: cfg.DB, appender: cfg.Events, guard: cfg.Guard, ids: cfg.IDs, now: cfg.Clock}
+	s := &Store{db: cfg.DB, appender: cfg.Events, guard: cfg.Guard, ids: cfg.IDs, now: cfg.Clock, sets: cfg.SourceProvenance}
 	if s.ids == nil {
 		s.ids = delivery.RandomIDs{}
 	}

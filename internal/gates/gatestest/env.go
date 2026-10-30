@@ -40,8 +40,10 @@ import (
 	identitypg "github.com/optimiware/kodama/internal/identity/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
+	repositorypg "github.com/optimiware/kodama/internal/repository/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 	"github.com/optimiware/kodama/internal/workspace"
+	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 	s3support "github.com/optimiware/kodama/test/support/s3"
 )
 
@@ -100,6 +102,11 @@ type Options struct {
 	WrapCandidates func(gates.Candidates) gates.Candidates
 	// WrapAuthority wraps the transaction authority binder.
 	WrapAuthority func(gatespg.AuthorityBinder) gatespg.AuthorityBinder
+	// Exec builds the gate module over an execution fixture the caller already
+	// made (for a run of the internal Git service, executiontest.NewSourcePG):
+	// the gate store, the identity authority and the artifact adapters are wired
+	// to it, and it is not created again.
+	Exec *executiontest.Env
 	// Sources replaces the fake workspace sources of both the execution service
 	// and the candidate verifier (real Git adapters). It runs once the base
 	// fixture exists.
@@ -126,8 +133,10 @@ type Env struct {
 	Svc *execution.Service
 
 	Deployments *FakeDeployments
-	Mem         *MemObjects
-	Opts        Options
+	// Bases is the controllable default-branch tip reader of source-set subjects.
+	Bases *FakeBases
+	Mem   *MemObjects
+	Opts  Options
 
 	mu          sync.Mutex
 	realSources execution.Sources
@@ -149,12 +158,19 @@ func New(t testing.TB, o ...Options) *Env {
 	if opt.WrapExecEvents != nil {
 		xo.WrapAppender = func(a execpg.EventAppender) execpg.EventAppender { return opt.WrapExecEvents(a) }
 	}
-	x := executiontest.New(t, xo)
-	e := &Env{T: t, X: x, Opts: opt, Mem: NewMemObjects(), Deployments: NewFakeDeployments(), ttl: opt.GateTTL}
+	x := opt.Exec
+	if x == nil {
+		x = executiontest.New(t, xo)
+	}
+	e := &Env{T: t, X: x, Opts: opt, Mem: NewMemObjects(), Deployments: NewFakeDeployments(), Bases: NewFakeBases(), ttl: opt.GateTTL}
 	if e.ttl == 0 {
 		e.ttl = time.Hour
 	}
-	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations())
+	// The ledger lists every applied migration in order: the execution fixture
+	// applied the repository (007), workspace (010) and run source (011)
+	// contributions, and the source provenance columns (013, T-149) follow them.
+	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations(), repositorypg.Migrations(), workspacepg.Migrations(),
+		execpg.RunSourceMigrations(), artifactspg.SourceProvenanceMigrations())
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}
@@ -164,7 +180,7 @@ func New(t testing.TB, o ...Options) *Env {
 		t.Fatalf("migrate gates: %v", err)
 	}
 
-	e.Repo, err = artifactspg.NewStore(artifactspg.Config{DB: x.Runtime})
+	e.Repo, err = artifactspg.NewStore(artifactspg.Config{DB: x.Runtime, SourceProvenance: true})
 	must(t, err)
 	if opt.S3 {
 		e.S3 = s3support.New(t)
@@ -197,7 +213,7 @@ func (e *Env) build() {
 	if opt.WrapAuthority != nil {
 		binder = opt.WrapAuthority(binder)
 	}
-	cfg := gatespg.Config{DB: x.Runtime, Events: appender, Execution: x.Store, Authority: binder, Clock: x.Clock.Now}
+	cfg := gatespg.Config{DB: x.Runtime, Events: appender, Execution: x.Store, Authority: binder, Clock: x.Clock.Now, SourceProvenance: true}
 	if !opt.NoDeployments {
 		cfg.Deployments = func(pgx.Tx) gates.Deployments { return e.Deployments }
 	}
@@ -242,7 +258,7 @@ func (e *Env) build() {
 	}
 	deps := gates.Dependencies{
 		Store: e.Store, Authority: e.Authz, Runs: x.Store, Evidence: evidence, Pins: pinPort, Candidates: cand,
-		Tenants: tenantList{ScopeA.TenantID, ScopeB.TenantID}, Clock: x.Clock.Now,
+		Tenants: tenantList{ScopeA.TenantID, ScopeB.TenantID}, Bases: e.Bases, Clock: x.Clock.Now,
 	}
 	if !opt.NoDeployments {
 		deps.Deployments = e.Deployments

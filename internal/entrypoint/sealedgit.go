@@ -363,45 +363,52 @@ func (s *sealedGit) refPath(ref string) (string, error) {
 // workspaceHead returns the commit the workspace's HEAD designates, read as data:
 // a detached commit, or the loose or packed value of the one ref HEAD names.
 func (s *sealedGit) workspaceHead() (string, error) {
+	commit, _, err := s.headAndRef()
+	return commit, err
+}
+
+// headAndRef is workspaceHead that also returns the ref HEAD names ("" for a
+// detached HEAD): what the v3 push uses to tell the branch a command checked out.
+func (s *sealedGit) headAndRef() (commit, headRef string, err error) {
 	raw, err := s.readData(filepath.Join(s.gitDir, "HEAD"), ".git/HEAD", 4<<10)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	line := strings.TrimSpace(string(raw))
 	if hexCommit.MatchString(line) {
-		return line, nil
+		return line, "", nil
 	}
 	ref, ok := strings.CutPrefix(line, "ref: ")
 	if !ok {
-		return "", unsafef(".git/HEAD is neither a commit nor a ref")
+		return "", "", unsafef(".git/HEAD is neither a commit nor a ref")
 	}
 	path, err := s.refPath(ref)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if data, err := s.readData(path, "the ref HEAD names", 1<<10); err == nil {
 		v := strings.TrimSpace(string(data))
 		if !hexCommit.MatchString(v) {
-			return "", unsafef("the ref HEAD names does not hold a commit")
+			return "", "", unsafef("the ref HEAD names does not hold a commit")
 		}
-		return v, nil
+		return v, ref, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", err
+		return "", "", err
 	}
 	packed, err := s.readData(filepath.Join(s.gitDir, "packed-refs"), ".git/packed-refs", 16<<20)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", unsafef("HEAD names a ref that does not exist")
+			return "", "", unsafef("HEAD names a ref that does not exist")
 		}
-		return "", err
+		return "", "", err
 	}
 	for _, l := range bytes.Split(packed, []byte{'\n'}) {
 		oid, name, ok := strings.Cut(string(l), " ")
 		if ok && name == ref && hexCommit.MatchString(oid) {
-			return oid, nil
+			return oid, ref, nil
 		}
 	}
-	return "", unsafef("HEAD names a ref that does not exist")
+	return "", "", unsafef("HEAD names a ref that does not exist")
 }
 
 // sync points the private repository at the workspace's current HEAD and loads
@@ -503,6 +510,47 @@ func (s *sealedGit) advance(ctx context.Context, commit string) error {
 	// tree; the old one is never read).
 	_, err = s.run(ctx, s.work, []string{"GIT_INDEX_FILE=" + filepath.Join(s.gitDir, "index")}, "read-tree", commit)
 	return err
+}
+
+// detach leaves the workspace's HEAD detached at commit and its own index equal to
+// that commit's tree, whatever HEAD named before (a branch a command checked out
+// is left as it is; HEAD stops following it). A HEAD already detached at commit is
+// not touched. The work tree is never changed. Plain files with checked, atomic
+// renames, like advance; no workspace configuration is read.
+func (s *sealedGit) detach(ctx context.Context, commit string) error {
+	if !hexCommit.MatchString(commit) {
+		return unsafef("not a commit")
+	}
+	if err := s.checkLayout(); err != nil {
+		return err
+	}
+	headFile := filepath.Join(s.gitDir, "HEAD")
+	raw, err := s.readData(headFile, ".git/HEAD", 4<<10)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(raw)) == commit {
+		return nil
+	}
+	if !s.hasCommit(ctx, commit) {
+		return unsafef("the commit %s is not in the workspace's object store", commit)
+	}
+	// The index first, HEAD last: any failure (a leftover index.lock, a kill) leaves
+	// the old, leaked HEAD, which the next verification refuses, never a correct
+	// HEAD over a stale index. A symlinked or otherwise irregular index is refused
+	// (Git would replace it through its lock, but nothing here follows it).
+	index := filepath.Join(s.gitDir, "index")
+	if fi, err := os.Lstat(index); err == nil {
+		if !fi.Mode().IsRegular() {
+			return unsafef(".git/index is not a regular file")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if _, err := s.run(ctx, s.work, []string{"GIT_INDEX_FILE=" + index}, "read-tree", commit); err != nil {
+		return err
+	}
+	return atomicWrite(headFile, []byte(commit+"\n"))
 }
 
 func atomicWrite(path string, data []byte) error {

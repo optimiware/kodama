@@ -436,16 +436,17 @@ type WireAuthorizer interface {
 // belong to the route's wire (otherwise context_version_mismatch, with nothing
 // changed) and hold the operation's action with current authority. T-116 wraps
 // the v1 handlers with a WireV1 guard, so a run_shared attempt cannot reach them
-// on /runtime/v1, and the v2 handler wraps them with a WireV2 guard.
+// on /runtime/v1, the v2 handler wraps them with a WireV2 guard and the v3 handler
+// with a WireV3 guard.
 type WireGuard struct {
 	svc  WireAuthorizer
 	wire int64
 	h    *handler
 }
 
-// NewWireGuard builds a guard for the wire (runtimeauth.WireV1 or WireV2).
+// NewWireGuard builds a guard for the wire (runtimeauth.WireV1, WireV2 or WireV3).
 func NewWireGuard(svc WireAuthorizer, wire int64, logger *slog.Logger) (*WireGuard, error) {
-	if svc == nil || (wire != runtimeauth.WireV1 && wire != runtimeauth.WireV2) {
+	if svc == nil || (wire != runtimeauth.WireV1 && wire != runtimeauth.WireV2 && wire != runtimeauth.WireV3) {
 		return nil, errors.New("runtimehttp: a service and a known wire are required")
 	}
 	if logger == nil {
@@ -461,11 +462,14 @@ func (g *WireGuard) Wrap(opID string, next http.Handler) http.Handler {
 		rid := newRequestID()
 		attempt := domain.AttemptID(r.PathValue("attemptId"))
 		fail := func(err error) {
-			if g.wire == runtimeauth.WireV2 {
+			switch g.wire {
+			case runtimeauth.WireV3:
+				g.h.fail3(w, r, opID, rid, attemptAttrs(attempt), err)
+			case runtimeauth.WireV2:
 				g.h.fail2(w, r, opID, rid, attemptAttrs(attempt), err)
-				return
+			default:
+				g.h.fail(w, r, opID, rid, attempt, err)
 			}
-			g.h.fail(w, r, opID, rid, attempt, err)
 		}
 		if !ok {
 			fail(runtimeauth.ErrForbidden)

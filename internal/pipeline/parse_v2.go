@@ -1,14 +1,29 @@
 package pipeline
 
-import "regexp"
+import (
+	"regexp"
 
-// isV1Alpha2Tree reports whether a generic tree declares the kodama/v1alpha2
-// apiVersion. Anything else is judged by the kodama/v1alpha1 schema, which
-// rejects unknown versions as before.
-func isV1Alpha2Tree(tree any) bool {
+	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
+)
+
+// runSharedVersion returns the apiVersion of a generic tree that declares a
+// run_shared format (kodama/v1alpha2 or kodama/v1alpha3) and "" for anything
+// else. Anything else is judged by the kodama/v1alpha1 schema, which rejects
+// unknown versions as before.
+func runSharedVersion(tree any) string {
 	m, ok := tree.(map[string]any)
-	return ok && m["apiVersion"] == "kodama/v1alpha2"
+	if !ok {
+		return ""
+	}
+	if v, _ := m["apiVersion"].(string); v == pipelinev1alpha2.APIVersion || v == pipelinev1alpha3.APIVersion {
+		return v
+	}
+	return ""
 }
+
+// isRunSharedTree reports whether a generic tree declares a run_shared format.
+func isRunSharedTree(tree any) bool { return runSharedVersion(tree) != "" }
 
 const svcPrefix = `^\$\.spec\.services(?:\.[A-Za-z0-9_-]+|\[[^\]]*\])`
 
@@ -25,6 +40,7 @@ var (
 	reEdges        = regexp.MustCompile(`^\$\.spec\.network(?:\.edges|$)`)
 	reTimeout      = regexp.MustCompile(`^\$\.spec\.(?:timeoutSeconds|steps\[\d+\]\.timeoutSeconds)$`)
 	reRunWorkspace = regexp.MustCompile(`^\$\.spec\.runWorkspace\.sizeMiB$`)
+	reSourcePath   = regexp.MustCompile(`^\$\.spec\.sources\[\d+\]\.path$`)
 )
 
 // v2SchemaCode maps a schema keyword failure at a kodama/v1alpha2 document path
@@ -49,6 +65,10 @@ func v2SchemaCode(v2 bool, path, kw string) (string, bool) {
 		return CodeInvalidEgress, true
 	case reRole.MatchString(path):
 		return CodeInvalidRole, true
+	case reSourcePath.MatchString(path):
+		return CodeInvalidSourcePath, true
+	case path == "$.spec.sources" && kw == "maxItems":
+		return CodeLimitExceeded, true
 	case reTimeout.MatchString(path) && (kw == "minimum" || kw == "maximum"):
 		return CodeInvalidTimeout, true
 	case (path == "$.spec.services" || reEnvOrFiles.MatchString(path)) && kw == "maxProperties":
@@ -72,6 +92,8 @@ func v2Message(code string) string {
 		return "an egress entry names a profile; it is never a host, CIDR or port"
 	case CodeInvalidRole:
 		return "the service role must be general or builder"
+	case CodeInvalidSourcePath:
+		return "a source path is relative to /workspace, clean and made of plain components"
 	case CodeInvalidTimeout:
 		return "the timeout is outside its allowed range"
 	}

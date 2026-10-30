@@ -46,7 +46,7 @@ func TestMigrationReapply(t *testing.T) {
 	for _, m := range manifest.Migrations() {
 		ids = append(ids, m.ID)
 	}
-	if fmt.Sprint(ids) != "[001_schema.sql 002_grants.sql]" {
+	if fmt.Sprint(ids) != "[001_schema.sql 002_grants.sql 003_git_hosting.sql]" {
 		t.Fatalf("manifest = %v", ids)
 	}
 

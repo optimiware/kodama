@@ -18,6 +18,7 @@ volumes:
   postgres-data:
   nats-data:
   git-data:
+  git-worker-data:
 
 services:
   registry:
@@ -58,8 +59,12 @@ services:
       EAGER_SERVICE_LOADING: "1"
       AWS_DEFAULT_REGION: us-east-1
 
+  # The external git-http-backend fixture: the compatibility Git profile
+  # (DEV_GIT=fixture, the default). It exercises HTTPS and tokens against a plain
+  # Git server and is not the product's Git service.
   git:
     <<: *fixture
+    profiles: [git-fixture]
     image: ${KODAMA_IMAGE}
     container_name: ${KODAMA_PROJECT}-git
     entrypoint: ["/usr/local/bin/gitserver"]
@@ -69,6 +74,37 @@ services:
     volumes:
       - git-data:/data
       - ${KODAMA_FIXTURES}:/secrets:ro
+
+  # One tenant's native Git worker (DEV_GIT=native): `kodama git serve`, the same
+  # worker the product runs. It is started once per tenant by
+  # `devctl git-worker --tenant <id>`, each tenant in its own Compose project
+  # (<scope project>-git-<tenant>) with its own data volume, so a tenant's worker
+  # and repositories can be removed on their own. The worker holds no database or
+  # broker credential: only its volume, the forwarding public key, its identity
+  # token and the control plane's token and address. The tenant defaults keep the
+  # file valid for projects that never start it.
+  git-worker:
+    <<: *fixture
+    profiles: [git-native]
+    image: ${KODAMA_IMAGE}
+    container_name: ${KODAMA_PROJECT}-git-${KODAMA_GIT_TENANT:-none}
+    command: ["git", "serve"]
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports: ["127.0.0.1::8443"]
+    environment:
+      KODAMA_GIT_TENANT_ID: ${KODAMA_GIT_TENANT:-none}
+      KODAMA_GIT_DATA_ROOT: /data
+      KODAMA_GIT_LISTEN: ":8443"
+      KODAMA_GIT_CONTROL_URL: ${KODAMA_GIT_CONTROL_URL:-http://host.containers.internal:8080}
+      KODAMA_GIT_WORKER_IDENTITY_FILE: /worker/identity-token
+      KODAMA_GIT_FORWARDING_PUBLIC_KEYS_FILE: /worker/forwarding-public.pem
+      KODAMA_GIT_CONTROL_TOKEN_FILE: /worker/control-token
+      KODAMA_GIT_POLL_INTERVAL: 5s
+    volumes:
+      - git-worker-data:/data
+      - ${KODAMA_GIT_WORKER_DIR:-/nonexistent}:/worker:ro
 
   oauthsonas:
     <<: *fixture

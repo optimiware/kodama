@@ -3446,5 +3446,1974 @@
    },
    "projectId": "p_inventory"
   }
+ },
+ {
+  "name": "valid repository.created",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "main",
+    "hosting": "internal"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created external with a custom default branch",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "release/1.x",
+    "hosting": "external"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created optional additions are compatible",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "main",
+    "hosting": "internal",
+    "note": "extra"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid repository.state_changed",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "provisioning",
+    "to": "ready",
+    "reason": "initialized"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository archived",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "ready",
+    "to": "archived",
+    "reason": "archived_by_request"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository restored",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "archived",
+    "to": "ready",
+    "reason": "restored_by_request"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "valid git.refs_updated by a run",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated by a person with a kinds summary",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_02",
+    "version": 3
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_02",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "user",
+     "id": "usr_engineer"
+    },
+    "originRunId": null,
+    "updates": [
+     {
+      "ref": "refs/heads/main",
+      "old": "1111111111111111111111111111111111111111",
+      "new": "2222222222222222222222222222222222222222",
+      "kind": "fast_forward"
+     },
+     {
+      "ref": "refs/heads/topic",
+      "old": "2222222222222222222222222222222222222222",
+      "new": "3333333333333333333333333333333333333333",
+      "kind": "rewrite"
+     },
+     {
+      "ref": "refs/tags/v1",
+      "old": "3333333333333333333333333333333333333333",
+      "new": "0000000000000000000000000000000000000000",
+      "kind": "delete"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated with several updates",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_many",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_many",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/b0",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     },
+     {
+      "ref": "refs/heads/b1",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     },
+     {
+      "ref": "refs/heads/b2",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     },
+     {
+      "ref": "refs/heads/b3",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     },
+     {
+      "ref": "refs/heads/b4",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     },
+     {
+      "ref": "refs/heads/b5",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     },
+     {
+      "ref": "refs/heads/b6",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     },
+     {
+      "ref": "refs/heads/b7",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated optional additions are compatible",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ],
+    "note": "extra"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created project required",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "main",
+    "hosting": "internal"
+   }
+  }
+ },
+ {
+  "name": "repository.created wrong resource type",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "run",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "main",
+    "hosting": "internal"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created name uppercase",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "Backend",
+    "defaultBranch": "main",
+    "hosting": "internal"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created name too long",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "defaultBranch": "main",
+    "hosting": "internal"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created default branch is a ref path",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "refs/heads/main",
+    "hosting": "internal"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created default branch in the reserved namespace",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "kodama/work/x",
+    "hosting": "internal"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created default branch with traversal",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "a..b",
+    "hosting": "internal"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created unknown hosting",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "main",
+    "hosting": "mirror"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created missing hosting",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": "backend",
+    "defaultBranch": "main"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.created null name",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_created",
+   "schemaVersion": 1,
+   "type": "repository.created",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "name": null,
+    "defaultBranch": "main",
+    "hosting": "internal"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.state_changed project required",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "provisioning",
+    "to": "ready",
+    "reason": "initialized"
+   }
+  }
+ },
+ {
+  "name": "repository.state_changed unknown status",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "provisioning",
+    "to": "deleted",
+    "reason": "initialized"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.state_changed provisioning to archived",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "provisioning",
+    "to": "archived",
+    "reason": "initialized"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.state_changed ready back to provisioning",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "ready",
+    "to": "provisioning",
+    "reason": "retry"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.state_changed to the same status",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "ready",
+    "to": "ready",
+    "reason": "again"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.state_changed unsafe reason",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "provisioning",
+    "to": "ready",
+    "reason": "Initialized OK"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.state_changed missing reason",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "provisioning",
+    "to": "ready"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "repository.state_changed null reason",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_repository_state_changed",
+   "schemaVersion": 1,
+   "type": "repository.state_changed",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "from": "provisioning",
+    "to": "ready",
+    "reason": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated project required",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "git.refs_updated wrong resource type",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "workspace",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated resource is another receive",
+  "valid": false,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_99",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "git.refs_updated aggregate is the repository",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "repository",
+    "id": "repo_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "git.refs_updated omitted originRunId",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated workload without origin run",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": null,
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated person with origin run",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_02",
+    "version": 3
+   },
+   "actor": {
+    "type": "user",
+    "id": "usr_engineer"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_02",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "user",
+     "id": "usr_engineer"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/main",
+      "old": "1111111111111111111111111111111111111111",
+      "new": "2222222222222222222222222222222222222222",
+      "kind": "fast_forward"
+     },
+     {
+      "ref": "refs/heads/topic",
+      "old": "2222222222222222222222222222222222222222",
+      "new": "3333333333333333333333333333333333333333",
+      "kind": "rewrite"
+     },
+     {
+      "ref": "refs/tags/v1",
+      "old": "3333333333333333333333333333333333333333",
+      "new": "0000000000000000000000000000000000000000",
+      "kind": "delete"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated unknown actor type",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "service",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated actor id not an id",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att 01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated zero updates",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": []
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated update that changes nothing",
+  "valid": false,
+  "schemaValid": true,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/x",
+      "old": "1111111111111111111111111111111111111111",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "rewrite"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated unknown update kind",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/x",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "nope"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated omitted updates",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated null updates",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": null
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated string updates",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": "1"
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated carries the legacy count shape instead",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "pushId": "push_01",
+    "updateCount": 1
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated update kind contradicts its values",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_02",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/x",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "fast_forward"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated update with a missing member",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_02",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/x",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     },
+     {
+      "ref": "refs/heads/y",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated names a server ref",
+  "valid": false,
+  "schemaValid": false,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_02",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/kodama/runs/run_01/1",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated updates one ref twice",
+  "valid": false,
+  "schemaValid": true,
+  "error": "invalid",
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "push_02",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/x",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     },
+     {
+      "ref": "refs/heads/x",
+      "old": "1111111111111111111111111111111111111111",
+      "new": "2222222222222222222222222222222222222222",
+      "kind": "fast_forward"
+     }
+    ]
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated with its journal position",
+  "valid": true,
+  "schemaValid": true,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ],
+    "journalPosition": 12
+   },
+   "projectId": "p_inventory"
+  }
+ },
+ {
+  "name": "git.refs_updated journal position zero",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ],
+    "journalPosition": 0
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "git.refs_updated journal position null",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ],
+    "journalPosition": null
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "git.refs_updated journal position string",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ],
+    "journalPosition": "12"
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "invalid"
+ },
+ {
+  "name": "git.refs_updated journal position beyond 2^53-1",
+  "valid": false,
+  "schemaValid": false,
+  "envelope": {
+   "id": "evt_git_refs_updated",
+   "schemaVersion": 1,
+   "type": "git.refs_updated",
+   "occurredAt": "2026-10-30T10:05:00Z",
+   "tenantId": "t_acme",
+   "resource": {
+    "type": "git_push",
+    "id": "rcv_01",
+    "version": 3
+   },
+   "actor": {
+    "type": "service",
+    "id": "svc_repository"
+   },
+   "correlationId": "req_01",
+   "causationId": null,
+   "data": {
+    "receiveId": "rcv_01",
+    "repositoryId": "repo_01",
+    "actor": {
+     "type": "workload",
+     "id": "att_01"
+    },
+    "originRunId": "run_01",
+    "updates": [
+     {
+      "ref": "refs/heads/kodama/agents/run_01/impl",
+      "old": "0000000000000000000000000000000000000000",
+      "new": "1111111111111111111111111111111111111111",
+      "kind": "create"
+     }
+    ],
+    "journalPosition": 9007199254740992
+   },
+   "projectId": "p_inventory"
+  },
+  "error": "malformed"
  }
 ]

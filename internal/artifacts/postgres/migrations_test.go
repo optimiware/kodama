@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -29,8 +30,8 @@ func TestMigrationReapply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Applied) != 2 {
-		t.Fatalf("the baseline is two migrations, applied %v", first.Applied)
+	if !slices.Equal(first.Applied, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql"}) {
+		t.Fatalf("the baseline is three migrations, applied %v", first.Applied)
 	}
 	second, err := storage.Migrate(ctx, mig, m, opts)
 	if err != nil {

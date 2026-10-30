@@ -20,6 +20,9 @@ type Dependencies struct {
 	Evidence  Evidence
 	Finalizer Finalizer
 	Source    Source
+	// V3 enables the source-set result route (SubmitV3). Without it SubmitV3 is
+	// unavailable; the v1 and v2 routes are unchanged either way.
+	V3 *DependenciesV3
 }
 
 // Options configure a Service.
@@ -50,6 +53,9 @@ func NewService(d Dependencies, o Options) (*Service, error) {
 		return nil, errors.New("results: a result finalizer is required")
 	case d.Source == nil:
 		return nil, errors.New("results: a source coordinator is required")
+	}
+	if d.V3 != nil && (d.V3.Contexts == nil || d.V3.Pushes == nil || d.V3.Issued == nil || d.V3.Finalizer == nil) {
+		return nil, errors.New("results: the source-set route needs pinned contexts, push records, issued grants and a finalizer (no allow-all fallback)")
 	}
 	l := o.Logger
 	if l == nil {

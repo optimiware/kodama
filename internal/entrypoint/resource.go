@@ -53,6 +53,15 @@ type ResourceConfig struct {
 	Identity                runtimev2.ResourceIdentity
 	ClientVersion           string
 
+	// RuntimeAPI selects the wire of the resource routes: "" and "v2" keep
+	// /runtime/v2; "v3" is the preparation of a source set (`kodama prepare` only).
+	RuntimeAPI string
+	// GitDir and GitHelper: v3 preparation. The context names its credential and CA
+	// files as /kodama/git/<file>; GitDir maps them (default /kodama/git), and
+	// GitHelper overrides the argv that runs the credential helper.
+	GitDir    string
+	GitHelper []string
+
 	// Preparation only.
 	WorkspaceDir           string
 	CheckoutCredentialFile string
@@ -81,6 +90,9 @@ type ResourceConfig struct {
 func (c *ResourceConfig) applyDefaults() {
 	if c.WorkspaceDir == "" {
 		c.WorkspaceDir = DefaultWorkspaceDir
+	}
+	if c.GitDir == "" {
+		c.GitDir = DefaultGitDir
 	}
 	if c.SecretsDir == "" {
 		c.SecretsDir = DefaultSecretsRoot
@@ -111,6 +123,11 @@ func (c *ResourceConfig) applyDefaults() {
 // Validate checks the identity of the resource and the server URL (https, or
 // plain http on loopback only).
 func (c *ResourceConfig) Validate() error {
+	switch c.RuntimeAPI {
+	case "", RuntimeAPIv2, RuntimeAPIv3:
+	default:
+		return fmt.Errorf("unsupported runtime API %q for a resource workload: use %s or %s", c.RuntimeAPI, RuntimeAPIv2, RuntimeAPIv3)
+	}
 	u, err := url.Parse(c.ServerURL)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("server URL must be an absolute URL without credentials, query or fragment")
@@ -214,6 +231,8 @@ func parseResourceConfig(name string, args []string, getenv func(string) string,
 	str(&c.ServerURL, "server-url", "KODAMA_SERVER_URL", "runtime API origin")
 	str(&c.CAFile, "ca-file", "KODAMA_CA_FILE", "extra PEM CA roots for the runtime API")
 	str(&c.RunID, "run-id", "KODAMA_RUN_ID", "run ID")
+	str(&c.RuntimeAPI, "runtime-api", "KODAMA_RUNTIME_API", "runtime wire of the resource routes: v2 (default) or v3 (source set; prepare only)")
+	str(&c.GitDir, "git-dir", "KODAMA_GIT_DIR", "v3 preparation: directory of the Git credential and CA files, default "+DefaultGitDir)
 	str(&c.Key, "resource-key", "KODAMA_RESOURCE_KEY", "preparation or service.NAME")
 	str(&c.AdmissionCredentialFile, "admission-credential-file", "KODAMA_ADMISSION_CREDENTIAL_FILE", "one-time admission credential file")
 	str(&c.Identity.WorkloadName, "workload-name", "KODAMA_WORKLOAD_NAME", "committed workload name")
@@ -395,10 +414,16 @@ func admitResource(ctx context.Context, rt resourceRuntime, cfg ResourceConfig, 
 	}
 }
 
+// tokenRenewer is the one operation the renewal loop needs, so the v2 and v3
+// resource ports share it.
+type tokenRenewer interface {
+	RenewResourceToken(ctx context.Context) (runtimev2.ResourceTokenResponse, error)
+}
+
 // renewResourceLoop renews the resource token at half its remaining life until ctx
 // ends; a denied renewal, or a token that reached its maximum (the resource's
 // deadline), cancels the work with errAuthorityLost.
-func renewResourceLoop(ctx context.Context, cancel context.CancelCauseFunc, rt resourceRuntime, tok runtimev2.ResourceTokenInfo, minInterval time.Duration, log *slog.Logger) {
+func renewResourceLoop(ctx context.Context, cancel context.CancelCauseFunc, rt tokenRenewer, tok runtimev2.ResourceTokenInfo, minInterval time.Duration, log *slog.Logger) {
 	lose := func(why error) { cancel(fmt.Errorf("%w: %v", errAuthorityLost, why)) }
 	for {
 		exp, _ := tok.ExpiresAt.Time()

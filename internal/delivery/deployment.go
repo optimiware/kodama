@@ -253,6 +253,9 @@ func RestoreDeployment(rec DeploymentRecord) (Deployment, error) {
 	if err := rec.Source.Validate(); err != nil {
 		return Deployment{}, err
 	}
+	if rec.Source.RepositoryURL == "" {
+		return Deployment{}, invalidf("a deployment records the repository and commit of its source, or of its set's primary")
+	}
 	if err := rec.Producer.Validate(); err != nil {
 		return Deployment{}, err
 	}

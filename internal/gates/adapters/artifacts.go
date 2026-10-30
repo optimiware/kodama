@@ -64,6 +64,17 @@ func (e *Evidence) Describe(ctx context.Context, scope domain.Scope, id domain.A
 		// approved commit.
 		meta.Repository, meta.Commit = "", ""
 	}
+	if set := a.Provenance().SourceSet; !set.IsZero() {
+		commits := make([]gates.SourceCommit, 0, len(set.Commits()))
+		for _, c := range set.Commits() {
+			commits = append(commits, gates.SourceCommit{RepositoryID: c.RepositoryID, Commit: c.Commit})
+		}
+		ref, err := gates.NewSourceSetRef(set.Digest, commits)
+		if err != nil {
+			return gates.EvidenceMeta{}, fmt.Errorf("%w: the artifact's source set is invalid", gates.ErrEvidence)
+		}
+		meta.SourceSet = ref
+	}
 	if size, ok := a.Size(); ok {
 		meta.Size = size
 	}

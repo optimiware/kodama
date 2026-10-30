@@ -86,6 +86,23 @@ type MemOptions struct {
 	Shared *execution.SharedConfig
 	// SourceWrap wraps the Git observation seam (a call counter).
 	SourceWrap func(execution.Sources) execution.Sources
+	// SourceSets, InternalWorkspaces and GitGrants are the internal Git service
+	// seams of source-set runs; GitRevoker joins the revocation of an attempt's
+	// Git grants to the store's transactions and InternalPeer the work item's
+	// internal writer reservation.
+	SourceSets         execution.SourceSets
+	InternalWorkspaces execution.InternalWorkspaces
+	GitGrants          execution.GitGrants
+	GitRevoker         memory.GrantRevoker
+	InternalPeer       memory.InternalWorkspaces
+	// Store replaces the memory store of the service (a store over another set
+	// of peers).
+	Store execution.Store
+	// AgentPins is the shared-context agent pin port (nil: unpinned contexts).
+	AgentPins execution.AgentPins
+	// WrapStore decorates the memory store the service uses (the agent admission
+	// chain's store) unless Store replaces it.
+	WrapStore func(execution.Store) execution.Store
 }
 
 // Mem is one fully wired execution module over the in-memory store: the memory
@@ -129,6 +146,7 @@ func NewMem(t testing.TB, o ...MemOptions) *Mem {
 	var err error
 	peers := m.World.Peers(m.Auth)
 	peers.Grants = opt.Grants
+	peers.GitGrants, peers.Internal = opt.GitRevoker, opt.InternalPeer
 	peers.GrantFence = opt.GrantFence
 	if opt.GrantFenceOf != nil {
 		peers.GrantFence = opt.GrantFenceOf(m.DB)
@@ -160,6 +178,15 @@ func NewMem(t testing.TB, o ...MemOptions) *Mem {
 // control-plane process (or the same one after a restart) would be.
 func (m *Mem) NewService(opt MemOptions) *execution.Service {
 	m.T.Helper()
+	svc, err := m.BuildService(opt)
+	must(m.T, err)
+	return svc
+}
+
+// BuildService is NewService returning the composition's refusal instead of
+// failing the test.
+func (m *Mem) BuildService(opt MemOptions) (*execution.Service, error) {
+	m.T.Helper()
 	hooks := opt.Hooks
 	if hooks == nil {
 		hooks = execution.EnabledKinds{pipeline.KindContainer}
@@ -168,11 +195,19 @@ func (m *Mem) NewService(opt MemOptions) *execution.Service {
 	if opt.Kinds != nil {
 		kinds = pipeline.EnabledKinds(opt.Kinds)
 	}
+	var store execution.Store = m.Mem
+	if opt.Store != nil {
+		store = opt.Store
+	} else if opt.WrapStore != nil {
+		store = opt.WrapStore(m.Mem)
+	}
 	deps := execution.Dependencies{
-		Store: m.Mem, Authority: m.Auth, Definitions: memDefinitions{m.Defs}, Capabilities: kinds,
+		Store: store, Authority: m.Auth, Definitions: memDefinitions{m.Defs}, Capabilities: kinds,
 		Work: m.World, Configuration: m.World, Sources: m.World, Limits: m.Limits, Hooks: hooks,
 		Tenants: tenantList{ScopeA.TenantID, ScopeB.TenantID}, Cleanup: opt.Cleanup, Clock: m.Clock.Now, CancelledWork: m.World,
 		Requirements: opt.Requirements, NewID: m.ID, Shared: opt.Shared,
+		SourceSets: opt.SourceSets, InternalWorkspaces: opt.InternalWorkspaces, GitGrants: opt.GitGrants,
+		AgentPins: opt.AgentPins,
 	}
 	if opt.SourceWrap != nil {
 		deps.Sources = opt.SourceWrap(deps.Sources)
@@ -194,8 +229,7 @@ func (m *Mem) NewService(opt MemOptions) *execution.Service {
 	} else {
 		svc, err = execution.NewService(deps, so)
 	}
-	must(m.T, err)
-	return svc
+	return svc, err
 }
 
 // memDefinitions adapts the in-memory pipeline repository to execution.Definitions.

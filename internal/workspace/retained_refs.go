@@ -30,6 +30,9 @@ func (s *Service) PinCommit(ctx context.Context, actor Actor, in PinInput) (*Ret
 	if err != nil {
 		return nil, err
 	}
+	if err := w.requireExternal("pinning a commit of the workspace branch"); err != nil {
+		return nil, err
+	}
 	if err := s.requireInHistory(ctx, w, in.Commit); err != nil {
 		return nil, err
 	}

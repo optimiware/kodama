@@ -23,7 +23,7 @@ func (s *Store) ListArtifacts(ctx context.Context, scope domain.Scope, after dom
 	}
 	var out []artifacts.Artifact
 	err := s.read(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT `+artifactColumns+`
+		rows, err := tx.Query(ctx, `SELECT `+s.columns()+`
 FROM artifacts
 WHERE tenant_id = $1 AND project_id = $2 AND ($3 = '' OR id > $3)
 ORDER BY id ASC
@@ -82,7 +82,7 @@ func (s *Store) CreateRelease(ctx context.Context, rel artifacts.Release, _ stri
 		sort.Slice(artifactIDs, func(i, j int) bool { return artifactIDs[i] < artifactIDs[j] })
 		loaded := make(map[domain.ArtifactID]artifacts.Artifact, len(artifactIDs))
 		for _, id := range artifactIDs {
-			a, err := getArtifact(ctx, tx, scope, id, "FOR SHARE")
+			a, err := s.getArtifact(ctx, tx, scope, id, "FOR SHARE")
 			if err != nil {
 				return err
 			}
@@ -339,7 +339,7 @@ FOR UPDATE`,
 			return err
 		}
 
-		a, err := getArtifact(ctx, tx, pub.Scope, pub.ArtifactID, "FOR SHARE")
+		a, err := s.getArtifact(ctx, tx, pub.Scope, pub.ArtifactID, "FOR SHARE")
 		if err != nil {
 			return err
 		}

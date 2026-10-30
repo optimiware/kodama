@@ -2,6 +2,8 @@ package gates
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
@@ -59,6 +61,70 @@ type EvidenceMeta struct {
 	// connected to any candidate.
 	Repository string
 	Commit     string
+	// SourceSet is the provenance of an attempt of a source-set run instead: the
+	// digest of the run's pinned set and, per repository, the commit the attempt
+	// worked from. It is zero for an artifact with a single source (Repository
+	// and Commit above) or none.
+	SourceSet SourceSetRef
+}
+
+// SourceCommit is one repository of a source set at a commit.
+type SourceCommit struct {
+	RepositoryID string
+	Commit       string
+}
+
+// SourceSetRef names a source set by its digest and the commit of each
+// repository, ordered by repository ID. It is comparable (the commits are held
+// in one canonical encoding), so snapshots and metadata that carry it stay
+// comparable. The zero value is "no source set".
+type SourceSetRef struct {
+	Digest  string
+	commits string
+}
+
+// NewSourceSetRef builds the canonical reference: a digest and 1 to MaxSources
+// commits, each repository once, ordered by repository ID.
+func NewSourceSetRef(digest string, commits []SourceCommit) (SourceSetRef, error) {
+	if err := validDigest("source set digest", digest); err != nil {
+		return SourceSetRef{}, err
+	}
+	if len(commits) < 1 || len(commits) > MaxSources {
+		return SourceSetRef{}, invalidf("a source set names 1 to %d repositories", MaxSources)
+	}
+	sorted := append([]SourceCommit(nil), commits...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].RepositoryID < sorted[j].RepositoryID })
+	parts := make([]string, len(sorted))
+	for i, c := range sorted {
+		if !repoIDPattern.MatchString(c.RepositoryID) {
+			return SourceSetRef{}, invalidf("a source needs a repository ID")
+		}
+		if i > 0 && sorted[i-1].RepositoryID == c.RepositoryID {
+			return SourceSetRef{}, invalidf("a source set names a repository once")
+		}
+		if err := validCommit("source commit", c.Commit); err != nil {
+			return SourceSetRef{}, err
+		}
+		parts[i] = c.RepositoryID + "@" + c.Commit
+	}
+	return SourceSetRef{Digest: digest, commits: strings.Join(parts, ",")}, nil
+}
+
+// IsZero reports "no source set".
+func (s SourceSetRef) IsZero() bool { return s == SourceSetRef{} }
+
+// Commits returns the per-repository commits ordered by repository ID.
+func (s SourceSetRef) Commits() []SourceCommit {
+	if s.commits == "" {
+		return nil
+	}
+	parts := strings.Split(s.commits, ",")
+	out := make([]SourceCommit, len(parts))
+	for i, p := range parts {
+		id, commit, _ := strings.Cut(p, "@")
+		out[i] = SourceCommit{RepositoryID: id, Commit: commit}
+	}
+	return out
 }
 
 // Evidence reads artifact metadata and content. Describe returns ErrNotFound
@@ -100,8 +166,13 @@ type DeploymentSnapshot struct {
 	// Scope is the tenant and project owning the deployment row.
 	Scope domain.Scope
 	// Candidate is the source commit the deployment row records as its
-	// candidate.
+	// candidate: the commit of a single source or, for a deployment of a source
+	// set, of the set's primary source.
 	Candidate string
+	// SourceSet is the source set the deployment row records instead (the digest
+	// of the run's pinned set and one commit per repository); zero for a
+	// single-source deployment.
+	SourceSet SourceSetRef
 }
 
 // Deployments resolves a deployment and its configuration through the
@@ -152,7 +223,10 @@ type RequestPlan struct {
 	Gate *Gate
 	// Inputs are the execution-resolved inputs the subject was built from. The
 	// transaction recomputes them under the run lock and refuses a mismatch.
-	Inputs    execution.GateInputs
+	Inputs execution.GateInputs
+	// SourceSet is the source-set candidate the subject was built from, nil for a
+	// single-repository gate; it too is recomputed under the run lock.
+	SourceSet *SetInputs
 	Actor     Actor
 	RequestID string
 }

@@ -10,6 +10,7 @@ import (
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -65,6 +66,36 @@ func PinContextV2(c runtimev2.ContextV2) (Digest, []byte, error) {
 	return sha256.Sum256(canonical), canonical, nil
 }
 
+// PinContextV3 is PinContext for the source-set wire: the canonical document and
+// digest of a ContextV3. The execution owner computes AttemptState.ContextDigest
+// the same way, so the grant and the execution state reference byte-identical
+// content.
+func PinContextV3(c runtimev3.ContextV3) (Digest, []byte, error) {
+	if err := c.Validate(); err != nil {
+		return Digest{}, nil, fail(ErrInvalidRequest, "the context is invalid: %v", err)
+	}
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return Digest{}, nil, fail(ErrInvalidRequest, "the context cannot be encoded")
+	}
+	canonical, err := runtimev1.Canonicalize(raw)
+	if err != nil {
+		return Digest{}, nil, fail(ErrInvalidRequest, "the context cannot be canonicalized")
+	}
+	if len(canonical) > MaxContextBytes {
+		return Digest{}, nil, fail(ErrInvalidRequest, "the context is too large")
+	}
+	return sha256.Sum256(canonical), canonical, nil
+}
+
+func decodeContextV3(doc []byte) (runtimev3.ContextV3, error) {
+	c, err := runtimev3.DecodeRequest[runtimev3.ContextV3](doc)
+	if err != nil {
+		return runtimev3.ContextV3{}, failWith(ErrUnavailable, err, "the stored context is unreadable")
+	}
+	return c, nil
+}
+
 func decodeContextV2(doc []byte) (runtimev2.ContextV2, error) {
 	c, err := runtimev2.DecodeRequest[runtimev2.ContextV2](doc)
 	if err != nil {
@@ -79,17 +110,27 @@ func decodeContextV2(doc []byte) (runtimev2.ContextV2, error) {
 const (
 	WireV1 int64 = 1
 	WireV2 int64 = 2
+	// WireV3 serves run_shared contexts of a source set (ContextV3, T-150): the
+	// same attempt token and grant rules, plus the Git credential delivery and the
+	// runtime-issued Git grants.
+	WireV3 int64 = 3
 )
 
-// WireOf returns the runtime wire of a pinned context document: 2 for a
-// ContextV2 (contextVersion 2), 1 for every other document. It only reads the
-// discriminator; the strict decoding of the matching version follows.
+// WireOf returns the runtime wire of a pinned context document: 3 for a
+// ContextV3 (contextVersion 3), 2 for a ContextV2 (contextVersion 2), 1 for every
+// other document. It only reads the discriminator; the strict decoding of the
+// matching version follows.
 func WireOf(doc []byte) int64 {
 	var v struct {
 		ContextVersion int64 `json:"contextVersion"`
 	}
-	if json.Unmarshal(doc, &v) == nil && v.ContextVersion == runtimev2.ContextVersion {
-		return WireV2
+	if json.Unmarshal(doc, &v) == nil {
+		switch v.ContextVersion {
+		case runtimev3.ContextVersion:
+			return WireV3
+		case runtimev2.ContextVersion:
+			return WireV2
+		}
 	}
 	return WireV1
 }
@@ -164,6 +205,34 @@ func (s *Service) RegisterV2(ctx context.Context, cmd RegisterCommandV2) (reg Re
 		return Registration{}, fail(ErrInvalidRequest, "the context belongs to another scope or attempt")
 	}
 	contextDigest, doc, err := PinContextV2(cmd.Context)
+	if err != nil {
+		return Registration{}, err
+	}
+	return s.register(ctx, cmd.Scope, cmd.AttemptID, cmd.Context.RunID, cmd.Credential, cmd.Actions, contextDigest, doc)
+}
+
+// RegisterCommandV3 is Register for a source-set attempt: the pinned context is
+// the ContextV3 the entrypoint receives from /runtime/v3.
+type RegisterCommandV3 struct {
+	Scope      domain.Scope
+	AttemptID  domain.AttemptID
+	Credential Credential
+	Actions    ActionSet
+	Context    runtimev3.ContextV3
+}
+
+// RegisterV3 registers the admission credential of a source-set attempt with
+// exactly the semantics of Register. The grant is bound to the v3 wire: the v1
+// and v2 routes refuse it with context_version_mismatch and the reverse.
+func (s *Service) RegisterV3(ctx context.Context, cmd RegisterCommandV3) (reg Registration, err error) {
+	defer func() { err = Classify(err); s.logOp(ctx, "register", cmd.AttemptID, err) }()
+	if err := firstErr(cmd.Scope.Validate(), cmd.AttemptID.Validate()); err != nil {
+		return Registration{}, fail(ErrInvalidRequest, "%v", err)
+	}
+	if cmd.Context.Scope() != cmd.Scope || cmd.Context.AttemptID != cmd.AttemptID {
+		return Registration{}, fail(ErrInvalidRequest, "the context belongs to another scope or attempt")
+	}
+	contextDigest, doc, err := PinContextV3(cmd.Context)
 	if err != nil {
 		return Registration{}, err
 	}
@@ -288,6 +357,29 @@ func (s *Service) AdmitV2(ctx context.Context, route domain.AttemptID, req runti
 	resp = runtimev2.AdmitResponseV2{Token: info, Context: c}
 	if err := resp.Validate(); err != nil {
 		return runtimev2.AdmitResponseV2{}, failWith(ErrUnavailable, err, "the response is not a valid admission")
+	}
+	return resp, nil
+}
+
+// AdmitV3 is Admit on the source-set wire: the same exchange, one-time credential,
+// replay and revocation rules and the unchanged attempt token (audience
+// kodama-runtime), returning the ContextV3. An attempt of another wire is
+// ErrContextVersionMismatch with nothing consumed or revoked. The Git credential
+// is not part of the exchange: it is delivered to the workload's credential file
+// by the runtime adapter (execution's GitGrants), never through the admission.
+func (s *Service) AdmitV3(ctx context.Context, route domain.AttemptID, req runtimev1.AdmitRequest) (resp runtimev3.AdmitResponseV3, err error) {
+	defer func() { err = Classify(err); s.logOp(ctx, "admit", route, err) }()
+	info, doc, err := s.admit(ctx, route, req, WireV3)
+	if err != nil {
+		return resp, err
+	}
+	c, err := decodeContextV3(doc)
+	if err != nil {
+		return resp, err
+	}
+	resp = runtimev3.AdmitResponseV3{Token: info, Context: c}
+	if err := resp.Validate(); err != nil {
+		return runtimev3.AdmitResponseV3{}, failWith(ErrUnavailable, err, "the response is not a valid admission")
 	}
 	return resp, nil
 }
@@ -427,6 +519,16 @@ func (s *Service) admit(ctx context.Context, route domain.AttemptID, req runtime
 
 // pinnedWrapper is the wrapper version a pinned profile requires, "" for none.
 func pinnedWrapper(doc []byte, wire int64) (string, error) {
+	if wire == WireV3 {
+		c, err := decodeContextV3(doc)
+		if err != nil {
+			return "", err
+		}
+		if c.Profile != nil {
+			return c.Profile.WrapperVersion, nil
+		}
+		return "", nil
+	}
 	if wire == WireV2 {
 		c, err := decodeContextV2(doc)
 		if err != nil {

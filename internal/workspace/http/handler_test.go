@@ -478,6 +478,7 @@ func Test_workspace_http_contract(t *testing.T) {
 			path   []string
 		}{
 			"available":           {"Workspace", "workspace.json", []string{"components", "responses", "Workspace", "content", "application/json", "examples", "available", "value"}},
+			"internal":            {"Workspace", "workspace.json", []string{"components", "responses", "Workspace", "content", "application/json", "examples", "internal", "value"}},
 			"provisioningPending": {"Workspace", "workspace.json", []string{"paths", "/tenants/{tenantId}/projects/{projectId}/work-items/{id}/workspace", "post", "responses", "202", "content", "application/json", "examples", "provisioningPending", "value"}},
 			"diverged":            {"ErrorEnvelope", "common.json", []string{"components", "responses", "Conflict", "content", "application/json", "examples", "diverged", "value"}},
 			"archivePending":      {"ErrorEnvelope", "common.json", []string{"components", "responses", "ArchiveConflict", "content", "application/json", "examples", "archivePending", "value"}},
@@ -500,10 +501,10 @@ func Test_workspace_http_contract(t *testing.T) {
 		}
 		// The schema rejects states other than the three, extra members and non-safe errors.
 		for name, doc := range map[string]string{
-			"unknown state": `{"id":"a","workItemId":"w","repositoryId":"r","branch":"refs/heads/x","acceptedCommit":null,"state":"failed","writerAttemptId":null,"publication":null,"archiveRequestedAt":null,"lastError":null,"version":1,"createdAt":"2026-10-19T10:00:00Z","updatedAt":"2026-10-19T10:00:00Z"}`,
-			"extra member":  `{"id":"a","workItemId":"w","repositoryId":"r","branch":"refs/heads/x","acceptedCommit":null,"state":"available","writerAttemptId":null,"publication":null,"archiveRequestedAt":null,"lastError":null,"version":1,"createdAt":"2026-10-19T10:00:00Z","updatedAt":"2026-10-19T10:00:00Z","repositoryUrl":"https://x"}`,
-			"free-text err": `{"id":"a","workItemId":"w","repositoryId":"r","branch":"refs/heads/x","acceptedCommit":null,"state":"available","writerAttemptId":null,"publication":null,"archiveRequestedAt":null,"lastError":"Connection refused to host","version":1,"createdAt":"2026-10-19T10:00:00Z","updatedAt":"2026-10-19T10:00:00Z"}`,
-			"short commit":  `{"id":"a","workItemId":"w","repositoryId":"r","branch":"refs/heads/x","acceptedCommit":"abc","state":"available","writerAttemptId":null,"publication":null,"archiveRequestedAt":null,"lastError":null,"version":1,"createdAt":"2026-10-19T10:00:00Z","updatedAt":"2026-10-19T10:00:00Z"}`,
+			"unknown state": `{"id":"a","hosting":"external","repositories":[],"workItemId":"w","repositoryId":"r","branch":"refs/heads/x","acceptedCommit":null,"state":"failed","writerAttemptId":null,"publication":null,"archiveRequestedAt":null,"lastError":null,"version":1,"createdAt":"2026-10-19T10:00:00Z","updatedAt":"2026-10-19T10:00:00Z"}`,
+			"extra member":  `{"id":"a","hosting":"external","repositories":[],"workItemId":"w","repositoryId":"r","branch":"refs/heads/x","acceptedCommit":null,"state":"available","writerAttemptId":null,"publication":null,"archiveRequestedAt":null,"lastError":null,"version":1,"createdAt":"2026-10-19T10:00:00Z","updatedAt":"2026-10-19T10:00:00Z","repositoryUrl":"https://x"}`,
+			"free-text err": `{"id":"a","hosting":"external","repositories":[],"workItemId":"w","repositoryId":"r","branch":"refs/heads/x","acceptedCommit":null,"state":"available","writerAttemptId":null,"publication":null,"archiveRequestedAt":null,"lastError":"Connection refused to host","version":1,"createdAt":"2026-10-19T10:00:00Z","updatedAt":"2026-10-19T10:00:00Z"}`,
+			"short commit":  `{"id":"a","hosting":"external","repositories":[],"workItemId":"w","repositoryId":"r","branch":"refs/heads/x","acceptedCommit":"abc","state":"available","writerAttemptId":null,"publication":null,"archiveRequestedAt":null,"lastError":null,"version":1,"createdAt":"2026-10-19T10:00:00Z","updatedAt":"2026-10-19T10:00:00Z"}`,
 		} {
 			if err := h.api.validate(t, "workspace.json", "Workspace", []byte(doc)); err == nil {
 				t.Errorf("%s was accepted", name)

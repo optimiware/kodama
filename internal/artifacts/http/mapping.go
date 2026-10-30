@@ -25,7 +25,13 @@ func toDTO(v artifacts.View) Artifact {
 		reg := a.Registry()
 		out.Registry = &reg
 	}
-	if p := a.Provenance(); !p.IsZero() {
+	if p := a.Provenance(); !p.SourceSet.IsZero() {
+		set := &ArtifactSourceSet{Digest: p.SourceSet.Digest}
+		for _, c := range p.SourceSet.Commits() {
+			set.Commits = append(set.Commits, ArtifactSourceCommit{RepositoryId: httpapi.ID(c.RepositoryID), Commit: c.Commit})
+		}
+		out.SourceSet = set
+	} else if !p.IsZero() {
 		src := &SourceProvenance{RepositoryUrl: p.RepositoryURL, Commit: p.Commit}
 		if p.WorkspaceState != "" {
 			// A run_shared producer: what the server recorded at its command begin,

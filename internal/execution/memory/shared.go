@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/memdb"
@@ -75,6 +76,11 @@ func cloneResource(r execution.RunResource) (execution.RunResource, error) {
 		return r, err
 	}
 	r.Spec = spec
+	if r.ReceiptV3 != nil {
+		c := *r.ReceiptV3
+		c.Sources = append([]runtimev3.PreparedSource(nil), c.Sources...)
+		r.ReceiptV3 = &c
+	}
 	if r.Receipt != nil {
 		c := *r.Receipt
 		r.Receipt = &c
@@ -236,6 +242,9 @@ func (s *Store) updateResource(tx memdb.Tx, scope domain.Scope, r *execution.Run
 	if cur.Receipt != nil && (r.Receipt == nil || *r.Receipt != *cur.Receipt || r.ReceiptDigest != cur.ReceiptDigest || !sameTime(cur.ReceiptAt, r.ReceiptAt)) {
 		return immutablef("the preparation receipt is recorded once")
 	}
+	if cur.ReceiptV3 != nil && (r.ReceiptV3 == nil || r.ReceiptDigest != cur.ReceiptDigest || !sameTime(cur.ReceiptAt, r.ReceiptAt) || !sameReceiptV3(*cur.ReceiptV3, *r.ReceiptV3)) {
+		return immutablef("the preparation receipt is recorded once")
+	}
 	if cur.ReadyAt != nil && !sameTime(cur.ReadyAt, r.ReadyAt) {
 		return immutablef("the first ready time is immutable")
 	}
@@ -254,7 +263,7 @@ func (s *Store) updateResource(tx memdb.Tx, scope domain.Scope, r *execution.Run
 	if r.StoppedAt != nil && (r.StopRequestedAt == nil || r.StopLaunch == "") {
 		return immutablef("a verified stop carries its intent and launch evidence")
 	}
-	if r.Receipt != nil && (r.Kind != execution.KindPreparation || r.UID == "" || r.ReceiptDigest == "" || r.ReceiptAt == nil) {
+	if r.HasReceipt() && (r.Kind != execution.KindPreparation || r.UID == "" || r.ReceiptDigest == "" || r.ReceiptAt == nil) {
 		return immutablef("a receipt belongs to a bound preparation with its digest and time")
 	}
 	if r.UID != "" {
@@ -408,4 +417,18 @@ func (s *Store) CorruptModelForTest(ctx context.Context, scope domain.Scope, run
 		c.Shared.RunModel = "run_shared_v9"
 		return runsT.Put(tx, c)
 	})
+}
+
+// sameReceiptV3 compares two source-set receipts field by field.
+func sameReceiptV3(a, b runtimev3.PreparationReceiptRequestV3) bool {
+	if a.HooksDisabled != b.HooksDisabled || a.Submodules != b.Submodules || a.CredentialsRemoved != b.CredentialsRemoved ||
+		a.Attempts != b.Attempts || len(a.Sources) != len(b.Sources) {
+		return false
+	}
+	for i := range a.Sources {
+		if a.Sources[i] != b.Sources[i] {
+			return false
+		}
+	}
+	return true
 }

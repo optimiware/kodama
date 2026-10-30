@@ -32,6 +32,21 @@ type Dependencies struct {
 	Deletion DeletionPolicy
 	Rotation PublisherRotation
 
+	// The internally hosted model (ADR 0011). Each is optional and independent
+	// of the external publisher path: a use case that needs a missing one fails
+	// closed with ErrNotConfigured and never falls back to another model.
+	// Hosts creates task branches and retained refs; InternalRepos resolves the
+	// project's repositories; Pushes reloads push records; Gate reports unknown
+	// push outcomes; RefPushes reads the push records that touched one ref
+	// (in-flight pushes, applied entries); Inspector reads a pushed commit's
+	// content server-side.
+	Hosts         Hosts
+	InternalRepos InternalRepositories
+	Pushes        PushRecords
+	Gate          WriterGate
+	RefPushes     RefPushes
+	Inspector     PushInspector
+
 	Clock  func() time.Time
 	NewID  func(prefix string) string
 	Logger *slog.Logger
@@ -202,6 +217,9 @@ type Recovery struct {
 func (s *Service) RecoveryPoint(ctx context.Context, actor Actor, scope domain.Scope, id ID) (Recovery, error) {
 	w, err := s.Get(ctx, actor, scope, id)
 	if err != nil {
+		return Recovery{}, err
+	}
+	if err := w.requireExternal("a single recovery point (use InternalRecovery)"); err != nil {
 		return Recovery{}, err
 	}
 	if w.AcceptedCommit == "" {

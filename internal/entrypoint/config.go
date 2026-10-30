@@ -24,6 +24,12 @@ const (
 	DefaultSecretsDir   = "/kodama/secrets"
 	DefaultIdentityDir  = "/kodama/identity"
 	DefaultResultsFile  = "/kodama/results.json"
+	// DefaultGitDir is where the runtime adapter writes the Git credential files
+	// and CA bundle a v3 context names (/kodama/git/<file>).
+	DefaultGitDir = "/kodama/git"
+	// GitPrefix is the directory prefix every Git file of a v3 context carries; it
+	// is mapped onto Config.GitDir.
+	GitPrefix = "/kodama/git"
 
 	// OutputsPrefix is the path prefix every declared file output carries in
 	// the Context; it is mapped onto Config.OutputsDir.
@@ -37,6 +43,10 @@ const (
 const (
 	RuntimeAPIv1 = "v1"
 	RuntimeAPIv2 = "v2"
+	// RuntimeAPIv3 is the run_shared model with a source set of internally hosted
+	// repositories: per-source verification, the attempt's Git grant and explicit
+	// pushes (docs/contracts/runtime-v3.md).
+	RuntimeAPIv3 = "v3"
 )
 
 // Version is the entrypoint version sent as AdmitRequest.ClientVersion. The
@@ -59,6 +69,14 @@ type Config struct {
 	// controller-prepared /workspace and calls begin before the command. A
 	// run_shared attempt never has a checkout credential.
 	RuntimeAPI string
+
+	// GitDir holds the Git credential and CA files of a v3 attempt; the context's
+	// /kodama/git/<file> paths are mapped onto it (default /kodama/git).
+	GitDir string
+	// GitHelper is the argv prefix that runs this binary's Git credential helper
+	// (default: the running executable followed by git-credential-helper). Tests
+	// and unusual layouts override it.
+	GitHelper []string
 
 	WorkspaceDir string
 	OutputsDir   string
@@ -98,6 +116,9 @@ type Config struct {
 // SharedRun reports whether the run_shared (v2) wire is selected.
 func (c *Config) SharedRun() bool { return c.RuntimeAPI == RuntimeAPIv2 }
 
+// SourceSetRun reports whether the v3 (source set) wire is selected.
+func (c *Config) SourceSetRun() bool { return c.RuntimeAPI == RuntimeAPIv3 }
+
 func (c *Config) applyDefaults() {
 	def := func(p *string, v string) {
 		if *p == "" {
@@ -107,6 +128,7 @@ func (c *Config) applyDefaults() {
 	def(&c.WorkspaceDir, DefaultWorkspaceDir)
 	def(&c.OutputsDir, DefaultOutputsDir)
 	def(&c.SecretsDir, DefaultSecretsDir)
+	def(&c.GitDir, DefaultGitDir)
 	def(&c.IdentityDir, DefaultIdentityDir)
 	def(&c.ResultsFile, DefaultResultsFile)
 	def(&c.AdmissionCredentialFile, filepath.Join(c.IdentityDir, "admission"))
@@ -137,9 +159,9 @@ func (c *Config) applyDefaults() {
 // secrets directory is disjoint from the workspace, outputs and identity roots.
 func (c *Config) Validate() error {
 	switch c.RuntimeAPI {
-	case "", RuntimeAPIv1, RuntimeAPIv2:
+	case "", RuntimeAPIv1, RuntimeAPIv2, RuntimeAPIv3:
 	default:
-		return fmt.Errorf("unsupported runtime API %q: use %s or %s", c.RuntimeAPI, RuntimeAPIv1, RuntimeAPIv2)
+		return fmt.Errorf("unsupported runtime API %q: use %s, %s or %s", c.RuntimeAPI, RuntimeAPIv1, RuntimeAPIv2, RuntimeAPIv3)
 	}
 	u, err := url.Parse(c.ServerURL)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -161,6 +183,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("job identity: %w", err)
 	}
 	roots := map[string]string{"workspace": c.WorkspaceDir, "outputs": c.OutputsDir, "secrets": c.SecretsDir, "identity": c.IdentityDir}
+	if c.SourceSetRun() {
+		roots["git"] = c.GitDir
+	}
 	abs := map[string]string{}
 	for name, p := range roots {
 		a, err := filepath.Abs(p)
@@ -170,6 +195,9 @@ func (c *Config) Validate() error {
 		abs[name] = filepath.Clean(a)
 	}
 	names := []string{"workspace", "outputs", "secrets", "identity"}
+	if c.SourceSetRun() {
+		names = append(names, "git")
+	}
 	for i, a := range names {
 		for _, b := range names[i+1:] {
 			if within(abs[a], abs[b]) || within(abs[b], abs[a]) {
@@ -238,7 +266,8 @@ func ParseConfig(args []string, getenv func(string) string, output io.Writer) (C
 		fs.StringVar(p, flagName, setting(env, ""), usage+" (env KODAMA_STEP_"+strings.TrimPrefix(env, "KODAMA_")+" or "+env+")")
 	}
 	str(&c.ServerURL, "server-url", "KODAMA_SERVER_URL", "runtime API origin")
-	str(&c.RuntimeAPI, "runtime-api", "KODAMA_RUNTIME_API", "runtime wire: v1 (default) or v2 (run_shared)")
+	str(&c.RuntimeAPI, "runtime-api", "KODAMA_RUNTIME_API", "runtime wire: v1 (default), v2 (run_shared) or v3 (run_shared with a source set)")
+	str(&c.GitDir, "git-dir", "KODAMA_GIT_DIR", "v3: directory of the Git credential and CA files, default "+DefaultGitDir)
 	str(&c.AttemptID, "attempt-id", "KODAMA_ATTEMPT_ID", "attempt ID")
 	str(&c.IdentityDir, "identity-dir", "KODAMA_IDENTITY_DIR", "identity directory, default "+DefaultIdentityDir)
 	str(&c.AdmissionCredentialFile, "admission-credential-file", "KODAMA_ADMISSION_CREDENTIAL_FILE", "one-time admission credential file")

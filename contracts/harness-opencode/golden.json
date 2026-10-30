@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "note": "SHA-256 of the files of the original (T-074) harness evidence at the time source-set compatibility (T-153) was added. They must stay byte-identical: v1 and v2 agent behavior is unchanged, and the source-set evidence is additive in source-sets.json.",
+  "files": {
+    "cases.json": "sha256:b24b5610bbc68a374c41bb607b94d1bf7799f198640b6a2de44a3b8b73cb91b4",
+    "sources.json": "sha256:67907bb8197b20627a0b44ea0e52f69931aef2df21501296bc40baee80bb8386"
+  }
+}

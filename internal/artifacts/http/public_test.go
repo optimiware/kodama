@@ -246,7 +246,16 @@ func TestPublicMetadataContract(t *testing.T) {
 		}
 		required := strs(at(schemas, "Artifact", "required"))
 		sort.Strings(required)
-		if !reflect.DeepEqual(required, always) || !reflect.DeepEqual(required, specNames) {
+		// Every member but the source set is written always (null when absent): the
+		// source set exists only for an artifact of a source-set run, so an artifact
+		// of any other run keeps exactly its earlier representation.
+		var requiredNames []string
+		for _, n := range specNames {
+			if n != "sourceSet" {
+				requiredNames = append(requiredNames, n)
+			}
+		}
+		if !reflect.DeepEqual(required, always) || !reflect.DeepEqual(required, requiredNames) {
 			t.Fatalf("required %v, always-written fields %v", required, always)
 		}
 		if at(schemas, "Artifact", "additionalProperties") != false {
@@ -254,6 +263,7 @@ func TestPublicMetadataContract(t *testing.T) {
 		}
 		for name, typ := range map[string]reflect.Type{
 			"ArtifactDownload": reflect.TypeOf(artifactshttp.ArtifactDownload{}), "SourceProvenance": reflect.TypeOf(artifactshttp.SourceProvenance{}),
+			"ArtifactSourceSet": reflect.TypeOf(artifactshttp.ArtifactSourceSet{}), "ArtifactSourceCommit": reflect.TypeOf(artifactshttp.ArtifactSourceCommit{}),
 		} {
 			pr := at(schemas, name, "properties").(map[string]any)
 			var names []string

@@ -322,6 +322,14 @@ type Store interface {
 	RecordRemoval(ctx context.Context, scope domain.Scope, attempt domain.AttemptID) error
 }
 
+// GitRevokingStore is optionally implemented by a Store that revokes the Git
+// grants of an attempt in the transaction that ends its authority. NewService
+// refuses to compose a Git grant issuer (Dependencies.GitGrants) with a store
+// that reports false.
+type GitRevokingStore interface {
+	RevokesGitGrants() bool
+}
+
 // EnvironmentStore is optionally implemented by a Store whose Admit calls
 // BindEnvironments inside the admission transaction and registers the exact
 // credential pins of every admitted run, cleanup runs included. Cleanup
@@ -369,8 +377,12 @@ type Dependencies struct {
 	Sources       Sources
 	Limits        Limits
 	Planner       Planner
-	Hooks         Hooks
-	Tenants       Tenants
+	// AgentPins pins an agent step's profile and design baseline into its shared
+	// (v2/v3) context. Nil leaves contexts unpinned and refuses an agent step
+	// of a shared run (see AgentPins).
+	AgentPins AgentPins
+	Hooks     Hooks
+	Tenants   Tenants
 	// Runtime runs attempt workloads. Without it runs are admitted unbound; an
 	// unbound run is never dispatched, so admit with the runtime that will run it.
 	Runtime Runtime
@@ -381,6 +393,15 @@ type Dependencies struct {
 	// resource port of the same backend plus the policy source. Nil (the
 	// default) keeps new-format admission closed.
 	Shared *SharedConfig
+	// SourceSets, InternalWorkspaces and GitGrants are the internal Git service
+	// seams of source-set runs (ADR 0011). They are optional and independent of
+	// every earlier path: without SourceSets (and the run_shared opt-in Shared)
+	// no source-set run is admitted; InternalWorkspaces is needed only by a run
+	// started for a work item that writes a source; GitGrants by every attempt
+	// that holds a static grant.
+	SourceSets         SourceSets
+	InternalWorkspaces InternalWorkspaces
+	GitGrants          GitGrants
 	// Optional.
 	Cleanup DeploymentCleanup
 	// CleanupEnvironments resolves a deployment's retained configuration for

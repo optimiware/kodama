@@ -291,6 +291,13 @@ const minSecretScanLen = 8
 // tree) whose raw content contains any needle. It returns a description of
 // the object (path when known). Injected credentials must never enter a bundle.
 func (g *git) scanForSecrets(ctx context.Context, dir, base, commit string, needles [][]byte) (string, error) {
+	return g.scanObjects(ctx, dir, []string{base}, commit, needles)
+}
+
+// scanObjects is scanForSecrets over everything reachable from commit and from
+// none of bases (the v3 push excludes both the pinned and the published head). A
+// base that is empty excludes nothing: a seed's whole history is new.
+func (g *git) scanObjects(ctx context.Context, dir string, bases []string, commit string, needles [][]byte) (string, error) {
 	var usable [][]byte
 	for _, n := range needles {
 		if len(n) >= minSecretScanLen {
@@ -300,7 +307,13 @@ func (g *git) scanForSecrets(ctx context.Context, dir, base, commit string, need
 	if len(usable) == 0 {
 		return "", nil
 	}
-	listing, err := g.run(ctx, dir, nil, "rev-list", "--objects", commit, "^"+base)
+	args := []string{"rev-list", "--objects", commit}
+	for _, b := range bases {
+		if b != "" {
+			args = append(args, "^"+b)
+		}
+	}
+	listing, err := g.run(ctx, dir, nil, args...)
 	if err != nil {
 		return "", err
 	}

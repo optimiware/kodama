@@ -2,15 +2,11 @@
 
 This backlog holds the planned and deferred tasks. Completed work is not listed here: its task records were removed once merged and remain in Git history (last present at commit `354b760`). Keep one Go module and preserve working packages. Production deployment and qualification, external adapters, the chassis and additional wrappers each need explicit scheduling before they start.
 
-<!-- harness:summary:start -->
+**Ready by dependencies** (`planned`, every dependency `done`): [T-115](T-115-local-run-resources.md), [T-121](T-121-run-profile-requalification.md). **Blocked on a decision:** none. Other planned tasks wait for the dependencies shown in the [dependency index](#dependency-index).
 
-**Ready now:** none. Everything left is deferred and needs explicit scheduling.
+**Deferred** (needs explicit scheduling): [T-029](T-029-recovery-qualification.md), [T-047](T-047-supabase-blueprint.md), [T-050](T-050-engineer-workbench.md), [T-051](T-051-analyst-interface.md), [T-052](T-052-native-harness.md), [T-053](T-053-claude-harness.md), [T-054](T-054-codex-harness.md), [T-055](T-055-hosted-isolation.md), [T-056](T-056-production-release.md), [T-057](T-057-operator-assessment.md), [T-058](T-058-operator.md), [T-059](T-059-chassis-assessment.md), [T-060](T-060-m4-integration.md), [T-061](T-061-platform-integration.md), [T-069](T-069-qa-profile-qualification.md), [T-085](T-085-live-agent-qualification.md), [T-106](T-106-production-tls-hardening.md), [T-123](T-123-buildkit-builder-service.md).
 
-**Deferred:** [T-029](T-029-recovery-qualification.md), [T-047](T-047-supabase-blueprint.md), [T-050](T-050-engineer-workbench.md), [T-051](T-051-analyst-interface.md), [T-052](T-052-native-harness.md), [T-053](T-053-claude-harness.md), [T-054](T-054-codex-harness.md), [T-055](T-055-hosted-isolation.md), [T-056](T-056-production-release.md), [T-057](T-057-operator-assessment.md), [T-058](T-058-operator.md), [T-059](T-059-chassis-assessment.md), [T-060](T-060-m4-integration.md), [T-061](T-061-platform-integration.md), [T-069](T-069-qa-profile-qualification.md), [T-085](T-085-live-agent-qualification.md).
-
-Generated from task frontmatter by `bun ../openforge/src/cli.ts index --write`; do not edit by hand.
-
-<!-- harness:summary:end -->
+This summary is maintained by the coordinator by hand from the task frontmatter; it is not generated. The frontmatter and the dependency index govern, and `make validate-tasks` checks the index against them.
 
 ## Delivery order
 
@@ -26,7 +22,7 @@ Package completion is not milestone acceptance. No real SQL/RLS/transaction/prov
 
 ### Shared run workspace implementation (owner scheduled 2026-10-26)
 
-[O-28](../decisions.md#run-workspace-and-builders--2026-10-26-o-28) schedules the [P0–P7 plan](../implementation/run-workspace-services-builders.md). T-109 updates the owning contracts; [T-118](T-118-pipeline-version-admission.md) independently fences the current executor to its implemented document version before T-110 extends shared parsing. T-110 depends on both and implements the wire/parser checkpoint. T-111 (real profile qualification) and T-112 (lifecycle) follow independently; T-113/T-114/T-115 wait for both, followed by T-116 assembly and T-117 acceptance. Other deferred tasks are not promoted. The generated summary above has not been regenerated: the separate OpenForge checkout is unavailable. The task frontmatter and this explicit scheduling notice govern these new tasks until `index --write` and `validate` can run.
+[O-28](../decisions.md#run-workspace-and-builders--2026-10-26-o-28) schedules the [P0–P7 plan](../implementation/run-workspace-services-builders.md). T-109 updates the owning contracts; [T-118](T-118-pipeline-version-admission.md) independently fences the current executor to its implemented document version before T-110 extends shared parsing. T-110 depends on both and implements the wire/parser checkpoint. T-111 (real profile qualification) and T-112 (lifecycle) follow independently; T-113/T-114/T-115 wait for both, followed by T-116 assembly and T-117 acceptance. Other deferred tasks are not promoted. The task frontmatter and this scheduling notice govern these tasks; `make validate-tasks` checks them.
 
 T-118 is reviewed, unit-tested and merged locally at `16a5d0df`; T-109's reviewed specification checkpoint is merged at `9db322ff`; T-110's reviewed executable schema/parser checkpoint is merged at `6343b9e5`. P0 is complete; T-111 (real profile qualification) and T-112 (execution lifecycle/persistence) are ready independently. New-format registration stays off by default and the current executor refuses it: no shared-workspace/service runtime or builder qualification is enabled by P0.
 
@@ -48,16 +44,17 @@ T-122 ─┬─ T-113 ─┐
 
 ### Internal Git service (owner scheduled 2026-10-30)
 
-[O-31](../decisions.md#internal-git-service--2026-10-30-o-31) schedules the [internal Git service plan](../implementation/internal-git-service.md) ([ADR 0011](../adr/0011-internal-tenant-git-service.md)). [T-125](T-125-git-service-architecture.md) records the architecture; [T-126](T-126-git-service-contracts.md) freezes the contracts; T-127 (repository lifecycle), T-128 (Git worker) and T-129 (tenant hosting) proceed in parallel on new packages; T-130 adds the push journal and triggers. T-131 and T-132 edit files owned by T-113 and T-116 and therefore follow them. T-133 (stage acceptance and cutover) is blocked on O-32. T-117 now depends on T-125 because both own `docs/traceability.md`. The generated summary above has not been regenerated; this notice and the task frontmatter govern these tasks until `index --write` and `validate` run.
+[O-31](../decisions.md#internal-git-service--2026-10-30-o-31) scheduled the internal Git service ([ADR 0011](../adr/0011-internal-tenant-git-service.md)); O-32 and O-33 were resolved the same day (no provider import; bootstrap by an engineer's push; default branch protected by default). The earlier graph (T-126–T-164) delivered the native worker, tenant hosting, credentials and the legacy assembly against the pre-ADR 0013 server; those contributions are merged history.
+
+[O-36](../decisions.md#finishing-the-git-service-on-the-kernel--2026-10-30-o-36) replaces the remaining assembly, installation and acceptance work: the Git service now finishes against the ADR 0013 kernel over the 15-table schema, and full container, Kubernetes and end-to-end acceptance runs on `main` after the merge. Every task branches from and merges into `integration/native-git` (worktree `.work/native-git-integration/`); publication to `main` is a separate owner decision.
 
 ```text
-T-125                  → T-126
-T-126                  → T-127, T-128, T-129
-T-127, T-128           → T-130
-T-113, T-130           → T-131
-T-116, T-127 … T-131   → T-132
-T-117, T-132           → T-133 (blocked: O-32)
+T-166 → T-167 → T-168 → T-169 → T-170
 ```
+
+T-167 keeps the native worker and appends one `003_git_hosting.sql` contribution. T-168 replaces the push-record journal with the worker journal plus `repositories.journal_ack` and one `git.refs_updated` event per receive. T-169 gives runs a pinned checkout and a run-scoped credential. T-170 makes it runnable in `development` and `test` and publishes an accurate API document.
+
+Superseded and deferred by O-36: [T-132](T-132-git-service-assembly.md), [T-133](T-133-git-service-acceptance.md), [T-139](T-139-local-git-installation.md), [T-152](T-152-runtime-git-adapters.md), [T-154](T-154-git-cli.md), [T-156](T-156-git-chart-operations.md), [T-157](T-157-stage-git-installation.md), [T-158](T-158-git-api-aggregate.md). Their records retain the merged code contributions and open findings.
 
 ## Task contract
 
@@ -83,11 +80,12 @@ resources: [go]
 acceptance: [unit_dispatch_replay, unit_cancel_fencing]
 ```
 
-- `make check-go PKGS=...`: runs scoped `gofmt`, `go vet -tags unit`, and `go test -json -race -count=1 -tags unit`, writing test outcomes to `$FORGE_RESULTS`.
-- `make check-devtools`: formats, vets and tests the Go development tooling under `dev/`. It does not emit `FORGE_RESULTS`; tooling tasks name the Go test function in `acceptance`.
+- `make check-go PKGS=...`: runs scoped `gofmt`, `go vet -tags unit`, and `go test -json -race -count=1 -tags unit`, writing test outcomes to the file named by `$FORGE_RESULTS` when it is set (`make check-task` sets it).
+- `make check-devtools`: formats, vets and tests the Go development tooling under `dev/`. It writes no results file, so a task whose check is `make check-devtools` declares `acceptance: []`.
 - `make check-go-integration PKGS=...`: provisions `DEV_SCOPE` when it does not exist (stack from `DEV_STACK`, default `cluster`; `KODAMA_AUTO_PROVISION=0` disables), preflights it (exiting `75` if the environment is unavailable), loads `host-env.json`, and runs scoped integration tests.
-- `plan: true`: opts into the read-only planner stage before implementation (off by default).
-- `review: human`: parks the task for human review after checks pass.
+- `make check-task TASK=T-NNN`: runs the task's declared `check` from the repository root with `KODAMA_TASK_ID`, `KODAMA_RESOURCE_PREFIX` and `DEV_SCOPE` set and a fresh `FORGE_RESULTS`, and verifies every `acceptance` name as passed. It neither schedules nor merges.
+- `plan: true`: asks the coordinator (or an optional external harness) for a read-only plan before implementation (off by default).
+- `review: human`: a human approves the candidate after checks pass.
 
 Statuses: `planned` becomes ready when its dependencies are `done`; `blocked` needs its named decision; `deferred` needs explicit scheduling approval; `done` means reviewed, tested, and merged.
 
@@ -96,7 +94,7 @@ Statuses: `planned` becomes ready when its dependencies are `done`; `blocked` ne
 1. One task branch/worktree under the primary checkout's ignored `.work/`; one writer per owned path. Follow [AGENTS.md](../../AGENTS.md). Preserve existing work and resumable sessions.
 2. Read the assigned task and relevant contracts. Implement domain behavior through existing small, consumer-owned interfaces. Use doubles for actual external effects; avoid a universal repository, transaction abstraction or interface per type.
 3. Edit only `owns`. Task metadata/index belongs to the coordinator unless explicitly owned. Shared composition/generated API/client files have one ordered owner: the `internal/app` composition owner. Request a bounded prerequisite for an unowned interface change.
-4. Run focused checks while editing. The coordinator independently qualifies the declared task scope and obtains review on the exact candidate. Go changes do not rerun OpenForge or development Python tests. Documentation/config checks run for relevant changes, not automatically for every Go edit.
+4. Run focused checks while editing. The coordinator independently qualifies the declared task scope and obtains review on the exact candidate. Go changes do not rerun development-tooling or Python tests. Documentation/config checks run for relevant changes, not automatically for every Go edit.
 5. Commit/checkpoint before rebasing at a clean stage boundary. An interrupted dirty implementer resumes its existing invocation first. Conflicts preserve the task for reconciliation; no automatic stash/reset/discard.
 6. Publish only reviewed, qualified code. Rebase movement that changes relevant inputs renews affected evidence; unrelated main movement does not trigger another full suite. Keep pending branches/worktrees; clean only the merged task's resources.
 
@@ -111,9 +109,9 @@ Work can merge with unit evidence before integration is available. Executable co
 
 ## Periodic validation and failure handling
 
-After five task merges, and at queue drain, validate captured `main` once. Initially this is core Go unit coverage (`GO_CORE_PACKAGES` / `make test-go-unit-json`), excluding image wrappers, templates and integration drivers. The M1 and M2 checkpoints add bounded integration. Reuse a prepared `batch` scope and isolate data. Run OpenForge/Python tooling suites only when their inputs changed. No 30-minute age trigger or second full suite at publication.
+After five task merges, and at queue drain, validate captured `main` once. Initially this is core Go unit coverage (`GO_CORE_PACKAGES` / `make test-go-unit-json`), excluding image wrappers, templates and integration drivers. The M1 and M2 checkpoints add bounded integration. Reuse a prepared `batch` scope and isolate data. Run development-tooling and Python suites only when their inputs changed. No 30-minute age trigger or second full suite at publication.
 
-A code/compiler/assertion failure goes to a focused fixer. Missing environment or timeout pauses infrastructure with a receipt and actionable reason, without consuming code-repair budget. Cancellation preserves resumable work. A failed batch pauses publication, not implementation/review. See [OpenForge](../implementation/harness.md) and [testing](../implementation/development-and-testing.md).
+A code/compiler/assertion failure goes to a focused fixer. Missing environment or timeout pauses infrastructure with a receipt and actionable reason, without consuming code-repair budget. Cancellation preserves resumable work. A failed batch pauses publication, not implementation/review. See [task coordination](../implementation/harness.md) and [testing](../implementation/development-and-testing.md).
 
 Agent concurrency follows `--workers`; resource capacity separately bounds Go, service and kind jobs. Unit tasks use only Go capacity. Integration jobs declare their service/kind needs and run only after scope preflight. The queue HALT does not disable standalone environment maintenance.
 
@@ -154,14 +152,43 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-123 BuildKit builder service](T-123-buildkit-builder-service.md) | T-117 | deferred |
 | [T-124 Align the qualification driver with O-30](T-124-runprofile-driver-o30.md) | T-111, T-122 | done |
 | [T-125 Internal Git service: documentation and ADR](T-125-git-service-architecture.md) | — | done |
-| [T-126 Internal Git service: contract checkpoint](T-126-git-service-contracts.md) | T-125 | planned |
-| [T-127 Repository lifecycle and persistence](T-127-repository-lifecycle.md) | T-126 | planned |
-| [T-128 Native Git worker](T-128-git-worker.md) | T-126 | planned |
-| [T-129 Tenant Git hosting on Kubernetes](T-129-tenant-git-hosting.md) | T-126 | planned |
-| [T-130 Push journal, events and triggers](T-130-git-push-events.md) | T-127, T-128 | planned |
-| [T-131 Task, agent and source integration](T-131-git-source-integration.md) | T-113, T-130 | planned |
-| [T-132 API, CLI, MCP and chart assembly](T-132-git-service-assembly.md) | T-116, T-127, T-128, T-129, T-130, T-131 | planned |
-| [T-133 Kubernetes acceptance and cutover](T-133-git-service-acceptance.md) | T-117, T-132 | blocked (O-32) |
+| [T-126 Internal Git service: contract checkpoint](T-126-git-service-contracts.md) | T-135 | done |
+| [T-127 Repository lifecycle and persistence](T-127-repository-lifecycle.md) | T-126 | done |
+| [T-128 Native Git worker](T-128-git-worker.md) | T-126 | done |
+| [T-129 Tenant Git hosting on Kubernetes](T-129-tenant-git-hosting.md) | T-126 | done |
+| [T-130 Push authorization, journal and events](T-130-git-push-events.md) | T-127, T-128, T-136 | done |
+| [T-131 Source-set pipeline and runtime contracts](T-131-git-source-contracts.md) | T-126 | done |
+| [T-132 Internal Git service assembly](T-132-git-service-assembly.md) | T-116, T-134, T-128, T-138, T-160, T-161, T-162, T-163, T-164, T-150, T-152, T-153, T-154, T-155, T-156, T-158 | deferred |
+| [T-133 Internal Git service acceptance](T-133-git-service-acceptance.md) | T-117, T-132, T-138, T-139, T-152, T-153, T-157 | deferred |
+| [T-165 Repository tooling without OpenForge](T-165-tooling-separation.md) | T-125 | done |
+| [T-166 Kernel Git contracts and backlog revision](T-166-kernel-git-contracts.md) | — | done |
+| [T-167 Kernel Git hosting, authority and receive events](T-167-kernel-git-hosting.md) | T-166 | done |
+| [T-168 Push to pipeline and run dispatch](T-168-push-run-dispatch.md) | T-167 | done |
+| [T-169 Kernel run Git sources and credentials](T-169-run-git-sources.md) | T-168 | done |
+| [T-170 Kernel Git runnability and closeout](T-170-kernel-git-closeout.md) | T-169 | done |
+| [T-135 Internal Git service: O-32/O-33 scope and executable task graph](T-135-git-scope-amendment.md) | T-125, T-165 | done |
+| [T-136 Git authority: grants, credentials and worker identity](T-136-git-authority.md) | T-126 | done |
+| [T-137 Native Git triggers and task routing](T-137-native-git-triggers.md) | T-130, T-148 | done |
+| [T-138 Git maintenance, backup, restore and offboarding](T-138-git-operations.md) | T-128, T-129, T-130, T-160 | done |
+| [T-139 Local development and test installation with native Git](T-139-local-git-installation.md) | T-132, T-165 | deferred |
+| [T-147 Workspace repository associations and internal checkpoints](T-147-workspace-repositories.md) | T-127, T-130, T-131, T-136 | done |
+| [T-148 Run origins and source sets in execution](T-148-execution-sources.md) | T-131, T-147 | done |
+| [T-149 Source-set provenance and integration approval](T-149-source-provenance.md) | T-136, T-148 | done |
+| [T-150 Runtime Git authority and result finalization](T-150-runtime-git-authority.md) | T-130, T-136, T-148, T-149 | done |
+| [T-151 Workload programs for source sets and pushes](T-151-workload-git-programs.md) | T-131, T-136 | done |
+| [T-152 Runtime adapters for source sets and Git credentials](T-152-runtime-git-adapters.md) | T-115, T-129, T-150, T-151 | deferred |
+| [T-153 Agent wrapper and policy compatibility](T-153-agent-git-compatibility.md) | T-131, T-148 | done |
+| [T-154 CLI for repositories and Git credentials](T-154-git-cli.md) | T-116, T-158 | deferred |
+| [T-155 Product MCP tools](T-155-product-mcp.md) | T-127, T-136, T-148 | done |
+| [T-156 Chart and operations for native Git](T-156-git-chart-operations.md) | T-116, T-129 | deferred |
+| [T-157 Stage installation with native Git](T-157-stage-git-installation.md) | T-132, T-156 | deferred |
+| [T-158 API aggregate and client for the Git service](T-158-git-api-aggregate.md) | T-116, T-127, T-130, T-136, T-137, T-147, T-148, T-149 | deferred |
+| [T-159 Git worker: journal only applied updates; definite unreadable journal](T-159-git-worker-journal-accuracy.md) | T-128 | done |
+| [T-160 Git worker object operations for maintenance and recovery](T-160-git-worker-object-operations.md) | T-159 | done |
+| [T-161 Tenant-wide Git grant revocation](T-161-git-tenant-revocation.md) | T-136 | done |
+| [T-162 Entrypoint restores source HEADs after publishing](T-162-entrypoint-head-restore.md) | T-151 | done |
+| [T-163 Agent pins in shared (v2/v3) contexts](T-163-shared-context-agent-pins.md) | T-148, T-153 | done |
+| [T-164 Entrypoint handles an already-integrated approval](T-164-entrypoint-already-integrated.md) | T-150, T-162 | done |
 | [T-140 Container-first SDLC executable contracts](T-140-container-sdlc-contracts.md) | T-116, T-131 | deferred |
 | [T-141 Artifact catalogue and immutable releases](T-141-artifact-release-catalog.md) | T-140 | deferred |
 | [T-142 Container inputs, secrets and provenance](T-142-container-inputs-and-provenance.md) | T-141 | deferred |
@@ -172,4 +199,4 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 
 ## Verification and scope
 
-`make docs-check` validates links, anchors and JSON/shell fences. Task metadata/index agreement, dependency cycles and exclusive ownership are additional checks (`make validate-tasks` when the separate OpenForge checkout is available); do not infer them from a docs-check pass. Completed/deferred task records may retain historical metadata; scheduling deferred work requires bringing its check contract up to date. Do not claim a production, hosted-authority, live-provider or browser qualification from local unit/core-checkpoint evidence.
+`make docs-check` validates Markdown links, anchors, fenced JSON and shell examples; it does not read task metadata. `make validate-tasks` validates every task record's frontmatter (required keys, statuses, `check`/`acceptance` for `planned` and `blocked` tasks, decision blockers for `blocked` tasks), unique IDs, existing and acyclic dependencies, clean relative owned paths, exclusive ownership between active tasks that do not depend on each other (equal or nested paths), and that this index has a row for every `planned` or `blocked` task whose link, dependencies and status word match the frontmatter (`blocked (O-32)` is accepted). `done` and `deferred` tasks may be absent from the index: completed task records are pruned once merged and remain in Git history, and a retained record or row may keep historical metadata; scheduling deferred work requires bringing its check contract up to date. It does not require future owned paths or check scripts to exist. Do not claim a production, hosted-authority, live-provider or browser qualification from local unit/core-checkpoint evidence.

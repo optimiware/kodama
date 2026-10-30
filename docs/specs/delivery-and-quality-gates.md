@@ -19,16 +19,41 @@ Under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md
 
 ## Provenance in shared scratch (`run_shared`)
 
-Every recorded `artifacts` row links to its producing `run_id`, `step_id`, `task_id`, repository commit SHA, and external `digest` (`sha256:...`), providing end-to-end provenance from task -> Git commit -> pipeline step -> external artifact URI.
+Normative design; not delivered. In a shared run, files written by an earlier step can feed a later build, so evidence must say what it was built from. At command begin the entrypoint reports the workspace head and whether tracked files, untracked files and ignored files differ from it; the server records `workspaceState` (`clean`, `modified`, `none` for source-free) and `ignoredPresent` with the attempt and attaches them, with the input/head commits, prior-attempt lineage, each step's image digest, service image digests, the pinned policy digest and the builder mode, to every artifact and OCI registration the attempt produces ([begin fence](../contracts/runtime-v2.md#command-begin-fence)). A client cannot assert this metadata.
+
+- Evidence is bound to a candidate only when its `workspaceState` is `clean` at the candidate commit. `modified` evidence remains ordinary, visibly labeled diagnostic evidence and does not satisfy candidate-bound requirements (DQ-14, protected successors); a changed tree cannot masquerade as an unchanged approved commit.
+- A writer step commits generated changes, which creates a new candidate that requires fresh applicable evidence and invalidates an old approval through the existing applicability rules (DQ-04, DQ-05). Gate subjects keep their existing shape; the gate verifies the evidence's recorded provenance at request and at progression (DQ-01).
+- `ignoredPresent` (for example a restored dependency cache) is disclosed with the evidence and does not block by default; an installation or project may later require it false.
+- Promotion reuses a registered image digest independently of scratch. Dirty/generated build inputs are accurately recorded, never hidden.
+
+## Multiple repositories and integration (internal hosting, designed)
+
+Under [ADR 0011](../adr/0011-internal-tenant-git-service.md) a candidate may span several repositories. The subject then carries `sourceSet`: the digest of the run's pinned set and, for each repository sorted by repository ID, its candidate commit and, for a repository the run may write, the integration base (the default branch and its tip when the gate was requested). `candidateCommit` stays in the public representation and presents the primary source's commit (the first writable source in repository order, else the first); it never defines the subject. A single-repository subject is unchanged. Evidence, OCI provenance and deployments record the same set. Delivery of a set pins all its commits together; it does not claim atomic Git updates across repositories.
+
+[Integration](git-repositories.md#integration) uses the existing gate: the gate's subject names the integration candidate and its expected base; approval lets the run's integration step receive a grant for exactly that default-branch update. A moved base invalidates the approval through the existing applicability checks (DQ-04, DQ-05). An approval is applicable only while the default branch is at its base. Once the gate step has passed, the approval is consumed: the branch moving to the candidate is the integration's success, not a moved base. An integration grant is issued only for a gate that a person approved and who still holds the reviewer authority; a branch at the candidate is answered "already integrated", and any other branch needs a new candidate.
 
 ## Requirements
 
 | ID | Requirement |
 | --- | --- |
-| DQ-01 | Production artifacts MUST be published to external registries/services by pipeline steps; Kodama MUST persist metadata, external URI, digest, and run/step/task provenance in `artifacts`. |
-| DQ-02 | Layer 2 validation gates (filtering, guardrails, test verification) MUST execute as container/agent steps that transition tasks autonomously on pass or fail. |
-| DQ-03 | Human promotion and validation gates MUST use `parked` tasks blocked by role-inbox tasks (`kind: promotion \| decision`), without holding idle container compute. |
-| DQ-04 | Resolving a promotion task in the role inbox MUST verify the caller's role and emit a NATS signal to trigger the promotion pipeline. |
+| DQ-01 | Source, artifact, evidence, and deployment references MUST share verified ownership/provenance. |
+| DQ-02 | A gate MUST snapshot the canonical subject and required evidence. |
+| DQ-03 | A decision MUST check human role, expected gate version, and subject digest, then remain immutable. |
+| DQ-04 | Progression MUST recheck current content/source, expiry, reviewer authority, and deployment configuration. |
+| DQ-05 | Changed requirements/candidate MUST invalidate old approval for new actions without changing historical results. |
+| DQ-06 | AI QA MUST produce evidence/defects separately from human decisions. |
+| DQ-07 | Builds MUST record source/tool image/output digest; promotion SHOULD reuse the same image. |
+| DQ-08 | Deployment rows MUST exist before external apply and provide duplicate/unknown-outcome reconciliation identity. |
+| DQ-09 | Preview expiry MUST trigger idempotent cleanup and retain delivery history. |
+| DQ-10 | Tests/QA MUST identify the deployment/configuration inspected; findings are defect work items with evidence links. |
+| DQ-11 | Rejection MUST preserve evidence and require explicit rework/new applicable review. |
+| DQ-13 | Completion MUST be an explicit authorized human transition with current content/candidate and a reason. |
+| DQ-14 | Agent-produced software candidates MUST include candidate-bound design conformance evidence in the gate subject; missing/stale evidence or unresolved material deviations MUST block approval/progression. |
+| DQ-15 | A declared step environment/configuration and its credential versions MUST be pinned with run admission and preserved in runtime context across edits/retries/restart; delivery/cleanup MUST reject missing, foreign or mismatched pins rather than resolve current settings as a substitute. |
+| DQ-16 | `[run_shared]` Evidence produced in shared scratch MUST record source commits, workspace state at command begin, prior-attempt lineage and tool/service/builder digests. Evidence that is not `clean` at the candidate commit MUST NOT satisfy candidate-bound gate or protected-successor requirements or be presented as built from the unchanged approved candidate; changed scratch or candidate MUST invalidate old approval through existing applicability checks. |
+| DQ-17 | `[internal hosting]` Gate subjects, evidence and deployments for a multi-repository candidate MUST identify every repository and commit of its source set (deployment records carry the set beside the primary source's repository and commit); an integration grant MUST be issued only for the default-branch update named by an approved, still-applicable subject. |
+
+DQ-12 (generic overrides) is retired. Already-started external actions cannot be undone by invalidation; record them and use explicit remediation. Runtime decisions use current authority, not a historical event as permission.
 
 ## Acceptance
 

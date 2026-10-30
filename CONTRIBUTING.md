@@ -33,6 +33,8 @@ That runs formatting, `go vet`, the unit tests and the build, with no containers
 | Anything under `internal/app` | `make test-m1 test-m2 test-m3` |
 | The HTTP API (`api/`) | `make api-generate`, then `make api-check` |
 | Documentation | `make docs-check` |
+| Task records or `docs/tasks/README.md` | `make validate-tasks` |
+| A task you were assigned | `make check-task TASK=T-NNN` (its declared check and acceptance names) |
 | The Helm chart | `make test-chart` |
 | Development tooling under `dev/` | `make check-devtools` |
 
@@ -46,7 +48,7 @@ Behavior is specified in `docs/`: start at the [documentation index](docs/README
 
 ## Maintainers and coding agents
 
-[AGENTS.md](AGENTS.md) holds the stricter workflow used by maintainers and coding agents: task worktrees, review gates and design discipline. External contributors do not need to follow its worktree process; a normal fork and branch is fine.
+[AGENTS.md](AGENTS.md) holds the stricter workflow used by maintainers and coding agents: task worktrees, review gates and design discipline. External contributors do not need to follow its worktree process; a normal fork and branch is fine. The checks above need only Go and Make: Kodama does not depend on OpenForge or Bun. OpenForge is an optional external automation harness that maintainers may run separately.
 
 ## License
 

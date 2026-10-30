@@ -70,6 +70,18 @@ func Execute(ctx context.Context, cfg Config) int {
 		}
 		return ExitUsage
 	}
+	if cfg.SourceSetRun() {
+		// v3: the run_shared wire with a source set. Every source is verified, never
+		// checked out; the attempt's Git grant pushes explicitly.
+		client, err := NewClientV3(cfg.ServerURL, domain.AttemptID(cfg.AttemptID), cfg.CAFile, cfg.Retry, cfg.Logger)
+		if err != nil {
+			if cfg.Logger != nil {
+				cfg.Logger.Error("cannot create runtime client", "error", err.Error())
+			}
+			return ExitUsage
+		}
+		return NewStepV3(cfg, client, client, client).Run(ctx)
+	}
 	if cfg.SharedRun() {
 		// run_shared: the v2 routes and the begin fence; the workspace is verified,
 		// never checked out, and no checkout credential is read.

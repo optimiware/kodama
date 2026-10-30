@@ -35,6 +35,48 @@ func TestEarlierConstantsCompile(t *testing.T) {
 			t.Errorf("actor %d is %q, want %q", i, actors[i], want)
 		}
 	}
+	// The names that were unprefixed on integration/native-git before the document
+	// gained the kernel Git routes (T-170), with their types.
+	typed := []struct {
+		got  any
+		want string
+	}{
+		{[]RunsActorType{Operator, Service, User, Workload}, "operator,service,user,workload"},
+		{[]WorkspaceState{Provisioning, Available, Archived}, "provisioning,available,archived"},
+		{[]FailedReason{Exhausted, Permanent, Refused}, "exhausted,permanent,refused"},
+		{[]PipelineDocumentApiVersion{Kodamav1alpha2}, "kodama/v1alpha2"},
+		{[]FailureClass{BadResponse, ConnectionLost, CredentialSourceUnavailable, CredentialUnavailable, DestinationChanged, Internal, LeaseExpired,
+			PolicyRefused, RateLimited, ReceiverError, RedirectRefused, Rejected, Timeout, Unreachable},
+			"bad_response,connection_lost,credential_source_unavailable,credential_unavailable,destination_changed,internal,lease_expired,policy_refused,rate_limited,receiver_error,redirect_refused,rejected,timeout,unreachable"},
+	}
+	for _, c := range typed {
+		var names []string
+		switch v := c.got.(type) {
+		case []RunsActorType:
+			for _, x := range v {
+				names = append(names, string(x))
+			}
+		case []WorkspaceState:
+			for _, x := range v {
+				names = append(names, string(x))
+			}
+		case []FailedReason:
+			for _, x := range v {
+				names = append(names, string(x))
+			}
+		case []PipelineDocumentApiVersion:
+			for _, x := range v {
+				names = append(names, string(x))
+			}
+		case []FailureClass:
+			for _, x := range v {
+				names = append(names, string(x))
+			}
+		}
+		if got := strings.Join(names, ","); got != c.want {
+			t.Errorf("typed aliases %T = %s, want %s", c.got, got, c.want)
+		}
+	}
 	spaces := []WorkspaceState{WorkspaceStateProvisioning, WorkspaceStateAvailable, WorkspaceStateArchived}
 	for i, want := range []string{"provisioning", "available", "archived"} {
 		if string(spaces[i]) != want {
@@ -44,7 +86,8 @@ func TestEarlierConstantsCompile(t *testing.T) {
 }
 
 // TestExportedSurfaceOnlyGrows pins every exported top-level identifier of the
-// client as released with the M2 composition (testdata/exported-baseline.txt,
+// client as released with the M2 composition and as it stood on integration/native-git
+// before the kernel Git document (testdata/exported-baseline.txt,
 // one "kind name" per line): types, functions, methods, constants and variables.
 // A later fragment may add identifiers; removing or renaming one (the schema
 // compatibility check does not see enum constant names) fails here. Regenerating

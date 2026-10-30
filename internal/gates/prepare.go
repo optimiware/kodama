@@ -53,16 +53,28 @@ func (s *Service) RequestForStep(ctx context.Context, scope domain.Scope, run do
 	if !agg.GateReady(st) {
 		return nil, false, fmt.Errorf("%w: gate step %s is not waiting for a gate", ErrInvalidTransition, step)
 	}
-	in, err := agg.GateInputs(step)
+	in, set, err := ResolveInputs(agg, step)
 	if err != nil {
 		return nil, false, mapRunError(err)
 	}
-	src, err := s.d.Candidates.Verify(ctx, scope, in.WorkItemID, in.Candidate.Commit)
-	if err != nil {
-		return nil, false, mapPeer(err)
-	}
-	if src.Repository == "" {
-		return nil, false, fmt.Errorf("%w: the candidate was verified without a repository", ErrEvidence)
+	cand := candidate{in: in, set: set}
+	var tips map[string]Tip
+	if set != nil {
+		// The commits of a source-set candidate are the run's own immutable
+		// pins and accepted results (verified at admission and acceptance); the
+		// integration bases are observed now, outside any transaction.
+		if tips, err = s.tips(ctx, scope, set.Writes()); err != nil {
+			return nil, false, err
+		}
+	} else {
+		src, err := s.d.Candidates.Verify(ctx, scope, in.WorkItemID, in.Candidate.Commit)
+		if err != nil {
+			return nil, false, mapPeer(err)
+		}
+		if src.Repository == "" {
+			return nil, false, fmt.Errorf("%w: the candidate was verified without a repository", ErrEvidence)
+		}
+		cand.src = src
 	}
 	id := GateIDFor(scope, run, step)
 
@@ -100,7 +112,7 @@ func (s *Service) RequestForStep(ctx context.Context, scope domain.Scope, run do
 		if meta.ID != e.ArtifactID {
 			return nil, false, fmt.Errorf("%w: the evidence store answered for another artifact", ErrEvidence)
 		}
-		if err := verifyEvidence(agg, in, src, meta, e.Producer); err != nil {
+		if err := verifyEvidenceFor(agg, cand, meta, e.Producer); err != nil {
 			return nil, false, err
 		}
 		if err := add(RequiredEvidence{Role: RoleEvidence, ID: meta.ID, Digest: meta.Digest, Expression: e.Expression, Producer: e.Producer}); err != nil {
@@ -117,14 +129,14 @@ func (s *Service) RequestForStep(ctx context.Context, scope domain.Scope, run do
 		if err != nil {
 			return nil, false, mapPeer(err)
 		}
-		if err := verifyDeployment(snap, scope, in); err != nil {
+		if err := verifyDeploymentFor(snap, scope, in, set); err != nil {
 			return nil, false, err
 		}
 		deployment = &snap
 	}
 
 	if in.Candidate.ProducerKind == pipeline.KindAgent {
-		snap, extra, err := s.conformance(ctx, scope, agg, in, src)
+		snap, extra, err := s.conformance(ctx, scope, agg, cand)
 		if err != nil {
 			return nil, false, err
 		}
@@ -139,6 +151,21 @@ func (s *Service) RequestForStep(ctx context.Context, scope domain.Scope, run do
 	sin := SubjectInput{
 		Scope: scope, WorkItemID: in.WorkItemID, ContentRevision: in.ContentRevision, CandidateCommit: in.Candidate.Commit,
 		DefinitionID: in.DefinitionID, Evidence: refs,
+	}
+	if set != nil {
+		sources := make([]SubjectSource, len(set.Sources))
+		for i, x := range set.Sources {
+			sources[i] = SubjectSource{RepositoryID: x.RepositoryID, Commit: x.Commit}
+			if x.Write {
+				t := tips[x.RepositoryID]
+				sources[i].Base = &Base{Ref: t.Ref, Commit: t.Commit}
+			}
+		}
+		subjectSet, err := NewSourceSetSubject(set.Digest, sources)
+		if err != nil {
+			return nil, false, err
+		}
+		sin.SourceSet = &subjectSet
 	}
 	if deployment != nil {
 		sin.DeploymentID, sin.DeploymentConfigDigest = deployment.ID, deployment.ConfigDigest
@@ -164,7 +191,7 @@ func (s *Service) RequestForStep(ctx context.Context, scope domain.Scope, run do
 			return nil, false, mapEvidenceError(err)
 		}
 	}
-	out, created, err := s.d.Store.Request(ctx, &RequestPlan{Gate: g, Inputs: in, Actor: System})
+	out, created, err := s.d.Store.Request(ctx, &RequestPlan{Gate: g, Inputs: in, SourceSet: set, Actor: System})
 	if err != nil {
 		return nil, false, err
 	}
@@ -193,6 +220,77 @@ func AcceptedAttempt(agg *execution.Aggregate, stepID string) (*execution.Attemp
 		return nil, fmt.Errorf("the step %q has no successful attempt", stepID)
 	}
 	return accepted, nil
+}
+
+// candidate is the candidate under review as the request resolved it: the
+// execution inputs and either the commit's verified repository (a single
+// source) or the source-set candidate.
+type candidate struct {
+	in  execution.GateInputs
+	src VerifiedSource
+	set *SetInputs
+}
+
+// verify connects an artifact to the candidate through its trusted provenance.
+func (c candidate) verify(agg *execution.Aggregate, meta EvidenceMeta) error {
+	if c.set != nil {
+		return verifySetProvenance(agg, c.in, *c.set, meta)
+	}
+	return verifyProvenance(agg, c.in, c.src, meta)
+}
+
+// verifySetProvenance connects an artifact to a source-set candidate. The
+// artifact's provenance names the digest of the run's pinned set and the commit
+// of every repository its producing attempt worked from. It is compatible when
+// the digest is the candidate's and the commits are exactly the candidate's, or
+// the artifact is the writer exception: produced by the successful attempt of
+// the candidate's own producer step, whose accepted result published the
+// candidate's commits from exactly those input commits. A provenance of another
+// set, of a single source or of fewer or other repositories never connects.
+func verifySetProvenance(agg *execution.Aggregate, in execution.GateInputs, set SetInputs, meta EvidenceMeta) error {
+	bad := func(why string) error { return fmt.Errorf("%w: %s", ErrEvidence, why) }
+	if meta.SourceSet.IsZero() {
+		return bad("the artifact has no source set provenance connecting it to the candidate")
+	}
+	if meta.SourceSet.Digest != set.Digest {
+		return bad("the artifact was produced from a different source set than the candidate")
+	}
+	worked := map[string]string{}
+	for _, c := range meta.SourceSet.Commits() {
+		worked[c.RepositoryID] = c.Commit
+	}
+	want := set.Commits()
+	if sameCommits(worked, want) {
+		return nil
+	}
+	if in.Candidate.Producer == "" || meta.RunID != in.RunID || meta.StepID != in.Candidate.Producer {
+		return bad("the artifact was produced from different source commits than the candidate")
+	}
+	accepted, err := AcceptedAttempt(agg, meta.StepID)
+	if err != nil || accepted.ID != meta.Attempt || len(accepted.Commits) == 0 {
+		return bad("the artifact was produced from different source commits than the candidate")
+	}
+	heads := make(map[string]string, len(worked))
+	for k, v := range worked {
+		heads[k] = v
+	}
+	applyPublished(agg.Run.Sources.Entries, heads, accepted.Commits)
+	if !sameCommits(heads, want) {
+		return bad("the artifact was produced from different source commits than the candidate")
+	}
+	return nil
+}
+
+func sameCommits(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // verifyProvenance connects an artifact to the candidate under review through
@@ -230,6 +328,13 @@ func verifyProvenance(agg *execution.Aggregate, in execution.GateInputs, src Ver
 // provenance consistent with the candidate. An artifact that fails is wrong
 // evidence; none is silently dropped.
 func verifyEvidence(agg *execution.Aggregate, in execution.GateInputs, src VerifiedSource, meta EvidenceMeta, producer string) error {
+	return verifyEvidenceFor(agg, candidate{in: in, src: src}, meta, producer)
+}
+
+// verifyEvidenceFor is verifyEvidence over a single-source or source-set
+// candidate.
+func verifyEvidenceFor(agg *execution.Aggregate, cand candidate, meta EvidenceMeta, producer string) error {
+	in := cand.in
 	bad := func(why string) error { return fmt.Errorf("%w: %s", ErrEvidence, why) }
 	if meta.Scope != in.Scope {
 		return bad("the artifact belongs to another project")
@@ -254,20 +359,35 @@ func verifyEvidence(agg *execution.Aggregate, in execution.GateInputs, src Verif
 			return bad("the artifact was not produced by the successful attempt of its step")
 		}
 	}
-	return verifyProvenance(agg, in, src, meta)
+	return cand.verify(agg, meta)
 }
 
 // verifyDeployment checks that the deployment the adapter answered is the one
 // the step names, belongs to the gate's project and records the candidate
-// under review.
+// under review: its commit, or, for a source-set candidate, the digest and the
+// commit of every repository.
 func verifyDeployment(snap DeploymentSnapshot, scope domain.Scope, in execution.GateInputs) error {
+	return verifyDeploymentFor(snap, scope, in, nil)
+}
+
+// verifyDeploymentFor is verifyDeployment over a single-source or source-set
+// candidate.
+func verifyDeploymentFor(snap DeploymentSnapshot, scope domain.Scope, in execution.GateInputs, set *SetInputs) error {
 	switch {
 	case snap.ID != in.DeploymentID:
 		return fmt.Errorf("%w: the deployment adapter answered for another deployment", ErrEvidence)
 	case snap.Scope != scope:
 		return fmt.Errorf("%w: the deployment belongs to another project", ErrEvidence)
-	case snap.Candidate != in.Candidate.Commit:
+	case set == nil && (!snap.SourceSet.IsZero() || snap.Candidate != in.Candidate.Commit):
 		return fmt.Errorf("%w: the deployment records a different candidate than the one under review", ErrEvidence)
+	case set != nil:
+		got := map[string]string{}
+		for _, c := range snap.SourceSet.Commits() {
+			got[c.RepositoryID] = c.Commit
+		}
+		if snap.SourceSet.Digest != set.Digest || !sameCommits(got, set.Commits()) {
+			return fmt.Errorf("%w: the deployment records a different candidate than the one under review", ErrEvidence)
+		}
 	}
 	return nil
 }
@@ -275,7 +395,8 @@ func verifyDeployment(snap DeploymentSnapshot, scope domain.Scope, in execution.
 // conformance validates the candidate's design conformance report. It returns
 // an error only for an outage or a missing adapter (no gate is created then).
 // Every other failure is recorded in a blocked snapshot that refuses approval.
-func (s *Service) conformance(ctx context.Context, scope domain.Scope, agg *execution.Aggregate, in execution.GateInputs, src VerifiedSource) (*ConformanceSnapshot, []RequiredEvidence, error) {
+func (s *Service) conformance(ctx context.Context, scope domain.Scope, agg *execution.Aggregate, cand candidate) (*ConformanceSnapshot, []RequiredEvidence, error) {
+	in := cand.in
 	snap := &ConformanceSnapshot{Status: ConformanceBlocked, ProducerStep: in.Candidate.Producer, RequiredChecks: []string{}}
 	block := func(code string) (*ConformanceSnapshot, []RequiredEvidence, error) {
 		snap.Code = code
@@ -283,6 +404,18 @@ func (s *Service) conformance(ctx context.Context, scope domain.Scope, agg *exec
 	}
 	if s.d.Conformance == nil {
 		return nil, nil, fmt.Errorf("%w: a conformance adapter is required for an agent-produced candidate", ErrNotConfigured)
+	}
+	if cand.set != nil {
+		// A conformance report names one candidate commit. A source set with exactly
+		// one writable repository is reviewed at that repository's commit; one with
+		// several has no single commit to bind, and its approval is refused (the
+		// evidence is preserved for review) until the report identifies the set.
+		writes := cand.set.Writes()
+		if len(writes) != 1 {
+			return block(CodeConformanceSourceSet)
+		}
+		in.Candidate.Commit = cand.set.Commits()[writes[0]]
+		cand.in = in
 	}
 	exp, err := s.d.Conformance.Expected(ctx, agg, in.Candidate)
 	if err != nil {
@@ -312,7 +445,7 @@ func (s *Service) conformance(ctx context.Context, scope domain.Scope, agg *exec
 	// The store must answer for the report that was asked for: an answer for
 	// another artifact is never bound or pinned as the requested evidence.
 	if meta.ID != exp.ReportID || !meta.Usable || meta.Scope != scope || meta.RunID != in.RunID || meta.StepID != in.Candidate.Producer || meta.Attempt != exp.ProducerAttempt ||
-		verifyProvenance(agg, in, src, meta) != nil {
+		cand.verify(agg, meta) != nil {
 		return block(CodeConformanceEvidenceInvalid)
 	}
 	extra = append(extra, RequiredEvidence{Role: RoleReport, ID: meta.ID, Digest: meta.Digest, Producer: in.Candidate.Producer})
@@ -352,7 +485,7 @@ func (s *Service) conformance(ctx context.Context, scope domain.Scope, agg *exec
 				return nil, nil, mapEvidenceError(err)
 			}
 			if m.ID != id || !m.Usable || m.Scope != scope || m.RunID != in.RunID || m.StepID != in.Candidate.Producer || m.Attempt != exp.ProducerAttempt ||
-				verifyProvenance(agg, in, src, m) != nil {
+				cand.verify(agg, m) != nil {
 				supportCode = CodeConformanceEvidenceInvalid
 				continue
 			}

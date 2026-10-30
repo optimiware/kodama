@@ -52,16 +52,52 @@ func (s *Service) CommitResult(ctx context.Context, in ResultCommit) (ResultAck,
 	if err := in.Request.Validate(); err != nil {
 		return ResultAck{}, invalidf("%v", err)
 	}
-	run, err := s.d.Store.RunOf(ctx, in.Scope, in.AttemptID)
+	result := in.Request.Result
+	return s.commitResult(ctx, commitInput{
+		scope: in.Scope, attempt: in.AttemptID, hash: string(in.Request.ResultHash), result: result, failReason: ReasonNoOutputs,
+		check: func(at *Attempt) (error, error) {
+			pinned, err := decodeContext(at)
+			if err != nil {
+				return nil, err
+			}
+			return runtimev1.CheckResult(result, pinned, in.Artifacts), nil
+		},
+		complete: func(agg *Aggregate, at *Attempt, hash string, now time.Time) error {
+			return agg.CompleteAttempt(at, hash, result, now)
+		},
+	})
+}
+
+// commitInput is what CommitResult and CommitResultV3 hand the shared
+// finalization: the attempt, the canonical hash, the v1 projection of the result
+// (outcome, outputs, diagnostics: all the run's progression reads), how to check
+// it against the attempt's pinned context and how to apply it.
+type commitInput struct {
+	scope   domain.Scope
+	attempt domain.AttemptID
+	hash    string
+	result  runtimev1.Result
+	// check returns the context check's contract error (nil when the result
+	// satisfies the pinned context) and, separately, a failure to check at all.
+	check func(at *Attempt) (contractErr error, err error)
+	// complete applies the accepted result to the attempt.
+	complete func(agg *Aggregate, at *Attempt, hash string, now time.Time) error
+	// failReason is the attempt's failure when a completed result violates its
+	// declared outputs.
+	failReason Reason
+}
+
+func (s *Service) commitResult(ctx context.Context, in commitInput) (ResultAck, error) {
+	run, err := s.d.Store.RunOf(ctx, in.scope, in.attempt)
 	if err != nil {
 		return ResultAck{}, err
 	}
-	hash := string(in.Request.ResultHash)
-	agg, res, err := s.d.Store.Update(ctx, in.Scope, run, UpdateOptions{}, func(ctx context.Context, env Env, agg *Aggregate) (Effects, error) {
+	hash := in.hash
+	agg, res, err := s.d.Store.Update(ctx, in.scope, run, UpdateOptions{}, func(ctx context.Context, env Env, agg *Aggregate) (Effects, error) {
 		if err := s.ownsModel(agg.Run); err != nil {
 			return Effects{}, err
 		}
-		at := agg.Attempt(in.AttemptID)
+		at := agg.Attempt(in.attempt)
 		if at == nil {
 			return Effects{}, ErrNotFound
 		}
@@ -107,21 +143,21 @@ func (s *Service) CommitResult(ctx context.Context, in ResultCommit) (ResultAck,
 			agg.RecordEvidence(at.ID, EvidenceLateResult, map[string]any{"resultHash": hash, "attemptStatus": string(at.Status)}, now)
 			return Effects{Result: resultOutcome{revoked: true}}, nil
 		}
-		pinned, err := decodeContext(at)
+		result := in.result
+		cerr, err := in.check(at)
 		if err != nil {
 			return Effects{}, err
 		}
-		result := in.Request.Result
-		if cerr := runtimev1.CheckResult(result, pinned, in.Artifacts); cerr != nil {
+		if cerr != nil {
 			var ce *runtimev1.ContractError
 			if !errors.As(cerr, &ce) || ce.Code != runtimev1.CodeOutputInvalid || result.Outcome != runtimev1.OutcomeCompleted {
 				return Effects{}, invalidf("the result does not satisfy the attempt's context")
 			}
 			// Missing or wrong outputs fail success finalization; the
 			// diagnostics stay readable, no success outputs are exposed.
-			return s.failFinalization(env, agg, at, hash, result)
+			return s.failFinalization(env, agg, at, hash, result, in.failReason)
 		}
-		if err := agg.CompleteAttempt(at, hash, result, now); err != nil {
+		if err := in.complete(agg, at, hash, now); err != nil {
 			return Effects{}, err
 		}
 		after, err := advance(env, agg, at)
@@ -144,16 +180,16 @@ func (s *Service) CommitResult(ctx context.Context, in ResultCommit) (ResultAck,
 	// failure at the pod and an unavailable result at the server. The stop follows after a short delay. It is
 	// not left to the reconciler: a run that this very result made terminal is no longer scanned, so only this
 	// call can still stop its workload (as before, a stop lost to a crash in between is not retried there).
-	s.terminateAfterAcknowledgment(ctx, agg, in.AttemptID)
+	s.terminateAfterAcknowledgment(ctx, agg, in.attempt)
 	return out.ack, nil
 }
 
 // failFinalization fails an attempt whose completed result violates its
 // declared outputs: a validation failure, never retried.
-func (s *Service) failFinalization(env Env, agg *Aggregate, at *Attempt, hash string, result runtimev1.Result) (Effects, error) {
+func (s *Service) failFinalization(env Env, agg *Aggregate, at *Attempt, hash string, result runtimev1.Result, reason Reason) (Effects, error) {
 	now := env.Now()
 	from := at.Status
-	if err := at.fail(ReasonNoOutputs, ClassValidation, now); err != nil {
+	if err := at.fail(reason, ClassValidation, now); err != nil {
 		return Effects{}, err
 	}
 	at.ResultHash = hash
@@ -167,7 +203,7 @@ func (s *Service) failFinalization(env Env, agg *Aggregate, at *Attempt, hash st
 	c.revoke(now)
 	c.requestTermination(now)
 	agg.Revoked = append(agg.Revoked, at)
-	agg.RecordFailure(ReasonNoOutputs, at.ID, now)
+	agg.RecordFailure(reason, at.ID, now)
 	after, err := advance(env, agg)
 	if err != nil {
 		return Effects{}, err

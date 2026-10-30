@@ -248,6 +248,7 @@ func Test_core_assembly_boot(t *testing.T) {
 			"mcp-proxy":     regexp.MustCompile(`/mcp-servers`),
 			"model-gateway": regexp.MustCompile(`/model-settings`),
 		}
+		kernelGit := regexp.MustCompile(`/repositories|/git-credentials`)
 		disabled := map[string]bool{}
 		for _, d := range srv.Core().Routes.Disabled {
 			disabled[d] = true
@@ -260,6 +261,9 @@ func Test_core_assembly_boot(t *testing.T) {
 				case "get", "post", "put", "patch", "delete":
 				default:
 					continue
+				}
+				if kernelGit.MatchString(path) {
+					continue // the kernel assembly serves these (T-170), not the core assembly
 				}
 				operations++
 				req, _ := http.NewRequest(strings.ToUpper(method), base+app.APIPrefix+concrete, strings.NewReader("{}"))

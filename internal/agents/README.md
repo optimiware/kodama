@@ -88,7 +88,7 @@ svc, _ := agents.NewService(agents.ServiceConfig{Repository: store, Authority: a
     Compatibility: catalogue, Approvals: approvals})
 resolver, _ := adapters.NewResolver(svc)
 chain, _ := adapters.NewChain(adapters.ChainConfig{Resolver: resolver, Store: execStore, Creator: execKeyed})
-// execution.Dependencies: Store: chain.Store, Planner: chain.Planner, Hooks: chain.Hooks,
+// execution.Dependencies: Store: chain.Store, Planner: chain.Planner, AgentPins: chain.Pins, Hooks: chain.Hooks,
 //                         Capabilities: chain.Capabilities(pipeline.KindGate)
 // executionhttp.Config:   Creator: chain.Creator
 lookup, _ := adapters.NewLookup(svc)                         // pipeline.Config.Profiles
@@ -121,6 +121,43 @@ identity. Profile policy narrows what a profile may name; it never establishes a
   module's). Transcript recording is a profile switch; metadata stays attributable either way and no
   transcript content enters audits or events.
 
+## Context versions and source sets (T-153)
+
+The policy and metadata readers (`adapters.PolicyReader`, `adapters.MetadataReader`) read the frozen context of an attempt **by
+its version**, each with its own strict decoder: no `contextVersion` member is the original v1 context, `2` is `run_shared`
+(`ContextV2`), `3` is `run_shared` with a source set (`ContextV3`, [runtime v3](../../docs/contracts/runtime-v3.md)); any other
+version is `ErrUnavailable` (fail closed), and a v3 body without its version, or a v1 body carrying one, does not decode. The checks
+are identical for every version and were not loosened: scope, run, step and attempt must match the attempt record; the payload must
+verify against the frozen image and command; and the profile and design-baseline pins must be the ones the payload implies.
+`AttemptMetadata` gains `ContextVersion` and, for v3, `SourceSetDigest` and `Checkouts`.
+
+`checkout.go` is the pure planning of an agent's work in a source set (no Git, network or grant): `PlanCheckouts(ContextV3)` says,
+per source in path order, where the wrapper commits its changes. The attempt holding the writer reservation commits its **write
+sources** on `HEAD` (`ModeHead`, published by the entrypoint to the task branch); every other source, and every source of a
+reader, goes to the run's agent branch (`ModeAgentBranch`: `refs/heads/kodama/agents/<workItemId>/<runId>/<label>`, or
+`refs/heads/kodama/runs/<runId>/<label>` for a run without a work item). A plan whose branch the attempt's own grant (as the
+context records it) does not select is an error. `CandidateSet` is the **multi-checkout candidate** (AR-11): one entry per source
+(commit, and the branch for a changed source) with a canonical digest; `Primary()` is the commit the conformance report names (the
+conformance contract binds one commit; see the wrapper README's limits) and `CheckPublished` verifies that a result's `commits`
+publish exactly the changed parts. A later source of a repository already used gets a label with a short hash of its path (never the path text, which a label
+cannot hold faithfully), and the plan fails on any duplicate (repository, ref). Nothing here grants or widens authority: the grant, the push authorizer and the entrypoint are
+unchanged and still decide.
+
+**Known open items of the v3 agent flow.** (1) *Shared-workspace leak (owner T-162):* a reader's
+agent-branch commit stays checked out in the run's shared workspace and the entrypoint does not reset HEADs after publishing, so a
+later writer can push it to the task branch; the planner and wrapper cannot prevent it, T-162 restores each source's HEAD. (2) The
+conformance contract binds one commit; consumers of a source-set candidate must bind the whole set (see the wrapper README).
+
+**Agent pins in shared contexts (T-163).** `adapters.Pinner` implements the execution-owned `execution.AgentPins` port
+(`execution.Dependencies.AgentPins`, also `Chain.Pins`). `execution.BuildContextV2`/`BuildContextV3` consult it while the
+shared (v2) and source-set (v3) context is built, so `profile` and `designBaseline` are part of the frozen context and its
+digest, set when the attempt is planned (before dispatch). It performs no I/O and shares `Planner`'s code (`DecodeArgs`, `Verify`,
+`Pins`): the pins come only from the payload admission froze, so a redrive or restarted controller sees the same bytes, and a
+step without the payload marker is left byte-identical (`"profile":null`). An invalid payload is `execution.ErrInvalid`. Policy
+when the port is not wired: a step of kind `agent` in a shared run is refused with `ErrAdmissionRefused` (the step fails,
+`step_failed`) instead of running a wrapper whose profile no policy would accept; other steps are unaffected. (v1 attempts keep
+the `Planner` decoration, which delegates unchanged without the chain.) Wire `Chain.Pins` together with `Chain.Planner`.
+
 ## Unit qualification and fixtures (T-083)
 
 Everything below runs without a service (`go test ./internal/agents/...`; the
@@ -134,6 +171,9 @@ so none of it is OpenCode or provider evidence (T-031/T-085).
 | --- | --- |
 | `Test_unit_agent_profile_pin` (`adapters/`) | AR-14, AR-01/AR-02: an admitted attempt keeps its profile version, instructions, tools, limits, model and design baseline however the profile is edited, re-registered, re-approved or mutated through aliases; only `name@version` admits; a branch/tag/abbreviated baseline revision is refused; conformance evidence is bound to the pinned baseline and the candidate |
 | `Test_unit_agent_outcomes` (`adapters/`) | AR-06, AR-13: success needs a result that passes `runtimev1.CheckResult` (prose, a bare exit code, a missing/undeclared/wrong-type output never completes); `needs_input` fails the attempt, keeps its question and stops dispatch; cancellation, a deadline and a reported failure leave no completed outcome and a late result cannot rewrite them |
+| `Test_unit_agent_policy_new_context_version` (`adapters/`, T-153) | AR-01, AR-05, AR-14, AR-15: v3 (and v2) attempts are served the same policy as v1 for one profile and attributed to their source set; every identity and pin check still refuses (another scope/run/step/attempt, no pins, another profile pin, tampered payload, unknown version, invalid source set, widened grant) |
+| `Test_unit_agent_multi_checkout_candidate` (root, T-153) | AR-11, AR-15, AR-A09: per-source checkout planning (writer, reader, run without work item, repeated repository), branch labels, the candidate set and its digest, the published-parts check, refused refs |
+| `Test_unit_agent_harness_contract_additive` (`adapters/`, T-153) | `contracts/harness-opencode/source-sets.json` holds against the real planner; the original harness evidence is byte-identical (`golden.json`) |
 | `Test_unit_agents_gateway_contract` (`agentstest/`) | SD-13/SD-A11: `agentstest.Contract(t, open, scopes)` on `MemRepo`: content-addressed registration, per-name versions, immutability, project/tenant isolation, ordered paging, racing identical registrations |
 
 **Fixture examples for T-072** (`agentstest` plus the adapters' own constructors):

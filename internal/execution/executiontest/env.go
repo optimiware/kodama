@@ -39,6 +39,7 @@ import (
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
 	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
+	repositorypg "github.com/optimiware/kodama/internal/repository/postgres"
 	"github.com/optimiware/kodama/internal/runtime/runtimetest"
 	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/secrets"
@@ -158,6 +159,18 @@ type Options struct {
 	Shared *execution.SharedConfig
 	// SourceWrap wraps the Git observation seam (a call counter).
 	SourceWrap func(execution.Sources) execution.Sources
+	// SourceSets, InternalWorkspaces and GitGrants are the internal Git service
+	// seams of source-set runs; GitRevoker joins the revocation of an attempt's
+	// Git grants to the store's transactions (PGRevoker writes the fixture's
+	// t148_git_revocations table in the caller's transaction).
+	SourceSets         execution.SourceSets
+	InternalWorkspaces execution.InternalWorkspaces
+	GitGrants          execution.GitGrants
+	GitRevoker         execpg.AttemptGrantRevoker
+	// Contributions are further schema contributions applied after the
+	// repositories (007) and before the workspace associations (010), for a test
+	// that wires another module's real tables (a Git grant store).
+	Contributions []storage.Contribution
 	// LegacySeed builds an UPGRADE fixture: the database holds the schema of the
 	// release before 003_run_resources.sql while it runs, then the additive
 	// migration applies.
@@ -204,6 +217,11 @@ func New(t testing.TB, o ...Options) *Env {
 		if opt.RuntimeGrants {
 			contribs = append(contribs, rtpg.ResourceMigrations())
 		}
+		// The repositories (007), the workspace repository associations the
+		// workspace store reads (010) and the run origins and source sets (011).
+		contribs = append(contribs, repositorypg.Migrations())
+		contribs = append(contribs, opt.Contributions...)
+		contribs = append(contribs, workspacepg.Migrations(), execpg.RunSourceMigrations())
 	}
 	manifest, err := storage.NewManifest(contribs...)
 	if err != nil {
@@ -219,15 +237,22 @@ func New(t testing.TB, o ...Options) *Env {
 			return
 		}
 		opt.LegacySeed(e)
-		full, err := storage.NewManifest(append(contribs, execpg.RunResourceMigrations())...)
+		full, err := storage.NewManifest(append(contribs, execpg.RunResourceMigrations(), repositorypg.Migrations(), workspacepg.Migrations(), execpg.RunSourceMigrations())...)
 		if err != nil {
 			t.Fatalf("manifest: %v", err)
 		}
 		res, err := storage.Migrate(ctx, base.Migration, full, storage.MigrateOptions{RuntimeRole: base.DB.RuntimeRole})
-		if err != nil || len(res.Applied) != 1 || res.Applied[0] != execpg.RunResourcesMigrationID {
-			t.Fatalf("the upgrade must apply only the run_shared migration: %+v %v", res, err)
+		if err != nil || len(res.Applied) != 4 || res.Applied[0] != execpg.RunResourcesMigrationID || res.Applied[3] != execpg.RunSourcesMigrationID {
+			t.Fatalf("the upgrade must apply exactly the run_shared, repository, workspace and run source migrations: %+v %v", res, err)
 		}
 	}
+
+	// The fixture's own revocation table: the Git grants of the real authority live in
+	// another module's schema, so the fixture records revocations in a table the
+	// store's transaction writes, which a rolled back transition rolls back.
+	e.ownerExec(`CREATE TABLE t148_git_revocations (tenant_id text NOT NULL, project_id text NOT NULL, attempt_id text NOT NULL,
+		PRIMARY KEY (tenant_id, project_id, attempt_id))`)
+	e.ownerExec(`GRANT SELECT, INSERT ON t148_git_revocations TO ` + pgx.Identifier{base.DB.RuntimeRole}.Sanitize())
 
 	evOpts := eventstest.DefaultOptions()
 	if opt.Events != nil {
@@ -256,7 +281,13 @@ func New(t testing.TB, o ...Options) *Env {
 	if opt.WrapAppender != nil {
 		appender = opt.WrapAppender(appender)
 	}
-	peers := execpg.Peers{Authority: adapters.BindAuthority, Workspaces: e.Workspaces, Secrets: e.Secrets, GrantFence: OpenSQLFence{}}
+	// A store that admits source-set runs must revoke their Git grants: unless the
+	// test supplies its own revoker the fixture records revocations in its table.
+	gitRevoker := opt.GitRevoker
+	if gitRevoker == nil {
+		gitRevoker = TableGitRevoker
+	}
+	peers := execpg.Peers{Authority: adapters.BindAuthority, Workspaces: e.Workspaces, Secrets: e.Secrets, GrantFence: OpenSQLFence{}, GitGrants: gitRevoker}
 	if opt.NoGrantFence {
 		peers.GrantFence = nil
 	}
@@ -265,9 +296,9 @@ func New(t testing.TB, o ...Options) *Env {
 		if opt.GrantFenceWrap != nil {
 			peers.GrantFence = opt.GrantFenceWrap(execpg.SQLGrantFence{})
 		}
-		e.Store, err = execpg.NewRuntimeStore(e.Runtime, appender, peers, adapters.RevokeAttemptGrants, execpg.Options{Clock: e.Clock.Now})
+		e.Store, err = execpg.NewRuntimeStore(e.Runtime, appender, peers, adapters.RevokeAttemptGrants, execpg.Options{Clock: e.Clock.Now, RunSources: true})
 	} else {
-		e.Store, err = execpg.NewStore(e.Runtime, appender, peers, execpg.Options{Clock: e.Clock.Now})
+		e.Store, err = execpg.NewStore(e.Runtime, appender, peers, execpg.Options{Clock: e.Clock.Now, RunSources: true})
 	}
 	must(t, err)
 	e.Keyed, err = execpg.NewKeyed(e.Idem, e.Store)
@@ -294,6 +325,15 @@ func New(t testing.TB, o ...Options) *Env {
 // NewService builds another Service over the same ports and store, as a second
 // control-plane process (or the same one after a restart) would be.
 func (e *Env) NewService(opt Options) *execution.Service {
+	e.T.Helper()
+	svc, err := e.BuildService(opt)
+	must(e.T, err)
+	return svc
+}
+
+// BuildService is NewService returning the composition's refusal instead of
+// failing the test.
+func (e *Env) BuildService(opt Options) (*execution.Service, error) {
 	e.T.Helper()
 	authority, err := e.authority()
 	must(e.T, err)
@@ -325,6 +365,7 @@ func (e *Env) NewService(opt Options) *execution.Service {
 		Work: SQLWork{e}, Configuration: cfg, Sources: sources, Limits: e.Limits, Hooks: hooks,
 		Tenants: tenantList{ScopeA.TenantID, ScopeB.TenantID}, Cleanup: opt.Cleanup, Clock: e.Clock.Now, CancelledWork: SQLCancelled{e},
 		Requirements: opt.Requirements, Shared: opt.Shared,
+		SourceSets: opt.SourceSets, InternalWorkspaces: opt.InternalWorkspaces, GitGrants: opt.GitGrants,
 	}
 	switch {
 	case opt.NoRuntime:
@@ -346,8 +387,7 @@ func (e *Env) NewService(opt Options) *execution.Service {
 	} else {
 		svc, err = execution.NewService(deps, so)
 	}
-	must(e.T, err)
-	return svc
+	return svc, err
 }
 
 func (e *Env) authority() (execution.Authority, error) {
@@ -922,4 +962,21 @@ func (c SQLCancelled) CancelledItems(ctx context.Context, tenant domain.TenantID
 		out = append(out, execution.WorkCancellation{Scope: domain.Scope{TenantID: tenant, ProjectID: domain.ProjectID(project)}, WorkItemID: domain.WorkItemID(id), Version: domain.Version(version)})
 	}
 	return out, rows.Err()
+}
+
+// GitRevoked reports whether the attempt's Git grants were revoked in a committed
+// transaction (the fixture's revocation table).
+func (e *Env) GitRevoked(scope domain.Scope, attempt domain.AttemptID) bool {
+	e.T.Helper()
+	return e.Count(`SELECT count(*) FROM t148_git_revocations WHERE tenant_id = $1 AND project_id = $2 AND attempt_id = $3`,
+		string(scope.TenantID), string(scope.ProjectID), string(attempt)) > 0
+}
+
+// TableGitRevoker is the fixture's revocation seam: it records the attempt in the
+// t148_git_revocations table in the caller's open transaction, so a rolled back
+// transition revokes nothing.
+func TableGitRevoker(ctx context.Context, tx pgx.Tx, scope domain.Scope, attempt domain.AttemptID, _ time.Time) (int, error) {
+	tag, err := tx.Exec(ctx, `INSERT INTO t148_git_revocations (tenant_id, project_id, attempt_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+		string(scope.TenantID), string(scope.ProjectID), string(attempt))
+	return int(tag.RowsAffected()), err
 }

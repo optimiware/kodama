@@ -34,6 +34,9 @@ type Config struct {
 	// Resources enables the preparation/service subjects of the run_shared model
 	// (runtime v2). Without it every resource operation is unavailable.
 	Resources *ResourceConfig
+	// Git enables the runtime-issued Git grants of the source-set wire (the seed
+	// and integration routes). Without it those operations are unavailable.
+	Git *GitConfig
 	// Clock defaults to time.Now; Random to crypto/rand; Logger to a discard
 	// logger. The service logs only operation names, safe identifiers and the
 	// classified outcome.
@@ -66,6 +69,11 @@ func NewService(cfg Config) (*Service, error) {
 	}
 	if cfg.Resources != nil {
 		if err := cfg.Resources.validate(); err != nil {
+			return nil, err
+		}
+	}
+	if cfg.Git != nil {
+		if err := cfg.Git.validate(); err != nil {
 			return nil, err
 		}
 	}
@@ -107,6 +115,10 @@ func outcome(err error) string {
 		return "receipt_conflict"
 	case errors.Is(err, ErrIdempotencyConflict):
 		return "idempotency_conflict"
+	case errors.Is(err, ErrRefused):
+		return "refused"
+	case errors.Is(err, ErrPublicationConflict):
+		return "publication_conflict"
 	case errors.Is(err, ErrConflict):
 		return "conflict"
 	case errors.Is(err, ErrNotFound):

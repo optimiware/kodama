@@ -38,7 +38,7 @@ const (
 
 // Defines values for ArtifactDownloadMethod.
 const (
-	GET ArtifactDownloadMethod = "GET"
+	ArtifactDownloadMethodGET ArtifactDownloadMethod = "GET"
 )
 
 // Defines values for ArtifactKind.
@@ -49,16 +49,16 @@ const (
 
 // Defines values for ArtifactRole.
 const (
-	Bundle     ArtifactRole = "bundle"
-	Diagnostic ArtifactRole = "diagnostic"
-	Output     ArtifactRole = "output"
+	ArtifactRoleBundle     ArtifactRole = "bundle"
+	ArtifactRoleDiagnostic ArtifactRole = "diagnostic"
+	ArtifactRoleOutput     ArtifactRole = "output"
 )
 
 // Defines values for ArtifactState.
 const (
-	Registered ArtifactState = "registered"
-	Reserved   ArtifactState = "reserved"
-	Usable     ArtifactState = "usable"
+	ArtifactStateRegistered ArtifactState = "registered"
+	ArtifactStateReserved   ArtifactState = "reserved"
+	ArtifactStateUsable     ArtifactState = "usable"
 )
 
 // Defines values for AttemptAccess.
@@ -125,8 +125,8 @@ const (
 
 // Defines values for ConformanceStatus.
 const (
-	Blocked  ConformanceStatus = "blocked"
-	Verified ConformanceStatus = "verified"
+	ConformanceStatusBlocked  ConformanceStatus = "blocked"
+	ConformanceStatusVerified ConformanceStatus = "verified"
 )
 
 // Defines values for DecisionDecision.
@@ -161,8 +161,8 @@ const (
 
 // Defines values for EnvironmentKind.
 const (
-	Preview EnvironmentKind = "preview"
-	Stage   EnvironmentKind = "stage"
+	EnvironmentKindPreview EnvironmentKind = "preview"
+	EnvironmentKindStage   EnvironmentKind = "stage"
 )
 
 // Defines values for EvidenceRefType.
@@ -173,27 +173,27 @@ const (
 
 // Defines values for FailedReason.
 const (
-	Exhausted FailedReason = "exhausted"
-	Permanent FailedReason = "permanent"
-	Refused   FailedReason = "refused"
+	FailedReasonExhausted FailedReason = "exhausted"
+	FailedReasonPermanent FailedReason = "permanent"
+	FailedReasonRefused   FailedReason = "refused"
 )
 
 // Defines values for FailureClass.
 const (
-	BadResponse                 FailureClass = "bad_response"
-	ConnectionLost              FailureClass = "connection_lost"
-	CredentialSourceUnavailable FailureClass = "credential_source_unavailable"
-	CredentialUnavailable       FailureClass = "credential_unavailable"
-	DestinationChanged          FailureClass = "destination_changed"
-	Internal                    FailureClass = "internal"
-	LeaseExpired                FailureClass = "lease_expired"
-	PolicyRefused               FailureClass = "policy_refused"
-	RateLimited                 FailureClass = "rate_limited"
-	ReceiverError               FailureClass = "receiver_error"
-	RedirectRefused             FailureClass = "redirect_refused"
-	Rejected                    FailureClass = "rejected"
-	Timeout                     FailureClass = "timeout"
-	Unreachable                 FailureClass = "unreachable"
+	FailureClassBadResponse                 FailureClass = "bad_response"
+	FailureClassConnectionLost              FailureClass = "connection_lost"
+	FailureClassCredentialSourceUnavailable FailureClass = "credential_source_unavailable"
+	FailureClassCredentialUnavailable       FailureClass = "credential_unavailable"
+	FailureClassDestinationChanged          FailureClass = "destination_changed"
+	FailureClassInternal                    FailureClass = "internal"
+	FailureClassLeaseExpired                FailureClass = "lease_expired"
+	FailureClassPolicyRefused               FailureClass = "policy_refused"
+	FailureClassRateLimited                 FailureClass = "rate_limited"
+	FailureClassReceiverError               FailureClass = "receiver_error"
+	FailureClassRedirectRefused             FailureClass = "redirect_refused"
+	FailureClassRejected                    FailureClass = "rejected"
+	FailureClassTimeout                     FailureClass = "timeout"
+	FailureClassUnreachable                 FailureClass = "unreachable"
 )
 
 // Defines values for GateDecisionRequestDecision.
@@ -217,11 +217,24 @@ const (
 	GatesActorTypeWorkload GatesActorType = "workload"
 )
 
+// Defines values for GitRepositoryStatus.
+const (
+	GitRepositoryStatusArchived     GitRepositoryStatus = "archived"
+	GitRepositoryStatusProvisioning GitRepositoryStatus = "provisioning"
+	GitRepositoryStatusReady        GitRepositoryStatus = "ready"
+)
+
 // Defines values for HistoryEntryKind.
 const (
-	Created      HistoryEntryKind = "created"
-	Transitioned HistoryEntryKind = "transitioned"
-	Updated      HistoryEntryKind = "updated"
+	HistoryEntryKindCreated      HistoryEntryKind = "created"
+	HistoryEntryKindTransitioned HistoryEntryKind = "transitioned"
+	HistoryEntryKindUpdated      HistoryEntryKind = "updated"
+)
+
+// Defines values for Hosting.
+const (
+	HostingExternal Hosting = "external"
+	HostingInternal Hosting = "internal"
 )
 
 // Defines values for LogChunkType.
@@ -238,7 +251,7 @@ const (
 
 // Defines values for LogMetaType.
 const (
-	Meta LogMetaType = "meta"
+	LogMetaTypeMeta LogMetaType = "meta"
 )
 
 // Defines values for LogOrigin.
@@ -288,7 +301,7 @@ const (
 
 // Defines values for LogSummaryType.
 const (
-	Summary LogSummaryType = "summary"
+	LogSummaryTypeSummary LogSummaryType = "summary"
 )
 
 // Defines values for ObservableEventType.
@@ -311,7 +324,7 @@ const (
 
 // Defines values for ObservedEventSchemaVersion.
 const (
-	N1 ObservedEventSchemaVersion = 1
+	ObservedEventSchemaVersionN1 ObservedEventSchemaVersion = 1
 )
 
 // Defines values for ObservedResourceType.
@@ -331,9 +344,9 @@ const (
 
 // Defines values for PinnedInputSource.
 const (
-	Default         PinnedInputSource = "default"
-	ProjectVariable PinnedInputSource = "project_variable"
-	RunInput        PinnedInputSource = "run_input"
+	PinnedInputSourceDefault         PinnedInputSource = "default"
+	PinnedInputSourceProjectVariable PinnedInputSource = "project_variable"
+	PinnedInputSourceRunInput        PinnedInputSource = "run_input"
 )
 
 // Defines values for PinnedInputType.
@@ -352,20 +365,26 @@ const (
 
 // Defines values for PipelineDocumentApiVersion.
 const (
-	Kodamav1alpha1 PipelineDocumentApiVersion = "kodama/v1alpha1"
-	Kodamav1alpha2 PipelineDocumentApiVersion = "kodama/v1alpha2"
+	PipelineDocumentApiVersionKodamav1alpha1 PipelineDocumentApiVersion = "kodama/v1alpha1"
+	PipelineDocumentApiVersionKodamav1alpha2 PipelineDocumentApiVersion = "kodama/v1alpha2"
 )
 
 // Defines values for PipelineDocumentKind.
 const (
-	Pipeline PipelineDocumentKind = "Pipeline"
+	PipelineDocumentKindPipeline PipelineDocumentKind = "Pipeline"
+)
+
+// Defines values for RepositoryAssociationState.
+const (
+	RepositoryAssociationStateCreated RepositoryAssociationState = "created"
+	RepositoryAssociationStateIntent  RepositoryAssociationState = "intent"
 )
 
 // Defines values for RequiredEvidenceRole.
 const (
-	Evidence RequiredEvidenceRole = "evidence"
-	Report   RequiredEvidenceRole = "report"
-	Support  RequiredEvidenceRole = "support"
+	RequiredEvidenceRoleEvidence RequiredEvidenceRole = "evidence"
+	RequiredEvidenceRoleReport   RequiredEvidenceRole = "report"
+	RequiredEvidenceRoleSupport  RequiredEvidenceRole = "support"
 )
 
 // Defines values for ResyncRequiredCode.
@@ -375,16 +394,16 @@ const (
 
 // Defines values for RetentionReportBackupRetention.
 const (
-	Unresolved RetentionReportBackupRetention = "unresolved"
+	RetentionReportBackupRetentionUnresolved RetentionReportBackupRetention = "unresolved"
 )
 
 // Defines values for Role.
 const (
-	Admin    Role = "admin"
-	Analyst  Role = "analyst"
-	Engineer Role = "engineer"
-	Reviewer Role = "reviewer"
-	Viewer   Role = "viewer"
+	RoleAdmin    Role = "admin"
+	RoleAnalyst  Role = "analyst"
+	RoleEngineer Role = "engineer"
+	RoleReviewer Role = "reviewer"
+	RoleViewer   Role = "viewer"
 )
 
 // Defines values for RunPurpose.
@@ -400,6 +419,20 @@ const (
 	RunSourceRetentionPending     RunSourceRetention = "pending"
 )
 
+// Defines values for RunOriginKind.
+const (
+	RunOriginKindManual    RunOriginKind = "manual"
+	RunOriginKindProvision RunOriginKind = "provision"
+	RunOriginKindPush      RunOriginKind = "push"
+	RunOriginKindWorkItem  RunOriginKind = "work_item"
+)
+
+// Defines values for RunSourceAccess.
+const (
+	RunSourceAccessRead  RunSourceAccess = "read"
+	RunSourceAccessWrite RunSourceAccess = "write"
+)
+
 // Defines values for RunStatus.
 const (
 	RunStatusCancelled RunStatus = "cancelled"
@@ -411,16 +444,16 @@ const (
 
 // Defines values for RunsActorType.
 const (
-	Operator RunsActorType = "operator"
-	Service  RunsActorType = "service"
-	User     RunsActorType = "user"
-	Workload RunsActorType = "workload"
+	RunsActorTypeOperator RunsActorType = "operator"
+	RunsActorTypeService  RunsActorType = "service"
+	RunsActorTypeUser     RunsActorType = "user"
+	RunsActorTypeWorkload RunsActorType = "workload"
 )
 
 // Defines values for SecretDelivery.
 const (
-	Env  SecretDelivery = "env"
-	File SecretDelivery = "file"
+	SecretDeliveryEnv  SecretDelivery = "env"
+	SecretDeliveryFile SecretDelivery = "file"
 )
 
 // Defines values for SecretKind.
@@ -451,17 +484,17 @@ const (
 
 // Defines values for VariableType.
 const (
-	Boolean VariableType = "boolean"
-	Integer VariableType = "integer"
-	String  VariableType = "string"
+	VariableTypeBoolean VariableType = "boolean"
+	VariableTypeInteger VariableType = "integer"
+	VariableTypeString  VariableType = "string"
 )
 
 // Defines values for WorkKind.
 const (
-	Defect WorkKind = "defect"
-	Epic   WorkKind = "epic"
-	Story  WorkKind = "story"
-	Task   WorkKind = "task"
+	WorkKindDefect WorkKind = "defect"
+	WorkKindEpic   WorkKind = "epic"
+	WorkKindStory  WorkKind = "story"
+	WorkKindTask   WorkKind = "task"
 )
 
 // Defines values for WorkState.
@@ -476,9 +509,27 @@ const (
 
 // Defines values for WorkspaceState.
 const (
-	Archived     WorkspaceState = "archived"
-	Available    WorkspaceState = "available"
-	Provisioning WorkspaceState = "provisioning"
+	WorkspaceStateArchived     WorkspaceState = "archived"
+	WorkspaceStateAvailable    WorkspaceState = "available"
+	WorkspaceStateProvisioning WorkspaceState = "provisioning"
+)
+
+// Defines values for GitRefsPrefix.
+const (
+	GitRefsPrefixHeads GitRefsPrefix = "heads"
+	GitRefsPrefixTags  GitRefsPrefix = "tags"
+)
+
+// Defines values for ListProjectGitRepositoryRefsParamsPrefix.
+const (
+	ListProjectGitRepositoryRefsParamsPrefixHeads ListProjectGitRepositoryRefsParamsPrefix = "heads"
+	ListProjectGitRepositoryRefsParamsPrefixTags  ListProjectGitRepositoryRefsParamsPrefix = "tags"
+)
+
+// Defines values for ListTenantGitRepositoryRefsParamsPrefix.
+const (
+	ListTenantGitRepositoryRefsParamsPrefixHeads ListTenantGitRepositoryRefsParamsPrefix = "heads"
+	ListTenantGitRepositoryRefsParamsPrefixTags  ListTenantGitRepositoryRefsParamsPrefix = "tags"
 )
 
 // AcceptanceCriterion defines model for AcceptanceCriterion.
@@ -587,6 +638,9 @@ type Artifact struct {
 	SizeBytes *int64            `json:"sizeBytes"`
 	Source    *SourceProvenance `json:"source"`
 
+	// SourceSet Present only for an artifact of a source-set run, in place of source.
+	SourceSet *ArtifactSourceSet `json:"sourceSet,omitempty"`
+
 	// State reserved: a file whose bytes are not verified (never usable). registered: an OCI registration verified against its registry. usable: a file whose bytes were verified and sealed.
 	State      ArtifactState `json:"state"`
 	StepId     string        `json:"stepId"`
@@ -614,6 +668,21 @@ type ArtifactKind string
 
 // ArtifactRole defines model for ArtifactRole.
 type ArtifactRole string
+
+// ArtifactSourceCommit defines model for ArtifactSourceCommit.
+type ArtifactSourceCommit struct {
+	Commit string `json:"commit"`
+
+	// RepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RepositoryId ID `json:"repositoryId"`
+}
+
+// ArtifactSourceSet The trusted source set of a multi-repository run the producing attempt worked from: the canonical digest of the run's pinned set and, for every repository of it, the commit the attempt worked from. Present instead of source, never together with it (DQ-17).
+type ArtifactSourceSet struct {
+	// Commits Ordered by repositoryId.
+	Commits []ArtifactSourceCommit `json:"commits"`
+	Digest  Digest                 `json:"digest"`
+}
 
 // ArtifactState reserved: a file whose bytes are not verified (never usable). registered: an OCI registration verified against its registry. usable: a file whose bytes were verified and sealed.
 type ArtifactState string
@@ -770,6 +839,16 @@ type ConformanceStatus string
 type ConsumerHandlingSummary struct {
 	Pending int `json:"pending"`
 	Total   int `json:"total"`
+}
+
+// CreateGitRepositoryRequest defines model for CreateGitRepositoryRequest.
+type CreateGitRepositoryRequest struct {
+	// DefaultBranch Optional; `main` when omitted.
+	DefaultBranch *string `json:"defaultBranch,omitempty"`
+
+	// Name The tenant-level repository is named `context`.
+	Name   string                    `json:"name"`
+	Policy *GitRepositoryPolicyInput `json:"policy,omitempty"`
 }
 
 // CreateMembership defines model for CreateMembership.
@@ -1054,22 +1133,28 @@ type Deployment struct {
 	Reason string `json:"reason"`
 
 	// RunId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
-	RunId     ID               `json:"runId"`
-	Source    Source           `json:"source"`
-	Status    DeploymentStatus `json:"status"`
-	StepId    string           `json:"stepId"`
-	UpdatedAt time.Time        `json:"updatedAt"`
+	RunId  ID     `json:"runId"`
+	Source Source `json:"source"`
+
+	// SourceSet Present only for a deployment of a run with a source set.
+	SourceSet *DeploymentSourceSet `json:"sourceSet,omitempty"`
+	Status    DeploymentStatus     `json:"status"`
+	StepId    string               `json:"stepId"`
+	UpdatedAt time.Time            `json:"updatedAt"`
 
 	// Version Resource version; the ETag is this integer in double quotes.
 	Version Version `json:"version"`
 }
 
-// DeploymentCreate defines model for DeploymentCreate.
+// DeploymentCreate Exactly one of source and sourceSet names the candidate.
 type DeploymentCreate struct {
 	// AttemptId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
-	AttemptId ID     `json:"attemptId"`
-	Image     Image  `json:"image"`
-	Source    Source `json:"source"`
+	AttemptId ID      `json:"attemptId"`
+	Image     Image   `json:"image"`
+	Source    *Source `json:"source,omitempty"`
+
+	// SourceSet The candidate of a multi-repository run: the canonical digest of the run's pinned source set and one commit for every repository of it, ordered by repositoryId. A request names it instead of source and it must equal the source set of the originating attempt and of the image's provenance (DQ-17).
+	SourceSet *DeploymentSourceSet `json:"sourceSet,omitempty"`
 }
 
 // DeploymentID Derived from the tenant, project and action key, so every retry names the same record.
@@ -1089,6 +1174,20 @@ type DeploymentReceipt struct {
 	// Created True only for the call that created the record.
 	Created    bool       `json:"created"`
 	Deployment Deployment `json:"deployment"`
+}
+
+// DeploymentSourceCommit defines model for DeploymentSourceCommit.
+type DeploymentSourceCommit struct {
+	Commit string `json:"commit"`
+
+	// RepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RepositoryId ID `json:"repositoryId"`
+}
+
+// DeploymentSourceSet The candidate of a multi-repository run: the canonical digest of the run's pinned source set and one commit for every repository of it, ordered by repositoryId. A request names it instead of source and it must equal the source set of the originating attempt and of the image's provenance (DQ-17).
+type DeploymentSourceSet struct {
+	Commits []DeploymentSourceCommit `json:"commits"`
+	Digest  Digest                   `json:"digest"`
 }
 
 // DeploymentStatus defines model for DeploymentStatus.
@@ -1294,7 +1393,7 @@ type Gate struct {
 	Status GateStatus `json:"status"`
 	StepId string     `json:"stepId"`
 
-	// Subject The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate.
+	// Subject The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate. For a run of several repositories the subject also carries sourceSet (DQ-17), which defines it; candidateCommit then presents the primary source.
 	Subject       Subject        `json:"subject"`
 	SubjectDigest Digest         `json:"subjectDigest"`
 	UpdatedAt     GatesTimestamp `json:"updatedAt"`
@@ -1345,6 +1444,124 @@ type GatesTimestamp = time.Time
 // GitCommit defines model for GitCommit.
 type GitCommit = string
 
+// GitCredential defines model for GitCredential.
+type GitCredential struct {
+	// ExpiresAt Shortly after issue; minutes for a seed, at most one hour for a human credential.
+	ExpiresAt time.Time `json:"expiresAt"`
+	GrantId   string    `json:"grantId"`
+
+	// Password The opaque credential: the HTTP Basic password. Shown once and stored only as a hash; never log it.
+	Password string `json:"password"`
+
+	// Username Conventional only; any username is accepted at use.
+	Username string `json:"username"`
+}
+
+// GitCredentialRequest defines model for GitCredentialRequest.
+type GitCredentialRequest struct {
+	// ProjectId The repository's project identifier; the empty string for the tenant-level repository.
+	ProjectId string `json:"projectId"`
+
+	// RepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RepositoryId ID `json:"repositoryId"`
+
+	// Seed False for an ordinary human credential, true for the single-use seed credential of an empty repository.
+	Seed *bool `json:"seed,omitempty"`
+}
+
+// GitError The error body the kernel writes. It carries a stable `code` and a message and nothing else: no request identifier and no details object.
+type GitError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// GitErrorEnvelope defines model for GitErrorEnvelope.
+type GitErrorEnvelope struct {
+	// Error The error body the kernel writes. It carries a stable `code` and a message and nothing else: no request identifier and no details object.
+	Error GitError `json:"error"`
+}
+
+// GitRefTip defines model for GitRefTip.
+type GitRefTip struct {
+	Commit string `json:"commit"`
+	Ref    string `json:"ref"`
+}
+
+// GitRefsCursorValue A continuation position in a refs listing: the name of the last ref of the page. This is the Git contract's cursor (contracts/git/v1), not the common authenticated cursor.
+type GitRefsCursorValue = string
+
+// GitRefsPage defines model for GitRefsPage.
+type GitRefsPage struct {
+	// Empty True when the repository has no refs at all.
+	Empty bool `json:"empty"`
+
+	// NextCursor The cursor of the next page, or null when the listing is exhausted.
+	NextCursor *GitRefsCursorValue `json:"nextCursor"`
+	Refs       []GitRefTip         `json:"refs"`
+}
+
+// GitRepository defines model for GitRepository.
+type GitRepository struct {
+	// CloneUrl The Git endpoint of the repository. Never carries credentials.
+	CloneUrl  string    `json:"cloneUrl"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DefaultBranch A branch name, not a ref path, outside the reserved kodama namespace.
+	DefaultBranch string `json:"defaultBranch"`
+
+	// Empty Reported by the tenant's worker: the repository has no refs. Decides whether a seed credential can be issued.
+	Empty bool `json:"empty"`
+
+	// Id Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	Id ID `json:"id"`
+
+	// Path `<tenant key>/<project key>/<name>`, or `<tenant key>/context` for the tenant-level repository. It is the path of the Git endpoint without `.git`.
+	Path   string              `json:"path"`
+	Policy GitRepositoryPolicy `json:"policy"`
+
+	// ProjectId The owning project's identifier; null for the tenant-level repository.
+	ProjectId *string `json:"projectId"`
+
+	// Reason Null for a ready repository; `provisioning` while the worker has not confirmed it; `archived` after an archive.
+	Reason *string `json:"reason"`
+
+	// Status Transitions: provisioning to ready (the worker confirmed), ready to archived, archived to ready; a changed default branch returns a ready repository to provisioning until the worker re-applies it. A provisioning failure is a `reason`, never another status.
+	Status GitRepositoryStatus `json:"status"`
+
+	// TenantId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	TenantId ID `json:"tenantId"`
+
+	// Version Resource version; the ETag is this integer in double quotes.
+	Version Version `json:"version"`
+}
+
+// GitRepositoryList defines model for GitRepositoryList.
+type GitRepositoryList struct {
+	Items []GitRepository `json:"items"`
+
+	// NextCursor Always null, the list is not paginated.
+	NextCursor *string `json:"nextCursor"`
+}
+
+// GitRepositoryPolicy defines model for GitRepositoryPolicy.
+type GitRepositoryPolicy struct {
+	// DirectPushToDefault Whether a current engineer may fast-forward the default branch directly.
+	DirectPushToDefault bool `json:"directPushToDefault"`
+
+	// IntegrationPipeline The process an integration run executes; absent when none is set.
+	IntegrationPipeline *string `json:"integrationPipeline,omitempty"`
+}
+
+// GitRepositoryPolicyInput defines model for GitRepositoryPolicyInput.
+type GitRepositoryPolicyInput struct {
+	// DirectPushToDefault Omitted means false on creation; a patch that names a policy states it.
+	DirectPushToDefault *bool   `json:"directPushToDefault,omitempty"`
+	IntegrationPipeline *string `json:"integrationPipeline,omitempty"`
+}
+
+// GitRepositoryStatus Transitions: provisioning to ready (the worker confirmed), ready to archived, archived to ready; a changed default branch returns a ready repository to provisioning until the worker re-applies it. A provisioning failure is a `reason`, never another status.
+type GitRepositoryStatus string
+
 // Harness defines model for Harness.
 type Harness struct {
 	Id      string `json:"id"`
@@ -1389,6 +1606,9 @@ type HistoryPage struct {
 	NextCursor *string        `json:"nextCursor"`
 }
 
+// Hosting How the workspace's source is hosted. An external workspace has one repository and the publisher model; an internal workspace (ADR 0011) has a task branch in each repository its work item touches, and its commits are pushed by attempts and accepted from applied push records. A workspace never changes hosting.
+type Hosting string
+
 // ID Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 type ID = string
 
@@ -1407,6 +1627,12 @@ type InputSnapshot struct {
 	Digest  string         `json:"digest"`
 	Inputs  []PinnedInput  `json:"inputs"`
 	Secrets []PinnedSecret `json:"secrets"`
+}
+
+// IntegrationBase The default branch of a writable repository and the tip the approval is given over.
+type IntegrationBase struct {
+	Commit GitCommit `json:"commit"`
+	Ref    string    `json:"ref"`
 }
 
 // Invalidation defines model for Invalidation.
@@ -1731,6 +1957,12 @@ type Page struct {
 	NextCursor *string `json:"nextCursor"`
 }
 
+// PatchGitRepositoryRequest defines model for PatchGitRepositoryRequest.
+type PatchGitRepositoryRequest struct {
+	DefaultBranch *string                   `json:"defaultBranch,omitempty"`
+	Policy        *GitRepositoryPolicyInput `json:"policy,omitempty"`
+}
+
 // PinnedInput defines model for PinnedInput.
 type PinnedInput struct {
 	Name   string            `json:"name"`
@@ -1895,6 +2127,28 @@ type ReplayRequest struct {
 	Reason string `json:"reason"`
 }
 
+// RepositoryAssociation One repository of an internally hosted workspace: its task branch and the commit last accepted there. Safe reason codes in lastError are repository_unavailable, provision_unavailable, branch_exists, branch_missing, branch_diverged and unaccepted_push.
+type RepositoryAssociation struct {
+	// AcceptedCommit The commit last accepted on the task branch; null until the branch is created.
+	AcceptedCommit *string `json:"acceptedCommit"`
+
+	// BaseCommit Full Git object name.
+	BaseCommit   Commit    `json:"baseCommit"`
+	CreatedAt    time.Time `json:"createdAt"`
+	LastError    *string   `json:"lastError"`
+	RepositoryId string    `json:"repositoryId"`
+
+	// State intent: the base commit is recorded and the task branch is not yet confirmed created; created: the task branch exists and acceptedCommit is recorded. Independent of the workspace state.
+	State RepositoryAssociationState `json:"state"`
+
+	// TaskBranch Task branch refs/heads/kodama/work/<work-item-id> in this repository.
+	TaskBranch string    `json:"taskBranch"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// RepositoryAssociationState intent: the base commit is recorded and the task branch is not yet confirmed created; created: the task branch exists and acceptedCommit is recorded. Independent of the workspace state.
+type RepositoryAssociationState string
+
 // Required defines model for Required.
 type Required struct {
 	// Conformance Present only for an agent-produced candidate. A `blocked` snapshot refuses approval and carries the denial code; the report stays bound to the subject for review.
@@ -2043,6 +2297,9 @@ type Run struct {
 	Id            ID            `json:"id"`
 	InputSnapshot InputSnapshot `json:"inputSnapshot"`
 
+	// Origin How the run started, pinned at admission (PX-23-PX-25). Present only for a run admitted by the internal Git service; absent for every earlier run. A run that did not start from a work item has none and consumes no work-in-progress.
+	Origin *RunOrigin `json:"origin,omitempty"`
+
 	// Purpose Only work runs are created through this API.
 	Purpose RunPurpose `json:"purpose"`
 
@@ -2059,8 +2316,11 @@ type Run struct {
 
 	// SourceRetention A work run dispatches only after its retained source reference is confirmed.
 	SourceRetention RunSourceRetention `json:"sourceRetention"`
-	StartedAt       *time.Time         `json:"startedAt"`
-	Status          RunStatus          `json:"status"`
+
+	// SourceSet The run's pinned source set: one exact commit per repository of its project and a unique checkout path each, ordered by path. Present only for a run admitted by the internal Git service. It never changes after admission.
+	SourceSet *RunSourceSet `json:"sourceSet,omitempty"`
+	StartedAt *time.Time    `json:"startedAt"`
+	Status    RunStatus     `json:"status"`
 
 	// Version Resource version; the ETag is this integer in double quotes.
 	Version    Version `json:"version"`
@@ -2072,6 +2332,26 @@ type RunPurpose string
 
 // RunSourceRetention A work run dispatches only after its retained source reference is confirmed.
 type RunSourceRetention string
+
+// RunOrigin How the run started, pinned at admission (PX-23-PX-25). Present only for a run admitted by the internal Git service; absent for every earlier run. A run that did not start from a work item has none and consumes no work-in-progress.
+type RunOrigin struct {
+	Kind RunOriginKind `json:"kind"`
+
+	// PushId The applied push record of a push origin.
+	PushId *string `json:"pushId"`
+
+	// Ref The updated ref of a push origin; never under refs/kodama/.
+	Ref *string `json:"ref"`
+
+	// RepositoryId The pushed repository of a push origin.
+	RepositoryId *string `json:"repositoryId"`
+
+	// WorkItemId Set exactly for a work_item origin.
+	WorkItemId *string `json:"workItemId"`
+}
+
+// RunOriginKind defines model for RunOrigin.Kind.
+type RunOriginKind string
 
 // RunPage defines model for RunPage.
 type RunPage struct {
@@ -2095,6 +2375,37 @@ type RunResource struct {
 	Reason    *string    `json:"reason"`
 	RemovedAt *time.Time `json:"removedAt"`
 	StoppedAt *time.Time `json:"stoppedAt"`
+}
+
+// RunSource defines model for RunSource.
+type RunSource struct {
+	// Access The run-level access ceiling; only the writer attempt may update the source's branch.
+	Access RunSourceAccess `json:"access"`
+
+	// Branch The branch a write source updates (the work item's task branch or a branch of the run's own namespace); null for a read source.
+	Branch *string `json:"branch"`
+
+	// Commit The commit pinned at admission, never a later tip.
+	Commit string `json:"commit"`
+
+	// Path The checkout path relative to /workspace; "." only for a single source.
+	Path string `json:"path"`
+
+	// Repository The repository's name within the project.
+	Repository string `json:"repository"`
+
+	// RepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RepositoryId ID `json:"repositoryId"`
+}
+
+// RunSourceAccess The run-level access ceiling; only the writer attempt may update the source's branch.
+type RunSourceAccess string
+
+// RunSourceSet The run's pinned source set: one exact commit per repository of its project and a unique checkout path each, ordered by path. Present only for a run admitted by the internal Git service. It never changes after admission.
+type RunSourceSet struct {
+	// Digest The canonical digest of the set that evidence and gate subjects use; null for a source-free run.
+	Digest  *string     `json:"digest"`
+	Sources []RunSource `json:"sources"`
 }
 
 // RunStatus defines model for RunStatus.
@@ -2123,10 +2434,13 @@ type RunsScalar1 = bool
 // RunsScalar2 defines model for .
 type RunsScalar2 = int64
 
-// RuntimeDeploymentRegister defines model for RuntimeDeploymentRegister.
+// RuntimeDeploymentRegister `source` stays a required member of the published contract, so that a client generated before source sets existed keeps working (AC-10), and `sourceSet` is the additive member that defines the candidate of a multi-repository run. The server accepts exactly one of them: a source-set candidate is sent as `sourceSet` alone.
 type RuntimeDeploymentRegister struct {
 	Image  Image  `json:"image"`
 	Source Source `json:"source"`
+
+	// SourceSet The candidate of a multi-repository run: the canonical digest of the run's pinned source set and one commit for every repository of it, ordered by repositoryId. A request names it instead of source and it must equal the source set of the originating attempt and of the image's provenance (DQ-17).
+	SourceSet *DeploymentSourceSet `json:"sourceSet,omitempty"`
 }
 
 // Scalar A string (at most 4096 bytes), boolean or integer within +/-(2^53-1).
@@ -2307,7 +2621,7 @@ type StepPage struct {
 // StepStatus defines model for StepStatus.
 type StepStatus string
 
-// Subject The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate.
+// Subject The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate. For a run of several repositories the subject also carries sourceSet (DQ-17), which defines it; candidateCommit then presents the primary source.
 type Subject struct {
 	CandidateCommit GitCommit `json:"candidateCommit"`
 
@@ -2323,11 +2637,29 @@ type Subject struct {
 	// ProjectId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	ProjectId ID `json:"projectId"`
 
+	// SourceSet Present only for a candidate that spans repositories: the digest of the run's pinned source set and, for every repository (ordered by repositoryId), the commit under review and, for a repository the run may write, the integration base (the default branch and the tip the approval is given over). A moved base makes the subject not applicable (base_moved).
+	SourceSet *SubjectSourceSet `json:"sourceSet,omitempty"`
+
 	// TenantId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	TenantId ID `json:"tenantId"`
 
 	// WorkItemId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	WorkItemId ID `json:"workItemId"`
+}
+
+// SubjectSource defines model for SubjectSource.
+type SubjectSource struct {
+	Base   *IntegrationBase `json:"base"`
+	Commit GitCommit        `json:"commit"`
+
+	// RepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RepositoryId ID `json:"repositoryId"`
+}
+
+// SubjectSourceSet defines model for SubjectSourceSet.
+type SubjectSourceSet struct {
+	Digest  Digest          `json:"digest"`
+	Sources []SubjectSource `json:"sources"`
 }
 
 // Tenant defines model for Tenant.
@@ -2486,7 +2818,7 @@ type WorkState string
 
 // Workspace defines model for Workspace.
 type Workspace struct {
-	// AcceptedCommit The last published or synchronized commit; null while provisioning.
+	// AcceptedCommit The last published or synchronized commit; null while provisioning. For an internal workspace, the primary repository's accepted commit.
 	AcceptedCommit *string `json:"acceptedCommit"`
 
 	// ArchiveRequestedAt Set once admission is closed by an archive request.
@@ -2495,14 +2827,22 @@ type Workspace struct {
 	// Branch Portable ordinary work branch, refs/heads/kodama/work/<work-item-id>.
 	Branch    string    `json:"branch"`
 	CreatedAt time.Time `json:"createdAt"`
-	Id        string    `json:"id"`
+
+	// Hosting How the workspace's source is hosted. An external workspace has one repository and the publisher model; an internal workspace (ADR 0011) has a task branch in each repository its work item touches, and its commits are pushed by attempts and accepted from applied push records. A workspace never changes hosting.
+	Hosting Hosting `json:"hosting"`
+	Id      string  `json:"id"`
 
 	// LastError Safe reason code (provision_unavailable, repository_unavailable, branch_exists, branch_diverged); never free text, a credential or repository content.
 	LastError *string `json:"lastError"`
 
 	// Publication The one in-flight source publication, recorded before Git is invoked and kept until its outcome is known and durably recorded.
-	Publication  *Publication `json:"publication"`
-	RepositoryId string       `json:"repositoryId"`
+	Publication *Publication `json:"publication"`
+
+	// Repositories The repository associations of an internal workspace, ordered by repositoryId; empty for an external workspace.
+	Repositories []RepositoryAssociation `json:"repositories"`
+
+	// RepositoryId The workspace's repository; for an internal workspace its primary repository (the first one it was provisioned for).
+	RepositoryId string `json:"repositoryId"`
 
 	// State Availability only. Errors are reasons on the resource (lastError), never states.
 	State     WorkspaceState `json:"state"`
@@ -2557,6 +2897,24 @@ type EventType = []ObservableEventType
 
 // GateId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 type GateId = ID
+
+// GitProjectSegment defines model for GitProjectSegment.
+type GitProjectSegment = string
+
+// GitRefsCursor A continuation position in a refs listing: the name of the last ref of the page. This is the Git contract's cursor (contracts/git/v1), not the common authenticated cursor.
+type GitRefsCursor = GitRefsCursorValue
+
+// GitRefsLimit defines model for GitRefsLimit.
+type GitRefsLimit = int
+
+// GitRefsPrefix defines model for GitRefsPrefix.
+type GitRefsPrefix string
+
+// GitRepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+type GitRepositoryId = ID
+
+// GitTenantKey defines model for GitTenantKey.
+type GitTenantKey = string
 
 // IdempotencyKey defines model for IdempotencyKey.
 type IdempotencyKey = IdempotencyKeyValue
@@ -2629,6 +2987,33 @@ type DeploymentConflict = ErrorEnvelope
 
 // Forbidden defines model for Forbidden.
 type Forbidden = ErrorEnvelope
+
+// GitBadRequest defines model for GitBadRequest.
+type GitBadRequest = GitErrorEnvelope
+
+// GitConflict defines model for GitConflict.
+type GitConflict = GitErrorEnvelope
+
+// GitForbidden defines model for GitForbidden.
+type GitForbidden = GitErrorEnvelope
+
+// GitNotFound defines model for GitNotFound.
+type GitNotFound = GitErrorEnvelope
+
+// GitPreconditionFailed defines model for GitPreconditionFailed.
+type GitPreconditionFailed = GitErrorEnvelope
+
+// GitPreconditionRequired defines model for GitPreconditionRequired.
+type GitPreconditionRequired = GitErrorEnvelope
+
+// GitUnauthorized defines model for GitUnauthorized.
+type GitUnauthorized = GitErrorEnvelope
+
+// GitUnavailable defines model for GitUnavailable.
+type GitUnavailable = GitErrorEnvelope
+
+// GitUnprocessable defines model for GitUnprocessable.
+type GitUnprocessable = GitErrorEnvelope
 
 // InternalError defines model for InternalError.
 type InternalError = ErrorEnvelope
@@ -2894,6 +3279,27 @@ type ListPipelineDefinitionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// PatchProjectGitRepositoryParams defines parameters for PatchProjectGitRepository.
+type PatchProjectGitRepositoryParams struct {
+	// IfMatch Exactly one strong ETag equal to the quoted integer resource version, for example "7". Required for editable content, settings, transitions and decisions. Weak tags, the wildcard and comma-separated lists are rejected with 400 invalid_request. A missing header is 428 version_required and a stale version is 412 version_conflict.
+	IfMatch IfMatch `json:"If-Match"`
+}
+
+// ListProjectGitRepositoryRefsParams defines parameters for ListProjectGitRepositoryRefs.
+type ListProjectGitRepositoryRefsParams struct {
+	// Prefix The namespace to list.
+	Prefix *ListProjectGitRepositoryRefsParamsPrefix `form:"prefix,omitempty" json:"prefix,omitempty"`
+
+	// Limit Page size, 1 to 1000; a value outside the range is `422 invalid_request`.
+	Limit *GitRefsLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `nextCursor` of the previous page, passed back unchanged. It is the name of the last ref returned, so it has the shape of a ref name (for example `refs/heads/b2`), not of the opaque authenticated cursor of the other lists. It grants no permission: the repository is authorized again on every page.
+	Cursor *GitRefsCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListProjectGitRepositoryRefsParamsPrefix defines parameters for ListProjectGitRepositoryRefs.
+type ListProjectGitRepositoryRefsParamsPrefix string
+
 // ListRunsParams defines parameters for ListRuns.
 type ListRunsParams struct {
 	Status     *[]RunStatus `form:"status,omitempty" json:"status,omitempty"`
@@ -3089,6 +3495,30 @@ type SyncWorkspaceParams struct {
 	IfMatch IfMatch `json:"If-Match"`
 }
 
+// PatchTenantGitRepositoryParams defines parameters for PatchTenantGitRepository.
+type PatchTenantGitRepositoryParams struct {
+	// IfMatch Exactly one strong ETag equal to the quoted integer resource version, for example "7". Required for editable content, settings, transitions and decisions. Weak tags, the wildcard and comma-separated lists are rejected with 400 invalid_request. A missing header is 428 version_required and a stale version is 412 version_conflict.
+	IfMatch IfMatch `json:"If-Match"`
+}
+
+// ListTenantGitRepositoryRefsParams defines parameters for ListTenantGitRepositoryRefs.
+type ListTenantGitRepositoryRefsParams struct {
+	// Prefix The namespace to list.
+	Prefix *ListTenantGitRepositoryRefsParamsPrefix `form:"prefix,omitempty" json:"prefix,omitempty"`
+
+	// Limit Page size, 1 to 1000; a value outside the range is `422 invalid_request`.
+	Limit *GitRefsLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `nextCursor` of the previous page, passed back unchanged. It is the name of the last ref returned, so it has the shape of a ref name (for example `refs/heads/b2`), not of the opaque authenticated cursor of the other lists. It grants no permission: the repository is authorized again on every page.
+	Cursor *GitRefsCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListTenantGitRepositoryRefsParamsPrefix defines parameters for ListTenantGitRepositoryRefs.
+type ListTenantGitRepositoryRefsParamsPrefix string
+
+// ExchangeGitCredentialJSONRequestBody defines body for ExchangeGitCredential for application/json ContentType.
+type ExchangeGitCredentialJSONRequestBody = GitCredentialRequest
+
 // CreateMembershipJSONRequestBody defines body for CreateMembership for application/json ContentType.
 type CreateMembershipJSONRequestBody = CreateMembership
 
@@ -3137,6 +3567,12 @@ type ReplaceModelSettingsJSONRequestBody = ReplaceModelSettingsRequest
 // RegisterPipelineDefinitionJSONRequestBody defines body for RegisterPipelineDefinition for application/json ContentType.
 type RegisterPipelineDefinitionJSONRequestBody = PipelineDocument
 
+// CreateProjectGitRepositoryJSONRequestBody defines body for CreateProjectGitRepository for application/json ContentType.
+type CreateProjectGitRepositoryJSONRequestBody = CreateGitRepositoryRequest
+
+// PatchProjectGitRepositoryJSONRequestBody defines body for PatchProjectGitRepository for application/json ContentType.
+type PatchProjectGitRepositoryJSONRequestBody = PatchGitRepositoryRequest
+
 // CreateRunJSONRequestBody defines body for CreateRun for application/json ContentType.
 type CreateRunJSONRequestBody = CreateRunRequest
 
@@ -3178,6 +3614,12 @@ type RestoreWorkspaceJSONRequestBody = EmptyRequest
 
 // SyncWorkspaceJSONRequestBody defines body for SyncWorkspace for application/json ContentType.
 type SyncWorkspaceJSONRequestBody = EmptyRequest
+
+// CreateTenantGitRepositoryJSONRequestBody defines body for CreateTenantGitRepository for application/json ContentType.
+type CreateTenantGitRepositoryJSONRequestBody = CreateGitRepositoryRequest
+
+// PatchTenantGitRepositoryJSONRequestBody defines body for PatchTenantGitRepository for application/json ContentType.
+type PatchTenantGitRepositoryJSONRequestBody = PatchGitRepositoryRequest
 
 // Getter for additional properties for PipelineDocument. Returns the specified
 // element and whether it was found
@@ -3686,6 +4128,11 @@ type ClientInterface interface {
 	// ListTenants request
 	ListTenants(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ExchangeGitCredentialWithBody request with any body
+	ExchangeGitCredentialWithBody(ctx context.Context, tenantId GitTenantKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ExchangeGitCredential(ctx context.Context, tenantId GitTenantKey, body ExchangeGitCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMemberships request
 	ListMemberships(ctx context.Context, tenantId TenantId, params *ListMembershipsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3835,6 +4282,31 @@ type ClientInterface interface {
 	// GetPipelineDefinition request
 	GetPipelineDefinition(ctx context.Context, tenantId TenantId, projectId ProjectId, id DefinitionId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListProjectGitRepositories request
+	ListProjectGitRepositories(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateProjectGitRepositoryWithBody request with any body
+	CreateProjectGitRepositoryWithBody(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, body CreateProjectGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetProjectGitRepository request
+	GetProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchProjectGitRepositoryWithBody request with any body
+	PatchProjectGitRepositoryWithBody(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, body PatchProjectGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveProjectGitRepository request
+	ArchiveProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListProjectGitRepositoryRefs request
+	ListProjectGitRepositoryRefs(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *ListProjectGitRepositoryRefsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RestoreProjectGitRepository request
+	RestoreProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListRuns request
 	ListRuns(ctx context.Context, tenantId TenantId, projectId ProjectId, params *ListRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3961,6 +4433,31 @@ type ClientInterface interface {
 	SyncWorkspaceWithBody(ctx context.Context, tenantId TenantId, projectId ProjectId, id WorkspaceId, params *SyncWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SyncWorkspace(ctx context.Context, tenantId TenantId, projectId ProjectId, id WorkspaceId, params *SyncWorkspaceParams, body SyncWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTenantGitRepositories request
+	ListTenantGitRepositories(ctx context.Context, tenantId GitTenantKey, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTenantGitRepositoryWithBody request with any body
+	CreateTenantGitRepositoryWithBody(ctx context.Context, tenantId GitTenantKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateTenantGitRepository(ctx context.Context, tenantId GitTenantKey, body CreateTenantGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTenantGitRepository request
+	GetTenantGitRepository(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchTenantGitRepositoryWithBody request with any body
+	PatchTenantGitRepositoryWithBody(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchTenantGitRepository(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, body PatchTenantGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveTenantGitRepository request
+	ArchiveTenantGitRepository(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTenantGitRepositoryRefs request
+	ListTenantGitRepositoryRefs(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *ListTenantGitRepositoryRefsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RestoreTenantGitRepository request
+	RestoreTenantGitRepository(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3977,6 +4474,30 @@ func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*htt
 
 func (c *Client) ListTenants(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListTenantsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExchangeGitCredentialWithBody(ctx context.Context, tenantId GitTenantKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeGitCredentialRequestWithBody(c.Server, tenantId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExchangeGitCredential(ctx context.Context, tenantId GitTenantKey, body ExchangeGitCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeGitCredentialRequest(c.Server, tenantId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4647,6 +5168,114 @@ func (c *Client) GetPipelineDefinition(ctx context.Context, tenantId TenantId, p
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListProjectGitRepositories(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListProjectGitRepositoriesRequest(c.Server, tenantId, projectId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateProjectGitRepositoryWithBody(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateProjectGitRepositoryRequestWithBody(c.Server, tenantId, projectId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, body CreateProjectGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateProjectGitRepositoryRequest(c.Server, tenantId, projectId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProjectGitRepositoryRequest(c.Server, tenantId, projectId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchProjectGitRepositoryWithBody(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchProjectGitRepositoryRequestWithBody(c.Server, tenantId, projectId, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, body PatchProjectGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchProjectGitRepositoryRequest(c.Server, tenantId, projectId, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ArchiveProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveProjectGitRepositoryRequest(c.Server, tenantId, projectId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListProjectGitRepositoryRefs(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *ListProjectGitRepositoryRefsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListProjectGitRepositoryRefsRequest(c.Server, tenantId, projectId, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RestoreProjectGitRepository(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRestoreProjectGitRepositoryRequest(c.Server, tenantId, projectId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListRuns(ctx context.Context, tenantId TenantId, projectId ProjectId, params *ListRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListRunsRequest(c.Server, tenantId, projectId, params)
 	if err != nil {
@@ -5211,6 +5840,114 @@ func (c *Client) SyncWorkspace(ctx context.Context, tenantId TenantId, projectId
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListTenantGitRepositories(ctx context.Context, tenantId GitTenantKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTenantGitRepositoriesRequest(c.Server, tenantId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateTenantGitRepositoryWithBody(ctx context.Context, tenantId GitTenantKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTenantGitRepositoryRequestWithBody(c.Server, tenantId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateTenantGitRepository(ctx context.Context, tenantId GitTenantKey, body CreateTenantGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTenantGitRepositoryRequest(c.Server, tenantId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetTenantGitRepository(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTenantGitRepositoryRequest(c.Server, tenantId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchTenantGitRepositoryWithBody(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchTenantGitRepositoryRequestWithBody(c.Server, tenantId, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchTenantGitRepository(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, body PatchTenantGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchTenantGitRepositoryRequest(c.Server, tenantId, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ArchiveTenantGitRepository(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveTenantGitRepositoryRequest(c.Server, tenantId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListTenantGitRepositoryRefs(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *ListTenantGitRepositoryRefsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTenantGitRepositoryRefsRequest(c.Server, tenantId, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RestoreTenantGitRepository(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRestoreTenantGitRepositoryRequest(c.Server, tenantId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // NewGetMeRequest generates requests for GetMe
 func NewGetMeRequest(server string) (*http.Request, error) {
 	var err error
@@ -5299,6 +6036,53 @@ func NewListTenantsRequest(server string, params *ListTenantsParams) (*http.Requ
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewExchangeGitCredentialRequest calls the generic ExchangeGitCredential builder with application/json body
+func NewExchangeGitCredentialRequest(server string, tenantId GitTenantKey, body ExchangeGitCredentialJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExchangeGitCredentialRequestWithBody(server, tenantId, "application/json", bodyReader)
+}
+
+// NewExchangeGitCredentialRequestWithBody generates requests for ExchangeGitCredential with any type of body
+func NewExchangeGitCredentialRequestWithBody(server string, tenantId GitTenantKey, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/git-credentials", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -7944,6 +8728,421 @@ func NewGetPipelineDefinitionRequest(server string, tenantId TenantId, projectId
 	return req, nil
 }
 
+// NewListProjectGitRepositoriesRequest generates requests for ListProjectGitRepositories
+func NewListProjectGitRepositoriesRequest(server string, tenantId GitTenantKey, projectId GitProjectSegment) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/projects/%s/repositories", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateProjectGitRepositoryRequest calls the generic CreateProjectGitRepository builder with application/json body
+func NewCreateProjectGitRepositoryRequest(server string, tenantId GitTenantKey, projectId GitProjectSegment, body CreateProjectGitRepositoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateProjectGitRepositoryRequestWithBody(server, tenantId, projectId, "application/json", bodyReader)
+}
+
+// NewCreateProjectGitRepositoryRequestWithBody generates requests for CreateProjectGitRepository with any type of body
+func NewCreateProjectGitRepositoryRequestWithBody(server string, tenantId GitTenantKey, projectId GitProjectSegment, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/projects/%s/repositories", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetProjectGitRepositoryRequest generates requests for GetProjectGitRepository
+func NewGetProjectGitRepositoryRequest(server string, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/projects/%s/repositories/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPatchProjectGitRepositoryRequest calls the generic PatchProjectGitRepository builder with application/json body
+func NewPatchProjectGitRepositoryRequest(server string, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, body PatchProjectGitRepositoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchProjectGitRepositoryRequestWithBody(server, tenantId, projectId, id, params, "application/json", bodyReader)
+}
+
+// NewPatchProjectGitRepositoryRequestWithBody generates requests for PatchProjectGitRepository with any type of body
+func NewPatchProjectGitRepositoryRequestWithBody(server string, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/projects/%s/repositories/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithLocation("simple", false, "If-Match", runtime.ParamLocationHeader, params.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("If-Match", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewArchiveProjectGitRepositoryRequest generates requests for ArchiveProjectGitRepository
+func NewArchiveProjectGitRepositoryRequest(server string, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/projects/%s/repositories/%s/archive", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListProjectGitRepositoryRefsRequest generates requests for ListProjectGitRepositoryRefs
+func NewListProjectGitRepositoryRefsRequest(server string, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *ListProjectGitRepositoryRefsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/projects/%s/repositories/%s/refs", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Prefix != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "prefix", runtime.ParamLocationQuery, *params.Prefix); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRestoreProjectGitRepositoryRequest generates requests for RestoreProjectGitRepository
+func NewRestoreProjectGitRepositoryRequest(server string, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/projects/%s/repositories/%s/restore", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListRunsRequest generates requests for ListRuns
 func NewListRunsRequest(server string, tenantId TenantId, projectId ProjectId, params *ListRunsParams) (*http.Request, error) {
 	var err error
@@ -10398,6 +11597,372 @@ func NewSyncWorkspaceRequestWithBody(server string, tenantId TenantId, projectId
 	return req, nil
 }
 
+// NewListTenantGitRepositoriesRequest generates requests for ListTenantGitRepositories
+func NewListTenantGitRepositoriesRequest(server string, tenantId GitTenantKey) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/repositories", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateTenantGitRepositoryRequest calls the generic CreateTenantGitRepository builder with application/json body
+func NewCreateTenantGitRepositoryRequest(server string, tenantId GitTenantKey, body CreateTenantGitRepositoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateTenantGitRepositoryRequestWithBody(server, tenantId, "application/json", bodyReader)
+}
+
+// NewCreateTenantGitRepositoryRequestWithBody generates requests for CreateTenantGitRepository with any type of body
+func NewCreateTenantGitRepositoryRequestWithBody(server string, tenantId GitTenantKey, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/repositories", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetTenantGitRepositoryRequest generates requests for GetTenantGitRepository
+func NewGetTenantGitRepositoryRequest(server string, tenantId GitTenantKey, id GitRepositoryId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/repositories/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPatchTenantGitRepositoryRequest calls the generic PatchTenantGitRepository builder with application/json body
+func NewPatchTenantGitRepositoryRequest(server string, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, body PatchTenantGitRepositoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchTenantGitRepositoryRequestWithBody(server, tenantId, id, params, "application/json", bodyReader)
+}
+
+// NewPatchTenantGitRepositoryRequestWithBody generates requests for PatchTenantGitRepository with any type of body
+func NewPatchTenantGitRepositoryRequestWithBody(server string, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/repositories/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithLocation("simple", false, "If-Match", runtime.ParamLocationHeader, params.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("If-Match", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewArchiveTenantGitRepositoryRequest generates requests for ArchiveTenantGitRepository
+func NewArchiveTenantGitRepositoryRequest(server string, tenantId GitTenantKey, id GitRepositoryId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/repositories/%s/archive", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListTenantGitRepositoryRefsRequest generates requests for ListTenantGitRepositoryRefs
+func NewListTenantGitRepositoryRefsRequest(server string, tenantId GitTenantKey, id GitRepositoryId, params *ListTenantGitRepositoryRefsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/repositories/%s/refs", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Prefix != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "prefix", runtime.ParamLocationQuery, *params.Prefix); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRestoreTenantGitRepositoryRequest generates requests for RestoreTenantGitRepository
+func NewRestoreTenantGitRepositoryRequest(server string, tenantId GitTenantKey, id GitRepositoryId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/repositories/%s/restore", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -10446,6 +12011,11 @@ type ClientWithResponsesInterface interface {
 
 	// ListTenantsWithResponse request
 	ListTenantsWithResponse(ctx context.Context, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*ListTenantsResponse, error)
+
+	// ExchangeGitCredentialWithBodyWithResponse request with any body
+	ExchangeGitCredentialWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeGitCredentialResponse, error)
+
+	ExchangeGitCredentialWithResponse(ctx context.Context, tenantId GitTenantKey, body ExchangeGitCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*ExchangeGitCredentialResponse, error)
 
 	// ListMembershipsWithResponse request
 	ListMembershipsWithResponse(ctx context.Context, tenantId TenantId, params *ListMembershipsParams, reqEditors ...RequestEditorFn) (*ListMembershipsResponse, error)
@@ -10596,6 +12166,31 @@ type ClientWithResponsesInterface interface {
 	// GetPipelineDefinitionWithResponse request
 	GetPipelineDefinitionWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, id DefinitionId, reqEditors ...RequestEditorFn) (*GetPipelineDefinitionResponse, error)
 
+	// ListProjectGitRepositoriesWithResponse request
+	ListProjectGitRepositoriesWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, reqEditors ...RequestEditorFn) (*ListProjectGitRepositoriesResponse, error)
+
+	// CreateProjectGitRepositoryWithBodyWithResponse request with any body
+	CreateProjectGitRepositoryWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProjectGitRepositoryResponse, error)
+
+	CreateProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, body CreateProjectGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProjectGitRepositoryResponse, error)
+
+	// GetProjectGitRepositoryWithResponse request
+	GetProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*GetProjectGitRepositoryResponse, error)
+
+	// PatchProjectGitRepositoryWithBodyWithResponse request with any body
+	PatchProjectGitRepositoryWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchProjectGitRepositoryResponse, error)
+
+	PatchProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, body PatchProjectGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchProjectGitRepositoryResponse, error)
+
+	// ArchiveProjectGitRepositoryWithResponse request
+	ArchiveProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*ArchiveProjectGitRepositoryResponse, error)
+
+	// ListProjectGitRepositoryRefsWithResponse request
+	ListProjectGitRepositoryRefsWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *ListProjectGitRepositoryRefsParams, reqEditors ...RequestEditorFn) (*ListProjectGitRepositoryRefsResponse, error)
+
+	// RestoreProjectGitRepositoryWithResponse request
+	RestoreProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*RestoreProjectGitRepositoryResponse, error)
+
 	// ListRunsWithResponse request
 	ListRunsWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, params *ListRunsParams, reqEditors ...RequestEditorFn) (*ListRunsResponse, error)
 
@@ -10722,6 +12317,31 @@ type ClientWithResponsesInterface interface {
 	SyncWorkspaceWithBodyWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, id WorkspaceId, params *SyncWorkspaceParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SyncWorkspaceResponse, error)
 
 	SyncWorkspaceWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, id WorkspaceId, params *SyncWorkspaceParams, body SyncWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*SyncWorkspaceResponse, error)
+
+	// ListTenantGitRepositoriesWithResponse request
+	ListTenantGitRepositoriesWithResponse(ctx context.Context, tenantId GitTenantKey, reqEditors ...RequestEditorFn) (*ListTenantGitRepositoriesResponse, error)
+
+	// CreateTenantGitRepositoryWithBodyWithResponse request with any body
+	CreateTenantGitRepositoryWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTenantGitRepositoryResponse, error)
+
+	CreateTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, body CreateTenantGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTenantGitRepositoryResponse, error)
+
+	// GetTenantGitRepositoryWithResponse request
+	GetTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*GetTenantGitRepositoryResponse, error)
+
+	// PatchTenantGitRepositoryWithBodyWithResponse request with any body
+	PatchTenantGitRepositoryWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchTenantGitRepositoryResponse, error)
+
+	PatchTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, body PatchTenantGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchTenantGitRepositoryResponse, error)
+
+	// ArchiveTenantGitRepositoryWithResponse request
+	ArchiveTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*ArchiveTenantGitRepositoryResponse, error)
+
+	// ListTenantGitRepositoryRefsWithResponse request
+	ListTenantGitRepositoryRefsWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *ListTenantGitRepositoryRefsParams, reqEditors ...RequestEditorFn) (*ListTenantGitRepositoryRefsResponse, error)
+
+	// RestoreTenantGitRepositoryWithResponse request
+	RestoreTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*RestoreTenantGitRepositoryResponse, error)
 }
 
 type GetMeResponse struct {
@@ -10769,6 +12389,33 @@ func (r ListTenantsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListTenantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ExchangeGitCredentialResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *GitCredential
+	JSON400      *GitBadRequest
+	JSON401      *GitUnauthorized
+	JSON403      *GitForbidden
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+}
+
+// Status returns HTTPResponse.Status
+func (r ExchangeGitCredentialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExchangeGitCredentialResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -11950,6 +13597,192 @@ func (r GetPipelineDefinitionResponse) StatusCode() int {
 	return 0
 }
 
+type ListProjectGitRepositoriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepositoryList
+	JSON401      *GitUnauthorized
+	JSON404      *GitNotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListProjectGitRepositoriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListProjectGitRepositoriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateProjectGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON201      *GitRepository
+	JSON400      *GitBadRequest
+	JSON401      *GitUnauthorized
+	JSON403      *GitForbidden
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+	JSON422      *GitUnprocessable
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateProjectGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateProjectGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetProjectGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON401      *GitUnauthorized
+	JSON404      *GitNotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProjectGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProjectGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PatchProjectGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON400      *GitBadRequest
+	JSON401      *GitUnauthorized
+	JSON403      *GitForbidden
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+	JSON412      *GitPreconditionFailed
+	JSON422      *GitUnprocessable
+	JSON428      *GitPreconditionRequired
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchProjectGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchProjectGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ArchiveProjectGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON401      *GitUnauthorized
+	JSON403      *GitForbidden
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchiveProjectGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchiveProjectGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListProjectGitRepositoryRefsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRefsPage
+	JSON401      *GitUnauthorized
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+	JSON422      *GitUnprocessable
+	JSON503      *GitUnavailable
+}
+
+// Status returns HTTPResponse.Status
+func (r ListProjectGitRepositoryRefsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListProjectGitRepositoryRefsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RestoreProjectGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON401      *GitUnauthorized
+	JSON403      *GitForbidden
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+}
+
+// Status returns HTTPResponse.Status
+func (r RestoreProjectGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RestoreProjectGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListRunsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12940,6 +14773,192 @@ func (r SyncWorkspaceResponse) StatusCode() int {
 	return 0
 }
 
+type ListTenantGitRepositoriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepositoryList
+	JSON401      *GitUnauthorized
+	JSON404      *GitNotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTenantGitRepositoriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTenantGitRepositoriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateTenantGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON201      *GitRepository
+	JSON400      *GitBadRequest
+	JSON401      *GitUnauthorized
+	JSON403      *GitForbidden
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+	JSON422      *GitUnprocessable
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateTenantGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateTenantGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetTenantGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON401      *GitUnauthorized
+	JSON404      *GitNotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTenantGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTenantGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PatchTenantGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON400      *GitBadRequest
+	JSON401      *GitUnauthorized
+	JSON403      *GitForbidden
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+	JSON412      *GitPreconditionFailed
+	JSON422      *GitUnprocessable
+	JSON428      *GitPreconditionRequired
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchTenantGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchTenantGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ArchiveTenantGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON401      *GitUnauthorized
+	JSON403      *GitForbidden
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchiveTenantGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchiveTenantGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListTenantGitRepositoryRefsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRefsPage
+	JSON401      *GitUnauthorized
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+	JSON422      *GitUnprocessable
+	JSON503      *GitUnavailable
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTenantGitRepositoryRefsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTenantGitRepositoryRefsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RestoreTenantGitRepositoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *GitRepository
+	JSON401      *GitUnauthorized
+	JSON403      *GitForbidden
+	JSON404      *GitNotFound
+	JSON409      *GitConflict
+}
+
+// Status returns HTTPResponse.Status
+func (r RestoreTenantGitRepositoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RestoreTenantGitRepositoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // GetMeWithResponse request returning *GetMeResponse
 func (c *ClientWithResponses) GetMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMeResponse, error) {
 	rsp, err := c.GetMe(ctx, reqEditors...)
@@ -12956,6 +14975,23 @@ func (c *ClientWithResponses) ListTenantsWithResponse(ctx context.Context, param
 		return nil, err
 	}
 	return ParseListTenantsResponse(rsp)
+}
+
+// ExchangeGitCredentialWithBodyWithResponse request with arbitrary body returning *ExchangeGitCredentialResponse
+func (c *ClientWithResponses) ExchangeGitCredentialWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeGitCredentialResponse, error) {
+	rsp, err := c.ExchangeGitCredentialWithBody(ctx, tenantId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeGitCredentialResponse(rsp)
+}
+
+func (c *ClientWithResponses) ExchangeGitCredentialWithResponse(ctx context.Context, tenantId GitTenantKey, body ExchangeGitCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*ExchangeGitCredentialResponse, error) {
+	rsp, err := c.ExchangeGitCredential(ctx, tenantId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeGitCredentialResponse(rsp)
 }
 
 // ListMembershipsWithResponse request returning *ListMembershipsResponse
@@ -13437,6 +15473,85 @@ func (c *ClientWithResponses) GetPipelineDefinitionWithResponse(ctx context.Cont
 	return ParseGetPipelineDefinitionResponse(rsp)
 }
 
+// ListProjectGitRepositoriesWithResponse request returning *ListProjectGitRepositoriesResponse
+func (c *ClientWithResponses) ListProjectGitRepositoriesWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, reqEditors ...RequestEditorFn) (*ListProjectGitRepositoriesResponse, error) {
+	rsp, err := c.ListProjectGitRepositories(ctx, tenantId, projectId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListProjectGitRepositoriesResponse(rsp)
+}
+
+// CreateProjectGitRepositoryWithBodyWithResponse request with arbitrary body returning *CreateProjectGitRepositoryResponse
+func (c *ClientWithResponses) CreateProjectGitRepositoryWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProjectGitRepositoryResponse, error) {
+	rsp, err := c.CreateProjectGitRepositoryWithBody(ctx, tenantId, projectId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateProjectGitRepositoryResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, body CreateProjectGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProjectGitRepositoryResponse, error) {
+	rsp, err := c.CreateProjectGitRepository(ctx, tenantId, projectId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateProjectGitRepositoryResponse(rsp)
+}
+
+// GetProjectGitRepositoryWithResponse request returning *GetProjectGitRepositoryResponse
+func (c *ClientWithResponses) GetProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*GetProjectGitRepositoryResponse, error) {
+	rsp, err := c.GetProjectGitRepository(ctx, tenantId, projectId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProjectGitRepositoryResponse(rsp)
+}
+
+// PatchProjectGitRepositoryWithBodyWithResponse request with arbitrary body returning *PatchProjectGitRepositoryResponse
+func (c *ClientWithResponses) PatchProjectGitRepositoryWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchProjectGitRepositoryResponse, error) {
+	rsp, err := c.PatchProjectGitRepositoryWithBody(ctx, tenantId, projectId, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchProjectGitRepositoryResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *PatchProjectGitRepositoryParams, body PatchProjectGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchProjectGitRepositoryResponse, error) {
+	rsp, err := c.PatchProjectGitRepository(ctx, tenantId, projectId, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchProjectGitRepositoryResponse(rsp)
+}
+
+// ArchiveProjectGitRepositoryWithResponse request returning *ArchiveProjectGitRepositoryResponse
+func (c *ClientWithResponses) ArchiveProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*ArchiveProjectGitRepositoryResponse, error) {
+	rsp, err := c.ArchiveProjectGitRepository(ctx, tenantId, projectId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveProjectGitRepositoryResponse(rsp)
+}
+
+// ListProjectGitRepositoryRefsWithResponse request returning *ListProjectGitRepositoryRefsResponse
+func (c *ClientWithResponses) ListProjectGitRepositoryRefsWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, params *ListProjectGitRepositoryRefsParams, reqEditors ...RequestEditorFn) (*ListProjectGitRepositoryRefsResponse, error) {
+	rsp, err := c.ListProjectGitRepositoryRefs(ctx, tenantId, projectId, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListProjectGitRepositoryRefsResponse(rsp)
+}
+
+// RestoreProjectGitRepositoryWithResponse request returning *RestoreProjectGitRepositoryResponse
+func (c *ClientWithResponses) RestoreProjectGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, projectId GitProjectSegment, id GitRepositoryId, reqEditors ...RequestEditorFn) (*RestoreProjectGitRepositoryResponse, error) {
+	rsp, err := c.RestoreProjectGitRepository(ctx, tenantId, projectId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRestoreProjectGitRepositoryResponse(rsp)
+}
+
 // ListRunsWithResponse request returning *ListRunsResponse
 func (c *ClientWithResponses) ListRunsWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, params *ListRunsParams, reqEditors ...RequestEditorFn) (*ListRunsResponse, error) {
 	rsp, err := c.ListRuns(ctx, tenantId, projectId, params, reqEditors...)
@@ -13846,6 +15961,85 @@ func (c *ClientWithResponses) SyncWorkspaceWithResponse(ctx context.Context, ten
 	return ParseSyncWorkspaceResponse(rsp)
 }
 
+// ListTenantGitRepositoriesWithResponse request returning *ListTenantGitRepositoriesResponse
+func (c *ClientWithResponses) ListTenantGitRepositoriesWithResponse(ctx context.Context, tenantId GitTenantKey, reqEditors ...RequestEditorFn) (*ListTenantGitRepositoriesResponse, error) {
+	rsp, err := c.ListTenantGitRepositories(ctx, tenantId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTenantGitRepositoriesResponse(rsp)
+}
+
+// CreateTenantGitRepositoryWithBodyWithResponse request with arbitrary body returning *CreateTenantGitRepositoryResponse
+func (c *ClientWithResponses) CreateTenantGitRepositoryWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTenantGitRepositoryResponse, error) {
+	rsp, err := c.CreateTenantGitRepositoryWithBody(ctx, tenantId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTenantGitRepositoryResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, body CreateTenantGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTenantGitRepositoryResponse, error) {
+	rsp, err := c.CreateTenantGitRepository(ctx, tenantId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTenantGitRepositoryResponse(rsp)
+}
+
+// GetTenantGitRepositoryWithResponse request returning *GetTenantGitRepositoryResponse
+func (c *ClientWithResponses) GetTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*GetTenantGitRepositoryResponse, error) {
+	rsp, err := c.GetTenantGitRepository(ctx, tenantId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTenantGitRepositoryResponse(rsp)
+}
+
+// PatchTenantGitRepositoryWithBodyWithResponse request with arbitrary body returning *PatchTenantGitRepositoryResponse
+func (c *ClientWithResponses) PatchTenantGitRepositoryWithBodyWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchTenantGitRepositoryResponse, error) {
+	rsp, err := c.PatchTenantGitRepositoryWithBody(ctx, tenantId, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchTenantGitRepositoryResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *PatchTenantGitRepositoryParams, body PatchTenantGitRepositoryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchTenantGitRepositoryResponse, error) {
+	rsp, err := c.PatchTenantGitRepository(ctx, tenantId, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchTenantGitRepositoryResponse(rsp)
+}
+
+// ArchiveTenantGitRepositoryWithResponse request returning *ArchiveTenantGitRepositoryResponse
+func (c *ClientWithResponses) ArchiveTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*ArchiveTenantGitRepositoryResponse, error) {
+	rsp, err := c.ArchiveTenantGitRepository(ctx, tenantId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveTenantGitRepositoryResponse(rsp)
+}
+
+// ListTenantGitRepositoryRefsWithResponse request returning *ListTenantGitRepositoryRefsResponse
+func (c *ClientWithResponses) ListTenantGitRepositoryRefsWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, params *ListTenantGitRepositoryRefsParams, reqEditors ...RequestEditorFn) (*ListTenantGitRepositoryRefsResponse, error) {
+	rsp, err := c.ListTenantGitRepositoryRefs(ctx, tenantId, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTenantGitRepositoryRefsResponse(rsp)
+}
+
+// RestoreTenantGitRepositoryWithResponse request returning *RestoreTenantGitRepositoryResponse
+func (c *ClientWithResponses) RestoreTenantGitRepositoryWithResponse(ctx context.Context, tenantId GitTenantKey, id GitRepositoryId, reqEditors ...RequestEditorFn) (*RestoreTenantGitRepositoryResponse, error) {
+	rsp, err := c.RestoreTenantGitRepository(ctx, tenantId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRestoreTenantGitRepositoryResponse(rsp)
+}
+
 // ParseGetMeResponse parses an HTTP response from a GetMeWithResponse call
 func ParseGetMeResponse(rsp *http.Response) (*GetMeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -13941,6 +16135,67 @@ func ParseListTenantsResponse(rsp *http.Response) (*ListTenantsResponse, error) 
 			return nil, err
 		}
 		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExchangeGitCredentialResponse parses an HTTP response from a ExchangeGitCredentialWithResponse call
+func ParseExchangeGitCredentialResponse(rsp *http.Response) (*ExchangeGitCredentialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExchangeGitCredentialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest GitCredential
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest GitBadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest GitForbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 
@@ -17183,6 +19438,412 @@ func ParseGetPipelineDefinitionResponse(rsp *http.Response) (*GetPipelineDefinit
 	return response, nil
 }
 
+// ParseListProjectGitRepositoriesResponse parses an HTTP response from a ListProjectGitRepositoriesWithResponse call
+func ParseListProjectGitRepositoriesResponse(rsp *http.Response) (*ListProjectGitRepositoriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListProjectGitRepositoriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepositoryList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateProjectGitRepositoryResponse parses an HTTP response from a CreateProjectGitRepositoryWithResponse call
+func ParseCreateProjectGitRepositoryResponse(rsp *http.Response) (*CreateProjectGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateProjectGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest GitBadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest GitForbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest GitUnprocessable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProjectGitRepositoryResponse parses an HTTP response from a GetProjectGitRepositoryWithResponse call
+func ParseGetProjectGitRepositoryResponse(rsp *http.Response) (*GetProjectGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProjectGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePatchProjectGitRepositoryResponse parses an HTTP response from a PatchProjectGitRepositoryWithResponse call
+func ParsePatchProjectGitRepositoryResponse(rsp *http.Response) (*PatchProjectGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchProjectGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest GitBadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest GitForbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest GitPreconditionFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest GitUnprocessable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 428:
+		var dest GitPreconditionRequired
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON428 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseArchiveProjectGitRepositoryResponse parses an HTTP response from a ArchiveProjectGitRepositoryWithResponse call
+func ParseArchiveProjectGitRepositoryResponse(rsp *http.Response) (*ArchiveProjectGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveProjectGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest GitForbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListProjectGitRepositoryRefsResponse parses an HTTP response from a ListProjectGitRepositoryRefsWithResponse call
+func ParseListProjectGitRepositoryRefsResponse(rsp *http.Response) (*ListProjectGitRepositoryRefsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListProjectGitRepositoryRefsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRefsPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest GitUnprocessable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest GitUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRestoreProjectGitRepositoryResponse parses an HTTP response from a RestoreProjectGitRepositoryWithResponse call
+func ParseRestoreProjectGitRepositoryResponse(rsp *http.Response) (*RestoreProjectGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RestoreProjectGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest GitForbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListRunsResponse parses an HTTP response from a ListRunsWithResponse call
 func ParseListRunsResponse(rsp *http.Response) (*ListRunsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -19886,6 +22547,412 @@ func ParseSyncWorkspaceResponse(rsp *http.Response) (*SyncWorkspaceResponse, err
 			return nil, err
 		}
 		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListTenantGitRepositoriesResponse parses an HTTP response from a ListTenantGitRepositoriesWithResponse call
+func ParseListTenantGitRepositoriesResponse(rsp *http.Response) (*ListTenantGitRepositoriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTenantGitRepositoriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepositoryList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateTenantGitRepositoryResponse parses an HTTP response from a CreateTenantGitRepositoryWithResponse call
+func ParseCreateTenantGitRepositoryResponse(rsp *http.Response) (*CreateTenantGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateTenantGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest GitBadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest GitForbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest GitUnprocessable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTenantGitRepositoryResponse parses an HTTP response from a GetTenantGitRepositoryWithResponse call
+func ParseGetTenantGitRepositoryResponse(rsp *http.Response) (*GetTenantGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTenantGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePatchTenantGitRepositoryResponse parses an HTTP response from a PatchTenantGitRepositoryWithResponse call
+func ParsePatchTenantGitRepositoryResponse(rsp *http.Response) (*PatchTenantGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchTenantGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest GitBadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest GitForbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest GitPreconditionFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest GitUnprocessable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 428:
+		var dest GitPreconditionRequired
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON428 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseArchiveTenantGitRepositoryResponse parses an HTTP response from a ArchiveTenantGitRepositoryWithResponse call
+func ParseArchiveTenantGitRepositoryResponse(rsp *http.Response) (*ArchiveTenantGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveTenantGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest GitForbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListTenantGitRepositoryRefsResponse parses an HTTP response from a ListTenantGitRepositoryRefsWithResponse call
+func ParseListTenantGitRepositoryRefsResponse(rsp *http.Response) (*ListTenantGitRepositoryRefsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTenantGitRepositoryRefsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRefsPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest GitUnprocessable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest GitUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRestoreTenantGitRepositoryResponse parses an HTTP response from a RestoreTenantGitRepositoryWithResponse call
+func ParseRestoreTenantGitRepositoryResponse(rsp *http.Response) (*RestoreTenantGitRepositoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RestoreTenantGitRepositoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitRepository
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest GitUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest GitForbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest GitNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest GitConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 

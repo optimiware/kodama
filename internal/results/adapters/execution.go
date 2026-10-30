@@ -95,7 +95,13 @@ func (e *Execution) Commit(ctx context.Context, c results.Commit) (results.Ackno
 	if err != nil {
 		return results.Acknowledgment{}, mapExecution(err)
 	}
-	at, err := e.attempt(ctx, c.Scope, ack.AttemptID)
+	return e.acknowledgment(ctx, c.Scope, ack)
+}
+
+// acknowledgment builds the wire acknowledgment of a committed result from the
+// persisted attempt (shared by the v1 and v3 routes).
+func (e *Execution) acknowledgment(ctx context.Context, scope domain.Scope, ack execution.ResultAck) (results.Acknowledgment, error) {
+	at, err := e.attempt(ctx, scope, ack.AttemptID)
 	if err != nil {
 		return results.Acknowledgment{}, results.Fail(results.ErrUnavailable, err, "the acknowledgment could not be read back")
 	}

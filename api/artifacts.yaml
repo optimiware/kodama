@@ -150,6 +150,35 @@ components:
           type: string
           pattern: '^sha256:[0-9a-f]{64}$'
           description: 'Present with `workspaceState`, the digest of the canonical lineage (the earlier attempts that touched the shared workspace) the producing attempt''s context carried.'
+    ArtifactSourceSet:
+      type: object
+      required: [digest, commits]
+      additionalProperties: false
+      description: >-
+        The trusted source set of a multi-repository run the producing attempt
+        worked from: the canonical digest of the run's pinned set and, for every
+        repository of it, the commit the attempt worked from. Present instead of
+        source, never together with it (DQ-17).
+      properties:
+        digest:
+          $ref: '#/components/schemas/Digest'
+        commits:
+          type: array
+          minItems: 1
+          maxItems: 32
+          description: Ordered by repositoryId.
+          items:
+            $ref: '#/components/schemas/ArtifactSourceCommit'
+    ArtifactSourceCommit:
+      type: object
+      required: [repositoryId, commit]
+      additionalProperties: false
+      properties:
+        repositoryId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        commit:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
     ArtifactDownload:
       type: object
       required: [method, url, expiresAt]
@@ -231,6 +260,10 @@ components:
           nullable: true
           allOf:
             - $ref: '#/components/schemas/SourceProvenance'
+        sourceSet:
+          description: Present only for an artifact of a source-set run, in place of source.
+          allOf:
+            - $ref: '#/components/schemas/ArtifactSourceSet'
         version:
           $ref: 'common.yaml#/components/schemas/Version'
         createdAt:

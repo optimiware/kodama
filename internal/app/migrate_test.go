@@ -2,19 +2,30 @@ package app
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/optimiware/kodama/test/support/postgres"
 )
 
-func TestMigrationBaselineIsTwoFiles(t *testing.T) {
+// TestMigrationBaselineIsThreeFiles: the application manifest is the ADR 0013
+// baseline (schema and grants) plus the one appended Git hosting contribution
+// (O-36), in that order and nothing else.
+func TestMigrationBaselineIsThreeFiles(t *testing.T) {
 	m, err := Manifest()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, ms := Contributions(), m.Migrations()
-	if len(cs) != 1 || cs[0].Module != "storage" || len(ms) != 2 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" {
-		t.Fatalf("unexpected baseline: %+v", cs)
+	cs := Contributions()
+	if len(cs) != 1 || cs[0].Module != "storage" {
+		t.Fatalf("unexpected contributions: %+v", cs)
+	}
+	var ids []string
+	for _, mig := range m.Migrations() {
+		ids = append(ids, mig.ID)
+	}
+	if !slices.Equal(ids, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql"}) {
+		t.Fatalf("unexpected baseline: %v", ids)
 	}
 }
 
@@ -22,16 +33,16 @@ func TestSimplifiedManifestMigration(t *testing.T) {
 	db := postgres.New(t)
 	ctx := t.Context()
 	result, err := Migrate(ctx, MigrateConfig{MigrationURL: db.MigrationURL, RuntimeRole: db.RuntimeRole})
-	if err != nil || len(result.Applied) != 2 {
+	if err != nil || len(result.Applied) != 3 {
 		t.Fatalf("migrate: %+v, %v", result, err)
 	}
 	pool := db.MigrationPool(ctx, 1)
 	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename <> 'schema_migrations'`).Scan(&count); err != nil || count != 15 {
-		t.Fatalf("tables=%d, err=%v; want 15", count, err)
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename <> 'schema_migrations'`).Scan(&count); err != nil || count != 16 {
+		t.Fatalf("tables=%d, err=%v; want 16 (15 baseline tables plus git_credentials)", count, err)
 	}
 	result, err = Migrate(ctx, MigrateConfig{MigrationURL: db.MigrationURL, RuntimeRole: db.RuntimeRole})
-	if err != nil || result.Skipped != 2 || len(result.Applied) != 0 {
+	if err != nil || result.Skipped != 3 || len(result.Applied) != 0 {
 		t.Fatalf("reapply: %+v, %v", result, err)
 	}
 	if err := requireLegacySchema(ctx, db.RuntimePool(ctx, 1)); err == nil {

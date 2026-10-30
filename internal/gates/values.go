@@ -124,6 +124,9 @@ const (
 	ReasonDeploymentChanged = "deployment_changed"
 	ReasonStepNotWaiting    = "step_not_waiting"
 	ReasonUncovered         = "uncovered_candidate"
+	// ReasonBaseMoved: the default branch of a repository the candidate would be
+	// integrated into is no longer at the base the approval was given over (GR-12).
+	ReasonBaseMoved = "base_moved"
 )
 
 func validCode(kind, v string) error {

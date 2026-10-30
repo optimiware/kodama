@@ -77,7 +77,15 @@ const wsColumns = `id, work_item_id, repository_id, repository_url, checkout_sec
 	writer_attempt_id, writer_input_commit, writer_expected_tip, writer_reserved_at,
 	publish_attempt_id, publish_commit, publish_expected_commit, publish_artifact_id, publish_bundle_digest, publish_started_at,
 	publish_driver_id, publish_driver_epoch, publish_driver_claimed_at, publish_attempts, publish_last_attempt_at,
-	archive_requested_at, last_error, fence_epoch, publication_fenced, created_at, updated_at`
+	archive_requested_at, last_error, fence_epoch, publication_fenced, created_at, updated_at, hosting`
+
+// hostingOf is the stored hosting; a workspace built without one is external.
+func hostingOf(w *workspace.Workspace) string {
+	if w.Hosting == workspace.HostingInternal {
+		return string(workspace.HostingInternal)
+	}
+	return string(workspace.HostingExternal)
+}
 
 func str(p *string) string {
 	if p == nil {
@@ -134,17 +142,18 @@ func scanWorkspace(row pgx.Row, scope domain.Scope) (*workspace.Workspace, error
 		epoch                                                                   int64
 		fenced                                                                  bool
 		created, updated                                                        time.Time
+		hosting                                                                 string
 	)
 	if err := row.Scan(&id, &workItem, &repoID, &repoURL, &checkoutRef, &publisherRef, &branch,
 		&initial, &accepted, &state, &version,
 		&wAttempt, &wInput, &wTip, &wAt,
 		&pAttempt, &pCommit, &pExpected, &pArtifact, &pDigest, &pStarted,
 		&pDriver, &pEpoch, &pClaimed, &pAttempts, &pLast,
-		&archiveAt, &lastErr, &epoch, &fenced, &created, &updated); err != nil {
+		&archiveAt, &lastErr, &epoch, &fenced, &created, &updated, &hosting); err != nil {
 		return nil, err
 	}
 	w := &workspace.Workspace{
-		ID: workspace.ID(id), Scope: scope, WorkItemID: domain.WorkItemID(workItem),
+		ID: workspace.ID(id), Scope: scope, WorkItemID: domain.WorkItemID(workItem), Hosting: workspace.Hosting(hosting),
 		RepositoryID: workspace.RepositoryID(repoID), RepositoryURL: repoURL,
 		CheckoutSecretRef: checkoutRef, PublisherSecretRef: publisherRef, WorkBranch: branch,
 		InitialCommit: workspace.Commit(str(initial)), AcceptedCommit: workspace.Commit(str(accepted)),
@@ -184,11 +193,11 @@ func (s *Store) Insert(ctx context.Context, w *workspace.Workspace, fx workspace
 		// finds its workspace; unrelated identity/branch collisions still fail.
 		tag, err := tx.Exec(ctx, `INSERT INTO workspaces
 			(tenant_id, project_id, id, work_item_id, repository_id, repository_url, checkout_secret_ref, publisher_secret_ref,
-			 work_branch, state, version, fence_epoch, publication_fenced, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+			 work_branch, state, version, fence_epoch, publication_fenced, created_at, updated_at, hosting)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 			ON CONFLICT DO NOTHING`,
 			w.Scope.TenantID, w.Scope.ProjectID, w.ID, w.WorkItemID, w.RepositoryID, w.RepositoryURL, w.CheckoutSecretRef, w.PublisherSecretRef,
-			w.WorkBranch, w.State, int64(w.Version), w.Fence.Epoch, w.Fence.Fenced, w.CreatedAt, w.UpdatedAt)
+			w.WorkBranch, w.State, int64(w.Version), w.Fence.Epoch, w.Fence.Fenced, w.CreatedAt, w.UpdatedAt, hostingOf(w))
 		if err != nil {
 			return mapErr(err)
 		}
@@ -259,6 +268,20 @@ func (s *Store) loadAggregate(ctx context.Context, tx pgx.Tx, w *workspace.Works
 			return nil, err
 		}
 		agg.Pins = pins
+	}
+	if load.Associations {
+		as, err := s.loadAssociations(ctx, tx, w)
+		if err != nil {
+			return nil, err
+		}
+		agg.Associations = as
+	}
+	if load.Checkpoints {
+		cs, err := s.loadCheckpoints(ctx, tx, w)
+		if err != nil {
+			return nil, err
+		}
+		agg.Checkpoints = cs
 	}
 	return agg, nil
 }
@@ -413,6 +436,62 @@ func (s *Store) loadPins(ctx context.Context, tx pgx.Tx, w *workspace.Workspace)
 	return out, mapErr(rows.Err())
 }
 
+func (s *Store) loadAssociations(ctx context.Context, tx pgx.Tx, w *workspace.Workspace) ([]*workspace.RepositoryAssociation, error) {
+	rows, err := tx.Query(ctx, `SELECT repository_id, task_branch, base_commit, accepted_commit, state, last_error, created_at, updated_at
+		FROM workspace_repositories WHERE tenant_id=$1 AND project_id=$2 AND workspace_id=$3 ORDER BY repository_id`,
+		w.Scope.TenantID, w.Scope.ProjectID, w.ID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	var out []*workspace.RepositoryAssociation
+	for rows.Next() {
+		var (
+			repo, branch, base, state string
+			accepted, lastErr         *string
+			created, updated          time.Time
+		)
+		if err := rows.Scan(&repo, &branch, &base, &accepted, &state, &lastErr, &created, &updated); err != nil {
+			return nil, mapErr(err)
+		}
+		out = append(out, &workspace.RepositoryAssociation{
+			WorkspaceID: w.ID, Scope: w.Scope, RepositoryID: workspace.RepositoryID(repo), TaskBranch: branch,
+			BaseCommit: workspace.Commit(base), AcceptedCommit: workspace.Commit(str(accepted)), State: workspace.AssociationState(state),
+			LastError: str(lastErr), CreatedAt: created.UTC(), UpdatedAt: updated.UTC(),
+		})
+	}
+	return out, mapErr(rows.Err())
+}
+
+func (s *Store) loadCheckpoints(ctx context.Context, tx pgx.Tx, w *workspace.Workspace) ([]*workspace.InternalCheckpoint, error) {
+	rows, err := tx.Query(ctx, `SELECT repository_id, push_id, ref, commit_oid, previous_commit, advanced, attempt_id, run_id, pin_ref, pin_status, created_at, pinned_at
+		FROM workspace_checkpoints WHERE tenant_id=$1 AND project_id=$2 AND workspace_id=$3 ORDER BY created_at, repository_id, push_id, ref`,
+		w.Scope.TenantID, w.Scope.ProjectID, w.ID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	var out []*workspace.InternalCheckpoint
+	for rows.Next() {
+		var (
+			repo, push, ref, commit, previous, attempt, run, pinRef, pinStatus string
+			advanced                                                           bool
+			created                                                            time.Time
+			pinned                                                             *time.Time
+		)
+		if err := rows.Scan(&repo, &push, &ref, &commit, &previous, &advanced, &attempt, &run, &pinRef, &pinStatus, &created, &pinned); err != nil {
+			return nil, mapErr(err)
+		}
+		out = append(out, &workspace.InternalCheckpoint{
+			WorkspaceID: w.ID, Scope: w.Scope, RepositoryID: workspace.RepositoryID(repo), PushID: push, Ref: ref,
+			Commit: workspace.Commit(commit), PreviousCommit: workspace.Commit(previous), Advanced: advanced,
+			AttemptID: domain.AttemptID(attempt), RunID: domain.RunID(run), PinRef: pinRef, PinStatus: workspace.CheckpointPinStatus(pinStatus),
+			CreatedAt: created.UTC(), PinnedAt: utcPtr(pinned),
+		})
+	}
+	return out, mapErr(rows.Err())
+}
+
 // Reconcilable implements workspace.Store.
 func (s *Store) Reconcilable(ctx context.Context, tenant domain.TenantID, after workspace.ID, limit int) ([]workspace.Candidate, error) {
 	var out []workspace.Candidate
@@ -421,7 +500,11 @@ func (s *Store) Reconcilable(ctx context.Context, tenant domain.TenantID, after 
 			WHERE tenant_id = $1 AND id > $2 AND (
 				state = 'provisioning' OR archive_requested_at IS NOT NULL AND state = 'available' OR publish_attempt_id IS NOT NULL
 				OR EXISTS (SELECT 1 FROM workspace_retained_refs r WHERE r.tenant_id = w.tenant_id AND r.project_id = w.project_id
-				           AND r.workspace_id = w.id AND r.status IN ('intent', 'removing')))
+				           AND r.workspace_id = w.id AND r.status IN ('intent', 'removing'))
+				OR (state <> 'archived' AND EXISTS (SELECT 1 FROM workspace_repositories a WHERE a.tenant_id = w.tenant_id AND a.project_id = w.project_id
+				           AND a.workspace_id = w.id AND a.state = 'intent'))
+				OR EXISTS (SELECT 1 FROM workspace_checkpoints c WHERE c.tenant_id = w.tenant_id AND c.project_id = w.project_id
+				           AND c.workspace_id = w.id AND c.pin_status = 'intent'))
 			ORDER BY id LIMIT $3`, tenant, string(after), limit)
 		if err != nil {
 			return mapErr(err)

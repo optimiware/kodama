@@ -126,7 +126,7 @@ func New(t testing.TB, cfg Config) *Env {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	e := &Env{T: t, DB: db, Migration: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, 30)}
-	manifest, err := storage.NewManifest(storage.BaseContribution())
+	manifest, err := storage.NewManifest(storage.BaseContribution(), workspacepg.Migrations())
 	if err != nil {
 		t.Fatalf("manifest: %v", err)
 	}

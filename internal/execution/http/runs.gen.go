@@ -19,9 +19,9 @@ const (
 
 // Defines values for AttemptAccess.
 const (
-	None  AttemptAccess = "none"
-	Read  AttemptAccess = "read"
-	Write AttemptAccess = "write"
+	AttemptAccessNone  AttemptAccess = "none"
+	AttemptAccessRead  AttemptAccess = "read"
+	AttemptAccessWrite AttemptAccess = "write"
 )
 
 // Defines values for AttemptFailureClass.
@@ -76,6 +76,20 @@ const (
 	RunSourceRetentionConfirmed   RunSourceRetention = "confirmed"
 	RunSourceRetentionNotRequired RunSourceRetention = "not_required"
 	RunSourceRetentionPending     RunSourceRetention = "pending"
+)
+
+// Defines values for RunOriginKind.
+const (
+	Manual    RunOriginKind = "manual"
+	Provision RunOriginKind = "provision"
+	Push      RunOriginKind = "push"
+	WorkItem  RunOriginKind = "work_item"
+)
+
+// Defines values for RunSourceAccess.
+const (
+	RunSourceAccessRead  RunSourceAccess = "read"
+	RunSourceAccessWrite RunSourceAccess = "write"
 )
 
 // Defines values for RunStatus.
@@ -222,6 +236,9 @@ type Run struct {
 	Id            externalRef0.ID `json:"id"`
 	InputSnapshot InputSnapshot   `json:"inputSnapshot"`
 
+	// Origin How the run started, pinned at admission (PX-23-PX-25). Present only for a run admitted by the internal Git service; absent for every earlier run. A run that did not start from a work item has none and consumes no work-in-progress.
+	Origin *RunOrigin `json:"origin,omitempty"`
+
 	// Purpose Only work runs are created through this API.
 	Purpose RunPurpose `json:"purpose"`
 
@@ -232,8 +249,11 @@ type Run struct {
 
 	// SourceRetention A work run dispatches only after its retained source reference is confirmed.
 	SourceRetention RunSourceRetention `json:"sourceRetention"`
-	StartedAt       *time.Time         `json:"startedAt"`
-	Status          RunStatus          `json:"status"`
+
+	// SourceSet The run's pinned source set: one exact commit per repository of its project and a unique checkout path each, ordered by path. Present only for a run admitted by the internal Git service. It never changes after admission.
+	SourceSet *RunSourceSet `json:"sourceSet,omitempty"`
+	StartedAt *time.Time    `json:"startedAt"`
+	Status    RunStatus     `json:"status"`
 
 	// Version Resource version; the ETag is this integer in double quotes.
 	Version    externalRef0.Version `json:"version"`
@@ -246,10 +266,61 @@ type RunPurpose string
 // RunSourceRetention A work run dispatches only after its retained source reference is confirmed.
 type RunSourceRetention string
 
+// RunOrigin How the run started, pinned at admission (PX-23-PX-25). Present only for a run admitted by the internal Git service; absent for every earlier run. A run that did not start from a work item has none and consumes no work-in-progress.
+type RunOrigin struct {
+	Kind RunOriginKind `json:"kind"`
+
+	// PushId The applied push record of a push origin.
+	PushId *string `json:"pushId"`
+
+	// Ref The updated ref of a push origin; never under refs/kodama/.
+	Ref *string `json:"ref"`
+
+	// RepositoryId The pushed repository of a push origin.
+	RepositoryId *string `json:"repositoryId"`
+
+	// WorkItemId Set exactly for a work_item origin.
+	WorkItemId *string `json:"workItemId"`
+}
+
+// RunOriginKind defines model for RunOrigin.Kind.
+type RunOriginKind string
+
 // RunPage defines model for RunPage.
 type RunPage struct {
 	Items      []Run   `json:"items"`
 	NextCursor *string `json:"nextCursor"`
+}
+
+// RunSource defines model for RunSource.
+type RunSource struct {
+	// Access The run-level access ceiling; only the writer attempt may update the source's branch.
+	Access RunSourceAccess `json:"access"`
+
+	// Branch The branch a write source updates (the work item's task branch or a branch of the run's own namespace); null for a read source.
+	Branch *string `json:"branch"`
+
+	// Commit The commit pinned at admission, never a later tip.
+	Commit string `json:"commit"`
+
+	// Path The checkout path relative to /workspace; "." only for a single source.
+	Path string `json:"path"`
+
+	// Repository The repository's name within the project.
+	Repository string `json:"repository"`
+
+	// RepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RepositoryId externalRef0.ID `json:"repositoryId"`
+}
+
+// RunSourceAccess The run-level access ceiling; only the writer attempt may update the source's branch.
+type RunSourceAccess string
+
+// RunSourceSet The run's pinned source set: one exact commit per repository of its project and a unique checkout path each, ordered by path. Present only for a run admitted by the internal Git service. It never changes after admission.
+type RunSourceSet struct {
+	// Digest The canonical digest of the set that evidence and gate subjects use; null for a source-free run.
+	Digest  *string     `json:"digest"`
+	Sources []RunSource `json:"sources"`
 }
 
 // RunStatus defines model for RunStatus.

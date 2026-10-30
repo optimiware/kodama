@@ -2,13 +2,13 @@
 
 ## Repository tooling bootstrap
 
-Go development needs Go **1.27.2 or later** and Make. `make lint test build` runs product formatting/vet, infrastructure-free race-enabled unit tests and the binary build. It does not test OpenForge, start containers or need provider credentials. Formatting and the repository checks are Go commands under `dev/cmd/`.
+Go development needs Go **1.27.2 or later** and Make. `make lint test build` runs product formatting/vet, infrastructure-free race-enabled unit tests and the binary build. It does not start containers or need provider credentials; no Bun, OpenForge checkout or sibling directory is involved. Formatting and the repository checks are Go commands under `dev/cmd/`.
 
 The default Go scope is `GO_CORE_PACKAGES` in Make: commands, internal modules, public API/client, contracts, reusable packages and test support. Linux-only image wrappers, development-stack programs, templates and integration/e2e drivers are checked explicitly by their owning tasks/checkpoints, not silently included through `./...` on every host. The main unit batch uses `make test-go-unit-json` from that same scope.
 
-OpenForge commands additionally need Bun **1.4.2** and an explicit `make openforge-install` per worktree. Checks never install dependencies or rewrite the lockfile. `make check-openforge` qualifies harness changes, not Go product changes. The development tooling is Go (`dev/cmd/devctl`, `dev/cmd/repoctl`, `dev/internal/...`); `make check-devtools` qualifies it. Python remains only in release and staging scripts.
+The development tooling is Go (`dev/cmd/devctl`, `dev/cmd/repoctl`, `dev/internal/...`); `make check-devtools` qualifies it. Python remains only in release and staging scripts. `make validate-tasks` validates the task records and `make check-task TASK=T-NNN` runs a task's declared check (see [Task checks](#task-checks-and-validation)).
 
-For agent execution, `bun ../openforge/src/cli.ts doctor` checks configured role/model availability. [Runtime details](harness.md#embedded-runtime-and-reporting) distinguish credential discovery from a live-provider invocation.
+OpenForge is an optional, separately installed external harness ([harness](harness.md)). Nothing here depends on it, and this repository neither installs, lints nor tests it.
 
 ## Test layers
 
@@ -52,8 +52,8 @@ Scheduled tasks explicitly declare the [task check contract](../tasks/README.md#
 | --- | --- |
 | `component` | Scoped format/vet and `go test -race -count=1 -tags unit` over owned/declared packages; every named unit acceptance must pass |
 | `assembly` | Explicit package scope, required real services, completed package runs and named adapter/checkpoint acceptance |
-| `docs` | Documentation/task-graph checks |
-| `tooling` | Relevant tooling checks: OpenForge and the development tooling for their inputs |
+| `docs` | `make docs-check` and, when task records changed, `make validate-tasks` |
+| `tooling` | `make check-devtools` when `dev/` changed |
 | `full` | Explicit legacy/maintenance use only; never an implicit capability-task default |
 
 `component` unit receipts qualify a merge. `assembly` unit runs are development feedback only and cannot satisfy real acceptance. A skipped acceptance test, incomplete package execution or same-named test in another package never passes. Service fixtures use `test/support/layer.SkipService`; the unit layer also blanks service environment variables. A unit task's acceptance names must therefore name actual unit checks, not inherited service tests.
@@ -82,24 +82,34 @@ make dev-down DEV_SCOPE=batch
 
 `dev-up` creates (in the `cluster` stack) the scoped kind cluster/kubeconfig, pinned dependency containers and private `host-env.json` with host-reachable PostgreSQL admin, NATS, S3 and registry URLs, secrets-directory and kubectl paths. Pod URLs remain separate in `endpoints.json`. Loopback ports are allocated dynamically. Credentials are never committed or printed by preflight.
 
-An assembly check declaring `check_resources: [services]`, or `[services, kind]` when a Kubernetes target is its subject, preflights its scope and loads those endpoints before Go tests. Preflight is read-only/bounded, checks kubectl/cluster readiness and required endpoint reachability, and reports the actual checked directory and recovery command. Missing infrastructure pauses the task without a fixer. Standalone `dev-up`, `dev-down` and diagnostics work while OpenForge's queue HALT exists.
+An assembly check declaring `check_resources: [services]`, or `[services, kind]` when a Kubernetes target is its subject, preflights its scope and loads those endpoints before Go tests. Preflight is read-only/bounded, checks kubectl/cluster readiness and required endpoint reachability, and reports the actual checked directory and recovery command. Missing infrastructure pauses the task without a fixer. Standalone `dev-up`, `dev-down` and diagnostics are independent of any task runner.
 
 ## Parallel environments
 
 Use one assigned branch/worktree and exclusive owned paths per task. Independent packages run concurrently; shared app/client/API files retain one ordered owner. `--workers` controls agent concurrency, separately from Go/service/kind capacity. Unit checks take only a Go lease; real checks declare service/kind needs. No global test database, namespace, bucket prefix or mutable Git ref is shared between tests.
 
-OpenForge supervises commands with cross-process leases. For manual parallel checks use:
-
-```sh
-bun ../openforge/src/cli.ts resources --resources go -- go test -race -count=1 -tags unit ./internal/execution/...
-```
-
-Reserve `services` and, where needed, `kind` for actual integration. Preserve process cancellation/draining and lease ownership; see [capacity](harness.md#scoped-checks-and-capacity).
+Give each concurrent session its own `DEV_SCOPE` (`make check-task` defaults it to the task prefix, for example `t126`) and run at most one integration job per scope. Reserve the service and `kind` stacks for actual integration: the coordinator serializes jobs that share a cluster, for example with `flock`, or lets the optional OpenForge harness lease them ([capacity](harness.md#scoped-checks-and-capacity)). Preserve process cancellation/draining and never share a scope between sessions.
 
 ## Failure injection
 
 Unit checks model duplicate delivery, unknown outcome, stale authority, cancellation and controlled-time retry. Integration checkpoints prove actual transaction rollback/lock ordering, concurrent writers, publication CAS, callback revocation and restart. Keep incomplete real semantics explicit; do not weaken checks or install test authority into the executable.
 
-## Documentation/task validation
+## Task checks and validation
 
-`make docs-check` validates links/anchors/fences, task metadata/index agreement, dependencies/cycles and ownership of unordered task pairs. Before merge, the current candidate needs passing scoped evidence and independent review. Every five merges and at queue drain, validate integrated main once; initially product-wide unit checks, then the bounded M1/M2 suites as their checkpoints land. There is no default age-triggered full suite.
+`make docs-check` validates Markdown links, anchors, fenced JSON and shell examples. It does not read task metadata.
+
+`make validate-tasks` (`go run ./dev/cmd/repoctl tasks`) validates every `docs/tasks/T-*.md`:
+
+- required frontmatter (`id`, `milestone`, `status`, `depends_on`, `decision_blockers`, `owns`), no unknown keys, `id` equal to the file-name prefix, and `status` in `planned|blocked|deferred|done`;
+- `planned` and `blocked` tasks declare `owns`, `check` and `acceptance` (an empty list is valid); `blocked` tasks name at least one decision;
+- dependencies exist and are acyclic, IDs are unique;
+- owned paths are clean relative paths (a trailing `/` marks a directory), and two active (`planned` or `blocked`) tasks that do not depend on each other transitively never own equal or nested paths;
+- the `Dependency index` table in `docs/tasks/README.md` has a row for every active task and each row's link, dependencies and status word agree with the frontmatter (a decision suffix such as `blocked (O-32)` is accepted). `done` and `deferred` tasks may be absent from the index: completed records are pruned once merged and remain in Git history.
+
+It does not require future owned paths or check scripts to exist. Errors name the file and field.
+
+`make check-task TASK=T-NNN` (alias `test-task`, `go run ./dev/cmd/repoctl check-task T-NNN`) runs the task's declared `check` with `bash -c` from the repository root. It sets `KODAMA_TASK_ID`, `KODAMA_RESOURCE_PREFIX` (the lowercase ID without the hyphen, for example `t126`) and, unless set, `DEV_SCOPE`, and points `FORGE_RESULTS` at a fresh file. A non-zero exit fails the task. When `acceptance` is non-empty the results must show every named test as passed and none as failed or skipped; both the aggregated object written by `make check-go` and raw `go test -json` lines are accepted, and a missing or stale file fails, as does a raw `go test -json` stream with a failed or incomplete package. An unavailable environment (exit `75`, or an `infra_pause` record such as `make check-go-integration` writes, whatever the exit status) prints "infrastructure unavailable" and exits `75` when run through `repoctl` directly; `make` shows it as an error. The legacy `LAYER` and `STAGE` overrides are rejected. The runner never schedules, creates worktrees, reviews or merges.
+
+## Default workflow and validation cadence
+
+The coordinator creates each task worktree under `.work/<task>/` from the integration branch and gives the implementer the task record; the implementer edits only owned paths and commits; an independent reviewer approves the exact candidate; the coordinator runs the declared checks (`make check-task TASK=T-NNN`) on that candidate and merges into the integration branch. Before merge the candidate needs passing scoped evidence and that review. Every five merges and at the end, run batch validation on the integration tip: `make lint-go test-go-unit`, then the bounded M1/M2 suites as their checkpoints land. There is no default age-triggered full suite, and publishing the integration branch to `main` is a separate explicit decision.

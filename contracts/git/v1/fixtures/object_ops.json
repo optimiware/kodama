@@ -1,0 +1,1587 @@
+[
+  {
+    "name": "is_ancestor_request",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "1111111111111111111111111111111111111111",
+      "descendant": "2222222222222222222222222222222222222222",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "is_ancestor_request_same_commit",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "1111111111111111111111111111111111111111",
+      "descendant": "1111111111111111111111111111111111111111",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "is_ancestor_request_sha256",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "1111111111111111111111111111111111111111111111111111111111111111",
+      "descendant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "is_ancestor_response_true",
+    "type": "IsAncestorResponse",
+    "payload": {
+      "isAncestor": true
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "is_ancestor_response_false",
+    "type": "IsAncestorResponse",
+    "payload": {
+      "isAncestor": false
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "is_ancestor_response_tolerates_added_member",
+    "type": "IsAncestorResponse",
+    "payload": {
+      "isAncestor": true,
+      "walked": 12
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "has_commit_request",
+    "type": "HasCommitRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "has_commit_response_present",
+    "type": "HasCommitResponse",
+    "payload": {
+      "present": true
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "has_commit_response_absent",
+    "type": "HasCommitResponse",
+    "payload": {
+      "present": false
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "commit_time_request",
+    "type": "CommitTimeRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "commit_time_response",
+    "type": "CommitTimeResponse",
+    "payload": {
+      "committedAt": "2026-10-30T09:15:42Z"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_commit_not_found",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "commit_not_found",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_files_request_directory",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_files_request_files",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/build.yaml",
+        ".kodama/deploy.yml",
+        ".kodama/nested/x.y.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_files_request_sha256",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_files_response",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": [
+        {
+          "content": "name: build\n",
+          "path": ".kodama/build.yaml",
+          "sha256": "bcb406177d8dcabf8f46fb79bd99b4202449178594390dbb9d16ab7ca0e96fa4"
+        },
+        {
+          "content": "name: deploy\n",
+          "path": ".kodama/deploy.yml",
+          "sha256": "3246741a7400473004fae74af2467832502b7988e9679aa1e161eb86a826db8d"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_files_response_no_files",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": []
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_files_response_empty_file",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": [
+        {
+          "content": "",
+          "path": ".kodama/empty.yaml",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_files_response_tolerates_added_member",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": [
+        {
+          "content": "name: build\n",
+          "path": ".kodama/build.yaml",
+          "sha256": "bcb406177d8dcabf8f46fb79bd99b4202449178594390dbb9d16ab7ca0e96fa4"
+        },
+        {
+          "content": "name: deploy\n",
+          "path": ".kodama/deploy.yml",
+          "sha256": "3246741a7400473004fae74af2467832502b7988e9679aa1e161eb86a826db8d"
+        }
+      ],
+      "truncated": false
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_bundle_request_all",
+    "type": "CreateBundleRequest",
+    "payload": {
+      "refs": null,
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_bundle_request_refs",
+    "type": "CreateBundleRequest",
+    "payload": {
+      "refs": [
+        "refs/heads/main",
+        "refs/kodama/runs/run_01/1"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_bundle_response",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": true,
+      "journalHead": 12,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/kodama/runs/run_01/1"
+        },
+        {
+          "commit": "3333333333333333333333333333333333333333",
+          "ref": "refs/tags/v1"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_bundle_response_not_consistent",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": false,
+      "journalHead": 12,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/kodama/runs/run_01/1"
+        },
+        {
+          "commit": "3333333333333333333333333333333333333333",
+          "ref": "refs/tags/v1"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_bundle_response_tolerates_added_member",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "compression": "none",
+      "consistent": true,
+      "journalHead": 12,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/kodama/runs/run_01/1"
+        },
+        {
+          "commit": "3333333333333333333333333333333333333333",
+          "ref": "refs/tags/v1"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_repository_empty",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "repository_empty",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_bundle_too_large",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "bundle_too_large",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "replay_bundle_request",
+    "type": "ReplayBundleRequest",
+    "payload": {
+      "operationId": "op_20",
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "replay_bundle_request_without_digest",
+    "type": "ReplayBundleRequest",
+    "payload": {
+      "operationId": "op_20",
+      "repositoryId": "repo_01",
+      "sha256": null
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "replay_bundle_response",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": [
+        {
+          "bundle": "1111111111111111111111111111111111111111",
+          "current": "2222222222222222222222222222222222222222",
+          "ref": "refs/heads/main",
+          "relation": "repository_ahead"
+        }
+      ],
+      "created": 2,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "replay_bundle_response_no_conflict",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": [],
+      "created": 2,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "replay_bundle_response_repository_ahead",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": [
+        {
+          "bundle": "1111111111111111111111111111111111111111",
+          "current": "2222222222222222222222222222222222222222",
+          "ref": "refs/heads/main",
+          "relation": "repository_ahead"
+        }
+      ],
+      "created": 2,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "replay_bundle_response_bundle_ahead",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": [
+        {
+          "bundle": "1111111111111111111111111111111111111111",
+          "current": "2222222222222222222222222222222222222222",
+          "ref": "refs/heads/main",
+          "relation": "bundle_ahead"
+        }
+      ],
+      "created": 2,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "replay_bundle_response_diverged",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": [
+        {
+          "bundle": "1111111111111111111111111111111111111111",
+          "current": "2222222222222222222222222222222222222222",
+          "ref": "refs/heads/main",
+          "relation": "diverged"
+        }
+      ],
+      "created": 2,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_restore_fence_required",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "restore_fence_required",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "restore_fence_enter",
+    "type": "RestoreFenceRequest",
+    "payload": {
+      "fenced": true,
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "restore_fence_leave",
+    "type": "RestoreFenceRequest",
+    "payload": {
+      "fenced": false,
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "restore_fence_response",
+    "type": "RestoreFenceResponse",
+    "payload": {
+      "changed": true,
+      "fenced": true,
+      "repositoryId": "repo_01",
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "is_ancestor_unknown_field",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "1111111111111111111111111111111111111111",
+      "descendant": "2222222222222222222222222222222222222222",
+      "path": "/x",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "is_ancestor_zero_commit",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "0000000000000000000000000000000000000000",
+      "descendant": "2222222222222222222222222222222222222222",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "is_ancestor_symbolic",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "HEAD",
+      "descendant": "2222222222222222222222222222222222222222",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "is_ancestor_option_injection",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "--all",
+      "descendant": "2222222222222222222222222222222222222222",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "is_ancestor_descendant_omitted",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "1111111111111111111111111111111111111111",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "is_ancestor_path_as_repository",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "1111111111111111111111111111111111111111",
+      "descendant": "2222222222222222222222222222222222222222",
+      "repositoryId": "../repo"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "is_ancestor_mixed_hash_lengths",
+    "type": "IsAncestorRequest",
+    "payload": {
+      "ancestor": "1111111111111111111111111111111111111111",
+      "descendant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "is_ancestor_response_omitted",
+    "type": "IsAncestorResponse",
+    "payload": {},
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "is_ancestor_response_string",
+    "type": "IsAncestorResponse",
+    "payload": {
+      "isAncestor": "true"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "has_commit_zero",
+    "type": "HasCommitRequest",
+    "payload": {
+      "commit": "0000000000000000000000000000000000000000",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "has_commit_uppercase",
+    "type": "HasCommitRequest",
+    "payload": {
+      "commit": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "has_commit_response_omitted",
+    "type": "HasCommitResponse",
+    "payload": {},
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "commit_time_short_id",
+    "type": "CommitTimeRequest",
+    "payload": {
+      "commit": "abc123",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "commit_time_response_without_zone",
+    "type": "CommitTimeResponse",
+    "payload": {
+      "committedAt": "2026-10-30T09:15:42"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_unknown_field",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/"
+      ],
+      "ref": "main",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_ref_name_as_commit",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "main",
+      "paths": [
+        ".kodama/"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_zero_commit",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "0000000000000000000000000000000000000000",
+      "paths": [
+        ".kodama/"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_paths_omitted",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_paths_empty",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_path_outside_directory",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        "src/main.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_path_not_yaml",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/notes.txt"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_path_traversal",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/../x.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_path_traversal_inside_component",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/a..b.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_path_hidden_file",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_path_absolute",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        "/.kodama/x.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_path_empty_component",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama//x.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_path_colon",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/a:b.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_path_newline",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/x\n.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_subdirectory_request",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/sub/"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_too_many_paths",
+    "type": "ReadFilesRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "paths": [
+        ".kodama/p0.yaml",
+        ".kodama/p1.yaml",
+        ".kodama/p2.yaml",
+        ".kodama/p3.yaml",
+        ".kodama/p4.yaml",
+        ".kodama/p5.yaml",
+        ".kodama/p6.yaml",
+        ".kodama/p7.yaml",
+        ".kodama/p8.yaml",
+        ".kodama/p9.yaml",
+        ".kodama/p10.yaml",
+        ".kodama/p11.yaml",
+        ".kodama/p12.yaml",
+        ".kodama/p13.yaml",
+        ".kodama/p14.yaml",
+        ".kodama/p15.yaml",
+        ".kodama/p16.yaml",
+        ".kodama/p17.yaml",
+        ".kodama/p18.yaml",
+        ".kodama/p19.yaml",
+        ".kodama/p20.yaml",
+        ".kodama/p21.yaml",
+        ".kodama/p22.yaml",
+        ".kodama/p23.yaml",
+        ".kodama/p24.yaml",
+        ".kodama/p25.yaml",
+        ".kodama/p26.yaml",
+        ".kodama/p27.yaml",
+        ".kodama/p28.yaml",
+        ".kodama/p29.yaml",
+        ".kodama/p30.yaml",
+        ".kodama/p31.yaml",
+        ".kodama/p32.yaml",
+        ".kodama/p33.yaml",
+        ".kodama/p34.yaml",
+        ".kodama/p35.yaml",
+        ".kodama/p36.yaml",
+        ".kodama/p37.yaml",
+        ".kodama/p38.yaml",
+        ".kodama/p39.yaml",
+        ".kodama/p40.yaml",
+        ".kodama/p41.yaml",
+        ".kodama/p42.yaml",
+        ".kodama/p43.yaml",
+        ".kodama/p44.yaml",
+        ".kodama/p45.yaml",
+        ".kodama/p46.yaml",
+        ".kodama/p47.yaml",
+        ".kodama/p48.yaml",
+        ".kodama/p49.yaml",
+        ".kodama/p50.yaml",
+        ".kodama/p51.yaml",
+        ".kodama/p52.yaml",
+        ".kodama/p53.yaml",
+        ".kodama/p54.yaml",
+        ".kodama/p55.yaml",
+        ".kodama/p56.yaml",
+        ".kodama/p57.yaml",
+        ".kodama/p58.yaml",
+        ".kodama/p59.yaml",
+        ".kodama/p60.yaml",
+        ".kodama/p61.yaml",
+        ".kodama/p62.yaml",
+        ".kodama/p63.yaml",
+        ".kodama/p64.yaml"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_response_files_omitted",
+    "type": "ReadFilesResponse",
+    "payload": {},
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_response_files_null",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": null
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_response_path_outside",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": [
+        {
+          "content": "x",
+          "path": "src/x.yaml",
+          "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_response_digest_uppercase",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": [
+        {
+          "content": "name: build\n",
+          "path": ".kodama/build.yaml",
+          "sha256": "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+        },
+        {
+          "content": "name: deploy\n",
+          "path": ".kodama/deploy.yml",
+          "sha256": "3246741a7400473004fae74af2467832502b7988e9679aa1e161eb86a826db8d"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_files_response_digest_mismatch",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": [
+        {
+          "content": "name: build\n",
+          "path": ".kodama/build.yaml",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        {
+          "content": "name: deploy\n",
+          "path": ".kodama/deploy.yml",
+          "sha256": "3246741a7400473004fae74af2467832502b7988e9679aa1e161eb86a826db8d"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "read_files_response_unsorted",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": [
+        {
+          "content": "b",
+          "path": ".kodama/b.yaml",
+          "sha256": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+        },
+        {
+          "content": "a",
+          "path": ".kodama/a.yaml",
+          "sha256": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "read_files_response_repeated",
+    "type": "ReadFilesResponse",
+    "payload": {
+      "files": [
+        {
+          "content": "a",
+          "path": ".kodama/a.yaml",
+          "sha256": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+        },
+        {
+          "content": "a",
+          "path": ".kodama/a.yaml",
+          "sha256": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "create_bundle_refs_omitted",
+    "type": "CreateBundleRequest",
+    "payload": {
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_refs_empty",
+    "type": "CreateBundleRequest",
+    "payload": {
+      "refs": [],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_ref_not_a_ref",
+    "type": "CreateBundleRequest",
+    "payload": {
+      "refs": [
+        "main"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_ref_traversal",
+    "type": "CreateBundleRequest",
+    "payload": {
+      "refs": [
+        "refs/heads/../x"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_ref_option",
+    "type": "CreateBundleRequest",
+    "payload": {
+      "refs": [
+        "--all"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_ref_repeated",
+    "type": "CreateBundleRequest",
+    "payload": {
+      "refs": [
+        "refs/heads/main",
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "create_bundle_unknown_field",
+    "type": "CreateBundleRequest",
+    "payload": {
+      "refs": null,
+      "repositoryId": "repo_01",
+      "thin": true
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_response_no_refs",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": true,
+      "journalHead": 12,
+      "refs": [],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_response_refs_null",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": true,
+      "journalHead": 12,
+      "refs": null,
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_response_refs_unsorted",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": true,
+      "journalHead": 12,
+      "refs": [
+        {
+          "commit": "3333333333333333333333333333333333333333",
+          "ref": "refs/tags/v1"
+        },
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "create_bundle_response_refs_repeated",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": true,
+      "journalHead": 12,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "create_bundle_response_zero_size",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": true,
+      "journalHead": 12,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/kodama/runs/run_01/1"
+        },
+        {
+          "commit": "3333333333333333333333333333333333333333",
+          "ref": "refs/tags/v1"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 0,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_response_digest_short",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": true,
+      "journalHead": 12,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/kodama/runs/run_01/1"
+        },
+        {
+          "commit": "3333333333333333333333333333333333333333",
+          "ref": "refs/tags/v1"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "abc",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_response_digest_uppercase",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": true,
+      "journalHead": 12,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/kodama/runs/run_01/1"
+        },
+        {
+          "commit": "3333333333333333333333333333333333333333",
+          "ref": "refs/tags/v1"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_response_consistent_omitted",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "journalHead": 12,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/kodama/runs/run_01/1"
+        },
+        {
+          "commit": "3333333333333333333333333333333333333333",
+          "ref": "refs/tags/v1"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_bundle_response_negative_head",
+    "type": "CreateBundleResponse",
+    "payload": {
+      "consistent": true,
+      "journalHead": -1,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/kodama/runs/run_01/1"
+        },
+        {
+          "commit": "3333333333333333333333333333333333333333",
+          "ref": "refs/tags/v1"
+        }
+      ],
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "size": 2048,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "replay_bundle_operation_omitted",
+    "type": "ReplayBundleRequest",
+    "payload": {
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "replay_bundle_digest_omitted",
+    "type": "ReplayBundleRequest",
+    "payload": {
+      "operationId": "op_20",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "replay_bundle_digest_malformed",
+    "type": "ReplayBundleRequest",
+    "payload": {
+      "operationId": "op_20",
+      "repositoryId": "repo_01",
+      "sha256": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "replay_bundle_unknown_field",
+    "type": "ReplayBundleRequest",
+    "payload": {
+      "force": true,
+      "operationId": "op_20",
+      "repositoryId": "repo_01",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "replay_bundle_response_unknown_relation",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": [
+        {
+          "bundle": "1111111111111111111111111111111111111111",
+          "current": "2222222222222222222222222222222222222222",
+          "ref": "refs/heads/main",
+          "relation": "rewound"
+        }
+      ],
+      "created": 2,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "replay_bundle_response_conflict_equal_values",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": [
+        {
+          "bundle": "2222222222222222222222222222222222222222",
+          "current": "2222222222222222222222222222222222222222",
+          "ref": "refs/heads/main",
+          "relation": "repository_ahead"
+        }
+      ],
+      "created": 2,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "replay_bundle_response_conflict_repeated",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": [
+        {
+          "bundle": "1111111111111111111111111111111111111111",
+          "current": "2222222222222222222222222222222222222222",
+          "ref": "refs/heads/main",
+          "relation": "repository_ahead"
+        },
+        {
+          "bundle": "1111111111111111111111111111111111111111",
+          "current": "3333333333333333333333333333333333333333",
+          "ref": "refs/heads/main",
+          "relation": "diverged"
+        }
+      ],
+      "created": 2,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "replay_bundle_response_conflicting_null",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": null,
+      "created": 2,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "replay_bundle_response_negative_created",
+    "type": "ReplayBundleResponse",
+    "payload": {
+      "conflicting": [
+        {
+          "bundle": "1111111111111111111111111111111111111111",
+          "current": "2222222222222222222222222222222222222222",
+          "ref": "refs/heads/main",
+          "relation": "repository_ahead"
+        }
+      ],
+      "created": -1,
+      "operationId": "op_20",
+      "unchanged": 1,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "restore_fence_fenced_omitted",
+    "type": "RestoreFenceRequest",
+    "payload": {
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "restore_fence_fenced_string",
+    "type": "RestoreFenceRequest",
+    "payload": {
+      "fenced": "true",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "restore_fence_response_changed_omitted",
+    "type": "RestoreFenceResponse",
+    "payload": {
+      "fenced": true,
+      "repositoryId": "repo_01",
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  }
+]

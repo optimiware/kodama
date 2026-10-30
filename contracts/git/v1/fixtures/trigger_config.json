@@ -1,0 +1,400 @@
+[
+  {
+    "name": "trigger_default_branch",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "trigger_origin_filter_omitted_defaults_to_true",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "trigger_includes_origin_runs",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": false,
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "trigger_task_and_agent_branches",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/kodama/work/*",
+        "refs/heads/kodama/agents/*"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "trigger_tags",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/tags/v1",
+        "refs/tags/release/*"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "trigger_disabled",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": false,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "trigger_unknown_field",
+    "type": "TriggerConfig",
+    "payload": {
+      "debounce": 5,
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_origin_filter_null",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": null,
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_origin_filter_string",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": "true",
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_enabled_omitted",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_no_patterns",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_patterns_null",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": null,
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_pattern_refs_kodama",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/kodama/*"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_pattern_retained_ref",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/kodama/runs/run_01/1"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_pattern_all_branches",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/*"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_pattern_branch_name",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_pattern_traversal",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/../x"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_pattern_inner_wildcard",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/a/*/b"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_pattern_repeated",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/main",
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "trigger_too_many_patterns",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/p0",
+        "refs/heads/p1",
+        "refs/heads/p2",
+        "refs/heads/p3",
+        "refs/heads/p4",
+        "refs/heads/p5",
+        "refs/heads/p6",
+        "refs/heads/p7",
+        "refs/heads/p8",
+        "refs/heads/p9",
+        "refs/heads/p10",
+        "refs/heads/p11",
+        "refs/heads/p12",
+        "refs/heads/p13",
+        "refs/heads/p14",
+        "refs/heads/p15",
+        "refs/heads/p16",
+        "refs/heads/p17",
+        "refs/heads/p18",
+        "refs/heads/p19",
+        "refs/heads/p20",
+        "refs/heads/p21",
+        "refs/heads/p22",
+        "refs/heads/p23",
+        "refs/heads/p24",
+        "refs/heads/p25",
+        "refs/heads/p26",
+        "refs/heads/p27",
+        "refs/heads/p28",
+        "refs/heads/p29",
+        "refs/heads/p30",
+        "refs/heads/p31",
+        "refs/heads/p32"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_repository_not_an_id",
+    "type": "TriggerConfig",
+    "payload": {
+      "definitionId": "pd_01",
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo/01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "trigger_definition_omitted",
+    "type": "TriggerConfig",
+    "payload": {
+      "enabled": true,
+      "excludeOriginRuns": true,
+      "refPatterns": [
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01",
+      "triggerId": "trg_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  }
+]

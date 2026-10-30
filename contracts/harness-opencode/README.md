@@ -6,6 +6,8 @@ Evidence index and synthetic boundary cases for the T-074 early OpenCode wrapper
 | --- | --- |
 | [`sources.json`](sources.json) | `version`, `sources`: every upstream, measured, local-contract, synthetic and unresolved evidence item |
 | [`cases.json`](cases.json) | `version`, `cases`: synthetic positive and negative boundary cases mapped to the runtime and profile envelopes |
+| [`source-sets.json`](source-sets.json) | **Additive (T-153).** `version`, `cases`: source-set (runtime context v3) checkout-planning cases, each naming a published runtime v3 fixture and the checkouts (path, repository, mode, ref) the wrapper plans for it, or a refusal |
+| [`golden.json`](golden.json) | **Additive (T-153).** SHA-256 of `cases.json` and `sources.json` as they were before source sets; a test requires both files to stay byte-identical |
 
 ## What the evidence is
 
@@ -43,6 +45,10 @@ Placeholders such as `sha256:aaaa…`, commit `1111…` and `<…>` are not real
 | Conformance | runtime `DesignBaseline` and `ConformanceReport` |
 | Gateway | `chat-completions-stream/1` fixtures in `internal/gateway/testdata/chat-completions/` |
 | MCP | `internal/mcpproxy` pinned SDK/protocol and proxy session behavior |
+
+## Source-set compatibility (T-153)
+
+[`source-sets.json`](source-sets.json) is executable evidence for `agents.PlanCheckouts`: `Test_unit_agent_harness_contract_additive` (`internal/agents/adapters`) reads every case, decodes the named fixture (`contracts/runtime/v3/fixtures/cases.json`, `selector: name=<fixture>`) with the runtime v3 decoder, applies the one allowed `mutation` (`narrow-grant-of-last-repository`, a grant that cannot publish the planned branch) and compares the plan. The v1 and v2 evidence above is unchanged: `golden.json` pins its bytes, and nothing in `cases.json` or `sources.json` was edited. Entries are `synthetic-fixture`: they are expectations of Kodama's contracts, not measurements of OpenCode.
 
 ## Checks
 

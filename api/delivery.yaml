@@ -746,6 +746,31 @@ components:
         commit:
           type: string
           pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+    DeploymentSourceCommit:
+      type: object
+      additionalProperties: false
+      required: [repositoryId, commit]
+      properties:
+        repositoryId: {$ref: 'common.yaml#/components/schemas/ID'}
+        commit:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+    DeploymentSourceSet:
+      type: object
+      additionalProperties: false
+      required: [digest, commits]
+      description: >-
+        The candidate of a multi-repository run: the canonical digest of the run's pinned
+        source set and one commit for every repository of it, ordered by repositoryId. A
+        request names it instead of source and it must equal the source set of the originating
+        attempt and of the image's provenance (DQ-17).
+      properties:
+        digest: {$ref: '#/components/schemas/Digest'}
+        commits:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items: {$ref: '#/components/schemas/DeploymentSourceCommit'}
     Image:
       type: object
       additionalProperties: false
@@ -798,7 +823,17 @@ components:
         configurationDigest:
           $ref: '#/components/schemas/Digest'
         namespace: {type: string}
-        source: {$ref: '#/components/schemas/Source'}
+        source:
+          $ref: '#/components/schemas/Source'
+          description: >-
+            The candidate's repository and commit. For a deployment of a run with a source set they
+            are those of the set's primary source (the first writable source ordered by repositoryId,
+            else the first), so clients that do not read source sets keep working; clients that
+            understand source sets read sourceSet, which defines the candidate.
+        sourceSet:
+          allOf:
+            - $ref: '#/components/schemas/DeploymentSourceSet'
+          description: Present only for a deployment of a run with a source set.
         image: {$ref: '#/components/schemas/Image'}
         producer: {$ref: '#/components/schemas/Producer'}
         runId: {$ref: 'common.yaml#/components/schemas/ID'}
@@ -843,18 +878,26 @@ components:
     DeploymentCreate:
       type: object
       additionalProperties: false
-      required: [attemptId, source, image]
+      required: [attemptId, image]
+      description: Exactly one of source and sourceSet names the candidate.
       properties:
         attemptId:
           $ref: 'common.yaml#/components/schemas/ID'
         source: {$ref: '#/components/schemas/Source'}
+        sourceSet: {$ref: '#/components/schemas/DeploymentSourceSet'}
         image: {$ref: '#/components/schemas/Image'}
     RuntimeDeploymentRegister:
       type: object
       additionalProperties: false
       required: [source, image]
+      description: >-
+        `source` stays a required member of the published contract, so that a client generated
+        before source sets existed keeps working (AC-10), and `sourceSet` is the additive
+        member that defines the candidate of a multi-repository run. The server accepts exactly
+        one of them: a source-set candidate is sent as `sourceSet` alone.
       properties:
         source: {$ref: '#/components/schemas/Source'}
+        sourceSet: {$ref: '#/components/schemas/DeploymentSourceSet'}
         image: {$ref: '#/components/schemas/Image'}
     OutcomeReport:
       type: object

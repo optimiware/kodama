@@ -1,0 +1,2925 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kodama.invalid/contracts/git/v1/schema.json",
+  "title": "Kodama internal Git service contract v1",
+  "description": "Messages of docs/contracts/git-service.md: repository resource, Git grant claims, credential exchange, forwarding assertion and worker identity, worker RPC in both directions, push records, ref journal entries, source sets and trigger configuration. Requests, claims and stored records are strict (no additional properties); responses tolerate compatible additions at their top level. Cross-field and cross-element rules a schema cannot express (unique or overlapping source paths, status derived from entry states, one gitFact per update) live in the Go contract.",
+  "$defs": {
+    "ID": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+    },
+    "Timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+    },
+    "ObjectID": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "NonZeroObjectID": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ObjectID"
+        },
+        {
+          "not": {
+            "pattern": "^0+$"
+          }
+        }
+      ]
+    },
+    "Code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "SHA256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "RepositoryName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "RepositoryURL": {
+      "type": "string",
+      "pattern": "^https://[^\\s@/?#]+(/[^\\s@?#]*)?$"
+    },
+    "BranchName": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$",
+      "maxLength": 200,
+      "allOf": [
+        {
+          "not": {
+            "pattern": "\\.\\.|\\.lock(/|$)|\\.(/|$)"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^(refs/|kodama(/|$)|HEAD$)"
+          }
+        }
+      ]
+    },
+    "RefName": {
+      "type": "string",
+      "pattern": "^refs/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)+$",
+      "maxLength": 255,
+      "allOf": [
+        {
+          "not": {
+            "pattern": "\\.\\.|\\.lock(/|$)|\\.(/|$)"
+          }
+        }
+      ]
+    },
+    "RefPattern": {
+      "type": "string",
+      "pattern": "^refs/(heads|tags)/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*(/\\*)?$",
+      "maxLength": 257,
+      "allOf": [
+        {
+          "not": {
+            "pattern": "\\.\\.|\\.lock(/|$)|\\.(/|$)"
+          }
+        }
+      ]
+    },
+    "BranchRef": {
+      "type": "string",
+      "pattern": "^refs/heads/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$",
+      "maxLength": 255,
+      "allOf": [
+        {
+          "not": {
+            "pattern": "\\.\\.|\\.lock(/|$)|\\.(/|$)"
+          }
+        }
+      ]
+    },
+    "SourcePath": {
+      "type": "string",
+      "pattern": "^(\\.|[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*)$",
+      "maxLength": 255,
+      "allOf": [
+        {
+          "not": {
+            "pattern": "\\.\\."
+          }
+        }
+      ]
+    },
+    "Label": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$"
+    },
+    "Username": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "Credential": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._~+/=-]{16,1000}$"
+    },
+    "Cursor": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._~+/=-]{1,512}$"
+    },
+    "WorkerAudience": {
+      "type": "string",
+      "pattern": "^kodama-git-worker:[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+    },
+    "PushOption": {
+      "type": "string",
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "maxLength": 1024
+    },
+    "RetainedRef": {
+      "type": "string",
+      "pattern": "^refs/kodama/runs/[A-Za-z0-9][A-Za-z0-9_-]{0,127}/[1-9][0-9]{0,15}$"
+    },
+    "ManagedBranch": {
+      "type": "string",
+      "description": "A task, agent or run branch: the branches the server may prune.",
+      "pattern": "^refs/heads/kodama/(work/[A-Za-z0-9][A-Za-z0-9_-]{0,127}|agents/[A-Za-z0-9][A-Za-z0-9_-]{0,127}/[A-Za-z0-9][A-Za-z0-9_-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,62}|runs/[A-Za-z0-9][A-Za-z0-9_-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,62})$",
+      "allOf": [
+        {
+          "not": {
+            "pattern": "\\.\\.|\\.lock(/|$)|\\.(/|$)"
+          }
+        }
+      ]
+    },
+    "Hosting": {
+      "enum": [
+        "internal",
+        "external"
+      ]
+    },
+    "RepositoryStatus": {
+      "enum": [
+        "provisioning",
+        "ready",
+        "archived"
+      ]
+    },
+    "ActorType": {
+      "enum": [
+        "user",
+        "workload"
+      ]
+    },
+    "GrantKind": {
+      "enum": [
+        "human",
+        "seed",
+        "preparation",
+        "attempt",
+        "integration"
+      ]
+    },
+    "Verdict": {
+      "enum": [
+        "allow",
+        "deny"
+      ]
+    },
+    "EntryState": {
+      "enum": [
+        "authorized",
+        "committing",
+        "applied",
+        "refused",
+        "unknown"
+      ]
+    },
+    "PushStatus": {
+      "enum": [
+        "authorized",
+        "applied",
+        "refused",
+        "unknown"
+      ]
+    },
+    "JournalState": {
+      "enum": [
+        "prepared",
+        "committed",
+        "aborted"
+      ]
+    },
+    "AssignmentKind": {
+      "enum": [
+        "initialize",
+        "archive",
+        "maintain",
+        "reconcile"
+      ]
+    },
+    "SourceAccess": {
+      "enum": [
+        "read",
+        "write"
+      ]
+    },
+    "PushRefusalReason": {
+      "enum": [
+        "ref_protected",
+        "not_fast_forward",
+        "grant_scope",
+        "attempt_inactive",
+        "run_inactive",
+        "repository_archived",
+        "seed_only",
+        "seed_consumed",
+        "integration_mismatch"
+      ]
+    },
+    "RefusedEntryReason": {
+      "enum": [
+        "ref_protected",
+        "not_fast_forward",
+        "grant_scope",
+        "attempt_inactive",
+        "run_inactive",
+        "repository_archived",
+        "seed_only",
+        "seed_consumed",
+        "integration_mismatch",
+        "no_commit_intent",
+        "receive_aborted",
+        "ref_unchanged"
+      ]
+    },
+    "UnknownEntryReason": {
+      "enum": [
+        "journal_unreadable",
+        "journal_regressed",
+        "evidence_missing",
+        "conflicting_evidence",
+        "ref_diverged",
+        "operator_required"
+      ]
+    },
+    "ErrorCode": {
+      "enum": [
+        "invalid_request",
+        "invalid_credential",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "version_conflict",
+        "version_required",
+        "rate_limited",
+        "unavailable",
+        "repository_name_taken",
+        "repository_not_ready",
+        "repository_archived",
+        "hosting_mismatch",
+        "repository_not_empty",
+        "seed_pending",
+        "push_settled",
+        "attempt_inactive",
+        "run_inactive",
+        "receive_expired",
+        "ref_changed",
+        "retained_ref_exists",
+        "branch_exists",
+        "too_many_updates",
+        "journal_unreadable",
+        "commit_not_found",
+        "repository_empty",
+        "bundle_too_large",
+        "restore_fence_required"
+      ]
+    },
+    "RepositoryPolicy": {
+      "type": "object",
+      "properties": {
+        "directPushToDefault": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "directPushToDefault"
+      ],
+      "additionalProperties": false
+    },
+    "RepositoryPolicyInput": {
+      "type": "object",
+      "properties": {
+        "directPushToDefault": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "RepositoryPolicyPatch": {
+      "type": "object",
+      "properties": {
+        "directPushToDefault": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "directPushToDefault"
+      ],
+      "additionalProperties": false
+    },
+    "Repository": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ID"
+        },
+        "name": {
+          "$ref": "#/$defs/RepositoryName"
+        },
+        "defaultBranch": {
+          "$ref": "#/$defs/BranchName"
+        },
+        "hosting": {
+          "$ref": "#/$defs/Hosting"
+        },
+        "status": {
+          "$ref": "#/$defs/RepositoryStatus"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Code"
+            }
+          ]
+        },
+        "cloneUrl": {
+          "$ref": "#/$defs/RepositoryURL"
+        },
+        "policy": {
+          "$ref": "#/$defs/RepositoryPolicy"
+        },
+        "empty": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "defaultBranch",
+        "hosting",
+        "status",
+        "reason",
+        "cloneUrl",
+        "policy",
+        "empty",
+        "version",
+        "createdAt"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "CreateRepositoryRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/RepositoryName"
+        },
+        "defaultBranch": {
+          "$ref": "#/$defs/BranchName"
+        },
+        "policy": {
+          "$ref": "#/$defs/RepositoryPolicyInput"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "PatchRepositoryRequest": {
+      "type": "object",
+      "properties": {
+        "defaultBranch": {
+          "$ref": "#/$defs/BranchName"
+        },
+        "policy": {
+          "$ref": "#/$defs/RepositoryPolicyPatch"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "RepositoryList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Repository"
+          },
+          "minItems": 0,
+          "maxItems": 1000
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Cursor"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "RefTip": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/RefName"
+        },
+        "commit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        }
+      },
+      "required": [
+        "ref",
+        "commit"
+      ],
+      "additionalProperties": false
+    },
+    "RefsResponse": {
+      "type": "object",
+      "properties": {
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RefTip"
+          },
+          "minItems": 0,
+          "maxItems": 1000
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Cursor"
+            }
+          ]
+        },
+        "empty": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "refs",
+        "nextCursor",
+        "empty"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "empty": {
+                "const": true
+              }
+            },
+            "required": [
+              "empty"
+            ]
+          },
+          "then": {
+            "properties": {
+              "refs": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Actor": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/ActorType"
+        },
+        "id": {
+          "$ref": "#/$defs/ID"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ID"
+            }
+          ]
+        },
+        "attemptId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ID"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "id",
+        "runId",
+        "attemptId"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "user"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "runId": {
+                "type": "null"
+              },
+              "attemptId": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "workload"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "runId": {
+                "$ref": "#/$defs/ID"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "IntegrationConstraint": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/BranchRef"
+        },
+        "from": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        },
+        "to": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        },
+        "gateId": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "ref",
+        "from",
+        "to",
+        "gateId"
+      ],
+      "additionalProperties": false
+    },
+    "HumanUpdateCeiling": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "refs/heads/*"
+        },
+        {
+          "const": "refs/tags/*"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "The maximum class set recorded on a human grant; current roles and ref policy restrict every update at use time."
+    },
+    "GrantRepository": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ID"
+        },
+        "read": {
+          "const": true
+        },
+        "update": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RefPattern"
+              },
+              {
+                "enum": [
+                  "refs/heads/*",
+                  "refs/tags/*"
+                ]
+              }
+            ]
+          },
+          "minItems": 0,
+          "maxItems": 32
+        },
+        "seed": {
+          "type": "boolean"
+        },
+        "integration": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/IntegrationConstraint"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "read",
+        "update",
+        "seed",
+        "integration"
+      ],
+      "additionalProperties": false
+    },
+    "GrantClaims": {
+      "type": "object",
+      "properties": {
+        "grantId": {
+          "$ref": "#/$defs/ID"
+        },
+        "audience": {
+          "const": "kodama-git"
+        },
+        "tenantId": {
+          "$ref": "#/$defs/ID"
+        },
+        "projectId": {
+          "$ref": "#/$defs/ID"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "kind": {
+          "$ref": "#/$defs/GrantKind"
+        },
+        "repositories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GrantRepository"
+          },
+          "minItems": 1,
+          "maxItems": 64
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "grantId",
+        "audience",
+        "tenantId",
+        "projectId",
+        "actor",
+        "kind",
+        "repositories",
+        "issuedAt",
+        "expiresAt"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "human"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "type": {
+                    "const": "user"
+                  }
+                }
+              },
+              "repositories": {
+                "maxItems": 1,
+                "items": {
+                  "properties": {
+                    "seed": {
+                      "const": false
+                    },
+                    "integration": {
+                      "type": "null"
+                    },
+                    "update": {
+                      "oneOf": [
+                        {
+                          "maxItems": 0
+                        },
+                        {
+                          "$ref": "#/$defs/HumanUpdateCeiling"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "not": {
+                  "const": "human"
+                }
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "repositories": {
+                "items": {
+                  "properties": {
+                    "update": {
+                      "items": {
+                        "$ref": "#/$defs/RefPattern"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "seed"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "repositories": {
+                "minItems": 1,
+                "maxItems": 1,
+                "items": {
+                  "properties": {
+                    "seed": {
+                      "const": true
+                    },
+                    "integration": {
+                      "type": "null"
+                    },
+                    "update": {
+                      "minItems": 1,
+                      "maxItems": 1,
+                      "items": {
+                        "pattern": "^refs/heads/[^*]+$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "preparation"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "type": {
+                    "const": "workload"
+                  },
+                  "attemptId": {
+                    "type": "null"
+                  }
+                }
+              },
+              "repositories": {
+                "items": {
+                  "properties": {
+                    "update": {
+                      "maxItems": 0
+                    },
+                    "seed": {
+                      "const": false
+                    },
+                    "integration": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "attempt"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "type": {
+                    "const": "workload"
+                  },
+                  "attemptId": {
+                    "$ref": "#/$defs/ID"
+                  }
+                }
+              },
+              "repositories": {
+                "items": {
+                  "properties": {
+                    "seed": {
+                      "const": false
+                    },
+                    "integration": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "integration"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "type": {
+                    "const": "workload"
+                  },
+                  "attemptId": {
+                    "$ref": "#/$defs/ID"
+                  }
+                }
+              },
+              "repositories": {
+                "maxItems": 1,
+                "items": {
+                  "properties": {
+                    "seed": {
+                      "const": false
+                    },
+                    "integration": {
+                      "$ref": "#/$defs/IntegrationConstraint"
+                    },
+                    "update": {
+                      "minItems": 1,
+                      "maxItems": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "CredentialRequest": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "$ref": "#/$defs/ID"
+        },
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "seed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectId",
+        "repositoryId",
+        "seed"
+      ],
+      "additionalProperties": false
+    },
+    "CredentialResponse": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "$ref": "#/$defs/Username"
+        },
+        "password": {
+          "$ref": "#/$defs/Credential"
+        },
+        "grantId": {
+          "$ref": "#/$defs/ID"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "username",
+        "password",
+        "grantId",
+        "expiresAt"
+      ]
+    },
+    "ForwardingAssertion": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "$ref": "#/$defs/WorkerAudience"
+        },
+        "tenantId": {
+          "$ref": "#/$defs/ID"
+        },
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "grantId": {
+          "$ref": "#/$defs/ID"
+        },
+        "receivePack": {
+          "type": "boolean"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "requestId": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "audience",
+        "tenantId",
+        "repositoryId",
+        "grantId",
+        "receivePack",
+        "issuedAt",
+        "expiresAt",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerIdentity": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "const": "kodama-git-control"
+        },
+        "tenantId": {
+          "$ref": "#/$defs/ID"
+        },
+        "workerInstance": {
+          "$ref": "#/$defs/ID"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "audience",
+        "tenantId",
+        "workerInstance",
+        "issuedAt",
+        "expiresAt"
+      ],
+      "additionalProperties": false
+    },
+    "RefUpdate": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/RefName"
+        },
+        "old": {
+          "$ref": "#/$defs/ObjectID"
+        },
+        "new": {
+          "$ref": "#/$defs/ObjectID"
+        }
+      },
+      "required": [
+        "ref",
+        "old",
+        "new"
+      ],
+      "additionalProperties": false
+    },
+    "GitFact": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/RefName"
+        },
+        "fastForward": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "repositoryEmpty": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ref",
+        "fastForward",
+        "repositoryEmpty"
+      ],
+      "additionalProperties": false
+    },
+    "PushAuthorizeRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "grantId": {
+          "$ref": "#/$defs/ID"
+        },
+        "receiveId": {
+          "$ref": "#/$defs/ID"
+        },
+        "updates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RefUpdate"
+          },
+          "minItems": 1,
+          "maxItems": 1024
+        },
+        "pushOptions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PushOption"
+          },
+          "minItems": 0,
+          "maxItems": 16
+        },
+        "gitFacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GitFact"
+          },
+          "minItems": 1,
+          "maxItems": 1024
+        }
+      },
+      "required": [
+        "repositoryId",
+        "grantId",
+        "receiveId",
+        "updates",
+        "pushOptions",
+        "gitFacts"
+      ],
+      "additionalProperties": false
+    },
+    "UpdateVerdict": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/RefName"
+        },
+        "verdict": {
+          "$ref": "#/$defs/Verdict"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/PushRefusalReason"
+            }
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "verdict",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verdict": {
+                "const": "allow"
+              }
+            },
+            "required": [
+              "verdict"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verdict": {
+                "const": "deny"
+              }
+            },
+            "required": [
+              "verdict"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "$ref": "#/$defs/PushRefusalReason"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "PushAuthorizeResponse": {
+      "type": "object",
+      "properties": {
+        "pushId": {
+          "$ref": "#/$defs/ID"
+        },
+        "deadline": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UpdateVerdict"
+          },
+          "minItems": 1,
+          "maxItems": 1024
+        }
+      },
+      "required": [
+        "pushId",
+        "deadline",
+        "updates"
+      ]
+    },
+    "CommitIntentRequest": {
+      "type": "object",
+      "properties": {
+        "receiveId": {
+          "$ref": "#/$defs/ID"
+        },
+        "updates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RefUpdate"
+          },
+          "minItems": 1,
+          "maxItems": 1024
+        }
+      },
+      "required": [
+        "receiveId",
+        "updates"
+      ],
+      "additionalProperties": false
+    },
+    "CommitIntentResponse": {
+      "type": "object",
+      "properties": {
+        "committing": {
+          "const": true
+        }
+      },
+      "required": [
+        "committing"
+      ]
+    },
+    "OutcomeRequest": {
+      "type": "object",
+      "properties": {
+        "receiveId": {
+          "$ref": "#/$defs/ID"
+        },
+        "applied": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RefUpdate"
+          },
+          "minItems": 0,
+          "maxItems": 1024
+        },
+        "journalSequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "journalPosition": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "receiveId",
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "OutcomeResponse": {
+      "type": "object",
+      "properties": {
+        "pushId": {
+          "$ref": "#/$defs/ID"
+        },
+        "status": {
+          "$ref": "#/$defs/PushStatus"
+        }
+      },
+      "required": [
+        "pushId",
+        "status"
+      ]
+    },
+    "InitializedRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "defaultBranch": {
+          "$ref": "#/$defs/BranchName"
+        },
+        "empty": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "defaultBranch",
+        "empty"
+      ],
+      "additionalProperties": false
+    },
+    "InitializedResponse": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "status": {
+          "$ref": "#/$defs/RepositoryStatus"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "repositoryId",
+        "status",
+        "version"
+      ]
+    },
+    "Assignment": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/AssignmentKind"
+        },
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "defaultBranch": {
+          "$ref": "#/$defs/BranchName"
+        },
+        "journalAck": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "kind",
+        "repositoryId",
+        "defaultBranch"
+      ],
+      "additionalProperties": false
+    },
+    "AssignmentsResponse": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Assignment"
+          },
+          "minItems": 0,
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "UpdateKind": {
+      "enum": [
+        "create",
+        "fast_forward",
+        "rewrite",
+        "delete"
+      ]
+    },
+    "PushEntry": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/RefName"
+        },
+        "old": {
+          "$ref": "#/$defs/ObjectID"
+        },
+        "new": {
+          "$ref": "#/$defs/ObjectID"
+        },
+        "kind": {
+          "$ref": "#/$defs/UpdateKind"
+        },
+        "state": {
+          "$ref": "#/$defs/EntryState"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Code"
+            }
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "old",
+        "new",
+        "kind",
+        "state",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "create"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "old": {
+                "pattern": "^0+$"
+              },
+              "new": {
+                "not": {
+                  "pattern": "^0+$"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "delete"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "old": {
+                "not": {
+                  "pattern": "^0+$"
+                }
+              },
+              "new": {
+                "pattern": "^0+$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "fast_forward",
+                  "rewrite"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "old": {
+                "not": {
+                  "pattern": "^0+$"
+                }
+              },
+              "new": {
+                "not": {
+                  "pattern": "^0+$"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "refused"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "$ref": "#/$defs/RefusedEntryReason"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unknown"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "$ref": "#/$defs/UnknownEntryReason"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "authorized",
+                  "committing",
+                  "applied"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "PushRecord": {
+      "type": "object",
+      "properties": {
+        "pushId": {
+          "$ref": "#/$defs/ID"
+        },
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "receiveId": {
+          "$ref": "#/$defs/ID"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "grantId": {
+          "$ref": "#/$defs/ID"
+        },
+        "originRunId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ID"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/PushStatus"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PushEntry"
+          },
+          "minItems": 1,
+          "maxItems": 1024
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "pushId",
+        "repositoryId",
+        "receiveId",
+        "actor",
+        "grantId",
+        "originRunId",
+        "status",
+        "entries",
+        "createdAt"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "type": {
+                    "const": "user"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            },
+            "required": [
+              "actor"
+            ]
+          },
+          "then": {
+            "properties": {
+              "originRunId": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "type": {
+                    "const": "workload"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            },
+            "required": [
+              "actor"
+            ]
+          },
+          "then": {
+            "properties": {
+              "originRunId": {
+                "$ref": "#/$defs/ID"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "PushRecordList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PushRecord"
+          },
+          "minItems": 0,
+          "maxItems": 1000
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Cursor"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "JournalEntry": {
+      "type": "object",
+      "properties": {
+        "receiveId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ID"
+            }
+          ]
+        },
+        "operationId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ID"
+            }
+          ]
+        },
+        "ref": {
+          "$ref": "#/$defs/RefName"
+        },
+        "old": {
+          "$ref": "#/$defs/ObjectID"
+        },
+        "new": {
+          "$ref": "#/$defs/ObjectID"
+        },
+        "observed": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ObjectID"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/JournalState"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "receiveId",
+        "operationId",
+        "ref",
+        "old",
+        "new",
+        "observed",
+        "state",
+        "sequence"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "receiveId": {
+                  "$ref": "#/$defs/ID"
+                },
+                "operationId": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "receiveId": {
+                  "type": "null"
+                },
+                "operationId": {
+                  "$ref": "#/$defs/ID"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "prepared"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed": {
+                "$ref": "#/$defs/ObjectID"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "committed",
+                  "aborted"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "InitializeRepositoryRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "defaultBranch": {
+          "$ref": "#/$defs/BranchName"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "defaultBranch"
+      ],
+      "additionalProperties": false
+    },
+    "InitializeRepositoryResponse": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "defaultBranch": {
+          "$ref": "#/$defs/BranchName"
+        },
+        "empty": {
+          "type": "boolean"
+        },
+        "created": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "defaultBranch",
+        "empty",
+        "created"
+      ]
+    },
+    "ReadRefsRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "prefix": {
+          "enum": [
+            "refs/heads/",
+            "refs/tags/",
+            "refs/kodama/"
+          ]
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Cursor"
+            }
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      },
+      "required": [
+        "repositoryId",
+        "prefix",
+        "cursor",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "ReadRefValuesRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RefName"
+          },
+          "minItems": 1,
+          "maxItems": 64
+        }
+      },
+      "required": [
+        "repositoryId",
+        "refs"
+      ],
+      "additionalProperties": false
+    },
+    "RefValue": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/RefName"
+        },
+        "commit": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/NonZeroObjectID"
+            }
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "commit"
+      ],
+      "additionalProperties": false
+    },
+    "ReadRefValuesResponse": {
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RefValue"
+          },
+          "minItems": 0,
+          "maxItems": 64
+        },
+        "quiescent": {
+          "type": "boolean"
+        },
+        "journalHead": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "workerInstance": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "values",
+        "quiescent",
+        "journalHead",
+        "workerInstance"
+      ]
+    },
+    "ReadJournalRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "receiveId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ID"
+            }
+          ]
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/RefName"
+            }
+          ]
+        },
+        "sinceSequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      },
+      "required": [
+        "repositoryId",
+        "receiveId",
+        "ref",
+        "sinceSequence",
+        "limit"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "receiveId": {
+                  "$ref": "#/$defs/ID"
+                },
+                "ref": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "receiveId": {
+                  "type": "null"
+                },
+                "ref": {
+                  "$ref": "#/$defs/RefName"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "ReadJournalResponse": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/JournalEntry"
+          },
+          "minItems": 0,
+          "maxItems": 1000
+        },
+        "headSequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "workerInstance": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "entries",
+        "headSequence",
+        "hasMore",
+        "workerInstance"
+      ]
+    },
+    "ReceiveLivenessResponse": {
+      "type": "object",
+      "properties": {
+        "receiveId": {
+          "$ref": "#/$defs/ID"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "workerInstance": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "receiveId",
+        "running",
+        "workerInstance"
+      ]
+    },
+    "SetRetainedRefRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "operationId": {
+          "$ref": "#/$defs/ID"
+        },
+        "ref": {
+          "$ref": "#/$defs/RetainedRef"
+        },
+        "commit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "operationId",
+        "ref",
+        "commit"
+      ],
+      "additionalProperties": false
+    },
+    "SetRetainedRefResponse": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/RetainedRef"
+        },
+        "commit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        },
+        "created": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ref",
+        "commit",
+        "created"
+      ]
+    },
+    "DeleteRetainedRefRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "operationId": {
+          "$ref": "#/$defs/ID"
+        },
+        "ref": {
+          "$ref": "#/$defs/RetainedRef"
+        },
+        "expectedCommit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "operationId",
+        "ref",
+        "expectedCommit"
+      ],
+      "additionalProperties": false
+    },
+    "DeleteRetainedRefResponse": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/RetainedRef"
+        },
+        "deleted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ref",
+        "deleted"
+      ]
+    },
+    "DeleteBranchRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "operationId": {
+          "$ref": "#/$defs/ID"
+        },
+        "ref": {
+          "$ref": "#/$defs/ManagedBranch"
+        },
+        "expectedCommit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "operationId",
+        "ref",
+        "expectedCommit"
+      ],
+      "additionalProperties": false
+    },
+    "DeleteBranchResponse": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/ManagedBranch"
+        },
+        "deleted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ref",
+        "deleted"
+      ]
+    },
+    "CreateBranchRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "operationId": {
+          "$ref": "#/$defs/ID"
+        },
+        "ref": {
+          "$ref": "#/$defs/ManagedBranch"
+        },
+        "commit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "operationId",
+        "ref",
+        "commit"
+      ],
+      "additionalProperties": false
+    },
+    "CreateBranchResponse": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/ManagedBranch"
+        },
+        "commit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        },
+        "created": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ref",
+        "commit",
+        "created"
+      ]
+    },
+    "MaintainRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "operationId": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "MaintainResponse": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/ID"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "operationId",
+        "completedAt"
+      ]
+    },
+    "Source": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "commit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        },
+        "path": {
+          "$ref": "#/$defs/SourcePath"
+        },
+        "access": {
+          "$ref": "#/$defs/SourceAccess"
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/BranchRef"
+            }
+          ]
+        }
+      },
+      "required": [
+        "repositoryId",
+        "commit",
+        "path",
+        "access",
+        "branch"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "access": {
+                "const": "write"
+              }
+            },
+            "required": [
+              "access"
+            ]
+          },
+          "then": {
+            "properties": {
+              "branch": {
+                "$ref": "#/$defs/BranchRef"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "access": {
+                "const": "read"
+              }
+            },
+            "required": [
+              "access"
+            ]
+          },
+          "then": {
+            "properties": {
+              "branch": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SourceSet": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "minItems": 1,
+          "maxItems": 32,
+          "description": "Ordered strictly by path; paths are unique and none contains another (checked by the Go contract, not by this schema)."
+        }
+      },
+      "required": [
+        "sources"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "sources": {
+                "contains": {
+                  "properties": {
+                    "path": {
+                      "const": "."
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "sources"
+            ]
+          },
+          "then": {
+            "properties": {
+              "sources": {
+                "maxItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TriggerConfig": {
+      "type": "object",
+      "properties": {
+        "triggerId": {
+          "$ref": "#/$defs/ID"
+        },
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "refPatterns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RefPattern"
+          },
+          "minItems": 1,
+          "maxItems": 32
+        },
+        "excludeOriginRuns": {
+          "type": "boolean"
+        },
+        "definitionId": {
+          "$ref": "#/$defs/ID"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "triggerId",
+        "repositoryId",
+        "refPatterns",
+        "definitionId",
+        "enabled"
+      ],
+      "additionalProperties": false
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": [
+            "code",
+            "message",
+            "requestId",
+            "details"
+          ],
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "details": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "IsAncestorRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "ancestor": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        },
+        "descendant": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "ancestor",
+        "descendant"
+      ],
+      "additionalProperties": false
+    },
+    "IsAncestorResponse": {
+      "type": "object",
+      "properties": {
+        "isAncestor": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "isAncestor"
+      ]
+    },
+    "HasCommitRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "commit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "commit"
+      ],
+      "additionalProperties": false
+    },
+    "HasCommitResponse": {
+      "type": "object",
+      "properties": {
+        "present": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "present"
+      ]
+    },
+    "CommitTimeRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "commit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "commit"
+      ],
+      "additionalProperties": false
+    },
+    "CommitTimeResponse": {
+      "type": "object",
+      "properties": {
+        "committedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "committedAt"
+      ]
+    },
+    "DefinitionPath": {
+      "type": "string",
+      "pattern": "^\\.kodama/[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*(/[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*)*\\.ya?ml$"
+    },
+    "ReadFilesRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "commit": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "oneOf": [
+              {
+                "const": ".kodama/"
+              },
+              {
+                "$ref": "#/$defs/DefinitionPath"
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "repositoryId",
+        "commit",
+        "paths"
+      ],
+      "additionalProperties": false
+    },
+    "DefinitionFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/DefinitionPath"
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 262144
+        },
+        "sha256": {
+          "$ref": "#/$defs/SHA256"
+        }
+      },
+      "required": [
+        "path",
+        "content",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "ReadFilesResponse": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/DefinitionFile"
+          }
+        }
+      },
+      "required": [
+        "files"
+      ]
+    },
+    "CreateBundleRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "refs": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RefName"
+              },
+              "minItems": 1,
+              "maxItems": 10000
+            }
+          ]
+        }
+      },
+      "required": [
+        "repositoryId",
+        "refs"
+      ],
+      "additionalProperties": false
+    },
+    "CreateBundleResponse": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RefTip"
+          },
+          "minItems": 1,
+          "maxItems": 10000
+        },
+        "journalHead": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "consistent": {
+          "type": "boolean"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "$ref": "#/$defs/SHA256"
+        },
+        "workerInstance": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "refs",
+        "journalHead",
+        "consistent",
+        "size",
+        "sha256",
+        "workerInstance"
+      ]
+    },
+    "ReplayBundleRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "operationId": {
+          "$ref": "#/$defs/ID"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/SHA256"
+            }
+          ]
+        }
+      },
+      "required": [
+        "repositoryId",
+        "operationId",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "BundleRelation": {
+      "enum": [
+        "repository_ahead",
+        "bundle_ahead",
+        "diverged"
+      ]
+    },
+    "BundleConflict": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/RefName"
+        },
+        "current": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        },
+        "bundle": {
+          "$ref": "#/$defs/NonZeroObjectID"
+        },
+        "relation": {
+          "$ref": "#/$defs/BundleRelation"
+        }
+      },
+      "required": [
+        "ref",
+        "current",
+        "bundle",
+        "relation"
+      ],
+      "additionalProperties": false
+    },
+    "ReplayBundleResponse": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/ID"
+        },
+        "created": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "unchanged": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "conflicting": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BundleConflict"
+          },
+          "minItems": 0,
+          "maxItems": 10000
+        },
+        "workerInstance": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "operationId",
+        "created",
+        "unchanged",
+        "conflicting",
+        "workerInstance"
+      ]
+    },
+    "RestoreFenceRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "fenced": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "fenced"
+      ],
+      "additionalProperties": false
+    },
+    "RestoreFenceResponse": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "fenced": {
+          "type": "boolean"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "workerInstance": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "fenced",
+        "changed",
+        "workerInstance"
+      ]
+    }
+  }
+}

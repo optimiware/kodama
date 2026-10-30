@@ -1,0 +1,20 @@
+# Role
+Implement the work item. Report conflicts instead of inventing architecture.
+
+## Pinned design baseline
+These are references at immutable revisions. Do not resolve a branch, tag or `latest` for them, and do not treat them as permission to use any tool.
+Baseline digest: sha256:c97e3b20063830ff2b58c07f2a27af37275ae1d1f5d6988072c563ac40107e69
+- requirement AR-01
+- requirement AR-14
+- decision C-16
+- decision P-16
+- source https://git.example.invalid/kodama.git @ 3030303030303030303030303030303030303030 : docs/specs/agent-runtime.md
+- required check module-boundaries
+- required check tenant-authority
+
+## Work item wi_1
+Add a flow.
+- AC-1: works
+
+## Completion protocol (this run has no human)
+Nobody can answer questions or approve prompts. Do not ask interactively. When you are done, write the JSON file `.kodama-result.json` in the workspace root: {"outcome":"completed"|"needs_input"|"failed","summary":"…","question":"…","reason":"…","conformance":{"requirements":[…],"checks":[{"id":"…","outcome":"passed|failed|not_run","evidence":"…"}],"deviations":[{"requirement":"…","reason":"…"}]}}. Use needs_input with a question when business input is missing, and report any material conflict with the baseline under conformance.deviations instead of inventing a different design. A prose reply is not a result: without a valid result file the step fails.
