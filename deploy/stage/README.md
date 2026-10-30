@@ -1,6 +1,8 @@
 # Stage & Cloud Deployment (`deploy/stage/`)
 
-Thin OpenTofu roots for **AWS**, **GCP**, and **Scaleway (`scw`)**, one shared Helm stack (`deploy/stage/shared/stack`), and critical-path qualification gate and evidence scripts (`deploy/stage/scripts/`).
+Thin OpenTofu roots for **AWS**, **GCP**, and **Scaleway (`scw`)**, one shared Helm stack (`deploy/stage/shared/stack`), and critical-path qualification gate and evidence scripts (`deploy/stage/scripts/`). The Helm charts live in [`deploy/charts/`](../charts/kodama/README.md) (`kodama`, and the stage-only `cluster-issuer`).
+
+Stage clusters are **disposable and named**: any number run side by side (`--name blue`, `--name green`), each with its own installation id, state, kubeconfig and qualification sessions. See [Named clusters and state](#named-clusters-and-state).
 
 ## Layout
 
@@ -10,7 +12,7 @@ deploy/stage/
   gcp/                    # Dedicated GKE (Dataplane V2), Cloud SQL PostgreSQL, GCS XML HMAC, Cloud KMS + WI
   scw/                    # Dedicated Kapsule (Cilium), Managed PostgreSQL, Object Storage, Key Manager (fr-par)
   shared/
-    stack/                # Shared Helm releases consuming stage_contract from aws, gcp, or scw
+    stack/                # Shared Helm releases consuming stage_contract from aws, gcp, or scw (state always in the bucket)
       secrets.tf          # Namespaces, credentials, database roles, every Secret
       oauthsonas.tf       # Persona OIDC issuer (digest-pinned) with access code and ingress allowlist
       values/
@@ -26,8 +28,11 @@ deploy/stage/
   images/workload/        # Stage workload image (shell, Git, CA certificates)
   scripts/
     lib.sh                # Contract validator, Helm renderer, FORGE_RESULTS verifier & secret-leak scanner
+    state-bucket.sh       # Creates the versioned OpenTofu state bucket once, with the scw CLI (never deleted by any script)
+    state_s3.py           # Lists and deletes state objects in that bucket (stdlib SigV4; the scw CLI cannot list objects)
+    cluster.sh            # list the named clusters; destroy one (infrastructure, state objects, local files)
     deploy.sh             # Cloud apply/validate -> Helm lint -> shared stack apply (secrets first, then charts)
-    qualify.sh            # prepare/destroy/show a qualification session (state: ~/kodama-stage/state/qualification/<session>/)
+    qualify.sh            # prepare/destroy/show a qualification session (files: <state dir>/clusters/<name>/qualification/<session>/)
     deps-init.sh          # Seeds Gitea (owner, repository, scoped read/write tokens) during the stack apply
     gate.sh               # Critical-path gate runner (readiness -> staging -> recovery -> platform -> release)
     evidence.sh           # Tamper-evident evidence bundle emitter (manifest.json + SUMMARY.md)
@@ -38,8 +43,8 @@ deploy/stage/
 ## Qualification sessions
 
 The qualification suites (`test/e2e/kube-full`, `test/e2e/staging`, the Kubernetes backend of
-`test/integration/assembly-execution`) never run against the stage's own release. `qualify.sh prepare --session <name>
---contract <stage_contract.json>` (needs `KUBECONFIG`, `KODAMA_IMAGES_FILE` and the operator's `SCW_*`) creates an isolated
+`test/integration/assembly-execution`) never run against the stage's own release. `qualify.sh prepare --name <cluster> --session <name>
+--contract <stage_contract.json>` (needs `KODAMA_IMAGES_FILE` and the operator's `SCW_*`; the kubeconfig defaults to the cluster's own) creates an isolated
 installation of the same chart and images: a database on the stage PostgreSQL instance (same roles, granted on that database
 only), namespace `kodama-q-<name>` and tenant namespaces `kodama-q-<name>-a` / `-b`, generated keys and Secrets pushed before
 any chart installs, a dedicated NATS server, and two database relays. `kq-pgrelay` is the server's database path (scaling it to
@@ -55,7 +60,57 @@ Pod in the stage namespace as the stage database admin, so the session needs onl
 `KODAMA_STAGE_BOOTSTRAP_SECRETS` (a JSON file with `postgres_admin_username` and `postgres_admin_password`). Use the same
 mode for `prepare` and `destroy`. The readiness gate's KMS acceptance still needs `SCW_DEFAULT_PROJECT_ID` and accepts
 the operator kubeconfig token as the API credential. The test process runs on the operator machine
-(`KODAMA_QUAL_SESSION=<name>`, `KUBECONFIG`) through `test/support/stage`.
+(`KODAMA_QUAL_SESSION=<name>`, `KODAMA_STAGE_CLUSTER=<cluster>`, `KUBECONFIG`) through `test/support/stage`.
+
+## Named clusters and state
+
+**State bucket.** OpenTofu state for the `scw` roots, the shared stack and the qualification sessions lives in one
+Scaleway Object Storage bucket (S3 backend, native `use_lockfile` locking). Create it once, outside OpenTofu, with the `scw`
+CLI; it is private and versioned, and no script deletes it, so no `tofu destroy` can reach the state and an overwritten
+or removed state object can be restored from an earlier version:
+
+```bash
+export SCW_ACCESS_KEY=... SCW_SECRET_KEY=... SCW_DEFAULT_PROJECT_ID=...
+deploy/stage/scripts/state-bucket.sh        # prints: export KODAMA_TFSTATE_BUCKET=kodama-tfstate-<project prefix>
+export KODAMA_TFSTATE_BUCKET=...
+```
+
+The shared stack is cloud-neutral, so its state is in the same bucket even for `aws` and `gcp` (those deployments also need
+the `SCW_*` credentials for state); the `aws` and `gcp` infrastructure roots keep a local state file in the cluster's
+directory. The state holds database, API-key and signing material: restrict access to the bucket like a credential store.
+
+**One cluster per name.** `--name <cluster>` (or `KODAMA_STAGE_CLUSTER`; 1-16 lowercase letters, digits, `-`) selects the
+cluster in `deploy.sh`, `qualify.sh`, `gate.sh` and `cluster.sh`:
+
+| Item | Location |
+| --- | --- |
+| Installation id (names every cloud resource, binds envelope encryption) | `kodama-<name>`, always set by the script; a value in the tfvars is overridden |
+| Variables | `<state dir>/clusters/<name>/<cloud>.tfvars` (start from `<cloud>/terraform.tfvars.example`; set a distinct `ingress_host`, and a distinct `private_network_cidr` only if you peer the networks) |
+| Operator kubeconfig | `<state dir>/clusters/<name>/kubeconfig`, written from the `scw` root's output |
+| State objects | `scw/<name>/infra.tfstate`, `<cloud>/<name>/stack.tfstate`, `scw/<name>/qualification/<session>.tfstate` |
+| Qualification sessions | `<state dir>/clusters/<name>/qualification/<session>/` |
+
+`<state dir>` is `$STAGE_STATE_DIR` (default `~/kodama-stage/state`). Every cluster and session initializes OpenTofu in its
+own data directory (`TF_DATA_DIR`), so two clusters can be deployed from one checkout at the same time. A `terraform.tfvars`
+left next to a root would apply to every cluster, so the scripts refuse it.
+
+```bash
+mkdir -p ~/kodama-stage/state/clusters/blue
+cp deploy/stage/scw/terraform.tfvars.example ~/kodama-stage/state/clusters/blue/scw.tfvars   # edit project_id, ingress_host, ...
+deploy/stage/scripts/deploy.sh --cloud scw --name blue
+deploy/stage/scripts/deploy.sh --cloud scw --name green    # a second cluster, at the same time or later
+deploy/stage/scripts/cluster.sh list
+```
+
+Before the stack or a session is applied, the kubeconfig is checked against the contract's cluster endpoint, so an
+ambient `KUBECONFIG` for another cluster cannot receive the apply. The `scw` cluster deletes its load balancers and volumes
+with it.
+
+**Teardown.** Stage clusters are disposable: `cluster.sh destroy --cloud scw --name blue` (it asks you to type the name, or
+pass `--yes`) destroys the cluster's infrastructure, which takes everything inside it, including its qualification
+sessions, then removes that cluster's state objects (earlier versions stay in the bucket) and its local files, keeping
+`<cloud>.tfvars`. It never touches the bucket or any other cluster, and it refuses a cluster whose tfvars say
+`environment_tier = "production"`.
 
 ## Cloud Infrastructure & Staging vs. Production Retention
 
@@ -93,17 +148,17 @@ Validate or deploy a specific cloud (`aws`, `gcp`, or `scw`):
 # Offline validation (no cloud credentials or cluster required)
 ./deploy/stage/scripts/deploy.sh --cloud aws --validate-only
 
-# Full deployment against configured OpenTofu backend and KUBECONFIG
-./deploy/stage/scripts/deploy.sh --cloud aws
+# Full deployment of the cluster named "blue" (state bucket and per-cluster tfvars: see Named clusters and state)
+./deploy/stage/scripts/deploy.sh --cloud aws --name blue
 ```
 
 Secrets and database credentials are generated by `deploy/stage/shared/stack` itself and pushed into
-Kubernetes before any chart installs, so they are stable across applies and live in OpenTofu state. Public ingress
+Kubernetes before any chart installs, so they are stable across applies and live in OpenTofu state (the state bucket). Public ingress
 certificates (Kodama, Dex, Gitea, Grafana) are issued and renewed by cert-manager from Let's Encrypt over HTTP-01
 (`KODAMA_ACME_EMAIL` is required; the nip.io hostnames share that domain's Let's Encrypt rate limits, so a real
-domain is a one-line change of `ingress_host`). There is no installation CA in the stage. State is kept
-outside the checkout (`$STAGE_STATE_DIR`, default `~/kodama-stage/state`, mode 0700 and 0600 files): it holds
-database, API-key and signing material, so protect it like a credential store. Image coordinates come from
+domain is a one-line change of `ingress_host`). There is no installation CA in the stage. Operator files are kept
+outside the checkout (`$STAGE_STATE_DIR`, default `~/kodama-stage/state`, mode 0700 and 0600 files) and the OpenTofu state
+is in the state bucket: both hold database, API-key and signing material, so protect them like a credential store. Image coordinates come from
 `$KODAMA_IMAGES_FILE` (JSON with `kodama` and `workload` repository/tag/digest) or the `KODAMA_IMAGE_*` and
 `KODAMA_WORKLOAD_IMAGE_*` variables; placeholder digests are refused by the gates.
 
@@ -179,16 +234,17 @@ Tags alone are rejected. These instructions do not authorize a Git push or publi
 
 ### Preflight, then one full run
 
-Use one state root: qualification resolves `KODAMA_QUAL_STATE_DIR`, then `STAGE_STATE_DIR`, then
-`~/kodama-stage/state`. Existing state in the old `~/.kube/` location is not moved: select it explicitly if needed.
-Set both root variables consistently when deploying and qualifying. Keep kubeconfig, tfvars, Terraform state, registry
+Use one state root and one cluster name: qualification looks in `<state dir>/clusters/<name>/qualification/` (`<state dir>` is
+`STAGE_STATE_DIR`, default `~/kodama-stage/state`; `KODAMA_STAGE_CLUSTER` or `--name` selects the cluster; an explicit
+`KODAMA_QUAL_STATE_DIR` replaces the directory holding `qualification/`). Existing state in the old `~/.kube/` location is
+not moved: select it explicitly if needed. Keep kubeconfig, tfvars, Terraform state, registry
 auth and provider credentials outside the checkout. Set `SCW_DEFAULT_PROJECT_ID` and operator `SCW_*` credentials;
 the probe itself mounts only the deployment's KMS credential, not the operator's. IAM administration is needed to
 create and remove a throwaway denied application/API key with **no policy**; missing permission is a blocker, not
 a reason to substitute a fabricated token or treat `KeyUnavailable` as a successful denial.
 
 Prepare a **fresh session** for each final clean-install attempt. `TestKubeChartInstall` refuses an existing release
-or migrated database rather than mislabeling an upgrade as a clean install. Use `qualify.sh prepare --session ...
+or migrated database rather than mislabeling an upgrade as a clean install. Use `qualify.sh prepare --name <cluster> --session ...
 --contract ...` with the original base stage contract, not another session's derived contract. Keep session `kb`
 until a passing gate, as instructed by the owner. Focused debugging may reuse an installed session, but its results
 are not combined into the final receipt.
@@ -257,7 +313,7 @@ the probe executable. Retained installation keys/mappings are untouched. Throwaw
 (the response must have `protected:false`), get unique names and immediate checked cleanup. The protected historical
 probe key stays untouched unless the owner separately authorizes removal.
 
-After a passing gate, retain the safe evidence bundle before `qualify.sh destroy --session ... --contract ...`
+After a passing gate, retain the safe evidence bundle before `qualify.sh destroy --name <cluster> --session ... --contract ...`
 (use the original base stage contract). Remove `kb` and only this task's qualification sessions. Verify namespace
 and session-labeled admission-policy absence; never delete another task's objects. Credentials, private keys, secret
 values, wrapped bytes and provider response bodies must not be printed or copied into evidence. A failed cleanup is
