@@ -720,7 +720,7 @@ func decodeAttemptContext(at *Attempt) (runtimev1.Context, error) {
 			TenantID: c.TenantID, ProjectID: c.ProjectID, RunID: c.RunID, StepID: c.StepID, AttemptID: c.AttemptID, ActionKey: c.ActionKey,
 			Definition: c.Definition, WorkItem: c.WorkItem, DesignBaseline: c.DesignBaseline, Profile: c.Profile, Command: c.Command,
 			Workspace: runtimev1.Workspace{Access: c.Workspace.Access}, Inputs: c.Inputs, Outputs: c.Outputs, Secrets: c.Secrets,
-			Environment: c.Environment, Limits: c.Limits,
+			Environment: c.Environment, State: c.State, ArtifactFiles: c.ArtifactFiles, Limits: c.Limits,
 		}, nil
 	}
 	c, err := runtimev1.DecodeRequest[runtimev1.Context](at.Context)

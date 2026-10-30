@@ -47,7 +47,8 @@ func projectV1(c runtimev2.ContextV2) runtimev1.Context {
 		TenantID: c.TenantID, ProjectID: c.ProjectID, RunID: c.RunID, StepID: c.StepID, AttemptID: c.AttemptID, ActionKey: c.ActionKey,
 		Definition: c.Definition, WorkItem: c.WorkItem, DesignBaseline: c.DesignBaseline, Profile: c.Profile, Command: c.Command,
 		Workspace: runtimev1.Workspace{Access: c.Workspace.Access},
-		Inputs:    c.Inputs, Outputs: c.Outputs, Secrets: c.Secrets, Environment: c.Environment, Limits: c.Limits,
+		Inputs:    c.Inputs, Outputs: c.Outputs, Secrets: c.Secrets, Environment: c.Environment,
+		State: c.State, ArtifactFiles: c.ArtifactFiles, Limits: c.Limits,
 	}
 	if src := c.Workspace.Source; src != nil {
 		v.Workspace.Source = &runtimev1.Source{
