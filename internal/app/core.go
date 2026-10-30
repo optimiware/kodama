@@ -936,11 +936,12 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	if err != nil {
 		return fmt.Errorf("state store: %w", err)
 	}
-	c.runtimeV3, err = statehttp.NewHandler(stateStore, stateruntimeauth.Resolver{Authority: slice.Auth})
+	stateHandler, err := statehttp.NewHandler(stateStore, stateruntimeauth.Resolver{Authority: slice.Auth})
 	if err != nil {
 		return fmt.Errorf("state runtime API: %w", err)
 	}
-	c.runtimeV3.(*statehttp.Handler).Artifacts = stateArtifactVerifier{svc: artSvc}
+	stateHandler.Artifacts = stateArtifactVerifier{svc: artSvc}
+	c.runtimeV3 = stateHandler
 	if rtSet.Shared != nil {
 		// The additive run view and the resource logs of the run_shared model, in
 		// front of the unchanged public router.
