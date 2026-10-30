@@ -11,6 +11,7 @@ import (
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -51,4 +52,16 @@ func sha256Sum(data []byte) string {
 	h := sha256.New()
 	_, _ = h.Write(data)
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func TestProjectV2KeepsPluginBindings(t *testing.T) {
+	c2 := runtimev2.ContextV2{
+		AttemptID:     "att_1",
+		State:         []runtimev1.StateBinding{{Name: "release", Namespace: "deploy", Prefix: "website/", Write: true}},
+		ArtifactFiles: []runtimev1.ArtifactInput{{Name: "bundle", ArtifactID: "art_bundle", Digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+	}
+	c := projectV2(c2)
+	if len(c.State) != 1 || len(c.ArtifactFiles) != 1 || c.ArtifactFiles[0].ArtifactID != "art_bundle" {
+		t.Fatalf("projection dropped plugin bindings: %+v", c)
+	}
 }
