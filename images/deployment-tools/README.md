@@ -1,5 +1,10 @@
 # images/deployment-tools — ordinary deployment tools (task T-065)
 
+**DEPRECATED (container-plugins):** the Kubernetes provider behavior is being
+ported to `images/plugins/deploy/drivers/kubernetes`. This callback-based tools
+image remains only for historical delivery-test compatibility and must not gain
+new deployment logic.
+
 The restricted, ordinary-container tools contribution for build/preview/stage
 deployment ([delivery spec](../../docs/specs/delivery-and-quality-gates.md#build-and-deployment-are-normal-steps),
 C-14 and O-12): a pinned image holding `kubectl`, `curl`, `jq`, `git` and three
