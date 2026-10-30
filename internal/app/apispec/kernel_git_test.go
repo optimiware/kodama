@@ -13,9 +13,9 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/internal/kernel/api"
-	"github.com/optimiware/kodama/internal/kernel/serve"
-	"github.com/optimiware/kodama/internal/kernel/store"
+	"github.com/optimiware/kodama/internal/shell/api"
+	"github.com/optimiware/kodama/internal/shell/serve"
+	"github.com/optimiware/kodama/internal/shell/store"
 )
 
 type bearerAs map[string]api.Principal

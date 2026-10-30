@@ -1,7 +1,7 @@
 ---
 id: T-173
 milestone: kernel
-status: planned
+status: done
 depends_on: []
 decision_blockers: []
 owns: [internal/kernel/api/, internal/kernel/bus/, internal/kernel/dispatch/, internal/kernel/store/, internal/kernel/secret/, internal/kernel/serve/, internal/kernel/runner/, internal/shell/, internal/app/kernel.go, internal/app/git_commands.go, internal/app/git_commands_test.go, internal/app/apispec/kernel_git_test.go, dev/internal/devenv/gitworker.go, dev/internal/devenv/gitnative_test.go]

@@ -20,7 +20,8 @@ P2.1 stages 1–2 of the [simplification plan](../implementation/pipeline-runtim
 ## Deliverables
 - One appended migration with a new number, plus its manifest entry and RLS/grants, adding:
   - run lease owner, expiry and fence; command intent; workload and resource identity; workspace exclusion; cleanup state and retained resource identities;
-  - wait columns on `run_steps` (identity, assignment, correlation, expected input, state, result, deadline, consumed signal, version), `step_kind`, and relaxed image/command requirements for non-container steps;
+  - a durable signal record (scoped signal identity, target wait, request digest, recorded decision) so a winning-key retry returns the original decision after closure;
+  - wait columns on `run_steps` (identity, assignment, correlation, expected input, `approving` outcome, state, result, deadline, consumed signal, version), `step_kind`, and relaxed image/command requirements for wait steps;
   - `tasks.pipeline_id`, `current_run_id`, and projection fields (`status`, `current_step_key`, `waiting_for`, `assigned_role`, `result`, `progress_version`, `progress_run_version`), all nullable at this stage;
   - indexes for due waits and task current-run lookup.
 - Validation that refuses duplicate `(tenant_id, project_id, name)` pipeline rows and ambiguous task-to-pipeline mappings; it never invents a pipeline or picks a repository arbitrarily.

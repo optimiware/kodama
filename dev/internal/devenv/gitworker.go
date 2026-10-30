@@ -14,7 +14,7 @@ import (
 
 	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	gitjwt "github.com/optimiware/kodama/internal/gitauth/jwt"
-	"github.com/optimiware/kodama/internal/kernel/serve"
+	"github.com/optimiware/kodama/internal/shell/serve"
 )
 
 // Native Git hosting of the services stack (DEV_GIT=native).
