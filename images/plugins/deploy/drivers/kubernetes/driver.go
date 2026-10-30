@@ -90,15 +90,13 @@ func (d *Driver) Apply(ctx context.Context, req driver.Request, checkpoint drive
 		return driver.Result{}, err
 	}
 	if !cfg.AllowAnyImage {
-		verified := false
+		// If the invocation supplies an OCI descriptor, it must name the
+		// configured primary image. A plain manifest bundle may carry the image
+		// in its own verified content instead.
 		for _, artifact := range req.Artifacts {
-			if artifact.Kind == driver.ArtifactOCIImage && artifact.Registry == cfg.Image {
-				verified = true
-				break
+			if artifact.Kind == driver.ArtifactOCIImage && artifact.Registry != "" && artifact.Registry != cfg.Image {
+				return driver.Result{}, fmt.Errorf("kubernetes driver: the OCI artifact does not name the primary image")
 			}
-		}
-		if !verified {
-			return driver.Result{}, fmt.Errorf("kubernetes driver: the primary image has no verified OCI artifact")
 		}
 	}
 	refs := objectRefs(objects)

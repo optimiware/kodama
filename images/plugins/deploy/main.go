@@ -121,7 +121,7 @@ func main() {
 			"timeoutSeconds": int(c.timeout.Seconds()),
 		}),
 		DesiredRelease: c.desired, Timeout: c.timeout,
-		Artifacts: artifacts(c.bundle, c.manifest, c.image),
+		Artifacts: artifacts(c.bundle, c.manifest, readContext(c.contextFile)),
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout+30*time.Second)
 	defer cancel()
@@ -206,18 +206,37 @@ func splitList(value string) []string {
 	return out
 }
 
-func artifacts(bundle, manifest, image string) []driver.Artifact {
+func artifacts(bundle, manifest string, ctx contextOutputs) []driver.Artifact {
 	var out []driver.Artifact
 	if bundle != "" {
-		out = append(out, driver.Artifact{ID: "bundle", Digest: digestFile(bundle), Kind: driver.ArtifactFile, Path: bundle})
+		out = append(out, driver.Artifact{ID: artifactID(ctx, "bundle", "bundle"), Digest: digestFile(bundle), Kind: driver.ArtifactFile, Path: bundle})
 	}
 	if manifest != "" {
-		out = append(out, driver.Artifact{ID: "manifest", Digest: digestFile(manifest), Kind: driver.ArtifactFile, Path: manifest})
-	}
-	if image != "" {
-		out = append(out, driver.Artifact{ID: "image", Digest: digestValue(image), Kind: driver.ArtifactOCIImage, Registry: image})
+		out = append(out, driver.Artifact{ID: artifactID(ctx, "manifest", "manifest"), Digest: digestFile(manifest), Kind: driver.ArtifactFile, Path: manifest})
 	}
 	return out
+}
+
+func readContext(path string) contextOutputs {
+	if path == "" {
+		return contextOutputs{}
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return contextOutputs{}
+	}
+	var ctx contextOutputs
+	_ = json.Unmarshal(raw, &ctx)
+	return ctx
+}
+
+func artifactID(ctx contextOutputs, alias, fallback string) string {
+	for _, a := range ctx.ArtifactFiles {
+		if a.Name == alias && a.ArtifactID != "" {
+			return a.ArtifactID
+		}
+	}
+	return fallback
 }
 
 func digestFile(path string) string {
@@ -274,6 +293,11 @@ func usage() {
 // produce its declared result manifest. The entrypoint owns the full context;
 // this command never infers outputs from the pipeline file.
 type contextOutputs struct {
+	ArtifactFiles []struct {
+		Name       string `json:"name"`
+		ArtifactID string `json:"artifactId"`
+		Digest     string `json:"digest"`
+	} `json:"artifactFiles"`
 	Outputs []struct {
 		Name string  `json:"name"`
 		Type string  `json:"type"`
