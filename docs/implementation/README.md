@@ -12,6 +12,7 @@ These documents make the simplified design concrete before parallel implementati
 - [Environment pinning contract and ownership](environment-pinning.md)
 - [Environments and adapters](environments.md)
 - [Proposed run workspace, services, and builders](run-workspace-services-builders.md)
+- [Proposed stateful container plugins and deployment-core retirement](container-plugins.md)
 - [Local development and testing](development-and-testing.md)
 - [Task graph and agent workflow](../tasks/README.md)
 - [Autonomous task harness](harness.md)
