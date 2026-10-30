@@ -1,7 +1,7 @@
 package app
 
 // The chart join (T-027), checked with no cluster and no helm binary. The
-// templates of deploy/helm/kodama are rendered by a small text/template
+// templates of deploy/charts/kodama are rendered by a small text/template
 // renderer that implements the functions the chart uses (an unknown function
 // fails the test), the values are validated against values.schema.json, and the
 // rendered Deployment, settings document, Secret projection and tenant
@@ -11,7 +11,7 @@ package app
 // the production guards are not weakened to make a profile start.
 //
 // Installing the chart on a cluster is T-089's; helm's own lint/template checks
-// stay in deploy/helm/kodama (chart_test.go, helm required).
+// stay in deploy/charts/kodama (chart_test.go, helm required).
 
 import (
 	"bytes"
@@ -57,7 +57,7 @@ const (
 
 // ---- a small Helm-compatible renderer ----------------------------------------
 
-func chartDir(t testing.TB) string { return filepath.Join(repoRoot(t), "deploy", "helm", "kodama") }
+func chartDir(t testing.TB) string { return filepath.Join(repoRoot(t), "deploy", "charts", "kodama") }
 
 func readYAMLObject(t testing.TB, path string) object {
 	t.Helper()

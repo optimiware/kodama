@@ -235,7 +235,7 @@ P1/P2 can proceed independently after P0. P3–P5 have independent paths once in
 
 ### P6 — Assembly, chart and migration
 
-**Own:** `internal/app/`, relevant `internal/cli/`, aggregate `api/openapi.yaml`/`api/client/`, `deploy/helm/kodama/`, migration ordering, shared dependencies and operations documentation. Sole shared-file integration owner.
+**Own:** `internal/app/`, relevant `internal/cli/`, aggregate `api/openapi.yaml`/`api/client/`, `deploy/charts/kodama/`, migration ordering, shared dependencies and operations documentation. Sole shared-file integration owner.
 
 - Wire resource ports/stores/auth/entrypoints/logs/workers/migrations explicitly per `KODAMA_ENV`. Preserve production refusal of Process/Podman/memory/keyfile fallbacks.
 - Render versioned execution policy, PSA baseline/version, LSM/admission prerequisites, storage class, quotas, DNS/egress, RBAC, deadlines and BuildKit mode. Preflight capabilities, not mere declarations.

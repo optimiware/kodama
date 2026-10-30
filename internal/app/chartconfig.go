@@ -27,7 +27,7 @@ const ConfigFileVariable = "KODAMA_CONFIG_FILE"
 // ChartConfigVersion is the only supported version of the document.
 const ChartConfigVersion = 2
 
-// ChartConfig is the settings document of deploy/helm/kodama
+// ChartConfig is the settings document of deploy/charts/kodama
 // (templates/configmap-server.yaml). It is read strictly: an unknown member is
 // an error, so a chart and the server cannot drift silently. It carries
 // endpoints, identifiers and the execution policy, never a credential: secrets

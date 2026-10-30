@@ -150,10 +150,10 @@ test-m3:
 
 # The chart join (T-027), with no cluster and no helm: the rendered chart is fed to the server's
 # configuration loader and namespace preflight. The helm lint/template checks of the chart
-# (deploy/helm/kodama) additionally run when the helm binary is installed.
+# (deploy/charts/kodama) additionally run when the helm binary is installed.
 test-chart:
 	$(GO) test -race -count=1 -run 'TestChart' ./internal/app/...
-	$(GO) test -count=1 ./deploy/helm/kodama/...
+	$(GO) test -count=1 ./deploy/charts/kodama/...
 
 # api/openapi.yaml is assembled from the module fragments in api/ and the Go
 # client in api/client is generated from it; both are committed artifacts.

@@ -329,7 +329,10 @@ def clean_candidate():
 
 if not clean_candidate():
     sys.exit("[gate-fail] commit all changes before qualification; candidate must remain clean")
-state = Path(env.get("KODAMA_QUAL_STATE_DIR") or env.get("STAGE_STATE_DIR") or str(Path.home() / "kodama-stage/state"))
+# An explicit KODAMA_QUAL_STATE_DIR is the root of qualification/ as is; a named cluster has its own directory.
+stage_state = Path(env.get("STAGE_STATE_DIR") or str(Path.home() / "kodama-stage/state"))
+cluster = env.get("KODAMA_STAGE_CLUSTER", "")
+state = Path(env["KODAMA_QUAL_STATE_DIR"]) if env.get("KODAMA_QUAL_STATE_DIR") else (stage_state / "clusters" / cluster if cluster else stage_state)
 session = env.get("KODAMA_QUAL_SESSION", "")
 if not re.fullmatch(r"[a-z][a-z0-9]{0,9}", session):
     sys.exit("[gate-fail] KODAMA_QUAL_SESSION must identify a prepared session")
@@ -372,7 +375,7 @@ print(f"[stage] candidate={git_sha} session={session} inputs verified", flush=Tr
 if env.get("KODAMA_STAGE_PREFLIGHT_ONLY") == "1":
     sys.exit(0)
 started = time.monotonic()
-chart_tree = subprocess.check_output(["git", "rev-parse", "HEAD:deploy/helm/kodama"], cwd=repo_root, text=True).strip()
+chart_tree = subprocess.check_output(["git", "rev-parse", "HEAD:deploy/charts/kodama"], cwd=repo_root, text=True).strip()
 
 # Clear inherited local-scope environment variables so tests never fall back to a local Podman/kind fixture.
 for stale_var in (
@@ -387,7 +390,7 @@ env.update({
     "KODAMA_AUTO_PROVISION": "0",
     "KODAMA_REQUIRE_KUBERNETES": "1",
     "KODAMA_ASSEMBLY_BACKEND": "kube",
-    "KODAMA_QUAL_STATE_DIR": env.get("KODAMA_QUAL_STATE_DIR") or env.get("STAGE_STATE_DIR") or str(Path.home() / "kodama-stage" / "state"),
+    "KODAMA_QUAL_STATE_DIR": str(state),
     "KUBECONFIG": abs_kc,
     "KODAMA_KUBECONFIG": abs_kc,
     "KODAMA_TEST_KUBECONFIG": abs_kc,
@@ -766,4 +769,150 @@ refuse_legacy_state_dir() {
   if [[ -z "${STAGE_STATE_DIR:-}${KODAMA_QUAL_STATE_DIR:-}" && -d "${legacy}" && ! -d "${chosen}" ]]; then
     die "OpenTofu state exists in the former default ${legacy} but not in ${chosen}: move it, or set STAGE_STATE_DIR (and KODAMA_QUAL_STATE_DIR) explicitly"
   fi
+}
+
+# --- Named clusters and remote OpenTofu state -------------------------------------------------------------------
+#
+# Several clusters can run side by side. Each is identified by a name (--name or KODAMA_STAGE_CLUSTER): the installation
+# id is kodama-<name>, its OpenTofu state keys live under <cloud>/<name>/ in one Scaleway Object Storage bucket, and its
+# operator files (tfvars, kubeconfig, qualification sessions) live in <state dir>/clusters/<name>/.
+# The bucket is created once by state-bucket.sh, outside OpenTofu, so no destroy can reach it.
+
+SCW_S3_REGION="fr-par"
+SCW_S3_ENDPOINT="${SCW_S3_ENDPOINT:-https://s3.${SCW_S3_REGION}.scw.cloud}"
+
+# validate_cluster_name keeps every derived name (installation id, bucket, registry namespace, session suffix) a DNS label.
+validate_cluster_name() {
+  local name="${1:-}"
+  [[ "${name}" =~ ^[a-z][a-z0-9-]{0,15}$ && "${name}" != *- ]] ||
+    die "cluster name '${name}' is invalid: use 1-16 lowercase letters, digits or '-', starting with a letter and not ending with '-' (--name or KODAMA_STAGE_CLUSTER)"
+}
+
+cluster_installation_id() {
+  printf 'kodama-%s' "$1"
+}
+
+# cluster_dir prints the operator-owned directory of a named cluster.
+cluster_dir() {
+  printf '%s/clusters/%s' "${STAGE_STATE_DIR:-${HOME}/kodama-stage/state}" "$1"
+}
+
+# state_bucket prints the OpenTofu state bucket, or stops when it has not been named.
+state_bucket() {
+  [[ -n "${KODAMA_TFSTATE_BUCKET:-}" ]] ||
+    die "KODAMA_TFSTATE_BUCKET is not set: create the state bucket once with deploy/stage/scripts/state-bucket.sh and export its name"
+  printf '%s' "${KODAMA_TFSTATE_BUCKET}"
+}
+
+require_scw_credentials() {
+  [[ -n "${SCW_ACCESS_KEY:-}" && -n "${SCW_SECRET_KEY:-}" ]] ||
+    die_infra "SCW_ACCESS_KEY and SCW_SECRET_KEY are required (OpenTofu state is stored in Scaleway Object Storage)"
+}
+
+# render_backend_config writes the S3 backend settings (no credentials) for one state key.
+render_backend_config() {
+  local out="$1" key="$2" bucket
+  bucket="$(state_bucket)"
+  cat >"${out}" <<EOF_BACKEND
+bucket                      = "${bucket}"
+key                         = "${key}"
+region                      = "${SCW_S3_REGION}"
+endpoints                   = { s3 = "${SCW_S3_ENDPOINT}" }
+use_path_style              = true
+use_lockfile                = true
+skip_credentials_validation = true
+skip_region_validation      = true
+skip_requesting_account_id  = true
+skip_metadata_api_check     = true
+skip_s3_checksum            = true
+EOF_BACKEND
+  chmod 0600 "${out}"
+}
+
+# tofu_state runs tofu with the Scaleway credentials presented to the S3 backend. They are scoped to the one
+# invocation, so they never reach another provider.
+tofu_state() {
+  AWS_ACCESS_KEY_ID="${SCW_ACCESS_KEY}" AWS_SECRET_ACCESS_KEY="${SCW_SECRET_KEY}" AWS_REGION="${SCW_S3_REGION}" tofu "$@"
+}
+
+# tf_init_remote <dir> <key> initializes a root against its state object in the bucket.
+tf_init_remote() {
+  local dir="$1" key="$2" cfg
+  require_scw_credentials
+  cfg="$(mktemp "${TMPDIR:-/tmp}/kodama-backend.XXXXXX")"
+  render_backend_config "${cfg}" "${key}"
+  tofu_state -chdir="${dir}" init -input=false -reconfigure -backend-config="${cfg}" >/dev/null || {
+    rm -f "${cfg}"
+    die "tofu init failed for state key ${key}"
+  }
+  rm -f "${cfg}"
+}
+
+# assert_kubeconfig_matches_contract refuses a kubeconfig whose selected cluster is not the contract's cluster, so a
+# stack or session apply can never land on a neighbouring cluster.
+assert_kubeconfig_matches_contract() {
+  local kubeconfig="$1" contract="$2" actual expected
+  [[ -f "${kubeconfig}" ]] || die "kubeconfig not found: ${kubeconfig}"
+  actual="$(kubectl --kubeconfig "${kubeconfig}" config view --minify -o 'jsonpath={.clusters[0].cluster.server}' 2>/dev/null || true)"
+  expected="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cluster"]["endpoint"])' "${contract}")"
+  actual="${actual%/}"; actual="${actual%:443}"
+  expected="${expected%/}"; expected="${expected%:443}"
+  [[ -n "${actual}" && "${actual}" == "${expected}" ]] ||
+    die "kubeconfig ${kubeconfig} selects cluster '${actual}', but the contract is for '${expected}': refusing to touch it"
+}
+
+# use_cluster <cloud> <name> selects the cluster the following helpers act on: CDIR (its operator directory),
+# CLOUD_DIR and STACK_DIR (the OpenTofu roots). Every cluster initializes in its own data directory, so clusters can
+# be deployed at the same time from one checkout.
+use_cluster() {
+  CLOUD="$1"
+  NAME="$2"
+  validate_cloud "${CLOUD}"
+  validate_cluster_name "${NAME}"
+  export KODAMA_STAGE_CLUSTER="${NAME}"
+  CDIR="$(cluster_dir "${NAME}")"
+  CLOUD_DIR="${STAGE_DIR}/${CLOUD}"
+  STACK_DIR="${STAGE_DIR}/shared/stack"
+  INSTALLATION_ID="$(cluster_installation_id "${NAME}")"
+  mkdir -p "${CDIR}"
+  chmod 0700 "${CDIR}" "$(dirname "${CDIR}")" 2>/dev/null || true
+
+  # A terraform.tfvars next to the root would be loaded for every cluster; each cluster has its own file instead.
+  [[ ! -e "${CLOUD_DIR}/terraform.tfvars" ]] ||
+    die "${CLOUD_DIR}/terraform.tfvars would apply to every cluster: move it to ${CDIR}/${CLOUD}.tfvars"
+  TFVARS="${CDIR}/${CLOUD}.tfvars"
+  # shellcheck disable=SC2034 # read by deploy.sh and cluster.sh
+  CLOUD_VARS=(-var-file="${TFVARS}" -var "installation_id=${INSTALLATION_ID}")
+}
+
+require_cluster_tfvars() {
+  [[ -f "${TFVARS}" ]] || die "missing ${TFVARS}: copy ${CLOUD_DIR}/terraform.tfvars.example there and edit it for cluster '${NAME}'"
+}
+
+# infra_tf and stack_tf run tofu in the cloud root and in the shared stack of the selected cluster. The scw root and the
+# stack keep their state in the bucket; the aws and gcp roots keep it in the cluster directory.
+infra_tf() {
+  if [[ "${CLOUD}" == scw ]]; then
+    TF_DATA_DIR="${CDIR}/tfdata/${CLOUD}" tofu_state -chdir="${CLOUD_DIR}" "$@"
+  else
+    TF_DATA_DIR="${CDIR}/tfdata/${CLOUD}" tofu -chdir="${CLOUD_DIR}" "$@"
+  fi
+}
+stack_tf() { TF_DATA_DIR="${CDIR}/tfdata/stack" tofu_state -chdir="${STACK_DIR}" "$@"; }
+
+init_infra_backend() {
+  if [[ "${CLOUD}" == scw ]]; then
+    TF_DATA_DIR="${CDIR}/tfdata/${CLOUD}" tf_init_remote "${CLOUD_DIR}" "${CLOUD}/${NAME}/infra.tfstate"
+  else
+    infra_tf init -input=false -reconfigure -backend-config="path=${CDIR}/${CLOUD}.tfstate" >/dev/null
+  fi
+}
+init_stack_backend() {
+  TF_DATA_DIR="${CDIR}/tfdata/stack" tf_init_remote "${STACK_DIR}" "${CLOUD}/${NAME}/stack.tfstate"
+}
+
+# state_objects wraps state_s3.py (list and delete state objects in the bucket; the scw CLI cannot).
+state_objects() {
+  require_scw_credentials
+  KODAMA_TFSTATE_BUCKET="$(state_bucket)" python3 "${STAGE_DIR}/scripts/state_s3.py" "$@"
 }

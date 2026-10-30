@@ -10,7 +10,7 @@
 //
 // The assertions are structural. There are no golden files. Run them with:
 //
-//	KODAMA_REQUIRE_HELM=1 go test -count=1 ./deploy/helm/kodama/...
+//	KODAMA_REQUIRE_HELM=1 go test -count=1 ./deploy/charts/kodama/...
 //
 // When helm is not installed the tests skip unless KODAMA_REQUIRE_HELM=1, which makes a missing
 // helm binary a failure.

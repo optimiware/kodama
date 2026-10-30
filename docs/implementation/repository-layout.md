@@ -30,7 +30,7 @@ internal/
   # --- Access Surfaces ---
   api/                       # HTTP REST handlers and SSE stream
   cli/                       # kodactl commands
-deploy/helm/kodama/          # Helm chart
+deploy/charts/               # Helm charts: kodama (product), cluster-issuer (stage-only)
 dev/                         # local Podman dependency stack and repoctl checks
 ```
 

@@ -1,3 +1,5 @@
+# Copy to <state dir>/clusters/<name>/aws.tfvars (default ~/kodama-stage/state) and edit; never next to the root.
+# installation_id is set by deploy.sh to kodama-<name> (--name); this value is overridden.
 installation_id          = "kodama-stage-aws"
 region                   = "eu-west-1"
 environment_tier         = "staging"

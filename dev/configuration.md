@@ -17,7 +17,7 @@ Invalid configuration/usage exits 2; listen/serve failures exit 1; help and grac
 ## Development controls
 ### Core secrets configuration
 
-The assembled server reads configuration document version 2 through `KODAMA_CONFIG_FILE`. Its `secrets` section selects `adapter: keyfile | kms`; see the [chart contract](../deploy/helm/kodama/README.md#kms-selection). The scaffold-only process settings above retain their existing flag/environment behavior.
+The assembled server reads configuration document version 2 through `KODAMA_CONFIG_FILE`. Its `secrets` section selects `adapter: keyfile | kms`; see the [chart contract](../deploy/charts/kodama/README.md#kms-selection). The scaffold-only process settings above retain their existing flag/environment behavior.
 
 For environment-only test startup set `KODAMA_SECRETS_ADAPTER=keyfile`; it defaults to current `v1` at `$KODAMA_SECRETS_DIR/master-key`. `KODAMA_SECRETS_CONFIG` supplies the complete secrets object as strict JSON (duration values in nanoseconds); it replaces the document's secrets object, including entire retained-key maps. `KODAMA_SECRETS_ADAPTER` overrides its adapter. Old `KODAMA_KMS_*` names are rejected with a migration message. Production requires `kms`; cloud provider names are `aws`, `gcp`, `scw`.
 

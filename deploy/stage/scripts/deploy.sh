@@ -6,7 +6,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 usage() {
   cat <<'EOF'
-Usage: deploy/stage/scripts/deploy.sh --cloud <aws|gcp|scw> [--contract-out <path>] [--values-out <path>] [--validate-only]
+Usage: deploy/stage/scripts/deploy.sh --cloud <aws|gcp|scw> --name <cluster> [--contract-out <path>] [--values-out <path>] [--validate-only]
+
+--name (or KODAMA_STAGE_CLUSTER) selects one of several clusters that can run side by side: its installation id is
+kodama-<name>, its variables are read from <state dir>/clusters/<name>/<cloud>.tfvars, and its OpenTofu state lives in
+the state bucket (KODAMA_TFSTATE_BUCKET, see state-bucket.sh) under <cloud>/<name>/. --name is not needed with
+--validate-only.
 
 1. Validates (or applies) the cloud OpenTofu root under deploy/stage/<cloud>.
 2. Exports the normalized stage_contract JSON and validates its C-18/O-05/O-26 invariants.
@@ -18,6 +23,7 @@ EOF
 }
 
 CLOUD=""
+NAME="${KODAMA_STAGE_CLUSTER:-}"
 VALIDATE_ONLY=0
 CONTRACT_OUT=""
 VALUES_OUT=""
@@ -25,6 +31,7 @@ VALUES_OUT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cloud) CLOUD="$2"; shift 2 ;;
+    --name) NAME="$2"; shift 2 ;;
     --contract-out) CONTRACT_OUT="$2"; shift 2 ;;
     --values-out) VALUES_OUT="$2"; shift 2 ;;
     --validate-only) VALIDATE_ONLY=1; shift ;;
@@ -36,7 +43,7 @@ done
 validate_cloud "${CLOUD}"
 require_cmd tofu helm python3
 
-# Operator-owned directory for OpenTofu state (database/API-key secrets never live in the checkout).
+# Operator-owned directory for the cluster's files (database/API-key secrets never live in the checkout).
 STATE_DIR="${STAGE_STATE_DIR:-${HOME}/kodama-stage/state}"
 refuse_legacy_state_dir "${STATE_DIR}"
 CLOUD_DIR="${STAGE_DIR}/${CLOUD}"
@@ -149,19 +156,29 @@ PY
   VALUES_FILE="${VALUES_OUT:-${WORK_DIR}/kodama-values.${CLOUD}.yaml}"
   STACK_TFVARS="${WORK_DIR}/stack.tfvars.json"
   render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}" "${STACK_TFVARS}"
-  helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
-  helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${VALUES_FILE}" >/dev/null
+  helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${VALUES_FILE}" >/dev/null
+  helm template kodama "${REPO_ROOT}/deploy/charts/kodama" --namespace kodama-system -f "${VALUES_FILE}" >/dev/null
   tofu -chdir="${STACK_DIR}" init -input=false -backend=false >/dev/null
   tofu -chdir="${STACK_DIR}" validate
   log_info "validate-only succeeded for cloud=${CLOUD}"
   exit 0
 fi
 
-mkdir -p "${STATE_DIR}"
+use_cluster "${CLOUD}" "${NAME}"
+require_cluster_tfvars
 chmod 0700 "${STATE_DIR}"
-tofu -chdir="${CLOUD_DIR}" init -input=false -backend-config="path=${STATE_DIR}/${CLOUD}.tfstate"
-tofu -chdir="${CLOUD_DIR}" validate
-tofu -chdir="${CLOUD_DIR}" apply -input=false -auto-approve
+
+init_infra_backend
+infra_tf validate
+infra_tf apply -input=false -auto-approve "${CLOUD_VARS[@]}"
+
+# The operator kubeconfig belongs to this cluster alone: the stack never reads an ambient KUBECONFIG of another one.
+if [[ "${CLOUD}" == scw ]]; then
+  infra_tf output -raw kubeconfig >"${CDIR}/kubeconfig"
+  chmod 0600 "${CDIR}/kubeconfig"
+  export KUBECONFIG="${CDIR}/kubeconfig"
+fi
+require_cmd kubectl
 
 [[ -n "${KODAMA_ACME_EMAIL:-}" ]] || die "KODAMA_ACME_EMAIL (Let's Encrypt account contact) is required for a real deployment"
 
@@ -177,15 +194,16 @@ if [[ -z "${KODAMA_ISSUER_ALLOWED_CIDRS:-}" ]]; then
 fi
 CONTRACT_FILE="${CONTRACT_OUT:-${WORK_DIR}/stage_contract.json}"
 SECRETS_FILE="${WORK_DIR}/stage_bootstrap_secrets.json"
-tofu -chdir="${CLOUD_DIR}" output -json stage_contract >"${CONTRACT_FILE}"
-tofu -chdir="${CLOUD_DIR}" output -json stage_bootstrap_secrets >"${SECRETS_FILE}"
+infra_tf output -json stage_contract >"${CONTRACT_FILE}"
+infra_tf output -json stage_bootstrap_secrets >"${SECRETS_FILE}"
+assert_kubeconfig_matches_contract "${KUBECONFIG:-${HOME}/.kube/config}" "${CONTRACT_FILE}"
 chmod 0600 "${SECRETS_FILE}"
 
 VALUES_FILE="${VALUES_OUT:-${WORK_DIR}/kodama-values.yaml}"
 STACK_TFVARS="${WORK_DIR}/stack.tfvars.json"
 render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}" "${STACK_TFVARS}"
 verify_values_provenance "${VALUES_FILE}"
-helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
+helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${VALUES_FILE}" >/dev/null
 
 # Cloud secrets reach the stack as a sensitive variable file (0600, removed with the work directory).
 SECRETS_TFVARS="${WORK_DIR}/stack.secrets.tfvars.json"
@@ -198,25 +216,25 @@ with open(sys.argv[2], "w", encoding="utf-8") as fh:
 PY
 chmod 0600 "${SECRETS_TFVARS}"
 
-tofu -chdir="${STACK_DIR}" init -input=false -backend-config="path=${STATE_DIR}/${CLOUD}-stack.tfstate"
-tofu -chdir="${STACK_DIR}" validate
+init_stack_backend
+stack_tf validate
 
 # Adopt a controller installed before the stack managed it (same release, same chart), once.
-STACK_RESOURCES="$(tofu -chdir="${STACK_DIR}" state list 2>/dev/null || true)"
+STACK_RESOURCES="$(stack_tf state list 2>/dev/null || true)"
 if ! grep -qx 'helm_release.ingress_nginx' <<<"${STACK_RESOURCES}" &&
   helm --kubeconfig "${KUBECONFIG:-${HOME}/.kube/config}" status ingress-nginx -n ingress-nginx >/dev/null 2>&1; then
   log_info "importing the existing ingress-nginx release into the stack state"
-  tofu -chdir="${STACK_DIR}" import -input=false -var-file="${STACK_TFVARS}" -var-file="${SECRETS_TFVARS}" helm_release.ingress_nginx ingress-nginx/ingress-nginx
+  stack_tf import -input=false -var-file="${STACK_TFVARS}" -var-file="${SECRETS_TFVARS}" helm_release.ingress_nginx ingress-nginx/ingress-nginx
 fi
-tofu -chdir="${STACK_DIR}" apply -input=false -auto-approve \
+stack_tf apply -input=false -auto-approve \
   -var-file="${STACK_TFVARS}" -var-file="${SECRETS_TFVARS}"
 
 APPLIED_VALUES="${WORK_DIR}/applied-kodama-values.yaml"
-tofu -chdir="${STACK_DIR}" output -raw rendered_kodama_values >"${APPLIED_VALUES}"
+stack_tf output -raw rendered_kodama_values >"${APPLIED_VALUES}"
 cmp -s "${VALUES_FILE}" "${APPLIED_VALUES}" || die "applied stack Kodama values differ from validated values file"
 
 if [[ -n "${VALUES_OUT}" ]]; then
   cp "${APPLIED_VALUES}" "${VALUES_OUT}"
 fi
 
-log_info "deployment complete for cloud=${CLOUD}"
+log_info "deployment complete for cloud=${CLOUD} cluster=${NAME}; kubeconfig and files: ${CDIR}"

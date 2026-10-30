@@ -9,11 +9,15 @@ usage() {
 Usage: deploy/stage/scripts/gate.sh \
   --gate <readiness|staging|recovery|platform|release|critical-path> \
   --cloud <aws|gcp|scw> \
+  [--name <cluster>] \
   --contract <stage_contract.json> \
   [--values <kodama-values.yaml>] \
   [--results-dir <dir>] \
   [--evidence-root <dir>] \
   [--preflight]
+
+--name (or KODAMA_STAGE_CLUSTER) selects the cluster whose qualification session and kubeconfig are used:
+<state dir>/clusters/<name>/ (the kubeconfig deploy.sh wrote is the default KUBECONFIG).
 
 Runs the critical-path qualification gate(s) in topological order:
   1. readiness (T-104) — Full Kubernetes installation readiness & live KMS
@@ -26,6 +30,7 @@ EOF
 
 GATE=""
 CLOUD=""
+NAME="${KODAMA_STAGE_CLUSTER:-}"
 CONTRACT_FILE=""
 VALUES_FILE=""
 RESULTS_DIR=""
@@ -36,6 +41,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --gate) GATE="$2"; shift 2 ;;
     --cloud) CLOUD="$2"; shift 2 ;;
+    --name) NAME="$2"; shift 2 ;;
     --contract) CONTRACT_FILE="$2"; shift 2 ;;
     --values) VALUES_FILE="$2"; shift 2 ;;
     --results-dir) RESULTS_DIR="$2"; shift 2 ;;
@@ -47,6 +53,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 validate_cloud "${CLOUD}"
+if [[ -n "${NAME}" ]]; then
+  validate_cluster_name "${NAME}"
+  export KODAMA_STAGE_CLUSTER="${NAME}"
+  cluster_kubeconfig="$(cluster_dir "${NAME}")/kubeconfig"
+  if [[ -z "${KUBECONFIG:-}" && -f "${cluster_kubeconfig}" ]]; then
+    export KUBECONFIG="${cluster_kubeconfig}"
+  fi
+fi
 [[ -n "${CONTRACT_FILE}" ]] || die "--contract <stage_contract.json> is required"
 validate_stage_contract "${CONTRACT_FILE}" "${CLOUD}"
 
@@ -62,7 +76,7 @@ verify_values_provenance "${VALUES_FILE}"
 if [[ "${PREFLIGHT}" == 1 ]]; then
   [[ "${GATE}" == readiness ]] || die "--preflight is supported for readiness only"
   require_cmd helm
-  helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
+  helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${VALUES_FILE}" >/dev/null
   KODAMA_STAGE_PREFLIGHT_ONLY=1 run_stage_go_suite "${CONTRACT_FILE}" "${VALUES_FILE}" "${WORK_DIR}/preflight.json" \
     ./test/e2e/kube-full/... ./test/integration/assembly-execution/...
   log_info "PASS preflight only; no acceptance run or receipt issued"
