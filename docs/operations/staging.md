@@ -47,7 +47,7 @@ The stage's own release and its dependencies come from `deploy/stage/scripts/dep
 export KODAMA_IMAGES_FILE=~/kodama-stage/images-<commit>.json   # kodama and workload: repository, tag, digest
 export KODAMA_ACME_EMAIL=...                                      # Let's Encrypt account contact
 export KODAMA_TFSTATE_BUCKET=...                                  # from deploy/stage/scripts/state-bucket.sh
-deploy/stage/scripts/deploy.sh --cloud scw --name <cluster>       # variables: <state dir>/clusters/<cluster>/scw.tfvars
+deploy/stage/scripts/deploy.sh --cloud scw --name blue            # variables: ~/kodama-stage/state/clusters/blue/scw.tfvars
 ```
 
 Build and publish the images from a **clean, committed** tree with the explicit revision label, and verify them at the
