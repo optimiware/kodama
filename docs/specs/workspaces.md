@@ -1,6 +1,6 @@
 # Workspaces
 
-**Scope:** M1, Git-backed source continuity. Human editor access is ordinary Git clone/commit/push. The durable **workspace** below is unchanged by either run model; what a run mounts as `/workspace` is *run scratch* (`attempt_private` per attempt today, `run_shared` per run under [ADR 0010](../adr/0010-run-workspace-services-builders.md)), never a second source authority.
+**Scope:** M1, Git-backed source continuity. Human editor access is ordinary Git clone/commit/push. Internally hosted repositories ([ADR 0011](../adr/0011-internal-tenant-git-service.md), designed) change who pushes, as described in [internally hosted repositories](#internally-hosted-repositories); the rest of this specification is unchanged for external repositories. The durable **workspace** below is unchanged by either run model; what a run mounts as `/workspace` is *run scratch* (`attempt_private` per attempt today, `run_shared` per run under [ADR 0010](../adr/0010-run-workspace-services-builders.md)), never a second source authority.
 
 ## Model
 
@@ -38,6 +38,16 @@ Normative design of the `kodama/v1alpha2` model; implementation T-113–T-117; n
 - **Loss and recovery.** Scratch is disposable. If it is lost or cannot be verified after any command began, the run fails with an explicit reason; execution never reclones and resumes later steps as though files survived. A rerun is a new run with new scratch from a pinned commit; durable recovery is the last published commit plus retained artifacts. Scratch never creates or acknowledges a checkpoint (WS-06).
 - **Provenance.** The entrypoint reports workspace state at command begin; the server records it with produced artifacts so evidence is never labeled as built from an unchanged candidate when scratch differed ([DQ-16](delivery-and-quality-gates.md#requirements)).
 
+## Internally hosted repositories
+
+Normative design of [ADR 0011](../adr/0011-internal-tenant-git-service.md); implementation T-131; not delivered. It applies only to repositories with `hosting: internal` ([Git repositories](git-repositories.md)) and to runs admitted after a repository switched to internal hosting. Everything above remains the contract for external repositories and for runs admitted before the switch.
+
+- **Associations, not one URL.** A workspace records, for each repository the work item touches, its task branch `refs/heads/kodama/work/<work-item-id>` and the commit last accepted there. Provisioning creates the task branch from the repository's default branch with a server-side ref update.
+- **Attempts push.** Every executable attempt receives a Git grant that reads the run's source set and may push its run's agent branches `refs/heads/kodama/agents/<work-item-id>/<run-id>/*`. Only an attempt with `write` access that holds the writer reservation may also push the task branch; `read` keeps meaning "no checkpoint publication". The entrypoint pushes explicitly; no bundle travels through artifacts and no publisher pushes on the attempt's behalf.
+- **Same protections.** Writer reservation (WS-03) still admits one writer per task branch at a time. The Git service authorizes each ref update against the attempt's liveness at `pre-receive`, and Git's expected-old check rejects a stale tip. A journaled push record replaces the publisher's pending-publication fields; an `unknown` record blocks writer reassignment exactly as an unknown publication does (WS-11). A human push to the task branch still wins the race and the agent's push conflicts.
+- **Confirmed commits.** A writer's `commit` output is accepted only when the push record that put it on its branch is `applied`. Retained refs move to `refs/kodama/runs/<run-id>/<n>` on the internal host.
+- **Parallel agents.** Run models are unchanged: under `run_shared`, a run's executable attempts still hold its workspace one at a time ([ADR 0010](../adr/0010-run-workspace-services-builders.md)). Agents work in parallel as **separate runs** for the same work item, each with its own workspace, clone and agent-branch namespace; none needs the writer reservation. A later run's writer merges their agent branches into the task branch. Worktrees are a convenience inside one workload, not an isolation boundary.
+
 ## Human work
 
 An engineer clones the work branch, commits, and pushes a normal fast-forward update. Before admitting a writer or consuming a review, Kodama refreshes the remote tip and records authorized changes. A human push during an agent attempt wins the ref race; the agent's result remains an artifact/commit proposal for explicit reconciliation. No automatic merge or force-rewind is performed.
@@ -62,6 +72,9 @@ An engineer clones the work branch, commits, and pushes a normal fast-forward up
 | WS-14 | `[run_shared]` At most one executable attempt MAY hold a run's scratch; handoff MUST wait for verified stop and release of the prior holder. Retry, redrive, an expired claim or a partition MUST NOT give a possibly live holder's volume to another attempt. Logical-workspace writer admission stays separate. |
 | WS-15 | `[run_shared]` Lost or unverifiable scratch MUST fail the run with an explicit reason; a rerun MUST get fresh resources, retained Git commits and artifacts MUST survive, and scratch MUST NOT create or acknowledge a checkpoint. |
 | WS-16 | `[run_shared]` Cumulative writers MUST publish through expected-tip CAS with ancestry validation; a human push MUST conflict rather than be overwritten; earlier steps' edits and secret disclosures MUST be accounted for in lineage and publication/output checks. |
+| WS-17 | `[internal hosting]` A workspace MUST record its task branch and accepted commit per touched repository; provisioning MUST create task branches idempotently from the default branch. |
+| WS-18 | `[internal hosting]` Attempts MUST push only through attempt-bound Git grants limited to their run's agent branches and, for the reserved writer only, the task branch; writer reservation, expected-old checks and unknown-outcome blocking MUST still hold. |
+| WS-19 | `[internal hosting]` A writer's commit output MUST be accepted only after its push record is applied; runs admitted under external hosting MUST keep the publisher model after a repository switches. |
 
 ## Interface and acceptance
 
@@ -81,3 +94,6 @@ Expose provision/read/archive/restore and authorized source synchronization thro
 | WS-A10 | Eligible steps cannot overlap scratch ownership; retry, redrive, expired claims and partition cannot hand a possibly live holder's volume to another attempt | WS-14 |
 | WS-A11 | Lost scratch fails the run; a rerun gets fresh resources; retained Git commits and artifacts survive; scratch writes never create a checkpoint | WS-08, WS-15 |
 | WS-A12 | Cumulative writers use expected-tip CAS; a human push conflicts; prior-step edits and secret disclosures are recorded in lineage and caught by publication/output checks | WS-04, WS-11, WS-16 |
+| WS-A13 | A work item touching two internal repositories gets one task branch in each; repeated provisioning creates nothing more | WS-17 |
+| WS-A14 | The reserved writer pushes the task branch; a read attempt pushes only its run's agent branches; another run's agent namespace, a cancelled attempt and a superseded writer are refused; a racing human push makes the writer's push conflict | WS-18, GR-06, GR-07 |
+| WS-A15 | A lost push confirmation keeps the commit output pending until reconciliation; a run admitted before the hosting switch still publishes through the publisher | WS-19, GR-09 |

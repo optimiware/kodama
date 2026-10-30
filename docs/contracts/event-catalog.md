@@ -49,6 +49,9 @@ Only authorized platform roles publish/consume domain events. Tenant workloads u
 | `run.state_changed` | Run | Previous/new state, classified reason |
 | `step_attempt.state_changed` | Attempt | Run/step IDs, previous/new state, classified reason |
 | `run_resource.state_changed` | Run resource (`run_shared` runs; envelope resource type `run_resource`; resource ID [`rr-…`](#run-resource-events); project required) | Run ID, kind (`network`, `workspace`, `preparation`, `service`), key, previous/new phase, safe reason code ([catalog](run-resources.md#reasons)), spec fingerprint, whether a runtime UID is bound |
+| `repository.created` | Repository (designed internal hosting) | Name, default branch, hosting |
+| `repository.state_changed` | Repository | Previous/new status, reason code |
+| `git.refs_updated` | Repository; one per applied push record | Push ID, actor, origin run, each `(ref, old, new, kind)` ([Git service](git-service.md#push-records-and-events)) |
 | `gate.requested` | Gate | Subject digest, content revision, reviewer scope, deadline |
 | `gate.decided` | Gate | Actor, decision, resulting state, subject digest |
 | `gate.invalidated` | Gate | Subject digest, reason, superseding commit/revision when present |

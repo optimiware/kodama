@@ -4,6 +4,12 @@ Kodama helps organizations build focused software around ERP, CRM, and legacy ga
 
 Optimi Platform is the company core; Kodama is its agent layer and autonomous SDLC for platform tenants. The [platform integration contract](../specs/platform-integration.md) separates core authority from SDLC ownership and keeps standalone adapters explicit. Autonomous implementation stays within granted permissions and produces evidence for human acceptance.
 
+## Product model
+
+Kodama is a full-cycle SDLC in a dedicated Kubernetes installation, aiming for the simplicity of a small CI server. Tasks, issues and change requests go in; deployed code comes out. It embeds its own task tracker and its own Git service ([ADR 0011](../adr/0011-internal-tenant-git-service.md), designed and not yet delivered). A project owns one or more repositories and its pipelines. A pipeline is a set of container steps sharing a workspace disk: each step is an image with environment, secrets and a command, and deployment is one more such step (Terraform, Wrangler, kubectl or Helm with mounted credentials).
+
+Agents do most of the work and coordinate through Git, so Git is mostly automated rather than exposed. People feed tasks, review evidence and decide. An engineer can still clone a project or branch to debug, review or fix it, or bring an existing project in with an ordinary `git push`.
+
 ## Principles
 
 - **API-first:** every product operation is accessible to the CLI and authorized integrations.

@@ -4,7 +4,7 @@
 
 ## Model
 
-An agent step is a container step resolved from an immutable profile: image digest, command wrapper, instruction template, model endpoint, allowed tools, and limits. It uses the same attempt, entrypoint, source publication, result, and cancellation machinery as any command. Transcript and usage references live on the attempt; there is no independent agent-session state machine.
+An agent step is a container step resolved from an immutable profile: image digest, command wrapper, instruction template, model endpoint, allowed tools, and limits. It uses the same attempt, entrypoint, source publication, result, and cancellation machinery as any command. With internally hosted repositories ([ADR 0011](../adr/0011-internal-tenant-git-service.md), designed) agents coordinate through ordinary Git: parallel agents run as separate runs, each pushing its run's agent branches with its attempt grant, and merging them into the task branch is ordinary work for a later run's writer. Transcript and usage references live on the attempt; there is no independent agent-session state machine.
 
 The wrapper obtains the run's pinned specification/acceptance context, runs a pinned supported OpenCode version, and emits a result. Exact headless flags and provider compatibility must be verified by the adapter task against that version's primary documentation and a smoke test.
 
@@ -28,6 +28,7 @@ O-17 defines application chassis as Markdown guidance held in a tenant/project-s
 | AR-12 | Agent identity MUST NOT satisfy a human review/completion permission. |
 | AR-13 | `needs_input` MUST fail the attempt with a recorded question; a human revises intent and starts a new run. |
 | AR-14 | Agent instructions MUST use the pinned design baseline and return candidate-bound conformance evidence identifying affected requirements, checks, and unresolved deviations; design references MUST NOT silently advance during execution. |
+| AR-15 | `[internal hosting]` Agents MUST reach internal repositories only through their attempt-bound Git grant; repository content, Git configuration and model instructions MUST NOT widen the repositories or refs it covers. |
 
 AR-07 and AR-08 (handoff/continuation contracts) are retired from the initial scope. There is no capability-negotiation framework or continuation token in M2.
 
@@ -51,3 +52,4 @@ The approved profile routes provider traffic through the AI gateway and tool tra
 | AR-A06 | Cancellation revokes actions and stops the wrapper/process tree | AR-09 |
 | AR-A07 | Valid commit/evidence are published; agent identity cannot approve | AR-11, AR-12 |
 | AR-A08 | Moving an upstream/blueprint branch during execution does not change instruction context; an architectural conflict is reported in the candidate's conformance evidence and cannot become a prose-only success claim | AR-01, AR-06, AR-14 |
+| AR-A09 | `[internal hosting]` Agents in two concurrent runs push their own runs' agent branches and a third run's writer merges them into the task branch; an agent instructed to push the default branch, the task branch without the writer reservation, or another run's or work item's branch is refused | AR-03, AR-15, GR-07 |

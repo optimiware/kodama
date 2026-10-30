@@ -47,6 +47,12 @@ Normative design; not delivered. In a shared run, files written by an earlier st
 - `ignoredPresent` (for example a restored dependency cache) is disclosed with the evidence and does not block by default; an installation or project may later require it false.
 - Promotion reuses a registered image digest independently of scratch. Dirty/generated build inputs are accurately recorded, never hidden.
 
+## Multiple repositories and integration (internal hosting, designed)
+
+Under [ADR 0011](../adr/0011-internal-tenant-git-service.md) a candidate may span several repositories. The subject then names the source set: each repository ID with its candidate commit, sorted by repository ID; a single-repository subject keeps `candidateCommit`. Evidence, OCI provenance and deployments record the same set. Delivery of a set pins all its commits together; it does not claim atomic Git updates across repositories.
+
+[Integration](git-repositories.md#integration) uses the existing gate: the gate's subject names the integration candidate and its expected base; approval lets the run's integration step receive a grant for exactly that default-branch update. A moved base invalidates the approval through the existing applicability checks (DQ-04, DQ-05).
+
 ## Requirements
 
 | ID | Requirement |
@@ -66,6 +72,7 @@ Normative design; not delivered. In a shared run, files written by an earlier st
 | DQ-14 | Agent-produced software candidates MUST include candidate-bound design conformance evidence in the gate subject; missing/stale evidence or unresolved material deviations MUST block approval/progression. |
 | DQ-15 | A declared step environment/configuration and its credential versions MUST be pinned with run admission and preserved in runtime context across edits/retries/restart; delivery/cleanup MUST reject missing, foreign or mismatched pins rather than resolve current settings as a substitute. |
 | DQ-16 | `[run_shared]` Evidence produced in shared scratch MUST record source commits, workspace state at command begin, prior-attempt lineage and tool/service/builder digests. Evidence that is not `clean` at the candidate commit MUST NOT satisfy candidate-bound gate or protected-successor requirements or be presented as built from the unchanged approved candidate; changed scratch or candidate MUST invalidate old approval through existing applicability checks. |
+| DQ-17 | `[internal hosting]` Gate subjects, evidence and deployments for a multi-repository candidate MUST identify every repository and commit of its source set; an integration grant MUST be issued only for the default-branch update named by an approved, still-applicable subject. |
 
 DQ-12 (generic overrides) is retired. Already-started external actions cannot be undone by invalidation; record them and use explicit remediation. Runtime decisions use current authority, not a historical event as permission.
 
@@ -84,5 +91,6 @@ DQ-12 (generic overrides) is retired. Already-started external actions cannot be
 | DQ-A10 | Missing, wrong-candidate, stale-baseline, or materially unresolved conformance evidence blocks approval/progression; a reviewed contract update and fresh report can satisfy the existing gate subject | DQ-01, DQ-02, DQ-04, DQ-14 |
 | DQ-A11 | Environment/credential changes after admission do not alter the persisted context; real callbacks/cleanup remain scoped to the recorded configuration, and partial admission/pin failures roll back together | DQ-01, DQ-04, DQ-08, DQ-15 |
 | DQ-A12 | `[run_shared]` A build from modified or generated scratch is labeled and cannot satisfy candidate-bound evidence; clean evidence, source/tool/service/image provenance and gate invalidation after a writer's new commit remain correct | DQ-01, DQ-04, DQ-05, DQ-07, DQ-14, DQ-16 |
+| DQ-A13 | `[internal hosting]` A two-repository candidate's evidence and approval name both commits; changing either requires fresh review; a deployment whose provenance mismatches either repository is rejected; an approval whose base moved cannot yield an integration grant | DQ-04, DQ-05, DQ-17, GR-12 |
 
 DQ-A08 is retired with the override engine.

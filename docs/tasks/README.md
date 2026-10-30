@@ -44,6 +44,19 @@ T-122 ─┬─ T-113 ─┐
        └─ T-124 ──┘
 ```
 
+### Internal Git service (owner scheduled 2026-10-30)
+
+[O-31](../decisions.md#internal-git-service--2026-10-30-o-31) schedules the [internal Git service plan](../implementation/internal-git-service.md) ([ADR 0011](../adr/0011-internal-tenant-git-service.md)). [T-125](T-125-git-service-architecture.md) records the architecture; [T-126](T-126-git-service-contracts.md) freezes the contracts; T-127 (repository lifecycle), T-128 (Git worker) and T-129 (tenant hosting) proceed in parallel on new packages; T-130 adds the push journal and triggers. T-131 and T-132 edit files owned by T-113 and T-116 and therefore follow them. T-133 (stage acceptance and cutover) is blocked on O-32. T-117 now depends on T-125 because both own `docs/traceability.md`. The generated summary above has not been regenerated; this notice and the task frontmatter govern these tasks until `index --write` and `validate` run.
+
+```text
+T-125                  → T-126
+T-126                  → T-127, T-128, T-129
+T-127, T-128           → T-130
+T-113, T-130           → T-131
+T-116, T-127 … T-131   → T-132
+T-117, T-132           → T-133 (blocked: O-32)
+```
+
 ## Task contract
 
 Scheduled (`planned` or `blocked`) tasks declare `owns`, `check`, optional `resources`, and `acceptance`:
@@ -117,12 +130,21 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-114 Kubernetes run resources and execution policy](T-114-kubernetes-run-resources.md) | T-112, T-122 | done |
 | [T-115 Podman and Process run resources](T-115-local-run-resources.md) | T-112, T-122 | planned |
 | [T-116 Resource assembly, chart and migration](T-116-run-resource-assembly.md) | T-113, T-114, T-115, T-120 | planned |
-| [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121 | planned |
+| [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | planned |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
 | [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | planned |
 | [T-122 O-30 scope amendment](T-122-o30-scope-amendment.md) | T-109, T-110, T-112 | done |
 | [T-123 BuildKit builder service](T-123-buildkit-builder-service.md) | T-117 | deferred |
 | [T-124 Align the qualification driver with O-30](T-124-runprofile-driver-o30.md) | T-111, T-122 | done |
+| [T-125 Internal Git service: documentation and ADR](T-125-git-service-architecture.md) | — | done |
+| [T-126 Internal Git service: contract checkpoint](T-126-git-service-contracts.md) | T-125 | planned |
+| [T-127 Repository lifecycle and persistence](T-127-repository-lifecycle.md) | T-126 | planned |
+| [T-128 Native Git worker](T-128-git-worker.md) | T-126 | planned |
+| [T-129 Tenant Git hosting on Kubernetes](T-129-tenant-git-hosting.md) | T-126 | planned |
+| [T-130 Push journal, events and triggers](T-130-git-push-events.md) | T-127, T-128 | planned |
+| [T-131 Task, agent and source integration](T-131-git-source-integration.md) | T-113, T-130 | planned |
+| [T-132 API, CLI, MCP and chart assembly](T-132-git-service-assembly.md) | T-116, T-127, T-128, T-129, T-130, T-131 | planned |
+| [T-133 Kubernetes acceptance and cutover](T-133-git-service-acceptance.md) | T-117, T-132 | blocked (O-32) |
 
 ## Verification and scope
 

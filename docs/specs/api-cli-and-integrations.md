@@ -1,6 +1,6 @@
 # API, CLI, and integrations
 
-**Scope:** CLI/HTTP API/MCP/webhook-first product access; M2 native Git push notifications; M3 outbound ChatOps review links. Optional UI is deferred to Platform under O-15, not a local dashboard.
+**Scope:** CLI/HTTP API/MCP/webhook-first product access; M2 native Git push notifications; M3 outbound ChatOps review links; designed internal Git hosting and repository management (O-31). Optional UI is deferred to Platform under O-15, not a local dashboard.
 
 ## Interface rules
 
@@ -24,16 +24,19 @@ Use `If-Match` for content edits as well as transitions/decisions: removing it f
 | AC-10 | Interface/schema evolution MUST preserve declared compatible clients. |
 | AC-11 | Rate limits MUST be scoped and return retry guidance. |
 | AC-12 | Implemented routes/examples MUST have machine-readable contracts and meaningful acceptance tests. |
+| AC-13 | `[internal hosting]` Repository management, Git credential exchange and push-record reads MUST be public, scoped, idempotent where they create, and versioned like other resources. |
+| AC-14 | `[internal hosting]` Ordinary Git clients MUST work against the Git endpoint with a Kodama credential helper, with no Kodama-specific Git commands or protocol extensions. |
+| AC-15 | `[internal hosting]` MCP tools for creating and inspecting projects, repositories and work items MUST invoke the same authorized use cases as HTTP and CLI and grant nothing beyond the caller's authority. |
 
 The idempotency lookup key excludes the request hash; the hash is a value compared on conflict. Including the hash in the unique key would accidentally accept changed requests. Replays recheck current permission before returning prior content. Minimum proposed retention is 24 hours.
 
 ## CLI and integrations
 
-Command groups are `auth`, `context`, `work`, `workspace`, `pipeline`, `run`, `gate`, `environment`, `deployment`, `variable`, and `secret`. `workspace` provisions, inspects, archives/restores, and prints Git clone information; it does not launch an IDE/session. `pipeline register` validates inherently; a local `pipeline validate` command needs no validation HTTP endpoint.
+Command groups are `auth`, `context`, `work`, `workspace`, `pipeline`, `run`, `gate`, `environment`, `deployment`, `variable`, and `secret`; internal hosting adds `repo` (create, list, get, archive, restore, refs, pushes) and `git credential`, a standard Git credential helper (designed, T-132). `workspace` provisions, inspects, archives/restores, and prints Git clone information; it does not launch an IDE/session. `pipeline register` validates inherently; a local `pipeline validate` command needs no validation HTTP endpoint.
 
 Commands use the standard-library `flag` package, as platform CLIs do. Do not add Cobra. Exit codes: 0 success, 1 remote/operation failure, 2 usage/validation, 3 authentication/authorization, 4 conflict, 5 timeout/interruption. `run watch --exit-on-terminal` returns 1 for failed/cancelled runs; reading such a record succeeds normally. Secret input uses stdin/protected files. PKCE credentials use `github.com/zalando/go-keyring`. `--credential-store file` is an explicit opt-in to a `0600` file; there is no silent fallback and no nonpersistent plaintext store.
 
-M1 Git uses HTTPS and typed token secrets. Under O-03, M2 first consumes authenticated server-side receive-hook notifications from a controlled Git host and maps the exact accepted commit to a registered definition. Git transport alone does not notify Kodama; configure the hook explicitly. Use a bounded payload, credential and delivery identity, then revalidate repository/project/trigger authority and commit availability. A later GitHub/provider adapter normalizes its verified event into the same seam; no Git wire-protocol server or provider-specific first implementation is required. Untrusted fork execution is outside the M1 trust profile. M3 ChatOps sends durable notifications plus authenticated review links; provider-interactive approvals are later work.
+M1 Git uses HTTPS and typed token secrets. Under O-03, M2 first consumes authenticated server-side receive-hook notifications from a controlled Git host and maps the exact accepted commit to a registered definition. Git transport alone does not notify Kodama; configure the hook explicitly. Use a bounded payload, credential and delivery identity, then revalidate repository/project/trigger authority and commit availability. A later GitHub/provider adapter normalizes its verified event into the same seam; no Git wire-protocol server or provider-specific first implementation is required. Untrusted fork execution is outside the M1 trust profile. O-31 amends O-03 for internally hosted repositories ([ADR 0011](../adr/0011-internal-tenant-git-service.md)): Kodama serves them with native Git at its own endpoint, its server-owned hooks journal every accepted push, and the resulting `git.refs_updated` event feeds the same trigger admission. The HMAC hook stays for external hosts. M3 ChatOps sends durable notifications plus authenticated review links; provider-interactive approvals are later work.
 
 ## Acceptance
 
@@ -48,3 +51,6 @@ M1 Git uses HTTPS and typed token secrets. Under O-03, M2 first consumes authent
 | AC-A07 | Forwarded/stale links cannot approve on behalf of another actor | AC-09 |
 | AC-A08 | Additive response fields preserve supported clients; throttling reports retry | AC-10, AC-11 |
 | AC-A09 | Published route/CLI examples match generated schemas and tests | AC-12 |
+| AC-A10 | Retried repository creation returns the same repository; a stale `PATCH` fails; push records list only the caller's project | AC-13 |
+| AC-A11 | A developer clones, commits and pushes with stock `git` and the credential helper; an expired credential is renewed transparently | AC-14, GR-05 |
+| AC-A12 | An agent creates a project, a repository and tasks through MCP tools; the same calls fail without the corresponding role | AC-15 |

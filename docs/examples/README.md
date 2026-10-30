@@ -8,6 +8,7 @@ These examples instantiate the proposed design; `kodama/v1alpha1` pipelines are 
 2. [Staging and acceptance](workflows/staging-and-acceptance.md): reuse the image, test the stage deployment, perform agent-led exploratory QA, and obtain human acceptance.
 3. [Recovery and rework](workflows/recovery-and-rework.md): controller failure, competing writers, rejected reviews, unknown external effects, and restore.
 4. [Shared workspace, services and builders](workflows/run-shared-build-and-services.md): the `kodama/v1alpha2` design fixtures for ordering, service endpoints and edges, ko/Buildah/BuildKit builds, source-free cleanup and egress policy. Design fixtures only: no image, mode or combination is qualified.
+5. [Internal Git, from task to deployment](workflows/internal-git-task-to-deploy.md): an agent provisions a repository, two agents implement a task, integration advances `main` and CI/CD deploys; then a developer pushes an existing project. Designed interfaces only (ADR 0011).
 
 ## API and CLI
 

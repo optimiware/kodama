@@ -8,7 +8,7 @@ The topology below describes Kodama's execution subsystem and local dependency p
 
 ## Small deployment, explicit state
 
-One Go binary provides `kodama server`, `kodama step`, and user CLI commands. The server hosts API, reconciliation, event publication/consumption, and enabled gateways. Start with one server replica; database claims allow additional replicas without creating separate product services.
+One Go binary provides `kodama server`, `kodama step`, and user CLI commands; the designed internal Git service adds a `kodama git serve` role run once per tenant ([ADR 0011](../adr/0011-internal-tenant-git-service.md)). The server hosts API, reconciliation, event publication/consumption, the authenticated Git endpoint, and enabled gateways. Start with one server replica; database claims allow additional replicas without creating separate product services.
 
 ```mermaid
 flowchart LR
@@ -19,6 +19,10 @@ flowchart LR
     K8s --> Step[kodama step in workload image]
     Step --> Server
     Server --> Git[Git source and retained refs]
+    Users -->|"git clone and push"| Server
+    Step -->|"git fetch and push"| Server
+    Server -->|"authorized forward"| GitWorker[Tenant Git worker and volume]
+    GitWorker -->|"hooks: authorize, confirm"| Server
     Step --> S3[S3 artifacts and logs]
     Server --> S3
     Server --> KMS[KMS for secrets]
@@ -45,13 +49,17 @@ One required variable, `KODAMA_ENV`, selects the adapters behind the same ports 
 | --- | --- |
 | PostgreSQL | Kodama work/history, run/attempt/gate state, project configuration, artifact/deployment metadata, outbox/inbox; standalone identity/credential state or explicit hosted projections under the core contract |
 | NATS JetStream | Durable asynchronous event delivery, redelivery, and notifications |
-| Git | Published source checkpoints and per-run retained commits |
+| Git | Published source checkpoints and per-run retained commits. External repositories today; internally hosted repositories, one worker and volume per tenant, under the designed ADR 0011 |
 | S3-compatible storage | Reports, transcripts, images of test results, retained logs; temporary bundle transfer |
 | OCI registry | Built image manifests/blobs addressed by digest |
 | Kubernetes | Actual workload execution and observed Job/Pod state |
 | KMS | Required. Wrapping KEKs for scope keys; Go derives per-revision value keys |
 
 `attempt_private` (current): no shared writable source volume is required and attempts use private clones. `run_shared` ([ADR 0010](../adr/0010-run-workspace-services-builders.md); designed, not delivered): one bounded disposable scratch volume per run, prepared once, mounted by one attempt at a time, plus run-scoped support services and a pinned execution policy; it is never a source or recovery authority. Publication passes through a control-plane Git writer using expected-tip CAS; a database row alone does not fence a remote writer. See [workspaces](../specs/workspaces.md).
+
+## Internal Git service (designed)
+
+Under [ADR 0011](../adr/0011-internal-tenant-git-service.md) Kodama hosts project repositories itself. Each tenant has one Git worker running native Git (`git http-backend`, receive/upload-pack, hooks, maintenance) over one durable volume, in a Kodama-managed service namespace that mounts nothing else and holds no database or broker credentials. Every clone and push, from people and from steps, goes to the server's `/git/` endpoint, which authenticates the Git grant, authorizes the repository and forwards to the tenant's worker. Before Git moves any ref, the worker's `pre-receive` hook asks the server to authorize each update and record a push record; with the refs locked, its `reference-transaction` hook journals the transaction and obtains commit intent or aborts; `post-receive` confirms, and the server commits a `git.refs_updated` event through the outbox, which pipeline triggers consume. PostgreSQL owns repository metadata, permissions and push records; Git owns history. The contract is [Git service](../contracts/git-service.md); the current external-host model stays in force until the T-133 cutover.
 
 ## Dispatch and completion
 

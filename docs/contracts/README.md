@@ -10,6 +10,7 @@ These Markdown documents define proposed interface shapes. They are the source f
 | [Pipeline format `v1alpha2`](pipeline-format-v1alpha2.md) | Shared run workspace, services, total deadline, endpoint expressions, canonical form, order (not enabled) | `contracts/pipeline/` v2 schema (T-110) |
 | [Runtime v2](runtime-v2.md) | `run_shared` context, command-begin fence, preparation/service subjects (not enabled) | `contracts/runtime/` v2 schemas and fixtures (T-110); API/aggregate integration (T-116) |
 | [Run resources and execution policy](run-resources.md) | Policy pin, capabilities, resource identity, companion port, lifecycle ordering, reasons | Execution DTOs/port (T-112), policy values (T-111) |
+| [Git service](git-service.md) | Repository resource, Git endpoint, Git grants, forwarding assertion, worker routes, push records, `git.refs_updated`, source set (not enabled) | `contracts/git/` schemas and fixtures (T-126); routes and client (T-132) |
 
 Behavioral requirements and acceptance remain in [specifications](../README.md#contributors). A contract describes how to invoke behavior, not a second implementation of its business rules.
 

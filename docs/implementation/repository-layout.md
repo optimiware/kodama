@@ -15,12 +15,16 @@ internal/
   work/                    # work items, history, WIP
   secrets/                 # variables, encryption, typed secret resolution
   workspace/               # Git refs, source publication and reconciliation
+  repository/              # planned (T-127): project repositories, provisioning lifecycle, Hosts port
+  gitservice/              # planned (T-128): native Git worker behind `kodama git serve`, server-owned hooks
+  gitpush/                 # planned (T-130): push authorization, journal, reconciliation, git.refs_updated
+  productmcp/              # planned (T-132): MCP tools over project/repository/work use cases
   pipeline/                # immutable definitions and validation
   artifacts/               # S3 metadata/transfers
   entrypoint/              # in-Pod orchestration and runtime client
   runtimeauth/             # attempt token issuance/admission/revocation
   execution/               # run/step/attempt state, scheduler and the runtime port
-  kube/                    # Kubernetes runtime: Job templates/create/observe/delete
+  kube/                    # Kubernetes runtime: Job templates/create/observe/delete; gitworker/ (planned, T-129) per-tenant Git hosting
   runtime/                 # Podman and test-only Process runtimes, bootstrap, runtimetest
   results/                 # result verification and finalization interface
   logs/                    # live proxy and retained logs
@@ -75,6 +79,7 @@ This is an owner/checkpoint map, not a second interface registry. Existing signa
 | Deployment records (`delivery`) → runtime provenance; scripts → Kubernetes | Delivery implements execution's immutable snapshot resolver; execution pins identity/credentials before dispatch; pre-apply/action row precedes network calls | Absent/foreign/mismatched pin rejected; response loss uses recorded action/annotations; mutable settings cannot replace admitted configuration | T-076/T-035/T-062 → T-077/T-066 unit binding → T-072 wiring → T-065/T-067/T-038 checkpoint | Unit binding fixtures; actual provider/cleanup/SQL and apply/reconcile at T-067 |
 | `deliverycleanup` → execution cleanup admission | Deployment-bound cleanup authorization; execution owns run transaction, no work-item WIP | Stable deployment/action binding, expiry and deletion reconcile independently of work completion | T-066 → T-067 → T-072 | T-066 real scoped persistence/admission checks; T-067 real cleanup |
 | `qa` → work defects, artifacts, deployment evidence | Work owner commits deduped defect/history/audit/outbox; evidence remains deployment/config-bound | Retry preserves defect identity; foreign/stale evidence rejected; QA cannot approve | T-040 → T-075/T-046 unit wiring → T-044 local checkpoint; T-069 browser scope deferred | Deterministic mapping; actual local joins at T-044; later browser/profile evidence at T-069 |
+| `repository` → `gitservice` / `kube/gitworker` through `repository.Hosts`; `gitpush` ← worker hooks; `execution` → Git grants and source sets (designed, [plan](internal-git-service.md#seams)) | Repository and push-record rows commit with audit/outbox; Git initialization and ref updates happen outside SQL; push authorization records intent before refs move | Idempotent on repository ID and receive ID; commit intent obtained with refs locked; unconfirmed entries settled from the receive-attributed ref journal and receive liveness; `unknown` blocks writer reassignment | T-126 → T-127/T-128/T-129 → T-130 → T-131 → T-132 | `contracts/git` fixtures; shared repository/push contract suites on memory and PostgreSQL; real Git in T-128/T-130; kind in T-129; stage in T-133 |
 | Memory adapters → `memdb`; PostgreSQL twins | One `memdb.Update` per use-case call; peers join the caller's `Tx`; PostgreSQL keeps `WithTenant` | Update is all-or-nothing; a `Tx` reads one tenant; a memory adapter never certifies SQL, RLS or lock order | T-087 → T-088/T-080/T-081 → T-071 | `<module>test.Contract` on memory (unit) and PostgreSQL (`test` environment) |
 | CLI/HTTP/event contributions → owning use cases | No client-side business transaction; inbox + local effect atomic where required | Public idempotency/version rules survive retries; external notifications use durable delivery records | T-070/T-071/T-072/T-075, then T-027/T-039/T-046 | Package command/handler fixtures plus assembled public-client and event checks |
 

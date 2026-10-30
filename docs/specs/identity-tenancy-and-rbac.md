@@ -39,6 +39,10 @@ Normative design for `run_shared` runs ([ADR 0010](../adr/0010-run-workspace-ser
 - **Resource identities.** Preparation and service workloads have their own narrow audience (`kodama-runtime-resource`); they cannot call step source/result/artifact/begin, model/MCP proxies or another resource's secrets, and neither token type works on the other's routes.
 - **Trust limits.** All attempts of a run share one filesystem trust domain: later commands can read what earlier ones wrote, and a command explicitly given a secret can copy it. These controls support mutually trusting engineers; running mutually untrusted code in one run or tenant still needs a separately selected and validated boundary.
 
+## Git service isolation (designed)
+
+Internal Git hosting ([ADR 0011](../adr/0011-internal-tenant-git-service.md), [Git repositories](git-repositories.md)) adds a durable tenant component outside the execution namespaces. Each tenant's Git worker runs in its own Kodama-managed service namespace at Pod Security `restricted`, mounts only that tenant's volume, has no Kubernetes API token and no database or broker credentials, and admits traffic only from the control plane. Its identity toward the control plane is bound to its tenant and can reach only the worker routes. Git access uses its own audience: humans exchange their access token for a short-lived Git credential, attempts receive attempt-bound Git grants, and every ref update is authorized against current authority. Fixed roles map to Git as `engineer` read/write under ref policy, `viewer`/`analyst`/`reviewer` read where their project role allows, and `admin` policy management without implicit push or review authority.
+
 ## Requirements
 
 | ID | Requirement |
@@ -59,6 +63,9 @@ Normative design for `run_shared` runs ([ADR 0010](../adr/0010-run-workspace-ser
 | IT-14 | `[run_shared]` Network enforcement MUST implement the pinned policy's network model, verified with real CNI traffic. Every model MUST deny other tenants, the control plane, the Kubernetes API, node and cloud-metadata addresses, and private destinations without a named egress profile. Reachability: the tenant model (O-30) MAY let a tenant's workloads reach that tenant's run services; the run model MUST additionally deny other runs of the same tenant and enforce declared service edges. External access, independently: `publicEgress: true` MAY allow public HTTP/HTTPS; `publicEgress: false` MUST deny every destination outside the named profiles. |
 | IT-15 | `[run_shared]` ko and Buildah MUST actually build and push under the pinned policy; arbitrary privilege, host paths/namespaces/devices, engine sockets, security overrides and a wider shape after a failed build MUST be refused. |
 | IT-16 | `[run_shared]` **Deferred to T-123 (O-30).** A selected BuildKit mode MUST run real `RUN` builds, authenticate run clients and remove daemon/process/cache with the run; a host-privileged mode MUST prove exclusive worker provisioning and disposal and MUST NOT be advertised without that isolation. |
+| IT-17 | `[internal hosting]` Each tenant's Git worker MUST run with its own namespace, service identity and volume, without platform database, broker or Kubernetes API credentials, and MUST accept traffic only through the control plane's verified forwarding. |
+| IT-18 | `[internal hosting]` Git credentials MUST use a distinct audience; human Git credentials MUST be derived from a verified login and re-checked against current roles on use; attempt grants MUST be bound to the attempt's liveness. |
+| IT-19 | `[internal hosting]` A worker identity MUST be bound to one tenant and MUST be refused for any other tenant's repositories, records or routes. |
 
 ## Recovery
 
@@ -80,3 +87,6 @@ Rotate workload signing keys, fence old controllers/publishers, revoke old runti
 | IT-A10 | Nested build and service traffic obeys the pinned network model: same-tenant service access and public egress under the tenant model; foreign-tenant, platform, Kubernetes API, metadata and profile-less private destinations denied; under the run model also other same-tenant runs and undeclared edges; without public egress also unnamed public destinations | IT-08, IT-14 |
 | IT-A11 | ko and Buildah really build and push; privilege, host path/namespace/socket, security override and policy-widening attempts are refused | IT-07, IT-15 |
 | IT-A12 | Deferred to T-123 (O-30). The selected BuildKit mode builds real `RUN` instructions, authenticates run clients and leaves no daemon/process/cache; privileged mode, if selected, proves worker disposal | IT-16 |
+| IT-A13 | A tenant's Git worker cannot read another tenant's volume, reach the database, broker or Kubernetes API, or be reached from execution namespaces directly | IT-17, GR-03 |
+| IT-A14 | An access token, attempt token or forwarded assertion presented as a Git credential fails; a person whose role was removed cannot push with an unexpired Git credential; a finished attempt's grant cannot fetch | IT-18, GR-06 |
+| IT-A15 | Tenant A's worker identity is refused when authorizing a push or confirming an outcome for tenant B | IT-19 |

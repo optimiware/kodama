@@ -18,6 +18,8 @@ An attempt row is dispatch intent before its workload exists; `reason=starting` 
 
 `purpose=work` requires an actionable work item. M2 internal `purpose=cleanup` runs are project-scoped, use no workspace, and are authorized only for a recorded deployment's cleanup. They may run after the originating work item is done/cancelled and do not consume business WIP.
 
+**Origins and source sets (internal hosting, designed; T-131).** Under [ADR 0011](../adr/0011-internal-tenant-git-service.md) a run also records its **origin**: `work_item`, `push` (an applied push record and ref, from a trigger), `manual`, or `provision`. A push-originated run needs no work item and consumes no WIP; a `provision` run may start before its repository exists and receives seed authority only for repositories it creates. A run pins a **source set**, one exact commit and checkout path per selected repository ([contract](../contracts/git-service.md#source-set)); a single-repository run is the one-entry case. The fields carrying origin and source set are a versioned addition; existing definitions, contexts and hashes are unchanged.
+
 ## Requirements
 
 | ID | Requirement |
@@ -44,6 +46,9 @@ An attempt row is dispatch intent before its workload exists; `reason=starting` 
 | PX-20 | `[run_shared]` Admission MUST reserve bounded service, active-attempt and scratch capacity atomically and pin a required total run deadline covering preparation, startup, attempts, retries and gate waits; reservations MUST be released only after verified removal. |
 | PX-21 | `[run_shared]` A run MUST pin its model, runtime context version, execution policy, runtime binding and resource capabilities; a controller, runtime or policy lacking any MUST refuse it. Historical definitions, digests, histories and result hashes MUST remain intact and old-model runs MUST drain under their original semantics. |
 | PX-22 | `[run_shared]` Automatic retry MUST be limited to attempts proven not to have begun their command while scratch and services remain intact; an attempt that may have run user code, an unknown launch or an uncertain effect MUST NOT be replayed automatically. |
+| PX-23 | `[internal hosting]` A run MUST pin its origin and a source set of exact commits with unique checkout paths; every commit MUST belong to a repository of the run's project and stay reachable for the run's retention. |
+| PX-24 | `[internal hosting]` A push-originated run MUST reference one applied push record and ref, pin that update's new commit, and be created at most once per trigger, push and ref. |
+| PX-25 | `[internal hosting]` A provisioning run MUST be admitted without an existing repository and receive seed authority only for repositories it creates in its project. |
 
 ## Scheduling and runtime
 
@@ -111,3 +116,6 @@ Restore rotates workload signing keys and revokes old attempts; it also fences o
 | PX-A16 | Capacity reservations are atomic and bounded; gate waits retain resources only until the run deadline, whose expiry settles resources and gates | PX-09, PX-20 |
 | PX-A17 | Model/context/policy/capability pins survive restart; an unsupported runtime or older controller refuses a `run_shared` run; historical definition digests, histories and result hashes are unchanged | PX-15, PX-21 |
 | PX-A18 | A pre-command infrastructure failure retries on the same scratch; a begun or unknown attempt is never replayed automatically and partial scratch/service effects cannot be silently repeated | PX-07, PX-22 |
+| PX-A19 | A run over two repositories checks each out at its pinned commit and path; a foreign repository, duplicate path or unreachable commit fails admission | PX-02, PX-23 |
+| PX-A20 | A developer push starts one run for the pushed commit; redelivery, replay and later branch movement start nothing more | PX-24, GR-10 |
+| PX-A21 | A provisioning run creates and seeds a repository, then a second run uses it; the seed grant cannot write another repository | PX-25, GR-07 |

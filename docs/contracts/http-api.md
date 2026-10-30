@@ -45,6 +45,10 @@ Base URL is `https://factory.example.invalid/api/v1`. Let `P` mean `/tenants/{te
 | `GET, POST P/deployments`, `GET P/deployments/{id}` | M2 durable deployment record before apply |
 | `POST P/deployments/{id}/cleanup` | M2 scoped cleanup request |
 | `GET, POST P/work-items/{id}/dependencies`, `DELETE P/work-items/{id}/dependencies/{dependencyId}` | M3 dependency links |
+| `GET, POST P/repositories`, `GET, PATCH P/repositories/{id}` | Designed internal hosting ([Git service](git-service.md#repository-resource)): repository create (idempotent), read, default branch and policy |
+| `POST P/repositories/{id}/archive`, `POST P/repositories/{id}/restore` | Designed: change push/run admission |
+| `GET P/repositories/{id}/refs`, `GET P/repositories/{id}/pushes`, `GET P/repositories/{id}/pushes/{pushId}` | Designed: branch/tag tips and push records |
+| `POST /tenants/{tenantId}/git-credentials` | Designed: short-lived Git credential for the caller |
 
 M3 metrics are SQL views exposed as summary fields/query options on work lists. Defects use work-item routes and evidence links. There are no operation, candidate, finding, session, handoff, revision, or generic connection resources.
 
@@ -77,7 +81,7 @@ Start a run with `Idempotency-Key`:
 }
 ```
 
-The source commit must belong to the project's configured repository and retained workspace history. The server resolves and pins spec, configuration, credentials, and profile. The candidate for a read-only delivery run is this commit; a writer can produce a new commit output before gates. No redundant candidate/checkpoint IDs are submitted.
+The source commit must belong to the project's configured repository and retained workspace history. For internally hosted repositories a run may instead pin a `sources` list ([source set](git-service.md#source-set)), designed and owned by T-131. The server resolves and pins spec, configuration, credentials, and profile. The candidate for a read-only delivery run is this commit; a writer can produce a new commit output before gates. No redundant candidate/checkpoint IDs are submitted.
 
 Run admission can refuse a definition with `422` and a stable code such as `format_retired`, `capability_unsupported`, `policy_unavailable`, `limit_exceeds_policy` or `egress_profile_unknown` ([admission refusals](pipeline-format-v1alpha2.md#format-availability-and-admission-refusals)); `details` names only causes, never document content. The `v1alpha2` additions are optional response fields and codes; existing clients keep working.
 
@@ -97,7 +101,7 @@ Use `If-Match` and `Idempotency-Key`. The server derives the human actor. The [d
 
 ## Runtime and observation
 
-Internal runtime endpoints are defined in the [step entrypoint contract](../implementation/step-entrypoint.md) (`/runtime/v1`; `run_shared` runs use [runtime v2](runtime-v2.md)), with an attempt-token audience distinct from human access. Runtime deployment creation uses the same underlying module with restricted authorization.
+Git transport is not under `/api/v1`: the designed internal Git endpoint is `/git/<tenant-key>/<project-key>/<repository>.git`, and Git workers call `/internal/git/v1` with their own audience ([Git service](git-service.md#git-endpoint)). Internal runtime endpoints are defined in the [step entrypoint contract](../implementation/step-entrypoint.md) (`/runtime/v1`; `run_shared` runs use [runtime v2](runtime-v2.md)), with an attempt-token audience distinct from human access. Runtime deployment creation uses the same underlying module with restricted authorization.
 
 SSE uses a durable project event sequence/cursor retained with outbox/event history. `Last-Event-ID` resumes within retention. An expired cursor returns `410 cursor_expired`; snapshot reads return a new observation cursor so clients can resynchronize. NATS delivery is not itself a client cursor.
 

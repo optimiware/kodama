@@ -15,3 +15,7 @@ Workspace identity, compute availability, and write ownership need separate reco
 The logical pairing remains accepted. [ADR 0005](0005-git-backed-workspaces.md) supersedes the initial storage/session proposal with Git commits, private clones, and controlled publication.
 
 A failed run does not destroy the workspace. Archival, retention, and deletion are explicit lifecycle operations. Epics group work and do not receive primary workspaces.
+
+## Amendment — project repositories (ADR 0011, 2026-10-30)
+
+[ADR 0011](0011-internal-tenant-git-service.md) makes repositories project resources and lets a project own several. The pairing kept here becomes one task branch per actionable work item in each repository the work touches, plus agent branches beneath it; the workspace record holds those associations rather than a single repository URL. A repository exists without any work item, and a pipeline started by a developer push needs no work item. Epics still receive no task branch.
