@@ -1,0 +1,51 @@
+apiVersion: kodama/v1alpha3
+kind: Pipeline
+metadata:
+  name: website-stage
+spec:
+  timeoutSeconds: 2400
+  inputs:
+    account_id: {type: string, required: true}
+  steps:
+    - id: build
+      kind: container
+      image: registry.example.invalid/website-builder@sha256:2222222222222222222222222222222222222222222222222222222222222222
+      command: ["/bin/sh", "-ec"]
+      args: ["cd /workspace && ./ci/build-cloudflare.sh /kodama/outputs/worker.tar.gz"]
+      timeoutSeconds: 1800
+      outputs:
+        bundle: {type: artifact, path: /kodama/outputs/worker.tar.gz}
+    - id: deploy
+      kind: container
+      needs: [build]
+      image: registry.example.invalid/deploy-cloudflare@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      artifactFiles:
+        bundle: "${{ steps.build.outputs.bundle }}"
+      state:
+        release:
+          namespace: deploy
+          prefix: website/stage/
+          access: read-write
+      env:
+        CLOUDFLARE_API_TOKEN: {secretRef: "secret://project/cloudflare-stage"}
+      command: ["/usr/local/bin/deploy"]
+      args:
+        - apply
+        - --driver
+        - cloudflare
+        - --recipe
+        - cloudflare-workers
+        - --account-id
+        - "${{ inputs.account_id }}"
+        - --worker
+        - website-stage
+        - --state-binding
+        - release
+        - --bundle
+        - /kodama/inputs/bundle
+      timeoutSeconds: 600
+      outputs:
+        release_id: {type: string}
+        provider_version: {type: string}
+        url: {type: string}
+        receipt: {type: artifact, path: /kodama/outputs/deployment.json}

@@ -726,6 +726,20 @@
         },
         "limits": {
           "$ref": "#/$defs/Limits"
+        },
+        "state": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/stateBinding"
+          }
+        },
+        "artifactFiles": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/artifactInput"
+          }
         }
       },
       "required": [
@@ -1534,6 +1548,53 @@
       "required": [
         "error"
       ]
+    },
+    "stateBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "namespace",
+        "prefix",
+        "write"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/SafeName"
+        },
+        "namespace": {
+          "$ref": "#/$defs/KubernetesName"
+        },
+        "prefix": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "write": {
+          "type": "boolean"
+        }
+      }
+    },
+    "artifactInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "artifactId",
+        "digest"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/SafeName"
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        }
+      }
     }
   }
 }

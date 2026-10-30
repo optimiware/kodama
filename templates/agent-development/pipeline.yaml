@@ -1,0 +1,55 @@
+apiVersion: kodama/v1alpha2
+kind: Pipeline
+metadata:
+  name: develop-and-review
+spec:
+  timeoutSeconds: 14400
+  steps:
+    - id: plan
+      kind: agent
+      agent: {profile: planner-v1}
+      workspace: {access: read}
+      timeoutSeconds: 900
+      outputs:
+        plan: {type: artifact, path: /kodama/outputs/plan.json}
+    - id: implement
+      kind: agent
+      needs: [plan]
+      agent: {profile: implementer-v1}
+      workspace: {access: write}
+      timeoutSeconds: 2400
+    - id: test
+      kind: container
+      needs: [implement]
+      image: registry.example.invalid/project-tools@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      command: ["/bin/sh", "-ec"]
+      args: ["cd /workspace && ./ci/test.sh /kodama/outputs/tests.json"]
+      timeoutSeconds: 1200
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/tests.json}
+    - id: code-review
+      kind: agent
+      needs: [test]
+      agent: {profile: code-reviewer-v1}
+      workspace: {access: read}
+      timeoutSeconds: 900
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/review.json}
+        conformance: {type: artifact, path: /kodama/outputs/conformance.json}
+    - id: security-review
+      kind: agent
+      needs: [code-review]
+      agent: {profile: security-reviewer-v1}
+      workspace: {access: read}
+      timeoutSeconds: 900
+      outputs:
+        report: {type: artifact, path: /kodama/outputs/security.json}
+    - id: approve
+      kind: gate
+      needs: [security-review]
+      gate:
+        evidence:
+          - "${{ steps.test.outputs.report }}"
+          - "${{ steps.code-review.outputs.report }}"
+          - "${{ steps.code-review.outputs.conformance }}"
+          - "${{ steps.security-review.outputs.report }}"

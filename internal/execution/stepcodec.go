@@ -49,13 +49,17 @@ type stepWire struct {
 	// not written) for every kodama/v1alpha1 step, which keeps their stored form
 	// byte for byte unchanged.
 	Egress []string `json:"egress,omitempty"`
+	// State and ArtifactFiles are kodama/v1alpha3 bindings. Their absence keeps
+	// older stored steps byte for byte unchanged.
+	State         map[string]pipeline.StateBinding `json:"state,omitempty"`
+	ArtifactFiles map[string]string                `json:"artifactFiles,omitempty"`
 }
 
 // EncodeStep serializes a frozen step.
 func EncodeStep(s pipeline.Step) ([]byte, error) {
 	w := stepWire{ID: s.ID, Kind: s.Kind, Needs: s.Needs, When: s.When, Workspace: s.Workspace, Environment: s.Environment, Image: s.Image,
 		Command: s.Command, Args: s.Args, SecretFiles: s.SecretFiles, TimeoutSeconds: s.TimeoutSeconds, Retry: s.Retry, Outputs: s.Outputs,
-		Agent: s.Agent, Gate: s.Gate, Egress: s.Egress}
+		Agent: s.Agent, Gate: s.Gate, Egress: s.Egress, State: s.State, ArtifactFiles: s.ArtifactFiles}
 	if len(s.Env) > 0 {
 		w.Env = make(map[string]envWire, len(s.Env))
 		for k, v := range s.Env {
@@ -73,7 +77,7 @@ func DecodeStep(b []byte) (pipeline.Step, error) {
 	}
 	s := pipeline.Step{ID: w.ID, Kind: w.Kind, Needs: w.Needs, When: w.When, Workspace: w.Workspace, Environment: w.Environment, Image: w.Image,
 		Command: w.Command, Args: w.Args, SecretFiles: w.SecretFiles, TimeoutSeconds: w.TimeoutSeconds, Retry: w.Retry, Outputs: w.Outputs,
-		Agent: w.Agent, Gate: w.Gate, Egress: w.Egress}
+		Agent: w.Agent, Gate: w.Gate, Egress: w.Egress, State: w.State, ArtifactFiles: w.ArtifactFiles}
 	if len(w.Env) > 0 {
 		s.Env = make(map[string]pipeline.EnvValue, len(w.Env))
 		for k, v := range w.Env {

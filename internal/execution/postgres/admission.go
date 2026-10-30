@@ -62,6 +62,15 @@ func (s *Store) AdmitInTx(ctx context.Context, tx pgx.Tx, p *execution.Admission
 		ctx = execution.WithRequestID(ctx, p.RequestID)
 	}
 	var pinID string
+	if run.Purpose == execution.PurposeProject {
+		if err := env.Authorize(ctx, p.Actor, scope, execution.PermRunManage); err != nil {
+			switch {
+			case errors.Is(err, execution.ErrDenied), errors.Is(err, execution.ErrHidden):
+				return nil, false, execution.ErrDenied
+			}
+			return nil, false, execution.Unavailablef(err, "the authority is unavailable")
+		}
+	}
 	if run.Purpose == execution.PurposeWork {
 		if err := env.takeWork(ctx, run.WorkItemID); err != nil {
 			return nil, false, err

@@ -1,5 +1,11 @@
 # internal/delivery
 
+**DEPRECATED (container-plugins):** this package is the legacy Kubernetes-specific
+application delivery model. New deployment work uses the stateful container
+plugin engine in `images/plugins/deploy`; active removal is tracked by the
+[container plugin plan](../../docs/implementation/container-plugins.md). Do not add
+new provider or deployment semantics here.
+
 Environment and deployment records (task T-035). It supports build/preview/stage
 bookkeeping around ordinary scripts; it is **not** a deployment engine, applies
 nothing to a cluster and schedules nothing.

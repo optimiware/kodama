@@ -17,6 +17,7 @@ import (
 
 	pipelinev1 "github.com/optimiware/kodama/contracts/pipeline/v1"
 	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -490,13 +491,16 @@ func (p *jsonParser) number(path string) (any, bool) {
 // into a typed Document.
 func fromTree(tree any) (Document, error) {
 	// The schema is selected by the document's own apiVersion. Reading a
-	// kodama/v1alpha2 document is independent of whether an installation
-	// enabled the format: stored definitions stay readable, and enabling is a
+	// shared-format document is independent of whether an installation enabled
+	// the format: stored definitions stay readable, and enabling is a
 	// registration decision of the Validator.
 	v2 := isV1Alpha2Tree(tree)
+	v3 := isV1Alpha3Tree(tree)
 	schema := pipelinev1.Schema
 	if v2 {
 		schema = pipelinev1alpha2.Schema
+	} else if v3 {
+		schema = pipelinev1alpha3.Schema
 	}
 	sch, err := schema()
 	if err != nil {
@@ -531,7 +535,7 @@ func fromTree(tree any) (Document, error) {
 		d.add(CodeInvalidDocument, "$", "the document does not match the pipeline schema")
 		return Document{}, d.err(StageSyntax)
 	}
-	if v2 {
+	if v2 || v3 {
 		// Cross-structure rules the schema cannot state (port and edge
 		// references, overlaps, probe ranges) are still part of the document's
 		// shape and fail at the syntax stage.
@@ -554,7 +558,7 @@ var gateForbidden = map[string]bool{
 // stable codes. Messages are fixed text; the offending values are never echoed.
 func mapSchemaError(d *diagnostics, ve *jsonschema.ValidationError, tree any) {
 	type finding struct{ code, path, msg string }
-	v2 := isV1Alpha2Tree(tree)
+	v2 := isV1Alpha2Tree(tree) || isV1Alpha3Tree(tree)
 	var found []finding
 	seen := map[string]bool{}
 	add := func(code, path, msg string) {

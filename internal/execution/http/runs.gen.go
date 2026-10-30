@@ -68,6 +68,7 @@ const (
 // Defines values for RunPurpose.
 const (
 	Cleanup RunPurpose = "cleanup"
+	Project RunPurpose = "project"
 	Work    RunPurpose = "work"
 )
 
@@ -149,6 +150,15 @@ type AttemptFailureClass string
 // AttemptStatus defines model for AttemptStatus.
 type AttemptStatus string
 
+// CreateProjectRunRequest defines model for CreateProjectRunRequest.
+type CreateProjectRunRequest struct {
+	// DefinitionId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	DefinitionId externalRef0.ID `json:"definitionId"`
+
+	// Inputs Run inputs by declared name. Unknown names and type mismatches are admission_refused.
+	Inputs *map[string]Scalar `json:"inputs,omitempty"`
+}
+
 // CreateRunRequest defines model for CreateRunRequest.
 type CreateRunRequest struct {
 	ContentRevision int64 `json:"contentRevision"`
@@ -207,12 +217,24 @@ type Reason = string
 // Run defines model for Run.
 type Run struct {
 	CancelRequestedAt *time.Time `json:"cancelRequestedAt"`
-	ContentRevision   *int64     `json:"contentRevision"`
-	CreatedAt         time.Time  `json:"createdAt"`
-	DefinitionDigest  string     `json:"definitionDigest"`
+
+	// CleanupReason Why a draining run is held nonterminal by its resources (resource_stop_unconfirmed or cleanup_pending); null otherwise. It is derived, never a business status.
+	CleanupReason   *string   `json:"cleanupReason"`
+	ContentRevision *int64    `json:"contentRevision"`
+	CreatedAt       time.Time `json:"createdAt"`
+
+	// DeadlineAt The run's pinned total deadline; it covers gate waits and bounds every resource.
+	DeadlineAt       *time.Time `json:"deadlineAt"`
+	DefinitionDigest string     `json:"definitionDigest"`
 
 	// DefinitionId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	DefinitionId externalRef0.ID `json:"definitionId"`
+
+	// EffectiveAccess The effective workspace access of every executable step, by step ID: none, read or write. (Plain strings, not an enum: a new enum would rename released client constants.)
+	EffectiveAccess *map[string]string `json:"effectiveAccess,omitempty"`
+
+	// ExecutionOrder The frozen order in which executable steps and gates are processed.
+	ExecutionOrder *[]string `json:"executionOrder,omitempty"`
 
 	// FailureReason The recorded failure intent; the run fails once its attempts settle.
 	FailureReason *Reason    `json:"failureReason"`
@@ -222,12 +244,18 @@ type Run struct {
 	Id            externalRef0.ID `json:"id"`
 	InputSnapshot InputSnapshot   `json:"inputSnapshot"`
 
-	// Purpose Only work runs are created through this API.
+	// Purpose Work runs use the work-item API; project runs are source-free admission; cleanup is internal.
 	Purpose RunPurpose `json:"purpose"`
 
 	// Reason A classified, content-free reason code.
-	Reason       Reason  `json:"reason"`
-	RequestedBy  Actor   `json:"requestedBy"`
+	Reason      Reason `json:"reason"`
+	RequestedBy Actor  `json:"requestedBy"`
+
+	// Resources Safe observations of the run's resources (the network boundary, the workspace, the preparation and the support services), for the caller's current authorization. A UID, fingerprint, spec, endpoint, log or credential is never part of it.
+	Resources *[]RunResource `json:"resources,omitempty"`
+
+	// RunModel The value is run_shared. Present only when the run was admitted under the run_shared model (one disposable workspace carried through its steps, run-scoped support services; docs/contracts/run-resources.md) and only in the answer of getRun. A run without it is an attempt_private run, which behaves as before. The members below are present exactly when this one is.
+	RunModel     *string `json:"runModel,omitempty"`
 	SourceCommit *string `json:"sourceCommit"`
 
 	// SourceRetention A work run dispatches only after its retained source reference is confirmed.
@@ -240,7 +268,7 @@ type Run struct {
 	WorkItemId *string              `json:"workItemId"`
 }
 
-// RunPurpose Only work runs are created through this API.
+// RunPurpose Work runs use the work-item API; project runs are source-free admission; cleanup is internal.
 type RunPurpose string
 
 // RunSourceRetention A work run dispatches only after its retained source reference is confirmed.
@@ -250,6 +278,24 @@ type RunSourceRetention string
 type RunPage struct {
 	Items      []Run   `json:"items"`
 	NextCursor *string `json:"nextCursor"`
+}
+
+// RunResource defines model for RunResource.
+type RunResource struct {
+	// Key network, workspace, preparation or service.NAME.
+	Key string `json:"key"`
+
+	// Kind network, workspace, preparation or service.
+	Kind string `json:"kind"`
+
+	// Phase The observed phase of the resource: pending, ready, failed, stopped, absent or unknown. It is not a run, step or attempt status.
+	Phase   string     `json:"phase"`
+	ReadyAt *time.Time `json:"readyAt"`
+
+	// Reason A safe, stable reason code (for example preparation_failed, service_lost, policy_unavailable).
+	Reason    *string    `json:"reason"`
+	RemovedAt *time.Time `json:"removedAt"`
+	StoppedAt *time.Time `json:"stoppedAt"`
 }
 
 // RunStatus defines model for RunStatus.
@@ -321,6 +367,12 @@ type CreateRunParams struct {
 	IdempotencyKey externalRef0.IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// CreateProjectRunParams defines parameters for CreateProjectRun.
+type CreateProjectRunParams struct {
+	// IdempotencyKey Client-chosen key for run/deployment creation and gate decisions. The stored lookup key is (principal, tenant, method, canonical route, key); the request hash is stored and compared separately. A different request for the same key is 409 idempotency_conflict.
+	IdempotencyKey externalRef0.IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // ListRunStepsParams defines parameters for ListRunSteps.
 type ListRunStepsParams struct {
 	// Limit Page size. Values outside 1..200 are rejected, never clamped.
@@ -332,3 +384,6 @@ type ListRunStepsParams struct {
 
 // CreateRunJSONRequestBody defines body for CreateRun for application/json ContentType.
 type CreateRunJSONRequestBody = CreateRunRequest
+
+// CreateProjectRunJSONRequestBody defines body for CreateProjectRun for application/json ContentType.
+type CreateProjectRunJSONRequestBody = CreateProjectRunRequest

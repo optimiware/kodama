@@ -44,6 +44,12 @@ type RuntimeV2 interface {
 	Begin(ctx context.Context, req runtimev2.BeginRequest) (runtimev2.BeginResponse, error)
 }
 
+// ArtifactDownloader is the optional read side of the runtime artifact routes.
+// A fake runtime without it cannot materialize artifactFiles and fails closed.
+type ArtifactDownloader interface {
+	DownloadArtifact(ctx context.Context, id domain.ArtifactID) (runtimev1.ArtifactReadResponse, error)
+}
+
 // Uploader transfers one object to the short-lived instructions returned by an
 // artifact reservation. The body is re-readable so a retry can start over.
 type Uploader interface {

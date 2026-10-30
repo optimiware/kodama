@@ -133,13 +133,16 @@ func (s *Service) planShared(ctx context.Context, scope domain.Scope, runID doma
 // explicitly composed SharedConfig, for an ordinary work run and for an internal
 // deployment cleanup run alike; an unconfigured composition refuses both.
 func (s *Service) checkVersion(version string, allowShared bool) error {
-	if allowShared && s.d.Shared != nil && version == sharedAPIVersion {
+	if allowShared && s.d.Shared != nil && (version == sharedAPIVersion || version == sharedAPIVersionV3) {
 		return nil
 	}
 	return checkDefinitionVersion(version)
 }
 
-const sharedAPIVersion = "kodama/v1alpha2"
+const (
+	sharedAPIVersion   = "kodama/v1alpha2"
+	sharedAPIVersionV3 = "kodama/v1alpha3"
+)
 
 // ownsModel is the pre-mutation guard of every entry that could change a
 // persisted run_shared run (reconciliation, results, begin, receipts, attempt
@@ -233,6 +236,10 @@ func (s *Service) startSharedMutation(lim Limit) Mutation {
 				}
 				return Effects{}, err
 			}
+			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
+				return Effects{}, normalizeAuth(err)
+			}
+		} else if run.Purpose == PurposeProject {
 			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
 				return Effects{}, normalizeAuth(err)
 			}
@@ -384,6 +391,10 @@ func (s *Service) claimSharedMutation(stepID string, src SourceInfo, lim Limit) 
 				}
 				return Effects{}, err
 			}
+			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
+				return Effects{}, normalizeAuth(err)
+			}
+		} else if run.Purpose == PurposeProject {
 			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
 				return Effects{}, normalizeAuth(err)
 			}
@@ -709,7 +720,7 @@ func decodeAttemptContext(at *Attempt) (runtimev1.Context, error) {
 			TenantID: c.TenantID, ProjectID: c.ProjectID, RunID: c.RunID, StepID: c.StepID, AttemptID: c.AttemptID, ActionKey: c.ActionKey,
 			Definition: c.Definition, WorkItem: c.WorkItem, DesignBaseline: c.DesignBaseline, Profile: c.Profile, Command: c.Command,
 			Workspace: runtimev1.Workspace{Access: c.Workspace.Access}, Inputs: c.Inputs, Outputs: c.Outputs, Secrets: c.Secrets,
-			Environment: c.Environment, Limits: c.Limits,
+			Environment: c.Environment, State: c.State, ArtifactFiles: c.ArtifactFiles, Limits: c.Limits,
 		}, nil
 	}
 	c, err := runtimev1.DecodeRequest[runtimev1.Context](at.Context)

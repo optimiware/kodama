@@ -18,10 +18,12 @@ func TestMigrationBaselineIsTwoFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs := Contributions()
-	if len(cs) != 4 || cs[0].Module != "storage" || len(cs[0].Migrations) != 2 {
+	if len(cs) != 5 || cs[0].Module != "storage" || len(cs[0].Migrations) != 2 {
 		t.Fatalf("contributions = %+v", cs)
 	}
-	if cs[1].Module != "execution-run-resources" || len(cs[1].Migrations) != 1 || cs[1].Migrations[0].ID != execpg.RunResourcesMigrationID {
+	if cs[1].Module != "execution-run-resources" || len(cs[1].Migrations) != 3 ||
+		cs[1].Migrations[0].ID != execpg.RunResourcesMigrationID || cs[1].Migrations[1].ID != execpg.StepArtifactRefsMigrationID ||
+		cs[1].Migrations[2].ID != execpg.ProjectRunsMigrationID {
 		t.Fatalf("the appended contribution is %+v", cs[1])
 	}
 	if cs[2].Module != "runtimeauth-resource-grants" || len(cs[2].Migrations) != 1 || cs[2].Migrations[0].ID != runtimeauthpg.ResourceGrantsMigrationID {
@@ -30,8 +32,17 @@ func TestMigrationBaselineIsTwoFiles(t *testing.T) {
 	if cs[3].Module != "artifacts-workspace-provenance" || len(cs[3].Migrations) != 1 || cs[3].Migrations[0].ID != artifactspg.WorkspaceProvenanceMigrationID {
 		t.Fatalf("the workspace provenance contribution is %+v", cs[3])
 	}
+	if cs[4].Module != "state" || len(cs[4].Migrations) != 4 || cs[4].Migrations[0].ID != "300_state.sql" ||
+		cs[4].Migrations[1].ID != "301_state_grants.sql" || cs[4].Migrations[2].ID != "302_state_quota.sql" ||
+		cs[4].Migrations[3].ID != "303_state_audit.sql" {
+		t.Fatalf("the state contribution is %+v", cs[4])
+	}
 	ms := m.Migrations()
-	if len(ms) != 5 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID || ms[3].ID != runtimeauthpg.ResourceGrantsMigrationID || ms[4].ID != artifactspg.WorkspaceProvenanceMigrationID {
+	if len(ms) != 11 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID ||
+		ms[3].ID != execpg.StepArtifactRefsMigrationID || ms[4].ID != execpg.ProjectRunsMigrationID ||
+		ms[5].ID != runtimeauthpg.ResourceGrantsMigrationID || ms[6].ID != artifactspg.WorkspaceProvenanceMigrationID ||
+		ms[7].ID != "300_state.sql" || ms[8].ID != "301_state_grants.sql" || ms[9].ID != "302_state_quota.sql" ||
+		ms[10].ID != "303_state_audit.sql" {
 		t.Fatalf("manifest = %+v", ms)
 	}
 	// The schema file defines objects: the only privilege change it may make is a
@@ -86,7 +97,7 @@ func TestMigrateRefusesUnsafeIdentities(t *testing.T) {
 // earlier moved and nothing else was added.
 func TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPrefix(t *testing.T) {
 	cs := Contributions()
-	if len(cs) != 4 {
+	if len(cs) != 5 {
 		t.Fatalf("%d contributions", len(cs))
 	}
 	if cs[0].Module != "storage" || cs[1].Module != "execution-run-resources" || cs[2].Module != "runtimeauth-resource-grants" ||
@@ -94,7 +105,9 @@ func TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPre
 		t.Fatalf("an earlier contribution moved: %s, %s, %s", cs[0].Module, cs[1].Module, cs[2].Module)
 	}
 	last := cs[len(cs)-1]
-	if last.Module != "artifacts-workspace-provenance" || len(last.Migrations) != 1 || last.Migrations[0].ID != artifactspg.WorkspaceProvenanceMigrationID {
+	if last.Module != "state" || len(last.Migrations) != 4 || last.Migrations[0].ID != "300_state.sql" ||
+		last.Migrations[1].ID != "301_state_grants.sql" || last.Migrations[2].ID != "302_state_quota.sql" ||
+		last.Migrations[3].ID != "303_state_audit.sql" {
 		t.Fatalf("the final contribution is %+v", last.Module)
 	}
 	prior := cs[:len(cs)-1]
@@ -109,16 +122,17 @@ func TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPre
 			priorIDs = append(priorIDs, mig.ID)
 		}
 	}
-	if len(all) != len(priorIDs)+1 {
-		t.Fatalf("%d migrations, want the %d of the prior release plus one", len(all), len(priorIDs))
+	if len(all) != len(priorIDs)+4 {
+		t.Fatalf("%d migrations, want the %d of the prior release plus four", len(all), len(priorIDs))
 	}
 	for i, id := range priorIDs {
 		if all[i].ID != id {
 			t.Fatalf("migration %d is %s, the prior ledger has %s", i, all[i].ID, id)
 		}
 	}
-	if all[len(all)-1].ID != artifactspg.WorkspaceProvenanceMigrationID {
-		t.Fatalf("last migration %s", all[len(all)-1].ID)
+	if all[len(all)-4].ID != "300_state.sql" || all[len(all)-3].ID != "301_state_grants.sql" ||
+		all[len(all)-2].ID != "302_state_quota.sql" || all[len(all)-1].ID != "303_state_audit.sql" {
+		t.Fatalf("last migrations %s, %s, %s, %s", all[len(all)-4].ID, all[len(all)-3].ID, all[len(all)-2].ID, all[len(all)-1].ID)
 	}
 	// Both are additive and enable nothing: they create tables, columns and guards
 	// only, and no composition option exists in this package for the new format.
@@ -130,8 +144,8 @@ func TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPre
 			}
 		}
 	}
-	// The runtime privileges of both tables are minimal: no DELETE, no blanket UPDATE.
-	for _, stmt := range append(statements(cs[2].Migrations[0].SQL), statements(last.Migrations[0].SQL)...) {
+	// The runtime privileges of the prior tables are minimal: no DELETE, no blanket UPDATE.
+	for _, stmt := range append(statements(cs[2].Migrations[0].SQL), statements(cs[3].Migrations[0].SQL)...) {
 		if strings.HasPrefix(stmt, "GRANT ") && strings.Contains(stmt, "{{runtime_role}}") &&
 			(strings.Contains(stmt, "DELETE") || strings.Contains(stmt, "ALL")) {
 			t.Fatalf("the grant migration gives the runtime role too much: %.80s", stmt)

@@ -35,6 +35,9 @@ func cloneRun(r execution.Run) execution.Run {
 	r.Snapshot.Inputs = slices.Clone(r.Snapshot.Inputs)
 	r.Snapshot.Secrets = slices.Clone(r.Snapshot.Secrets)
 	r.Snapshot.Environments = slices.Clone(r.Snapshot.Environments)
+	r.Snapshot.States = slices.Clone(r.Snapshot.States)
+	r.Snapshot.ArtifactFiles = slices.Clone(r.Snapshot.ArtifactFiles)
+	r.Snapshot.InputArtifacts = slices.Clone(r.Snapshot.InputArtifacts)
 	if r.Snapshot.Runtime != nil {
 		b := *r.Snapshot.Runtime
 		r.Snapshot.Runtime = &b
@@ -60,6 +63,7 @@ func cloneStep(s execution.StepRun) (execution.StepRun, error) {
 	s.NextAttemptAt, s.FinishedAt = cloneTime(s.NextAttemptAt), cloneTime(s.FinishedAt)
 	s.RetryOn = slices.Clone(s.RetryOn)
 	s.Outputs = maps.Clone(s.Outputs)
+	s.ArtifactRefs = maps.Clone(s.ArtifactRefs)
 	return s, nil
 }
 

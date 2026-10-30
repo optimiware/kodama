@@ -67,6 +67,9 @@ import (
 	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/secrets"
 	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
+	statehttp "github.com/optimiware/kodama/internal/state"
+	statepg "github.com/optimiware/kodama/internal/state/postgres"
+	stateruntimeauth "github.com/optimiware/kodama/internal/state/runtimeauth"
 	"github.com/optimiware/kodama/internal/storage"
 	"github.com/optimiware/kodama/internal/work"
 	dependencieshttp "github.com/optimiware/kodama/internal/work/dependencies/http"
@@ -95,7 +98,7 @@ var sentinelTables = []string{
 	"tenants", "projects", "memberships", "audit", "outbox", "event_inbox", "idempotency", "work_items",
 	"secrets", "pipeline_definitions", "workspaces", "artifacts", "runs", "step_attempts", "runtime_grants", "log_records",
 	"agent_profiles", "gates", "environments", "deployments", "model_settings", "model_requests", "mcp_servers", "mcp_invocations",
-	"work_item_dependencies", "chatops_destinations", "chatops_deliveries", "git_triggers", "git_trigger_deliveries", "git_trigger_admissions",
+	"work_item_dependencies", "chatops_destinations", "chatops_deliveries", "git_triggers", "git_trigger_deliveries", "git_trigger_admissions", "state_entries",
 }
 
 // Core is the constructed core assembly: every dependency is built and checked,
@@ -119,6 +122,9 @@ type Core struct {
 	runtime http.Handler
 	// runtimeV2 serves /runtime/v2 when run_shared is composed (nil otherwise).
 	runtimeV2 http.Handler
+	// runtimeV3 serves declared state bindings for v1alpha3 attempts (nil when
+	// the state capability is not composed).
+	runtimeV3 http.Handler
 	// sharedPublic decorates the public handler with the run_shared run view and
 	// resource logs (nil unless run_shared is composed).
 	sharedPublic *SharedPublic
@@ -449,9 +455,11 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	validator, err := pipeline.NewValidator(pipeline.Config{
 		Capabilities: kinds, Profiles: profileLookup,
 		References: pipelineReferences{authority: authority, catalog: secretStore, environments: envRefs},
-		// kodama/v1alpha2 is registrable exactly when run_shared is composed; the
-		// execution service refuses it independently when it is not.
+		// kodama/v1alpha2 and v1alpha3 are registrable exactly when run_shared
+		// is composed; the execution service refuses them independently when it
+		// is not.
 		EnableV1Alpha2: cfg.runSharedConfigured(),
+		EnableV1Alpha3: cfg.runSharedConfigured(),
 	})
 	if err != nil {
 		return err
@@ -906,7 +914,7 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 		Env: cfg.Env, Log: c.log, Tuning: tune,
 		Deps: execution.Dependencies{
 			Authority: execAuthority, Definitions: definitions, Capabilities: chain.Capabilities(pipeline.KindGate), Work: workContent,
-			Configuration: execConfig, Sources: sources, Limits: limits, Hooks: chain.Hooks,
+			Configuration: execConfig, Sources: sources, Artifacts: artifactInputResolver{svc: artSvc}, Limits: limits, Hooks: chain.Hooks,
 			Tenants: tenants, CancelledWork: cancelled,
 			Cleanup: ports.Cleanup, CleanupEnvironments: ports.CleanupEnvironments, EffectReconciler: ports.EffectReconciler,
 		},
@@ -924,6 +932,16 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 		return fmt.Errorf("execution assembly: %w", err)
 	}
 	c.Slice, c.Execution, c.runtime, c.runtimeV2 = slice, slice.Trusted, slice.Runtime, slice.RuntimeV2
+	stateStore, err := statepg.New(statepg.Config{DB: pool})
+	if err != nil {
+		return fmt.Errorf("state store: %w", err)
+	}
+	stateHandler, err := statehttp.NewHandler(stateStore, stateruntimeauth.Resolver{Authority: slice.Auth})
+	if err != nil {
+		return fmt.Errorf("state runtime API: %w", err)
+	}
+	stateHandler.Artifacts = stateArtifactVerifier{svc: artSvc}
+	c.runtimeV3 = stateHandler
 	if rtSet.Shared != nil {
 		// The additive run view and the resource logs of the run_shared model, in
 		// front of the unchanged public router.

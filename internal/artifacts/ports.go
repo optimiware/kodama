@@ -26,7 +26,15 @@ type AttemptGrant struct {
 	Source Provenance
 	// Outputs are the declared artifact outputs.
 	Outputs []OutputDecl
-	Limits  Limits
+	// Inputs are the verified file artifacts pinned for this attempt.
+	Inputs []InputRef
+	Limits Limits
+}
+
+// InputRef is one verified artifact descriptor the attempt may read.
+type InputRef struct {
+	ID     domain.ArtifactID
+	Digest Digest
 }
 
 func (g AttemptGrant) declared(name string) (OutputDecl, bool) {
@@ -48,6 +56,12 @@ type AttemptAuthority interface {
 	// and ErrNotFound for an attempt the caller may not address. Any other error
 	// is a dependency failure; every operation fails closed on it.
 	Grant(ctx context.Context, caller Caller, attempt domain.AttemptID) (AttemptGrant, error)
+}
+
+// AttemptReadAuthority is the optional consumer-read authority. It is separate
+// from AttemptAuthority so a producer authority cannot silently grant reads.
+type AttemptReadAuthority interface {
+	GrantRead(ctx context.Context, caller Caller, attempt domain.AttemptID) (AttemptGrant, error)
 }
 
 // ReadSubject describes the artifact a reader asks about, so the authority can

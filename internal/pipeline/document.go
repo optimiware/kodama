@@ -10,6 +10,7 @@ import (
 
 	pipelinev1 "github.com/optimiware/kodama/contracts/pipeline/v1"
 	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
 )
 
 // StepKind is the executor family of a step.
@@ -246,6 +247,10 @@ type Step struct {
 	Args        []string            `json:"args,omitempty"`
 	Env         map[string]EnvValue `json:"env,omitempty"`
 	SecretFiles map[string]string   `json:"secretFiles,omitempty"`
+	// State and ArtifactFiles are kodama/v1alpha3 executable-step bindings. They
+	// are absent from the older formats and are never inferred.
+	State         map[string]StateBinding `json:"state,omitempty"`
+	ArtifactFiles map[string]string       `json:"artifactFiles,omitempty"`
 
 	TimeoutSeconds int64             `json:"timeoutSeconds,omitempty"`
 	Retry          *Retry            `json:"retry,omitempty"`
@@ -278,7 +283,7 @@ func (s Step) IsWriter() bool { return s.Executable() && s.access() == AccessWri
 // become their empty forms; retry.maxAttempts defaults to one attempt. Nothing
 // else is rewritten. The copy shares no map or slice with the receiver.
 func normalize(d Document) Document {
-	if d.APIVersion == pipelinev1alpha2.APIVersion {
+	if d.IsShared() {
 		return normalizeV2(d)
 	}
 	out := Document{APIVersion: d.APIVersion, Kind: d.Kind, Metadata: d.Metadata}
@@ -358,7 +363,7 @@ func normalize(d Document) Document {
 // tree renders a normalized document as a generic JSON tree whose maps
 // serialize with sorted keys. It is the input of canonical serialization.
 func (d Document) tree() map[string]any {
-	if d.APIVersion == pipelinev1alpha2.APIVersion {
+	if d.IsShared() {
 		return d.treeV2()
 	}
 	inputs := map[string]any{}
@@ -460,7 +465,7 @@ func decodeDocument(raw []byte) (Document, error) {
 	if err := dec.Decode(&d); err != nil {
 		return Document{}, fmt.Errorf("decode document: %w", err)
 	}
-	if (d.APIVersion != pipelinev1.APIVersion && d.APIVersion != pipelinev1alpha2.APIVersion) || d.Kind != pipelinev1.Kind {
+	if (d.APIVersion != pipelinev1.APIVersion && d.APIVersion != pipelinev1alpha2.APIVersion && d.APIVersion != pipelinev1alpha3.APIVersion) || d.Kind != pipelinev1.Kind {
 		return Document{}, errors.New("decode document: unexpected apiVersion or kind")
 	}
 	return d, nil

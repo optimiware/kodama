@@ -33,6 +33,10 @@ type StepRun struct {
 	// empty unless the step succeeded; a failed step exposes none.
 	OutputCommit string
 	Outputs      map[string]runtimev1.Value
+	// ArtifactRefs are the verified descriptors of this step's artifact
+	// outputs, keyed by the declared output name. They let a descendant pin a
+	// file input without another storage lookup.
+	ArtifactRefs map[string]runtimev1.ArtifactInput
 
 	Version    domain.Version
 	CreatedAt  time.Time
@@ -169,4 +173,29 @@ func (s *StepRun) scheduleRetry(now time.Time) error {
 	s.Status, s.Reason, s.NextAttemptAt = StepPending, ReasonBackoff, &next
 	s.touch(now)
 	return nil
+}
+
+// CaptureArtifactRefs records the verified descriptors of the step's artifact
+// outputs. A missing, foreign or unusable artifact is omitted; dispatch then
+// fails the consumer instead of guessing.
+func (s *StepRun) CaptureArtifactRefs(result runtimev1.Result, refs map[domain.ArtifactID]runtimev1.ArtifactRef) {
+	out := map[string]runtimev1.ArtifactInput{}
+	for name, decl := range s.Spec.Outputs {
+		if decl.Type != pipeline.TypeArtifact {
+			continue
+		}
+		value, ok := result.Outputs[name]
+		if !ok || !value.IsString() {
+			continue
+		}
+		id := domain.ArtifactID(value.String())
+		ref, ok := refs[id]
+		if !ok || !ref.Usable || ref.Digest == "" {
+			continue
+		}
+		out[name] = runtimev1.ArtifactInput{Name: name, ArtifactID: string(id), Digest: ref.Digest}
+	}
+	if len(out) > 0 {
+		s.ArtifactRefs = out
+	}
 }

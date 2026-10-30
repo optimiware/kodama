@@ -79,13 +79,14 @@ var DefaultRetry = RetryPolicy{MaxAttempts: 5, BaseDelay: 250 * time.Millisecond
 // Client is the HTTP adapter for Runtime and Uploader. The bearer token is held
 // in memory and never logged.
 type Client struct {
-	base    string
-	http    *http.Client
-	retry   RetryPolicy
-	log     *slog.Logger
-	mu      sync.Mutex
-	token   string
-	timeout time.Duration
+	base         string
+	downloadBase string
+	http         *http.Client
+	retry        RetryPolicy
+	log          *slog.Logger
+	mu           sync.Mutex
+	token        string
+	timeout      time.Duration
 	// wire2 selects the run_shared wire: routes under /runtime/v2/attempts and the
 	// v2 error envelope (which adds codes the v1 envelope rejects).
 	wire2 bool
@@ -117,7 +118,16 @@ func newClient(serverURL string, attemptID domain.AttemptID, caFile string, retr
 	if wire2 {
 		version = "v2"
 	}
-	return newClientAt(strings.TrimRight(serverURL, "/")+"/runtime/"+version+"/attempts/"+string(attemptID), caFile, retry, log, wire2)
+	c, err := newClientAt(strings.TrimRight(serverURL, "/")+"/runtime/"+version+"/attempts/"+string(attemptID), caFile, retry, log, wire2)
+	if err != nil {
+		return nil, err
+	}
+	// The artifact download route is served by the v1 runtime router even for
+	// run_shared attempts. It is authenticated by the same attempt token and
+	// checks the attempt's pinned context, so the route family is an
+	// implementation detail, not a second authority.
+	c.downloadBase = strings.TrimRight(serverURL, "/") + "/runtime/v1/attempts/" + string(attemptID)
+	return c, nil
 }
 
 // newClientAt builds the HTTP adapter for a route family rooted at base.
@@ -202,6 +212,13 @@ func call[Resp any, P interface {
 	*Resp
 	Validate() error
 }](ctx context.Context, c *Client, op, method, path string, body any, auth bool, okStatuses ...int) (result[Resp], error) {
+	return callAt[Resp, P](ctx, c, c.base, op, method, path, body, auth, okStatuses...)
+}
+
+func callAt[Resp any, P interface {
+	*Resp
+	Validate() error
+}](ctx context.Context, c *Client, base, op, method, path string, body any, auth bool, okStatuses ...int) (result[Resp], error) {
 	var zero result[Resp]
 	var payload []byte
 	if body != nil {
@@ -217,7 +234,7 @@ func call[Resp any, P interface {
 				return zero, err
 			}
 		}
-		res, retryAfter, err := doOnce[Resp, P](ctx, c, op, method, path, payload, auth, okStatuses)
+		res, retryAfter, err := doOnceAt[Resp, P](ctx, c, base, op, method, path, payload, auth, okStatuses)
 		if err == nil {
 			return res, nil
 		}
@@ -292,10 +309,10 @@ func sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func doOnce[Resp any, P interface {
+func doOnceAt[Resp any, P interface {
 	*Resp
 	Validate() error
-}](ctx context.Context, c *Client, op, method, path string, payload []byte, auth bool, okStatuses []int) (result[Resp], time.Duration, error) {
+}](ctx context.Context, c *Client, base, op, method, path string, payload []byte, auth bool, okStatuses []int) (result[Resp], time.Duration, error) {
 	var zero result[Resp]
 	if c.isDisposed() {
 		return zero, 0, &ProtocolError{Op: op, Err: errors.New("the client's credentials were disposed of")}
@@ -306,7 +323,7 @@ func doOnce[Resp any, P interface {
 	}
 	reqCtx, cancelReq := context.WithTimeout(ctx, c.retry.boundFor(op))
 	defer cancelReq()
-	req, err := http.NewRequestWithContext(reqCtx, method, c.base+path, rdr)
+	req, err := http.NewRequestWithContext(reqCtx, method, base+path, rdr)
 	if err != nil {
 		return zero, 0, &ProtocolError{Op: op, Err: err}
 	}
@@ -421,6 +438,18 @@ func (c *Client) ReserveArtifact(ctx context.Context, req runtimev1.ArtifactRese
 		return runtimev1.ArtifactReserveResponse{}, &ProtocolError{Op: "reserveArtifact", Err: err}
 	}
 	r, err := call[runtimev1.ArtifactReserveResponse](ctx, c, "reserveArtifact", http.MethodPost, "/artifacts", req, true, http.StatusOK, http.StatusCreated)
+	return r.value, err
+}
+
+func (c *Client) DownloadArtifact(ctx context.Context, id domain.ArtifactID) (runtimev1.ArtifactReadResponse, error) {
+	if err := id.Validate(); err != nil {
+		return runtimev1.ArtifactReadResponse{}, &ProtocolError{Op: "downloadArtifact", Err: err}
+	}
+	base := c.downloadBase
+	if base == "" {
+		base = c.base
+	}
+	r, err := callAt[runtimev1.ArtifactReadResponse](ctx, c, base, "downloadArtifact", http.MethodGet, "/artifacts/"+string(id)+"/download", nil, true, http.StatusOK)
 	return r.value, err
 }
 

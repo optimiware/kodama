@@ -162,6 +162,56 @@ paths:
           $ref: 'common.yaml#/components/responses/TooManyRequests'
         '503':
           $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/runs/project:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: createProjectRun
+      summary: Start a source-free project run
+      description: >-
+        Requires run:manage and an Idempotency-Key. Admits a kodama/v1alpha3 project run without
+        a work item, workspace, deployment or source checkout. The definition and inputs are
+        pinned; the caller's current project authority is checked at admission and dispatch.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRunRequest'
+      responses:
+        '201':
+          description: The admitted project run.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
   /tenants/{tenantId}/projects/{projectId}/runs/{id}:
     parameters:
       - $ref: '#/components/parameters/TenantId'
@@ -390,6 +440,20 @@ components:
           type: string
           minLength: 1
           maxLength: 256
+    CreateProjectRunRequest:
+      type: object
+      additionalProperties: false
+      required: [definitionId]
+      properties:
+        definitionId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        inputs:
+          type: object
+          maxProperties: 100
+          additionalProperties:
+            $ref: '#/components/schemas/Scalar'
+          description: >-
+            Run inputs by declared name. Unknown names and type mismatches are admission_refused.
     CreateRunRequest:
       type: object
       additionalProperties: false
@@ -483,8 +547,8 @@ components:
           $ref: 'common.yaml#/components/schemas/ID'
         purpose:
           type: string
-          enum: [work, cleanup]
-          description: Only work runs are created through this API.
+          enum: [work, cleanup, project]
+          description: Work runs use the work-item API; project runs are source-free admission; cleanup is internal.
         workItemId:
           type: string
           nullable: true

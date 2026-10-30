@@ -18,6 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/agents"
 	"github.com/optimiware/kodama/internal/artifacts"
 	"github.com/optimiware/kodama/internal/delivery"
@@ -28,6 +29,7 @@ import (
 	obspg "github.com/optimiware/kodama/internal/observation/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/secrets"
+	"github.com/optimiware/kodama/internal/state"
 	"github.com/optimiware/kodama/internal/storage"
 	"github.com/optimiware/kodama/internal/work"
 	"github.com/optimiware/kodama/internal/workspace"
@@ -542,4 +544,47 @@ func (runStates) ReadResources(ctx context.Context, tx pgx.Tx, q obspg.ResourceQ
 		}
 	}
 	return out, nil
+}
+
+// artifactInputResolver is the admission-side read of one artifact descriptor.
+// The caller has already been authorized by execution; the artifact module
+// still checks scope ownership and content state.
+type artifactInputResolver struct {
+	svc *artifacts.Service
+}
+
+func (r artifactInputResolver) ResolveArtifact(ctx context.Context, scope domain.Scope, id domain.ArtifactID) (runtimev1.ArtifactRef, error) {
+	if r.svc == nil {
+		return runtimev1.ArtifactRef{}, execution.ErrNotConfigured
+	}
+	ref, err := r.svc.Reference(ctx, scope, id)
+	if err != nil {
+		return runtimev1.ArtifactRef{}, err
+	}
+	return runtimev1.ArtifactRef{
+		ID: ref.ID, Scope: ref.Scope, Attempt: ref.Attempt,
+		Kind: runtimev1.ArtifactKind(ref.Kind), Digest: runtimev1.Digest(ref.Digest), Usable: ref.Usable,
+	}, nil
+}
+
+// stateArtifactVerifier validates a state entry's explicit artifact roots
+// against current artifact ownership and verified content metadata. Retention
+// pinning is a separate lifecycle seam; this check prevents arbitrary IDs and
+// mismatched digests from entering state.
+type stateArtifactVerifier struct {
+	svc *artifacts.Service
+}
+
+func (v stateArtifactVerifier) VerifyArtifact(ctx context.Context, scope state.Scope, id domain.ArtifactID, digest string) error {
+	if v.svc == nil {
+		return state.ErrUnavailable
+	}
+	ref, err := v.svc.Reference(ctx, domain.Scope{TenantID: scope.TenantID, ProjectID: scope.ProjectID}, id)
+	if err != nil {
+		return state.ErrUnavailable
+	}
+	if !ref.Usable || string(ref.Digest) != digest {
+		return state.ErrDenied
+	}
+	return nil
 }

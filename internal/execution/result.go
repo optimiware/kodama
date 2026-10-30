@@ -124,6 +124,11 @@ func (s *Service) CommitResult(ctx context.Context, in ResultCommit) (ResultAck,
 		if err := agg.CompleteAttempt(at, hash, result, now); err != nil {
 			return Effects{}, err
 		}
+		if result.Outcome == runtimev1.OutcomeCompleted {
+			if step := agg.Step(at.StepID); step != nil {
+				step.CaptureArtifactRefs(result, in.Artifacts)
+			}
+		}
 		after, err := advance(env, agg, at)
 		if err != nil {
 			return Effects{}, err

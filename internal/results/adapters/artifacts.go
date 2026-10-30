@@ -160,6 +160,16 @@ func (a *ArtifactAuthority) WithBegins(b Begins) *ArtifactAuthority {
 // grant's generation to be the current one, the session to belong to the
 // route's attempt, the attempt to be active and the grant unrevoked.
 func (a *ArtifactAuthority) Grant(ctx context.Context, caller artifacts.Caller, attempt domain.AttemptID) (artifacts.AttemptGrant, error) {
+	return a.grant(ctx, caller, attempt, runtimeauth.ActionArtifactReserve)
+}
+
+// GrantRead is the consumer-read counterpart of Grant. It checks the same
+// session and attempt, but requires the artifact.read action.
+func (a *ArtifactAuthority) GrantRead(ctx context.Context, caller artifacts.Caller, attempt domain.AttemptID) (artifacts.AttemptGrant, error) {
+	return a.grant(ctx, caller, attempt, runtimeauth.ActionArtifactRead)
+}
+
+func (a *ArtifactAuthority) grant(ctx context.Context, caller artifacts.Caller, attempt domain.AttemptID, action runtimeauth.Action) (artifacts.AttemptGrant, error) {
 	tenant, session, ok := parsePrincipal(caller.Subject)
 	if !ok {
 		return artifacts.AttemptGrant{}, artifacts.ErrAuthorityMissing
@@ -169,7 +179,7 @@ func (a *ArtifactAuthority) Grant(ctx context.Context, caller artifacts.Caller, 
 	err := a.store.Do(ctx, tenant, func(ctx context.Context, tx runtimeauth.GrantTx) error {
 		gen := a.gens.Generation()
 		g, _, err := runtimeauth.CheckSession(ctx, tx, runtimeauth.SessionCheck{
-			Route: attempt, Session: session, TokenGeneration: gen, CurrentGeneration: gen, Action: runtimeauth.ActionArtifactReserve, Now: a.clock(),
+			Route: attempt, Session: session, TokenGeneration: gen, CurrentGeneration: gen, Action: action, Now: a.clock(),
 		})
 		if err != nil {
 			return err
@@ -255,6 +265,9 @@ func artifactGrant(g runtimeauth.AdmissionGrant, pinned runtimev1.Context) artif
 		case runtimev1.OutputOCIArtifact:
 			out.Outputs = append(out.Outputs, artifacts.OutputDecl{Name: o.Name, Kind: artifacts.KindOCI})
 		}
+	}
+	for _, in := range pinned.ArtifactFiles {
+		out.Inputs = append(out.Inputs, artifacts.InputRef{ID: domain.ArtifactID(in.ArtifactID), Digest: artifacts.Digest(in.Digest)})
 	}
 	return out
 }

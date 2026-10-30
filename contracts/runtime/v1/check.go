@@ -13,6 +13,7 @@ type ArtifactRef struct {
 	Scope   domain.Scope
 	Attempt domain.AttemptID
 	Kind    ArtifactKind
+	Digest  Digest
 	Usable  bool // uploaded, verified and marked usable (or a verified OCI registration)
 }
 

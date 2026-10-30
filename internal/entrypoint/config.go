@@ -21,6 +21,7 @@ import (
 const (
 	DefaultWorkspaceDir = "/workspace"
 	DefaultOutputsDir   = "/kodama/outputs"
+	DefaultInputsDir    = "/kodama/inputs"
 	DefaultSecretsDir   = "/kodama/secrets"
 	DefaultIdentityDir  = "/kodama/identity"
 	DefaultResultsFile  = "/kodama/results.json"
@@ -62,9 +63,11 @@ type Config struct {
 
 	WorkspaceDir string
 	OutputsDir   string
+	InputsDir    string
 	SecretsDir   string
 	IdentityDir  string
 	ResultsFile  string
+	ContextFile  string // private immutable context document; default <IdentityDir>/context.json
 	TokenFile    string // current runtime token, written 0600 after admit/renewal; default <IdentityDir>/token
 	ScratchDir   string // diagnostics log and bundle; default os.TempDir()
 
@@ -106,9 +109,11 @@ func (c *Config) applyDefaults() {
 	}
 	def(&c.WorkspaceDir, DefaultWorkspaceDir)
 	def(&c.OutputsDir, DefaultOutputsDir)
+	def(&c.InputsDir, DefaultInputsDir)
 	def(&c.SecretsDir, DefaultSecretsDir)
 	def(&c.IdentityDir, DefaultIdentityDir)
 	def(&c.ResultsFile, DefaultResultsFile)
+	def(&c.ContextFile, filepath.Join(c.IdentityDir, "context.json"))
 	def(&c.AdmissionCredentialFile, filepath.Join(c.IdentityDir, "admission"))
 	def(&c.CheckoutCredentialFile, filepath.Join(c.IdentityDir, "checkout-credential"))
 	def(&c.TokenFile, filepath.Join(c.IdentityDir, "token"))
@@ -160,7 +165,7 @@ func (c *Config) Validate() error {
 	if err := c.Job.Validate(); err != nil {
 		return fmt.Errorf("job identity: %w", err)
 	}
-	roots := map[string]string{"workspace": c.WorkspaceDir, "outputs": c.OutputsDir, "secrets": c.SecretsDir, "identity": c.IdentityDir}
+	roots := map[string]string{"workspace": c.WorkspaceDir, "outputs": c.OutputsDir, "inputs": c.InputsDir, "secrets": c.SecretsDir, "identity": c.IdentityDir}
 	abs := map[string]string{}
 	for name, p := range roots {
 		a, err := filepath.Abs(p)
@@ -169,7 +174,7 @@ func (c *Config) Validate() error {
 		}
 		abs[name] = filepath.Clean(a)
 	}
-	names := []string{"workspace", "outputs", "secrets", "identity"}
+	names := []string{"workspace", "outputs", "inputs", "secrets", "identity"}
 	for i, a := range names {
 		for _, b := range names[i+1:] {
 			if within(abs[a], abs[b]) || within(abs[b], abs[a]) {
@@ -177,7 +182,7 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
-	for name, p := range map[string]string{"results file": c.ResultsFile, "token file": c.TokenFile} {
+	for name, p := range map[string]string{"results file": c.ResultsFile, "context file": c.ContextFile, "token file": c.TokenFile} {
 		a, err := filepath.Abs(p)
 		if err != nil {
 			return fmt.Errorf("%s: %w", name, err)
@@ -247,6 +252,7 @@ func ParseConfig(args []string, getenv func(string) string, output io.Writer) (C
 	str(&c.GitCAFile, "git-ca-file", "KODAMA_GIT_CA_FILE", "PEM CA bundle for Git over HTTPS (replaces system roots for Git)")
 	str(&c.WorkspaceDir, "workspace-dir", "KODAMA_WORKSPACE_DIR", "checkout directory, default "+DefaultWorkspaceDir)
 	str(&c.OutputsDir, "outputs-dir", "KODAMA_OUTPUTS_DIR", "outputs root, default "+DefaultOutputsDir)
+	str(&c.InputsDir, "inputs-dir", "KODAMA_INPUTS_DIR", "verified artifact input root, default "+DefaultInputsDir)
 	str(&c.SecretsDir, "secrets-dir", "KODAMA_SECRETS_DIR", "memory-backed secrets directory, default "+DefaultSecretsDir)
 	str(&c.ResultsFile, "results-file", "KODAMA_RESULTS_FILE", "result manifest path, default "+DefaultResultsFile)
 	str(&c.TokenFile, "token-file", "KODAMA_TOKEN_FILE", "file receiving the current runtime token")

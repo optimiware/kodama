@@ -2,6 +2,7 @@ package runtimeauth
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
@@ -31,6 +32,10 @@ type Authorization struct {
 	// with Session, Action and the route it is everything a mutation needs to
 	// recheck this authority inside its own transaction (SessionCheck).
 	TokenGeneration int64
+	// StateBindings are the aliases pinned in the workload context. They are
+	// descriptive authority boundaries; the state handler still checks the
+	// requested action and prefix.
+	StateBindings []runtimev1.StateBinding
 }
 
 // SessionCheck is the check that re-verifies this authorization inside a
@@ -130,6 +135,15 @@ func (s *Service) withSession(ctx context.Context, route domain.AttemptID, beare
 			return fail(ErrContextVersionMismatch, "the attempt belongs to another runtime version")
 		}
 		out = Authorization{Scope: g.Scope, RunID: g.RunID, AttemptID: g.AttemptID, Session: claims.Session, Action: action, Actions: intersect(g.Actions, state.Actions), ContextVersion: wire, TokenGeneration: claims.Generation}
+		var ctxDoc runtimev1.Context
+		if wire == WireV2 {
+			var v2 runtimev2.ContextV2
+			if json.Unmarshal(g.Context, &v2) == nil && v2.AttemptID == g.AttemptID {
+				out.StateBindings = append([]runtimev1.StateBinding(nil), v2.State...)
+			}
+		} else if json.Unmarshal(g.Context, &ctxDoc) == nil && ctxDoc.AttemptID == g.AttemptID {
+			out.StateBindings = append([]runtimev1.StateBinding(nil), ctxDoc.State...)
+		}
 		if fn != nil {
 			return fn(g, now)
 		}

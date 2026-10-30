@@ -51,9 +51,10 @@ rejected.
 **Command environment.** Explicit, never the process environment: an allowlist
 (`PATH HOME TMPDIR LANG LC_ALL TZ USER`), then `KODAMA_ATTEMPT_ID`,
 `KODAMA_RUN_ID`, `KODAMA_STEP_ID`, `KODAMA_WORKSPACE`, `KODAMA_OUTPUTS_DIR`,
-`KODAMA_RESULTS_FILE`, `KODAMA_SECRETS_DIR`, `KODAMA_INPUT_<NAME>` (inputs; strings
-verbatim, other values as JSON), the context's `command.env`, and finally secrets
-delivered as `env`. The admission credential, runtime token and checkout
+`KODAMA_INPUTS_DIR`, `KODAMA_CONTEXT_FILE`, `KODAMA_RUNTIME_URL`,
+`KODAMA_TOKEN_FILE`, `KODAMA_RESULTS_FILE`, `KODAMA_SECRETS_DIR`,
+`KODAMA_INPUT_<NAME>` (inputs; strings verbatim, other values as JSON), the
+context's `command.env`, and finally secrets delivered as `env`. The admission credential, runtime token and checkout
 credential are never in it. The command runs as `command` + `args` (argv, no
 shell) in the workspace, with stdin closed and stdout/stderr merged into one
 bounded log.

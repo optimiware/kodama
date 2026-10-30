@@ -143,3 +143,17 @@ func (r *resolver) resolve(site refSite, ref reference) (ValueType, bool) {
 	r.d.add(CodeUnknownOutput, site.path, "the step %s declares no output %s", ref.step, ref.output)
 	return "", false
 }
+
+// ResolveReference parses one whole-scalar input or ancestor-output reference
+// used by a v1alpha3 artifactFiles entry. Invalid or interpolated strings are
+// refused rather than treated as literals.
+func ResolveReference(raw string) (input, step, output string, ok bool) {
+	ref, isExpr, valid := parseReference(raw)
+	if !isExpr || !valid {
+		return "", "", "", false
+	}
+	if ref.isInput() {
+		return ref.input, "", "", true
+	}
+	return "", ref.step, ref.output, true
+}

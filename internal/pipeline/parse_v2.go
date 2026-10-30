@@ -10,6 +10,11 @@ func isV1Alpha2Tree(tree any) bool {
 	return ok && m["apiVersion"] == "kodama/v1alpha2"
 }
 
+func isV1Alpha3Tree(tree any) bool {
+	m, ok := tree.(map[string]any)
+	return ok && m["apiVersion"] == "kodama/v1alpha3"
+}
+
 const svcPrefix = `^\$\.spec\.services(?:\.[A-Za-z0-9_-]+|\[[^\]]*\])`
 
 // reNameKeyed matches the paths of the objects whose keys are names.

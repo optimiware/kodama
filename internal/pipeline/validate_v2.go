@@ -11,6 +11,7 @@ import (
 
 	pipelinev1 "github.com/optimiware/kodama/contracts/pipeline/v1"
 	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -40,6 +41,7 @@ var (
 	serviceNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,29}$`)
 	portNameRE    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,14}$`)
 	egressNameRE  = nameRE
+	namespaceRE   = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,126}[a-z0-9])?$`)
 )
 
 // storageForbiddenRoots are the paths a service volume may be neither at nor
@@ -51,7 +53,11 @@ var storageForbiddenRoots = []string{"/workspace", "/kodama", "/proc", "/sys", "
 // document beyond the format name, and runs no lookup.
 func (v *Validator) validateV2(ctx context.Context, scope domain.Scope, actor Actor, doc Document) (Validated, error) {
 	var d diagnostics
-	if !v.v2 {
+	enabled := v.v2
+	if doc.IsV1Alpha3() {
+		enabled = v.v3
+	}
+	if !enabled {
 		d.add(CodeFormatDisabled, "$.apiVersion", "the pipeline format is not enabled in this installation")
 		return Validated{}, d.err(StageSemantic)
 	}
@@ -85,11 +91,12 @@ func (v *Validator) checkForbiddenV2(doc Document, d *diagnostics) {
 			"command": s.Command != nil, "args": s.Args != nil, "env": s.Env != nil, "secretFiles": s.SecretFiles != nil,
 			"timeoutSeconds": s.TimeoutSeconds != 0, "retry": s.Retry != nil, "outputs": s.Outputs != nil,
 			"agent": s.Agent != nil, "gate": s.Gate != nil, "when": s.When != nil, "egress": s.Egress != nil,
+			"state": s.State != nil, "artifactFiles": s.ArtifactFiles != nil,
 		}
 		var forbidden []string
 		switch s.Kind {
 		case KindGate:
-			forbidden = []string{"when", "workspace", "environment", "image", "command", "args", "env", "secretFiles", "timeoutSeconds", "retry", "outputs", "agent", "egress"}
+			forbidden = []string{"when", "workspace", "environment", "image", "command", "args", "env", "secretFiles", "timeoutSeconds", "retry", "outputs", "agent", "egress", "state", "artifactFiles"}
 		case KindAgent:
 			forbidden = []string{"environment", "image", "command", "args", "env", "secretFiles", "gate", "egress"}
 		case KindContainer:
@@ -120,8 +127,13 @@ func svcPath(name string) string { return childPath("$.spec.services", name) }
 // kodama/v1alpha2 document. Shape findings (checkShapeV2) end the pass: the
 // semantic rules assume sane services, ports and edges.
 func (v *Validator) checkDocumentV2(doc Document, d *diagnostics) {
-	if doc.APIVersion != pipelinev1alpha2.APIVersion {
-		d.add(CodeInvalidValue, "$.apiVersion", "apiVersion must be %s", pipelinev1alpha2.APIVersion)
+	wantVersion := pipelinev1alpha2.APIVersion
+	if doc.IsV1Alpha3() {
+		wantVersion = pipelinev1alpha3.APIVersion
+	}
+	if !doc.IsShared() || doc.APIVersion != wantVersion {
+		d.add(CodeInvalidValue, "$.apiVersion", "apiVersion must be %s", wantVersion)
+		return
 	}
 	if doc.Kind != pipelinev1.Kind {
 		d.add(CodeInvalidValue, "$.kind", "kind must be %s", pipelinev1.Kind)
@@ -214,6 +226,45 @@ func (v *Validator) checkExecutableV2(i int, s Step, doc Document, r *resolver) 
 		// Output paths are not expression sites: the marker anywhere else is an
 		// interpolation, in kodama/v1alpha2 as in the expression rules.
 		r.noExpression(childPath(p+".outputs", name)+".path", s.Outputs[name].Path)
+	}
+	if doc.IsV1Alpha3() {
+		if len(s.State) > 8 {
+			d.add(CodeLimitExceeded, p+".state", "at most 8 state bindings are allowed")
+		}
+		for _, name := range sortedKeys(s.State) {
+			b := s.State[name]
+			bp := childPath(p+".state", name)
+			if !nameRE.MatchString(name) {
+				d.add(CodeInvalidFormat, bp, "a state binding name must be a lowercase letter followed by lowercase letters, digits or hyphens")
+			}
+			if !namespaceRE.MatchString(b.Namespace) {
+				d.add(CodeInvalidFormat, bp+".namespace", "the state namespace must be a lowercase DNS label")
+			}
+			if b.Prefix != "" && (strings.HasPrefix(b.Prefix, "/") || !strings.HasSuffix(b.Prefix, "/") ||
+				strings.Contains(b.Prefix, "..") || strings.Contains(b.Prefix, "//")) {
+				d.add(CodeInvalidValue, bp+".prefix", "the state prefix must be a normalized relative path ending in /")
+			} else if b.Prefix != "" {
+				for _, part := range strings.Split(strings.TrimSuffix(b.Prefix, "/"), "/") {
+					if part == "" || part == "." || part == ".." {
+						d.add(CodeInvalidValue, bp+".prefix", "the state prefix must be a normalized relative path")
+						break
+					}
+				}
+			}
+			if b.Access != StateRead && b.Access != StateReadWrite {
+				d.add(CodeInvalidValue, bp+".access", "state access must be read or read-write")
+			}
+		}
+		if len(s.ArtifactFiles) > 16 {
+			d.add(CodeLimitExceeded, p+".artifactFiles", "at most 16 artifact file bindings are allowed")
+		}
+		for _, name := range sortedKeys(s.ArtifactFiles) {
+			if !fileNameRE.MatchString(name) {
+				d.add(CodeInvalidFormat, childPath(p+".artifactFiles", name), "an artifact file alias has an invalid format")
+				continue
+			}
+			r.check(refSite{path: childPath(p+".artifactFiles", name), consumer: i, allowed: []ValueType{TypeArtifact}, requireRef: true}, s.ArtifactFiles[name])
+		}
 	}
 }
 

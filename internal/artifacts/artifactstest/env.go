@@ -591,3 +591,9 @@ func (r *Registry) Verify(_ context.Context, req artifacts.OCIRequest) (artifact
 	}
 	return v, nil
 }
+
+// GrantRead is the consumer-read variant of Grant. The fixture deliberately
+// applies the same grant and lets the test set the Inputs it authorizes.
+func (a *Authority) GrantRead(ctx context.Context, caller artifacts.Caller, attempt domain.AttemptID) (artifacts.AttemptGrant, error) {
+	return a.Grant(ctx, caller, attempt)
+}

@@ -38,6 +38,8 @@ type (
 	Profile                  = runtimev1.Profile
 	OutputDecl               = runtimev1.OutputDecl
 	EnvironmentPin           = runtimev1.EnvironmentPin
+	StateBinding             = runtimev1.StateBinding
+	ArtifactInput            = runtimev1.ArtifactInput
 	DesignBaseline           = runtimev1.DesignBaseline
 	WorkspaceAccess          = runtimev1.WorkspaceAccess
 	SecretDelivery           = runtimev1.SecretDelivery
@@ -176,6 +178,8 @@ type ContextV2 struct {
 	Outputs        []OutputDecl        `json:"outputs"`
 	Secrets        []SecretBinding     `json:"secrets"`
 	Environment    *EnvironmentPin     `json:"environment"`
+	State          []StateBinding      `json:"state,omitempty"`
+	ArtifactFiles  []ArtifactInput     `json:"artifactFiles,omitempty"`
 	Limits         Limits              `json:"limits"`
 }
 

@@ -27,6 +27,7 @@ Verified by acceptance suites that run the real server against PostgreSQL, NATS 
 | Source, data and key recovery drills | Planned |
 | Live model and coding-agent qualification | Agents are tested with scripted responses only |
 | Optimi Platform (hosted) integration | Design target; standalone identity works today |
+| Stateful container plugins and generic deployment | Engine, generic state, source-free project runs and Kubernetes/Cloudflare/GCP drivers exist and are locally tested; the legacy Environment/Deployment delivery path is still composed, so this is not yet a supported cutover |
 | Other agent harnesses, untrusted multi-tenant isolation, UI, Supabase blueprint, browser QA | Deferred |
 
 The full list of remaining work is the [task backlog](tasks/README.md). The technical record of how the server is composed, with every route, worker and unwired capability, is [assembly status](implementation/assembly-status.md).

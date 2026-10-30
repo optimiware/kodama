@@ -36,6 +36,21 @@ type CleanupCommand struct {
 	Inputs       map[string]runtimev1.Value
 }
 
+// ProjectAdmitCommand starts a project-origin run without a work item or a
+// checkout. The definition, inputs and caller authority are still pinned.
+type ProjectAdmitCommand struct {
+	Scope        domain.Scope
+	DefinitionID domain.DefinitionID
+	Inputs       map[string]runtimev1.Value
+}
+
+func (c ProjectAdmitCommand) validate() error {
+	if err := firstOf(c.Scope.Validate(), c.DefinitionID.Validate()); err != nil {
+		return invalidf("%v", err)
+	}
+	return nil
+}
+
 var commitPattern = regexp.MustCompile(runtimev1.Patterns["GitCommit"])
 
 func (c AdmitCommand) validate() error {
@@ -77,7 +92,7 @@ func (s *Service) Prepare(ctx context.Context, caller Caller, cmd AdmitCommand) 
 	if err := s.checkKinds(ctx, doc); err != nil {
 		return nil, err
 	}
-	shared := doc.IsV1Alpha2()
+	shared := doc.IsShared()
 	var binding *RuntimeBinding
 	if !shared {
 		// A run_shared run derives its binding with the pins (planShared).
@@ -108,7 +123,18 @@ func (s *Service) Prepare(ctx context.Context, caller Caller, cmd AdmitCommand) 
 	if err != nil {
 		return nil, err
 	}
+	if err := s.authorizeStateBindings(ctx, cmd.Scope, actor, doc); err != nil {
+		return nil, err
+	}
+	snap, err = s.resolveInputArtifacts(ctx, cmd.Scope, doc, snap)
+	if err != nil {
+		return nil, err
+	}
 	snap, bindings, err := s.resolveEnvironmentSet(ctx, cmd.Scope, actor, doc, snap)
+	if err != nil {
+		return nil, err
+	}
+	snap, err = s.resolveStateBindings(doc, snap)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +159,61 @@ func (s *Service) Prepare(ctx context.Context, caller Caller, cmd AdmitCommand) 
 		return nil, err
 	}
 	plan.Environments = bindings
+	return plan, nil
+}
+
+// PrepareProject resolves a source-free project run. It is the generic path for
+// CI-only deployments and maintenance: no artificial work item, workspace or
+// deployment record is created, and the run consumes runtime capacity only.
+func (s *Service) PrepareProject(ctx context.Context, caller Caller, cmd ProjectAdmitCommand) (*AdmissionPlan, error) {
+	if err := cmd.validate(); err != nil {
+		return nil, err
+	}
+	actor, err := s.authorize(ctx, caller, cmd.Scope, PermRunManage)
+	if err != nil {
+		return nil, err
+	}
+	def, doc, err := s.loadDefinition(ctx, cmd.Scope, cmd.DefinitionID, true)
+	if err != nil {
+		return nil, err
+	}
+	if !doc.IsV1Alpha3() {
+		return nil, Refusedf("project runs require a kodama/v1alpha3 definition")
+	}
+	if err := s.checkKinds(ctx, doc); err != nil {
+		return nil, err
+	}
+	snap, err := s.resolveConfiguration(ctx, cmd.Scope, doc, cmd.Inputs)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.authorizeStateBindings(ctx, cmd.Scope, actor, doc); err != nil {
+		return nil, err
+	}
+	snap, err = s.resolveInputArtifacts(ctx, cmd.Scope, doc, snap)
+	if err != nil {
+		return nil, err
+	}
+	snap, err = s.resolveStateBindings(doc, snap)
+	if err != nil {
+		return nil, err
+	}
+	runID := domain.RunID(s.d.NewID("run"))
+	pins, binding, err := s.planShared(ctx, cmd.Scope, runID, doc, false, SourceInfo{}, snap)
+	if err != nil {
+		return nil, err
+	}
+	snap.Runtime = binding
+	run := &Run{
+		Scope: cmd.Scope, ID: runID, Purpose: PurposeProject, Shared: pins,
+		DefinitionID: def.ID, DefinitionDigest: string(def.Digest), Snapshot: snap,
+		SourceRetention: RetentionNotRequired, RequestedBy: actor,
+		Status: RunQueued, Reason: ReasonCreated, Version: 1,
+	}
+	plan, err := s.plan(run, doc, SourceInfo{}, actor, caller.RequestID, 0)
+	if err != nil {
+		return nil, err
+	}
 	return plan, nil
 }
 
@@ -168,7 +249,7 @@ func (s *Service) PrepareCleanup(ctx context.Context, cmd CleanupCommand) (*Admi
 	if err := s.checkKinds(ctx, doc); err != nil {
 		return nil, err
 	}
-	shared := doc.IsV1Alpha2()
+	shared := doc.IsShared()
 	var binding *RuntimeBinding
 	if !shared {
 		if binding, err = s.bind(doc); err != nil {
@@ -194,7 +275,15 @@ func (s *Service) PrepareCleanup(ctx context.Context, cmd CleanupCommand) (*Admi
 	if err != nil {
 		return nil, err
 	}
+	snap, err = s.resolveInputArtifacts(ctx, cmd.Scope, doc, snap)
+	if err != nil {
+		return nil, err
+	}
 	snap, bindings, err := s.resolveCleanupEnvironments(ctx, cmd.Scope, cmd.DeploymentID, doc, snap)
+	if err != nil {
+		return nil, err
+	}
+	snap, err = s.resolveStateBindings(doc, snap)
 	if err != nil {
 		return nil, err
 	}
@@ -360,7 +449,7 @@ func (s *Service) resolveConfiguration(ctx context.Context, scope domain.Scope, 
 			req.Secrets = append(req.Secrets, SecretUse{Step: st.ID, Name: n, Ref: st.SecretFiles[n], Delivery: runtimev1.DeliveryFile})
 		}
 	}
-	if doc.IsV1Alpha2() {
+	if doc.IsShared() {
 		svcNames := make([]string, 0, len(doc.Spec.Services))
 		for n := range doc.Spec.Services {
 			svcNames = append(svcNames, n)
@@ -450,6 +539,16 @@ func (s *Service) Admit(ctx context.Context, caller Caller, cmd AdmitCommand) (*
 		return nil, err
 	}
 	return s.ConfirmSource(ctx, run.Scope, run.ID)
+}
+
+// AdmitProject prepares and commits a source-free project run.
+func (s *Service) AdmitProject(ctx context.Context, caller Caller, cmd ProjectAdmitCommand) (*Run, error) {
+	plan, err := s.PrepareProject(ctx, caller, cmd)
+	if err != nil {
+		return nil, err
+	}
+	run, _, err := s.d.Store.Admit(ctx, plan)
+	return run, err
 }
 
 // AdmitCleanup commits an internal cleanup run. M1 wiring has no deployment

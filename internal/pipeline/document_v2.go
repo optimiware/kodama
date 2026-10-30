@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
 )
 
 // This file holds the kodama/v1alpha2 (run_shared) additions to the typed
@@ -22,6 +23,23 @@ const (
 
 // ProtocolTCP is the only service port protocol.
 const ProtocolTCP = "TCP"
+
+// StateAccess is the read/write authority of one state binding.
+type StateAccess string
+
+const (
+	StateRead      StateAccess = "read"
+	StateReadWrite StateAccess = "read-write"
+)
+
+// StateBinding asks the server for one scoped key/value namespace. It is a
+// request, never authority: admission resolves it against current project
+// authority and installation ceilings.
+type StateBinding struct {
+	Namespace string      `json:"namespace"`
+	Prefix    string      `json:"prefix"`
+	Access    StateAccess `json:"access"`
+}
 
 // DefaultShmMiB is the contract-constant default of resources.shmMiB.
 const DefaultShmMiB int64 = 64
@@ -126,6 +144,12 @@ func (s RunService) HasSecrets() bool {
 // IsV1Alpha2 reports whether the document is a run_shared format document.
 func (d Document) IsV1Alpha2() bool { return d.APIVersion == pipelinev1alpha2.APIVersion }
 
+// IsV1Alpha3 reports whether the document carries container-plugin bindings.
+func (d Document) IsV1Alpha3() bool { return d.APIVersion == pipelinev1alpha3.APIVersion }
+
+// IsShared reports whether the document uses the run_shared executor family.
+func (d Document) IsShared() bool { return d.IsV1Alpha2() || d.IsV1Alpha3() }
+
 // hasV2Fields reports whether a document carries a field only kodama/v1alpha2
 // defines. A v1alpha1 document that does is refused instead of silently losing
 // the field to the v1alpha1 normalization.
@@ -165,6 +189,17 @@ func copyEnv(in map[string]EnvValue) map[string]EnvValue {
 
 func copyStringMap(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func copyState(in map[string]StateBinding) map[string]StateBinding {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]StateBinding, len(in))
 	for k, v := range in {
 		out[k] = v
 	}
@@ -254,6 +289,8 @@ func normalizeV2(d Document) Document {
 				c.SecretFiles = copyStringMap(s.SecretFiles)
 				c.Egress = copyStrings(s.Egress)
 			}
+			c.State = copyState(s.State)
+			c.ArtifactFiles = copyStringMap(s.ArtifactFiles)
 			if s.Agent != nil {
 				a := *s.Agent
 				c.Agent = &a
@@ -386,6 +423,18 @@ func (d Document) treeV2() map[string]any {
 				m["env"] = envTree(s.Env)
 				m["secretFiles"] = stringMapTree(s.SecretFiles)
 				m["egress"] = strs(s.Egress)
+			}
+			if d.IsV1Alpha3() {
+				if len(s.State) > 0 {
+					state := map[string]any{}
+					for name, b := range s.State {
+						state[name] = map[string]any{"namespace": b.Namespace, "prefix": b.Prefix, "access": string(b.Access)}
+					}
+					m["state"] = state
+				}
+				if len(s.ArtifactFiles) > 0 {
+					m["artifactFiles"] = stringMapTree(s.ArtifactFiles)
+				}
 			}
 			if s.Agent != nil {
 				m["agent"] = map[string]any{"profile": s.Agent.Profile}
