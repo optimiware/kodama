@@ -1229,6 +1229,7 @@ The following slice is implemented and exercised locally:
 | `drivers/cloudflare` | Wrangler apply/observe/delete/rollback driver with controlled-command tests |
 | `drivers/gcp` | Cloud Run apply/observe/delete/rollback driver with controlled-command tests |
 | Project runs | Source-free `kodama/v1alpha3` admission service and `POST /runs/project`, with a `project` purpose and no work item/workspace/deployment |
+| `images/plugins/sync-cursor` | Non-deployment reference plugin that fetches a page, CASes a cursor and writes a declared artifact file |
 | Templates | Agent-development and Cloudflare-website project shapes |
 | Real local test | `test/integration/deploy-plugins` creates/reuses kind, builds the plugin, applies a dummy nginx Deployment through the plugin, observes readiness and cleans it up |
 

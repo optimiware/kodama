@@ -243,6 +243,13 @@ func (v *Validator) checkExecutableV2(i int, s Step, doc Document, r *resolver) 
 			if b.Prefix != "" && (strings.HasPrefix(b.Prefix, "/") || !strings.HasSuffix(b.Prefix, "/") ||
 				strings.Contains(b.Prefix, "..") || strings.Contains(b.Prefix, "//")) {
 				d.add(CodeInvalidValue, bp+".prefix", "the state prefix must be a normalized relative path ending in /")
+			} else if b.Prefix != "" {
+				for _, part := range strings.Split(strings.TrimSuffix(b.Prefix, "/"), "/") {
+					if part == "" || part == "." || part == ".." {
+						d.add(CodeInvalidValue, bp+".prefix", "the state prefix must be a normalized relative path")
+						break
+					}
+				}
 			}
 			if b.Access != StateRead && b.Access != StateReadWrite {
 				d.add(CodeInvalidValue, bp+".access", "state access must be read or read-write")
