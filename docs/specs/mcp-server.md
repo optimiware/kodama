@@ -86,6 +86,7 @@ prerequisite, not something this server can fake.
 | MS-11 | The server MUST advertise only the `tools` MCP capability and a pinned protocol revision. |
 | MS-12 | A deployment MUST document the OAuth resource/audience form and the authorization-server client-registration prerequisite. |
 | MS-13 | Operations that return Git credentials MUST be hidden unless the installation explicitly enables credential tools; the MCP server MUST NOT make a credential value the default result of a model-facing tool. |
+| MS-14 | The Helm chart MUST install the MCP Deployment and Service when enabled, MUST expose it only through its own Ingress host, and MUST NOT mount the server runtime Secret or a Kubernetes API token. |
 
 ## Acceptance
 
@@ -101,6 +102,7 @@ prerequisite, not something this server can fake.
 | MS-A08 | The process starts without a database, broker, object store, KMS or Kubernetes credential. | MS-09 |
 | MS-A09 | The deployment guide states the resource/audience and client-registration requirements. | MS-12 |
 | MS-A10 | A Git-credential-returning operation is absent by default and appears only with `--enable-credential-tools`; enabling it still does not log the value. | MS-13 |
+| MS-A11 | The chart renders an MCP Deployment, Service and optional dedicated-host Ingress; the MCP Pod has no runtime Secret, no database/KMS env and no service-account token; a shared MCP/server host fails rendering. | MS-14 |
 
 ## Unresolved decisions
 
@@ -110,3 +112,10 @@ prerequisite, not something this server can fake.
 - Whether observation should later use MCP resource subscriptions instead of a
   bounded snapshot tool.
 - Whether the MCP server ships in the Kodama chart or as a separate deployment.
+  The chart now ships it as a separate Deployment; the raw manifest remains a
+  fallback.
+- **Token passthrough.** The current gateway forwards the caller's Kodama API
+  token. The MCP authorization specification forbids passing a client token to a
+  downstream API; production should use an MCP-specific audience and a separate
+  upstream credential (token exchange or a scoped service credential). This is a
+  product change tracked separately from the chart wiring.

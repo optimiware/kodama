@@ -64,6 +64,16 @@ Observation tools request `application/json` snapshots. Log tools request
 `application/x-ndjson`; `follow=true` is rejected because an MCP tool call must
 return a bounded result.
 
+## Helm chart
+
+The Kodama chart installs `mcp-deployment.yaml`, `mcp-service.yaml`,
+`mcp-serviceaccount.yaml` and, when enabled, `mcp-ingress.yaml`. The Deployment
+uses the same release image, `args: ["mcp", "serve"]`, a dedicated ServiceAccount
+with token automount disabled, a read-only root filesystem and no runtime Secret
+mount. The external profile exposes `mcp.ingress.host` on its own origin; the
+chart rejects a shared MCP/server host. See the
+[chart README](../../deploy/helm/kodama/README.md#mcp-server).
+
 ## Command
 
 ```sh

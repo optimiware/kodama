@@ -357,6 +357,15 @@
               "$ref": "#/definitions/annotations"
             }
           }
+        },
+        "mcp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "annotations": {
+              "$ref": "#/definitions/annotations"
+            }
+          }
         }
       }
     },
@@ -512,6 +521,9 @@
           }
         }
       }
+    },
+    "mcp": {
+      "$ref": "#/definitions/mcp"
     },
     "secrets": {
       "type": "object",
@@ -1367,6 +1379,72 @@
             }
           }
         }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "replicaCount", "port", "service", "resources"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "replicaCount": {"type": "integer", "minimum": 1, "maximum": 5},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "tmpSizeLimit": {"$ref": "#/definitions/storageQuantity"},
+        "service": {
+          "type": "object", "additionalProperties": false, "required": ["type", "port"],
+          "properties": {
+            "type": {"enum": ["ClusterIP"]},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+          }
+        },
+        "apiURL": {"type": "string"},
+        "resource": {"type": "string"},
+        "audience": {"type": "string"},
+        "issuer": {"type": "string"},
+        "readOnly": {"type": "boolean"},
+        "toolsets": {"type": "string"},
+        "enableSecretWrites": {"type": "boolean"},
+        "enableCredentialTools": {"type": "boolean"},
+        "allowInsecureHTTP": {"type": "boolean"},
+        "caSecret": {"anyOf": [{"const": ""}, {"$ref": "#/definitions/secretName"}]},
+        "caKey": {"$ref": "#/definitions/fileName"},
+        "ingress": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "className": {"type": "string"},
+            "host": {"type": "string"},
+            "annotations": {"$ref": "#/definitions/annotations"},
+            "tls": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "secretName": {"type": "string"}
+              },
+              "if": {"properties": {"enabled": {"const": true}}, "required": ["enabled"]},
+              "then": {
+                "required": ["secretName"],
+                "properties": {"secretName": {"$ref": "#/definitions/secretName"}}
+              }
+            }
+          },
+          "if": {"properties": {"enabled": {"const": true}}, "required": ["enabled"]},
+          "then": {
+            "required": ["host"],
+            "properties": {
+              "host": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "resources": {"$ref": "#/definitions/resources"},
+        "probes": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "liveness": {"$ref": "#/definitions/probe"},
+            "readiness": {"$ref": "#/definitions/probe"}
+          }
+        },
+        "podAnnotations": {"$ref": "#/definitions/annotations"}
       }
     }
   },

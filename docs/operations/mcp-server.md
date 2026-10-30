@@ -54,7 +54,34 @@ The current `oauthsonas` developer fixture does not yet accept `resource` and ha
 no registration endpoint. Qualify the chosen authorization server before
 claiming a zero-configuration OAuth connection.
 
-## Kubernetes shape
+## Helm chart (recommended)
+
+The Kodama chart installs the MCP server as a separate Deployment and Service in
+the same release. Enable it with `mcp.enabled: true` (the default) and expose it
+on its own host in the external profile:
+
+```yaml
+mcp:
+  enabled: true
+  resource: "https://mcp.example.invalid/mcp"
+  audience: "https://kodama.example.invalid/api"
+  issuer: "https://issuer.example.invalid"
+  ingress:
+    enabled: true
+    className: nginx
+    host: mcp.example.invalid
+    tls:
+      enabled: true
+      secretName: kodama-mcp-tls
+```
+
+`mcp.ingress.host` must differ from the Kodama server's `ingress.host`; the
+chart refuses to render when they are the same. The MCP Pod has no runtime
+Secret mount and no Kubernetes API token. See the
+[chart values reference](../../deploy/helm/kodama/README.md#mcp-server) for all
+`mcp.*` fields.
+
+## Kubernetes shape (fallback)
 
 Use a separate Deployment in the same namespace as the Kodama server:
 

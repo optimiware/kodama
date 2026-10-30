@@ -59,6 +59,21 @@ ingress:
     enabled: true
     secretName: kodama-tls
 
+# The external MCP endpoint gets its own origin so OAuth clients, cookies,
+# caching and WAF rules do not share the Kodama API origin.
+mcp:
+  enabled: true
+  resource: "https://mcp.example.invalid/mcp"
+  audience: "https://kodama.example.invalid/api"
+  issuer: "https://issuer.example.invalid"
+  ingress:
+    enabled: true
+    className: nginx
+    host: mcp.example.invalid
+    tls:
+      enabled: true
+      secretName: kodama-mcp-tls
+
 config:
   nats:
     url: "tls://nats.example.invalid:4222"

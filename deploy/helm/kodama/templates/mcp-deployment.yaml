@@ -1,0 +1,115 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kodama.mcpFullname" . }}
+  labels:
+    {{- include "kodama.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+spec:
+  replicas: {{ .Values.mcp.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "kodama.mcpSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kodama.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp
+      {{- with .Values.mcp.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "kodama.mcpServiceAccount" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp
+          image: {{ include "kodama.releaseImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+          args: ["mcp", "serve"]
+          env:
+            - name: KODAMA_MCP_API_URL
+              value: {{ include "kodama.mcpAPIURL" . | quote }}
+            - name: KODAMA_MCP_RESOURCE
+              value: {{ include "kodama.mcpResource" . | quote }}
+            - name: KODAMA_MCP_AUDIENCE
+              value: {{ default .Values.config.oidc.audience .Values.mcp.audience | quote }}
+            - name: KODAMA_MCP_ISSUER
+              value: {{ default .Values.config.oidc.issuer .Values.mcp.issuer | quote }}
+            - name: KODAMA_MCP_LISTEN
+              value: {{ printf ":%d" (int .Values.mcp.port) | quote }}
+            - name: KODAMA_MCP_READ_ONLY
+              value: {{ .Values.mcp.readOnly | quote }}
+            - name: KODAMA_MCP_TOOLSETS
+              value: {{ .Values.mcp.toolsets | quote }}
+            - name: KODAMA_MCP_ENABLE_SECRET_WRITES
+              value: {{ .Values.mcp.enableSecretWrites | quote }}
+            - name: KODAMA_MCP_ENABLE_CREDENTIAL_TOOLS
+              value: {{ .Values.mcp.enableCredentialTools | quote }}
+            - name: KODAMA_MCP_ALLOW_INSECURE_HTTP
+              value: {{ .Values.mcp.allowInsecureHTTP | quote }}
+            {{- if .Values.mcp.caSecret }}
+            - name: KODAMA_MCP_OIDC_CA_FILE
+              value: {{ printf "/etc/kodama/mcp-ca/%s" .Values.mcp.caKey | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.mcp.port }}
+              protocol: TCP
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.mcp.caSecret }}
+            - name: mcp-ca
+              mountPath: /etc/kodama/mcp-ca
+              readOnly: true
+            {{- end }}
+          securityContext:
+            {{- include "kodama.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.mcp.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: {{ .Values.mcp.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.mcp.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: {{ .Values.mcp.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.mcp.probes.readiness.failureThreshold }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.mcp.tmpSizeLimit | quote }}
+        {{- if .Values.mcp.caSecret }}
+        - name: mcp-ca
+          secret:
+            secretName: {{ .Values.mcp.caSecret }}
+            items:
+              - key: {{ .Values.mcp.caKey }}
+                path: {{ .Values.mcp.caKey }}
+        {{- end }}
+{{- end }}
