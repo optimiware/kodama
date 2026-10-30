@@ -1,8 +1,8 @@
 # Database schema
 
-**Phase 2 implementation of [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md).** There are **14 domain tables plus `audit_events`: 15 product tables** in the baseline (16 with the appended Git credentials table). The migration runner's `schema_migrations` ledger is separate. The earlier “14 total” was a counting error; audit/outbox persistence is required.
+**Implementation of [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md), including its 2026-10-30 pipeline-runtime amendment.** The current executable baseline has **15 product tables**, plus `git_credentials` from the appended Git hosting contribution: **16 product tables**. The migration runner's `schema_migrations` ledger is separate. The earlier fixed “14/15-table” promise is withdrawn in favor of this explicit inventory.
 
-The executable schema is [001_schema.sql](../../internal/storage/migrations/001_schema.sql), with runtime privileges in [002_grants.sql](../../internal/storage/migrations/002_grants.sql). [Phase 2 handoff](simplification-phase-2.md) records implementation boundaries and verification. Existing server queries are ported in Phase 3.
+The executable schema is [001_schema.sql](../../internal/storage/migrations/001_schema.sql), with runtime privileges in [002_grants.sql](../../internal/storage/migrations/002_grants.sql). The [pipeline-runtime simplification plan](pipeline-runtime-simplification.md) owns the pending removal of `projects.task_workflow` and the task workflow fields. Existing server queries are ported as their replacement owners become executable.
 
 **Appended contribution (O-36, T-167):** [003_git_hosting.sql](../../internal/storage/migrations/003_git_hosting.sql) is the only migration after the baseline. It adds `repositories.policy` (`directPushToDefault`, `integrationPipeline`), `repositories.empty` (the tenant worker's report) and `repositories.journal_ack` (the acknowledged receive-journal sequence), and one table, `git_credentials` (below, 16 product tables in total). No push-record, grant or workspace-association table exists; a receive is one `git.refs_updated` row in `audit_events` and the worker's local journal recovers a lost outcome. The baseline statements above describe `001`/`002`; the sections below name the Git additions where they apply.
 
@@ -13,13 +13,13 @@ The executable schema is [001_schema.sql](../../internal/storage/migrations/001_
 | `tenants` | Unique tenant key, display name, settings, version |
 | `users` | Global external principal mapping, unique `(issuer, subject)`; tenant-filtered visibility |
 | `memberships` | Tenant/project role binding; tenant-wide bindings have null project; null-safe uniqueness |
-| `projects` | Tenant-owned key, settings, complete `task_workflow` JSON object, version |
+| `projects` | Tenant-owned key, settings, version. The pipeline-runtime amendment removes the workflow object; a project's process definitions are its pipelines. |
 | `repositories` | Tenant/project owner, relative `name`, default branch, provisioning/ready/archived status; (`003`) `policy`, `empty` and `journal_ack`. Full Git path is rendered from owner keys, rather than stored redundantly |
 | `git_credentials` | (`003`) Short-lived Git credentials: the SHA-256 digest of the opaque secret (never the secret), `kind` (`human`, `seed`, `run`, `integration`), claims, tenant/optional project/repository, optional user or run, `issued_at`, `expires_at`, `revoked_at`, seed `consumed_at`/`consumed_receive`/`settled_at`, version. Composite ownership keys for the run, and a scope trigger (`git_credentials_owner`) rather than a composite key for the repository, whose project may be null: a credential names the same project scope as its repository, except that a `run` credential may be issued for the tenant-level repository (the tenant's context, read-only, never naming an update) while carrying the run's own project, so that the run's liveness is read with the credential; null-safe, unique per tenant by digest; forced RLS on `kodama_tenant_id()`; the runtime role may only change the lifecycle columns |
-| `pipelines` | Project, optional repository, process name, one complete `definition` JSON object, `source` (`git` or `api`), Git `source_commit`, version |
-| `tasks` | Project, kind, title/body, project-defined state, parent, optional blocker, `parked_at`, `resume_state`, role/user assignment, optional repository/branch, context, resolution, version |
-| `runs` | Pipeline and optional task, immutable definition/input/source/binding snapshots, trigger/request deduplication keys, status, cancellation and cleanup progress |
-| `run_steps` | Run, step key and ordinal, image, runtime identity, status/exit code, log URI, outputs. One row per step per run; no agent-specific kind |
+| `pipelines` | Project, optional repository, process name, one complete `definition` JSON object, `source` (`git` or `api`), Git `source_commit`, version. Names are project-unique in the target model; a conflicting definition source is refused. |
+| `tasks` | Project, kind, title/body, selected pipeline, current run, projected execution status/step, waiting assignment, parent, optional repository/branch, context, result, progress/version. The target model removes `state`, `parked_at`, `resume_state`, `blocked_by_id`, and workflow-specific resolution fields. |
+| `runs` | Pipeline and optional task, immutable definition/input/source/binding snapshots, trigger/request deduplication keys, status, cancellation and cleanup progress. A task may have several runs; one is its current execution. |
+| `run_steps` | Run, step key and ordinal, image, runtime identity, status/exit code, log URI, outputs, and durable wait state/result for control steps. One row per step per run; no agent-specific kind. |
 | `services` | Tenant/project/run scope, image/configuration, endpoint/runtime identity, status; scope and nullable owners are checked together |
 | `secrets` | Tenant/project name, ciphertext, self-contained encryption envelope and key reference, version, revocation timestamp |
 | `artifacts` | Immutable external metadata, producing run/optional step/task, URI, kind and digest. Preview URLs may have no content digest |
@@ -39,17 +39,19 @@ JSON is for documents and snapshots. Ownership, identities, queryable states, ve
 - MCP secret references carry the secret's project scope separately. A project may select its own or a tenant-shared secret, never another project's. Tenant-wide MCP registrations cannot select a project's private secret.
 - Runtime cannot rewrite run inputs, source/binding/definition snapshots, artifact metadata or event payloads. State updates have narrow column grants. Runtime cannot truncate tables or access the migration ledger.
 
-## Project workflows and decisions
+## Pipeline ownership and task projection
 
-`projects.task_workflow` stores the [task workflow](../specs/work-management.md): initial state, states, terminal states, allowed edges, state-to-pipeline triggers and inbox open/resolved states. No SQL enum fixes a project's workflow. `internal/tasks` validates it and protects transitions.
+A project's process definitions are its pipelines. Pipeline names are unique within a project; the repository is the definition source, not a second naming scope. A task selects one pipeline and may have several runs through explicit reruns or rework. Run and step records own execution truth.
 
-Parking is represented by `parked_at`, `blocked_by_id` and `resume_state`; all three must be set or all absent. The business state is retained, so projects need not invent a universal `parked` state. A resolution stores `approved`, `rejected` or `answered`, actor, role, answer and time. Rejection never promotes a task. Resolved requests are immutable through the task store; changed decisions require a new request. Parked candidate context cannot be silently edited.
+The target task fields are execution projections: selected pipeline, current run, status, current step, waiting assignment, result, and monotonic progress/version. Projection updates compare the run version so an older event cannot overwrite a newer run. The projection is rebuildable from `runs` and `run_steps`; it is not an independent workflow authority.
 
-The task persistence port has memory and PostgreSQL adapters with one shared contract. Its transaction joins parent/request updates and audit/outbox appends. SQL locks the project before reading its workflow; memory uses one `memdb.Update`. The store checks versions; authorization, trigger dispatch, reference-peer wiring and API operations are Phase 3.
+`projects.task_workflow` and the workflow-specific task fields are removed in the [pipeline-runtime simplification](pipeline-runtime-simplification.md). A wait is persisted with its run step and records a unique identity, expected input, accepted result, deadline, and consumed signal. Resolution records an authorized input against the exact run, step, and wait; the pipeline decides the next branch. A role inbox is a query over current waits, not a blocking task that drives a second state machine.
+
+The task persistence port has memory and PostgreSQL adapters with one shared contract. Its transaction joins task, run-projection and audit/outbox appends. SQL locks the task before reading its current run; memory uses one `memdb.Update`. Authorization, trigger dispatch, reference-peer wiring and API operations belong to the shell.
 
 ## Transaction boundaries
 
-- Task mutation: project/workflow lock, expected task version, related task changes and event append commit together. No network call runs in that transaction.
+- Task mutation: task lock, expected task/progress version, current-run projection change and event append commit together. No network call runs in that transaction.
 - Admission: persist the entire run snapshot and its step records together. `runs.trigger_key` identifies one logical trigger delivery per pipeline. User submission deduplicates `(project, principal, request_key)`; `request_hash` is compared, not part of the unique key.
 - Outbox: commit the event with state, publish outside SQL using its stable ID, then update publication progress. A crash may redeliver. Consumers use resource uniqueness or transactional version checks; JetStream alone does not make database effects exactly once.
 - Git and container effects remain outside SQL transactions. Durable reconciliation of external effects is a Phase 3 responsibility, not removed by the smaller schema.

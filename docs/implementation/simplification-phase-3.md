@@ -1,5 +1,7 @@
 # Simplification Phase 3 handoff
 
+> **Historical (2026-10-30):** this handoff describes the transitional `--assembly kernel` slice. [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md) was subsequently amended by [O-38](../decisions.md#pipeline-runtime-and-four-layer-refinement--2026-10-30-o-38): the target kernel is the standalone pipeline runtime, the shell owns native Git/tasks/API/MCP/CLI/NATS, and each task selects a project-unique pipeline. Current work is in the [pipeline-runtime simplification plan](pipeline-runtime-simplification.md).
+
 **Branch/worktree:** `task/simplification-v2`, `.work/simplification-v2`.
 
 **Scope delivered:** the first working vertical slice of the ADR 0013 kernel —
@@ -7,7 +9,7 @@ identity/RBAC bootstrap, projects and workflows, API-registered `.kodama`
 pipelines, secrets with envelope encryption, run admission, sequential step
 execution on a shared workspace with two backends, retained logs, metadata-only
 artifacts, and the task/role-inbox loop. It runs as
-`kodama server --assembly kernel` against the 15-table schema.
+`kodama server --assembly kernel` against the current 16-table product schema.
 
 ## Implemented
 

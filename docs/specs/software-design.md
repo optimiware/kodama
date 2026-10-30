@@ -1,12 +1,14 @@
 # Software design
 
-**Scope:** Single Go module (`github.com/optimiware/kodama`) implementing the two-layer architecture and 15-table database model ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
+**Scope:** Single Go module (`github.com/optimiware/kodama`) implementing the four-layer architecture and the pipeline-runtime kernel ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
 
 ## Model and responsibilities
 
-- **Two functional layers:**
-  - **Layer 1 (Core Kernel):** `identity`, `git`, `pipeline`, `services`, `tasks`, `secrets`, `artifacts`, `natsbus`, `runtime`. Deterministic container, Git, state-machine, and messaging primitives.
-  - **Layer 2 (Agentic Software Factory):** `agent`, `gateway`, `mcp`. Complements Layer 1 like a shell over a kernel without coupling LLM or harness logic into Layer 1 entities.
+- **Four functional layers:**
+  - **Layer 1 (Pipeline Runtime kernel):** pipeline definitions, runs, steps, waits, containers, shared workspaces, run services, declared secrets, and recovery. It has no shell, SQL/NATS/HTTP client, Git-hosting, task, identity, or agent dependency.
+  - **Layer 2 (Native Shell):** identity, projects, project-unique pipeline registry, tasks and execution projection, native Git, secret custody, metadata artifacts, long-lived services, HTTP API, Kodama MCP server, CLI, persistence/runtime adapters, and the central NATS bus.
+  - **Layer 3 (Agentic services):** sessions, harnesses, tools, AI gateway, and external MCP proxy. Agent work executes through ordinary kernel container steps.
+  - **Layer 4 (External behavior):** pipeline YAML, scripts, container images, hooks, and delivery/QA/notification recipes.
 - **Hexagonal ports and adapters:**
   - Capability packages own their domain structs, state transitions, and small consumer-owned Go interfaces.
   - Infrastructure details (PostgreSQL `pgx`, NATS JetStream, native Git CLI, Kubernetes/Podman/Process runtimes, KMS, OIDC) live in adapters wired explicitly by `internal/app`.
@@ -18,8 +20,8 @@
 | ID | Requirement |
 | --- | --- |
 | SD-01 | Modules SHOULD use lightweight hexagonal ports and adapters with inward dependencies wired by `internal/app`. |
-| SD-02 | Layer 1 core packages MUST NOT depend on Layer 2 agent/gateway packages; Layer 2 MUST build on Layer 1 primitives. |
-| SD-03 | Persistence adapters MUST enforce the [15-table schema](../implementation/database-schema.md), composite `(tenant_id, project_id)` ownership, and forced PostgreSQL RLS (`WithTenant`). |
+| SD-02 | Layer 1 MUST NOT depend on shell, transport, persistence-driver, broker, identity, Git-hosting, task, or agent packages. Layer 2 and Layer 3 MUST build on public lower-layer contracts. |
+| SD-03 | Persistence adapters MUST enforce the [current schema](../implementation/database-schema.md), composite `(tenant_id, project_id)` ownership, and forced PostgreSQL RLS (`WithTenant`). |
 | SD-04 | `internal/app` MUST select outbound adapters from `KODAMA_ENV` (`development`, `test`, `production`) and refuse development/test adapters in `production`. |
 | SD-05 | Ports with both memory (`memdb`) and PostgreSQL adapters MUST pass a shared contract test suite. |
 

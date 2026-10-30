@@ -65,7 +65,7 @@ A push made by a run carries that run as its origin, so a trigger can exclude it
 
 ### Triggers
 
-When the default branch changes, each `.kodama/<processname>.yaml` at that exact commit is parsed and validated and upserted into `pipelines` (`name = <processname>`, whole `definition`, `source: git`, `source_commit`). A definition that fails validation is not indexed and does not displace the previous one; the refusal is recorded. Removing a file disables that pipeline rather than leaving a stale definition.
+When the default branch changes, each `.kodama/<processname>.yaml` at that exact commit is parsed and validated and upserted into `pipelines` (`name = <processname>`, whole `definition`, `source: git`, `source_commit`). Pipeline names are unique within a project: a file that would create a second definition for an existing name from a different source is refused and recorded, and does not displace the existing definition. A definition that fails validation is not indexed and does not displace the previous one. Removing a file disables that pipeline rather than leaving a stale definition.
 
 Triggers select a repository, ref patterns and the event kind, and admit a run pinned to the pushed commit — never a later tip. Admission deduplicates by `(pipeline, push event, ref)` through `runs.trigger_key`, so a redelivered or replayed event starts nothing new.
 
@@ -80,10 +80,10 @@ Triggers select a repository, ref patterns and the event kind, and admit a run p
 Integration is an ordinary pipeline step, not a server-side merge:
 
 1. A run combines its branch with the default branch's current tip in its workspace and pushes the result to its own branch, producing candidate `C` over base `B`.
-2. Test and review steps run against `C`; a human approval is a resolved role-inbox task.
+2. Test and review steps run against `C`. A human wait is a durable pipeline wait resolved by an authorized role inbox action.
 3. An integration step pushes `C` to the default branch with expected old value `B`. The run's integration authority permits exactly that update, once.
 
-A run may push the default branch only when its pipeline is the repository's configured integration pipeline and its task is in an approved state. If the default branch moved, the push is rejected and the pipeline recomputes the candidate. Code on the task branch cannot widen the integration authority.
+A run may push the default branch only when its pipeline is the repository's configured integration pipeline, the step is the eligible integration step, and any required wait or input for that candidate is satisfied. The shell issues authority for the exact ref and expected-old/new commit pair; a task status string, a bare event, or a container-supplied approval is not authority. If the default branch moved, the push is rejected and the pipeline recomputes the candidate. Code on the task branch cannot widen the integration authority.
 
 ### Knowledge base
 

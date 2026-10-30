@@ -18,7 +18,7 @@ Instead of storing skills, prompts, blueprints, and engineering standards in cus
 2. **Standard Markdown & Git:** Engineers and agents read and update knowledge using standard Git commits, branches, and merges or via the Kodama MCP / API endpoints.
 3. **Mounted or queried by agents:**
    - **Mode A (External harnesses like `opencode`, `claude-code`, `pi`):** The pipeline step or workspace preparation checks out `<tenant>/context` and `<tenant>/<project>/context` alongside the component repository (for example under `/workspace/.context/`), so the harness reads them as ordinary local Markdown files.
-   - **Mode B (Native `kodama agent`):** Can read `/workspace/.context/` directly or query knowledge-base files, skills, and blueprints via native tools and the MCP Gateway.
+   - **Mode B (Native `kodama agent`):** Can read `/workspace/.context/` directly or query knowledge-base files, skills, and blueprints via native tools and the external MCP proxy.
 
 ## Recommended repository layout for `context` repos
 

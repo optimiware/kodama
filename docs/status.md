@@ -1,6 +1,6 @@
 # Project status
 
-**Simplification branch:** [ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.md) replaces the legacy model. Phase 2 supplied the 15-table schema and task domain. Phase 3 adds `kodama server --assembly kernel`: projects, API-registered `.kodama` pipelines, envelope-encrypted secrets, sequential container runs with a shared workspace, retained logs, artifact metadata and the task/role-inbox loop, verified end to end on PostgreSQL and Podman. Native Git hosting is now wired into it (below). Long-lived services, agents/gateways and a full `kodactl` remain. The legacy `--assembly core` still refuses the new schema. See [Phase 3 handoff](implementation/simplification-phase-3.md).
+**Architecture:** [ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.md) defines a pipeline-runtime kernel and four functional layers ([O-38](decisions.md#pipeline-runtime-and-four-layer-refinement--2026-10-30-o-38)). The kernel owns pipeline execution; the shell owns native Git, tasks, identity, persistence, API/MCP/CLI, and NATS. Each task selects a project-unique pipeline. The current `--assembly core` and `--assembly kernel` paths are transitional; their convergence and legacy deletion are in the [pipeline-runtime simplification plan](implementation/pipeline-runtime-simplification.md).
 
 Kodama is **early and not production-ready**. The core platform works end to end on a developer machine. Production deployment, key recovery and hosted use are still ahead. This page says plainly what is which.
 

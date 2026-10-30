@@ -1,6 +1,6 @@
 # Workspaces
 
-**Scope:** Layer 1 shared run `/workspace` and direct native Git integration ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
+**Scope:** Layer 1 shared run `/workspace` with source preparation from the Layer 2 native Git service ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
 
 ## Model
 

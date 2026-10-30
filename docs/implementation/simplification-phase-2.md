@@ -1,5 +1,7 @@
 # Simplification Phase 2 handoff
 
+> **Historical:** this handoff records the Phase 2 schema/task work under the original ADR 0013 direction. [O-38](../decisions.md#pipeline-runtime-and-four-layer-refinement--2026-10-30-o-38) replaces the project workflow and two-layer model; current work is in the [pipeline-runtime simplification plan](pipeline-runtime-simplification.md).
+
 **Branch/worktree:** `task/simplification-v2`, `.work/simplification-v2`; retained for all phases at the owner's request.
 
 **Baseline:** Phase 1–2 work was rebased onto `main` at `d4240782` (T-115 run resources, T-121 profile qualification, ADR 0012 and the container-SDLC slice). The original worktree base was `74096e2623168db4502c3f2eff64721377be578e`. The rebase kept this branch's rewritten specifications, kept ADR 0012 as superseded history with a banner, preserved O-34, and marked the ADR-0012-derived spec, contract and handoff as historical rather than current direction. The schema cutover remains the intentional prerelease reset described below; it is not a backwards-compatible migration. Review/merge remains pending.

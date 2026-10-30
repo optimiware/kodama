@@ -4,7 +4,7 @@ Use the [glossary](../../CONTEXT.md) for terms and [database schema](../implemen
 
 ## Core entity hierarchy
 
-At the core, Kodama's relational domain model is **15 tables** (14 domain tables plus audit/outbox) spanning Identity, Layer 1 (Core Primitives), and Layer 2 (Agentic Factory):
+Kodama's relational model spans identity, the pipeline-runtime kernel, the native shell, and agentic services. The current executable baseline has 16 product tables; the [simplification plan](../implementation/pipeline-runtime-simplification.md) removes duplicate workflow state without claiming a table reduction from that change alone.
 
 ```mermaid
 erDiagram
@@ -14,50 +14,54 @@ erDiagram
     TENANT ||--o{ SERVICE : "runs (tenant scope)"
     TENANT ||--o{ SECRET : "stores (tenant scope)"
     PROJECT ||--o{ REPOSITORY : "auto-links (tenant/project/*)"
-    PROJECT ||--o{ PIPELINE : "defines (.kodama/*.yaml)"
+    PROJECT ||--o{ PIPELINE : "defines project-unique processes"
     PROJECT ||--o{ SERVICE : "runs (project scope)"
     PROJECT ||--o{ SECRET : "stores (project scope)"
     PROJECT ||--o{ TASK : tracks
-    TASK ||--o| TASK : "blocked_by (role inbox)"
+    TASK ||--o{ RUN : "accumulates executions"
     PIPELINE ||--o{ RUN : executes
-    TASK ||--o{ RUN : motivates
     RUN ||--o{ RUN_STEP : "executes (shared /workspace)"
     RUN ||--o{ SERVICE : "runs (pipeline scope)"
     RUN_STEP ||--o{ ARTIFACT : "records metadata"
-    RUN_STEP ||--o{ AGENT_SESSION : "tracks (Layer 2)"
-    PROJECT ||--o{ MCP_SERVER : "registers (Layer 2)"
+    RUN_STEP ||--o{ AGENT_SESSION : "tracks (agentic layer)"
+    PROJECT ||--o{ MCP_SERVER : "registers (agentic layer)"
 ```
 
 ## Resource lifecycles
 
 | Resource | States | Authority |
 | --- | --- | --- |
-| **Task** | Project-defined in `projects.task_workflow` (default: `backlog`, `plan`, `implement`, `review`, `test`, `deploy_preview`, `promote`, `done`, `parked`, `cancelled`) | [Task tracker](../specs/work-management.md) |
+| **Task** | Execution projection: pending, queued, running, waiting, succeeded, failed, cancelled; task content has its own optimistic version | [Task tracker](../specs/work-management.md) |
 | **Run** | `queued`, `running`, `succeeded`, `failed`, `cancelled` | [Pipeline execution](../specs/pipeline-execution.md) |
-| **Step (`run_step`)** | `pending`, `running`, `succeeded`, `failed`, `skipped`, `cancelled` | [Pipeline execution](../specs/pipeline-execution.md) |
+| **Step (`run_step`)** | `pending`, `running`, `waiting`, `succeeded`, `failed`, `skipped`, `cancelled` | [Pipeline execution](../specs/pipeline-execution.md) |
 | **Service** | `starting`, `ready`, `failed`, `stopped` | [Pipeline execution](../specs/pipeline-execution.md) |
-| **Agent session** | `running`, `completed`, `parked`, `failed`, `cancelled` | [Agent runtime](../specs/agent-runtime.md) |
+| **Agent session** | `running`, `completed`, `waiting`, `failed`, `cancelled` | [Agent runtime](../specs/agent-runtime.md) |
 
-## Task state machine and Role Inbox
+## The pipeline owns process progression
 
-Each project defines its task state machine in `projects.task_workflow` (stored in PostgreSQL), mapping states and transitions to `.kodama/<processname>.yaml` pipelines via NATS events:
+A project owns project-unique pipelines. A task selects one pipeline, and that pipeline describes the task's process: planning, implementation, review, test, deployment, rework, and human waits. There is no separate project workflow, transition graph, or state-to-pipeline trigger map.
 
 ```mermaid
-stateDiagram-v2
-    [*] --> backlog
-    backlog --> plan : triggers .kodama/plan.yaml
-    plan --> implement : triggers .kodama/implement.yaml
-    implement --> review : triggers .kodama/review.yaml
-    review --> implement : rework needed
-    review --> test : triggers .kodama/test.yaml
-    test --> deploy_preview : triggers .kodama/preview.yaml
-    deploy_preview --> parked : creates promotion task in role inbox
-    parked --> promote : inbox task resolved (.kodama/promote.yaml)
-    promote --> done
-    plan --> parked : creates decision task in role inbox
-    implement --> parked : creates decision task in role inbox
-    parked --> plan : inbox task resolved
-    parked --> implement : inbox task resolved
+flowchart LR
+    T["Task selects pipeline"] --> A["Run admitted"]
+    A --> B["Container steps"]
+    B --> C{"Input or approval needed?"}
+    C -->|yes| W["Durable wait step"]
+    W --> S["Authorized correlated signal"]
+    S --> C
+    C -->|no| D["Continue declared branch"]
+    D --> E["Run completes"]
+    E --> P["Task progress projection"]
 ```
 
-The diagram illustrates workflow behavior. In the Phase 2 model, parking preserves the business state and sets `parked_at`, `blocked_by_id` and `resume_state`. Inbox states are project-defined. Resolution records an explicit outcome; an applicable approval or clarification answer can resume the task, while rejection cannot promote it. See the [task specification](../specs/work-management.md).
+A task may accumulate several runs through explicit reruns or rework. One run is its current execution. Run and step records own execution truth; the task's status, current step, waiting assignment, and result are a rebuildable projection.
+
+A wait pauses the same run without holding a worker or running a command. The kernel persists the wait identity, expected input, accepted result, deadline, and continuation position. The shell authorizes the actor and records the input against that exact run, step, and wait. The pipeline determines whether the outcome approves, rejects, or requests rework. A role inbox is a query over current waits; it is not a second task lifecycle.
+
+Workspace and run-scoped services have explicit bounded lifetimes during a wait. Loss of required state fails the run rather than replaying earlier commands. A successful signal delivery is not approval by itself.
+
+## Native shell and external behavior
+
+Native Git, tasks, identity, persistence, API/MCP/CLI, and NATS form the shell around the kernel. Git stores source history and knowledge; PostgreSQL stores authoritative state; NATS carries committed events, signals, and triggers. Agentic sessions, harnesses, and gateways are Layer 3. Delivery, rollback, QA, and notification behavior belongs to pipeline recipes, scripts, and container images in Layer 4.
+
+See [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md) and the [pipeline-runtime simplification plan](../implementation/pipeline-runtime-simplification.md).

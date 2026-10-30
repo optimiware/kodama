@@ -1,44 +1,50 @@
 # 7. Delivery roadmap
 
-Following [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md), Kodama is executing a three-phase simplification plan to align the documentation, database schema, and Go codebase with the two-layer architecture.
+Following [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md) and its 2026-10-30 pipeline-runtime amendment ([O-38](../decisions.md#pipeline-runtime-and-four-layer-refinement--2026-10-30-o-38)), Kodama is converging on one pipeline authoring model, one execution implementation, and one server composition.
 
 ## Simplification roadmap
 
-### Phase 1: Specification and contract reset (`docs/`) — In progress
-- Establish [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md) as the architectural baseline.
-- Rewrite the domain glossary ([CONTEXT.md](../../CONTEXT.md)), book chapters, specifications, contracts, and [15-table database schema design](../implementation/database-schema.md).
-- Retire legacy multi-version contracts (`v1alpha1`/`v1alpha2`/`v1alpha3`), S3 Git-bundle workspace publishing, Kanban WIP locks, the canonical-JSON gate engine, and the 12-table PostgreSQL event quarantine/replay subsystem.
+### Phase 1: Specification and contract reset — in progress
 
-### Phase 2: Database schema and domain reset — implemented on the task branch
-- Replaced `001_schema.sql` and `002_grants.sql` with **15 product tables** (14 domain tables plus `audit_events`) while preserving PostgreSQL RLS and scoped ownership constraints.
-- Added shared IDs/owners, the project-defined task domain, PostgreSQL/memory task stores and mutable-value isolation in `memdb`.
-- Updated the application migration manifest. New-schema server wiring follows in Phase 3. [Implementation and verification handoff](../implementation/simplification-phase-2.md).
+- Establish the four-layer architecture and the pipeline as the sole task process.
+- Rewrite the glossary ([CONTEXT.md](../../CONTEXT.md)), book chapters, specifications, contracts, and the [database schema](../implementation/database-schema.md).
+- Retire the project workflow, legacy multi-version pipeline/runtime contracts, S3 Git-bundle workspace publishing, Kanban WIP locks, canonical-JSON gates, and the event quarantine/replay subsystem.
+- Freeze pipeline identity, task projection, durable waits, protected Git integration, and NATS coordination contracts.
 
-### Phase 3: Kernel execution slice — first cutover delivered
-- `kodama server --assembly kernel` runs over the 15-table schema: identity/RBAC,
-  projects and workflows, API pipelines, envelope secrets, sequential runs on a
-  shared workspace (Podman/Process), retained logs, artifact metadata and the
-  task/role-inbox loop. See [the handoff](../implementation/simplification-phase-3.md).
-- Remaining: native Git and `.kodama` indexing, NATS dispatch, long-lived
-  services, agents/gateways, `kodactl`, and removal of the legacy packages.
+The ordered work is in the [pipeline-runtime simplification plan](../implementation/pipeline-runtime-simplification.md).
 
-### Phase 3 (remaining): codebase consolidation (`internal/` & `cmd/`)
-- **Layer 1 Core Kernel:**
-  - `internal/identity`: External OAuth/OIDC + tenant/project RBAC + project-space workload tokens.
-  - `internal/git`: Native Git HTTP service with Gerrit-style `<tenant>/<project>/*` auto-association, Knowledge Base checkout, and `.kodama/<processname>.yaml` indexing.
-  - `internal/pipeline`: Drone-inspired YAML parser, `pipelines` / `runs` / `run_steps` orchestrator with shared `/workspace`, and `services` manager across `tenant`, `project`, and `pipeline` scopes.
-  - `internal/tasks`: Per-project SQL state machine, NATS transition triggers, and parked tasks with role-inbox decision/promotion tasks.
-  - `internal/secrets` & `internal/artifacts`: KMS/keyfile encrypted secrets and metadata-only external artifact tracking.
-  - `internal/natsbus`: Clean NATS JetStream pub/sub for Git triggers, task transitions, step/agent coordination, releases, and promotions.
-- **Layer 2 Agentic Software Factory:**
-  - `internal/agent`: Native `kodama agent` runtime (skills, guardrails, validation, Git ops, task transitions, knowledge-base reader) + Mode A container harness recipes.
-  - `internal/gateway` & `internal/mcp`: OpenAI-compatible AI Gateway, MCP Gateway, and `agent_sessions`.
-- **Unified Interfaces:**
-  - `internal/api` & `internal/cli`: Unified HTTP API, MCP server, and `kodactl` CLI.
+### Phase 2: Persistence and native shell — planned
+
+- Remove `projects.task_workflow` and workflow-specific task fields.
+- Enforce project-unique pipeline names.
+- Add task pipeline/current-run/projection fields and durable wait state on run steps.
+- Wire SQL, secret custody, source preparation, Git worker, NATS outbox, triggers, and task projection outside the kernel.
+- Replace task-status Git approval with run/step/wait authority.
+
+### Phase 3: Kernel isolation and composition — planned
+
+- Refactor the kernel behind state, runtime, resource, secret, workspace-preparation, log, and clock ports.
+- Implement durable progression, waits, cancellation, restart adoption, services, and confirmed cleanup.
+- Converge Process, Podman, and Kubernetes behind one contract.
+- Wire one normal server composition and publish only served interfaces.
+
+### Phase 4: Deletion and externalization — planned
+
+- Delete the legacy execution stack, workflow engine, obsolete gates/delivery/metrics/workspace engines, and their contract versions.
+- Port retained lifecycle, security, and authority tests to their new owners.
+- Move delivery, QA, notification, and hook behavior into copyable recipes and examples.
+- Keep native Git, secrets, logs, and monitoring helpers that remain part of the shell.
 
 ## Environments
 
 Every phase preserves the three execution environments ([ADR 0009](../adr/0009-environments.md)):
-- `development`: In-memory adapters and Process runtime for fast unit tests.
-- `test`: Real PostgreSQL, NATS JetStream, native Git, and Podman containers on a developer machine.
+
+- `development`: in-memory adapters and Process runtime for fast unit tests.
+- `test`: real PostgreSQL, NATS JetStream, native Git, and Podman containers on a developer machine.
 - `production`: Kubernetes, PostgreSQL, NATS JetStream, and cloud KMS (AWS, GCP, or Scaleway).
+
+Deployed `test` and `production` profiles require NATS. `production` refuses development and test adapters.
+
+## Milestones
+
+Package completion is not milestone acceptance. A milestone is accepted only with its declared real-service, runtime, and recovery evidence. Existing M1–M3 acceptance remains evidence for the transitional assemblies; it does not automatically accept the four-layer composition. See [project status](../status.md) and [assembly status](../implementation/assembly-status.md).

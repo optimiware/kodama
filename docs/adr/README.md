@@ -16,6 +16,6 @@ Use an ADR when a choice is costly to reverse, surprising without context, and t
 | [0010](0010-run-workspace-services-builders.md) | Simplified by [0013](0013-two-layer-architecture-and-domain-simplification.md) | Shared run workspace, scoped container services, and rootless builders |
 | [0011](0011-internal-tenant-git-service.md) | Simplified by [0013](0013-two-layer-architecture-and-domain-simplification.md) | Internal tenant Git service with Gerrit-style `<tenant>/<project>/*` hierarchy |
 | [0012](0012-container-sdlc-and-artifact-releases.md) | Superseded by [0013](0013-two-layer-architecture-and-domain-simplification.md) | Container-first SDLC and metadata-only external artifacts |
-| [0013](0013-two-layer-architecture-and-domain-simplification.md) | Accepted | Two-layer functional architecture (Core Kernel + Agentic Shell), 14 domain tables plus audit/outbox |
+| [0013](0013-two-layer-architecture-and-domain-simplification.md) | Accepted | Four functional layers: pipeline-runtime kernel, native shell, agentic services, and external behavior; one pipeline process per task |
 
-[ADR 0013](0013-two-layer-architecture-and-domain-simplification.md) is the governing architecture baseline for Kodama. Earlier ADRs remain in this directory for historical context.
+[ADR 0013](0013-two-layer-architecture-and-domain-simplification.md) is the governing architecture baseline for Kodama. Its 2026-10-30 amendment replaces the original two-layer model: the kernel is the standalone pipeline runtime, the shell owns native Git, tasks, persistence, API/MCP/CLI, and NATS, and each task selects a project-unique pipeline. Earlier ADRs remain in this directory for historical context.

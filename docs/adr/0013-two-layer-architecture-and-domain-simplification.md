@@ -2,112 +2,108 @@
 status: accepted
 ---
 
-# ADR 0013: Two-layer functional architecture and domain simplification
+# ADR 0013: Pipeline-runtime kernel and four-layer architecture
 
 **Date:** 2026-10-30
-**Status:** Accepted
+**Status:** Accepted. This amendment replaces the original two-layer decision with a four-layer functional architecture and makes the pipeline the sole process definition for a task.
 **Supersedes:** [ADR 0004](0004-logical-workspaces.md), [ADR 0005](0005-git-backed-workspaces.md), [ADR 0012](0012-container-sdlc-and-artifact-releases.md); simplifies [ADR 0002](0002-postgres-state-and-events.md), [ADR 0010](0010-run-workspace-services-builders.md), and [ADR 0011](0011-internal-tenant-git-service.md).
+**Amends:** C-24 and O-35 in the [decision register](../decisions.md); the resolved refinement is [O-38](../decisions.md#pipeline-runtime-and-four-layer-refinement--2026-10-30-o-38).
+**Implementation:** [pipeline-runtime simplification plan](../implementation/pipeline-runtime-simplification.md).
 
 ## Context
 
-Over successive specification and autonomous implementation passes, Kodama's design drifted from its founding vision—an elegant, Drone CI-inspired container pipeline kernel paired with an autonomous agentic software factory—into a 74-table PostgreSQL schema and 30+ internal packages.
+Kodama is pre-release. Its founding abstraction is small: a named pipeline executes container steps against a shared workspace with declared secrets and services. A task asks for work; a pipeline describes how that work progresses.
 
-Specifically, complexity accumulated in five areas:
-1. **Pre-release backwards compatibility:** The specification carried multiple pipeline formats (`v1alpha1`, `v1alpha2`, `v1alpha3`), dual workspace models (`attempt_private` vs `run_shared`), and dual Git models (external S3 bundle-publisher CAS vs internal two-phase `reference-transaction` SQL journals) despite the repository still being pre-release.
-2. **Satellite tables for every subsystem:** Events grew to 12 SQL tables (quarantine, replay, recovery fences, dedup boundaries); secrets/variables grew to 8 tables; delivery/gates/ChatOps grew to 11 tables; execution grew to 11 tables; AI/MCP grew to 11 tables.
-3. **Kanban and governance ceremony:** Work tracking accumulated Kanban WIP capacity locks, Lean/Kaizen SQL flow-interval views, `content_revision` vs `version` split, and a dedicated canonical-JSON-digest `gates` subsystem, rather than a simple per-project task state machine.
-4. **Blurred boundary between core primitives and agentic features:** Agent profiles, design-conformance evidence checks, and QA defect mappers were hardcoded into the core pipeline validator and gate engine.
-5. **Knowledge base ceremony:** Engineering guidelines, skills, and application blueprints were modeled as versioned "chassis" and conformance-baseline pins rather than simple Markdown repositories in Git.
+Successive implementation passes grew two competing ideas on top of that primitive:
 
-Because Kodama is pre-release, we can remove all legacy compatibility shims and cut the design down to a small set of composable primitives.
+1. A per-project task workflow with its own states, edges, parking fields, and state-to-pipeline trigger map. A task therefore had a process definition separate from the pipeline it ran, and the two could disagree.
+2. A core kernel that included Git hosting, task tracking, SQL, HTTP, OAuth, NATS, and agent services. That made the execution primitive impossible to implement or test without the whole product.
+
+The database and package count were symptoms. The governing problem was ownership: process progression, execution, native integration, and agentic behavior were mixed together.
+
+Because Kodama is pre-release, one authoring model and one executable model can replace the accumulated compatibility layers. Existing databases are never silently dropped or reinterpreted.
 
 ## Decision
 
-### 1. Two functional layers: Core Kernel (Layer 1) and Agentic Shell (Layer 2)
+### 1. Four functional layers
 
-Kodama is organized into two strict functional layers:
+| Layer | Responsibility |
+| --- | --- |
+| **1. Pipeline Runtime — Kernel** | Pipeline execution semantics: run and step lifecycle, container dispatch and observation, shared run workspaces, run-scoped support containers, declared secret delivery, generic waits and signals, cancellation, deadlines, recovery, logs, and outputs. |
+| **2. Native Services — Shell** | Tenant and project identity, authorization, project pipeline registry, task tracker, native Git, secret custody, metadata-only artifacts, long-lived tenant/project services, HTTP API, Kodama MCP server, CLI, persistence and runtime adapters, and the central NATS system bus. |
+| **3. Agentic Services** | Native agent sessions and runtime, harness integrations, agent tools and skills, AI gateway, and external MCP proxy. Agent work runs through ordinary kernel container steps and uses shell services. |
+| **4. External Behavior** | SDLC process definitions, release/deployment/rollback recipes, QA policy, notifications, organizational conventions, scripts, and container hooks. These may live entirely in tenant or external repositories and images. |
 
-#### Layer 1: The Core ("The Kernel" — Drone CI-inspired primitives)
-Layer 1 provides deterministic container orchestration, source hosting, state-machine task tracking, and messaging. It knows nothing about LLM prompts or agent harnesses:
-1. **YAML Pipelines (`.kodama/<processname>.yaml`):**
-   - Pipelines are defined in Git under `.kodama/<processname>.yaml` or registered via the API / `kodactl` CLI.
-   - The entire YAML definition is persisted in a single `definition` column on the `pipelines` table.
-   - A pipeline run (`runs`) executes steps (`run_steps`, one row per step per run) inside defined containers mounting authorized **secrets** and a **shared `/workspace`**.
-2. **Scoped Container Services (`services`):**
-   - Services are support containers (databases, caches, mocks, preview servers) that support pipeline runs and can run at **tenant**, **project**, or **pipeline (run)** scope.
-3. **Native Git Service with Gerrit-style hierarchy (`repositories`):**
-   - Kodama embeds a native Git HTTP service (`git http-backend` / receive-pack / upload-pack) isolated per tenant.
-   - Repositories use a Gerrit-style hierarchical path namespace:
-     - `<tenant>/context` → Tenant-wide repository (`project_id = NULL`).
-     - `<tenant>/<project>/*` → Automatically associated with `<project>` (e.g., `<tenant>/<project>/context`, `<tenant>/<project>/component-a`, `<tenant>/<project>/deploy`).
-4. **Task Tracker with per-project state machine and Role Inbox (`tasks`):**
-   - Tasks follow a state machine defined per project in SQL (`projects.task_workflow`, e.g., `plan -> implement -> review -> test -> deploy_preview -> done`, plus `parked`).
-   - **No separate Gate subsystem:** Human validations, architectural clarifications, production promotions, and incident triage are modeled uniformly by **parking** a task (`state = parked`, `blocked_by_id`) and creating a blocking task assigned to a **role inbox** (`assigned_role`, e.g., `reviewer` or `operator`). Resolving the inbox task emits a NATS signal that unblocks the parked task and triggers the next pipeline.
-5. **Metadata-only Artifacts (`artifacts`) & Encrypted Secrets (`secrets`):**
-   - Production artifacts (OCI images, packages, bundles, preview deployments) are published to external registries/services by pipeline steps; Kodama stores **metadata only** (`name`, `kind`, `uri`, `digest`, `metadata`).
-   - Secrets are encrypted key-value pairs scoped to tenant or project and mounted into steps and services.
-6. **NATS JetStream as the internal message bus:**
-   - NATS captures and relays all system signals: Git push/tag/merge triggers, task state transitions, step/agent coordination signals, releases, and promotions.
-7. **Unified Access & Simple Permission Model:**
-   - Users and operators access Kodama through the **HTTP API**, **MCP server**, or **`kodactl` CLI**, authenticated via external OAuth/OIDC with RBAC.
-   - **Permission model:**
-     - **User RBAC** (`memberships`) defines what users can configure or operate (projects, pipelines, secrets, tasks RW, role-inbox resolution).
-     - **Project-space runtime access:** Agents and steps executing inside a project automatically have access to what has been provisioned and configured in that project space (repositories, mounted secrets, services, tasks, knowledge base, and gateways).
+These are dependency boundaries, not four mandatory deployments. Kodama remains one Go module with explicit composition.
 
-#### Layer 2: The Agentic Software Factory ("The Shell over the Kernel")
-Layer 2 complements Layer 1 like a shell over a kernel without changing or interfering with Layer 1's core design. Agentic work is executed in two ways, both reusing Layer 1 container steps:
-- **Mode A — External Agent Harnesses in Container Steps:**
-  - Ordinary container steps running `opencode`, `claude-code`, `pi`, or other coding harnesses with mounted secrets and the shared `/workspace`, configured directly in `.kodama/<processname>.yaml`.
-- **Mode B — Native Kodama Agent Runtime (`kodama agent`):**
-  - Container steps running an image with the `kodama` binary runtime and native access to Layer 1 features.
-  - Uses the **OpenAI-compatible AI Gateway**, **MCP Gateway**, `agent_sessions`, and embedded tools/skills.
-  - Specialized for fine-grained software factory steps: planning, decision-making, filtering, guardrails, validation gates, embedded skills, Git operations, task state transitions, and knowledge-base queries.
+The kernel depends only on small runtime-owned ports and value types. It has no dependency on tasks, Git hosting, HTTP or MCP, NATS, SQL drivers, OAuth, or agent packages. Concrete adapters and process configuration are assembled outside it. Secrets remain an execution primitive through declared references and a resolver/materialization port; encryption, key custody, scope authorization, and rotation belong to shell adapters. Workspace preparation is injected or expressed as ordinary preparation steps, so the kernel does not know native Git credentials or knowledge-base repository conventions.
 
-### 2. Git-native Knowledge Base Layer
+The Kodama MCP server exposes native operations in Layer 2. The proxy to external MCP servers and agent-specific tool policy belong to Layer 3.
 
-Skills, context, blueprints, and engineering guidelines are stored as Markdown in the native Git service using Gerrit-style repository conventions:
-- `<tenant>/context` — Tenant-wide context, security rules, global skills, and architectural guidelines.
-- `<tenant>/<project>/context` — Project-specific architecture, domain glossary, and conventions.
-- `<tenant>/<project>/<component>` — Component source and component-local instructions.
-- `<tenant>/<project>/deploy` — Deployment manifests, environment topology, and promotion rules.
-
-This requires zero dedicated SQL tables and allows both humans and agents (Mode A and Mode B) to read, branch, and update knowledge using standard Git operations.
-
-### 3. Simplified Core Database Schema (15 Tables)
-
-The target schema has 14 domain tables plus required audit/outbox: 15 product tables with tenant RLS isolation. The original total of 14 omitted `audit_events` from its count:
+### 2. The pipeline is the process definition
 
 ```text
-tenants
- ├── memberships          (user_id, tenant_id, project_id?, role)
- ├── repositories         (tenant/context at tenant level; tenant/<project>/* auto-linked to project)
- ├── secrets              (tenant- or project-scoped encrypted secrets)
- ├── services             (tenant-, project-, or pipeline-scoped container services)
- ├── mcp_servers          (tenant- or project-scoped MCP server registrations)
- ├── audit_events         (lightweight append-only audit & NATS outbox)
- └── projects             (includes task_workflow state-machine definition)
-      ├── tasks           (state machine + blocked_by_id + assigned_role inbox)
-      ├── pipelines       (name + whole .kodama/<process>.yaml definition)
-      └── runs            (pipeline execution instance)
-           ├── run_steps       (one row per step in a run)
-           ├── artifacts       (metadata for external artifacts)
-           └── agent_sessions  (native Kodama agent session state, messages, and token usage)
+tenant
+  project
+    pipelines (project-unique names)
+      runs
+        run_steps
+    tasks (each selects a pipeline; records current execution progress)
 ```
-*(Plus `users` for OAuth principal mapping.)*
+
+Each task selects one project pipeline by name. Persistence resolves the name to an immutable pipeline ID. Pipeline names are unique within a project; a repository is the definition's source, not a second naming scope. A conflicting definition from another repository or from the API is rejected instead of silently taking precedence. Pipeline renaming is not part of the initial interface.
+
+A run snapshots its pipeline definition and inputs at admission. A task may accumulate several runs through explicit reruns or rework, with one current execution selected for its progress view. Git-triggered and API-triggered runs may exist without a task.
+
+Remove `projects.task_workflow`, independently configurable task transition graphs, and the state-to-pipeline trigger map. Business phases such as planning, implementation, review, test, and deployment are step names or labels in pipeline YAML. They are not a second state machine in SQL.
+
+Tasks retain ordinary tracking data and add queryable execution fields: the selected pipeline, current run, execution status, current step, waiting reason and assignment, result reference, and optimistic version. Run and step records own execution truth. Cached task progress is updated idempotently from versioned runtime events and can be rebuilt from those records.
+
+### 3. Durable generic waits
+
+A pipeline can pause at a non-container wait step and resume the same run after a correlated signal. The kernel persists the wait identity, expected input, accepted result, and continuation position. Authorization and human-facing inbox operations belong to the shell; approval, rejection, and rework behavior is expressed in the pipeline.
+
+A waiting step holds no worker and runs no command. The run workspace and retained support services have explicit bounded lifetimes. Existing run services may continue consuming resources during a wait; stopping and recreating them is never silently treated as preserving their state. Loss of required workspace or service state fails the run rather than replaying earlier commands.
+
+A role inbox lists tasks whose current pipeline step waits for that role. Resolving an inbox entry records the authorized input against that exact run, step, and wait, then emits its signal. A successful signal delivery is not itself approval: the recorded outcome determines the pipeline's next branch. This replaces creating a separate blocking task solely to drive workflow resumption.
+
+### 4. NATS is the shell's central system bus
+
+NATS JetStream carries native system events, execution observations, external signals, pipeline triggers, and monitoring subscriptions. Git, the task tracker, APIs, CLI and MCP, agents, and external integrations connect through this common contract. In deployed `test` and `production` profiles, NATS is a required shell service.
+
+PostgreSQL remains the authoritative durable state. State changes and event-publication intent commit together; the shell publishes the outbox to JetStream. Consumers tolerate duplicate and out-of-order delivery and deduplicate commands against the affected run, step, wait, or trigger identity. Periodic reconciliation repairs missed wakeups. This retains [ADR 0002](0002-postgres-state-and-events.md)'s authority model while making NATS central to coordination.
+
+The kernel receives commands and signals and emits execution events through its ports. Its unit and contract tests use memory implementations without a broker or database. NATS subject names and client types do not enter its execution model.
+
+### 5. Minimal persistence and one supported model
+
+Keep relational ownership, identities, queryable status, and concurrency keys. Use JSON for pipeline documents, immutable run inputs, wait payloads, outputs, and metadata. Keep separate `runs` and `run_steps` records to preserve execution history and support source-free runs. A task is not a substitute execution record.
+
+Store generic waiting state and results with run steps. An independent workflow, gate, or approval engine is unnecessary. Keep metadata-only external artifacts. Agent session and MCP registration persistence belongs to Layer 3 and is not a dependency of the kernel or native shell behavior.
+
+The fixed table-count promise is withdrawn in favor of an explicit ownership inventory. The current baseline has 16 product tables; this refinement primarily removes duplicate state, fields, and code. Any later table consolidation must follow a concrete lifecycle or query need.
+
+Kodama converges on one authoring contract, one execution implementation, and one server composition. Retired formats, compatibility aliases, and obsolete consumers are removed as their replacements become executable. A fresh-database cutover is explicit; the migration runner never deletes or transforms an existing database.
+
+### 6. Dependency direction
+
+- Layer 1 imports no shell, transport, persistence driver, broker, identity, Git-hosting, task, or agent package.
+- Layer 2 builds on kernel contracts and may host native transport, persistence, Git, tasks, identity, and messaging adapters.
+- Layer 3 builds on shell and kernel public contracts. It does not add execution semantics or private shell state access.
+- Layer 4 uses public shell APIs, Git, NATS signals, and ordinary container images. It cannot require a controller plugin or a kernel code change.
+
+Ports are consumer-owned and narrow. Infrastructure adapters are wired explicitly. A shared package is extracted only where two owners genuinely share a contract, not to avoid defining a boundary.
 
 ## Consequences
 
-- **Reduction in surface area:** The Phase 2 schema has 15 tables. Phase 3 removes the legacy runtime/deployment consumers and wires the new contracts; schema replacement alone does not complete those removals.
-- **Maximum autonomy by default:** Pipelines chain naturally via NATS signals and task state transitions (`plan -> implement -> review -> test -> deploy_preview`), pausing for humans only when a task is parked behind a role-inbox task (such as production promotion or incident decisions).
-- **Clean implementation roadmap:**
-  - **Phase 1:** Update specifications, contracts, book chapters, and schema documentation in `docs/`.
-  - **Phase 2:** Replace the PostgreSQL schema and domain models with the 15-table baseline.
-  - **Phase 3:** Consolidate `internal/` packages around the two functional layers and `kodactl`.
+- A plain pipeline can be implemented and tested without Git, task tracking, SQL, NATS, HTTP, or agents.
+- One pipeline describes a task's process, including human waits and conditional progression.
+- Native Git and messaging remain first-class shell services with their own durability and authorization responsibilities.
+- Specialized delivery, QA, notification, and governance behavior moves to pipelines and containers.
+- Kernel isolation does not remove runtime obligations: durable identity, cancellation, stop confirmation, workspace exclusion, resource cleanup, and conservative treatment of unknown command outcomes remain execution semantics.
+- The original two-layer wording and the project workflow model are superseded. ADRs [0001](0001-native-kubernetes-jobs.md), [0003](0003-shared-control-plane.md), [0006](0006-hexagonal-domain-design.md), [0007](0007-platform-core-and-agent-layer.md), [0008](0008-runtime-seam.md), and [0009](0009-environments.md) continue to govern their applicable runtime, tenancy, dependency, and deployment responsibilities. ADRs [0002](0002-postgres-state-and-events.md), [0010](0010-run-workspace-services-builders.md), and [0011](0011-internal-tenant-git-service.md) are refined at the boundaries described here. ADRs [0004](0004-logical-workspaces.md), [0005](0005-git-backed-workspaces.md), and [0012](0012-container-sdlc-and-artifact-releases.md) remain historical and superseded as previously recorded.
+- Implementation is staged: amend the governing contracts first, isolate and complete the standalone kernel, simplify persistence and rebuild the native shell, converge runtime adapters and composition, delete superseded implementation, then externalize specialized behavior. The [simplification plan](../implementation/pipeline-runtime-simplification.md) owns the ordered work, verification, and completion criteria.
 
-## Phase 2 persistence refinement
+## Historical note
 
-The [schema implementation](../implementation/database-schema.md) stores one complete JSON pipeline document, with immutable copies on runs. Repository paths are derived from tenant/project keys and relative names. SQL validates nullable service ownership, same-project references and run/step attribution; runtime grants protect immutable input/evidence fields.
-
-Project workflows define all business and inbox state names. Parking keeps the business state and records `parked_at`, `blocked_by_id`, `resume_state`. This refines the earlier shorthand `state=parked`. Resolution records an explicit outcome: rejection does not resume a promotion. One state-to-pipeline trigger map supports initial entry and same-state resumption. These details are implemented in `internal/tasks`, with a shared memory/PostgreSQL contract.
-
-An existing database fails the new baseline's checksum check; the runner does not delete or transform it. New-schema server activation requires Phase 3 adapter wiring. See the [Phase 2 handoff](../implementation/simplification-phase-2.md).
+The original ADR 0013 (2026-10-30) introduced two layers and a 14-domain-table model plus audit/outbox. It reduced a 74-table schema but retained a project task state machine, a workflow-to-pipeline trigger map, and a kernel that composed native services. Its Phase 2 schema and kernel slice remain implemented history. This amendment replaces that direction; it does not retroactively claim that the earlier work was delivered as the four-layer design.

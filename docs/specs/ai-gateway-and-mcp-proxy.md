@@ -1,6 +1,6 @@
-# AI gateway and MCP gateway
+# AI gateway and external MCP proxy
 
-**Scope:** Layer 2 OpenAI-compatible AI Gateway, MCP Gateway, `agent_sessions`, and `mcp_servers` ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
+**Scope:** Layer 3 OpenAI-compatible AI Gateway, external MCP proxy, `agent_sessions`, and `mcp_servers` ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)). The native Kodama MCP server belongs to the Layer 2 shell and is described in the [API and CLI specification](api-cli-and-integrations.md).
 
 ## AI Gateway (OpenAI-compatible)
 
@@ -9,25 +9,26 @@ Kodama includes a built-in OpenAI-compatible HTTP proxy (`/api/v1/ai/v1/chat/com
 - **Session & token tracking:** Records model name, prompt tokens, completion tokens, and message transcripts on `agent_sessions` (linked to `tenant_id`, `project_id`, `run_id`, `step_id`, and `task_id`).
 - **Guardrails & filtering:** Enforces project-configured model allowlists and token/request budgets per run.
 
-## MCP Gateway
+## Native MCP server and external MCP proxy
 
-Kodama provides a unified Model Context Protocol (MCP) surface (`/api/v1/mcp`) for both **external users/operators** (authenticated via OAuth RBAC) and **in-container agents** (authenticated via project-space `KODAMA_TOKEN`):
+The Layer 2 shell provides the native Kodama MCP surface (`/api/v1/mcp`) for external users and operators. Layer 3 provides the external MCP proxy used by agent work. Both authenticate the caller and apply current authority.
 
-1. **Native Kodama MCP tools (Core Kernel & Knowledge Base):**
-   - `tasks.*`: List, create, inspect, transition tasks, park tasks, and query/resolve the role inbox.
-   - `git.*`: List repositories, read files/diffs from `<tenant>/context` and `<tenant>/<project>/*`, create branches, and inspect commits.
-   - `pipelines.*` & `runs.*`: Trigger pipelines, inspect run/step status and logs, and manage scoped `services`.
+1. **Native Kodama MCP tools (shell):**
+   - `tasks.*`: List, create, inspect, start, rerun, and query/resolve the task's current wait.
+   - `git.*`: List repositories, read files and diffs from `<tenant>/context` and `<tenant>/<project>/*`, create branches, and inspect commits.
+   - `pipelines.*` and `runs.*`: Trigger pipelines, inspect run/step status and logs, and manage scoped `services`.
    - `artifacts.*`: Register and query external artifact metadata.
 2. **External MCP server federation (`mcp_servers`):**
    - Projects and tenants can register external MCP servers in the `mcp_servers` table (`name`, `url`, `secret_id`, `allowed_tools`).
-   - The MCP Gateway proxies allowed tool calls to those servers while injecting `secret_id` credentials server-side.
+   - The Layer 3 proxy forwards allowed tool calls to those servers while injecting `secret_id` credentials server-side.
+   - The proxy does not add execution semantics or access private shell state.
 
 ## Requirements
 
 | ID | Requirement |
 | --- | --- |
 | GM-01 | The AI Gateway MUST expose an OpenAI-compatible endpoint authenticated by project-space run tokens, inject upstream provider secrets server-side, and record token usage on `agent_sessions`. |
-| GM-02 | The MCP Gateway MUST expose native Kodama Layer 1 tools and registered `mcp_servers` tools according to caller authority (user RBAC or project-space workload token). |
+| GM-02 | The external MCP proxy MUST expose registered `mcp_servers` tools according to caller authority; the native Kodama MCP server remains a Layer 2 shell surface. |
 | GM-03 | External `mcp_servers` credentials (`secret_id`) MUST remain server-side and enforce `allowed_tools` filtering. |
 
 ## Acceptance

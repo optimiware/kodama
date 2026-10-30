@@ -1,15 +1,18 @@
 # Kodama documentation
 
-Kodama is an API-first, autonomous software factory built around two functional layers ([ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.md)):
-- **Layer 1 (The Core Kernel):** Drone CI-inspired YAML pipelines (`.kodama/<processname>.yaml`), shared workspace container steps, scoped container services (`tenant`, `project`, or `pipeline`), a native Gerrit-style Git service, a per-project state-machine task tracker with role-inbox decisions, metadata-only external artifacts, encrypted secrets, and a NATS JetStream message bus.
-- **Layer 2 (The Agentic Software Factory):** External coding harnesses (`opencode`, `claude-code`, `pi`) and the native `kodama agent` runtime (with AI Gateway, MCP Gateway, sessions, skills, guardrails, and Git-backed Knowledge Base) operating as a clean shell over the Layer 1 kernel.
+Kodama is an API-first, autonomous software factory built around four functional layers ([ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.md)):
+- **Layer 1 (Pipeline Runtime kernel):** YAML pipelines (`.kodama/<processname>.yaml`), runs and steps, shared run workspaces, container services, declared secrets, durable waits, cancellation, and recovery.
+- **Layer 2 (Native Shell):** identity and authorization, projects, project-unique pipelines, tasks whose progress follows their selected pipeline, native Git, secret custody, metadata-only artifacts, HTTP API, Kodama MCP server, CLI, persistence/runtime adapters, and the central NATS JetStream bus.
+- **Layer 3 (Agentic services):** external coding harnesses (`opencode`, `claude-code`, `pi`), the native `kodama agent` runtime, sessions, tools, AI Gateway, and the external MCP proxy.
+- **Layer 4 (External behavior):** pipeline YAML, scripts, container images, hooks, and delivery/QA/notification recipes that extend Kodama without changing its code.
 
 ## Start here
 
 | I want to... | Read |
 | --- | --- |
-| Understand the simplified architecture | [ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.md) and [System architecture](book/05-system-architecture.md) |
-| Understand the domain and 15-table data model | [Domain and lifecycles](book/03-domain-and-lifecycles.md) and [Database schema](implementation/database-schema.md) |
+| Understand the architecture | [ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.md) and [System architecture](book/05-system-architecture.md) |
+| Understand the domain and data model | [Domain and lifecycles](book/03-domain-and-lifecycles.md) and [Database schema](implementation/database-schema.md) |
+| Plan the code and spec cleanup | [Pipeline-runtime simplification plan](implementation/pipeline-runtime-simplification.md) |
 | See what works today | [Project status](status.md) |
 | Integrate with the API, MCP, or `kodactl` | [Contracts](contracts/README.md) and the [HTTP interface](contracts/http-api.md) |
 | Install and operate it | [Installation and configuration](operations/installation-and-configuration.md) |
@@ -34,17 +37,17 @@ Start with [ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.
 
 | Specification | Layer | Main responsibility |
 | --- | --- | --- |
-| [Identity, tenancy, and RBAC](specs/identity-tenancy-and-rbac.md) | Layer 1 | External OAuth/OIDC, user RBAC, tenant isolation, and project-space workload permissions |
-| [Git repositories and knowledge base](specs/git-repositories.md) | Layer 1 | Native Git service, Gerrit-style `<tenant>/<project>/*` hierarchy, `.kodama/*.yaml`, and Markdown knowledge base |
-| [Pipeline execution and services](specs/pipeline-execution.md) | Layer 1 | `.kodama/<processname>.yaml`, `pipelines` > `runs` > `run_steps`, and `tenant`/`project`/`pipeline` container services |
-| [Workspaces](specs/workspaces.md) | Layer 1 | Shared `/workspace` per pipeline run and direct native Git checkout/push |
-| [Task tracker and role inbox](specs/work-management.md) | Layer 1 | Per-project SQL state machine, NATS transition triggers, parked tasks, and role-inbox decisions |
-| [Secrets and configuration](specs/variables-and-secrets.md) | Layer 1 | Encrypted tenant/project secrets mounted into container steps and services |
-| [Artifacts, releases, and promotions](specs/delivery-and-quality-gates.md) | Layer 1 | Metadata-only external artifacts, release/promotion pipelines, and role-inbox promotion approvals |
-| [API, `kodactl` CLI, and MCP](specs/api-cli-and-integrations.md) | Layer 1 & 2 | Unified HTTP API, MCP server, `kodactl` CLI, and NATS signals |
-| [Agent runtime](specs/agent-runtime.md) | Layer 2 | Mode A container harnesses (`opencode`, `claude-code`, `pi`) and Mode B native `kodama agent` runtime |
-| [AI gateway and MCP gateway](specs/ai-gateway-and-mcp-proxy.md) | Layer 2 | OpenAI-compatible model gateway, MCP gateway, and `agent_sessions` |
-| [Software design](specs/software-design.md) | Cross-cutting | Lightweight hexagonal ports/adapters, package boundaries, and environments |
+| [Identity, tenancy, and RBAC](specs/identity-tenancy-and-rbac.md) | Shell | External OAuth/OIDC, user RBAC, tenant isolation, and project-space workload permissions |
+| [Git repositories and knowledge base](specs/git-repositories.md) | Shell | Native Git service, Gerrit-style `<tenant>/<project>/*` hierarchy, `.kodama/*.yaml`, and Markdown knowledge base |
+| [Pipeline execution and services](specs/pipeline-execution.md) | Kernel | `.kodama/<processname>.yaml`, runs and steps, durable waits, and container services |
+| [Workspaces](specs/workspaces.md) | Kernel | Shared `/workspace` per pipeline run and source preparation |
+| [Task tracker and role inbox](specs/work-management.md) | Shell | Tasks that select a pipeline, execution-progress projection, and wait-based inbox |
+| [Secrets and configuration](specs/variables-and-secrets.md) | Kernel & shell | Declared secret references in the kernel; encrypted tenant/project custody in the shell |
+| [Artifacts, releases, and promotions](specs/delivery-and-quality-gates.md) | Shell & Layer 4 | Metadata-only external artifacts and delivery/promotion recipes |
+| [API, `kodactl` CLI, and MCP](specs/api-cli-and-integrations.md) | Shell | Unified HTTP API, Kodama MCP server, `kodactl` CLI, and NATS signals |
+| [Agent runtime](specs/agent-runtime.md) | Agentic | Container harnesses (`opencode`, `claude-code`, `pi`) and the native `kodama agent` runtime |
+| [AI gateway and MCP proxy](specs/ai-gateway-and-mcp-proxy.md) | Agentic | OpenAI-compatible model gateway, external MCP proxy, and `agent_sessions` |
+| [Software design](specs/software-design.md) | Cross-cutting | Layer dependency direction, lightweight ports/adapters, and environments |
 | [Platform integration](specs/platform-integration.md) | Cross-cutting | Optimi Platform core boundary and standalone vs hosted operation |
 
 ### Operators
@@ -77,8 +80,9 @@ The [decision register](decisions.md) and [ADR 0013](adr/0013-two-layer-architec
 
 ## Project navigation
 
-- [ADR 0013: Two-layer architecture and simplification](adr/0013-two-layer-architecture-and-domain-simplification.md)
-- [Database schema (15-table model)](implementation/database-schema.md)
+- [ADR 0013: Pipeline-runtime kernel and four-layer architecture](adr/0013-two-layer-architecture-and-domain-simplification.md)
+- [Database schema](implementation/database-schema.md)
+- [Pipeline-runtime simplification plan](implementation/pipeline-runtime-simplification.md)
 - [Repository layout](implementation/repository-layout.md)
 - [Project status](status.md) and [assembly status](implementation/assembly-status.md)
 - [Task backlog](tasks/README.md)

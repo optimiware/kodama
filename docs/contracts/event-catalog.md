@@ -1,15 +1,16 @@
 # Event catalog (NATS JetStream)
 
-**Status:** Internal message bus contract under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md).
+**Status:** Internal system-bus contract under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md) and [O-38](../decisions.md#pipeline-runtime-and-four-layer-refinement--2026-10-30-o-38).
 
-NATS JetStream is the internal nervous system of Kodama. It captures and relays signals across Git repositories, the state-machine task tracker, pipeline steps, container services, agents, releases, and promotions.
+NATS JetStream is the native shell's central bus. It carries committed system events, execution observations, external signals, Git triggers, and monitoring subscriptions. PostgreSQL remains authoritative; the outbox publishes to NATS. The pipeline-runtime kernel emits execution events through its ports and does not depend on NATS types.
 
 ## Subject hierarchy
 
 ```text
 kodama.v1.<tenant-key>.<project-key>.<domain>.<action>
 ```
-*(Tenant-wide events use `_` for `<project-key>`.)*
+
+Tenant-wide events use `_` for `<project-key>`.
 
 ## Envelope
 
@@ -19,44 +20,53 @@ kodama.v1.<tenant-key>.<project-key>.<domain>.<action>
   "occurredAt": "2026-10-30T12:00:00Z",
   "tenant": "acme",
   "project": "erp",
-  "type": "task.transitioned",
-  "actor": {"type": "agent", "id": "run_01/review"},
-  "resource": {"type": "task", "id": "tsk_1042"},
+  "type": "wait.resolved",
+  "actor": {"type": "user", "id": "usr_17"},
+  "resource": {"type": "run_step", "id": "run_01/review"},
   "data": {
-    "from": "review",
-    "to": "deploy_preview",
-    "triggerPipeline": "preview"
+    "runId": "run_01",
+    "stepKey": "review",
+    "waitId": "wait_01",
+    "outcome": "approved"
   }
 }
 ```
 
 ## Initial event types
 
-| Event type | Emitted when | Key payload fields & coordination role |
-| --- | --- | --- |
-| `work_item.created` | Work item | Kind, initial state |
-| `work_item.updated` | Work item | Changed field names, content revision where applicable |
-| `work_item.transitioned` | Work item | Previous/new state, transition ID |
-| `workspace.state_changed` | Workspace | Previous/new state, reason code |
-| `workspace.checkpoint_created` | Workspace | Repository, previous/new commit, publishing attempt or human synchronization |
-| `run.created` | Run | Work item, definition ID, input-snapshot digest |
-| `run.state_changed` | Run | Previous/new state, classified reason |
-| `step_attempt.state_changed` | Attempt | Run/step IDs, previous/new state, classified reason |
-| `run_resource.state_changed` | Run resource (`run_shared` runs; envelope resource type `run_resource`; resource ID [`rr-…`](#run-resource-events); project required) | Run ID, kind (`network`, `workspace`, `preparation`, `service`), key, previous/new phase, safe reason code ([catalog](run-resources.md#reasons)), spec fingerprint, whether a runtime UID is bound |
-| `repository.created` | Repository (designed internal hosting) | Name, default branch, hosting |
-| `repository.state_changed` | Repository | Previous/new status, reason code |
-| `git.refs_updated` | An accepted receive (`resource.type` `git_push`, `resource.id` the payload's `receiveId`: the push is its receive); exactly one per receive that applied an update | `receiveId`, repository, actor, origin run and the applied `(ref, old, new, kind)` updates inline, never a server ref ([Git service](git-service.md#push-events)); trigger admission and pipeline indexing consume it ([triggers](git-service.md#trigger-configuration)) |
-| `gate.requested` | Gate | Subject digest, content revision, reviewer scope, deadline |
-| `gate.decided` | Gate | Actor, decision, resulting state, subject digest |
-| `gate.invalidated` | Gate | Subject digest, reason, superseding commit/revision when present |
-| `deployment.state_changed` | Deployment | Environment, previous/new state, source/artifact references |
-| `membership.changed` | Membership | User ID, changed binding references, effective version |
-| `project.settings_changed` | Project | Changed setting names, version |
-| `configuration.changed` | Variable/secret | Resource kind, value/wrapping version, change kind, scope |
-| `usage.recorded` | Usage record | Run/attempt, model, observed or estimated usage, uncertainty |
+| Event type | Emitted when | Key payload fields and coordination role || --- | --- | --- |
+| `git.refs_updated` | An accepted receive applied an update | `receiveId`, repository, actor, origin run, and applied `(ref, old, new, kind)` updates inline; indexing and trigger admission consume it |
+| `pipeline.indexed` | A definition at an exact commit was accepted, refused, or removed | Pipeline name, repository, commit, source, version, refusal code |
+| `run.created` | A run is admitted | Pipeline, optional task, definition/input snapshot digest, trigger identity |
+| `run.state_changed` | A run changes state | Previous/new state, bounded reason, version |
+| `run_step.state_changed` | A step changes state | Run, step key, previous/new state, bounded reason, version |
+| `wait.opened` | A wait step commits its durable state | Run, step key, wait identity, assignment/correlation, expected input, deadline |
+| `wait.resolved` | An authorized result consumes a wait | Run, step key, wait identity, actor, outcome, answer reference |
+| `service.state_changed` | A run, project, or tenant service changes state | Scope, run, service key, previous/new phase, bounded reason |
+| `task.created` | A task is created with its selected pipeline | Task, pipeline, initial execution |
+| `task.progress_changed` | A task projection advances | Task, current run, status, current step, waiting assignment, projection version |
+| `repository.created` | A repository is provisioned | Name, default branch, hosting |
+| `repository.state_changed` | A repository changes status | Previous/new status, bounded reason |
+| `membership.changed` | A membership changes | User, changed binding, effective version |
+| `project.settings_changed` | Project settings change | Changed setting names, version |
+| `configuration.changed` | A variable or secret changes | Resource kind, scope, wrapping version, change kind |
+| `artifact.registered` | A step registers external artifact metadata | Artifact, run, step, task, kind, URI, digest |
+| `usage.recorded` | Agent or gateway usage is observed | Run/session, model, observed or estimated usage, uncertainty |
 
-`run_resource.state_changed` carries references only: no endpoints beyond the logical key, logs, credentials, secret values or scratch contents, and scratch changes never produce `workspace.checkpoint_created`. Gate expiry is an applicability check against its deadline, not a status transition; a run deadline that expires while a gate is pending invalidates it with reason `run_deadline_exceeded`. Agent results and defects use attempt/work-item events. No separate session, candidate, finding, or policy subsystem is introduced.
+## Delivery rules
+
+- Delivery is at least once. Consumers deduplicate on a stable event identity or on the resource identity they own.
+- A state change and its outbox row commit in one transaction. Publication runs outside that transaction.
+- A consumer that cannot safely apply an event leaves it for redelivery; a malformed or permanently irrelevant event is recorded and settled.
+- Consumers tolerate reordering. A projection compares the run version and never lets an older event overwrite a newer view.
+- Reconciliation repairs a missed wakeup from authoritative state.
+- A `wait.resolved` event is a notification of a committed result, not the authority to approve anything. Authorization is checked when the result is recorded and again when a protected effect is issued.
+- Payloads carry references and bounded metadata only: no secret values, credentials, workspace contents, or full logs.
+
+## Retired event names
+
+`work_item.*`, `workspace.*`, `gate.*`, `deployment.state_changed`, `step_attempt.state_changed`, and `run_resource.state_changed` described the superseded workflow, workspace, gate, deployment, and dual-runtime models. They are retained here only as historical names; current implementations must not emit them as product contracts.
 
 ## Run resource events
 
-For backward reference with existing runtime adapters during Phase 3 consolidation, container/service lifecycle observations map to `service.ready` / `service.stopped` and `step.completed` on the tenant's NATS stream. Append-only audit records are written to `audit_events` in PostgreSQL.
+This anchor is retained for historical contracts. `run_resource.state_changed` and the companion run-resource lifecycle described the superseded dual-runtime model. Current execution observations use `run.state_changed`, `run_step.state_changed`, `wait.*`, and `service.state_changed`; the [pipeline-runtime simplification plan](../implementation/pipeline-runtime-simplification.md) removes the legacy contracts.

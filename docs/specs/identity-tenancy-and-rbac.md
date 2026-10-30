@@ -1,6 +1,6 @@
 # Identity, tenancy, and RBAC
 
-**Scope:** Layer 1 core authentication, authorization, and tenant isolation ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
+**Scope:** Layer 2 native shell authentication, authorization, and tenant isolation ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
 
 ## Simple two-tier permission model
 
@@ -23,12 +23,12 @@ Kodama uses a straightforward permission model separating **human configuration 
    - That token automatically grants access to what has been provisioned and configured in that project space:
      - The project's Git repositories (`<tenant>/<project>/*`) and read access to the tenant knowledge base (`<tenant>/context`).
      - Secrets and services scoped to the tenant, project, or pipeline run.
-     - Tasks, artifact metadata registration, AI Gateway, and MCP Gateway within that project.
+     - Tasks, artifact metadata registration, AI Gateway, and the external MCP proxy within that project.
    - Workloads cannot access another tenant's resources or elevate human RBAC memberships.
 
 ## Tenant isolation baseline
 
-- **Database (PostgreSQL RLS):** Every tenant-owned table in the [15-table schema](../implementation/database-schema.md) carries `tenant_id` with forced Row-Level Security (`tenant_id = kodama_tenant_id()`). Project-owned tables enforce composite `(tenant_id, project_id)` foreign keys.
+- **Database (PostgreSQL RLS):** Every tenant-owned table in the [current schema](../implementation/database-schema.md) carries `tenant_id` with forced Row-Level Security (`tenant_id = kodama_tenant_id()`). Project-owned tables enforce composite `(tenant_id, project_id)` foreign keys.
 - **Compute & network:** In Kubernetes (`production`), each tenant executes in isolated tenant namespaces with non-root containers, resource quotas, and network policy denying cross-tenant traffic, control-plane database/broker access, and cloud metadata endpoints.
 - **Git storage:** Each tenant's repositories live on that tenant's isolated Git service volume.
 

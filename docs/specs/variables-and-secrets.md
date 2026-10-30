@@ -1,6 +1,6 @@
 # Secrets and configuration
 
-**Scope:** Layer 1 encrypted secrets (`secrets`) and pipeline/project configuration ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
+**Scope:** Layer 2 encrypted secret custody (`secrets`) and configuration, with declared secret references delivered by the Layer 1 kernel ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
 
 ## Model
 
@@ -19,7 +19,7 @@ Secret values are encrypted using AES-256-GCM with keys wrapped by the installat
 
 Secret plaintext is write-only through the API/CLI (`kodactl secrets set`) and is never returned in API responses, events, or logs.
 
-The Phase 2 `secrets` row stores ciphertext, key identity, envelope metadata, a logical version and optional revocation time. Runs bind the selected version. Rotation replaces the current value: a run requesting an unavailable older version must fail, never silently receive the replacement. Historical value storage is outside this reduced schema. Runtime encryption/delivery adapters are ported in Phase 3.
+The `secrets` row stores ciphertext, key identity, envelope metadata, a logical version and optional revocation time. Runs bind the selected version. Rotation replaces the current value: a run requesting an unavailable older version must fail, never silently receive the replacement. Historical value storage is outside this reduced schema. The kernel receives only declared references and a resolver/materialization port; custody and delivery adapters are owned by the shell.
 
 ## Runtime delivery
 
@@ -28,7 +28,7 @@ The Phase 2 `secrets` row stores ciphertext, key identity, envelope metadata, a 
 Steps and services in `.kodama/<processname>.yaml` declare which secrets they need (`secrets: [NAME_A, NAME_B]`):
 - **Project-space authorization:** Because steps and services run inside a project space, they may mount any secret belonging to that project or shared at the tenant level.
 - **Injection:** Secrets are injected into the step or service container as environment variables or mounted files under `/kodama/secrets/<name>` outside `/workspace`.
-- **Gateway mediation (Layer 2):** For Mode B (`kodama agent`) and MCP servers (`mcp_servers.secret_id`), the AI Gateway and MCP Gateway can resolve the secret server-side so upstream provider tokens never need to enter the container environment.
+- **Gateway mediation (Layer 3):** For Mode B (`kodama agent`) and external MCP servers (`mcp_servers.secret_id`), the AI Gateway and external MCP proxy can resolve the secret server-side so upstream provider tokens never need to enter the container environment.
 
 ## Requirements
 

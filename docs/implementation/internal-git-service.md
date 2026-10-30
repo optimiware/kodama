@@ -10,7 +10,7 @@ Create project → create repository → engineer seeds by push
     → default-branch update → build/deploy pipeline
 ```
 
-This slice targets the ADR 0013 kernel (`kodama server --assembly kernel`) over the 15-table schema. Hosting installation on Kubernetes and full acceptance follow on `main` after the merge.
+This slice targets the transitional ADR 0013 kernel (`kodama server --assembly kernel`) over the current product schema. The [pipeline-runtime simplification plan](pipeline-runtime-simplification.md) replaces that composition with the standalone kernel and native shell. Hosting installation on Kubernetes and full acceptance follow on `main` after the merge.
 
 ## What changed from the earlier plan
 

@@ -7,11 +7,11 @@ These documents define Kodama's external and internal contracts under [ADR 0013]
 | [HTTP interface](http-api.md) | Routes, request/response conventions, errors, concurrency | OpenAPI, generated with `oapi-codegen` |
 | [Pipeline format](pipeline-format.md) | Definition syntax, typed inputs/outputs, validation | JSON Schema plus semantic graph validation |
 | [Event catalog](event-catalog.md) | Envelope, event names, payloads, delivery rules | Versioned JSON Schemas |
-| [Pipeline format `v1alpha2`](pipeline-format-v1alpha2.md) | Shared run workspace, services, total deadline, endpoint expressions, canonical form, order (not enabled) | `contracts/pipeline/` v2 schema (T-110) |
-| [Runtime v2](runtime-v2.md) | `run_shared` context, command-begin fence, preparation/service subjects (not enabled) | `contracts/runtime/` v2 schemas and fixtures (T-110); API/aggregate integration (T-116) |
-| [Run resources and execution policy](run-resources.md) | Policy pin, capabilities, resource identity, companion port, lifecycle ordering, reasons | Execution DTOs/port (T-112), policy values (T-111) |
-| [Pipeline format `v1alpha3`](pipeline-format-v1alpha3.md) | `v1alpha2` plus the declared source set `spec.sources`, canonical form, diagnostics (designed, not enabled) | `contracts/pipeline/` v1alpha3 schema and fixtures (T-131); API/aggregate integration (T-158) |
-| [Runtime v3](runtime-v3.md) | `run_shared` with a source set: origin, per-attempt Git credential delivery, per-source preparation, per-repository commit outputs (designed, not enabled) | `contracts/runtime/` v3 schemas and fixtures (T-131); API/aggregate integration (T-158) |
+| [Pipeline format `v1alpha2`](pipeline-format-v1alpha2.md) | Historical shared run workspace/services model; not the target contract | Retained only while the transitional implementation is removed |
+| [Runtime v2](runtime-v2.md) | Historical `run_shared` runtime context; not the target contract | Retained only while the transitional implementation is removed |
+| [Run resources and execution policy](run-resources.md) | Historical policy/resource lifecycle details; reusable behavior is ported into the kernel contract | Retained only as implementation history |
+| [Pipeline format `v1alpha3`](pipeline-format-v1alpha3.md) | Historical `v1alpha2` plus source set; never enabled | Retained only as implementation history |
+| [Runtime v3](runtime-v3.md) | Historical source-set runtime; never enabled | Retained only as implementation history |
 | [Git service](git-service.md) | Repository resource, `/git/` endpoint, credentials and grants, forwarding assertion, worker routes, `git.refs_updated`, trigger configuration, source set (partly enabled: T-167–T-170) | `contracts/git/` schemas and fixtures; routes and client (T-170) |
 
 Behavioral requirements and acceptance remain in [specifications](../README.md#contributors). A contract describes how to invoke behavior, not a second implementation of its business rules.
@@ -19,8 +19,7 @@ Behavioral requirements and acceptance remain in [specifications](../README.md#c
 ## Versioning policy
 
 - HTTP uses `/api/v1`. Compatible additions preserve existing required fields and semantics.
-- Pipeline authoring begins at `kodama/v1alpha1`. Stored definitions are immutable; changing content creates a new definition version. `kodama/v1alpha2` is a separate format and run model (`run_shared`); `kodama/v1alpha3` is the same model plus a declared source set; each run pins its model, runtime context version and execution policy at admission. Historical definitions, digests and result hashes are never rewritten, old runs drain under their original semantics, and an installation opts into the new format explicitly before closing the old one.
-- The runtime wire is versioned by route and context: `/runtime/v1` (frozen), `/runtime/v2` (additive messages; the result/source/artifact bodies and `ResultHash` are shared) and `/runtime/v3` (additive: origin, source set, Git delivery and per-repository commit outputs; `ResultHash` algorithm unchanged). A controller refuses a run model it does not implement.
+- The target pipeline authoring contract is the one described in [pipeline format](pipeline-format.md). The `v1alpha1`, `v1alpha2`, `v1alpha3`, runtime v2, and runtime v3 documents are historical during the simplification; they are not new product commitments. Stored definitions and runs remain immutable, and an existing database is not silently reinterpreted.
 - Domain events have envelope `schemaVersion` plus an event `type`. Breaking payload changes require a new supported schema version or event type with an explicit migration path.
 - Adapter compatibility records pin provider/harness/MCP versions separately from product interface versions.
 
