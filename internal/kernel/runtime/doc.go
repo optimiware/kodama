@@ -47,7 +47,10 @@
 //     conditional eligibility is a when predicate that the engine evaluates once
 //     over persisted values. The step retains a [PredicateEvaluation] (result and
 //     a digest of the values read), committed with the step's move and never
-//     changed afterwards ([CheckRunUpdate]); recovery reuses it.
+//     changed afterwards ([CheckRunUpdate]); recovery reuses it. A Transition
+//     advances the run version by exactly one: [Run.EvaluateStep] records an
+//     evaluation and moves its step in that single increment, and
+//     [Run.Sealed] collapses any other batch of moves into one.
 //   - An admitted [Plan] is plain values for the frozen pipeline format: join,
 //     declared outputs, bindings, and run inputs that keep their declared type
 //     ([InputValue]) so the no-coercion grammar can tell the string "1" from the

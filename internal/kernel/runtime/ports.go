@@ -326,12 +326,16 @@ type StateStore interface {
 	// unchanged, and the new expiry is persisted before the stored claim is
 	// returned. A writer superseded by a takeover gets ErrStaleFence.
 	Renew(ctx context.Context, held Claim, ttl time.Duration, now time.Time) (Claim, error)
-	// Commit applies a Transition atomically with its outbox intent: it checks
-	// the claim's fence and lease (Claim.Authorizes) and the expected versions,
-	// then persists the run (applying CheckRunUpdate against the stored run, so a
-	// recorded predicate evaluation or terminal step never changes), waits,
-	// commands, workload observations, resources and events together, and extends the lease when Transition.RenewTTL is
-	// set. A stale writer is refused with ErrStaleFence and nothing is persisted.
+	// Commit applies a Transition atomically with its outbox intent. The
+	// transition's run is the stored run at ExpectedVersion advanced to exactly
+	// ExpectedVersion+1, however many moves it holds (EvaluateStep for a predicate
+	// with its step move, Run.Sealed to batch several). Commit checks the claim's
+	// fence and lease (Claim.Authorizes) and the expected versions, then persists
+	// the run (applying CheckRunUpdate against the stored run, so a recorded
+	// predicate evaluation or terminal step never changes), waits, commands,
+	// workload observations, resources and events together, and extends the lease
+	// when Transition.RenewTTL is set. A stale writer is refused with
+	// ErrStaleFence and nothing is persisted.
 	Commit(ctx context.Context, t Transition) (RunRecord, error)
 	// Runnable lists runs with claimable work, bounded by q.Limit.
 	Runnable(ctx context.Context, q RunnableQuery) ([]RunRef, error)

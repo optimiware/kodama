@@ -376,22 +376,199 @@ func testPredicateEvaluation(t *testing.T) {
 		}
 	})
 
-	t.Run("a transition persists the evaluation with the step move", func(t *testing.T) {
+	// commits asserts that next is a legal single-version update of prev, as the store
+	// would see it: the Transition names the version actually read (prev.Version) and
+	// both validators accept it.
+	commits := func(t *testing.T, prev, next rt.Run) rt.Transition {
+		t.Helper()
+		claim := rt.Claim{Scope: scope, RunID: "run1", Owner: "w", Purpose: rt.ClaimExecute, Fence: 1, Expires: t0.Add(minute)}
+		tr := rt.Transition{Scope: scope, RunID: "run1", Claim: claim, Now: t0, ExpectedVersion: prev.Version, Run: next}
+		if err := tr.Validate(); err != nil {
+			t.Fatalf("Transition.Validate at the version read (%d): %v", prev.Version, err)
+		}
+		if err := rt.CheckRunUpdate(prev, next); err != nil {
+			t.Fatalf("CheckRunUpdate: %v", err)
+		}
+		return tr
+	}
+
+	t.Run("evaluating a predicate and moving the step is one version increment", func(t *testing.T) {
+		for name, tc := range map[string]struct {
+			key    domain.StepID
+			result bool
+			to     rt.StepState
+			reason rt.Reason
+		}{
+			"evaluated true, start": {"test", true, rt.StepRunning, rt.ReasonNone},
+			"evaluated false, skip": {"notify", false, rt.StepSkipped, rt.ReasonConditionFalse},
+		} {
+			run := mustRun(t)
+			read := run.Version
+			next := run // a plain copy: the mutators never write through the shared steps
+			must(t, next.EvaluateStep(tc.key, predicate(t, tc.result), tc.to, tc.reason))
+			if next.Version != read+1 {
+				t.Fatalf("%s: version %d after one operation, want %d", name, next.Version, read+1)
+			}
+			if run.Version != read || run.Steps[2].State != rt.StepPending || run.Steps[3].State != rt.StepPending || run.Steps[3].Predicate.Evaluated {
+				t.Fatalf("%s: the original run was changed", name)
+			}
+			var step rt.Step
+			for _, st := range next.Steps {
+				if st.Key == tc.key {
+					step = st
+				}
+			}
+			if step.State != tc.to || !step.Predicate.Evaluated || step.Predicate.Result != tc.result || step.Version != 2 {
+				t.Fatalf("%s: step %+v", name, step)
+			}
+			tr := commits(t, run, next)
+			got, x, y := roundTrip(t, tr)
+			if x != y || got.ExpectedVersion != read || got.Run.Version != read+1 {
+				t.Fatalf("%s: transition round trip:\n%s\n%s", name, x, y)
+			}
+			must(t, got.Validate())
+			must(t, rt.CheckRunUpdate(run, got.Run))
+			var rstep rt.Step
+			for _, st := range got.Run.Steps {
+				if st.Key == tc.key {
+					rstep = st
+				}
+			}
+			if rstep.Predicate != step.Predicate || rstep.State != tc.to {
+				t.Errorf("%s: the evaluation did not survive storage: %+v", name, rstep)
+			}
+		}
+
+		// With a when on a wait step, an evaluated-true move opens its wait in one increment too.
+		plan := mustPlan(t)
+		plan.Steps[1].When = `build.status == "succeeded"`
+		run, err := rt.NewRun(scope, "run1", "pipe1", plan, 2)
+		must(t, err)
+		must(t, run.AdvanceStep("build", rt.StepRunning, rt.ReasonNone))
+		must(t, run.FinishStep("build", rt.StepSucceeded, rt.ReasonNone, okRes))
+		next := run
+		must(t, next.EvaluateStep("review", predicate(t, true), rt.StepWaiting, rt.ReasonNone))
+		commits(t, run, next)
+	})
+
+	t.Run("two separate operations in one transition are rejected unless sealed", func(t *testing.T) {
 		run := mustRun(t)
 		next := run
-		next.Steps = append([]rt.Step(nil), run.Steps...)
-		skipForCondition(t, &next, "notify")
 		must(t, next.RecordPredicate("test", predicate(t, true)))
 		must(t, next.AdvanceStep("test", rt.StepRunning, rt.ReasonNone))
+		if next.Version != run.Version+2 {
+			t.Fatalf("two operations advanced the version to %d", next.Version)
+		}
 		claim := rt.Claim{Scope: scope, RunID: "run1", Owner: "w", Purpose: rt.ClaimExecute, Fence: 1, Expires: t0.Add(minute)}
-		// One transition carries several step moves and their evaluations together.
-		tr := rt.Transition{Scope: scope, RunID: "run1", Claim: claim, Now: t0, ExpectedVersion: next.Version - 1, Run: next}
-		must(t, tr.Validate())
-		got, a, b := roundTrip(t, tr)
-		must(t, got.Validate())
-		if a != b || got.Run.Steps[2].Predicate != next.Steps[2].Predicate || !got.Run.Steps[2].Predicate.Evaluated || got.Run.Steps[2].Predicate.Result ||
-			!got.Run.Steps[3].Predicate.Result {
-			t.Fatalf("transition lost the evaluations:\n%s\n%s", a, b)
+		tr := rt.Transition{Scope: scope, RunID: "run1", Claim: claim, Now: t0, ExpectedVersion: run.Version, Run: next}
+		if err := tr.Validate(); !errors.Is(err, domain.ErrInvalidValue) {
+			t.Errorf("Transition.Validate accepted version N+2: %v", err)
+		}
+		if err := rt.CheckRunUpdate(run, next); !errors.Is(err, domain.ErrInvalidValue) {
+			t.Errorf("CheckRunUpdate accepted version N+2: %v", err)
+		}
+		// Batching is explicit: Sealed collapses the moves into the one committable version.
+		skipForCondition(t, &next, "notify")
+		sealed, err := next.Sealed(run)
+		must(t, err)
+		if sealed.Version != run.Version+1 || sealed.Steps[2].State != rt.StepSkipped || sealed.Steps[3].State != rt.StepRunning ||
+			!sealed.Steps[2].Predicate.Evaluated || !sealed.Steps[3].Predicate.Result {
+			t.Fatalf("sealed run %+v", sealed)
+		}
+		commits(t, run, sealed)
+		if next.Version != run.Version+4 {
+			t.Error("Sealed must not change its receiver")
+		}
+		must(t, sealed.Validate())
+	})
+
+	t.Run("separate commits advance the version strictly by one", func(t *testing.T) {
+		stored := mustRun(t)
+		versions := []domain.Version{stored.Version}
+		step := func(name string, move func(*rt.Run)) {
+			next := stored
+			move(&next)
+			commits(t, stored, next)
+			if next.Version != stored.Version+1 {
+				t.Fatalf("%s: stored %d then %d", name, stored.Version, next.Version)
+			}
+			stored = next
+			versions = append(versions, stored.Version)
+		}
+		step("record predicate", func(r *rt.Run) { must(t, r.RecordPredicate("test", predicate(t, true))) })
+		step("start", func(r *rt.Run) { must(t, r.AdvanceStep("test", rt.StepRunning, rt.ReasonNone)) })
+		step("finish", func(r *rt.Run) { must(t, r.FinishStep("test", rt.StepSucceeded, rt.ReasonNone, okRes)) })
+		step("evaluate and skip", func(r *rt.Run) {
+			must(t, r.EvaluateStep("notify", predicate(t, false), rt.StepSkipped, rt.ReasonConditionFalse))
+		})
+		for i := 1; i < len(versions); i++ {
+			if versions[i] != versions[i-1]+1 {
+				t.Fatalf("versions %v are not strictly increasing by one", versions)
+			}
+		}
+		// A transition built against a stale read is refused: the second commit of the
+		// same expected version has nothing to stand on.
+		stale := mustRun(t)
+		must(t, stale.RecordPredicate("test", predicate(t, true)))
+		claim := rt.Claim{Scope: scope, RunID: "run1", Owner: "w", Purpose: rt.ClaimExecute, Fence: 1, Expires: t0.Add(minute)}
+		tr := rt.Transition{Scope: scope, RunID: "run1", Claim: claim, Now: t0, ExpectedVersion: stored.Version, Run: stale}
+		if tr.Validate() == nil {
+			t.Error("a transition from an older run was accepted against a newer expected version")
+		}
+	})
+
+	t.Run("a refused combined operation changes nothing", func(t *testing.T) {
+		fresh := func() rt.Run { return mustRun(t) }
+		for name, tc := range map[string]struct {
+			prep func(*rt.Run)
+			key  domain.StepID
+			ev   rt.PredicateEvaluation
+			to   rt.StepState
+			why  rt.Reason
+		}{
+			"evaluated twice":                {func(r *rt.Run) { must(t, r.RecordPredicate("test", predicate(t, true))) }, "test", predicate(t, true), rt.StepRunning, rt.ReasonNone},
+			"false then start":               {nil, "test", predicate(t, false), rt.StepRunning, rt.ReasonNone},
+			"true then condition_false skip": {nil, "notify", predicate(t, true), rt.StepSkipped, rt.ReasonConditionFalse},
+			"unevaluated record":             {nil, "test", rt.PredicateEvaluation{}, rt.StepRunning, rt.ReasonNone},
+			"unknown step":                   {nil, "nope", predicate(t, true), rt.StepRunning, rt.ReasonNone},
+			"already started": {func(r *rt.Run) {
+				must(t, r.AdvanceStep("test", rt.StepRunning, rt.ReasonNone))
+			}, "test", predicate(t, true), rt.StepSucceeded, rt.ReasonNone},
+			"cancelling": {func(r *rt.Run) { r.RequestCancel() }, "test", predicate(t, true), rt.StepRunning, rt.ReasonNone},
+			"another container holds the workspace": {func(r *rt.Run) {
+				must(t, r.AdvanceStep("build", rt.StepRunning, rt.ReasonNone))
+			}, "test", predicate(t, true), rt.StepRunning, rt.ReasonNone},
+			"illegal move": {nil, "test", predicate(t, true), rt.StepSucceeded, rt.ReasonNone},
+		} {
+			r := fresh()
+			if tc.prep != nil {
+				tc.prep(&r)
+			}
+			before := r.Clone()
+			if err := r.EvaluateStep(tc.key, tc.ev, tc.to, tc.why); err == nil || !reflect.DeepEqual(r, before) {
+				t.Errorf("%s: err=%v changed=%v", name, err, !reflect.DeepEqual(r, before))
+			}
+		}
+		// Sealed refuses what it cannot make a legal single update.
+		base := mustRun(t)
+		same := base
+		if _, err := same.Sealed(base); err == nil {
+			t.Error("sealing an unchanged run accepted")
+		}
+		other := base
+		other.ID = "run2"
+		other.Version += 2
+		if _, err := other.Sealed(base); err == nil {
+			t.Error("sealing another run accepted")
+		}
+		evald := base
+		must(t, evald.RecordPredicate("test", predicate(t, false)))
+		flipped := evald
+		flipped.Steps = append([]rt.Step(nil), evald.Steps...)
+		flipped.Steps[3].Predicate = predicate(t, true)
+		flipped.Version += 2
+		if _, err := flipped.Sealed(evald); !errors.Is(err, rt.ErrIllegalTransition) {
+			t.Errorf("sealing a rewritten evaluation: %v", err)
 		}
 	})
 

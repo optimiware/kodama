@@ -2469,12 +2469,29 @@ func (r *Run) RequestCancel() {
 // cancellation is requested no step may start running or waiting, and at most
 // one container step runs at a time, so one executable step holds the workspace.
 func (r *Run) AdvanceStep(key domain.StepID, to StepState, reason Reason) error {
-	return r.moveStep(key, to, reason, nil)
+	return r.moveStep(key, to, reason, nil, nil)
 }
 
-// RecordPredicate retains the evaluation of a pending step's when predicate. It
-// is recorded once, in the same transition as the step's move, and never
-// re-evaluated: a second record is refused whatever it says.
+// EvaluateStep is the one atomic operation for a step with a when predicate: it
+// retains the evaluation and moves the pending step in a single run-version
+// increment, so the result commits as one Transition (ExpectedVersion + 1). A
+// true evaluation leads to running or waiting (or a later skip for requires or
+// cancellation); a false one to skipped with reason condition_false. The
+// evaluation is recorded once; on any error nothing changes.
+func (r *Run) EvaluateStep(key domain.StepID, ev PredicateEvaluation, to StepState, reason Reason) error {
+	if !ev.Evaluated {
+		return invalid("record an evaluated predicate")
+	}
+	return r.moveStep(key, to, reason, nil, &ev)
+}
+
+// RecordPredicate retains the evaluation of a pending step's when predicate on
+// its own, as a separate commit: the run version advances by one and the step
+// stays pending. When the evaluation and the step's move belong to the same
+// transition, use EvaluateStep, which advances the version once; two operations
+// combined into one Transition would advance it twice, unless collapsed with
+// Run.Sealed. The evaluation is recorded once and never re-evaluated: a second
+// record is refused whatever it says.
 func (r *Run) RecordPredicate(key domain.StepID, ev PredicateEvaluation) error {
 	if r.Settled() {
 		return fmt.Errorf("%w: run %s is settled", ErrExecutionClosed, r.ID)
@@ -2495,9 +2512,49 @@ func (r *Run) RecordPredicate(key domain.StepID, ev PredicateEvaluation) error {
 	if err := s.Validate(); err != nil {
 		return err
 	}
-	r.Steps[i] = s
+	r.setStep(i, s)
 	r.Version++
 	return nil
+}
+
+// setStep replaces step i without writing through a slice shared with a copy of
+// the run, so a Run value copied before the change keeps its own steps.
+func (r *Run) setStep(i int, s Step) {
+	steps := slices.Clone(r.Steps)
+	steps[i] = s
+	r.Steps = steps
+}
+
+// Clone returns a copy that shares no slice with r.
+func (r Run) Clone() Run {
+	r.Steps = slices.Clone(r.Steps)
+	r.Cleanup.Retained = slices.Clone(r.Cleanup.Retained)
+	r.Cleanup.RetainedWorkloads = slices.Clone(r.Cleanup.RetainedWorkloads)
+	return r
+}
+
+// Sealed batches several in-memory mutations into one Transition. Each mutating
+// method counts its own version step, so a run that took several moves is ahead
+// of the stored run by more than one. Sealed returns the run at exactly
+// prev.Version+1, the only version a Transition may commit, after checking that
+// it is a legal update of prev (see CheckRunUpdate). Something must have changed.
+// Prefer EvaluateStep for the evaluation-with-move pair, which needs no batching.
+func (r Run) Sealed(prev Run) (Run, error) {
+	if r.Scope != prev.Scope || r.ID != prev.ID || r.PipelineID != prev.PipelineID {
+		return Run{}, invalid("the run belongs to another run")
+	}
+	if r.Version <= prev.Version {
+		return Run{}, invalid("nothing changed since version %d", prev.Version)
+	}
+	out := r.Clone()
+	out.Version = prev.Version + 1
+	if err := out.Validate(); err != nil {
+		return Run{}, err
+	}
+	if err := CheckRunUpdate(prev, out); err != nil {
+		return Run{}, err
+	}
+	return out, nil
 }
 
 // CheckRunUpdate reports whether next may replace prev in one Transition. It
@@ -2543,7 +2600,7 @@ func CheckRunUpdate(prev, next Run) error {
 // FinishStep settles a running container step with the workload's result, which
 // is retained on the step for conditions and recovery. See Step.Finish.
 func (r *Run) FinishStep(key domain.StepID, to StepState, reason Reason, res Result) error {
-	return r.moveStep(key, to, reason, &res)
+	return r.moveStep(key, to, reason, &res, nil)
 }
 
 // RetryStep starts the next workload attempt of a running container step. It is
@@ -2573,13 +2630,14 @@ func (r *Run) RetryStep(key domain.StepID, launch Command) error {
 	if !launch.MayRetry() {
 		return fmt.Errorf("%w: launch %s is %s, which must be reconciled, not retried", ErrIllegalTransition, launch.ID, launch.State)
 	}
-	r.Steps[i].Attempt++
-	r.Steps[i].Version++
+	s.Attempt++
+	s.Version++
+	r.setStep(i, s)
 	r.Version++
 	return nil
 }
 
-func (r *Run) moveStep(key domain.StepID, to StepState, reason Reason, res *Result) error {
+func (r *Run) moveStep(key domain.StepID, to StepState, reason Reason, res *Result, ev *PredicateEvaluation) error {
 	if r.Settled() {
 		return fmt.Errorf("%w: run %s is settled", ErrExecutionClosed, r.ID)
 	}
@@ -2599,15 +2657,23 @@ func (r *Run) moveStep(key domain.StepID, to StepState, reason Reason, res *Resu
 			}
 		}
 	}
+	s := r.Steps[i]
+	if ev != nil {
+		if s.State != StepPending || s.Predicate.Evaluated {
+			return fmt.Errorf("%w: step %s is %s and its predicate is already settled", ErrIllegalTransition, key, s.State)
+		}
+		s.Predicate = *ev
+	}
 	var err error
 	if res != nil {
-		err = r.Steps[i].Finish(to, reason, *res)
+		err = s.Finish(to, reason, *res)
 	} else {
-		err = r.Steps[i].Advance(to, reason)
+		err = s.Advance(to, reason)
 	}
 	if err != nil {
 		return err
 	}
+	r.setStep(i, s)
 	r.Version++
 	return nil
 }
