@@ -2,7 +2,7 @@
 
 This backlog holds the planned and deferred tasks. Completed work is not listed here: its task records were removed once merged and remain in Git history (last present at commit `354b760`). Keep one Go module and preserve working packages. Production deployment and qualification, external adapters, the chassis and additional wrappers each need explicit scheduling before they start.
 
-**Ready by dependencies** (`planned`, every dependency `done`): [T-134](T-134-local-run-shared-wiring.md), [T-171](T-171-kernel-runtime-contract.md), [T-172](T-172-contract-decisions.md), [T-173](T-173-kernel-shell-relocation.md). **Blocked on a decision:** none. Other planned tasks wait for the dependencies shown in the [dependency index](#dependency-index).
+**Ready by dependencies** (`planned`, every dependency `done`): [T-134](T-134-local-run-shared-wiring.md), [T-171](T-171-kernel-runtime-contract.md), [T-179](T-179-schema-expansion.md), [T-180](T-180-traceability.md). **Blocked on a decision:** none. Other planned tasks wait for the dependencies shown in the [dependency index](#dependency-index).
 
 **Deferred** (needs explicit scheduling): [T-029](T-029-recovery-qualification.md), [T-047](T-047-supabase-blueprint.md), [T-050](T-050-engineer-workbench.md), [T-051](T-051-analyst-interface.md), [T-052](T-052-native-harness.md), [T-053](T-053-claude-harness.md), [T-054](T-054-codex-harness.md), [T-055](T-055-hosted-isolation.md), [T-056](T-056-production-release.md), [T-057](T-057-operator-assessment.md), [T-058](T-058-operator.md), [T-059](T-059-chassis-assessment.md), [T-060](T-060-m4-integration.md), [T-061](T-061-platform-integration.md), [T-069](T-069-qa-profile-qualification.md), [T-085](T-085-live-agent-qualification.md), [T-106](T-106-production-tls-hardening.md), [T-123](T-123-buildkit-builder-service.md).
 
@@ -146,14 +146,15 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-116 Resource assembly, chart and migration](T-116-run-resource-assembly.md) | T-113, T-114, T-115, T-120 | done |
 | [T-134 Wire the Podman and Process run-resource ports](T-134-local-run-shared-wiring.md) | T-115, T-116 | planned |
 | [T-171 Kernel runtime contract and dependency boundary](T-171-kernel-runtime-contract.md) | — | planned |
-| [T-172 Freeze the pipeline runtime contract decisions](T-172-contract-decisions.md) | — | planned |
-| [T-173 Relocate shell responsibilities out of the kernel](T-173-kernel-shell-relocation.md) | — | planned |
+| [T-172 Freeze the pipeline runtime contract decisions](T-172-contract-decisions.md) | — | done |
+| [T-173 Relocate shell responsibilities out of the kernel](T-173-kernel-shell-relocation.md) | — | done |
 | [T-174 Memory state adapter and kernel state contract suite](T-174-kernel-state-contract.md) | T-171, T-173 | planned |
 | [T-175 Durable progression engine](T-175-kernel-engine.md) | T-171, T-172, T-174 | planned |
 | [T-176 Process runtime behind the kernel contract](T-176-process-runtime.md) | T-171 | planned |
 | [T-177 Podman runtime behind the kernel contract](T-177-podman-runtime.md) | T-171 | planned |
 | [T-178 Kubernetes runtime behind the kernel contract](T-178-kubernetes-runtime.md) | T-171 | planned |
 | [T-179 Pipeline runtime schema expansion](T-179-schema-expansion.md) | T-172 | planned |
+| [T-180 Traceability for the frozen pipeline-runtime contract](T-180-traceability.md) | T-172 | planned |
 | [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | deferred (parked until stage access) |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
 | [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | done |
