@@ -21,8 +21,8 @@ import (
 
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/kernel/pipeline"
-	"github.com/optimiware/kodama/internal/kernel/secret"
-	"github.com/optimiware/kodama/internal/kernel/store"
+	"github.com/optimiware/kodama/internal/shell/secrets"
+	"github.com/optimiware/kodama/internal/shell/store"
 	secretkeys "github.com/optimiware/kodama/pkg/secretkeys"
 )
 

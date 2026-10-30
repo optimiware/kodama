@@ -25,7 +25,7 @@ _Avoid_: Account, customer workspace.
 
 **Run**: One execution of a pipeline against pinned inputs and optional source commits. A run snapshots its pipeline definition and inputs at admission. A task may accumulate several runs through reruns or rework.
 
-**Step (`run_step`)**: One position in a run's execution order. A container step executes an image and commands; a wait step pauses the run without a workload; a control step evaluates declared conditions. Steps share the run workspace.
+**Step (`run_step`)**: One position in a run's execution order. A container step executes an image and commands; a wait step pauses the run without a workload. A step may declare a bounded `when` predicate; there is no separate condition step. Steps share the run workspace.
 
 **Wait**: A durable, non-container step that pauses a run until an authorized correlated signal or deadline arrives. It records its identity, expected input, accepted result, and continuation position. A signal is not itself approval.
 

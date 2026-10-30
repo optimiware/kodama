@@ -12,7 +12,7 @@ import (
 
 	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
-	"github.com/optimiware/kodama/internal/kernel/serve"
+	"github.com/optimiware/kodama/internal/shell/serve"
 )
 
 func composeServices(t *testing.T) map[string]map[string]any {
