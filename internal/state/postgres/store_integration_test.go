@@ -65,7 +65,7 @@ func TestPostgresStateLifecycle(t *testing.T) {
 	if err != nil || len(items) != 1 || next != "" {
 		t.Fatalf("list = %+v next=%q err=%v", items, next, err)
 	}
-	if err := store.Delete(ctx, scope, "deploy", "resources/app", updated.ETag()); err != nil {
+	if err := store.Delete(ctx, scope, "deploy", "resources/app", "att_1", updated.ETag()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Get(ctx, scope, "deploy", "resources/app"); !errors.Is(err, state.ErrNotFound) {

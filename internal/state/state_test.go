@@ -170,7 +170,7 @@ func TestMemoryListAndRecreateGeneration(t *testing.T) {
 		t.Fatalf("second page: %+v next=%q err=%v", second, next2, err)
 	}
 	first, _ := mem.Get(ctx, scope, "deploy", "a/one")
-	if err := mem.Delete(ctx, scope, "deploy", "a/one", first.ETag()); err != nil {
+	if err := mem.Delete(ctx, scope, "deploy", "a/one", "att_test", first.ETag()); err != nil {
 		t.Fatal(err)
 	}
 	recreated, err := mem.Create(ctx, scope, "deploy", "a/one", "att_test", statev1.WriteRequest{Value: json.RawMessage(`{"ok":true}`)})

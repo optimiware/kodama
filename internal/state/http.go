@@ -204,7 +204,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request, scope Scope, bi
 		writeError(w, http.StatusForbidden, "state_binding_denied", "state write denied")
 		return
 	}
-	if err := h.Store.Delete(r.Context(), scope, binding.Namespace, key, expected); err != nil {
+	if err := h.Store.Delete(r.Context(), scope, binding.Namespace, key, attemptActor(r), expected); err != nil {
 		writeStoreError(w, err)
 		return
 	}

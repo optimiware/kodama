@@ -120,7 +120,10 @@ func (s *Store) Create(ctx context.Context, scope state.Scope, namespace, key, a
 			VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9)
 			RETURNING namespace, key, value, artifact_references, generation, revision, updated_at, updated_by`,
 			scope.TenantID, scope.ProjectID, namespace, key, []byte(req.Value), refs, generation, now, actor)
-		return scanEntry(row, &entry)
+		if err := scanEntry(row, &entry); err != nil {
+			return err
+		}
+		return appendAudit(ctx, tx, scope, namespace, key, "create", entry.Generation, entry.Revision, actor, s.now())
 	})
 	return entry, classify(err)
 }
@@ -147,14 +150,15 @@ func (s *Store) Update(ctx context.Context, scope state.Scope, namespace, key, a
 			scope.TenantID, scope.ProjectID, namespace, key, []byte(req.Value), refs, s.now().UTC(), actor, generation, revision)
 		if err := scanEntry(row, &entry); errors.Is(err, pgx.ErrNoRows) {
 			return state.ErrConflict
-		} else {
+		} else if err != nil {
 			return err
 		}
+		return appendAudit(ctx, tx, scope, namespace, key, "update", entry.Generation, entry.Revision, actor, s.now())
 	})
 	return entry, classify(err)
 }
 
-func (s *Store) Delete(ctx context.Context, scope state.Scope, namespace, key, expected string) error {
+func (s *Store) Delete(ctx context.Context, scope state.Scope, namespace, key, actor, expected string) error {
 	if err := validateTarget(namespace, key); err != nil {
 		return err
 	}
@@ -173,7 +177,7 @@ func (s *Store) Delete(ctx context.Context, scope state.Scope, namespace, key, e
 		if tag.RowsAffected() == 0 {
 			return state.ErrConflict
 		}
-		return nil
+		return appendAudit(ctx, tx, scope, namespace, key, "delete", generation, revision, actor, s.now())
 	})
 	return classify(err)
 }
@@ -197,6 +201,14 @@ func validateTarget(namespace, key string) error {
 		return fmt.Errorf("%w: %v", state.ErrInvalid, err)
 	}
 	return nil
+}
+
+func appendAudit(ctx context.Context, tx pgx.Tx, scope state.Scope, namespace, key, action string, generation, revision int64, actor string, now time.Time) error {
+	_, err := tx.Exec(ctx, `INSERT INTO state_audit
+		(tenant_id, project_id, namespace, key, generation, revision, action, actor, at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		scope.TenantID, scope.ProjectID, namespace, key, generation, revision, action, actor, now.UTC())
+	return err
 }
 
 func referencesJSON(refs []statev1.ArtifactReference) []byte {

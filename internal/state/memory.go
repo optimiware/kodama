@@ -46,7 +46,7 @@ type Store interface {
 	List(ctx context.Context, scope Scope, namespace, prefix, cursor string, limit int) ([]statev1.Entry, string, error)
 	Create(ctx context.Context, scope Scope, namespace, key, actor string, req statev1.WriteRequest) (statev1.Entry, error)
 	Update(ctx context.Context, scope Scope, namespace, key, actor, expected string, req statev1.WriteRequest) (statev1.Entry, error)
-	Delete(ctx context.Context, scope Scope, namespace, key, expected string) error
+	Delete(ctx context.Context, scope Scope, namespace, key, actor, expected string) error
 }
 
 // Memory is the in-memory Store used by unit tests and development. Its
@@ -166,7 +166,7 @@ func (m *Memory) Update(_ context.Context, scope Scope, namespace, key, actor, e
 	return cloneEntry(e), nil
 }
 
-func (m *Memory) Delete(_ context.Context, scope Scope, namespace, key, expected string) error {
+func (m *Memory) Delete(_ context.Context, scope Scope, namespace, key, actor, expected string) error {
 	if err := validateLookup(scope, namespace, key); err != nil {
 		return err
 	}
