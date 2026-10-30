@@ -3,6 +3,7 @@ Kodama {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}" in nam
 Profile:       {{ .Values.profile }}   (execution trust: {{ .Values.execution.trustProfile }}; authority: {{ .Values.authority.mode }})
 KMS provider:  {{ include "kodama.kmsProvider" . }}
 Server:        1 replica, image {{ include "kodama.releaseImage" . }}
+MCP server:    {{ if .Values.mcp.enabled }}deployment/{{ include "kodama.mcpFullname" . }}, endpoint {{ include "kodama.mcpResource" . }}{{ else }}disabled{{ end }}
 Tenant namespaces: {{ range .Values.execution.tenants }}{{ .namespace }} {{ else }}(none){{ end }}
 
 {{- if eq .Values.image.digest "sha256:0000000000000000000000000000000000000000000000000000000000000000" }}

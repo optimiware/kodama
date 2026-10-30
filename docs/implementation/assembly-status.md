@@ -29,7 +29,7 @@ Configuration is environment plus the secrets directory (`KODAMA_SECRETS_DIR`, d
 
 ### Commands
 
-`kodama context …`, `auth login|logout`, `work create|get|list|update|history|transition`, `workspace …`, `pipeline validate|register|get|list`, `run start|get|list|steps|cancel|watch`, `variable …`, `secret …`. `run logs` reads the bounded log of one attempt. From T-072 the `agent` (profiles), `gate`, `environment` and `deployment` groups are offered too; nothing for the model gateway, MCP, webhooks or ChatOps is (model settings and MCP registrations of the M2 composition are administered through the HTTP API and the generated client). `KODAMA_CONTEXT_FILE`, `KODAMA_CREDENTIAL_DIR` and `KODAMA_ALLOW_INSECURE_LOOPBACK=true` (development only) adjust local client state.
+`kodama context …`, `auth login|logout`, `work create|get|list|update|history|transition`, `workspace …`, `pipeline validate|register|get|list`, `run start|get|list|steps|cancel|watch`, `variable …`, `secret …`. `run logs` reads the bounded log of one attempt. From T-072 the `agent` (profiles), `gate`, `environment` and `deployment` groups are offered too; nothing for the model gateway, MCP proxy, webhooks or ChatOps is (model settings and MCP registrations of the M2 composition are administered through the HTTP API and the generated client). `kodama mcp serve` is a separate external MCP server command over the public API ([spec](../specs/mcp-server.md)). `KODAMA_CONTEXT_FILE`, `KODAMA_CREDENTIAL_DIR` and `KODAMA_ALLOW_INSECURE_LOOPBACK=true` (development only) adjust local client state.
 
 ## Container execution assembly (T-071)
 

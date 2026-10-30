@@ -17,6 +17,31 @@ type CredentialVerifier interface {
 	Verify(ctx context.Context, rawAccessToken string) (Principal, error)
 }
 
+// Delegation is the verified intermediary recorded in an access token. Actor is
+// the issuer-defined client or workload identifier (for example the act.sub or
+// azp claim). It never replaces the represented Principal.
+type Delegation struct {
+	Actor  string
+	Scopes []string
+}
+
+// AccessToken is the non-secret verified part of an access token. It never
+// carries the raw credential.
+type AccessToken struct {
+	Principal  Principal
+	Expiry     time.Time
+	Scopes     []string
+	Delegation *Delegation
+}
+
+// AccessTokenVerifier is the richer verifier used by transports that need
+// expiry, scopes or delegation. CredentialVerifier remains the minimum port for
+// simple adapters and tests.
+type AccessTokenVerifier interface {
+	CredentialVerifier
+	VerifyAccessToken(ctx context.Context, rawAccessToken string) (AccessToken, error)
+}
+
 // PrincipalMapper maps a verified principal to its stable user, creating the
 // user on first login. It never creates a membership. Concurrent first logins
 // yield one user.

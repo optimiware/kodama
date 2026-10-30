@@ -8,8 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	coreoidc "github.com/coreos/go-oidc/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
@@ -153,38 +155,93 @@ type stateKey struct{}
 // failure or JWKS failure is identity.ErrUnavailable. Neither message contains
 // the token or a provider response body.
 func (v *Verifier) Verify(ctx context.Context, raw string) (identity.Principal, error) {
+	tok, err := v.VerifyAccessToken(ctx, raw)
+	if err != nil {
+		return identity.Principal{}, err
+	}
+	return tok.Principal, nil
+}
+
+// VerifyAccessToken verifies the token and returns the principal together with
+// its expiry, granted scopes and optional delegation. The scopes are
+// informational for authorization: Kodama authorizes by current membership and
+// role, never by an OAuth scope alone.
+func (v *Verifier) VerifyAccessToken(ctx context.Context, raw string) (identity.AccessToken, error) {
 	if raw == "" || len(raw) > v.cfg.MaxTokenBytes {
-		return identity.Principal{}, unauthenticated("the token is missing or too large")
+		return identity.AccessToken{}, unauthenticated("the token is missing or too large")
 	}
 	state := &callState{}
 	ctx = context.WithValue(ctx, stateKey{}, state)
 	verifier, err := v.discover(ctx)
 	if err != nil {
-		return identity.Principal{}, err
+		return identity.AccessToken{}, err
 	}
 	tok, err := verifier.Verify(ctx, raw)
 	if err != nil {
 		if state.isUnavailable() {
-			return identity.Principal{}, identity.Unavailablef(nil, "the issuer's signing keys could not be fetched")
+			return identity.AccessToken{}, identity.Unavailablef(nil, "the issuer's signing keys could not be fetched")
 		}
-		return identity.Principal{}, unauthenticated(classify(err))
+		return identity.AccessToken{}, unauthenticated(classify(err))
+	}
+	claims := map[string]json.RawMessage{}
+	if err := tok.Claims(&claims); err != nil {
+		return identity.AccessToken{}, unauthenticated("the claims are malformed")
 	}
 	if !v.cfg.AcceptIDTokenClaims {
-		var claims map[string]json.RawMessage
-		if err := tok.Claims(&claims); err != nil {
-			return identity.Principal{}, unauthenticated("the claims are malformed")
-		}
 		for _, name := range []string{"nonce", "at_hash"} {
 			if _, ok := claims[name]; ok {
-				return identity.Principal{}, unauthenticated("an ID token is not an API access token")
+				return identity.AccessToken{}, unauthenticated("an ID token is not an API access token")
 			}
 		}
 	}
 	p := identity.Principal{Issuer: tok.Issuer, Subject: tok.Subject}
 	if err := p.Validate(); err != nil {
-		return identity.Principal{}, unauthenticated("the subject is missing or malformed")
+		return identity.AccessToken{}, unauthenticated("the subject is missing or malformed")
 	}
-	return p, nil
+	return identity.AccessToken{
+		Principal: p, Expiry: tok.Expiry, Scopes: scopesFromClaims(claims),
+		Delegation: delegationFromClaims(claims),
+	}, nil
+}
+
+func scopesFromClaims(claims map[string]json.RawMessage) []string {
+	for _, name := range []string{"scope", "scp"} {
+		raw, ok := claims[name]
+		if !ok {
+			continue
+		}
+		var one string
+		if err := json.Unmarshal(raw, &one); err == nil {
+			return strings.Fields(one)
+		}
+		var many []string
+		if err := json.Unmarshal(raw, &many); err == nil {
+			return many
+		}
+	}
+	return nil
+}
+
+// delegationFromClaims extracts the issuer-defined intermediary from the RFC
+// 8693 act claim. azp/client_id are deliberately not treated as delegation:
+// ordinary CLI access tokens can carry them, and marking those as delegated
+// would incorrectly remove human-only authority.
+func delegationFromClaims(claims map[string]json.RawMessage) *identity.Delegation {
+	actor := ""
+	if raw, ok := claims["act"]; ok {
+		var act struct {
+			Sub string `json:"sub"`
+		}
+		if json.Unmarshal(raw, &act) == nil {
+			actor = act.Sub
+		}
+	}
+	actor = strings.TrimSpace(actor)
+	if actor == "" || len(actor) > identity.MaxSubjectBytes || !utf8.ValidString(actor) ||
+		strings.ContainsFunc(actor, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return nil
+	}
+	return &identity.Delegation{Actor: actor, Scopes: scopesFromClaims(claims)}
 }
 
 func unauthenticated(reason string) error {

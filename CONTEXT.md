@@ -67,6 +67,10 @@ _Avoid_: Ticket as a separate entity.
 
 **Workbench**: The optional, deferred Platform-hosted interface for work, execution, and delivery review; CLI/API/MCP/webhooks remain the primary Kodama surfaces.
 
+**MCP proxy**: Kodama's workload-facing gateway that exposes approved external MCP tools to an agent attempt under the attempt's runtime authority.
+
+**MCP server**: The external OAuth-protected endpoint that exposes the Kodama public API as MCP tools to a human-authorized MCP client. It validates an MCP-bound token and exchanges it for a separate delegated API token; it holds no database, broker, object-store or KMS credential and is distinct from the MCP proxy.
+
 ## Execution and delivery
 
 **Pipeline definition**: An immutable version of a dependency graph of executable steps and human gates.

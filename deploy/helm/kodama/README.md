@@ -16,6 +16,7 @@ This chart packages the **trusted-engineer** execution baseline only: one contro
 | --- | --- |
 | Deployment `<release>` | One replica, `Recreate` strategy, `kodama server --assembly core` with `KODAMA_ENV=production`; probes `/healthz` (liveness) and `/readyz` (readiness) |
 | Service, optional Ingress | ClusterIP service on `service.port`; Ingress and TLS Secret reference are opt-in |
+| MCP Deployment, Service, optional Ingress | Separate `kodama mcp serve` process on `mcp.service.port`; no database, KMS or runtime Secret mount. It uses a dedicated exchange Secret and the external profile exposes it on its own `mcp.ingress.host` |
 | ServiceAccount `<release>` | The control plane's identity; the only subject of any RoleBinding |
 | ConfigMaps `<release>-config`, `<release>-execution` | `<release>-config`: the server's settings document (`config.yaml`, read strictly by the server). `<release>-execution`: a readable rendering of the execution settings and the Job fixture (not read by the server) |
 | Migration Job + ServiceAccount (Helm hook) | `pre-install,pre-upgrade`; migration role only |
@@ -97,6 +98,7 @@ The schema (`values.schema.json`) is strict: unknown fields are rejected at ever
 | `server.terminationGracePeriodSeconds` | Should exceed `shutdownTimeout` (not enforced by the chart) | Default 30 with a 10 s drain |
 | `server.resources`, `server.probes`, `server.tmpSizeLimit` | Requests/limits, probe timing, `/tmp` emptyDir (root FS is read-only) | |
 | `service`, `ingress` | Service type/port; opt-in Ingress (`host` required when enabled; TLS requires `secretName`) | |
+| `mcp.*` | External MCP server: `enabled`, inbound/API audiences, RFC 8693 `exchange`, tool exposure, `ingress` and `service` | A shared host requires `mcp.ingress.path: /mcp`; see [MCP server](#mcp-server) |
 | `secrets.runtime.existingSecret`, `secrets.migration.existingSecret` | Secret names | See [Secret references](#secret-references) |
 | `installation.id` | Stable installation identifier (binds envelope-encryption contexts) | Required; never reuse for another installation |
 | `config.*` | Non-secret endpoints/identifiers for NATS, S3, Git, registry, OIDC, TLS | Rendered into the settings document; `config.s3.credentials` must be `static` for the core assembly |
@@ -132,6 +134,87 @@ Everything else reaches the process through:
 
 1. **the settings document** `<release>-config` / `config.yaml` (`version: 2`): installation id, `secrets` adapter configuration, NATS/S3/OIDC endpoints, the runtime origin and signing generation, and the Kubernetes **execution policy** (tenants and namespaces, digest-pinned injector image and command, resource bounds, volume sizes, identity, termination grace, and every destination a workload may reach). It carries no credential. The server reads it strictly (an unknown member stops startup) and a variable that is set always wins over it; it never selects the environment or the assembly. The Go type is `ChartConfig` in `internal/app/chartconfig.go`.
 2. **secret files** at `/secrets`, projected from the runtime Secret: `database-runtime-url`, `nats-token`, `git-read-token`, `git-write-token`, `git-credentials.json`, `cursor-key`, `idempotency-hash-key`, `runtime-signing-key`, `runtime-ca.crt`, `s3-access-key` and `s3-secret-key` (static object store credentials), `ca.crt` (custom CA) and `master-key` (development keyfile only). The migration Job mounts `database-migration-url` only.
+
+### MCP server
+
+`mcp.enabled` adds a second Deployment and Service to the release. It runs the
+same release image with `args: ["mcp", "serve"]` and has **no** database, NATS,
+S3, KMS or Kubernetes credential. It does not mount the server's runtime Secret.
+
+The MCP server validates a token issued for its own resource and exchanges it
+for a separate delegated Kodama API token (RFC 8693). It never forwards the
+client token to the API. The exchange client secret is projected from
+`mcp.exchange.existingSecret`; it is a dedicated credential, not the server
+runtime Secret.
+
+| Variable | Default | Why |
+| --- | --- | --- |
+| `KODAMA_MCP_API_URL` | `http://<release>:<service.port>/api/v1` | In-cluster Kodama API |
+| `KODAMA_MCP_RESOURCE` | `https://<mcp.ingress.host>/mcp`, or `http://<release>-mcp:<port>/mcp` without Ingress | Exact OAuth resource identifier |
+| `KODAMA_MCP_AUDIENCE` | the MCP resource | Inbound token audience |
+| `KODAMA_MCP_ISSUER` | `config.oidc.issuer` | Issuer of MCP-bound tokens |
+| `KODAMA_MCP_API_AUDIENCE` | `config.oidc.audience` | Delegated API token audience |
+| `KODAMA_MCP_API_ISSUER` | `config.oidc.issuer` | Issuer of delegated API tokens |
+| `KODAMA_MCP_API_RESOURCE` | `KODAMA_MCP_API_AUDIENCE` | RFC 8707 resource requested from exchange |
+| `KODAMA_MCP_EXCHANGE_URL` | `mcp.exchange.url` | RFC 8693 token endpoint |
+| `KODAMA_MCP_EXCHANGE_CLIENT_ID` | `mcp.exchange.clientId` | Confidential exchange client |
+| `KODAMA_MCP_EXCHANGE_CLIENT_AUTH` | `client_secret_basic` | Exchange client authentication method |
+| `KODAMA_MCP_EXCHANGE_CLIENT_SECRET_FILE` | mounted `mcp.exchange.secretKey` | Exchange credential file |
+| `KODAMA_MCP_LISTEN` | `:8090` | Container listener |
+| `KODAMA_MCP_ALLOW_INSECURE_HTTP` | `false` in the external profile | Public issuer/resource/exchange HTTP is development-only |
+| `KODAMA_MCP_ALLOW_INSECURE_API_HTTP` | `true` | The in-cluster API Service is plain HTTP |
+
+The external profile gives MCP its own origin:
+
+```yaml
+mcp:
+  enabled: true
+  resource: "https://mcp.example.invalid/mcp"
+  audience: "https://mcp.example.invalid/mcp"
+  issuer: "https://issuer.example.invalid"
+  apiAudience: "https://kodama.example.invalid/api"
+  apiIssuer: "https://issuer.example.invalid"
+  apiResource: "https://kodama.example.invalid/api"
+  exchange:
+    url: "https://issuer.example.invalid/token"
+    clientId: "kodama-mcp"
+    clientAuth: "client_secret_basic"
+    existingSecret: "kodama-mcp-exchange"
+    secretKey: "client-secret"
+    scopes: "kodama.api"
+  ingress:
+    enabled: true
+    className: nginx
+    host: mcp.example.invalid
+    path: "/"
+    tls:
+      enabled: true
+      secretName: kodama-mcp-tls
+```
+
+The chart refuses rendering when `mcp.enabled` is true without an exchange URL,
+client id or existing Secret reference. It also refuses a shared host unless
+`mcp.ingress.path` is `/mcp`; in that form it routes `/mcp` and
+`/.well-known/oauth-protected-resource/mcp` to the MCP Service while `/` remains
+with the Kodama server. A dedicated host remains the recommended default.
+
+The MCP endpoint serves `/mcp`, `/.well-known/oauth-protected-resource` and
+`/.well-known/oauth-protected-resource/mcp`. The issuer must accept the MCP
+client's RFC 8707 `resource` parameter, support the chosen client registration
+method, and support the exchange client. The current `oauthsonas` development
+fixture does not provide the exchange, so `values-dev.yaml` disables MCP;
+qualify the authorization server before claiming a zero-configuration OAuth
+connection.
+
+`mcp.caSecret` and `mcp.exchange.caSecret` optionally project CA keys from
+existing Secrets for a private issuer or exchange endpoint. Secret-value tools
+and Git-credential-returning tools remain opt-in through
+`mcp.enableSecretWrites` and `mcp.enableCredentialTools`.
+
+The chart does not infer issuer or ingress-controller CIDRs for an MCP
+NetworkPolicy. Add cluster policy for ingress to `mcp.service.port` and egress
+to the Kodama Service, DNS, the issuer/JWKS endpoint and the exchange endpoint as
+part of the installation's network policy.
 
 #### What fails closed (and why a profile may not start)
 
