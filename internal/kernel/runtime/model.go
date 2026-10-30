@@ -284,8 +284,9 @@ func AcquireClaim(prev Claim, req ClaimRequest, now time.Time) (Claim, error) {
 		Fence: prev.Fence + 1, Expires: now.Add(req.TTL)}, nil
 }
 
-// Renew extends an active claim without changing its fence. An expired claim
-// cannot be renewed; it must be re-acquired, which increments the fence.
+// Renew extends an active claim without changing its fence. The lease only
+// moves later: a renewal never shortens it. An expired claim cannot be renewed;
+// it must be re-acquired, which increments the fence.
 func (c Claim) Renew(now time.Time, ttl time.Duration) (Claim, error) {
 	if ttl <= 0 {
 		return Claim{}, invalid("claim ttl must be positive")
@@ -293,8 +294,28 @@ func (c Claim) Renew(now time.Time, ttl time.Duration) (Claim, error) {
 	if !c.Active(now) {
 		return Claim{}, ErrClaimExpired
 	}
-	c.Expires = now.Add(ttl)
+	if e := now.Add(ttl); e.After(c.Expires) {
+		c.Expires = e
+	}
 	return c, nil
+}
+
+// RenewClaim is the atomic same-owner renewal a StateStore applies to the
+// stored (current) claim. The claim a writer holds must authorize against the
+// current one (same tenant, project and run, same owner, equal fence, unexpired:
+// see Claim.Authorizes), so a writer superseded by a takeover gets
+// ErrStaleFence and an expired lease ErrClaimExpired. The result keeps the
+// owner, purpose and fence and carries the later expiry, which the store
+// persists in the same atomic step. AcquireClaim never renews: it refuses an
+// active lease, including the caller's own.
+func RenewClaim(current, held Claim, now time.Time, ttl time.Duration) (Claim, error) {
+	if ttl <= 0 {
+		return Claim{}, invalid("claim ttl must be positive")
+	}
+	if err := held.Authorizes(current, now); err != nil {
+		return Claim{}, err
+	}
+	return current.Renew(now, ttl)
 }
 
 // Authorizes reports whether c, presented by a writer, is the run's current
@@ -475,6 +496,14 @@ type Step struct {
 	State   StepState      `json:"state"`
 	Reason  Reason         `json:"reason,omitempty"`
 	Version domain.Version `json:"version"`
+	// Attempt is the current workload attempt of a container step: 0 before
+	// launch, 1 when it starts, and incremented only by Run.RetryStep after a
+	// launch that provably did not reach the backend.
+	Attempt int `json:"attempt,omitempty"`
+	// Result is the settled workload result of a container step. It is the
+	// evidence conditions evaluate over prior step results and it survives
+	// restart. A succeeded container step always records it.
+	Result Result `json:"result,omitempty"`
 }
 
 // NewStep returns a pending step at version 1.
@@ -497,6 +526,9 @@ func (s Step) Validate() error {
 	if s.State == StepSkipped && s.Kind == StepWait {
 		return invalid("a wait step cannot be skipped")
 	}
+	if err := s.validateEvidence(); err != nil {
+		return err
+	}
 	if err := s.Version.Validate(); err != nil {
 		return err
 	}
@@ -512,6 +544,47 @@ func (s Step) Validate() error {
 	return nil
 }
 
+// validateEvidence checks the attempt and result a container step records.
+func (s Step) validateEvidence() error {
+	if s.Attempt < 0 || (s.Attempt > 0 && s.Kind != StepContainer) {
+		return invalid("step %s: attempt %d is only for container steps", s.Key, s.Attempt)
+	}
+	if s.Kind == StepContainer {
+		started := s.State == StepRunning || s.State == StepSucceeded
+		if started && s.Attempt < 1 {
+			return invalid("container step %s is %s without an attempt", s.Key, s.State)
+		}
+		if s.State == StepPending && s.Attempt != 0 {
+			return invalid("a pending container step has no attempt")
+		}
+	}
+	if s.Result == (Result{}) {
+		if s.Kind == StepContainer && s.State == StepSucceeded {
+			return invalid("a succeeded container step records its result")
+		}
+		return nil
+	}
+	if s.Kind != StepContainer || !s.State.Terminal() || s.Attempt < 1 {
+		return invalid("step %s: a result belongs to a settled container attempt", s.Key)
+	}
+	if err := s.Result.Validate(); err != nil {
+		return err
+	}
+	ok := false
+	switch s.State {
+	case StepSucceeded:
+		ok = s.Result.Code == ResultSucceeded
+	case StepFailed:
+		ok = s.Result.Code == ResultFailed || s.Result.Code == ResultTimedOut || s.Result.Code == ResultLost
+	case StepCancelled:
+		ok = s.Result.Code == ResultCancelled
+	}
+	if !ok {
+		return invalid("step %s is %s but its result is %s", s.Key, s.State, s.Result.Code)
+	}
+	return nil
+}
+
 func (s Step) reasonRequired() bool {
 	return s.State == StepFailed || s.State == StepSkipped || s.State == StepCancelled
 }
@@ -519,12 +592,32 @@ func (s Step) reasonRequired() bool {
 // Advance moves the step to a legal next state, bumping its version. Failed,
 // skipped and cancelled steps require a reason; others reject one. A rejected
 // move leaves the step unchanged.
+//
+// A container step entering running starts attempt 1. Leaving running as
+// succeeded needs its result, so that move goes through Finish.
 func (s *Step) Advance(to StepState, reason Reason) error {
+	return s.advance(to, reason, Result{})
+}
+
+// Finish settles a running container step with the workload's result. The
+// result must agree with the state: succeeded with ResultSucceeded, failed with
+// failed, timed_out or lost, and cancelled with cancelled.
+func (s *Step) Finish(to StepState, reason Reason, res Result) error {
+	if err := res.Validate(); err != nil {
+		return err
+	}
+	return s.advance(to, reason, res)
+}
+
+func (s *Step) advance(to StepState, reason Reason, res Result) error {
 	if !CanStep(s.Kind, s.State, to) {
 		return fmt.Errorf("%w: %s step %s: %s -> %s", ErrIllegalTransition, s.Kind, s.Key, s.State, to)
 	}
 	next := *s
-	next.State, next.Reason, next.Version = to, reason, s.Version+1
+	next.State, next.Reason, next.Version, next.Result = to, reason, s.Version+1, res
+	if s.Kind == StepContainer && to == StepRunning {
+		next.Attempt = 1
+	}
 	if err := next.Validate(); err != nil {
 		return err
 	}
@@ -1099,11 +1192,32 @@ func (p PreparationInputs) Validate() error {
 	return nil
 }
 
+// ErrForeignResource reports a resource whose owner is not available to the
+// requesting scope: another tenant's resource, or another project's
+// project-owned resource.
+var ErrForeignResource = errors.New("runtime: foreign resource")
+
+// OwnerFor returns who owns a resource of the given lifetime requested by a run
+// in scope: a tenant-lifetime resource belongs to the tenant alone, with no
+// project, and is shared by every project of that tenant; project- and
+// pipeline-lifetime resources belong to the requesting project.
+func OwnerFor(l Lifetime, scope domain.Scope) domain.Owner {
+	if l == LifetimeTenant {
+		return domain.Owner{TenantID: scope.TenantID}
+	}
+	return domain.Owner{TenantID: scope.TenantID, ProjectID: scope.ProjectID}
+}
+
 // ResourceSpec asks a ResourceManager to ensure one workspace or service.
-// Ensure is idempotent on Identity: an existing resource with the same
-// SpecDigest is adopted, and one with a different digest is ErrSpecMismatch.
+// Scope is the requesting run's tenant and project; Owner is who owns the
+// resource, which differs from Scope for a tenant-lifetime service (owned by the
+// tenant, shared by its projects). Ensure is idempotent on (Owner, Identity): an
+// existing resource with the same SpecDigest is adopted, and one with a
+// different digest is ErrSpecMismatch.
 type ResourceSpec struct {
 	Scope domain.Scope `json:"scope"`
+	// Owner must equal OwnerFor(Lifetime, Scope).
+	Owner domain.Owner `json:"owner"`
 	// RunID is empty for project- and tenant-lifetime services.
 	RunID    domain.RunID `json:"runId,omitempty"`
 	Kind     ResourceKind `json:"kind"`
@@ -1135,6 +1249,9 @@ func (r ResourceSpec) Validate() error {
 	if err := r.Fence.Validate(); err != nil {
 		return err
 	}
+	if r.Owner != OwnerFor(r.Lifetime, r.Scope) {
+		return invalid("owner %s/%s does not match the %s lifetime of scope %s", r.Owner.TenantID, r.Owner.ProjectID, r.Lifetime, r.Scope)
+	}
 	if r.Lifetime == LifetimePipeline {
 		if err := r.RunID.Validate(); err != nil {
 			return err
@@ -1160,10 +1277,23 @@ func (r ResourceSpec) Validate() error {
 	}
 }
 
-// ResourceHandle identifies one resource for observe, stop and remove. It
-// carries scope and fence; an adapter never infers either from context.
+// Handle returns the handle for the resource the spec describes.
+func (r ResourceSpec) Handle() ResourceHandle {
+	return ResourceHandle{Scope: r.Scope, Owner: r.Owner, Lifetime: r.Lifetime, RunID: r.RunID,
+		Kind: r.Kind, Name: r.Name, Identity: r.Identity, Fence: r.Fence}
+}
+
+// ResourceHandle identifies one resource for observe, stop and remove. Scope is
+// the requesting run's tenant and project; Owner and Lifetime say who owns the
+// resource and how long it lives. An adapter never infers any of them from
+// context, and refuses a handle whose Owner is not available to the caller's
+// scope (see Reachable). Fences order writers of one run: for a shared
+// (project- or tenant-lifetime) resource they compare only among handles with
+// the same RunID.
 type ResourceHandle struct {
 	Scope    domain.Scope `json:"scope"`
+	Owner    domain.Owner `json:"owner"`
+	Lifetime Lifetime     `json:"lifetime"`
 	RunID    domain.RunID `json:"runId,omitempty"`
 	Kind     ResourceKind `json:"kind"`
 	Name     string       `json:"name"`
@@ -1171,7 +1301,8 @@ type ResourceHandle struct {
 	Fence    Fence        `json:"fence"`
 }
 
-// Validate checks the handle.
+// Validate checks the handle, including that its owner follows from its
+// lifetime and requesting scope.
 func (h ResourceHandle) Validate() error {
 	if err := h.Scope.Validate(); err != nil {
 		return err
@@ -1179,7 +1310,28 @@ func (h ResourceHandle) Validate() error {
 	if !h.Kind.Valid() || h.Name == "" || h.Identity == "" {
 		return invalid("a resource handle requires a kind, a name and an identity")
 	}
+	if !h.Lifetime.Valid() {
+		return invalid("resource lifetime %q", h.Lifetime)
+	}
+	if h.Owner != OwnerFor(h.Lifetime, h.Scope) {
+		return invalid("owner %s/%s does not match the %s lifetime of scope %s", h.Owner.TenantID, h.Owner.ProjectID, h.Lifetime, h.Scope)
+	}
+	if h.Lifetime == LifetimePipeline {
+		if err := h.RunID.Validate(); err != nil {
+			return err
+		}
+	}
 	return h.Fence.Validate()
+}
+
+// Reachable reports whether a caller in scope by may use the resource: it must
+// belong to the caller's tenant, and to the caller's project unless it is
+// tenant-owned. Anything else is ErrForeignResource.
+func (h ResourceHandle) Reachable(by domain.Scope) error {
+	if !h.Owner.AvailableTo(by) {
+		return ErrForeignResource
+	}
+	return nil
 }
 
 // ResourceObservation is a backend's report about one resource.
@@ -1289,6 +1441,35 @@ func (o WorkloadObservation) Validate() error {
 	return nil
 }
 
+// CheckObservationUpdate reports whether next may replace prev as the retained
+// observation of the same workload attempt. The identity (scope, run, step,
+// attempt, workload, specification digest, backend) must match, the fence and
+// observation time may not go backwards, and an exited workload keeps its
+// result: it may only be repeated or confirmed absent.
+func CheckObservationUpdate(prev, next WorkloadObservation) error {
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	if prev.Binding.Scope != next.Binding.Scope || prev.Binding.RunID != next.Binding.RunID ||
+		prev.Binding.StepKey != next.Binding.StepKey || prev.Binding.Attempt != next.Binding.Attempt ||
+		prev.Binding.WorkloadID != next.Binding.WorkloadID || prev.Binding.Backend != next.Binding.Backend {
+		return invalid("observation names another workload attempt")
+	}
+	if prev.Binding.SpecDigest != next.Binding.SpecDigest {
+		return fmt.Errorf("%w: workload %s", ErrSpecMismatch, next.Binding.WorkloadID)
+	}
+	if next.Binding.Fence < prev.Binding.Fence {
+		return fmt.Errorf("%w: observation fence %d, retained %d", ErrStaleFence, next.Binding.Fence, prev.Binding.Fence)
+	}
+	if next.ObservedAt.Before(prev.ObservedAt) {
+		return invalid("observation is older than the retained one")
+	}
+	if prev.Phase == PhaseExited && !(next.Phase == PhaseAbsent || (next.Phase == PhaseExited && next.Result == prev.Result)) {
+		return fmt.Errorf("%w: an exited workload keeps its result", ErrIllegalTransition)
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Command intent
 // ---------------------------------------------------------------------------
@@ -1341,18 +1522,40 @@ type Command struct {
 	StepKey domain.StepID `json:"stepKey,omitempty"`
 	Kind    CommandKind   `json:"kind"`
 	// Target is the stable workload or resource identity.
-	Target     string       `json:"target"`
-	SpecDigest string       `json:"specDigest,omitempty"`
-	Fence      Fence        `json:"fence"`
-	State      CommandState `json:"state"`
-	Reason     Reason       `json:"reason,omitempty"`
-	RecordedAt time.Time    `json:"recordedAt"`
+	Target     string `json:"target"`
+	SpecDigest string `json:"specDigest,omitempty"`
+	Fence      Fence  `json:"fence"`
+	// Binding is the full workload binding (backend, attempt, identity,
+	// specification digest, fence) of a workload command, so a restarted engine
+	// can observe, stop or remove the workload without transient backend
+	// configuration. It is zero for resource commands.
+	Binding RuntimeBinding `json:"binding,omitempty"`
+	State   CommandState   `json:"state"`
+	Reason  Reason         `json:"reason,omitempty"`
+	// Result is the workload result the backend reported when a confirmed
+	// workload command ended it; it is zero otherwise.
+	Result     Result    `json:"result,omitempty"`
+	RecordedAt time.Time `json:"recordedAt"`
 }
 
-// NewCommand records an intent at now.
+// Workload reports whether the kind acts on a workload rather than a resource.
+func (k CommandKind) Workload() bool {
+	return k == CommandLaunch || k == CommandStop || k == CommandRemove
+}
+
+// NewCommand records an intent at now for a workspace or service. Workload
+// commands carry a binding and use NewWorkloadCommand.
 func NewCommand(id string, scope domain.Scope, run domain.RunID, step domain.StepID, kind CommandKind, target, specDigest string, fence Fence, now time.Time) (Command, error) {
 	c := Command{ID: id, Scope: scope, RunID: run, StepKey: step, Kind: kind, Target: target,
 		SpecDigest: specDigest, Fence: fence, State: CommandIntent, RecordedAt: now}
+	return c, c.Validate()
+}
+
+// NewWorkloadCommand records an intent at now for the workload named by b. Scope,
+// run, step, target, specification digest and fence all come from the binding.
+func NewWorkloadCommand(id string, b RuntimeBinding, kind CommandKind, now time.Time) (Command, error) {
+	c := Command{ID: id, Scope: b.Scope, RunID: b.RunID, StepKey: b.StepKey, Kind: kind, Target: b.WorkloadID,
+		SpecDigest: b.SpecDigest, Fence: b.Fence, Binding: b, State: CommandIntent, RecordedAt: now}
 	return c, c.Validate()
 }
 
@@ -1378,6 +1581,17 @@ func (c Command) Validate() error {
 	if err := c.Reason.Validate(); err != nil {
 		return err
 	}
+	if err := c.validateBinding(); err != nil {
+		return err
+	}
+	if c.Result != (Result{}) {
+		if c.State != CommandConfirmed || !c.Kind.Workload() {
+			return invalid("only a confirmed workload command records a result")
+		}
+		if err := c.Result.Validate(); err != nil {
+			return err
+		}
+	}
 	switch c.State {
 	case CommandIntent, CommandConfirmed:
 		if c.Reason != ReasonNone {
@@ -1390,6 +1604,41 @@ func (c Command) Validate() error {
 	default:
 		return invalid("command state %q", c.State)
 	}
+	return nil
+}
+
+// validateBinding requires a workload command to carry a binding that agrees
+// with the command, and a resource command to carry none.
+func (c Command) validateBinding() error {
+	if !c.Kind.Workload() {
+		if c.Binding != (RuntimeBinding{}) {
+			return invalid("a %s command has no workload binding", c.Kind)
+		}
+		return nil
+	}
+	if err := c.Binding.Validate(); err != nil {
+		return err
+	}
+	b := c.Binding
+	if b.Scope != c.Scope || b.RunID != c.RunID || b.StepKey != c.StepKey || b.WorkloadID != c.Target ||
+		b.SpecDigest != c.SpecDigest || b.Fence != c.Fence {
+		return invalid("command %s does not match its workload binding", c.ID)
+	}
+	return nil
+}
+
+// RecordResult retains the workload result a confirmed workload command
+// reported, for example the exit a stop observed. It changes nothing else.
+func (c *Command) RecordResult(res Result) error {
+	if c.State != CommandConfirmed || !c.Kind.Workload() {
+		return fmt.Errorf("%w: command %s is %s", ErrIllegalTransition, c.ID, c.State)
+	}
+	next := *c
+	next.Result = res
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*c = next
 	return nil
 }
 
@@ -1478,10 +1727,26 @@ type Cleanup struct {
 	State       CleanupState `json:"state"`
 	Attempts    int          `json:"attempts"`
 	MaxAttempts int          `json:"maxAttempts"`
-	// Retained lists the resources not confirmed removed.
+	// Retained lists the run-owned workspaces and services not confirmed removed.
 	Retained []ResourceHandle `json:"retained,omitempty"`
-	Reason   Reason           `json:"reason,omitempty"`
+	// RetainedWorkloads lists the workloads whose stop or removal is not
+	// confirmed, by their scoped bindings, so a later claim can reconcile them
+	// without the original backend configuration.
+	RetainedWorkloads []RuntimeBinding `json:"retainedWorkloads,omitempty"`
+	Reason            Reason           `json:"reason,omitempty"`
 }
+
+// Remaining is what an unfinished cleanup attempt could not confirm stopped and
+// removed.
+type Remaining struct {
+	Resources []ResourceHandle `json:"resources,omitempty"`
+	Workloads []RuntimeBinding `json:"workloads,omitempty"`
+}
+
+// Empty reports whether nothing remains.
+func (m Remaining) Empty() bool { return len(m.Resources) == 0 && len(m.Workloads) == 0 }
+
+func (c Cleanup) retained() int { return len(c.Retained) + len(c.RetainedWorkloads) }
 
 // RunStatus is the derived, read-only status of a run.
 type RunStatus string
@@ -1583,18 +1848,26 @@ func (r Run) Validate() error {
 	default:
 		return invalid("cleanup state %q", r.Cleanup.State)
 	}
-	if r.Cleanup.State == CleanupComplete && len(r.Cleanup.Retained) > 0 {
-		return invalid("completed cleanup retains no resources")
+	if r.Cleanup.State == CleanupComplete && r.Cleanup.retained() > 0 {
+		return invalid("completed cleanup retains nothing")
 	}
-	if r.Cleanup.State == CleanupExhausted && (len(r.Cleanup.Retained) == 0 || r.Cleanup.Reason == ReasonNone) {
-		return invalid("exhausted cleanup records the retained resources and a reason")
+	if r.Cleanup.State == CleanupExhausted && (r.Cleanup.retained() == 0 || r.Cleanup.Reason == ReasonNone) {
+		return invalid("exhausted cleanup records what it retained and a reason")
 	}
 	for _, h := range r.Cleanup.Retained {
 		if err := h.Validate(); err != nil {
 			return err
 		}
-		if h.Scope != r.Scope {
-			return invalid("retained resource belongs to %s", h.Scope)
+		if h.Scope != r.Scope || h.Lifetime != LifetimePipeline || h.RunID != r.ID {
+			return invalid("retained resource %s is not owned by run %s", h.Name, r.ID)
+		}
+	}
+	for _, b := range r.Cleanup.RetainedWorkloads {
+		if err := b.Validate(); err != nil {
+			return err
+		}
+		if b.Scope != r.Scope || b.RunID != r.ID || !slices.ContainsFunc(r.Steps, func(s Step) bool { return s.Key == b.StepKey }) {
+			return invalid("retained workload %s is not owned by run %s", b.WorkloadID, r.ID)
 		}
 	}
 	if r.Outcome.Decided() {
@@ -1622,7 +1895,10 @@ func (r Run) Terminal() bool { return r.Settled() && r.Cleanup.State.Final() }
 
 // Admits reports whether a claim for purpose may be granted. Cancellation and
 // settlement block execution claims but still permit reconciliation and
-// cleanup; a terminal run admits nothing.
+// cleanup. A terminal run admits nothing, with one narrow exception: when
+// cleanup is exhausted with resources or workloads retained, a cleanup claim is
+// still admitted so late reconciliation can confirm them (ReconcileExhausted,
+// CompleteCleanup). Execution and general reconciliation stay closed.
 func (r Run) Admits(purpose ClaimPurpose) error {
 	if err := r.Validate(); err != nil {
 		return err
@@ -1630,7 +1906,7 @@ func (r Run) Admits(purpose ClaimPurpose) error {
 	if !purpose.Valid() {
 		return invalid("claim purpose %q", purpose)
 	}
-	if r.Terminal() {
+	if r.Terminal() && !(r.Cleanup.State == CleanupExhausted && purpose == ClaimCleanup) {
 		return fmt.Errorf("%w: run %s is terminal", ErrExecutionClosed, r.ID)
 	}
 	switch purpose {
@@ -1695,6 +1971,49 @@ func (r *Run) RequestCancel() {
 // cancellation is requested no step may start running or waiting, and at most
 // one container step runs at a time, so one executable step holds the workspace.
 func (r *Run) AdvanceStep(key domain.StepID, to StepState, reason Reason) error {
+	return r.moveStep(key, to, reason, nil)
+}
+
+// FinishStep settles a running container step with the workload's result, which
+// is retained on the step for conditions and recovery. See Step.Finish.
+func (r *Run) FinishStep(key domain.StepID, to StepState, reason Reason, res Result) error {
+	return r.moveStep(key, to, reason, &res)
+}
+
+// RetryStep starts the next workload attempt of a running container step. It is
+// allowed only for a launch command of the current attempt that is rejected,
+// that is, affirmatively known not to have reached the backend. An intent with
+// no outcome and an uncertain launch are reconciled, never retried. A cancelling
+// or settled run retries nothing.
+func (r *Run) RetryStep(key domain.StepID, launch Command) error {
+	if r.Settled() || r.CancelRequested {
+		return fmt.Errorf("%w: run %s", ErrExecutionClosed, r.ID)
+	}
+	i := slices.IndexFunc(r.Steps, func(s Step) bool { return s.Key == key })
+	if i < 0 {
+		return invalid("run %s has no step %s", r.ID, key)
+	}
+	s := r.Steps[i]
+	if s.Kind != StepContainer || s.State != StepRunning {
+		return fmt.Errorf("%w: step %s is not a running container step", ErrIllegalTransition, key)
+	}
+	if err := launch.Validate(); err != nil {
+		return err
+	}
+	if launch.Kind != CommandLaunch || launch.Scope != r.Scope || launch.RunID != r.ID || launch.StepKey != key ||
+		launch.Binding.Attempt != s.Attempt {
+		return invalid("command %s is not the launch of step %s attempt %d", launch.ID, key, s.Attempt)
+	}
+	if !launch.MayRetry() {
+		return fmt.Errorf("%w: launch %s is %s, which must be reconciled, not retried", ErrIllegalTransition, launch.ID, launch.State)
+	}
+	r.Steps[i].Attempt++
+	r.Steps[i].Version++
+	r.Version++
+	return nil
+}
+
+func (r *Run) moveStep(key domain.StepID, to StepState, reason Reason, res *Result) error {
 	if r.Settled() {
 		return fmt.Errorf("%w: run %s is settled", ErrExecutionClosed, r.ID)
 	}
@@ -1714,7 +2033,13 @@ func (r *Run) AdvanceStep(key domain.StepID, to StepState, reason Reason) error 
 			}
 		}
 	}
-	if err := r.Steps[i].Advance(to, reason); err != nil {
+	var err error
+	if res != nil {
+		err = r.Steps[i].Finish(to, reason, *res)
+	} else {
+		err = r.Steps[i].Advance(to, reason)
+	}
+	if err != nil {
 		return err
 	}
 	r.Version++
@@ -1757,15 +2082,23 @@ func (r *Run) Settle(outcome Outcome, reason Reason) error {
 // resources. When the bound is reached the cleanup becomes exhausted: the run
 // turns terminal with the retained identities and reason recorded.
 func (r *Run) RecordCleanupAttempt(retained []ResourceHandle, reason Reason) error {
+	return r.RecordCleanupRemaining(Remaining{Resources: retained}, reason)
+}
+
+// RecordCleanupRemaining is RecordCleanupAttempt for any mix of retained
+// resources and workloads, so a workload whose stop or removal is uncertain is
+// recorded by its binding rather than lost.
+func (r *Run) RecordCleanupRemaining(rem Remaining, reason Reason) error {
 	if r.Cleanup.State != CleanupPending {
 		return fmt.Errorf("%w: cleanup is %s", ErrIllegalTransition, r.Cleanup.State)
 	}
-	if len(retained) == 0 || reason == ReasonNone {
-		return invalid("an unfinished cleanup attempt retains resources and gives a reason")
+	if rem.Empty() || reason == ReasonNone {
+		return invalid("an unfinished cleanup attempt retains something and gives a reason")
 	}
 	next := *r
 	next.Cleanup.Attempts++
-	next.Cleanup.Retained = slices.Clone(retained)
+	next.Cleanup.Retained = slices.Clone(rem.Resources)
+	next.Cleanup.RetainedWorkloads = slices.Clone(rem.Workloads)
 	next.Cleanup.Reason = reason
 	if next.Cleanup.Attempts >= next.Cleanup.MaxAttempts {
 		next.Cleanup.State = CleanupExhausted
@@ -1785,7 +2118,35 @@ func (r *Run) CompleteCleanup() error {
 	if r.Cleanup.State != CleanupPending && r.Cleanup.State != CleanupExhausted {
 		return fmt.Errorf("%w: cleanup is %s", ErrIllegalTransition, r.Cleanup.State)
 	}
-	r.Cleanup.State, r.Cleanup.Retained, r.Cleanup.Reason = CleanupComplete, nil, ReasonNone
+	r.Cleanup.State, r.Cleanup.Retained, r.Cleanup.RetainedWorkloads, r.Cleanup.Reason = CleanupComplete, nil, nil, ReasonNone
+	r.Version++
+	return nil
+}
+
+// ReconcileExhausted records progress made by a late cleanup claim after the
+// attempt bound was exhausted. remaining must be a subset of what is retained;
+// nothing new can appear. An empty remaining completes cleanup; otherwise the
+// run stays exhausted with the smaller retained set. It never reopens
+// execution.
+func (r *Run) ReconcileExhausted(remaining Remaining) error {
+	if r.Cleanup.State != CleanupExhausted {
+		return fmt.Errorf("%w: cleanup is %s", ErrIllegalTransition, r.Cleanup.State)
+	}
+	for _, h := range remaining.Resources {
+		if !slices.Contains(r.Cleanup.Retained, h) {
+			return invalid("resource %s was not retained", h.Name)
+		}
+	}
+	for _, b := range remaining.Workloads {
+		if !slices.Contains(r.Cleanup.RetainedWorkloads, b) {
+			return invalid("workload %s was not retained", b.WorkloadID)
+		}
+	}
+	if remaining.Empty() {
+		return r.CompleteCleanup()
+	}
+	r.Cleanup.Retained = slices.Clone(remaining.Resources)
+	r.Cleanup.RetainedWorkloads = slices.Clone(remaining.Workloads)
 	r.Version++
 	return nil
 }
@@ -1859,10 +2220,17 @@ type Transition struct {
 	// Waits are upserted; each is version-checked against the stored wait.
 	Waits []Wait `json:"waits,omitempty"`
 	// Commands are upserted by ID.
-	Commands  []Command             `json:"commands,omitempty"`
+	Commands []Command `json:"commands,omitempty"`
+	// Workloads are the retained observations of workload attempts, upserted by
+	// (step, attempt) under CheckObservationUpdate. They carry the bindings and
+	// results recovery and conditions read back.
+	Workloads []WorkloadObservation `json:"workloads,omitempty"`
 	Resources []ResourceObservation `json:"resources,omitempty"`
 	// Events are the outbox intent committed with the change.
 	Events []Event `json:"events,omitempty"`
+	// RenewTTL, when positive, extends the writer's lease to Now+RenewTTL (never
+	// shortening it) in the same atomic commit, keeping owner and fence.
+	RenewTTL time.Duration `json:"renewTtl,omitempty"`
 }
 
 // Validate checks the transition is internally consistent: one run and scope
@@ -1912,12 +2280,32 @@ func (t Transition) Validate() error {
 			return invalid("command %s belongs to another run", c.ID)
 		}
 	}
+	if t.RenewTTL < 0 {
+		return invalid("renewal ttl must not be negative")
+	}
+	for _, w := range t.Workloads {
+		if err := w.Validate(); err != nil {
+			return err
+		}
+		b := w.Binding
+		if b.Scope != t.Scope || b.RunID != t.RunID {
+			return invalid("workload %s belongs to another run", b.WorkloadID)
+		}
+		i := slices.IndexFunc(t.Run.Steps, func(s Step) bool { return s.Key == b.StepKey })
+		if i < 0 || t.Run.Steps[i].Kind != StepContainer || b.Attempt > t.Run.Steps[i].Attempt {
+			return invalid("workload %s does not match a launched container step", b.WorkloadID)
+		}
+	}
 	for _, o := range t.Resources {
 		if err := o.Validate(); err != nil {
 			return err
 		}
-		if o.Handle.Scope != t.Scope {
-			return invalid("resource %s belongs to another scope", o.Handle.Name)
+		h := o.Handle
+		if h.Scope != t.Scope || (h.Lifetime == LifetimePipeline && h.RunID != t.RunID) {
+			return invalid("resource %s belongs to another run", h.Name)
+		}
+		if err := h.Reachable(t.Scope); err != nil {
+			return fmt.Errorf("%w: resource %s: %w", domain.ErrInvalidValue, h.Name, err)
 		}
 	}
 	for _, e := range t.Events {

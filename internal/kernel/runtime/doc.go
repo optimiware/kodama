@@ -32,20 +32,33 @@
 //   - A wait commits before it is announced, and one version-checked decision
 //     settles the race between resolution, expiry and cancellation. A
 //     duplicate resolution returns the recorded result.
-//   - A claim is a lease with owner, expiry and a monotonic [Fence]. A stale
-//     writer cannot commit after takeover. Database fencing is not enough for
+//   - A claim is a lease with owner, expiry and a monotonic [Fence]. The owner
+//     extends it with [RenewClaim], which keeps the fence and is persisted
+//     atomically; [AcquireClaim] never renews. A stale writer cannot commit or
+//     renew after takeover. Database fencing is not enough for
 //     external effects: the fence travels in every [RuntimeBinding] and
 //     [ResourceHandle] so an adapter can refuse a delayed create.
 //   - Execution outcome and cleanup are separate. A run is terminal only after
 //     its owned resources are confirmed stopped and removed, or after bounded
 //     cleanup attempts are exhausted with the retained resource identities
-//     recorded.
+//     recorded. Workloads whose stop or removal is uncertain are retained by
+//     their [RuntimeBinding], like resources. After exhaustion only a cleanup
+//     claim is admitted, so late reconciliation can still confirm the retained
+//     items without reopening execution.
+//   - Durable records carry the execution evidence recovery needs: step
+//     attempts and results, command bindings and outcomes, the latest workload
+//     observation per attempt and consumed wait results ([RunRecord]), so a
+//     restarted engine reconciles by stable identity with no transient backend
+//     configuration.
 //
 // # Scope
 //
 // Tenant and project scope ([domain.Scope]) are explicit fields on every
 // command, handle, binding, observation, signal, claim and event. No port
-// reads scope, identity or time from ambient context.
+// reads scope, identity or time from ambient context. Resource ownership is
+// separate from the requesting run's scope: a tenant-lifetime service is owned by
+// the tenant alone ([domain.Owner] without a project) and shared by its
+// projects, while every handle keeps its owner and lifetime.
 //
 // # Workspace ownership
 //

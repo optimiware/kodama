@@ -18,7 +18,15 @@ var (
 	other  = domain.Scope{TenantID: "t2", ProjectID: "p1"}
 	t0     = time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 	minute = time.Minute
+	owner  = domain.Owner{TenantID: "t1", ProjectID: "p1"}
+	okRes  = rt.Result{Code: rt.ResultSucceeded}
 )
+
+// bind returns the workload binding of one attempt of a step of run1.
+func bind(step domain.StepID, attempt int, fence rt.Fence) rt.RuntimeBinding {
+	return rt.RuntimeBinding{Scope: scope, RunID: "run1", StepKey: step, Attempt: attempt,
+		WorkloadID: fmt.Sprintf("wl-run1-%s-%d", step, attempt), SpecDigest: "sha256:s", Backend: "process", Fence: fence}
+}
 
 func mustPlan(t *testing.T) rt.Plan {
 	t.Helper()
@@ -361,7 +369,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			if r.Status() != rt.StatusRunning {
 				t.Fatalf("status %s", r.Status())
 			}
-			must(t, r.AdvanceStep(k, rt.StepSucceeded, rt.ReasonNone))
+			must(t, r.FinishStep(k, rt.StepSucceeded, rt.ReasonNone, okRes))
 		}
 		must(t, r.AdvanceStep("review", rt.StepWaiting, rt.ReasonNone))
 		if r.Status() != rt.StatusWaiting {
@@ -370,7 +378,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		must(t, r.AdvanceStep("review", rt.StepSucceeded, rt.ReasonNone))
 		must(t, r.AdvanceStep("gate", rt.StepSucceeded, rt.ReasonNone))
 		must(t, r.AdvanceStep("test", rt.StepRunning, rt.ReasonNone))
-		must(t, r.AdvanceStep("test", rt.StepSucceeded, rt.ReasonNone))
+		must(t, r.FinishStep("test", rt.StepSucceeded, rt.ReasonNone, okRes))
 
 		must(t, r.Settle(rt.OutcomeSucceeded, rt.ReasonNone))
 		if !r.Settled() || r.Terminal() || r.Status() != rt.StatusCleaning || r.Cleanup.State != rt.CleanupPending {
@@ -382,7 +390,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		if err := r.AdvanceStep("test", rt.StepFailed, rt.ReasonCommandFailed); !errors.Is(err, rt.ErrExecutionClosed) {
 			t.Fatalf("step moved after settle: %v", err)
 		}
-		retained := []rt.ResourceHandle{{Scope: scope, RunID: "run1", Kind: rt.ResourceService, Name: "db", Identity: "run1-db", Fence: 1}}
+		retained := []rt.ResourceHandle{{Scope: scope, Owner: owner, Lifetime: rt.LifetimePipeline, RunID: "run1", Kind: rt.ResourceService, Name: "db", Identity: "run1-db", Fence: 1}}
 		must(t, r.RecordCleanupAttempt(retained, rt.ReasonCleanupFailed))
 		if r.Terminal() || r.Cleanup.Attempts != 1 || r.Cleanup.State != rt.CleanupPending || len(r.Cleanup.Retained) != 1 {
 			t.Fatalf("after one attempt: %+v", r.Cleanup)
@@ -507,7 +515,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 				t.Errorf("%s: %s, want %s", name, got, tc.want)
 			}
 		}
-		c, err := rt.NewCommand("cmd1", scope, "run1", "build", rt.CommandLaunch, "wl-run1-build-1", "sha256:s", 1, t0)
+		c, err := rt.NewWorkloadCommand("cmd1", bind("build", 1, 1), rt.CommandLaunch, t0)
 		must(t, err)
 		if c.MayRetry() {
 			t.Fatal("an intent with no recorded outcome must not be retried")
@@ -526,7 +534,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		if err := c.Settle(rt.CommandConfirmed, rt.ReasonNone); !errors.Is(err, rt.ErrIllegalTransition) {
 			t.Fatalf("rejected is final: %v", err)
 		}
-		c2, _ := rt.NewCommand("cmd2", scope, "run1", "build", rt.CommandLaunch, "wl", "d", 1, t0)
+		c2, _ := rt.NewWorkloadCommand("cmd2", bind("build", 1, 1), rt.CommandLaunch, t0)
 		if err := c2.Settle(rt.CommandRejected, rt.ReasonNone); err == nil {
 			t.Fatal("rejection without a reason accepted")
 		}
@@ -534,7 +542,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			t.Fatal("confirmation with a reason accepted")
 		}
 		must(t, c2.Settle(rt.CommandConfirmed, rt.ReasonNone))
-		if _, err := rt.NewCommand("cmd3", scope, "run1", "", rt.CommandLaunch, "wl", "d", 0, t0); err == nil {
+		if _, err := rt.NewWorkloadCommand("cmd3", bind("build", 1, 0), rt.CommandLaunch, t0); err == nil {
 			t.Fatal("a command without a fence accepted")
 		}
 	})
@@ -607,7 +615,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		claim := rt.Claim{Scope: scope, RunID: "run1", Owner: "w", Purpose: rt.ClaimExecute, Fence: 1, Expires: t0.Add(minute)}
 		next := run
 		must(t, next.AdvanceStep("build", rt.StepRunning, rt.ReasonNone))
-		cmd, _ := rt.NewCommand("c1", scope, "run1", "build", rt.CommandLaunch, "wl", "d", 1, t0)
+		cmd, _ := rt.NewWorkloadCommand("c1", bind("build", 1, 1), rt.CommandLaunch, t0)
 		ev := rt.Event{ID: "e1", Scope: scope, RunID: "run1", StepKey: "build", Kind: rt.EventStepStateChanged, Version: 2, At: t0}
 		tr := rt.Transition{Scope: scope, RunID: "run1", Claim: claim, Now: t0, ExpectedVersion: run.Version, Run: next,
 			Commands: []rt.Command{cmd}, Events: []rt.Event{ev}}
@@ -621,7 +629,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			"foreign command":   func(x *rt.Transition) { c := cmd; c.Scope = other; x.Commands = []rt.Command{c} },
 			"foreign event":     func(x *rt.Transition) { e := ev; e.RunID = "run2"; x.Events = []rt.Event{e} },
 			"foreign resource": func(x *rt.Transition) {
-				x.Resources = []rt.ResourceObservation{{Handle: rt.ResourceHandle{Scope: other, Kind: rt.ResourceService, Name: "db", Identity: "i", Fence: 1}, State: rt.ResourceReady, ObservedAt: t0}}
+				x.Resources = []rt.ResourceObservation{{Handle: rt.ResourceHandle{Scope: other, Owner: domain.Owner{TenantID: "t2", ProjectID: "p1"}, Lifetime: rt.LifetimeProject, Kind: rt.ResourceService, Name: "db", Identity: "i", Fence: 1}, State: rt.ResourceReady, ObservedAt: t0}}
 			},
 			"no time":    func(x *rt.Transition) { x.Now = time.Time{} },
 			"zero fence": func(x *rt.Transition) { x.Claim.Fence = 0 },
@@ -637,7 +645,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 	t.Run("resources, workspace inputs and secrets", func(t *testing.T) {
 		prep := rt.PreparationInputs{Scope: scope, RunID: "run1", Digest: "d",
 			Sources: []rt.SourceInput{{Name: "app", Locator: "repo://app", Revision: "abc123", Path: "src/app"}}}
-		ws := rt.ResourceSpec{Scope: scope, RunID: "run1", Kind: rt.ResourceWorkspace, Name: "workspace", Lifetime: rt.LifetimePipeline,
+		ws := rt.ResourceSpec{Scope: scope, Owner: owner, RunID: "run1", Kind: rt.ResourceWorkspace, Name: "workspace", Lifetime: rt.LifetimePipeline,
 			Identity: "run1-ws", SpecDigest: "d", Fence: 1, Preparation: &prep}
 		must(t, ws.Validate())
 		src := ws
@@ -676,7 +684,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			}
 		}
 
-		svc := rt.ResourceSpec{Scope: scope, Kind: rt.ResourceService, Name: "db", Lifetime: rt.LifetimeProject, Identity: "p1-db", SpecDigest: "d", Fence: 1,
+		svc := rt.ResourceSpec{Scope: scope, Owner: owner, Kind: rt.ResourceService, Name: "db", Lifetime: rt.LifetimeProject, Identity: "p1-db", SpecDigest: "d", Fence: 1,
 			Service: &rt.ServiceSpec{Name: "db", Lifetime: rt.LifetimeProject, Image: "pg", Ports: []int{5432}}}
 		must(t, svc.Validate())
 		runSvc := svc
@@ -690,7 +698,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			t.Error("lifetime mismatch accepted")
 		}
 
-		obs := rt.ResourceObservation{Handle: rt.ResourceHandle{Scope: scope, Kind: rt.ResourceService, Name: "db", Identity: "i", Fence: 1}, State: rt.ResourceUnknown, ObservedAt: t0}
+		obs := rt.ResourceObservation{Handle: rt.ResourceHandle{Scope: scope, Owner: owner, Lifetime: rt.LifetimeProject, Kind: rt.ResourceService, Name: "db", Identity: "i", Fence: 1}, State: rt.ResourceUnknown, ObservedAt: t0}
 		must(t, obs.Validate())
 		if obs.ConfirmedRemoved() {
 			t.Error("unknown must never count as removed")
@@ -801,6 +809,12 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("execution evidence round-trips", testExecutionEvidence)
+	t.Run("retained workloads", testRetainedWorkloads)
+	t.Run("late reconciliation after exhaustion", testLateReconciliation)
+	t.Run("lease renewal", testLeaseRenewal)
+	t.Run("tenant ownership of resources", testTenantOwnership)
 
 	t.Run("zero values are safe and invalid", func(t *testing.T) {
 		var (
