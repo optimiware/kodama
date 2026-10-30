@@ -19,6 +19,18 @@ required table/column operations. See [schema documentation](../../docs/implemen
   functions revoke PUBLIC execution in the same migration as their definition.
 - `schema_migrations` is migration-runner bookkeeping, with no runtime grants.
 
+## Pipeline-runtime expand (T-179)
+
+`migrations/004_pipeline_runtime_expand.sql` expands and validates; it drops nothing.
+It adds the run lease/fence, resource identity and cleanup state, the step kind,
+workload identity, command intent, workspace exclusion and durable wait columns, the
+task pipeline/current-run/projection fields (nullable), and `signal_records`: the
+append-only, non-expiring, self-contained signal identity removed only with its
+project. Validation refuses duplicate `(tenant, project, name)` pipelines and
+ambiguous task-to-pipeline mappings before any change, never inventing a pipeline;
+`tasks.current_run_id` is bound to its own task and project by a composite key. See
+[schema documentation](../../docs/implementation/database-schema.md#pipeline-runtime-expand-and-validate-004).
+
 ## Transactions and migrations
 
 `WithTenant` validates the tenant ID, begins a pgx transaction, sets
@@ -26,7 +38,7 @@ required table/column operations. See [schema documentation](../../docs/implemen
 Errors, panics and cancellation roll back. Pooled connections retain no tenant
 context. Callbacks pass their transaction to peers and perform no network I/O.
 
-`BaseContribution()` embeds the baseline SQL files (schema, grants and the Git hosting contribution). `NewManifest` validates
+`BaseContribution()` embeds the baseline SQL files (schema, grants, the Git hosting contribution and the pipeline-runtime expand contribution `004`). `NewManifest` validates
 explicit contribution order, IDs and uniqueness. `Migrate` serializes runners
 with a database advisory lock and verifies every existing checksum before
 applying a pending migration atomically with its ledger entry. Role placeholders
@@ -49,6 +61,11 @@ go test -race -count=1 -tags unit ./internal/storage/...
 # Set KODAMA_TEST_POSTGRES_ADMIN_URL to the task-local PostgreSQL instance.
 KODAMA_REQUIRE_POSTGRES=1 go test -race -count=1 ./internal/storage/...
 ```
+
+The `Test_unit_storage_pipeline_*` tests are infrastructure-free checks of the
+expand migration's text. Their PostgreSQL counterparts, `Test_pipeline_runtime_expand_postgres`
+and `Test_pipeline_name_unique_postgres`, execute the constraints, refusals, forced
+RLS under the non-owner role and rollback, and skip in the unit layer.
 
 Coverage includes pooled context/rollback, RLS, runtime privileges, scoped FKs,
 null-safe uniqueness, service scope checks, immutable run snapshots, trigger and
