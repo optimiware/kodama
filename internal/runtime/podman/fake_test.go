@@ -4,30 +4,43 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
-// The Podman test double. The test binary doubles as a `podman` executable: with
-// KODAMA_FAKE_PODMAN set to a state directory it answers the few commands the
-// runtime issues, records every `create` (its labels, volumes, environment and
-// arguments) and every invocation, and touches no engine.
+// The Podman test double is the plain binary built from ./fakepodman, once per
+// test run: a test binary built with the race detector is too slow to start for
+// each of the hundreds of commands the contract issues.
+var fakeBinary string
+
 func TestMain(m *testing.M) {
-	if dir := os.Getenv("KODAMA_FAKE_PODMAN"); dir != "" {
-		os.Exit(fakePodman(dir, os.Args[1:]))
+	dir, err := os.MkdirTemp("", "kodama-fakepodman-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
 	}
-	os.Exit(m.Run())
+	fakeBinary = filepath.Join(dir, "fakepodman")
+	build := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", fakeBinary, "github.com/optimiware/kodama/internal/runtime/podman/fakepodman")
+	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GOFLAGS=")
+	if out, err := build.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "building the podman double: %v\n%s", err, out)
+		os.RemoveAll(dir)
+		os.Exit(2)
+	}
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 // createdContainer is what the double records of one `podman create`.
@@ -35,106 +48,37 @@ type createdContainer struct {
 	ID         string            `json:"id"`
 	Name       string            `json:"name"`
 	Status     string            `json:"status"`
+	ExitCode   int               `json:"exitCode"`
+	Image      string            `json:"image"`
 	Labels     map[string]string `json:"labels"`
 	Volumes    []string          `json:"volumes"`
 	Env        []string          `json:"env"`
 	Tmpfs      []string          `json:"tmpfs"`
 	Entrypoint string            `json:"entrypoint"`
 	Args       []string          `json:"args"`
+	User       string            `json:"user"`
+	Networks   []string          `json:"networks"`
+	Aliases    []string          `json:"aliases"`
+	CapAdd     []string          `json:"capAdd"`
+	// Flags holds every flag that carries no separate value (--read-only,
+	// --cap-drop=ALL, ...); Argv is the whole create command after "create".
+	Flags []string `json:"flags"`
+	Argv  []string `json:"argv"`
+	// Foreign marks a container planted by a test, not created through `create`.
+	Foreign bool `json:"foreign,omitempty"`
 }
 
-func fakePodman(dir string, args []string) int {
-	if len(args) == 0 {
-		return 2
-	}
-	if f, err := os.OpenFile(filepath.Join(dir, "calls.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-		fmt.Fprintln(f, args[0])
-		f.Close()
-	}
-	containers := filepath.Join(dir, "containers")
-	_ = os.MkdirAll(containers, 0o700)
-	load := func(ref string) (createdContainer, string, bool) {
-		entries, _ := os.ReadDir(containers)
-		for _, e := range entries {
-			raw, err := os.ReadFile(filepath.Join(containers, e.Name()))
-			if err != nil {
-				continue
-			}
-			var c createdContainer
-			if json.Unmarshal(raw, &c) == nil && (c.ID == ref || c.Name == ref) {
-				return c, filepath.Join(containers, e.Name()), true
-			}
-		}
-		return createdContainer{}, "", false
-	}
-	save := func(c createdContainer) {
-		raw, _ := json.Marshal(c)
-		_ = os.WriteFile(filepath.Join(containers, c.ID+".json"), raw, 0o600)
-	}
-	missing := func() int {
-		fmt.Fprintln(os.Stderr, "Error: no such container")
-		return 125
-	}
-	switch args[0] {
-	case "create":
-		c := createdContainer{Labels: map[string]string{}, Status: "created"}
-		rest := args[1:]
-		for i := 0; i < len(rest); i++ {
-			value := func() string { i++; return rest[i] }
-			switch a := rest[i]; a {
-			case "--name":
-				c.Name = value()
-			case "--label":
-				k, v, _ := strings.Cut(value(), "=")
-				c.Labels[k] = v
-			case "--volume":
-				c.Volumes = append(c.Volumes, value())
-			case "--env":
-				c.Env = append(c.Env, value())
-			case "--tmpfs":
-				c.Tmpfs = append(c.Tmpfs, value())
-			case "--entrypoint":
-				c.Entrypoint = value()
-				c.Args = rest[i+2:] // the image follows the entrypoint
-				i = len(rest)
-			case "--read-only", "--pull=missing", "--cap-drop=ALL", "--security-opt=no-new-privileges":
-			default:
-				if strings.HasPrefix(a, "--") {
-					value() // a flag with its value
-				}
-			}
-		}
-		sum := sha256.Sum256([]byte(c.Name))
-		c.ID = hex.EncodeToString(sum[:])
-		save(c)
-		fmt.Println(c.ID)
-		return 0
-	case "container":
-		c, _, ok := load(args[len(args)-1])
-		if !ok {
-			return missing()
-		}
-		out, _ := json.Marshal([]map[string]any{{
-			"Id": c.ID, "Name": "/" + c.Name, "Config": map[string]any{"Labels": c.Labels},
-			"State": map[string]any{"Status": c.Status, "Running": c.Status == "running"},
-		}})
-		fmt.Println(string(out))
-		return 0
-	case "start":
-		c, _, ok := load(args[len(args)-1])
-		if !ok {
-			return missing()
-		}
-		c.Status = "running"
-		save(c)
-		return 0
-	case "stop", "rm":
-		if _, path, ok := load(args[len(args)-1]); ok {
-			_ = os.Remove(path)
-		}
-		return 0
-	}
-	return 0
+type fakeVolume struct {
+	Name      string            `json:"Name"`
+	Labels    map[string]string `json:"Labels"`
+	CreatedAt string            `json:"CreatedAt"`
+}
+
+type fakeNetwork struct {
+	Name     string            `json:"name"`
+	ID       string            `json:"id"`
+	Labels   map[string]string `json:"labels"`
+	Internal bool              `json:"internal"`
 }
 
 // fakeEnv is a Podman double and its state directory.
@@ -146,10 +90,7 @@ type fakeEnv struct {
 
 func newFake(t *testing.T) fakeEnv {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	exe := fakeBinary
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "podman")
 	script := fmt.Sprintf("#!/bin/sh\nKODAMA_FAKE_PODMAN=%q exec %q \"$@\"\n", dir, exe)
@@ -157,6 +98,53 @@ func newFake(t *testing.T) fakeEnv {
 		t.Fatal(err)
 	}
 	return fakeEnv{Binary: bin, dir: dir}
+}
+
+// ctl runs a test-control command of the double (see fakePodman).
+func (f fakeEnv) ctl(t *testing.T, args ...string) string {
+	t.Helper()
+	out, err := exec.Command(f.Binary, args...).Output()
+	if err != nil {
+		t.Fatalf("%v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// set writes a control file of the double (exec-code, probe-code).
+func (f fakeEnv) set(t *testing.T, name, value string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(f.dir, name), []byte(value), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// outage makes every command of the double fail as an unreachable engine; the
+// returned restore ends it.
+func (f fakeEnv) outage(t *testing.T) (restore func()) {
+	t.Helper()
+	f.set(t, "down", "1")
+	return func() { _ = os.Remove(filepath.Join(f.dir, "down")) }
+}
+
+// argvs returns every invocation, in order.
+func (f fakeEnv) argvs(t *testing.T) [][]string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(f.dir, "argv.log"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out [][]string
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		var a []string
+		if err := json.Unmarshal([]byte(line), &a); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // calls returns the subcommand of every invocation, in order.
@@ -187,6 +175,37 @@ func (f fakeEnv) created(t *testing.T) []createdContainer {
 			t.Fatal(err)
 		}
 		out = append(out, c)
+	}
+	return out
+}
+
+// volumes and networks return the recorded objects by name.
+func (f fakeEnv) volumes(t *testing.T) map[string]fakeVolume {
+	t.Helper()
+	out := map[string]fakeVolume{}
+	entries, _ := os.ReadDir(filepath.Join(f.dir, "volumes"))
+	for _, e := range entries {
+		var v fakeVolume
+		raw, err := os.ReadFile(filepath.Join(f.dir, "volumes", e.Name()))
+		if err != nil || json.Unmarshal(raw, &v) != nil {
+			t.Fatal(err)
+		}
+		out[v.Name] = v
+	}
+	return out
+}
+
+func (f fakeEnv) networks(t *testing.T) map[string]fakeNetwork {
+	t.Helper()
+	out := map[string]fakeNetwork{}
+	entries, _ := os.ReadDir(filepath.Join(f.dir, "networks"))
+	for _, e := range entries {
+		var n fakeNetwork
+		raw, err := os.ReadFile(filepath.Join(f.dir, "networks", e.Name()))
+		if err != nil || json.Unmarshal(raw, &n) != nil {
+			t.Fatal(err)
+		}
+		out[n.Name] = n
 	}
 	return out
 }

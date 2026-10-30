@@ -28,7 +28,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/optimiware/kodama/internal/execution"
@@ -72,6 +71,14 @@ type Config struct {
 	Network string
 	// StopTimeout is the grace between SIGTERM and SIGKILL (default 10s).
 	StopTimeout time.Duration
+	// RunResources enables run_shared attempts (AttemptSpec.Shared): the run's
+	// workspace volume, created by Resources over the same StateDir, is verified
+	// and mounted at /workspace. The Runtime then declares the run-resources
+	// marker. Without it such an attempt is refused (execution.ErrNotConfigured).
+	RunResources bool
+	// WorkloadUID and WorkloadGID are the installation's workload identity
+	// (defaults 65532): a run_shared attempt runs as this non-root user.
+	WorkloadUID, WorkloadGID int
 }
 
 // Runtime implements execution.Runtime with Podman containers, and
@@ -79,8 +86,11 @@ type Config struct {
 type Runtime struct {
 	cfg Config
 
-	mu    sync.Mutex
-	locks map[string]chan struct{}
+	fileLocks *lockSet
+	// resLocks and res serve run_shared attempts: the run resources' locks and
+	// records under StateDir/resources (nil without Config.RunResources).
+	resLocks *lockSet
+	res      *resStore
 }
 
 var (
@@ -113,20 +123,42 @@ func New(cfg Config) (*Runtime, error) {
 	if cfg.PIDs <= 0 {
 		cfg.PIDs = 256
 	}
+	if cfg.WorkloadUID <= 0 {
+		cfg.WorkloadUID = 65532
+	}
+	if cfg.WorkloadGID <= 0 {
+		cfg.WorkloadGID = 65532
+	}
 	if cfg.StopTimeout <= 0 {
 		cfg.StopTimeout = 10 * time.Second
 	}
-	return &Runtime{cfg: cfg, locks: map[string]chan struct{}{}}, nil
+	r := &Runtime{cfg: cfg, fileLocks: newLockSet(cfg.StateDir)}
+	if cfg.RunResources {
+		rs, err := newResStore(cfg.StateDir)
+		if err != nil {
+			return nil, err
+		}
+		r.res, r.resLocks = rs, newLockSet(rs.dir())
+	}
+	return r, nil
 }
 
 // Capabilities implements execution.Runtime.
+//
+// It never declares NetworkPolicy or ResourceQuotas: a private bridge or an
+// internal run network is not the tenant's egress policy. With RunResources it
+// also declares the companion-port marker, which adds no guarantee.
 func (r *Runtime) Capabilities() execution.Capabilities {
-	return execution.Capabilities{
+	c := execution.Capabilities{
 		Backend:    Backend,
 		Guarantees: execution.OCIImage | execution.Isolation | execution.ResourceLimits | execution.CrashRecovery,
 		// A stop before the start is recorded durably and fences the launch.
 		ProvesNeverStarted: true,
 	}
+	if r.cfg.RunResources {
+		c.Guarantees = c.Guarantees.WithRunResources()
+	}
+	return c
 }
 
 // Start implements execution.Runtime. The record is written, with a fresh
@@ -137,6 +169,14 @@ func (r *Runtime) Start(ctx context.Context, spec execution.AttemptSpec) (execut
 	c, err := spec.DecodeContext()
 	if err != nil {
 		return execution.Workload{}, err
+	}
+	var shared *sharedMount
+	if spec.Shared != nil {
+		var release func()
+		if shared, release, err = r.holdWorkspace(ctx, spec); err != nil {
+			return execution.Workload{}, err
+		}
+		defer release()
 	}
 	unlock, err := r.lock(ctx, spec.WorkloadName)
 	if err != nil {
@@ -159,13 +199,49 @@ func (r *Runtime) Start(ctx context.Context, spec execution.AttemptSpec) (execut
 				return execution.Workload{}, err
 			}
 			rec.ContainerID = ct.ID
+			if shared != nil {
+				// Adopted: the holder intent is bound to the container it made.
+				if err := r.bindAttemptHolder(shared.volume, rec); err != nil {
+					return execution.Workload{}, err
+				}
+			}
 		default:
+			if shared != nil {
+				// At most one create is in flight for the attempt: an earlier one whose
+				// answer was not seen may still land, so no replacement is issued. The
+				// intent stays (see holderMarker) until the container is observed or an
+				// operator retired the request (RetireUnresolvedRequest).
+				if err := r.priorAttemptCreate(shared.volume, rec); err != nil {
+					return execution.Workload{}, err
+				}
+			}
 			cmd, err := r.cfg.Program.Container(ctx, Launch{Spec: spec, Context: c, Workload: w, Dir: r.records().dir(spec.WorkloadName)})
 			if err != nil {
 				return execution.Workload{}, err
 			}
-			if rec.ContainerID, err = r.create(ctx, rec, c.Command.Image, cmd); err != nil {
+			if shared != nil {
+				// The attempt holds the run workspace: its intent is durable, under the
+				// workspace's lock, before the create is issued, and survives an ambiguous
+				// answer (see holderMarker).
+				epoch, err := r.res.epoch(shared.volume)
+				if err != nil {
+					return execution.Workload{}, err // nothing is announced, nothing is sent
+				}
+				if err := r.res.saveHolder(shared.volume, holderMarker{
+					Workload: rec.Name, Kind: "attempt", RunID: rec.RunID, Labels: attemptLabels(rec, true),
+					Epoch: epoch,
+				}); err != nil {
+					return execution.Workload{}, err
+				}
+			}
+			if rec.ContainerID, err = r.create(ctx, rec, c.Command.Image, cmd, shared); err != nil {
 				return execution.Workload{}, err
+			}
+			if shared != nil {
+				// The answer was seen: the marker is bound to the container.
+				if err := r.bindAttemptHolder(shared.volume, rec); err != nil {
+					return execution.Workload{}, err
+				}
 			}
 		}
 		if err := r.records().save(rec); err != nil {
@@ -183,6 +259,14 @@ func (r *Runtime) Start(ctx context.Context, spec execution.AttemptSpec) (execut
 		return execution.Workload{}, err
 	}
 	if ct.State.Status == "created" {
+		if shared != nil && shared.userns {
+			// S3: the role's user namespace is verified on the created container; one
+			// the engine did not isolate that way is removed, never started.
+			if err := ct.userns(); err != nil {
+				_ = r.podman(ctx, nil, "rm", "--force", "--time", "0", rec.ContainerID)
+				return execution.Workload{}, err
+			}
+		}
 		if err := r.podman(ctx, nil, "start", rec.ContainerID); err != nil {
 			return execution.Workload{}, err
 		}
@@ -190,25 +274,104 @@ func (r *Runtime) Start(ctx context.Context, spec execution.AttemptSpec) (execut
 	return w, nil
 }
 
-func (r *Runtime) create(ctx context.Context, rec record, image string, cmd Container) (string, error) {
-	args := []string{
-		"create", "--name", rec.Name,
-		"--label", LabelManagedBy + "=" + ValueManagedBy, "--label", LabelTenant + "=" + string(rec.Scope.TenantID),
-		"--label", LabelProject + "=" + string(rec.Scope.ProjectID), "--label", LabelAttempt + "=" + string(rec.AttemptID),
-		"--label", LabelUID + "=" + rec.UID, "--label", LabelFingerprint + "=" + rec.Fingerprint,
-		"--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pull=missing",
-		"--cpus", r.cfg.CPUs, "--memory", r.cfg.Memory, "--pids-limit", strconv.Itoa(r.cfg.PIDs),
-		"--network", r.cfg.Network, "--stop-timeout", strconv.Itoa(int(r.cfg.StopTimeout.Seconds())),
+// priorAttemptCreate refuses a second create for a shared attempt while an earlier
+// one is unresolved. The holder marker is the durable intent written before the
+// first create: unbound, the create may still land (the attempt is unknown, a
+// retry finds the container by name once it exists); bound, the container was
+// created and is gone, which is never recreated. A retirement the operator
+// recorded after the intent was written ends it, and the attempt may create anew.
+func (r *Runtime) priorAttemptCreate(ws string, rec record) error {
+	ms, err := r.res.holders(ws)
+	if err != nil {
+		return err
 	}
+	for _, m := range ms {
+		if m.Workload != rec.Name {
+			continue
+		}
+		if m.ID != "" {
+			return fmt.Errorf("%w: the created container is gone and is not recreated", execution.ErrConflict)
+		}
+		epoch, err := r.res.epoch(ws)
+		if err != nil {
+			return err // unreadable: neither retired nor resolved
+		}
+		if retiredBy(epoch, m.Epoch) {
+			return r.res.dropHolder(ws, m.Workload) // retired by the operator
+		}
+		return fmt.Errorf("%w: an earlier create of this attempt is unresolved; no second is issued", execution.ErrUnavailable)
+	}
+	return nil
+}
+
+// bindAttemptHolder pins the attempt's container in its holder marker, keeping the
+// epoch of the intent.
+func (r *Runtime) bindAttemptHolder(ws string, rec record) error {
+	epoch, err := r.res.epoch(ws)
+	if err != nil {
+		return err
+	}
+	m := holderMarker{Workload: rec.Name, Kind: "attempt", RunID: rec.RunID, Labels: attemptLabels(rec, true), Epoch: epoch}
+	ms, err := r.res.holders(ws)
+	if err != nil {
+		return err
+	}
+	for _, old := range ms {
+		if old.Workload == rec.Name {
+			m.Epoch = old.Epoch
+		}
+	}
+	m.ID = rec.ContainerID
+	return r.res.saveHolder(ws, m)
+}
+
+// create builds and runs the container create. shared is non-nil for a
+// run_shared attempt: its verified workspace volume, user, role capabilities and
+// networks replace the attempt-private ones, and a Program that tries to supply
+// /workspace itself is refused.
+func (r *Runtime) create(ctx context.Context, rec record, image string, cmd Container, shared *sharedMount) (string, error) {
+	args := append([]string{"create", "--name", rec.Name}, labelArgsOf(attemptLabels(rec, shared != nil))...)
+	args = append(args, "--read-only", "--cap-drop=ALL")
+	if shared == nil || !shared.escalate {
+		args = append(args, "--security-opt=no-new-privileges")
+	}
+	args = append(args, "--pull=missing",
+		"--cpus", r.cfg.CPUs, "--memory", r.cfg.Memory, "--pids-limit", strconv.Itoa(r.cfg.PIDs))
+	if shared == nil {
+		args = append(args, "--network", r.cfg.Network)
+	} else {
+		args = append(args, "--user", shared.user)
+		if shared.userns {
+			args = append(args, "--userns=auto")
+		}
+		for _, c := range shared.capAdd {
+			args = append(args, "--cap-add", c)
+		}
+		for _, n := range shared.networks {
+			args = append(args, "--network", n)
+		}
+	}
+	args = append(args, "--stop-timeout", strconv.Itoa(int(r.cfg.StopTimeout.Seconds())))
 	for _, t := range cmd.Tmpfs {
+		if shared != nil && underWorkspace(t) {
+			return "", fmt.Errorf("%w: the program provides /workspace, which a run_shared attempt takes from the run volume", execution.ErrInvalid)
+		}
 		args = append(args, "--tmpfs", t)
 	}
 	for _, m := range cmd.Mounts {
+		if shared != nil && underWorkspace(m.Target) {
+			return "", fmt.Errorf("%w: the program provides /workspace, which a run_shared attempt takes from the run volume", execution.ErrInvalid)
+		}
 		opt := m.Source + ":" + m.Target
 		if m.ReadOnly {
 			opt += ":ro"
 		}
 		args = append(args, "--volume", opt)
+	}
+	if shared != nil {
+		// The run volume, read-write, owned by the workload user whatever image
+		// the attempt runs.
+		args = append(args, "--volume", shared.volume+":/workspace:U")
 	}
 	for _, e := range cmd.Env {
 		args = append(args, "--env", e)
@@ -229,18 +392,43 @@ func (r *Runtime) create(ctx context.Context, rec record, image string, cmd Cont
 	return id, nil
 }
 
+func underWorkspace(target string) bool {
+	return target == "/workspace" || strings.HasPrefix(target, "/workspace/")
+}
+
 // container is the part of `podman inspect` the runtime decides on.
 type container struct {
 	ID     string `json:"Id"`
 	Name   string `json:"Name"`
 	Config struct {
-		Labels map[string]string `json:"Labels"`
+		Labels      map[string]string `json:"Labels"`
+		Annotations map[string]string `json:"Annotations"`
 	} `json:"Config"`
+	HostConfig struct {
+		IDMappings struct {
+			UidMap []string `json:"UidMap"`
+			GidMap []string `json:"GidMap"`
+		} `json:"IDMappings"`
+	} `json:"HostConfig"`
 	State struct {
 		Status   string `json:"Status"`
 		Running  bool   `json:"Running"`
 		ExitCode int    `json:"ExitCode"`
 	} `json:"State"`
+}
+
+// attemptLabels are the labels of an attempt's container: the one place they are
+// built, so the holder marker of a run_shared attempt names exactly what its
+// create gives the container.
+func attemptLabels(rec record, shared bool) map[string]string {
+	l := map[string]string{
+		LabelManagedBy: ValueManagedBy, LabelTenant: string(rec.Scope.TenantID), LabelProject: string(rec.Scope.ProjectID),
+		LabelAttempt: string(rec.AttemptID), LabelUID: rec.UID, LabelFingerprint: rec.Fingerprint,
+	}
+	if shared {
+		l[LabelRun] = string(rec.RunID)
+	}
+	return l
 }
 
 // owned reports whether the container is the record's instance.
@@ -250,6 +438,17 @@ func (c container) owned(rec record) error {
 		l[LabelAttempt] != string(rec.AttemptID) || l[LabelTenant] != string(rec.Scope.TenantID) || l[LabelFingerprint] != rec.Fingerprint ||
 		(rec.ContainerID != "" && c.ID != rec.ContainerID) {
 		return fmt.Errorf("%w: the container is not the workload's instance", execution.ErrConflict)
+	}
+	return nil
+}
+
+// userns verifies that the engine gave the container a user namespace of its own
+// (--userns=auto): the engine records the choice as an annotation and the
+// mapping it allocated. A container without both runs in the engine's shared
+// namespace, which the pinned role does not allow.
+func (c container) userns() error {
+	if c.Config.Annotations["io.podman.annotations.userns"] != "auto" || len(c.HostConfig.IDMappings.UidMap) == 0 || len(c.HostConfig.IDMappings.GidMap) == 0 {
+		return fmt.Errorf("%w: the engine did not give the container a user namespace of its own", execution.ErrNotConfigured)
 	}
 	return nil
 }

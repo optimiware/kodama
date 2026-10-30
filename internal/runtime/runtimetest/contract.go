@@ -27,10 +27,16 @@ const HostImage = "registry.invalid/kodama/host-fixture@sha256:00000000000000000
 // /bin/sh -c in image ("" selects HostImage).
 func Spec(t testing.TB, attempt domain.AttemptID, image, script string) execution.AttemptSpec {
 	t.Helper()
+	return specOf(t, domain.RunID("run_"+string(attempt)), attempt, image, script)
+}
+
+// specOf is Spec for an attempt of an explicit run.
+func specOf(t testing.TB, run domain.RunID, attempt domain.AttemptID, image, script string) execution.AttemptSpec {
+	t.Helper()
 	if image == "" {
 		image = HostImage
 	}
-	run, step := domain.RunID("run_"+string(attempt)), "step"
+	step := "step"
 	c := runtimev1.Context{
 		TenantID: Scope.TenantID, ProjectID: Scope.ProjectID, RunID: run, StepID: step, AttemptID: attempt,
 		ActionKey:  execution.ActionKey(run, step),

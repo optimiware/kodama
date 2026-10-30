@@ -1,7 +1,7 @@
 ---
 id: T-115
 milestone: production
-status: planned
+status: done
 depends_on: [T-112, T-122]
 decision_blockers: []
 owns: [internal/runtime/podman/, internal/runtime/process/, internal/runtime/runtimetest/]
@@ -27,3 +27,6 @@ Declared check with every named test passing; `make test-podman` extended with a
 
 ## Out of scope
 Shared bootstrap/entrypoint (T-113), execution, chart and assembly.
+
+## Completion evidence
+Implemented on `task/T-115-local-run-resources` (`de2c9c6e`…`39ae0dad`). Independent review (`ses_e76682a18ffebzlByAciMUQjVK`) requested changes six times, each round narrowing the evidence the local adapters may claim: preparation as a workspace holder, launch identity recorded before a workload may run (Process launch gate), create-once workspaces pinned by filesystem identity, credential cleanup independent of launch, stop intent versus verified stop, an enforced per-container user namespace on Podman, identity-keeping tombstones, one create in flight per name with the answer bound atomically to its object, no elapsed-time or uptime inference, no automatic placeholders (an ambiguous create stays unresolved until observed or explicitly retired by an operator, scoped by retirement epochs), and fail-closed epoch reads. It approved `39ae0dad`. Coordinator checks on the final candidate: `make check-go PKGS='./internal/runtime/podman/... ./internal/runtime/process/... ./internal/runtime/runtimetest/...'` exit 0 with all four pinned acceptances PASS; real `make test-podman` exit 0 (174s) including the exported contract suite over the real engine and the multi-image roundtrip. Local lifecycle evidence only: admission still refuses `run_shared` on Process and Podman (no `network_policy`). Composition in `development`/`test` is T-134. Squashed to one commit; nothing pushed.

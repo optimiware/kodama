@@ -11,6 +11,18 @@
 //
 // State lives in memory: a restarted runtime knows none of its workloads,
 // which is why it does not claim CrashRecovery.
+//
+// Run resources (T-115): Resources implements execution.RunResources with a
+// run-owned workspace directory shared by successive run_shared attempts
+// (Config.ResourcesDir; the attempt sees it as its /workspace equivalent through
+// Launch.Workspace and KODAMA_WORKSPACE_DIR), explicit host-program preparation
+// and services (ResourceProgram) with tcp and exec readiness, durable on-disk
+// fences and records that a restarted adapter adopts, a launch gate (a workload
+// runs nothing until the adapter has recorded its process group, so no
+// unrecorded process can run a command), and S5 admission credentials. It advertises lifecycle members only (ResourceCapabilities) and
+// never isolation, network, egress or builder members, and the runtime still
+// lacks network_policy: no run_shared admission accepts Process; the contract
+// suite exercises the adapter directly.
 package process
 
 import (
@@ -58,6 +70,9 @@ type Launch struct {
 	Workload execution.Workload
 	// Dir is the workload's private directory, removed with it.
 	Dir string
+	// Workspace is the run workspace directory of a run_shared attempt (its
+	// /workspace equivalent); "" for an attempt-private workload.
+	Workspace string
 }
 
 // Command is a host command. Path without a separator is looked up in PATH;
@@ -83,6 +98,12 @@ type Config struct {
 	DrainTimeout time.Duration
 	// MaxLogBytes bounds the captured output of each workload (default 1 MiB).
 	MaxLogBytes int
+	// ResourcesDir is the state directory of the run resources the attempts of
+	// run_shared runs share (ResourcesConfig.Dir). When set, an attempt whose
+	// spec carries a SharedLaunch runs with the run's workspace directory as its
+	// /workspace equivalent and the Runtime declares the run-resources marker;
+	// when empty such an attempt is refused (execution.ErrNotConfigured).
+	ResourcesDir string
 }
 
 // Runtime implements execution.Runtime with host processes, and
@@ -92,6 +113,8 @@ type Runtime struct {
 
 	mu        sync.Mutex
 	workloads map[string]*workload
+
+	res store // the run resources' state; "" without ResourcesDir
 }
 
 var (
@@ -118,7 +141,15 @@ func New(cfg Config) (*Runtime, error) {
 	if cfg.MaxLogBytes <= 0 {
 		cfg.MaxLogBytes = 1 << 20
 	}
-	return &Runtime{cfg: cfg, workloads: map[string]*workload{}}, nil
+	rt := &Runtime{cfg: cfg, workloads: map[string]*workload{}}
+	if cfg.ResourcesDir != "" {
+		res, err := filepath.Abs(cfg.ResourcesDir)
+		if err != nil {
+			return nil, err
+		}
+		rt.res = store(res)
+	}
+	return rt, nil
 }
 
 // workload is one attempt's workload, or the tombstone Stop or Remove leaves
@@ -127,6 +158,8 @@ type workload struct {
 	handle execution.Workload
 	spec   *execution.AttemptSpec // nil for a tombstone of a never-started workload
 	dir    string
+	// workspace is the run workspace directory of a run_shared attempt.
+	workspace string
 
 	// resolved is closed once Start launched the process or gave up.
 	resolved chan struct{}
@@ -154,8 +187,16 @@ func (w *workload) ended() bool {
 // Capabilities implements execution.Runtime: no container guarantee. A stop
 // before the start is fenced in this process, so it proves the command never
 // started.
+//
+// With ResourcesDir the Runtime also declares the run-resources marker (it
+// pairs with Resources); that adds no isolation, network or builder guarantee,
+// and the missing network_policy keeps every run_shared admission away from it.
 func (r *Runtime) Capabilities() execution.Capabilities {
-	return execution.Capabilities{Backend: Backend, ProvesNeverStarted: true}
+	c := execution.Capabilities{Backend: Backend, ProvesNeverStarted: true}
+	if r.res != "" {
+		c.Guarantees = c.Guarantees.WithRunResources()
+	}
+	return c
 }
 
 // Start implements execution.Runtime. A repeated Start of the same spec waits
@@ -166,12 +207,23 @@ func (r *Runtime) Start(ctx context.Context, spec execution.AttemptSpec) (execut
 	if err != nil {
 		return execution.Workload{}, err
 	}
+	var workspace string
+	if spec.Shared != nil {
+		// The run workspace is verified and fenced against its Stop for the whole
+		// start: a Stop of the workspace waits for the launch decision, and a
+		// launch that follows a confirmed Stop reads the fence.
+		var unlock func()
+		if workspace, unlock, err = r.holdWorkspace(spec); err != nil {
+			return execution.Workload{}, err
+		}
+		defer unlock()
+	}
 	for {
 		r.mu.Lock()
 		w, ok := r.workloads[spec.WorkloadName]
 		if !ok {
 			w = &workload{
-				handle: spec.Workload(newUID()), spec: &spec, dir: filepath.Join(r.cfg.Dir, spec.WorkloadName),
+				handle: spec.Workload(newUID()), spec: &spec, dir: filepath.Join(r.cfg.Dir, spec.WorkloadName), workspace: workspace,
 				resolved: make(chan struct{}), done: make(chan struct{}), out: &capture{max: r.cfg.MaxLogBytes},
 			}
 			r.workloads[spec.WorkloadName] = w
@@ -223,7 +275,20 @@ func (r *Runtime) launch(ctx context.Context, w *workload, c runtimev1.Context) 
 	case w.stopped:
 		return execution.Workload{}, fmt.Errorf("%w: the workload was stopped before it launched", execution.ErrConflict)
 	case err == nil:
-		err = r.exec(w, cmd)
+		if w.workspace != "" {
+			// A shared attempt uses the run workspace: it is launched behind the
+			// gate (see gate) and its process group is recorded as a holder before
+			// the gate opens, so a controller that dies mid-launch leaves either a
+			// recorded holder or a process that can never run the command.
+			err = r.exec(w, gate(cmd), func(pid int, start string) error {
+				return r.res.saveHolder(w.spec.Shared.Workspace.Name, holder{Workload: w.handle.Name, Pgid: pid, StartID: start})
+			})
+			if err != nil {
+				r.withdrawHolder(w)
+			}
+		} else {
+			err = r.exec(w, cmd, nil)
+		}
 	}
 	if err != nil {
 		delete(r.workloads, w.handle.Name)
@@ -237,15 +302,26 @@ func (r *Runtime) command(ctx context.Context, w *workload, c runtimev1.Context)
 	if err := os.MkdirAll(w.dir, 0o700); err != nil {
 		return Command{}, err
 	}
-	return r.cfg.Program.Command(ctx, Launch{Spec: *w.spec, Context: c, Workload: w.handle, Dir: w.dir})
+	return r.cfg.Program.Command(ctx, Launch{Spec: *w.spec, Context: c, Workload: w.handle, Dir: w.dir, Workspace: w.workspace})
 }
 
 // exec starts the command in its own process group with its output captured.
 // It runs under r.mu, so no Stop can slip between the decision and the launch.
-func (r *Runtime) exec(w *workload, c Command) error {
+// With register, the command is gated: register records the process group and
+// only then is the gate opened; any failure before closes it, and the process
+// exits without running the command.
+func (r *Runtime) exec(w *workload, c Command, register func(pid int, start string) error) error {
 	out, in, err := os.Pipe()
 	if err != nil {
 		return err
+	}
+	var gateRead, gateWrite *os.File
+	if register != nil {
+		if gateRead, gateWrite, err = os.Pipe(); err != nil {
+			out.Close()
+			in.Close()
+			return err
+		}
 	}
 	cmd := exec.Command(c.Path, c.Args...)
 	cmd.Env, cmd.Dir = c.Env, c.Dir
@@ -254,15 +330,41 @@ func (r *Runtime) exec(w *workload, c Command) error {
 	}
 	cmd.Stdout, cmd.Stderr = in, in
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if gateRead != nil {
+		cmd.ExtraFiles = []*os.File{gateRead}
+	}
 	err = cmd.Start()
 	in.Close()
+	if gateRead != nil {
+		gateRead.Close()
+	}
 	if err != nil {
 		out.Close()
+		if gateWrite != nil {
+			gateWrite.Close()
+		}
 		return err
 	}
 	w.pgid = cmd.Process.Pid
 	go r.supervise(w, cmd, out)
-	return nil
+	if register == nil {
+		return nil
+	}
+	defer gateWrite.Close() // before the gate opens, closing it is the child's EOF
+	start, gone, err := startOf(w.pgid)
+	if err == nil && gone {
+		err = fmt.Errorf("the gated process %d is gone", w.pgid)
+	}
+	if err == nil {
+		err = register(w.pgid, start)
+	}
+	if err == nil {
+		_, err = io.WriteString(gateWrite, "go\n")
+	}
+	if err != nil {
+		_ = syscall.Kill(-w.pgid, syscall.SIGKILL)
+	}
+	return err
 }
 
 // supervise waits for the workload and drains its output before reporting
@@ -395,6 +497,10 @@ func (r *Runtime) Stop(ctx context.Context, h execution.Workload) (execution.Sto
 	}
 	if err := r.terminate(ctx, w); err != nil {
 		return execution.StopEvidence{Launch: execution.LaunchStarted}, err
+	}
+	if w.workspace != "" {
+		// The attempt's process is verified gone: it holds the workspace no more.
+		r.withdrawHolder(w)
 	}
 	return execution.StopEvidence{Stopped: true, Launch: execution.LaunchStarted}, nil
 }
