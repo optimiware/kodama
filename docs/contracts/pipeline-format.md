@@ -25,6 +25,8 @@ Images/digests are placeholders. This is the `v1alpha1` example; the `v1alpha2` 
 
 ## Fields
 
+[ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) builds on the container primitive, with optional agent profiles and native artifact/release consumption. Its [planned contract](artifacts-and-releases.md) does not add publish/deploy/rollback step kinds or silently change this frozen format. Existing `artifact` references are IDs, not automatically downloaded files.
+
 | Field | Rule |
 | --- | --- |
 | `metadata.name` / step `id` | Lowercase letter followed by lowercase letters/digits/hyphens; maximum 63 |

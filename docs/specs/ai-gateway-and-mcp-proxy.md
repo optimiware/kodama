@@ -2,6 +2,8 @@
 
 **Scope:** M2 one OpenAI-compatible HTTP protocol and MCP Streamable HTTP. More provider protocols and transports are later extensions.
 
+Under [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md), these are optional mediation capabilities. Generic container steps, including harness/publish/deploy commands with explicit secrets, do not require their configuration. Requirements here govern calls made through the gateway/proxy; they do not claim control of direct external API calls. A managed profile declaring mediated access still requires the configured/qualified capabilities.
+
 ## Model gateway
 
 Configure one approved project endpoint, a typed credential secret, allowed models, and request/token limits. Expose the exact protocol verified against the selected OpenCode wrapper; the initial target is streaming chat completions. A compatibility smoke test must demonstrate the actual chosen model/harness combination before claiming support.
@@ -29,7 +31,7 @@ A tool allow-list narrows operations; it cannot grant platform membership or a p
 | ID | Requirement |
 | --- | --- |
 | GM-01 | Every request MUST validate active workload identity and project scope. |
-| GM-02 | Provider credentials MUST stay behind the gateway/proxy and out of diagnostics/events. |
+| GM-02 | Credentials used by mediated calls MUST stay behind the gateway/proxy and out of diagnostics/events. Explicit direct container bindings follow VS-13 and MUST NOT be labeled mediated. |
 | GM-03 | Request count and one-in-flight admission MUST be atomic; token caps MUST publish their bounded-overshoot semantics. |
 | GM-04 | Usage MUST retain run/attempt, actual model, tokens or conservative estimate, and uncertainty. |
 | GM-05 | Retry MUST be explicit; partially delivered streams MUST NOT be silently replaced. |

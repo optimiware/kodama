@@ -16,7 +16,7 @@ internal/
   secrets/                 # variables, encryption, typed secret resolution
   workspace/               # Git refs, source publication and reconciliation
   pipeline/                # immutable definitions and validation
-  artifacts/               # S3 metadata/transfers
+  artifacts/               # S3 metadata/transfers; ADR 0012 adds release manifests and publication receipts
   entrypoint/              # in-Pod orchestration and runtime client
   runtimeauth/             # attempt token issuance/admission/revocation
   execution/               # run/step/attempt state, scheduler and the runtime port
@@ -59,6 +59,8 @@ The schema is one squashed baseline owned by `internal/storage`: `001_schema.sql
 T-003 freezes runtime context/result/source-proposal/artifact envelopes and primitive IDs/errors. T-004 freezes HTTP conventions. T-020 freezes run-service mutation semantics before the executor/result/gate tasks start. These checkpoints are sufficient for fakes; an entire domain-interface framework is unnecessary. For the `run_shared` model, T-109 freezes the owning contracts ([pipeline `v1alpha2`](../contracts/pipeline-format-v1alpha2.md), [runtime v2](../contracts/runtime-v2.md), [run resources](../contracts/run-resources.md)), T-110 the executable `contracts/pipeline` and `contracts/runtime` v2 shapes (v1 untouched), and T-112 the execution-owned resource port and stores before adapter work starts; `internal/app`, aggregate API/client, chart and migration ordering remain with T-116.
 
 ## Package seam contracts
+
+ADR 0012 extends existing capabilities rather than adding an artifact/deployment service process. Its [ordered handoff](container-sdlc-refinement.md) assigns artifacts/releases/retention to `artifacts`, exact input grants to `execution`/`runtimeauth`, fetch/result collection to `entrypoint`, and generic target/receipt records to `delivery`. `agents` remains optional profile expansion. T-140 freezes versioned cross-package messages; T-145 owns composition and legacy-surface removal. Reconcile the sibling native Git graph before either owner edits shared source/runtime paths.
 
 This is an owner/checkpoint map, not a second interface registry. Existing signatures and fixtures remain authoritative in the owning package. Future contributions supply exact constructors and fixtures at their checkpoint; a missing adapter is a prerequisite, not permission to insert an allow-all fake into production.
 

@@ -14,5 +14,8 @@ Use an ADR when a choice is costly to reverse, surprising without context, and t
 | [0008](0008-runtime-seam.md) | Accepted | One runtime seam: Process for tests, Podman locally, Kubernetes for staging |
 | [0009](0009-environments.md) | Accepted | Three environments: development in memory, test on Podman, production on Kubernetes |
 | [0010](0010-run-workspace-services-builders.md) | Accepted (contract; delivery pending) | One disposable run workspace, run-scoped support services, and a rootless builder baseline |
+| [0012](0012-container-sdlc-and-artifact-releases.md) | Accepted (direction; implementation pending) | Ordinary containers/secrets, optional agent profiles, immutable artifact releases and tool-neutral publication/deployment |
+
+ADR 0011 (internal tenant Git service) is reserved by the sibling design commit `bf1b9b2af01b2da212407a06d808a75246899d22`; its file/index integration is tracked in the [ADR 0012 handoff](../implementation/container-sdlc-refinement.md#coordination-with-native-git-and-active-run-resource-work).
 
 Accepted records capture owner-confirmed choices. Proposed records capture the baseline recommended for implementation. Detailed behavior remains in the relevant specifications. [ADR 0010](0010-run-workspace-services-builders.md) amends [ADR 0005](0005-git-backed-workspaces.md) and [ADR 0008](0008-runtime-seam.md) for the versioned `run_shared` model only (see their amendment sections); their original decisions and the `attempt_private` model remain current until the documented cutover, and acceptance records the contract, not delivery or qualification.

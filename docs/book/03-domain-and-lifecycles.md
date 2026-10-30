@@ -1,6 +1,6 @@
 # 3. Domain and lifecycles
 
-Use the [glossary](../../CONTEXT.md) for terms and [schema sketch](../implementation/database-schema.md) for persistence. Work item, workspace, run, and review are separate lifecycles.
+Use the [glossary](../../CONTEXT.md) for terms and [schema sketch](../implementation/database-schema.md) for persistence. Work item, legacy source workspace, run, and review are separate lifecycles. The diagram's `WORKSPACE` is the legacy durable source association, not the shared `/workspace` filesystem.
 
 ```mermaid
 erDiagram
@@ -17,6 +17,8 @@ erDiagram
 ```
 
 Source checkpoints/candidates are Git commits, not separate storage aggregates. Under the designed `run_shared` model a run also owns disposable **run resources** (one shared scratch `/workspace`, preparation, support services, a network boundary); they are execution bookkeeping with their own evidence, not a lifecycle status, an aggregate or a checkpoint ([run resources](../contracts/run-resources.md)). Evidence is artifact metadata/provenance. An agent profile expands into an ordinary executable step. A defect is a work item. A plan is part of the specification.
+
+[ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) adds a small immutable **release** manifest over artifacts and **publication receipts** for destination copies. These are pending implementation. A deployment binds the exact release/artifact set and configuration; rollback creates a new run/deployment rather than changing historical states. The run workspace keeps working/generated files only for its run, while Git and explicitly retained artifacts provide continuity.
 
 ## States
 

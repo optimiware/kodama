@@ -12,7 +12,7 @@ owns: [internal/agents/native/, images/harness-native/, test/integration/harness
 Add a native agent loop behind the established container/profile contract.
 
 ## Contract
-Implement model turns, approved tools, explicit budgets, and structured completion using the gateway/MCP/runtime interfaces. It must run as an ordinary harness image, not a second control plane.
+Implement the native Go agent loop in an ordinary OCI container packaged with ko, using the same step/secret/input/output primitives ([ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md)). An optional managed profile selects gateway/MCP/tool/budget capabilities and claims only those it enforces. It must not run tenant agent loops in the server or introduce a second control plane.
 
 ## Deliverables
 Bounded loop, native tool dispatch, prompt/context construction, result/transcript handling, reusable compatibility fixture shared by adapter tests.

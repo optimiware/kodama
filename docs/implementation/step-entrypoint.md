@@ -4,6 +4,8 @@
 
 **Run models.** This document describes the current `attempt_private` behavior (wire [`/runtime/v1`](../../contracts/runtime/README.md), frozen). The designed `run_shared` model (T-109 contract, T-113 implementation; not delivered or qualified) changes source preparation, the `/workspace` mount and retry proof; its deltas are in [`run_shared` (v2) sequence](#run_shared-v2-sequence) and the [runtime v2 contract](../contracts/runtime-v2.md). Result, artifact, source-proposal and secret-resolution messages and `ResultHash` are identical in both.
 
+**Next contract:** [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) adds admitted artifact fetch and tool-neutral release/delivery helpers using this same entrypoint. Direct harness/build/publish/deploy commands use ordinary exit/declared-output collection; managed profiles may require additional structured reports. T-140 freezes any incompatible extension before T-142 changes consumers; old result hashes, begin semantics and source/publication authority remain intact.
+
 ## Runtime layout
 
 An init container copies a static, architecture-matching `kodama` binary into a shared tools volume. The primary workload image must contain Git and the declared command dependencies (`run_shared`: Git only for publication by a writer; readers need only their command dependencies). It starts `/kodama/bin/kodama step`. The image runs as non-root under the fixed Kubernetes policy.

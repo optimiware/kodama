@@ -45,6 +45,7 @@ Start with [system architecture](book/05-system-architecture.md), the [decision 
 | [AI gateway and MCP proxy](specs/ai-gateway-and-mcp-proxy.md) | GM | Model access and tool mediation |
 | [Variables and secrets](specs/variables-and-secrets.md) | VS | Configuration and encrypted credential handling |
 | [Delivery and quality gates](specs/delivery-and-quality-gates.md) | DQ | Evidence, approvals, environments, and promotion |
+| [Artifacts, releases and publication](specs/artifacts-and-releases.md) | AF | Retained outputs, immutable versions, cross-run consumption and target-accessible copies (ADR 0012; implementation pending) |
 | [API, CLI, and integrations](specs/api-cli-and-integrations.md) | AC | Public access, external integrations, and notifications |
 
 ### Operators

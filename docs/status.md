@@ -28,6 +28,7 @@ Verified by acceptance suites that run the real server against PostgreSQL, NATS 
 | Live model and coding-agent qualification | Agents are tested with scripted responses only |
 | Optimi Platform (hosted) integration | Design target; standalone identity works today |
 | Other agent harnesses, untrusted multi-tenant isolation, UI, Supabase blueprint, browser QA | Deferred |
+| Native release/version catalogue and tool-neutral delivery | [ADR 0012](adr/0012-container-sdlc-and-artifact-releases.md) accepted as direction; [T-140–T-146](implementation/container-sdlc-refinement.md) prepared for planning. Existing verified file/OCI artifacts are implemented; release discovery/fetch/publication and generic deployment/rollback are not yet delivered |
 
 The full list of remaining work is the [task backlog](tasks/README.md). The technical record of how the server is composed, with every route, worker and unwired capability, is [assembly status](implementation/assembly-status.md).
 
