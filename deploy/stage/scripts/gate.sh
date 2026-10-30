@@ -76,9 +76,9 @@ verify_values_provenance "${VALUES_FILE}"
 if [[ "${PREFLIGHT}" == 1 ]]; then
   [[ "${GATE}" == readiness ]] || die "--preflight is supported for readiness only"
   require_cmd helm
-  helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${VALUES_FILE}" >/dev/null
+  helm lint --strict "${REPO_ROOT}/deploy/charts/kodama-kernel" -f "${VALUES_FILE}" >/dev/null
   KODAMA_STAGE_PREFLIGHT_ONLY=1 run_stage_go_suite "${CONTRACT_FILE}" "${VALUES_FILE}" "${WORK_DIR}/preflight.json" \
-    ./test/e2e/kube-full/... ./test/integration/assembly-execution/...
+    ./test/e2e/kube-kernel/...
   log_info "PASS preflight only; no acceptance run or receipt issued"
   exit 0
 fi

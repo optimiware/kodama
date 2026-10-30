@@ -21,7 +21,7 @@ deploy.sh wrote for it and must select the contract's cluster. The session's fil
 <state dir>/clusters/<name>/qualification/<session>/ (KODAMA_QUAL_STATE_DIR replaces the directory holding qualification/);
 its OpenTofu state is the object scw/<name>/qualification/<session>.tfstate in the state bucket (KODAMA_TFSTATE_BUCKET).
 prepare and destroy need KUBECONFIG, KODAMA_IMAGES_FILE and the operator's Scaleway credentials (SCW_*); destroy
-also needs go (it purges the session's qualification/<session>/ objects).
+removes the session database and local files.
 
 --database (or KODAMA_QUAL_DATABASE) selects how the session's database kodama_q_<session> is provided:
   scaleway  (default) through the Scaleway API, with the operator's SCW_* credentials and project.
@@ -111,6 +111,7 @@ v = {
     "registry_url": s["registry_url"],
     "oidc_issuer": s["oidc_issuer"],
     "oidc_audience": s["oidc_audience"],
+    "storage_class": s["storage_class"],
 }
 with open(out, "w") as fh:
     json.dump(v, fh)
@@ -122,18 +123,6 @@ tf() { TF_DATA_DIR="${SESSION_DIR}/tfdata" tofu_state -chdir="${QUAL_DIR}" "$@";
 TF_DATA_DIR="${SESSION_DIR}/tfdata" tf_init_remote "${QUAL_DIR}" "scw/${NAME}/qualification/${SESSION}.tfstate"
 
 json_field() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.argv[2]])' "$1" "$2"; }
-
-# purge_session_objects removes the session's object prefix (qualification/<session>/) from the artifacts bucket.
-# The installation's own data and other sessions are untouchable by construction (see the tool).
-purge_session_objects() {
-  local session="$1" contract="$2" endpoint region bucket access secret
-  read -r endpoint region bucket < <(python3 -c 'import json,sys; o=json.load(open(sys.argv[1]))["object_storage"]; print(o["endpoint"], o["region"], o["artifacts_bucket"])' "${contract}")
-  access="$(kubectl -n kodama-system get secret kodama-runtime -o jsonpath='{.data.s3-access-key}' | base64 -d)"
-  secret="$(kubectl -n kodama-system get secret kodama-runtime -o jsonpath='{.data.s3-secret-key}' | base64 -d)"
-  [[ -n "${access}" && -n "${secret}" ]] || die "the stage object-store credential is unavailable; session ${session}'s objects were not purged"
-  PURGE_ACCESS_KEY="${access}" PURGE_SECRET_KEY="${secret}" \
-    go run "${REPO_ROOT}/deploy/stage/cmd/purge-session-objects" --endpoint "${endpoint}" --region "${region}" --bucket "${bucket}" --session "${session}"
-}
 
 # sql_database <create|drop> runs the session database's SQL as the stage database admin, from a short-lived Pod in the
 # stage namespace (the managed instance has no public endpoint). The admin DSN reaches the Pod as a temporary Secret
@@ -206,7 +195,7 @@ case "${CMD}" in
     tf output -json session >"${SESSION_DIR}/session.json"
     tf output -json contract >"${SESSION_DIR}/contract.json"
     tf output -raw kodama_values >"${SESSION_DIR}/values.yaml"
-    helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${SESSION_DIR}/values.yaml" >/dev/null
+    helm lint --strict "${REPO_ROOT}/deploy/charts/kodama-kernel" -f "${SESSION_DIR}/values.yaml" >/dev/null
     log_info "session ${SESSION} prepared: $(json_field "${SESSION_DIR}/session.json" url)"
     ;;
   destroy)
@@ -228,7 +217,6 @@ case "${CMD}" in
       tf destroy -input=false -auto-approve -refresh=false -var-file="${VARS}"
     fi
     if [[ "${DATABASE_MODE}" == "sql" ]]; then sql_database drop; fi
-    purge_session_objects "${SESSION}" "${CONTRACT_FILE}"
     rm -rf "${SESSION_DIR}"
     log_info "session ${SESSION} destroyed"
     ;;

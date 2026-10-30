@@ -1,0 +1,12 @@
+Kodama kernel installed.
+
+Server: {{ include "kodama-kernel.fullname" . }} in {{ .Release.Namespace }}
+Assembly: kernel (ADR 0013)
+Tenants:
+{{- range .Values.execution.tenants }}
+  - {{ .tenantId }} -> {{ .namespace }}
+{{- end }}
+
+This profile uses embedded Git hosting with a stage-only acknowledgement and a
+persistent server volume. It is a disposable stage profile, not a supported
+production identity or isolation claim.

@@ -67,8 +67,11 @@ type GitCredentials struct{ Dir string }
 
 // Request is one workspace checkout.
 type Request struct {
+	// Scope owns the workspace; a Kubernetes backend resolves its namespace from it.
+	Scope domain.Scope
 	// Workspace is the backend's workspace: a directory for Process, the run's
-	// volume name for Podman.
+	// volume name for Podman, the run's claim name for Kubernetes.
+	RunID       string
 	Workspace   string
 	Sources     []CheckoutSource
 	Credentials GitCredentials
@@ -79,6 +82,14 @@ type Request struct {
 // must fail rather than leave a partial checkout without an error.
 type Checkout interface {
 	Checkout(ctx context.Context, req Request) error
+}
+
+// SourcePreparer is an optional Checkout that prepares the sources itself, for a
+// backend whose workspace is not a host directory (Kubernetes runs the checkout
+// inside the run's volume). The credentials are already materialized in
+// req.Credentials.Dir when it is called.
+type SourcePreparer interface {
+	PrepareSources(ctx context.Context, req Request) error
 }
 
 // Repositories is what the preparation needs of the repository records.
@@ -296,7 +307,16 @@ func (g *GitSources) Prepare(ctx context.Context, run store.Run, workspace strin
 		_ = rg.Close()
 		return nil, nil
 	}
-	if err := g.Checkout.Checkout(ctx, Request{Workspace: workspace, Sources: sources, Credentials: GitCredentials{Dir: rg.dir}}); err != nil {
+	req := Request{Scope: domain.Scope{TenantID: run.TenantID, ProjectID: run.ProjectID}, RunID: run.ID, Workspace: workspace, Sources: sources, Credentials: GitCredentials{Dir: rg.dir}}
+	if preparer, ok := g.Checkout.(SourcePreparer); ok {
+		if err := preparer.PrepareSources(ctx, req); err != nil {
+			_ = rg.Close()
+			if errors.Is(err, ErrCheckoutUnconfigured) {
+				return nil, err
+			}
+			return nil, fmt.Errorf("%w: %v", ErrSourceUnavailable, err)
+		}
+	} else if err := g.Checkout.Checkout(ctx, req); err != nil {
 		_ = rg.Close()
 		if errors.Is(err, ErrCheckoutUnconfigured) {
 			return nil, err
@@ -570,6 +590,11 @@ tip() { # path url ref
 	}
 	return b.String(), nil
 }
+
+// CheckoutScript renders the source checkout used by every backend: init a
+// repository at each source path, fetch the exact pinned commit or context ref,
+// and detach. It carries no credential.
+func CheckoutScript(sources []CheckoutSource) (string, error) { return checkoutScript(sources) }
 
 var commitRE = regexp.MustCompile(`^[0-9a-f]{40}$|^[0-9a-f]{64}$`)
 

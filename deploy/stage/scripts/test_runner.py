@@ -87,7 +87,7 @@ class RunnerBase(unittest.TestCase):
         self.scripts.mkdir(parents=True)
         for name in ("lib.sh", "readiness-cases.json", "verify_image_revision.py"):
             shutil.copyfile(SOURCE / name, self.scripts / name)
-        chart = self.repo / "deploy/charts/kodama"
+        chart = self.repo / "deploy/charts/kodama-kernel"
         chart.mkdir(parents=True)
         (chart / "Chart.yaml").write_text("name: offline-fixture\n")
         for args in (["init", "-q"], ["add", "."], ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"]):
@@ -102,9 +102,9 @@ class RunnerBase(unittest.TestCase):
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.repo, check=True, capture_output=True, text=True).stdout.strip()
         self.head = head
         revision = head if self.registry_revision is None else self.registry_revision
-        revisions = {"kodama": revision, "probe": revision}
+        revisions = {"kodama": revision}
         if revision == "unlabelled":
-            revisions = {"kodama": None, "probe": None}
+            revisions = {"kodama": None}
         self.registry = FakeRegistry(revisions, **self.registry_options)
         self.addCleanup(self.registry.close)
         repository, _, digest = self.registry.ref("kodama").partition("@")
@@ -131,21 +131,20 @@ if args[0] == 'list':
         if any(pkg.endswith(a.removeprefix('./').removesuffix('/...')) for a in args[1:]): print(pkg)
     sys.exit(0)
 if os.environ.get('MOCK_COMMIT') and chart:
-    pathlib.Path('deploy/charts/kodama/Chart.yaml').write_text('changed: true')
+    pathlib.Path('deploy/charts/kodama-kernel/Chart.yaml').write_text('changed: true')
     subprocess.run(['git', 'add', '.'], check=True)
     subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'drift'], check=True)
-if chart: pkgs = [x for x in pkgs if x.endswith('kube-full')]
+if chart: pkgs = [x for x in pkgs if x.endswith('kube-kernel')]
 if os.environ.get('MOCK_DIRTY'): pathlib.Path('unexpected-change').write_text('drift')
 if os.environ.get('MOCK_VALUES_DRIFT'): pathlib.Path(os.environ['KODAMA_STAGE_VALUES']).write_text('drift')
 def event(pkg, test, action): print(json.dumps({'Package':pkg, 'Test':test, 'Action':action}), flush=True)
 for name,spec in mapping.items():
-    if (name == 'kube_chart_install') != chart: continue
+    if (name == 'kernel_clean_install') != chart: continue
     event(spec['package'], spec['test'], 'pass')
     for case in spec['cases']:
-        if case == 'lost_create_acknowledgment': print(json.dumps({'Action':'output','Output':'FAULT_CONFIG PX-A02 HTTPS loopback proxy; both TLS hops verified; test-owned only\\n'}), flush=True)
         event(spec['package'], spec['test']+'/'+case, 'skip' if case == os.environ.get('MOCK_SKIP_CASE') else 'pass')
 for pkg in pkgs:
-    if os.environ.get('MOCK_TRUNCATE') and pkg.endswith('assembly-execution'): continue
+    if os.environ.get('MOCK_TRUNCATE') and pkg.endswith('kube-kernel'): continue
     event(pkg, '', 'pass')
 sys.exit(int(os.environ.get('MOCK_RUNNER_EXIT', '0')))
 ''')
@@ -153,7 +152,6 @@ sys.exit(int(os.environ.get('MOCK_RUNNER_EXIT', '0')))
         self.env.update({
             "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"], "KUBECONFIG": str(kc),
             "KODAMA_QUAL_SESSION": "fixture", "KODAMA_QUAL_STATE_DIR": str(scratch / "state"),
-            "KODAMA_STAGE_PROBE_IMAGE": self.registry.ref("probe"),
             "SCW_DEFAULT_PROJECT_ID": "11111111-2222-4333-8444-555555555555",
         })
         self.results = scratch / "results.json"
@@ -164,13 +162,13 @@ sys.exit(int(os.environ.get('MOCK_RUNNER_EXIT', '0')))
 
     def run_suite(self, **extra):
         return subprocess.run([
-            "bash", "-c", 'source "$1/lib.sh"; run_stage_go_suite "$2/contract.json" "$2/values.yaml" "$3" ./test/e2e/kube-full/... ./test/integration/assembly-execution/...',
+            "bash", "-c", 'source "$1/lib.sh"; run_stage_go_suite "$2/contract.json" "$2/values.yaml" "$3" ./test/e2e/kube-kernel/...',
             "fixture", str(self.scripts), str(self.session), str(self.results),
         ], env=self.env | extra, cwd=self.repo, text=True, capture_output=True, timeout=20)
 
     def verify(self):
         return subprocess.run([
-            "bash", "-c", 'source "$1/lib.sh"; verify_forge_results "$3" "$2/contract.json" "$2/values.yaml" kube_chart_install kube_cancel_restart kube_secrets_kms execution_assembly_roundtrip',
+            "bash", "-c", 'source "$1/lib.sh"; verify_forge_results "$3" "$2/contract.json" "$2/values.yaml" kernel_clean_install kernel_pipeline kernel_git kernel_secrets_kms kernel_cancel_restart',
             "fixture", str(self.scripts), str(self.session), str(self.results),
         ], env=self.env, cwd=self.repo, capture_output=True, text=True, timeout=20)
 
@@ -214,13 +212,13 @@ class RunnerTests(RunnerBase):
         self.assertEqual(self.verify().returncode, 0)
         data = json.loads(self.results.read_text())
         self.assertTrue(data["provenance"]["candidate_stable"])
-        self.assertEqual(len(data["acceptances"]), 7)
+        self.assertEqual(len(data["acceptances"]), 5)
 
     def test_verified_image_revisions_are_recorded(self):
         self.assertEqual(self.run_suite().returncode, 0)
         recorded = json.loads(self.results.read_text())["provenance"]["image_revisions"]
         self.assertEqual({r["revision"] for r in recorded}, {self.head})
-        self.assertEqual(len(recorded), 2)
+        self.assertEqual(len(recorded), 1)
 
     def test_a_results_file_without_the_runners_proof_is_refused(self):
         self.assertEqual(self.run_suite().returncode, 0)
@@ -228,11 +226,8 @@ class RunnerTests(RunnerBase):
         mutations = {
             "candidate not stable": lambda p: p.update(candidate_stable=False),
             "no stability proof": lambda p: p.pop("candidate_stable"),
-            "fault never applied": lambda p: p["fault_config"].update(applied=False),
             "no image revisions": lambda p: p.pop("image_revisions"),
-            "one image only": lambda p: p.update(image_revisions=p["image_revisions"][:1]),
-            "image from another revision": lambda p: p["image_revisions"][1].update(revision="dirty-debug"),
-            "helper not among the verified images": lambda p: p.update(probe_image="registry.invalid/other@sha256:" + "c" * 64),
+            "image from another revision": lambda p: p["image_revisions"][0].update(revision="dirty-debug"),
         }
         for name, mutate in mutations.items():
             with self.subTest(name):
@@ -272,10 +267,6 @@ class RunnerTests(RunnerBase):
         self.assertNotEqual(check(lambda d: d.update(runner_exit=1)), 0)
         self.assertNotEqual(check(lambda d: d.update(packages=[])), 0)
         self.assertNotEqual(check(lambda d: d["acceptances"][4]["cases"].update({"Process/Podman_runtime": "missing"})), 0)
-
-    def test_skipped_required_child_never_counts_as_parent_pass(self):
-        self.run_suite(MOCK_SKIP_CASE="lost_create_acknowledgment")
-        self.assertNotEqual(self.verify().returncode, 0)
 
     def test_dirty_candidate_refused_before_tests(self):
         (self.repo / "uncommitted").write_text("dirty")

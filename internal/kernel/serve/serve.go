@@ -30,10 +30,16 @@ type Config struct {
 	DatabaseURL    string
 	InstallationID string
 	Env            string
-	Executor       string // podman | process
+	Executor       string // podman | process | kubernetes
 	LogDir         string
 	StateDir       string
 	Keyfile        string
+	// KMSFile is the installation's strict key-provider document. It is used
+	// instead of the development keyfile when set.
+	KMSFile string
+	// Kube is the Kubernetes execution configuration. Required when Executor is
+	// kubernetes; refused otherwise.
+	Kube *runner.KubeConfig
 
 	// Development-only static credential. Refused in production.
 	DevToken  string
@@ -46,13 +52,17 @@ type Config struct {
 	// Git hosting (O-36). PublicURL renders clone URLs. WorkerURL addresses the
 	// tenants' workers ({tenantId} is replaced); empty hosts one worker per tenant
 	// in this process, in development only. The signing keys and the control
-	// token are required in production.
+	// token are required in production. GitInProcess is the explicit stage-only
+	// embedding of the workers in the server (a persistent state directory); it
+	// is refused in every other production profile.
 	PublicURL            string
 	GitWorkerURL         string
 	GitControlToken      string
 	GitForwardingKeyFile string
 	GitIdentityKeyFile   string
 	GitPollInterval      time.Duration
+	GitInProcess         bool
+	GitInProcessAck      string
 
 	// Events (T-168). NATSURL selects JetStream for the outbox publisher and the
 	// dispatcher; empty delivers in process (the outbox rows stay the durable
@@ -85,7 +95,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	}
 	st := store.New(pool.Pool)
 
-	keys, closeKeys, err := keyProvider(cfg)
+	keys, closeKeys, err := keyProvider(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -159,6 +169,17 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		Store: st, Auth: auth, Tasks: taskpg.Store{DB: pool.Pool}, Keys: keys,
 		InstallationID: cfg.InstallationID, Backend: backend.Name(), Wake: notify, Logger: log,
 		Git: git,
+		Ready: func(ctx context.Context) error {
+			if err := pool.Ping(ctx); err != nil {
+				return fmt.Errorf("database: %w", err)
+			}
+			if workers != nil {
+				if err := workers.Ready(); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
 	})
 	if err != nil {
 		return err
@@ -241,6 +262,19 @@ func loop(ctx context.Context, st *store.Store, r *runner.Runner, log *slog.Logg
 				if ctx.Err() != nil {
 					return
 				}
+				// A run claimed by a previous process is adopted before new work:
+				// its named Jobs and workspace are the durable state.
+				running, err := st.RunningRuns(ctx, tenant)
+				if err == nil {
+					for _, q := range running {
+						if ctx.Err() != nil {
+							return
+						}
+						if err := r.Resume(ctx, q); err != nil && !errors.Is(err, store.ErrConflict) {
+							log.Warn("run resume failed", "tenant", tenant, "run", q.RunID, "error", err)
+						}
+					}
+				}
 				queued, err := st.QueuedRuns(ctx, tenant)
 				if err != nil || len(queued) == 0 {
 					continue
@@ -255,17 +289,33 @@ func loop(ctx context.Context, st *store.Store, r *runner.Runner, log *slog.Logg
 }
 
 func chooseBackend(cfg Config) (runner.Backend, error) {
+	workspaceRoot := filepath.Join(cfg.StateDir, "workspaces")
 	switch cfg.Executor {
 	case "process":
-		return runner.Process{Root: filepath.Join(cfg.StateDir, "workspaces")}, nil
+		return runner.Process{Root: workspaceRoot}, nil
 	case "podman", "":
-		return runner.Podman{Root: filepath.Join(cfg.StateDir, "workspaces")}, nil
+		return runner.Podman{Root: workspaceRoot}, nil
+	case "kubernetes":
+		if cfg.Kube == nil {
+			return nil, errors.New("kernel: the kubernetes executor needs its installation configuration")
+		}
+		return runner.NewKube(*cfg.Kube)
 	default:
 		return nil, fmt.Errorf("kernel: unknown executor %q", cfg.Executor)
 	}
 }
 
-func keyProvider(cfg Config) (secretkeys.Provider, func(), error) {
+func keyProvider(ctx context.Context, cfg Config) (secretkeys.Provider, func(), error) {
+	if cfg.KMSFile != "" {
+		if cfg.Keyfile != "" {
+			return nil, nil, errors.New("kernel: KMSFile and Keyfile are mutually exclusive")
+		}
+		kms, err := loadKMSConfig(cfg.KMSFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		return newKMSProvider(ctx, kms, cfg.InstallationID)
+	}
 	if cfg.Keyfile != "" {
 		k, err := secretkeys.NewKeyfile(cfg.Keyfile, cfg.Env == "production")
 		if err != nil {
@@ -316,7 +366,8 @@ func buildGit(cfg Config, st *store.Store, auth api.Authenticator, log *slog.Log
 	if err != nil {
 		return nil, nil, "", err
 	}
-	workers, err := NewGitWorkers(GitWorkersConfig{Env: cfg.Env, StateDir: cfg.StateDir, WorkerURL: cfg.GitWorkerURL,
+	workers, err := NewGitWorkers(GitWorkersConfig{Env: cfg.Env, InProcess: cfg.GitInProcess, InProcessAck: cfg.GitInProcessAck,
+		StateDir: cfg.StateDir, WorkerURL: cfg.GitWorkerURL,
 		ControlToken: cfg.GitControlToken, Verifier: signer.Verifier(), Logger: log})
 	if err != nil {
 		if !errors.Is(err, ErrInProcessInProduction) {

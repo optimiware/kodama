@@ -156,8 +156,8 @@ PY
   VALUES_FILE="${VALUES_OUT:-${WORK_DIR}/kodama-values.${CLOUD}.yaml}"
   STACK_TFVARS="${WORK_DIR}/stack.tfvars.json"
   render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}" "${STACK_TFVARS}"
-  helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${VALUES_FILE}" >/dev/null
-  helm template kodama "${REPO_ROOT}/deploy/charts/kodama" --namespace kodama-system -f "${VALUES_FILE}" >/dev/null
+  helm lint --strict "${REPO_ROOT}/deploy/charts/kodama-kernel" -f "${VALUES_FILE}" >/dev/null
+  helm template kodama "${REPO_ROOT}/deploy/charts/kodama-kernel" --namespace kodama-system -f "${VALUES_FILE}" >/dev/null
   tofu -chdir="${STACK_DIR}" init -input=false -backend=false >/dev/null
   tofu -chdir="${STACK_DIR}" validate
   log_info "validate-only succeeded for cloud=${CLOUD}"
@@ -203,7 +203,7 @@ VALUES_FILE="${VALUES_OUT:-${WORK_DIR}/kodama-values.yaml}"
 STACK_TFVARS="${WORK_DIR}/stack.tfvars.json"
 render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}" "${STACK_TFVARS}"
 verify_values_provenance "${VALUES_FILE}"
-helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${VALUES_FILE}" >/dev/null
+helm lint --strict "${REPO_ROOT}/deploy/charts/kodama-kernel" -f "${VALUES_FILE}" >/dev/null
 
 # Cloud secrets reach the stack as a sensitive variable file (0600, removed with the work directory).
 SECRETS_TFVARS="${WORK_DIR}/stack.secrets.tfvars.json"

@@ -41,9 +41,16 @@ var ErrInProcessInProduction = errors.New("kernel: production refuses the in-pro
 
 // GitWorkersConfig configures how tenants' Git workers are hosted.
 type GitWorkersConfig struct {
-	// Env is the environment name; only "development" hosts in process.
+	// Env is the environment name; only "development" hosts in process unless
+	// InProcess is explicitly set.
 	Env string
-	// StateDir is the root of development data roots (<StateDir>/git/<tenantId>).
+	// InProcess hosts one worker per tenant in this process. It is the
+	// development default and the explicit stage-only embedding. Any other
+	// production profile requires WorkerURL.
+	InProcess bool
+	// InProcessAck must be "stage-only" for InProcess outside development.
+	InProcessAck string
+	// StateDir is the root of in-process data roots (<StateDir>/git/<tenantId>).
 	StateDir string
 	// WorkerURL is the address of a tenant's worker, with {tenantId} replaced by
 	// the tenant ID; empty hosts in process (development only).
@@ -92,8 +99,12 @@ func NewGitWorkers(cfg GitWorkersConfig) (*GitWorkers, error) {
 		cfg.Logger = slog.New(slog.DiscardHandler)
 	}
 	g := &GitWorkers{cfg: cfg, workers: map[domain.TenantID]*endpoint{}}
+	inProcess := cfg.InProcess || cfg.Env == "development"
+	if inProcess && cfg.Env != "development" && cfg.InProcessAck != "stage-only" {
+		return g, errors.New("kernel: in-process Git hosting outside development needs the explicit stage-only acknowledgement")
+	}
 	if cfg.WorkerURL == "" {
-		if cfg.Env != "development" {
+		if !inProcess {
 			return g, ErrInProcessInProduction
 		}
 		if cfg.Verifier == nil {
@@ -109,6 +120,7 @@ func NewGitWorkers(cfg GitWorkersConfig) (*GitWorkers, error) {
 			}
 			g.cfg.ControlToken = token
 		}
+		g.cfg.InProcess = true
 		return g, nil
 	}
 	if !strings.Contains(cfg.WorkerURL, "{tenantId}") {
@@ -157,9 +169,7 @@ func (g *GitWorkers) endpoint(tenant domain.TenantID) (*endpoint, error) {
 			ErrorHandler:  g.workerUnavailable,
 		}
 		ep = &endpoint{rpc: &workerRPC{base: strings.TrimSuffix(target.String(), "/"), token: g.cfg.ControlToken, hc: &http.Client{}}, git: proxy}
-	case g.cfg.Env != "development":
-		return nil, ErrInProcessInProduction
-	default:
+	case g.cfg.InProcess || g.cfg.Env == "development":
 		if g.control == nil {
 			return nil, errors.New("kernel: the Git workers are not bound to the control plane")
 		}
@@ -182,6 +192,8 @@ func (g *GitWorkers) endpoint(tenant domain.TenantID) (*endpoint, error) {
 		h := svc.Handler()
 		ep = &endpoint{rpc: &workerRPC{base: "http://git-worker.invalid", token: g.cfg.ControlToken, hc: &http.Client{Transport: handlerTransport{h}}},
 			git: svc.GitHandler(), svc: svc}
+	default:
+		return nil, ErrInProcessInProduction
 	}
 	g.workers[tenant] = ep
 	return ep, nil
@@ -270,6 +282,17 @@ func (g *GitWorkers) Started(tenant domain.TenantID) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.workers[tenant] != nil
+}
+
+// Ready reports the hosting mode is usable. In-process workers open lazily on
+// first use, so readiness means the process still owns the worker registry.
+func (g *GitWorkers) Ready() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed {
+		return errors.New("git workers are stopped")
+	}
+	return nil
 }
 
 // Close stops every in-process worker.

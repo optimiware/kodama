@@ -1,0 +1,28 @@
+{{- $checkoutRepo := .Values.execution.checkoutImage.repository | default .Values.image.repository -}}
+{{- $checkoutTag := .Values.execution.checkoutImage.tag | default .Values.image.tag -}}
+{{- $checkoutDigest := .Values.execution.checkoutImage.digest | default .Values.image.digest -}}
+{{- $tenants := dict -}}
+{{- range .Values.execution.tenants -}}
+{{- $_ := set $tenants .tenantId (dict "namespace" .namespace "serviceAccount" $.Values.execution.serviceAccountName) -}}
+{{- end -}}
+{{- $kube := dict "tenants" $tenants "storage" (dict "class" .Values.execution.storageClass "size" .Values.execution.workspaceSize) "identity" (dict "runAsUser" .Values.execution.runAsUser "runAsGroup" .Values.execution.runAsGroup "pullPolicy" .Values.execution.pullPolicy) "checkout" (dict "image" (printf "%s:%s@%s" $checkoutRepo ($checkoutTag | default "latest") $checkoutDigest)) -}}
+{{- $kms := dict "provider" .Values.kms.provider "current" .Values.kms.current "resources" .Values.kms.resources "startupTimeout" .Values.kms.startupTimeout -}}
+{{- if eq .Values.kms.provider "scw" -}}
+{{- $_ := set $kms "scw" (dict "credentialsFile" .Values.kms.scw.credentialsFile) -}}
+{{- end -}}
+{{- if eq .Values.kms.provider "aws" -}}
+{{- $_ := set $kms "aws" (dict "region" .Values.kms.aws.region) -}}
+{{- end -}}
+{{- if eq .Values.kms.provider "gcp" -}}
+{{- $_ := set $kms "gcp" (dict) -}}
+{{- end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kodama-kernel.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kodama-kernel.labels" . | nindent 4 }}
+data:
+  kube.json: {{ $kube | toJson | quote }}
+  kms.json: {{ $kms | toJson | quote }}

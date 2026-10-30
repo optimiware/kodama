@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kodama-kernel
+description: Kodama ADR 0013 kernel assembly with Kubernetes Jobs and native Git hosting
+type: application
+version: 0.1.0
+appVersion: "0.0.1"

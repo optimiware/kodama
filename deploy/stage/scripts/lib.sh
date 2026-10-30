@@ -164,6 +164,7 @@ tfvars = {
     "oidc_issuer": os.environ.get("KODAMA_OIDC_ISSUER") or f"https://auth.{host}",
     "oidc_audience": os.environ.get("KODAMA_OIDC_AUDIENCE") or f"https://{host}/api",
     "custom_ca": False,
+    "storage_class": os.environ.get("KODAMA_STAGE_STORAGE_CLASS") or "scw-bssd",
     "acme_email": os.environ.get("KODAMA_ACME_EMAIL", ""),
     "issuer_allowed_cidrs": [c for c in os.environ.get("KODAMA_ISSUER_ALLOWED_CIDRS", "").split(",") if c],
     "nats_tls": os.environ.get("KODAMA_NATS_TLS", "false").lower() == "true",
@@ -194,16 +195,12 @@ render_kodama_values_from_contract() {
 locals {
   v = jsondecode(file("${abs_tfvars}"))
   rendered = templatefile("${STAGE_DIR}/shared/stack/values/kodama.yaml.tftpl", {
-    contract       = local.v.stage_contract
-    nats_url       = "\${local.v.nats_tls ? "tls" : "nats"}://kodama-nats.\${local.v.control_plane_namespace}.svc.cluster.local:4222"
-    profile        = local.v.nats_tls ? "external" : "development"
-    kodama_image   = local.v.kodama_image
-    workload_image = local.v.example_workload_image
-    git_url        = local.v.git_url
-    registry_url   = local.v.registry_url
-    oidc_issuer    = local.v.oidc_issuer
-    oidc_audience  = local.v.oidc_audience
-    custom_ca      = local.v.custom_ca
+    contract      = local.v.stage_contract
+    nats_url      = "\${local.v.nats_tls ? "tls" : "nats"}://kodama-nats.\${local.v.control_plane_namespace}.svc.cluster.local:4222"
+    kodama_image  = local.v.kodama_image
+    oidc_issuer   = local.v.oidc_issuer
+    oidc_audience = local.v.oidc_audience
+    storage_class = local.v.storage_class
   })
 }
 EOF
@@ -355,10 +352,7 @@ target = subprocess.run(["kubectl", "--kubeconfig", kubeconfig, "--request-timeo
 if target.returncode != 0 or target.stdout.strip() != handle["namespace"]:
     Path(results_out).write_text(json.dumps({"infra_pause": "qualification namespace is missing or unreachable", "passed": [], "failed": [], "skipped": [], "provenance": prov}) + "\n")
     sys.exit(75)
-probe_image = env.get("KODAMA_STAGE_PROBE_IMAGE", "")
-readiness = "./test/e2e/kube-full/..." in pkgs
-if readiness and not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", probe_image):
-    sys.exit("[gate-fail] KODAMA_STAGE_PROBE_IMAGE must pin the test-only helper by digest")
+readiness = "./test/e2e/kube-kernel/..." in pkgs
 if readiness and c["cloud"] == "scw" and not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", env.get("SCW_DEFAULT_PROJECT_ID", "")):
     sys.exit("[gate-fail] SCW_DEFAULT_PROJECT_ID must identify the qualification project")
 image_revisions = []
@@ -367,7 +361,7 @@ if readiness or staging:
     # The images under test must be the ones built from this very commit: the registry's own labels decide.
     # Readiness also uses the test-only helper; staging runs the release image alone.
     full_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_root, text=True).strip()
-    verdict = subprocess.run([sys.executable, str(repo_root / "deploy/stage/scripts/verify_image_revision.py"), "--commit", full_commit, "--values", values_path, *([probe_image] if readiness else [])], capture_output=True, text=True)
+    verdict = subprocess.run([sys.executable, str(repo_root / "deploy/stage/scripts/verify_image_revision.py"), "--commit", full_commit, "--values", values_path], capture_output=True, text=True)
     if verdict.returncode != 0:
         sys.exit(verdict.stderr.strip() or "[gate-fail] image provenance could not be established")
     image_revisions = [json.loads(line) for line in verdict.stdout.splitlines() if line.startswith("{")]
@@ -375,7 +369,7 @@ print(f"[stage] candidate={git_sha} session={session} inputs verified", flush=Tr
 if env.get("KODAMA_STAGE_PREFLIGHT_ONLY") == "1":
     sys.exit(0)
 started = time.monotonic()
-chart_tree = subprocess.check_output(["git", "rev-parse", "HEAD:deploy/charts/kodama"], cwd=repo_root, text=True).strip()
+chart_tree = subprocess.check_output(["git", "rev-parse", "HEAD:deploy/charts/kodama-kernel"], cwd=repo_root, text=True).strip()
 
 # Clear inherited local-scope environment variables so tests never fall back to a local Podman/kind fixture.
 for stale_var in (
@@ -459,12 +453,12 @@ def run(args, patterns):
 base = cmd[:cmd.index(pkgs[0])]
 if readiness:
     print("[stage] phase=chart-install", flush=True)
-    rc = run([*base, "-run", "^TestKubeChartInstall$", "./test/e2e/kube-full/..."], ["./test/e2e/kube-full/..."])
+    rc = run([*base, "-run", "^TestKernelCleanInstall$", "./test/e2e/kube-kernel/..."], ["./test/e2e/kube-kernel/..."])
 else:
     rc = 0
 if rc == 0:
     print("[stage] phase=scenarios", flush=True)
-    rc = run([*base, "-skip", "^TestKubeChartInstall$", *pkgs], pkgs)
+    rc = run([*base, "-skip", "^TestKernelCleanInstall$", *pkgs], pkgs)
 runner_exit = rc
 current = subprocess.check_output(["git", "rev-parse", "--short=12", "HEAD"], cwd=repo_root, text=True).strip()
 inputs_stable = all("sha256:" + hashlib.sha256(Path(p).read_bytes()).hexdigest() == digest
@@ -475,7 +469,10 @@ if not stable:
     rc = 1
 truncated = bool(incomplete_phases)
 acceptances = []
+gate_name = "staging" if staging else "readiness"
 for name, spec in ACCEPTANCE.items():
+    if spec.get("gate", "readiness") != gate_name:
+        continue
     want_pkg, want_test, backend = spec["package"], spec["test"], spec["backend"]
     status = last.get((want_pkg, want_test), "")
     acceptances.append({
@@ -490,15 +487,6 @@ pkg_ok = bool(pkg_actions) and all(a == "pass" for a in pkg_actions.values())
 cases_ok = all(a["status"] == "pass" and all(v == "pass" for v in a["cases"].values()) for a in acceptances) if (readiness or staging) else True
 prov["suite_passed"] = (rc == 0 and pkg_ok and not failed and not truncated and cases_ok)
 prov["session"] = env.get("KODAMA_QUAL_SESSION", "")
-if readiness:
-    # Only the readiness run instruments the Kubernetes API (the PX-A02 fault); a staging run has none.
-    prov["fault_config"] = {
-        "mechanism": "test_owned_https_loopback_proxy",
-        "applied": bool(fault_observed),
-        "case_status": last.get((ACCEPTANCE["kube_cancel_restart"]["package"], "TestKubeCancelRestart/lost_create_acknowledgment"), "missing"),
-        "chart_install_instrumented": False,
-    }
-prov["probe_image"] = probe_image
 prov["image_revisions"] = image_revisions
 prov["chart_tree"] = chart_tree
 prov["candidate_stable"] = stable
@@ -615,7 +603,7 @@ if "stage_clean_install" in required:
     if flaws:
         sys.exit(1)
 
-if "kube_chart_install" in required:
+if "kernel_clean_install" in required:
     # A readiness receipt must carry the runner's own proof, so a hand-written results file cannot stand in for a run:
     # an unchanged candidate, the fault actually applied, and registry images labelled with this exact commit.
     import pathlib, subprocess
@@ -625,12 +613,8 @@ if "kube_chart_install" in required:
     flaws = runner_flaws()
     if prov.get("candidate_stable") is not True:
         flaws.append("provenance.candidate_stable is not true")
-    if not isinstance(prov.get("fault_config"), dict) or prov["fault_config"].get("applied") is not True:
-        flaws.append("provenance.fault_config.applied is not true (the PX-A02 fault was not observed)")
-    if not isinstance(images, list) or len(images) < 2 or any(not isinstance(i, dict) or i.get("revision") != full_commit for i in images):
+    if not isinstance(images, list) or len(images) < 1 or any(not isinstance(i, dict) or i.get("revision") != full_commit for i in images):
         flaws.append("provenance.image_revisions does not show every candidate image labelled with commit " + full_commit)
-    elif prov.get("probe_image") not in {i.get("image") for i in images}:
-        flaws.append("provenance.probe_image was not among the verified images")
     for flaw in flaws:
         sys.stderr.write(f"[gate-fail] {flaw}\n")
     if flaws:

@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/kernel/pipeline"
@@ -36,6 +38,9 @@ type Config struct {
 	// Git mounts the repository routes, the credential exchange, /git/ and the
 	// worker's internal routes when set (internal Git hosting, O-36).
 	Git *GitServer
+	// Ready checks the dependencies a request can use. It is called by /readyz
+	// and never by /healthz.
+	Ready func(context.Context) error
 }
 
 type Server struct{ cfg Config }
@@ -57,6 +62,17 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.Ready != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			if err := s.cfg.Ready(ctx); err != nil {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.Handle("/api/v1/", s.authed(http.HandlerFunc(s.route)))
 	if s.cfg.Git != nil {
@@ -114,7 +130,13 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not_found", "unknown route")
 		return
 	}
+	// The project segment is its immutable ID on every kernel route; the key is
+	// accepted too, because the repository routes and the public contract name it
+	// by key. Authorization always uses the resolved immutable ID.
 	project := domain.ProjectID(parts[3])
+	if p, err := s.cfg.Store.GetProjectByKey(r.Context(), tenant, parts[3]); err == nil {
+		project = p.ID
+	}
 	rest := parts[4:]
 	if len(rest) == 0 {
 		s.project(w, r, tenant, project)

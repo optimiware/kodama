@@ -86,7 +86,7 @@ requires the release image to be labelled with the candidate commit **in the reg
 
 | Acceptance | What the test does |
 | --- | --- |
-| `stage_clean_install` | removes any earlier release, clears jobs, pods and per-attempt bookkeeping from the tenant namespaces, installs the chart, and requires readiness under `KODAMA_ENV=production` with `--assembly core` |
+| `stage_clean_install` | **Historical core-era scenario.** The current kernel readiness path is `test/e2e/kube-kernel`; the staging suite remains to be migrated and its old receipt is not relabelled |
 | `stage_e2e_roundtrip` | submits a pipeline, runs it, and reads the retained log and the output artifact after the workload is gone |
 | `stage_restart_reconcile` | cancels a run (workload removed), then kills the server mid-run (`--force --grace-period=0`) and requires the replacement to adopt the same Job and finish with one attempt |
 | `stage_loki_log_search` | finds the pipeline's and the control plane's log lines for one attempt by `attempt_id` in Loki through Grafana, and requires Grafana to refuse an unauthenticated Loki query |

@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/optimiware/kodama/internal/kernel/runner"
 	"github.com/optimiware/kodama/internal/kernel/serve"
 )
 
@@ -60,13 +63,14 @@ func kernelConfig(process Config, getenv func(string) string) (serve.Config, err
 	}
 	cfg := serve.Config{
 		Addr:           process.HTTPAddr,
-		DatabaseURL:    firstNonEmpty(getenv("KODAMA_DATABASE_RUNTIME_URL"), getenv("KODAMA_DATABASE_URL")),
+		DatabaseURL:    firstNonEmpty(envValue(getenv, "KODAMA_DATABASE_RUNTIME_URL"), envValue(getenv, "KODAMA_DATABASE_URL")),
 		InstallationID: installation,
 		Env:            env,
 		Executor:       firstNonEmpty(getenv("KODAMA_EXECUTOR"), "podman"),
 		LogDir:         logDir,
 		StateDir:       stateDir,
 		Keyfile:        getenv("KODAMA_SECRETS_KEYFILE"),
+		KMSFile:        getenv("KODAMA_KMS_CONFIG_FILE"),
 		DevToken:       getenv("KODAMA_DEV_TOKEN"),
 		DevUserID:      devUser,
 		DevName:        devName,
@@ -75,12 +79,35 @@ func kernelConfig(process Config, getenv func(string) string) (serve.Config, err
 
 		PublicURL:            getenv("KODAMA_PUBLIC_URL"),
 		GitWorkerURL:         getenv("KODAMA_GIT_WORKER_URL"),
-		GitControlToken:      getenv("KODAMA_GIT_CONTROL_TOKEN"),
+		GitControlToken:      envValue(getenv, "KODAMA_GIT_CONTROL_TOKEN"),
 		GitForwardingKeyFile: getenv("KODAMA_GIT_FORWARDING_KEY_FILE"),
 		GitIdentityKeyFile:   getenv("KODAMA_GIT_IDENTITY_KEY_FILE"),
+		GitInProcess:         getenv("KODAMA_GIT_HOSTING") == "embedded",
+		GitInProcessAck:      getenv("KODAMA_GIT_EMBEDDED_ACK"),
 
 		NATSURL:   getenv("KODAMA_NATS_URL"),
-		NATSToken: getenv("KODAMA_NATS_TOKEN"),
+		NATSToken: envValue(getenv, "KODAMA_NATS_TOKEN"),
+	}
+	if cfg.Executor == "kubernetes" {
+		path := getenv("KODAMA_KUBE_CONFIG_FILE")
+		if path == "" {
+			return serve.Config{}, errors.New("KODAMA_EXECUTOR=kubernetes needs KODAMA_KUBE_CONFIG_FILE")
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return serve.Config{}, fmt.Errorf("KODAMA_KUBE_CONFIG_FILE: %w", err)
+		}
+		defer f.Close()
+		dec := json.NewDecoder(f)
+		dec.DisallowUnknownFields()
+		var k runner.KubeConfig
+		if err := dec.Decode(&k); err != nil {
+			return serve.Config{}, fmt.Errorf("KODAMA_KUBE_CONFIG_FILE: %w", err)
+		}
+		k.APIURL = firstNonEmpty(getenv("KODAMA_KUBE_API"), "https://kubernetes.default.svc")
+		k.TokenFile = firstNonEmpty(getenv("KODAMA_KUBE_TOKEN_FILE"), "/var/run/secrets/kubernetes.io/serviceaccount/token")
+		k.CAFile = firstNonEmpty(getenv("KODAMA_KUBE_CA_FILE"), "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+		cfg.Kube = &k
 	}
 	if err := serve.ValidateNATSURL(cfg.NATSURL); err != nil {
 		return serve.Config{}, fmt.Errorf("KODAMA_NATS_URL: %w", err)
@@ -143,6 +170,23 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// envValue reads a value or, when only its _FILE form is set, the trimmed
+// contents of that file. Secret values are mounted as files in the chart.
+func envValue(getenv func(string) string, name string) string {
+	if v := getenv(name); v != "" {
+		return v
+	}
+	path := getenv(name + "_FILE")
+	if path == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
 }
 
 var _ = os.Getenv

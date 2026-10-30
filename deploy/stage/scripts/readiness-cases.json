@@ -1,15 +1,79 @@
 {
-  "kube_chart_install": {"package": "github.com/optimiware/kodama/test/e2e/kube-full", "test": "TestKubeChartInstall", "backend": "", "cases": []},
-  "kube_m1_roundtrip": {"package": "github.com/optimiware/kodama/test/e2e/kube-full", "test": "TestKubeM1Roundtrip", "backend": "", "cases": []},
-  "kube_cancel_restart": {"package": "github.com/optimiware/kodama/test/e2e/kube-full", "test": "TestKubeCancelRestart", "backend": "", "cases": ["lost_create_acknowledgment", "cancel_committed_while_delete_is_refused", "restart_adopts_the_running_Job"]},
-  "kube_secrets_kms": {"package": "github.com/optimiware/kodama/test/e2e/kube-full", "test": "TestKubeSecretsKMS", "backend": "", "cases": ["installed_secret_restart", "direct_secret_delivery", "workload_provider_procedure"]},
-  "execution_assembly_roundtrip": {"package": "github.com/optimiware/kodama/test/integration/assembly-execution", "test": "TestExecutionAssemblyRoundtrip/kube", "backend": "kube", "cases": []},
-  "execution_assembly_cancel_restart": {"package": "github.com/optimiware/kodama/test/integration/assembly-execution", "test": "TestExecutionAssemblyCancelRestart/kube", "backend": "kube", "cases": ["cancel_committed_while_Job_delete_is_refused,_then_the_next_process_finishes_it", "restart,_then_cancel_the_adopted_attempt", "a_foreign_Job_at_the_workload_name_is_never_adopted_or_touched"]},
-  "execution_assembly_result_guard": {"package": "github.com/optimiware/kodama/test/integration/assembly-execution", "test": "TestExecutionAssemblyResultGuard/kube", "backend": "kube", "cases": []},
-  "stage_clean_install": {"gate": "staging", "package": "github.com/optimiware/kodama/test/e2e/staging", "test": "TestStageCleanInstall", "backend": "", "cases": []},
-  "stage_e2e_roundtrip": {"gate": "staging", "package": "github.com/optimiware/kodama/test/e2e/staging", "test": "TestStageE2ERoundtrip", "backend": "", "cases": []},
-  "stage_restart_reconcile": {"gate": "staging", "package": "github.com/optimiware/kodama/test/e2e/staging", "test": "TestStageRestartReconcile", "backend": "", "cases": []},
-  "stage_loki_log_search": {"gate": "staging", "package": "github.com/optimiware/kodama/test/e2e/staging", "test": "TestStageLokiLogSearch", "backend": "", "cases": []},
-  "stage_dev_adapter_refused": {"gate": "staging", "package": "github.com/optimiware/kodama/test/e2e/staging", "test": "TestStageDevAdapterRefused", "backend": "", "cases": ["development_key-encryption_key", "OIDC_fixture_over_plain_HTTP", "S3_fixture_over_plain_HTTP", "Process/Podman_runtime"]},
-  "stage_retention_uninstall": {"gate": "staging", "package": "github.com/optimiware/kodama/test/e2e/staging", "test": "TestStageRetentionUninstall", "backend": "", "cases": []}
+  "kernel_clean_install": {
+    "package": "github.com/optimiware/kodama/test/e2e/kube-kernel",
+    "test": "TestKernelCleanInstall",
+    "backend": "",
+    "cases": []
+  },
+  "kernel_pipeline": {
+    "package": "github.com/optimiware/kodama/test/e2e/kube-kernel",
+    "test": "TestKernelPipelineAndTenantIsolation",
+    "backend": "",
+    "cases": []
+  },
+  "kernel_git": {
+    "package": "github.com/optimiware/kodama/test/e2e/kube-kernel",
+    "test": "TestKernelGitPushAndRunCredential",
+    "backend": "",
+    "cases": []
+  },
+  "kernel_secrets_kms": {
+    "package": "github.com/optimiware/kodama/test/e2e/kube-kernel",
+    "test": "TestKernelSecretsUseTheConfiguredKMS",
+    "backend": "",
+    "cases": []
+  },
+  "kernel_cancel_restart": {
+    "package": "github.com/optimiware/kodama/test/e2e/kube-kernel",
+    "test": "TestKernelCancelAndRestartAdoption",
+    "backend": "",
+    "cases": []
+  },
+  "stage_clean_install": {
+    "gate": "staging",
+    "package": "github.com/optimiware/kodama/test/e2e/staging",
+    "test": "TestStageCleanInstall",
+    "backend": "",
+    "cases": []
+  },
+  "stage_e2e_roundtrip": {
+    "gate": "staging",
+    "package": "github.com/optimiware/kodama/test/e2e/staging",
+    "test": "TestStageE2ERoundtrip",
+    "backend": "",
+    "cases": []
+  },
+  "stage_restart_reconcile": {
+    "gate": "staging",
+    "package": "github.com/optimiware/kodama/test/e2e/staging",
+    "test": "TestStageRestartReconcile",
+    "backend": "",
+    "cases": []
+  },
+  "stage_loki_log_search": {
+    "gate": "staging",
+    "package": "github.com/optimiware/kodama/test/e2e/staging",
+    "test": "TestStageLokiLogSearch",
+    "backend": "",
+    "cases": []
+  },
+  "stage_dev_adapter_refused": {
+    "gate": "staging",
+    "package": "github.com/optimiware/kodama/test/e2e/staging",
+    "test": "TestStageDevAdapterRefused",
+    "backend": "",
+    "cases": [
+      "development_key-encryption_key",
+      "OIDC_fixture_over_plain_HTTP",
+      "S3_fixture_over_plain_HTTP",
+      "Process/Podman_runtime"
+    ]
+  },
+  "stage_retention_uninstall": {
+    "gate": "staging",
+    "package": "github.com/optimiware/kodama/test/e2e/staging",
+    "test": "TestStageRetentionUninstall",
+    "backend": "",
+    "cases": []
+  }
 }

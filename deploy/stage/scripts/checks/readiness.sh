@@ -4,15 +4,13 @@ set -euo pipefail
 # shellcheck source=deploy/stage/scripts/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
-# T-104 — Full Kubernetes installation readiness gate.
+# T-104 — Full Kubernetes installation readiness gate for the ADR 0013 kernel.
 # Required acceptance checks:
-#   - kube_chart_install
-#   - kube_m1_roundtrip
-#   - kube_cancel_restart
-#   - kube_secrets_kms
-#   - execution_assembly_roundtrip
-#   - execution_assembly_cancel_restart
-#   - execution_assembly_result_guard
+#   - kernel_clean_install
+#   - kernel_pipeline
+#   - kernel_git
+#   - kernel_secrets_kms
+#   - kernel_cancel_restart
 
 CLOUD=""
 CONTRACT_FILE=""
@@ -46,17 +44,17 @@ if [[ -z "${VALUES_FILE}" ]]; then
   render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}"
 fi
 verify_values_provenance "${VALUES_FILE}"
-helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${VALUES_FILE}" >/dev/null
+helm lint --strict "${REPO_ROOT}/deploy/charts/kodama-kernel" -f "${VALUES_FILE}" >/dev/null
 
 suite_rc=0
 if [[ -z "${RESULTS_FILE}" ]]; then
-  if [[ ! -d "${REPO_ROOT}/test/e2e/kube-full" ]]; then
-    die_infra "T-104 suite directory test/e2e/kube-full is not yet scheduled/implemented"
+  if [[ ! -d "${REPO_ROOT}/test/e2e/kube-kernel" ]]; then
+    die_infra "T-104 suite directory test/e2e/kube-kernel is not yet scheduled/implemented"
   fi
   RESULTS_FILE="${WORK_DIR}/forge_results.json"
   set +e
   run_stage_go_suite "${CONTRACT_FILE}" "${VALUES_FILE}" "${RESULTS_FILE}" \
-    ./test/e2e/kube-full/... ./test/integration/assembly-execution/...
+    ./test/e2e/kube-kernel/...
   suite_rc=$?
   set -e
   if [[ "${suite_rc}" -eq "${EX_TEMPFAIL}" ]]; then
@@ -65,13 +63,11 @@ if [[ -z "${RESULTS_FILE}" ]]; then
 fi
 
 REQUIRED_TESTS=(
-  kube_chart_install
-  kube_m1_roundtrip
-  kube_cancel_restart
-  kube_secrets_kms
-  execution_assembly_roundtrip
-  execution_assembly_cancel_restart
-  execution_assembly_result_guard
+  kernel_clean_install
+  kernel_pipeline
+  kernel_git
+  kernel_secrets_kms
+  kernel_cancel_restart
 )
 
 set +e
@@ -92,5 +88,5 @@ fi
 bundle="$("${STAGE_DIR}/scripts/evidence.sh" \
   --gate readiness --cloud "${CLOUD}" --contract "${CONTRACT_FILE}" --values "${VALUES_FILE}" \
   --results "${RESULTS_FILE}" --status passed --evidence-root "${EVIDENCE_ROOT}" \
-  --notes "T-104 full Kubernetes readiness and live KMS verified")"
+  --notes "T-104 kernel readiness and KMS-backed secrets verified")"
 log_info "PASS gate=readiness (T-104) evidence=${bundle}"

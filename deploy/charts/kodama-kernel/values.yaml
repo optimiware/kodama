@@ -1,0 +1,182 @@
+# Kodama kernel chart (ADR 0013, O-36).
+#
+# This chart is the executable kernel path: `kodama server --assembly kernel`
+# over PostgreSQL, NATS, Kubernetes Jobs and the native Git service. It does not
+# render the legacy core assembly or its attempt/workspace tables.
+#
+# Row values are deliberately references. Credentials are existing Kubernetes
+# Secrets; the chart never creates one.
+
+nameOverride: ""
+fullnameOverride: ""
+
+installation:
+  # Stable envelope-encryption binding. Never reuse it for another installation.
+  id: kodama-kernel-example
+
+image:
+  repository: registry.example.invalid/kodama/kodama
+  tag: "0.0.0-placeholder"
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+securityContext:
+  runAsUser: 65532
+  runAsGroup: 65532
+  runAsNonRoot: true
+  privileged: false
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+
+serviceAccounts:
+  server:
+    annotations: {}
+  migration:
+    annotations: {}
+
+server:
+  port: 8080
+  logLevel: INFO
+  shutdownTimeout: 10s
+  terminationGracePeriodSeconds: 30
+  tmpSizeLimit: 256Mi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  probes:
+    liveness:
+      periodSeconds: 10
+      failureThreshold: 3
+    readiness:
+      periodSeconds: 5
+      failureThreshold: 3
+  podAnnotations: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: nginx
+  host: ""
+  annotations: {}
+  tls:
+    enabled: true
+    secretName: ""
+
+publicURL: "https://kodama.example.invalid"
+
+nats:
+  url: "nats://kodama-nats.kodama-system.svc.cluster.local:4222"
+
+oidc:
+  issuer: "https://auth.example.invalid"
+  clientId: "https://kodama.example.invalid/api"
+
+# Existing Secrets. Required keys:
+#   runtime:   database-runtime-url, nats-token, git-control-token,
+#              git-forwarding-key.pem, git-identity-key.pem
+#   migration: database-migration-url
+secrets:
+  runtime:
+    existingSecret: kodama-kernel-runtime
+  migration:
+    existingSecret: kodama-kernel-migration
+  kms:
+    # Holds the provider credential. For Scaleway: secret-key.
+    existingSecret: kodama-kernel-kms
+
+# The selected key provider. Exactly one cloud is configured; production never
+# falls back to a keyfile.
+kms:
+  provider: scw
+  current: v1
+  resources:
+    v1: fr-par/11111111-1111-4111-8111-111111111111
+  startupTimeout: 10s
+  scw:
+    credentialsFile: /etc/kodama/kms/secret-key
+  aws:
+    region: ""
+  gcp: {}
+
+# Kubernetes execution. Every tenant with a target may execute; an absent tenant
+# is denied. Storage is a class the installation has qualified for its CSI.
+execution:
+  storageClass: "standard"
+  workspaceSize: 10Gi
+  runAsUser: 65532
+  runAsGroup: 65532
+  pullPolicy: IfNotPresent
+  serviceAccountName: kodama-execution
+  checkoutImage:
+    # Defaults to the release image when repository is empty in the template;
+    # these placeholders keep the strict schema satisfied in the default file.
+    repository: registry.example.invalid/kodama/kodama
+    tag: "0.0.0-placeholder"
+    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  tenants:
+    - namespace: kodama-tenant-example
+      tenantId: t_example
+  # Public egress and DNS only. Ingress and cluster-internal destinations are
+  # denied, so tenant workloads cannot reach each other, the control plane or
+  # the cloud metadata address.
+  network:
+    dnsNamespace: kube-system
+    publicExcept:
+      - 10.0.0.0/8
+      - 100.64.0.0/10
+      - 127.0.0.0/8
+      - 169.254.0.0/16
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+  quota:
+    pods: "40"
+    requests.cpu: "16"
+    requests.memory: 32Gi
+    requests.ephemeral-storage: 80Gi
+    limits.cpu: "32"
+    limits.memory: 64Gi
+    limits.ephemeral-storage: 200Gi
+  limitRange:
+    default:
+      cpu: "2"
+      memory: 2Gi
+      ephemeral-storage: 8Gi
+    defaultRequest:
+      cpu: 100m
+      memory: 256Mi
+      ephemeral-storage: 1Gi
+
+# Server data: retained run logs and the embedded Git worker roots. The stage
+# uses embedded hosting (KODAMA_GIT_EMBEDDED_ACK=stage-only); the production
+# profile requires per-tenant worker addresses instead.
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  size: 20Gi
+
+git:
+  hosting: embedded
+  embeddedAck: stage-only
+  pollInterval: 5s
+
+migration:
+  enabled: true
+  args: ["migrate"]
+  runtimeRole: kodama_runtime
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi

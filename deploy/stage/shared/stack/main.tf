@@ -12,16 +12,12 @@ locals {
   monitored_namespace_regex = join("|", concat(local.monitored_namespaces, ["kodama-q-[a-z0-9]+(-[a-z0-9]+)?"]))
 
   kodama_values = templatefile("${path.module}/values/kodama.yaml.tftpl", {
-    contract       = var.stage_contract
-    nats_url       = local.nats_url
-    profile        = var.nats_tls ? "external" : "development"
-    kodama_image   = var.kodama_image
-    workload_image = var.example_workload_image
-    git_url        = coalesce(var.git_url, "https://git.${var.stage_contract.network.ingress_host}/optimi/kodama-source.git")
-    registry_url   = coalesce(var.registry_url, "https://registry.${var.stage_contract.network.ingress_host}")
-    oidc_issuer    = coalesce(var.oidc_issuer, "https://auth.${var.stage_contract.network.ingress_host}")
-    oidc_audience  = coalesce(var.oidc_audience, "https://${var.stage_contract.network.ingress_host}/api")
-    custom_ca      = var.custom_ca
+    contract      = var.stage_contract
+    nats_url      = local.nats_url
+    kodama_image  = var.kodama_image
+    oidc_issuer   = coalesce(var.oidc_issuer, "https://auth.${var.stage_contract.network.ingress_host}")
+    oidc_audience = coalesce(var.oidc_audience, "https://${var.stage_contract.network.ingress_host}/api")
+    storage_class = var.storage_class
   })
 
   nats_values = templatefile("${path.module}/values/nats.yaml.tftpl", {
@@ -45,14 +41,9 @@ locals {
 
   deps_host = var.stage_contract.network.ingress_host
 
-  gitea_values = templatefile("${path.module}/values/gitea.yaml.tftpl", {
-    host       = trimsuffix(trimprefix(coalesce(var.git_url, "https://git.${local.deps_host}/optimi/kodama-source.git"), "https://"), "/optimi/kodama-source.git")
-    tls_secret = "kodama-gitea-tls"
-  })
-
   # The Helm provider does not notice edits inside a local chart directory, so the release description
   # carries a digest of every chart file: a chart change always produces an upgrade.
-  kodama_chart_dir    = "${path.module}/../../../charts/kodama"
+  kodama_chart_dir    = "${path.module}/../../../charts/kodama-kernel"
   kodama_chart_digest = substr(sha256(join("", [for f in sort(tolist(fileset(local.kodama_chart_dir, "**"))) : "${f}:${filesha256("${local.kodama_chart_dir}/${f}")}" if !endswith(f, "_test.go")])), 0, 16)
 
   grafana_values = templatefile("${path.module}/values/grafana.yaml.tftpl", {
@@ -142,7 +133,7 @@ resource "helm_release" "kodama" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [local.kodama_values]
-  depends_on       = [helm_release.nats, terraform_data.deps_init, kubernetes_deployment_v1.oauthsonas, kubernetes_secret_v1.runtime, kubernetes_secret_v1.migration, kubernetes_secret_v1.kms_scw, kubernetes_job_v1.bootstrap_sql, helm_release.ingress_nginx, helm_release.cluster_issuer, terraform_data.public_certs]
+  depends_on       = [helm_release.nats, kubernetes_deployment_v1.oauthsonas, kubernetes_secret_v1.kernel_runtime, kubernetes_secret_v1.kernel_migration, kubernetes_secret_v1.kms_scw, kubernetes_job_v1.bootstrap_sql, helm_release.ingress_nginx, helm_release.cluster_issuer, terraform_data.public_certs]
 }
 
 resource "helm_release" "ingress_nginx" {
@@ -156,40 +147,6 @@ resource "helm_release" "ingress_nginx" {
   cleanup_on_fail  = true
   timeout          = 300
   values           = [file("${path.module}/values/ingress-nginx.yaml")]
-}
-
-resource "helm_release" "gitea" {
-  name             = "kodama-gitea"
-  repository       = "https://dl.gitea.com/charts/"
-  chart            = "gitea"
-  version          = var.chart_versions.gitea
-  namespace        = var.deps_namespace
-  create_namespace = false
-  atomic           = true
-  cleanup_on_fail  = true
-  timeout          = 600
-  values           = [local.gitea_values]
-  depends_on       = [helm_release.ingress_nginx, helm_release.cluster_issuer, kubernetes_secret_v1.gitea_admin]
-}
-
-# Creates the stage Git owner, repository and scoped tokens in Gitea and publishes them to the
-# kodama-runtime Secret before the Kodama release (and its migration hook) starts.
-resource "terraform_data" "deps_init" {
-  triggers_replace = [
-    helm_release.gitea.version,
-    var.oauthsonas_image,
-    filesha256("${path.module}/../../scripts/deps-init.sh"),
-  ]
-
-  provisioner "local-exec" {
-    command = "${path.module}/../../scripts/deps-init.sh"
-    environment = {
-      KUBECONFIG            = var.kubeconfig_path
-      KODAMA_DEPS_NAMESPACE = var.deps_namespace
-      KODAMA_GITEA_RELEASE  = helm_release.gitea.name
-      KODAMA_GIT_URL        = coalesce(var.git_url, "https://git.${local.deps_host}/optimi/kodama-source.git")
-    }
-  }
 }
 
 resource "helm_release" "cert_manager" {
@@ -229,7 +186,6 @@ resource "helm_release" "cluster_issuer" {
 resource "terraform_data" "public_certs" {
   triggers_replace = [
     var.oauthsonas_image,
-    helm_release.gitea.version,
     helm_release.grafana.version,
     filesha256("${path.module}/../../scripts/wait-certs.sh"),
   ]
@@ -240,7 +196,6 @@ resource "terraform_data" "public_certs" {
       KUBECONFIG = var.kubeconfig_path
       KODAMA_WAIT_CERTS = join(",", [
         "${var.deps_namespace}/kodama-oauthsonas-tls",
-        "${var.deps_namespace}/kodama-gitea-tls",
         "${var.observability_namespace}/kodama-grafana-tls",
       ])
     }

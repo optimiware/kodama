@@ -300,6 +300,29 @@ func (s *Store) QueuedRuns(ctx context.Context, tenant domain.TenantID) ([]Queue
 	return out, translate(err)
 }
 
+// RunningRuns lists claimed runs for restart adoption. A cancelled run is still
+// listed: its runner must stop the workload and finish it cancelled.
+func (s *Store) RunningRuns(ctx context.Context, tenant domain.TenantID) ([]QueuedRun, error) {
+	var out []QueuedRun
+	err := s.inTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT project_id,id FROM runs WHERE tenant_id=$1 AND status='running'
+			ORDER BY started_at,id LIMIT 64`, tenant)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			q := QueuedRun{TenantID: tenant}
+			if err := rows.Scan(&q.ProjectID, &q.RunID); err != nil {
+				return err
+			}
+			out = append(out, q)
+		}
+		return rows.Err()
+	})
+	return out, translate(err)
+}
+
 func (s *Store) StartStep(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, runID, stepID string) error {
 	return translate(s.inTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `UPDATE run_steps SET status='running', started_at=now(), begin_at=now(),
@@ -336,7 +359,11 @@ func (s *Store) FinishRun(ctx context.Context, tenant domain.TenantID, project d
 
 func (s *Store) RequestCancel(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, runID string) (Run, error) {
 	err := s.inTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `UPDATE runs SET cancel_requested_at=coalesce(cancel_requested_at,now()), version=version+1
+		_, err := tx.Exec(ctx, `UPDATE runs SET
+			cancel_requested_at=coalesce(cancel_requested_at,now()),
+			status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,
+			finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END,
+			version=version+1
 			WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND status IN ('queued','running')`, tenant, project, runID)
 		return err
 	})

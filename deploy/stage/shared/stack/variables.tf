@@ -195,6 +195,12 @@ variable "custom_ca" {
   default     = false
 }
 
+variable "storage_class" {
+  description = "StorageClass for the kernel server data volume and per-run workspaces. The installation must qualify it for its CSI and ReadWriteOnce semantics."
+  type        = string
+  default     = "scw-bssd"
+}
+
 variable "chart_versions" {
   description = "Pinned upstream Helm chart versions for shared backend and observability services."
   type = object({

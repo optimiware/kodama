@@ -33,8 +33,15 @@ resource "kubernetes_namespace_v1" "deps" {
   }
 }
 
-# Runtime P-256 signing key (PKCS#8 PEM), the key tokens of the workload runtime API are signed with.
-resource "tls_private_key" "runtime_signing" {
+# Runtime P-256 signing keys (PKCS#8 PEM) of the embedded native Git service. Each
+# installation keeps its own keys; rotating either one invalidates outstanding Git
+# forwarding assertions and worker identities only.
+resource "tls_private_key" "git_forwarding" {
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P256"
+}
+
+resource "tls_private_key" "git_identity" {
   algorithm   = "ECDSA"
   ecdsa_curve = "P256"
 }
@@ -64,21 +71,13 @@ resource "random_password" "nats_token" {
   special = false
 }
 
-resource "random_bytes" "cursor_key" {
-  length = 32
-}
-
-resource "random_bytes" "idempotency_hash_key" {
-  length = 32
+resource "random_password" "git_control_token" {
+  length  = 48
+  special = false
 }
 
 resource "random_password" "grafana_admin" {
   length  = 32
-  special = false
-}
-
-resource "random_password" "gitea_admin" {
-  length  = 40
   special = false
 }
 
@@ -184,60 +183,26 @@ resource "kubernetes_job_v1" "bootstrap_sql" {
   }
 }
 
-# ---- Git tokens minted by deps-init.sh (read back so the runtime Secret is declarative) ----
-
-data "kubernetes_secret_v1" "git_tokens" {
-  metadata {
-    name      = "kodama-git-tokens"
-    namespace = var.deps_namespace
-  }
-  depends_on = [terraform_data.deps_init]
-}
-
 # ---- Secrets and ConfigMaps ----
 
-resource "kubernetes_secret_v1" "runtime" {
+resource "kubernetes_secret_v1" "kernel_runtime" {
   metadata {
-    name      = "kodama-runtime"
+    name      = "kodama-kernel-runtime"
     namespace = kubernetes_namespace_v1.control_plane.metadata[0].name
   }
 
   data = {
-    "database-runtime-url" = "postgres://${local.pg.runtime_role}:${local.runtime_password}@${local.pg.host}:${local.pg.port}/${local.pg.database}?sslmode=${local.pg.ssl_mode}"
-    "nats-token"           = random_password.nats_token.result
-    "git-read-token"       = data.kubernetes_secret_v1.git_tokens.data["read"]
-    "git-write-token"      = data.kubernetes_secret_v1.git_tokens.data["write"]
-    "runtime-signing-key"  = tls_private_key.runtime_signing.private_key_pem_pkcs8
-    "runtime-ca.crt"       = file("${path.module}/values/isrg-roots.pem")
-    "s3-access-key"        = var.bootstrap_secrets["artifacts_s3_access_key"]
-    "s3-secret-key"        = var.bootstrap_secrets["artifacts_s3_secret_key"]
-    "git-credentials.json" = jsonencode([
-      {
-        ref          = "secret://installation/checkout"
-        username     = "git"
-        passwordFile = "git-read-token"
-        urlPrefix    = local.git_origin
-        tenants      = local.tenant_ids
-      },
-      {
-        ref          = "secret://installation/publisher"
-        username     = "git"
-        passwordFile = "git-write-token"
-        urlPrefix    = local.git_origin
-        tenants      = local.tenant_ids
-      },
-    ])
-  }
-
-  binary_data = {
-    "cursor-key"           = random_bytes.cursor_key.base64
-    "idempotency-hash-key" = random_bytes.idempotency_hash_key.base64
+    "database-runtime-url"   = "postgres://${local.pg.runtime_role}:${local.runtime_password}@${local.pg.host}:${local.pg.port}/${local.pg.database}?sslmode=${local.pg.ssl_mode}"
+    "nats-token"             = random_password.nats_token.result
+    "git-control-token"      = random_password.git_control_token.result
+    "git-forwarding-key.pem" = tls_private_key.git_forwarding.private_key_pem_pkcs8
+    "git-identity-key.pem"   = tls_private_key.git_identity.private_key_pem_pkcs8
   }
 }
 
-resource "kubernetes_secret_v1" "migration" {
+resource "kubernetes_secret_v1" "kernel_migration" {
   metadata {
-    name      = "kodama-migration"
+    name      = "kodama-kernel-migration"
     namespace = kubernetes_namespace_v1.control_plane.metadata[0].name
   }
 
@@ -297,17 +262,6 @@ resource "kubernetes_config_map_v1" "grafana_dashboards" {
   }
   data = {
     "kodama-pipeline-logs.json" = file("${path.module}/values/dashboards/kodama-pipeline-logs.json")
-  }
-}
-
-resource "kubernetes_secret_v1" "gitea_admin" {
-  metadata {
-    name      = "kodama-gitea-admin"
-    namespace = kubernetes_namespace_v1.deps.metadata[0].name
-  }
-  data = {
-    "username" = "kodama-admin"
-    "password" = random_password.gitea_admin.result
   }
 }
 

@@ -24,6 +24,24 @@ Detailed record of what `kodama server` composes today, kept out of the reposito
 
 **Not wired or not qualified.** Kubernetes installation of the per-tenant workers (T-156/T-157) and the production profile; stage acceptance (T-133); backup, restore and offboarding of tenant Git volumes; managed-agent and MCP Git tools; full `kodactl` coverage of the routes above; provider import; TLS on the `test` profile's workers; host-run servers against the `test` profile's per-tenant containers (the `{tenantId}` template resolves container names on the scope network). The published API document describes the kernel Git routes; the core assembly below does not serve them and answers 404. No production, hosted or stage qualification is claimed.
 
+### Kubernetes stage composition (implemented, receipt pending)
+
+`deploy/charts/kodama-kernel` runs this kernel assembly on Kubernetes. The
+server uses a cloud KMS provider at startup (Scaleway Key Manager,
+AWS KMS or GCP Cloud KMS) and a strict `kube.json` tenant map. Each run creates a
+ReadWriteOnce workspace claim, a checkout Job in the tenant namespace and one
+restricted Job per step; the step Jobs mount the same claim and only the
+declared secret files. `/readyz` pings PostgreSQL; a running step is cancelled
+from a committed `cancel_requested_at`; the startup loop adopts every
+`running` run by its deterministic Job names.
+
+For this disposable test stage the native Git workers run in-process on the
+server's retained volume under the explicit O-37 acknowledgement. The
+`test/e2e/kube-kernel` suite (five named readiness checks) covers clean install,
+database outage, shared workspace/logs, tenant denial, native Git seed push and
+trigger, run-scoped publication, KMS-backed secrets across restart, cancellation
+and adoption. The live stage receipt is not yet recorded.
+
 ## Core assembly (T-070)
 
 The first executable slice of the product. `internal/app` explicitly constructs the identity authority (standalone profile, OIDC bearer tokens), the tenant stores over the non-owner PostgreSQL role, the declared migrations, the HTTP routes below, the event workers and the T-062 runtime-enabled execution store; nothing is registered implicitly and a missing binding fails startup or fails closed. It is selected with `--assembly core` (or `KODAMA_ASSEMBLY=core`). `kodama server` without it stays the health-only scaffold: the default has not been switched to the core assembly, so a binary is never mistaken for a complete factory.

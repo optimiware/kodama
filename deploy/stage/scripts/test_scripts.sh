@@ -81,16 +81,12 @@ locals {
   monitored_namespace_regex = join("|", concat(local.monitored_namespaces, ["kodama-q-[a-z0-9]+(-[a-z0-9]+)?"]))
 
   kodama_values = templatefile("${STAGE_DIR}/shared/stack/values/kodama.yaml.tftpl", {
-    contract       = var.stage_contract
-    nats_url       = local.nats_url
-    profile        = var.nats_tls ? "external" : "development"
-    kodama_image   = var.kodama_image
-    workload_image = var.example_workload_image
-    git_url        = coalesce(var.git_url, "https://git.\${var.stage_contract.network.ingress_host}/optimi/kodama-source.git")
-    registry_url   = coalesce(var.registry_url, "https://registry.\${var.stage_contract.network.ingress_host}")
-    oidc_issuer    = coalesce(var.oidc_issuer, "https://auth.\${var.stage_contract.network.ingress_host}")
-    oidc_audience  = coalesce(var.oidc_audience, "https://\${var.stage_contract.network.ingress_host}/api")
-    custom_ca      = var.custom_ca
+    contract      = var.stage_contract
+    nats_url      = "\${var.nats_tls ? "tls" : "nats"}://kodama-nats.\${var.control_plane_namespace}.svc.cluster.local:4222"
+    kodama_image  = var.kodama_image
+    oidc_issuer   = coalesce(var.oidc_issuer, "https://auth.\${var.stage_contract.network.ingress_host}")
+    oidc_audience = coalesce(var.oidc_audience, "https://\${var.stage_contract.network.ingress_host}/api")
+    storage_class = var.storage_class
   })
   nats = templatefile("${STAGE_DIR}/shared/stack/values/nats.yaml.tftpl", {
     namespace = var.control_plane_namespace
@@ -123,8 +119,8 @@ EOF
     tofu -chdir="${RENDER_DIR}" console <<<"jsonencode(local.${tpl})" \
       | python3 -c 'import json,sys; sys.stdout.write(json.loads(json.loads(sys.stdin.read().strip())))' >"${RENDER_DIR}/${tpl}.yaml"
   done
-  helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
-  helm template kodama "${REPO_ROOT}/deploy/charts/kodama" --namespace kodama-system -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
+  helm lint --strict "${REPO_ROOT}/deploy/charts/kodama-kernel" -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
+  helm template kodama "${REPO_ROOT}/deploy/charts/kodama-kernel" --namespace kodama-system -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
 done
 
 log_info "4. Shared stack: OpenTofu validation and chart/Secret key drift checks"
@@ -150,7 +146,7 @@ tofu -chdir="${STAGE_DIR}/shared/stack" validate >/dev/null
 tofu -chdir="${STAGE_DIR}/qualification" init -input=false -backend=false >/dev/null
 tofu -chdir="${STAGE_DIR}/qualification" validate >/dev/null
 
-helm template kodama "${REPO_ROOT}/deploy/charts/kodama" --namespace kodama-system -f "${WORK_DIR}/values-scw.yaml" >"${WORK_DIR}/chart-scw.yaml"
+helm template kodama "${REPO_ROOT}/deploy/charts/kodama-kernel" --namespace kodama-system -f "${WORK_DIR}/values-scw.yaml" >"${WORK_DIR}/chart-scw.yaml"
 python3 - "${WORK_DIR}/chart-scw.yaml" "${STAGE_DIR}/shared/stack/secrets.tf" <<'PY'
 import re
 import sys
@@ -166,18 +162,18 @@ def secret_block(name: str) -> str:
     return m.group(1)
 
 
-blocks = {"kodama-runtime": secret_block("runtime"), "kodama-migration": secret_block("migration")}
+blocks = {"kodama-kernel-runtime": secret_block("kernel_runtime"), "kodama-kernel-migration": secret_block("kernel_migration")}
 checked = 0
 for secret_name, block in blocks.items():
     for m in re.finditer(r"secretName: %s\n(.*?)(?:\n        - name:|\n      containers:|\n---)" % re.escape(secret_name), chart, re.S):
-        for key in re.findall(r"- key: (\S+)", m.group(1)):
+        for key in re.findall(r"- \{key: ([^,}]+)", m.group(1)):
             checked += 1
-            if '"%s"' % key not in block:
-                raise SystemExit(f"chart mounts {secret_name} key {key!r} but shared/stack does not generate it")
-if checked < 8:
+            if '"%s"' % key.strip() not in block:
+                raise SystemExit(f"chart mounts {secret_name} key {key.strip()!r} but shared/stack does not generate it")
+if checked < 5:
     raise SystemExit(f"only {checked} mounted Secret keys found; the drift check is not reading the chart")
 
-for tpl in ("kodama", "gitea", "grafana"):
+for tpl in ("kodama", "grafana"):
     text = open(sys.argv[2].replace("secrets.tf", f"values/{tpl}.yaml.tftpl"), encoding="utf-8").read()
     if "cert-manager.io/cluster-issuer: letsencrypt" not in text:
         raise SystemExit(f"the {tpl} ingress does not request a Let's Encrypt certificate")
@@ -276,14 +272,13 @@ doc = {
         "suite_passed": True,
     },
 }
-if "kube_chart_install" in tests:
+if "kernel_clean_install" in tests:
     head = subprocess.check_output(["git", "-C", os.environ["STAGE_DIR"], "rev-parse", "HEAD"], text=True).strip()
-    probe = "registry.invalid/probe@sha256:" + "a" * 64
     doc["provenance"].update({
-        "candidate_stable": True, "probe_image": probe, "fault_config": {"applied": True},
-        "image_revisions": [{"image": "registry.invalid/kodama@sha256:" + "b" * 64, "revision": head}, {"image": probe, "revision": head}],
+        "candidate_stable": True,
+        "image_revisions": [{"image": "registry.invalid/kodama@sha256:" + "b" * 64, "revision": head}],
     })
-if "kube_chart_install" in tests or "stage_clean_install" in tests:
+if "kernel_clean_install" in tests or "stage_clean_install" in tests:
     doc["runner_exit"] = 0
     doc["packages"] = [{"package": p, "action": "pass"} for p in sorted({ACCEPTANCE[n]["package"] for n in tests if n in ACCEPTANCE})]
 if "stage_clean_install" in tests:
@@ -297,8 +292,7 @@ prepare_results_for_contract() {
   local c_file="$1"
   local v_file="$2"
   write_bound_results "${c_file}" "${v_file}" "${RESULTS_DIR}/readiness.json" \
-    kube_chart_install kube_m1_roundtrip kube_cancel_restart kube_secrets_kms \
-    execution_assembly_roundtrip execution_assembly_cancel_restart execution_assembly_result_guard
+    kernel_clean_install kernel_pipeline kernel_git kernel_secrets_kms kernel_cancel_restart
   write_bound_results "${c_file}" "${v_file}" "${RESULTS_DIR}/staging.json" \
     stage_clean_install stage_e2e_roundtrip stage_restart_reconcile \
     stage_loki_log_search stage_dev_adapter_refused stage_retention_uninstall
@@ -318,8 +312,8 @@ prepare_results_for_contract "${WORK_DIR}/contract-aws.json" "${WORK_DIR}/values
 cat >"${WORK_DIR}/no-prov.json" <<'EOF'
 {
   "passed": [
-    "kube_chart_install", "kube_m1_roundtrip", "kube_cancel_restart", "kube_secrets_kms",
-    "execution_assembly_roundtrip", "execution_assembly_cancel_restart", "execution_assembly_result_guard"
+    "kernel_clean_install", "kernel_pipeline", "kernel_git", "kernel_secrets_kms",
+    "kernel_cancel_restart"
   ],
   "failed": [],
   "skipped": []
@@ -345,21 +339,18 @@ if "${STAGE_DIR}/scripts/checks/readiness.sh" \
 fi
 
 # 6c. Pass readiness, then run a failing readiness and confirm the prior receipt is invalidated and blocks staging
-for mutation in child_skip child_missing wrong_backend missing_package_case; do
+for mutation in wrong_backend missing_package_case; do
   python3 - "${RESULTS_DIR}/readiness.json" "${WORK_DIR}/mutated-results.json" "${mutation}" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 mutation = sys.argv[3]
 for case in d["acceptances"]:
-    if case["name"] == "kube_cancel_restart":
-        if mutation == "child_skip": case["cases"]["lost_create_acknowledgment"] = "skip"
-        if mutation == "child_missing": case["cases"].pop("lost_create_acknowledgment")
-        if mutation == "missing_package_case": case["package"] = "wrong/package"
-    if case["name"] == "execution_assembly_roundtrip" and mutation == "wrong_backend": case["backend"] = "podman"
+    if case["name"] == "kernel_cancel_restart" and mutation == "missing_package_case": case["package"] = "wrong/package"
+    if case["name"] == "kernel_git" and mutation == "wrong_backend": case["backend"] = "podman"
 json.dump(d, open(sys.argv[2], "w"))
 PY
   if verify_forge_results "${WORK_DIR}/mutated-results.json" "${WORK_DIR}/contract-aws.json" "${WORK_DIR}/values-aws.yaml" \
-    kube_cancel_restart execution_assembly_roundtrip 2>/dev/null; then
+    kernel_cancel_restart kernel_git 2>/dev/null; then
     die "expected ${mutation} to be rejected despite passing parent tests"
   fi
 done
@@ -371,8 +362,8 @@ done
 python3 - "${RESULTS_DIR}/readiness.json" "${WORK_DIR}/skipped-readiness.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
-d["passed"].remove("kube_secrets_kms")
-d["skipped"] = ["kube_secrets_kms"]
+d["passed"].remove("kernel_secrets_kms")
+d["skipped"] = ["kernel_secrets_kms"]
 json.dump(d, open(sys.argv[2], "w"))
 PY
 if "${STAGE_DIR}/scripts/checks/readiness.sh" \

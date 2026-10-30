@@ -115,15 +115,42 @@ func (r *Runner) Execute(ctx context.Context, q store.QueuedRun) error {
 	if err != nil {
 		return err
 	}
+	return r.run(ctx, run)
+}
+
+// Resume continues a run this process (or a previous one) already claimed. It is
+// called at startup for every running run, so a controller restart adopts the
+// steps' named Jobs instead of abandoning them.
+func (r *Runner) Resume(ctx context.Context, q store.QueuedRun) error {
+	run, err := r.cfg.Store.GetRun(ctx, q.TenantID, q.ProjectID, q.RunID)
+	if err != nil {
+		return err
+	}
+	if run.Status != "running" {
+		return nil
+	}
+	return r.run(ctx, run)
+}
+
+var errCancelRequested = errors.New("runner: the run was cancelled")
+
+func (r *Runner) run(ctx context.Context, run store.Run) error {
 	def, err := decodeDefinition(run.Definition)
 	if err != nil {
 		return r.fail(ctx, run, "invalid_definition", err)
 	}
 	workspace, cleanup, err := r.cfg.Backend.Prepare(ctx, domain.Scope{TenantID: run.TenantID, ProjectID: run.ProjectID}, run.ID)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil // shutdown: leave the run claimed for adoption
+		}
 		return r.fail(ctx, run, "workspace_unavailable", err)
 	}
+	abandon := false
 	defer func() {
+		if abandon {
+			return
+		}
 		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
 		if err := cleanup(cctx); err != nil {
@@ -135,6 +162,10 @@ func (r *Runner) Execute(ctx context.Context, q store.QueuedRun) error {
 	// empty or partial workspace. The credential files end with the run.
 	rg, err := r.prepareGit(ctx, run, workspace)
 	if err != nil {
+		if ctx.Err() != nil {
+			abandon = true
+			return nil // shutdown: the next process retries preparation
+		}
 		return r.failSource(ctx, run, err)
 	}
 	defer func() { _ = rg.Close() }()
@@ -148,12 +179,20 @@ func (r *Runner) Execute(ctx context.Context, q store.QueuedRun) error {
 		if !ok {
 			return r.fail(ctx, run, "missing_step", fmt.Errorf("run has no step %q", name))
 		}
+		switch row.Status {
+		case "succeeded":
+			continue
+		case "failed", "cancelled", "skipped":
+			return r.fail(ctx, run, "step_not_retryable", fmt.Errorf("step %q is %s", row.StepKey, row.Status))
+		}
 		if current, err := r.cfg.Store.GetRun(ctx, run.TenantID, run.ProjectID, run.ID); err == nil && current.CancelRequestedAt != nil {
 			_ = r.cfg.Store.FinishRun(ctx, run.TenantID, run.ProjectID, run.ID, "cancelled", "cancel_requested")
 			return nil
 		}
-		if err := r.cfg.Store.StartStep(ctx, run.TenantID, run.ProjectID, run.ID, row.ID); err != nil {
-			return r.fail(ctx, run, "step_start_failed", err)
+		if row.Status == "pending" {
+			if err := r.cfg.Store.StartStep(ctx, run.TenantID, run.ProjectID, run.ID, row.ID); err != nil {
+				return r.fail(ctx, run, "step_start_failed", err)
+			}
 		}
 		logPath := filepath.Join(r.cfg.LogDir, string(run.TenantID)+"_"+string(run.ProjectID)+"_"+run.ID, row.StepKey+".log")
 		if err := os.MkdirAll(filepath.Dir(logPath), 0o750); err != nil {
@@ -165,6 +204,14 @@ func (r *Runner) Execute(ctx context.Context, q store.QueuedRun) error {
 		}
 		code, runErr := r.runStep(ctx, run, def, row, workspace, rg, logFile)
 		_ = logFile.Close()
+		if ctx.Err() != nil {
+			abandon = true
+			return nil // graceful shutdown: keep the step running for adoption
+		}
+		if errors.Is(runErr, errCancelRequested) {
+			_ = r.cfg.Store.FinishStep(ctx, run.TenantID, run.ProjectID, run.ID, row.ID, "cancelled", "cancel_requested", code, "file://"+logPath)
+			return r.cfg.Store.FinishRun(ctx, run.TenantID, run.ProjectID, run.ID, "cancelled", "cancel_requested")
+		}
 		status, reason := "succeeded", ""
 		if runErr != nil {
 			status, reason = "failed", classify(runErr)
@@ -223,6 +270,26 @@ func (r *Runner) runStep(ctx context.Context, run store.Run, def pipeline.Docume
 	}
 	sctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	stopWatch := make(chan struct{})
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-stopWatch:
+				return
+			case <-sctx.Done():
+				return
+			case <-t.C:
+				current, err := r.cfg.Store.GetRun(sctx, run.TenantID, run.ProjectID, run.ID)
+				if err == nil && current.CancelRequestedAt != nil {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	defer close(stopWatch)
 	// A credential past half its lifetime is rotated before the step and while it
 	// runs; one the run's end revoked is removed, never reused.
 	if err := rg.Refresh(sctx); err != nil {
@@ -234,6 +301,9 @@ func (r *Runner) runStep(ctx context.Context, run store.Run, def pipeline.Docume
 		StepKey: row.StepKey, Image: row.Image, Commands: step.Commands, Env: env,
 		SecretsDir: secretsDir, GitDir: rg.Dir(), Workspace: workspace, Timeout: timeout,
 	}, log)
+	if errors.Is(sctx.Err(), context.Canceled) && ctx.Err() == nil {
+		return code, errCancelRequested
+	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(sctx.Err(), context.DeadlineExceeded) {
 		return code, fmt.Errorf("%w: step deadline exceeded", ErrTimeout)
 	}
