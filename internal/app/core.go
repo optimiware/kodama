@@ -455,9 +455,11 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	validator, err := pipeline.NewValidator(pipeline.Config{
 		Capabilities: kinds, Profiles: profileLookup,
 		References: pipelineReferences{authority: authority, catalog: secretStore, environments: envRefs},
-		// kodama/v1alpha2 is registrable exactly when run_shared is composed; the
-		// execution service refuses it independently when it is not.
+		// kodama/v1alpha2 and v1alpha3 are registrable exactly when run_shared
+		// is composed; the execution service refuses them independently when it
+		// is not.
 		EnableV1Alpha2: cfg.runSharedConfigured(),
+		EnableV1Alpha3: cfg.runSharedConfigured(),
 	})
 	if err != nil {
 		return err
