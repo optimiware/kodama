@@ -1211,3 +1211,30 @@ DSL inside the deploy engine, automatic database rollback, and a deployment UI.
 Executable custom-driver launching can follow the frozen protocol after the
 three built-in adapters establish its real needs. Nothing requires those
 extensions to deliver the two example projects.
+
+## 15. Implementation status in this branch
+
+The following slice is implemented and exercised locally:
+
+| Area | State |
+| --- | --- |
+| `contracts/state/v1` | Implemented with bounded values, keys, artifact references and ETags |
+| `internal/state` | Memory Store, conditional lifecycle, runtime HTTP handler and tests |
+| `pkg/pluginruntime/state` | HTTP client with create/read/update/delete/list and token-file refresh |
+| `images/plugins/deploy` | Shared engine, operation journal, checkpointing, apply/status/reconcile/cleanup/rollback CLI |
+| `drivers/kubernetes` | Bundle manifest apply, rollout and inventory observation, Deployment cleanup |
+| `drivers/cloudflare` | Wrangler apply/observe/delete/rollback driver with controlled-command tests |
+| `drivers/gcp` | Cloud Run apply/observe/delete/rollback driver with controlled-command tests |
+| Templates | Agent-development and Cloudflare-website project shapes |
+| Real local test | `test/integration/deploy-plugins` creates/reuses kind, builds the plugin, applies a dummy nginx Deployment through the plugin, observes readiness and cleans it up |
+
+Not yet implemented in this branch:
+
+- PostgreSQL state storage, RLS, quotas and artifact-reference transactions.
+- Runtime v1alpha3/v3 binding and admission of `state`/`artifactFiles`.
+- Generic project/source-free run admission and the Git trigger planner change.
+- Generic gate/QA evidence integration and the legacy delivery-core removal.
+- Real Cloudflare/GCP account qualification; their tests use controlled provider commands.
+
+The local test is intentionally explicit about this boundary. It proves the
+engine and Kubernetes provider path, not the full planned cutover.
