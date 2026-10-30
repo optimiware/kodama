@@ -21,6 +21,12 @@ import (
 
 type resolver struct{}
 
+type allowReferences struct{}
+
+func (allowReferences) VerifyArtifact(context.Context, state.Scope, domain.ArtifactID, string) error {
+	return nil
+}
+
 func (resolver) ResolveBinding(_ context.Context, _ *http.Request, attempt, alias string) (state.Scope, state.Binding, error) {
 	if attempt != "att_demo" || alias != "release" {
 		return state.Scope{}, state.Binding{}, state.ErrDenied
@@ -59,6 +65,7 @@ func TestKubernetesPluginDeploysDummyApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	handler.Artifacts = allowReferences{}
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
