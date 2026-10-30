@@ -14,6 +14,8 @@
 
 Uncommitted scratch files, shared run scratch and service state are explicitly outside recovery; a lost run is rerun from a pinned Git commit. Git and object retention must cover every supported database recovery point. Upload/publication is confirmed before metadata claims durability; subsequent garbage collection respects referenced runs/gates and backup windows.
 
+**ADR 0012 extension (pending):** release manifests and publication receipts live in PostgreSQL; referenced file bytes live in S3 and OCI content in the configured registries. Backup/retention must cover all referenced manifests, indexes, layers and chart content, including target-accessible copies needed for rollback. A receipt proves an observation at its verification time, not perpetual availability. A release/deployment pin prevents Kodama's own deletion but cannot prevent external registry garbage collection. T-141/T-145 wire retention and T-146 qualifies the joined path; the existing artifact orphan sweep alone does not implement O-11 release retention.
+
 ## Approved retention and recovery baseline
 
 The owner accepted this O-11 baseline on 2026-10-20. These are implementation and qualification objectives; T-029/T-056 must measure them on the supported installation before they become advertised service guarantees.
@@ -38,6 +40,8 @@ Record actual dependency versions, hardware and measured recovery results. Objec
 Offboarding reports separately identify approved retained audit metadata, active reference pins, supported-release material and backup/key expiry, including any outstanding deletion exception. They must not report complete erasure while required retained copies remain. Broker/outbox/inbox deduplication and cursor windows retain their independently qualified protocol horizons; the numbers above do not silently redefine safe replay.
 
 ## Upgrade
+
+ADR 0012's [migration checkpoint](../contracts/artifacts-and-releases.md#version-and-migration-checkpoint) preserves old context/result/gate hashes and legacy delivery records. Drain old attempts and outstanding preview cleanup before removing their mutation protocol/tool-catalogue wiring. Generic deployments use new versioned shapes; a legacy image record may project one artifact but must not invent a historical release. A rollback deployment is a new run with exact retained outputs/configuration and currently authorized credential pins, distinct from rolling back the Kodama server binary.
 
 A `run_shared` run records its model, runtime context version and execution policy; an older controller refuses it rather than adopting it with old semantics. Before rolling the controller back, stop admission, cancel or drain `run_shared` runs and reconcile their resources. Policy versions are append-only and retained while any nonterminal run pins them.
 

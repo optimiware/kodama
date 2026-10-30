@@ -1,6 +1,6 @@
 # Workspaces
 
-**Scope:** M1, Git-backed source continuity. Human editor access is ordinary Git clone/commit/push. Internally hosted repositories ([ADR 0011](../adr/0011-internal-tenant-git-service.md), designed) change who pushes, as described in [internally hosted repositories](#internally-hosted-repositories); the rest of this specification is unchanged for external repositories. The durable **workspace** below is unchanged by either run model; what a run mounts as `/workspace` is *run scratch* (`attempt_private` per attempt today, `run_shared` per run under [ADR 0010](../adr/0010-run-workspace-services-builders.md)), never a second source authority.
+**Scope:** M1, Git-backed source continuity. Human editor access is ordinary Git clone/commit/push. Internally hosted repositories ([ADR 0011](../adr/0011-internal-tenant-git-service.md), designed) change who pushes, as described in [internally hosted repositories](#internally-hosted-repositories); the rest of this specification is unchanged for external repositories. The durable **workspace** (**source workspace**) below retains the existing `workspace` API names and is unchanged by either run model; what a run mounts as `/workspace` is the **run workspace** (`attempt_private` per-attempt scratch today, `run_shared` per-run shared filesystem under [ADR 0010](../adr/0010-run-workspace-services-builders.md)), never a second source authority ([ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md)).
 
 ## Model
 
@@ -37,6 +37,10 @@ Normative design of the `kodama/v1alpha2` model; implementation T-113–T-117; n
 - **Git hardening.** Git runs with explicit sanitized configuration; repository- or tenant-written config, hooks, filters, credential helpers, attributes, symlinks and changed ownership are never trusted. The entrypoint's pre-command verification (the prepared commit's objects are present and `/workspace` is a usable repository) fails the attempt before any command as `workspace_unverified`.
 - **Loss and recovery.** Scratch is disposable. If it is lost or cannot be verified after any command began, the run fails with an explicit reason; execution never reclones and resumes later steps as though files survived. A rerun is a new run with new scratch from a pinned commit; durable recovery is the last published commit plus retained artifacts. Scratch never creates or acknowledges a checkpoint (WS-06).
 - **Provenance.** The entrypoint reports workspace state at command begin; the server records it with produced artifacts so evidence is never labeled as built from an unchanged candidate when scratch differed ([DQ-16](delivery-and-quality-gates.md#requirements)).
+
+### Retained outputs (ADR 0012)
+
+The run workspace is shared working state, not an artifact version store. Generated assets, binaries and reports may flow between steps without commits or intermediate transfers. Declare selected files as artifacts for retention; package directories explicitly. A subsequent run fetches exact retained inputs through the [artifact contract](../contracts/artifacts-and-releases.md), rather than mounting an old run's volume. Source checkpoints still require confirmed Git publication. DQ-18/DQ-19 refine approval of generated outputs after the new contract cutover; old DQ-16 contexts keep their recorded meaning.
 
 ## Internally hosted repositories
 

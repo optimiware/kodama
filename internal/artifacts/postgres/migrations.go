@@ -9,6 +9,9 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+//go:embed migrations_releases/*.sql
+var releaseMigrationsFS embed.FS
+
 // WorkspaceProvenanceMigrationID is the one later change this package contributes
 // to the squashed baseline (internal/storage/migrations/001_schema.sql).
 const WorkspaceProvenanceMigrationID = "005_artifact_workspace_provenance.sql"
@@ -25,4 +28,18 @@ func ProvenanceMigrations() storage.Contribution {
 		panic(err) // embedded at build time; covered by the migration tests
 	}
 	return storage.Contribution{Module: "artifacts-workspace-provenance", Migrations: ms}
+}
+
+// ReleaseMigrationsMigrationID is the additive migration for ADR-0012 release
+// manifests and publication receipts.
+const ReleaseMigrationsMigrationID = "006_artifact_releases_and_publications.sql"
+
+// ReleaseMigrations returns the artifact release and publication tables as an
+// additive contribution after the workspace provenance migration (005).
+func ReleaseMigrations() storage.Contribution {
+	ms, err := storage.LoadFS(releaseMigrationsFS, "migrations_releases")
+	if err != nil {
+		panic(err)
+	}
+	return storage.Contribution{Module: "artifacts-releases", Migrations: ms}
 }

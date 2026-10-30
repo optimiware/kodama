@@ -8,9 +8,15 @@ import (
 )
 
 func TestIDSyntax(t *testing.T) {
-	for _, ok := range []string{"t_acme", "wi_1042", "A", "0", "a-b_c", strings.Repeat("a", 128)} {
+	for _, ok := range []string{"t_acme", "wi_1042", "rel_01", "pub_01", "A", "0", "a-b_c", strings.Repeat("a", 128)} {
 		if err := TenantID(ok).Validate(); err != nil {
 			t.Errorf("%q rejected: %v", ok, err)
+		}
+		if err := ReleaseID(ok).Validate(); err != nil {
+			t.Errorf("ReleaseID %q rejected: %v", ok, err)
+		}
+		if err := PublicationID(ok).Validate(); err != nil {
+			t.Errorf("PublicationID %q rejected: %v", ok, err)
 		}
 	}
 	for _, bad := range []string{"", "_x", "-x", "a b", "a/b", "a.b", "t:1", "é", "a\n", strings.Repeat("a", 129)} {

@@ -19,6 +19,9 @@ Active requirements and design preferences are in the [specifications](README.md
 | Model gateway and MCP proxy | GM-01–GM-12 | T-032, T-033, T-038 |
 | Source/evidence gates | DQ-01–DQ-06, DQ-11, DQ-13–DQ-14 (DQ-16 `run_shared` above) | T-003/T-034; T-084 unit policy; T-068 CLI; T-072 wiring; T-073/T-038 actual SQL/checkpoint; T-044 business loop |
 | Plain build/deploy, preview/stage | DQ-07–DQ-10, DQ-15 | T-076/T-035/T-062 → T-077/T-066 unit-tested binding → T-072 wiring; T-065/T-067/T-038 actual local checkpoint; T-037 CLI; blueprint expansion deferred T-047/T-069 |
+| Container-first SDLC and optional managed agents (ADR 0012; pending) | PX-26/PX-27, AR-16/AR-17, VS-15; PX-A22/PX-A23, AR-A10/AR-A11, VS-A12 | T-140 checkpoint → T-142 input/secret/profile integration → T-145 assembly → T-146 actual acceptance |
+| Native artifact catalogue, immutable releases and publication (ADR 0012; pending) | AF-01–AF-10; AF-A01–AF-A08 | T-140 → T-141 records/retention → T-142 consumption → T-144 publication → T-145 CLI/API → T-146 SQL/S3/registry/isolated-target evidence |
+| Generic delivery, generated-output evidence and rollback (ADR 0012; pending) | DQ-18–DQ-22; DQ-A14–DQ-A17; DQ-14 explicitly scoped to required managed/project conformance | T-140 versioned contract → T-142 gates/provenance → T-143 records → T-145 legacy drain/removal → T-146 acceptance; DQ-16/DQ-A12 stay legacy until cutover |
 | E2E, exploratory QA, defects | AR-12, DQ-06, DQ-10 | T-040 mapping → T-075/T-046 unit wiring → T-044 local checkpoint; browser/profile qualification deferred to T-069 |
 | Git triggers and ChatOps | AC-07–AC-09 | T-036, T-041, T-075, T-046/T-044 |
 | Helm and local workflow | Installation / entrypoint contracts | T-001, T-018, T-027, T-026; T-103 remaining M1 defects; O-24/O-26: T-089 component checkpoint, T-105/T-103 → T-104 live KMS, ready chart and assembled Kubernetes roundtrips → T-090 staging |

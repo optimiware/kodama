@@ -38,7 +38,7 @@ Platform may submit work through a selected Kodama installation's public API and
 
 CLI, HTTP API, MCP and webhooks are the primary product surfaces. O-15 selects Platform as the only intended host of an optional UI, likely its existing `packages/dashboard`; T-050/T-051/T-060 remain deferred. Their local `web/` ownership is removed. An upstream-owned task must agree the actual shell, accessibility and API/auth handoff before UI work is scheduled; no second dashboard is implied.
 
-Platform remains the edge/cloud delivery layer for customers' built artifacts. Cloudflare, Fastly and GCP worker-style targets are possible later Platform operations, not new Kodama executors. Whether invocation uses a supported Platform HTTP operation or MCP mutation is still open; the reviewed MCP surface is read-only. Keep the first Kodama deployment contract (namespace-scoped Kubernetes plus ordinary scripts) until an upstream mutation/delegation contract is accepted.
+Platform-owned edge/cloud operations retain their own mutation/release authority. Whether invocation uses a supported Platform HTTP operation or MCP mutation remains an integration question; the reviewed MCP surface is read-only. Independently, [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) permits ordinary containers to deploy to external targets using explicitly authorized project credentials (for example Wrangler, Terraform/OpenTofu or Helm). Such a script does not become a Platform adapter or bypass hosted credential/core policy. Kubernetes namespaces are one recipe, not a universal prerequisite for non-Platform deployment.
 
 ## Shared libraries
 

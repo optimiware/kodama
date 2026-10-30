@@ -19,7 +19,7 @@
 | C-11 | Retain outbox → JetStream → inbox deduplication; NATS is a durable event bus |
 | C-12 | Git commits are checkpoints; runtime scratch is disposable; [ADR 0005](adr/0005-git-backed-workspaces.md) |
 | C-13 | Collapse derived states/resources; human completion; no M2 agent continuation |
-| C-14 | Build and deploy are ordinary container steps with recorded outputs |
+| C-14 | Build, test, agent commands, publish, deploy, rollback and cleanup use ordinary container steps with explicit secrets and outputs. Profiles are optional convenience; [ADR 0012](adr/0012-container-sdlc-and-artifact-releases.md)/O-34 adds native artifact releases and tool-neutral delivery |
 | C-15 | Start with OpenCode headless, OpenAI-compatible HTTP, HTTPS Git, S3-compatible artifacts; local keyfile KEK for development |
 | C-16 | Prefer lightweight hexagonal ports/adapters and module-owned DDD entities; [software design](specs/software-design.md), [ADR 0006](adr/0006-hexagonal-domain-design.md) |
 | C-17 | Optimi Platform is the company core; Kodama is its agent layer and autonomous SDLC for platform tenants. Platform owns billing, commercial usage/access policy and entitlements; Kodama retains focused SDLC logic, operational usage evidence and execution bounds. Hosted operation preserves core authority through explicit adapters; [platform integration](specs/platform-integration.md), [ADR 0007](adr/0007-platform-core-and-agent-layer.md) |
@@ -67,7 +67,7 @@
 | O-09 | Generic outbound webhook is initial ChatOps transport; provider-specific interactive actions remain later | T-041 / later adapters |
 | O-10 | Resolved direction: retain Go 1.27 (current pin 1.27.2); Platform will update independently. Qualify compatible dependency pins without a forced downgrade. Reference workload: 20 tenants, 100 projects, 20 concurrent attempts, declared per-tenant limits and concurrent API/SSE/model/webhook activity. Measurements and supported capacity remain release acceptance | T-056 |
 | O-11 | Resolved policy: owner accepted the [retention/recovery baseline](operations/upgrades-backup-and-recovery.md#approved-retention-and-recovery-baseline). RPO 15 minutes, RTO 4 hours, 30-day PITR and the specified Git/object/image/key/deletion windows; these are objectives to qualify, not proven service guarantees | T-029/T-056 |
-| O-12 | Kubernetes namespace + scoped kubeconfig + ordinary scripts selected | T-035 |
+| O-12 | Kubernetes namespace + scoped kubeconfig + ordinary scripts selected for the initial recipe. **Amended by O-34:** namespace/kubeconfig/image are no longer universal delivery requirements; new generic records support any target reached by ordinary scripts. Legacy runs retain their original contract | T-035; T-143/T-145 |
 | O-13 | Resolved ownership/model: Platform subscription add-on with bounded compute/AI usage. Platform owns billing, commercial metering/access, entitlements and subscription policy. Kodama emits operational usage/correlation evidence and enforces execution limits, without its own pricing/payments/entitlement subsystem. Exact prices/support commitments remain Platform business configuration | Platform commercial launch |
 | O-14 | Resolved: OS keyring via `github.com/zalando/go-keyring`. A `0600` file store is an explicit opt-in; no silent fallback and no nonpersistent plaintext path | T-017 |
 | O-15 | Resolved product direction: optional UI exists in Platform, likely `packages/dashboard`; Kodama is primarily CLI/API/MCP/webhook driven. No local `web/` implementation is scheduled. Exact upstream UI work/ownership remains an explicit deferred handoff for T-050/T-051/T-060 | Deferred Platform UI work |
@@ -88,6 +88,7 @@
 | O-31 | **Resolved direction and scheduled 2026-10-30 (owner).** Kodama embeds its own Git service and issue tracker: projects own one or more internally hosted repositories, Git is native binaries wrapped by Kodama for security and integration, agents coordinate through it, humans mainly submit tasks, and engineers can clone or push (Heroku-style). Tenant isolation is required from the first release. [ADR 0011](adr/0011-internal-tenant-git-service.md) is accepted as the design; delivery and qualification remain pending | T-125–T-133; [details](#internal-git-service--2026-10-30-o-31) |
 | O-32 | **Open.** Whether the first release imports or mirrors external repositories (GitHub, GitLab), and in which direction. Recommendation: one-time import into internal hosting first; outbound mirroring later | T-133 |
 | O-33 | **Open.** Whether repositories allow direct human pushes to the default branch by default. Recommendation: off by default, enabled per repository (`policy.directPushToDefault`), so CI/CD always runs from an integrated, reviewed commit. Until decided, the field has no default: repository creation requires the caller to supply it, so T-130/T-132 implement the setting without choosing its default | T-127/T-130/T-132 (no default until resolved) |
+| O-34 | **Resolved direction and implementation prepared 2026-10-30 (owner).** Container-first SDLC refinement ([ADR 0012](adr/0012-container-sdlc-and-artifact-releases.md)): ordinary containers plus explicit secrets for build, test, direct/managed agents, publication, deployment, rollback and cleanup; native artifact catalogue, immutable releases and verified publication receipts; tool-neutral deployment records; honest source/artifact provenance. Reconciled with O-31/ADR 0011 | T-140–T-146; [details](#container-first-sdlc-and-artifacts--2026-10-30-o-34) |
 
 T-001 uses the owner-selected [oauthsonas](https://github.com/optimiweb/oauthsonas) development OIDC fixture. Its pinned version and configuration are recorded in the [scaffold contract](../dev/configuration.md). O-18 selects the Optimi OAuth authority; its actual hosted issuer, audience and claim/revocation contract are qualified by T-061, not inferred from the fixture.
 
@@ -136,6 +137,25 @@ This amends ADR 0010 §3–§6 and the frozen "network is unconditional" detail,
 | Coordination | Git joins support services (databases, Valkey) as coordination layers for agents, with project lifetime instead of run lifetime |
 
 This amends O-03, C-12/P-06/P-07 for internally hosted repositories (agents push their own branches with scoped grants; the publisher remains for external repositories) and ADRs 0004/0005. It does not change the run models of ADR 0010, the event bus (C-11) or the human gate and completion rules (C-13). Open follow-ups are O-32 and O-33.
+
+## Container-first SDLC and artifacts — 2026-10-30 (O-34)
+
+**Resolved by the owner in the artifact/design discussion.** Keep the full SDLC vision with native repositories and task tracking, shared run workspace and ordinary container steps plus explicit secrets. Accept [ADR 0012](adr/0012-container-sdlc-and-artifact-releases.md) and reduce earlier implementation surface accordingly:
+
+| Area | Selection |
+| --- | --- |
+| Execution | Build/test/harness/publish/deploy/rollback/cleanup use the same container primitive; optional native or third-party managed agent profiles add conveniences, not another runtime |
+| Agent access | Explicit API-key bindings can run a harness directly; gateway/MCP mediation is optional and only the selected path may claim its controls |
+| Artifacts | Reuse S3 file retention and OCI references; add immutable named release manifests, scoped discovery/fetch and verified destination publication receipts in the existing server |
+| Registry | Start with configured standard OCI registries; optional bundled private registry packaging is later, not mandatory and not a new protocol implementation |
+| Delivery | Generic target/configuration/secret bindings and optional deployment records; remove required image/namespace/kubeconfig and mandatory Kubernetes object/readiness protocol from the new path |
+| Deployment tools | Ordinary tool containers own apply, readiness and reconciliation; remove delivery-image/command qualification as a generic prerequisite while retaining conservative unknown-effect handling |
+| External targets | Publish to storage reachable by the target or transfer/apply from the deployment container; no requirement to expose Kodama storage publicly |
+| Rollback | New run selecting retained exact outputs/configuration and currently authorized credentials; no implicit rebuild, history rewrite or data/infrastructure undo |
+| Provenance | Keep source/input lineage accurate; generated build files need not be Git commits. Bind source or artifact/release review to its real subject, using the existing human gate |
+| Continuation | [T-140–T-146](implementation/container-sdlc-refinement.md#ordered-implementation-tasks) are reconciled with ADR 0011 (`T-125–T-133`) and implemented serially in `.work/artifact-vision-review` |
+
+O-34 preserves ADR 0011's native Git direction (O-31) and does not decide its open import/default-branch policy questions (O-32/O-33). This decision amends O-12 and the managed-only interpretation of O-04/C-15, plus DQ-16's blanket shared-scratch evidence restriction (superseded by DQ-18/DQ-19 after a versioned cutover). It does not change old context/subject/result hashes or claim live-provider qualification. Full air-gap support remains excluded by O-08.
 
 ## Asynchronous decisions
 

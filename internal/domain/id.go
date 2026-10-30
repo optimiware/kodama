@@ -33,6 +33,8 @@ type (
 	RunID         string
 	AttemptID     string
 	ArtifactID    string
+	ReleaseID     string
+	PublicationID string
 	EnvironmentID string
 )
 
@@ -43,4 +45,6 @@ func (id DefinitionID) Validate() error  { return validateID("definition id", st
 func (id RunID) Validate() error         { return validateID("run id", string(id)) }
 func (id AttemptID) Validate() error     { return validateID("attempt id", string(id)) }
 func (id ArtifactID) Validate() error    { return validateID("artifact id", string(id)) }
+func (id ReleaseID) Validate() error     { return validateID("release id", string(id)) }
+func (id PublicationID) Validate() error { return validateID("publication id", string(id)) }
 func (id EnvironmentID) Validate() error { return validateID("environment id", string(id)) }

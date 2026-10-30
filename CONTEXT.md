@@ -49,7 +49,7 @@ _Avoid_: Ticket as a separate entity.
 
 **WIP limit**: A limit on work items admitted to active work.
 
-**Workspace**: The durable source-working context paired with an actionable work item: its task branch in each repository the work touches.
+**Workspace** (**Source workspace**): The durable source-working context paired with an actionable work item: its task branch in each repository the work touches. Existing `workspace` API/CLI names retain this meaning; in execution discussions, use **run workspace** for the shared `/workspace` filesystem ([ADR 0012](docs/adr/0012-container-sdlc-and-artifact-releases.md)).
 
 **Task branch**: The branch `kodama/work/<work-item-id>` collecting a work item's changes in one repository; only the reserved writer attempt or an engineer updates it. **Agent branches** `kodama/agents/<work-item-id>/<run-id>/<label>` hold one run's work in progress; any executable attempt of that run may push them, so agents in separate runs can work in parallel and a later writer merges their branches.
 
@@ -98,7 +98,7 @@ _Avoid_: Profile, mode.
 
 **Run model**: The execution semantics a run pins at admission. `attempt_private` (format `kodama/v1alpha1`, runtime context v1) is the current executable model with a private checkout per attempt. `run_shared` (format `kodama/v1alpha2`, runtime context v2) is the versioned design with one run workspace, support services and a total deadline; it is not delivered or qualified until its cutover and acceptance. Old runs keep their model; a controller refuses a model it does not implement.
 
-**Run workspace**: The disposable scratch filesystem of one `run_shared` run, mounted at `/workspace` by one attempt at a time. It is prepared once from the run's pinned commit (or empty for a source-free run), never a checkpoint or recovery authority, and distinct from the durable **Workspace**. _Avoid_: workspace without qualification when scratch is meant.
+**Run workspace**: The disposable shared filesystem of one `run_shared` run, mounted at `/workspace` by one attempt at a time. It is prepared once from the run's pinned source (or empty for a source-free run); generated files persist between steps. Git retains source history and artifacts retain selected outputs. The run workspace is never a checkpoint or recovery authority and is distinct from the legacy **source workspace**.
 
 **Preparation**: The controller-owned, one-shot checkout of a run workspace with read-only repository access and no user code; its control-plane receipt is the only evidence the checkout completed.
 
@@ -120,6 +120,10 @@ _Avoid_: Profile, mode.
 
 **Artifact**: An identified retained output, such as a report, log, image, or screenshot.
 
+**Release**: A project-scoped name/version and immutable manifest identifying an exact set of retained artifacts and their source/producer provenance. A release version is distinct from a metadata concurrency revision. ADR 0012 design; implementation pending.
+
+**Publication receipt**: An attributable verification that an artifact was copied to a particular destination with the expected digest. It records where a copy was observed, not perpetual availability. Source publication through Git is a separate operation.
+
 **Evidence**: Artifacts and observations used to review a candidate or deployment.
 
 **Gate**: A recorded request for one authorized human decision about an identified subject.
@@ -128,7 +132,9 @@ _Avoid_: Profile, mode.
 
 **Environment**: A named application delivery target with scoped credentials and configuration.
 
-**Deployment**: A record connecting an environment, source, image, configuration, and execution outcome.
+**Deployment**: A record connecting a target environment, exact release/artifact inputs, source references, configuration and an ordinary step's reported execution outcome. ADR 0012 generalizes the legacy mandatory-image/Kubernetes shape; implementation pending.
+
+**Rollback**: A new deployment run selecting a prior release and explicit configuration with currently authorized credentials. It does not rewrite history or automatically undo data/infrastructure changes.
 
 **Preview**: A temporary deployment for reviewing a candidate.
 

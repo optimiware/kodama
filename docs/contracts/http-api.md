@@ -101,6 +101,10 @@ Use `If-Match` and `Idempotency-Key`. The server derives the human actor. The [d
 
 ## Runtime and observation
 
+### ADR 0012 extension boundary
+
+Planned artifact lists, release create/list/resolve/retire and publication receipts are specified semantically in the [artifact/release contract](artifacts-and-releases.md#public-and-workload-operations). Generic deployment requests remove the universal image/Kubernetes assumptions through an explicitly versioned compatibility path. T-140 supplies module OpenAPI and runtime shapes; T-145 publishes the aggregate/client and CLI. The current route table remains the executable baseline, and `GET P/artifacts/{id}` alone is not a release catalogue or workload download grant.
+
 Git transport is not under `/api/v1`: the designed internal Git endpoint is `/git/<tenant-key>/<project-key>/<repository>.git`, and Git workers call `/internal/git/v1` with their own audience ([Git service](git-service.md#git-endpoint)). Internal runtime endpoints are defined in the [step entrypoint contract](../implementation/step-entrypoint.md) (`/runtime/v1`; `run_shared` runs use [runtime v2](runtime-v2.md)), with an attempt-token audience distinct from human access. Runtime deployment creation uses the same underlying module with restricted authorization.
 
 SSE uses a durable project event sequence/cursor retained with outbox/event history. `Last-Event-ID` resumes within retention. An expired cursor returns `410 cursor_expired`; snapshot reads return a new observation cursor so clients can resynchronize. NATS delivery is not itself a client cursor.

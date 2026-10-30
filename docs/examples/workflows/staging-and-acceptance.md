@@ -2,6 +2,8 @@
 
 **Target:** M3, continuing [preview](erp-gap-to-preview.md). The pipelines here are `kodama/v1alpha1` (current executable format); see the [run-shared example](run-shared-build-and-services.md) for the `kodama/v1alpha2` form.
 
+This remains the legacy single-image/Kubernetes scenario. The [ADR 0012 release/deployment example](container-release-and-deploy.md) shows the accepted next design with exact artifact sets, generic targets and rollback; its new helpers await implementation.
+
 Start a delivery run using the exact successful source commit, current content revision, and verified image artifact. Admission checks artifact provenance. The source is the candidate; no additional candidate/checkpoint IDs are needed.
 
 ```yaml

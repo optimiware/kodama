@@ -59,6 +59,8 @@ spec:
 
 ## Script contracts
 
+This is the legacy image/Kubernetes recipe. [ADR 0012's example](container-release-and-deploy.md) generalizes delivery to ordinary tools and release/artifact sets; it retains pre-apply identity and unknown-effect handling without making this recipe's namespace/image protocol universal.
+
 - `quality.sh` writes the declared report and fails on required check failure.
 - `build.sh` runs a restricted/rootless builder, pushes/verifies the OCI digest, and writes the image result manifest.
 - `deploy-preview.sh` creates a deployment row with the stable action key before applying namespace-scoped resources. It reconciles uncertain outcomes, reports readiness, and writes deployment/URL outputs. Its declared environment supplies scoped credentials; ordinary runtime settings bound to that environment are explicit.

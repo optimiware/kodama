@@ -2,6 +2,8 @@
 
 **Scope:** M1 containers; M2 agent profiles and human gates. A runtime runs workloads, Kubernetes in staging and production; PostgreSQL owns desired state. JetStream remains a durable event bus.
 
+**Container-first refinement (ADR 0012, implementation pending):** [the decision](../adr/0012-container-sdlc-and-artifact-releases.md) treats build, test, direct/managed agents, publication, deployment, rollback and cleanup as the same executable primitive. Optional profiles expand into containers; gates remain non-compute records. Tool names never select a new executor or require a delivery-tool catalogue. [Artifacts/releases](artifacts-and-releases.md) supply retained cross-run inputs and tool-neutral deployment records describe selected effects; workspace files are shared within a run.
+
 **Run models.** Every run pins one model at admission. `attempt_private` (format `kodama/v1alpha1`, runtime context v1) is the **current executable model**: each attempt checks out its own private scratch under the fixed restricted baseline. `run_shared` (format [`kodama/v1alpha2`](../contracts/pipeline-format-v1alpha2.md), [runtime v2](../contracts/runtime-v2.md)) is the normative model of [ADR 0010](../adr/0010-run-workspace-services-builders.md): one disposable `/workspace`, declared support services, a total run deadline and a pinned [execution policy](../contracts/run-resources.md). It is **designed, not delivered or qualified**: no installation admits it until T-116 enables it and T-117 passes. Requirements below apply to both models unless labeled `[attempt_private]` or `[run_shared]`; replaced `attempt_private` rules keep their IDs and are not renumbered.
 
 ## Model and states
@@ -49,6 +51,8 @@ An attempt row is dispatch intent before its workload exists; `reason=starting` 
 | PX-23 | `[internal hosting]` A run MUST pin its origin and a source set of exact commits with unique checkout paths; every commit MUST belong to a repository of the run's project and stay reachable for the run's retention. |
 | PX-24 | `[internal hosting]` A push-originated run MUST reference one applied push record and ref, pin that update's new commit, and be created at most once per trigger, push and ref. |
 | PX-25 | `[internal hosting]` A provisioning run MUST be admitted without an existing repository and receive seed authority only for repositories it creates in its project. |
+| PX-26 | `[ADR 0012]` Executable tools MUST use the ordinary container/attempt path with explicit secrets, inputs and outputs; optional profile expansion MUST NOT introduce a separate executor or impose managed-agent/deployment-specific registration on generic commands. |
+| PX-27 | `[ADR 0012]` Cross-run artifact/release inputs MUST resolve to authorized immutable identities before consumption and remain pinned across restart/retry; shared workspace files MUST NOT be silently reconstructed from an old run or floating release/tag. |
 
 ## Scheduling and runtime
 
@@ -90,6 +94,8 @@ Normative design; implementation is T-112–T-117 and nothing here is claimed de
 
 An action key is stable per logical step across its attempts. External tools must honor it or expose outcome lookup. General commands cannot promise exactly-once execution. A timeout or lost node can leave an uncertain effect requiring manual reconciliation.
 
+ADR 0012 keeps this uncertainty rule while removing tool-specific recovery from generic execution. A tracked deployment records pre-apply intention; the script/operator observes the target to settle an unknown effect. An untracked command still runs normally, but neither an absent deployment row nor a known image/command tuple proves it is safe to replay. Artifact fetch can retry its bounded immutable read independently of replaying the user's command.
+
 A cancellation may race with a Kubernetes create already in flight. Revoked runtime admission prevents the new Pod from starting authorized work; reconciliation deletes it. Late results cannot change a terminal/cancelled run. Required source/artifact finalization occurs before Job cleanup.
 
 Restore rotates workload signing keys and revokes old attempts; it also fences old controllers and reconciles remote Jobs/Git/deployments before dispatch. Token rotation alone cannot stop previously authorized external requests.
@@ -119,3 +125,5 @@ Restore rotates workload signing keys and revokes old attempts; it also fences o
 | PX-A19 | A run over two repositories checks each out at its pinned commit and path; a foreign repository, duplicate path or unreachable commit fails admission | PX-02, PX-23 |
 | PX-A20 | A developer push starts one run for the pushed commit; redelivery, replay and later branch movement start nothing more | PX-24, GR-10 |
 | PX-A21 | A provisioning run creates and seeds a repository, then a second run uses it; the seed grant cannot write another repository | PX-25, GR-07 |
+| PX-A22 | Harness, publish and non-Kubernetes deploy commands run with explicit secrets without managed-agent/model/tool or delivery-image catalogue configuration | PX-01, PX-26 |
+| PX-A23 | A new run consumes an exact release/artifact set; changed labels, missing bytes, restart and revoked input grants cannot substitute content | PX-02, PX-27 |

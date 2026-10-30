@@ -24,6 +24,10 @@ The owner revised the delivery scope ([O-30](../decisions.md#revised-scope--2026
 
 ## Context
 
+### Subsequent refinement — ADR 0012
+
+[ADR 0012](0012-container-sdlc-and-artifact-releases.md) retains this run workspace/service/runtime design. It refines the blanket evidence condition in §2: generated files may become retained artifacts without Git commits; source-candidate approval still requires matching source, while exact artifact/release approval binds its disclosed provenance. DQ-18/DQ-19 apply after an explicit executable contract cutover; the existing DQ-16 contexts/subjects keep their meaning. No runtime, network or filesystem-fencing guarantee is weakened by that change.
+
 Today each attempt creates a private checkout. Kubernetes mounts an attempt-local `emptyDir` at `/workspace`; Podman supplies an attempt-local tmpfs. The entrypoint checks out source before each command. `workspace.from` selects the original run commit or an ancestor writer's published commit. Uncommitted files, generated assets, dependencies, and build context consequently do not flow between steps.
 
 The Kubernetes template fixes non-root execution, no privilege escalation, all capabilities dropped, and `RuntimeDefault` seccomp; tenant namespaces enforce Pod Security `restricted`. These controls can prevent rootless builders from creating user namespaces, installing subordinate UID/GID maps, mounting build filesystems, and running build commands. Requiring builders to fit that policy does not deliver Buildah or BuildKit support. `ko` itself needs no container daemon or nested mount privileges, but does need writable Go/build caches, registry credentials, and permitted dependency/registry access.

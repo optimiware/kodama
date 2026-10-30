@@ -59,6 +59,20 @@ T-117, T-132           → T-133 (blocked: O-32)
 
 ## Task contract
 
+### Container-first SDLC and artifacts (O-34; planning handoff)
+
+The owner approved [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) and the [implementation plan](../implementation/container-sdlc-refinement.md). [T-140–T-146](../implementation/container-sdlc-refinement.md#ordered-implementation-tasks) are reconciled with ADR 0011 (`T-125–T-133`) and implemented serially in `.work/artifact-vision-review`.
+
+```text
+T-116, T-131 → T-140 → T-141 → T-142 → T-143 → T-144 ─┬→ T-145 ─┬→ T-146
+T-132 ────────────────────────────────────────────────┘        │
+T-117, T-133 ──────────────────────────────────────────────────┘
+```
+
+The generated summary above remains untouched while the separate OpenForge checkout is unavailable; the explicit section and dependency index include this addition.
+
+### Metadata
+
 Scheduled (`planned` or `blocked`) tasks declare `owns`, `check`, optional `resources`, and `acceptance`:
 
 ```yaml
@@ -146,7 +160,14 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-131 Task, agent and source integration](T-131-git-source-integration.md) | T-113, T-130 | planned |
 | [T-132 API, CLI, MCP and chart assembly](T-132-git-service-assembly.md) | T-116, T-127, T-128, T-129, T-130, T-131 | planned |
 | [T-133 Kubernetes acceptance and cutover](T-133-git-service-acceptance.md) | T-117, T-132 | blocked (O-32) |
+| [T-140 Container-first SDLC executable contracts](T-140-container-sdlc-contracts.md) | T-116, T-131 | deferred |
+| [T-141 Artifact catalogue and immutable releases](T-141-artifact-release-catalog.md) | T-140 | deferred |
+| [T-142 Container inputs, secrets and provenance](T-142-container-inputs-and-provenance.md) | T-141 | deferred |
+| [T-143 Generic deployment and cleanup records](T-143-generic-delivery-records.md) | T-142 | deferred |
+| [T-144 Publication verification and tool recipes](T-144-artifact-publication-recipes.md) | T-143 | deferred |
+| [T-145 SDLC assembly and legacy surface removal](T-145-container-sdlc-assembly.md) | T-144, T-132 | deferred |
+| [T-146 Real release/deploy/rollback acceptance](T-146-container-sdlc-acceptance.md) | T-145, T-117, T-133 | deferred |
 
 ## Verification and scope
 
-`make docs-check` validates links, metadata/index agreement, dependency cycles and exclusive ownership for all unordered pairs. Completed/deferred task records may retain historical metadata; scheduling deferred work requires bringing its check contract up to date. Do not claim a production, hosted-authority, live-provider or browser qualification from local unit/core-checkpoint evidence.
+`make docs-check` validates links, anchors and JSON/shell fences. Task metadata/index agreement, dependency cycles and exclusive ownership are additional checks (`make validate-tasks` when the separate OpenForge checkout is available); do not infer them from a docs-check pass. Completed/deferred task records may retain historical metadata; scheduling deferred work requires bringing its check contract up to date. Do not claim a production, hosted-authority, live-provider or browser qualification from local unit/core-checkpoint evidence.

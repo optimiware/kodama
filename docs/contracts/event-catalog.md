@@ -105,4 +105,6 @@ Manual replay requires scope, event range, consumer identity, and an audit recor
 
 ## Compatibility and validation
 
+ADR 0012's release/publication audit and generic deployment projections are pending the T-140 executable contract checkpoint. Use the existing state/audit/outbox pattern and reference-only payloads. Do not silently change `deployment.state_changed` or add unversioned release payloads to old consumers; immutable release creation need not introduce another status machine. Historical event fixtures retain their original shapes.
+
 Payload additions are optional within a schema version. Breaking meaning/type changes require a new supported version and documented migration. Schemas validate envelopes and per-type payloads; acceptance tests cover duplicate delivery, reordering, unknown versions, poison events, and restore/replay behavior.

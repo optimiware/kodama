@@ -12,7 +12,7 @@ owns: [images/harness-claude/, test/integration/harness-claude/]
 Validate one additional headless harness against the common result contract.
 
 ## Contract
-Pin documented CLI/provider/tool behavior and check whether required mediation is supported. If the current gateway protocol is incompatible, record a bounded prerequisite task and remain blocked until it lands; do not silently bypass it.
+Pin documented CLI/provider/tool behavior. Under [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md), a direct Claude command with an explicitly bound API key is an ordinary container and needs no managed wrapper or gateway compatibility. This deferred task qualifies a maintained recipe/optional managed profile; if it claims mediation, prove that path or leave that capability unsupported. Incompatible mediation must not block the direct-container primitive or be silently claimed.
 
 ## Deliverables
 Verified image/wrapper, configuration/version notes, structured result and cancellation fixtures, declared limitations.
