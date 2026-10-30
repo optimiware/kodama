@@ -23,10 +23,6 @@ Kodama does **not** host production artifact blobs in S3 and does **not** mainta
 
 A build may consume files produced by earlier steps. Evidence records the source commits, the workspace state at command begin, prior-step lineage, tool and service image digests, and the pinned execution policy. A client cannot assert this metadata.
 
-### Provenance in shared scratch (run_shared)
-
-This anchor is retained for historical examples. The `run_shared` model and its command-begin provenance fence described the superseded dual-format execution stack. Current provenance follows the rules above; the [pipeline-runtime simplification plan](../implementation/pipeline-runtime-simplification.md) removes the legacy contracts.
-
 - Evidence is candidate-bound only when the workspace is clean at the candidate commit. Modified evidence is ordinary diagnostic evidence and does not satisfy a candidate-bound requirement.
 - A writer step commits generated changes, creating a new candidate that requires fresh evidence and a new applicable wait.
 - Generated files may become retained artifacts without becoming Git commits. The provenance record states what actually produced them.

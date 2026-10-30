@@ -22,11 +22,11 @@ steps:
 ```
 
 ### Mode B: Native Kodama Agent runtime (`kodama agent`)
-For fine-grained software factory steps, the step container includes the `kodama` binary runtime (`kodama agent`), which has native access to Layer 1 core features and project-space permissions:
+For fine-grained software factory steps, the step container includes the `kodama` binary runtime (`kodama agent`), which has native access to Layer 2 shell operations and project-space permissions:
 - **Specialized responsibilities:**
   - **Planning & decomposition:** Read `<tenant>/context` and `<tenant>/<project>/context`, inspect repository structure, and create subtasks or implementation plans.
   - **Decision-making, filtering & guardrails:** Inspect diffs, test outputs, and security rules; decide whether to advance a task or loop it back for rework.
-  - **Validation gates:** Act as autonomous quality gates between pipeline stages.
+  - **Validation steps:** Act as autonomous quality checks between pipeline stages.
   - **Embedded skills:** Run reusable Markdown skills loaded from the Git Knowledge Base (`<tenant>/context/skills/*`, `<tenant>/<project>/context/skills/*`).
   - **Native shell API / Git / task operations:** Perform Git operations (branch, merge, tag), read the task's selected pipeline and projected execution progress, and request a durable pipeline wait when human judgment is needed. The pipeline defines the next branch; the agent does not mutate a separate task workflow.
 - **Session persistence:** Records execution state, messages, tool calls, token usage, and structured results in `agent_sessions`.

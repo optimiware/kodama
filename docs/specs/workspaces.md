@@ -12,10 +12,11 @@ Under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md
 - Engineers and container steps (Mode A coding harnesses or Mode B `kodama agent`) clone, fetch, commit, and push directly to the native Git endpoint (`/git/<tenant>/<project>/<repo>.git`) using their OAuth credential or the run's scoped Git credential (`KODAMA_TOKEN` and the credential helper).
 - Parallel agents or runs can push to their own branches and merge via standard Git steps.
 
-### Run scratch (`run_shared`)
+### Run workspace
 
-- When a pipeline run starts, Kodama allocates one disposable `/workspace` volume for the run and checks out the pinned repository commit (plus optional `<tenant>/context` and `<tenant>/<project>/context` Markdown repos under `/workspace/.context/`).
+- When a pipeline run starts, Kodama allocates one disposable `/workspace` volume for the run and prepares the pinned repository commit (plus optional `<tenant>/context` and `<tenant>/<project>/context` Markdown repos under `/workspace/.context/`).
 - Every step in the run mounts `/workspace`. Files created or modified by one step are immediately visible to subsequent steps in the same run.
+- A durable wait pauses the same run without a workload. The workspace lifetime is bounded and explicit; loss of required state fails the run rather than replaying earlier commands.
 - When the run finishes (succeeded, failed, or cancelled), the disposable `/workspace` volume is removed. Durable outputs are the commits pushed to the native Git service and the metadata recorded in `artifacts`.
 
 ## Requirements

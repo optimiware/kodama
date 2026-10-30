@@ -7,7 +7,7 @@
 Users, operators, and in-container steps/agents interact with Kodama through three symmetrical interfaces backed by the same domain use cases:
 
 1. **HTTP REST API (`/api/v1`):**
-   - JSON endpoints for tenants, projects, memberships, repositories, pipelines, runs/steps, services, tasks/role-inbox, artifacts, secrets, agent sessions, and MCP servers.
+   - JSON endpoints for tenants, projects, memberships, repositories, pipelines, runs/steps, services, tasks and waits, artifacts, secrets, agent sessions, and MCP servers.
    - Server-Sent Events (SSE) for live run/step logs and NATS event observation.
 2. **Kodama MCP server (`/api/v1/mcp`):**
    - Streamable HTTP MCP endpoint exposing Kodama's native shell operations. The external MCP proxy for agent tools is Layer 3 and is a separate surface.

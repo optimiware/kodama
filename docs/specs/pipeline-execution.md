@@ -101,7 +101,3 @@ PX-01–PX-05 are retired by this amendment. They described the previous run mod
 | PX-A25 | A project refuses a duplicate pipeline name from another repository; an admitted run keeps its snapshot after the definition changes | PX-29, PX-30 |
 | PX-A26 | A run waits across controller restart without a worker; one authorized signal resumes it once, a duplicate and a late signal change nothing, and a run-scoped service is not silently recreated after loss | PX-31, PX-32, PX-34 |
 | PX-A27 | With the broker unavailable, state commits and the outbox retains the event; after recovery, consumers process it once, a redelivery changes nothing, and reconciliation repairs a missed wakeup | PX-32, PX-33 |
-
-## run_shared model
-
-This anchor is retained for historical contracts. The `run_shared` name and its `v1alpha2`/`v1alpha3` documents describe the superseded dual-format execution model. The current specification has one shared-workspace model, described above; the [pipeline-runtime simplification plan](../implementation/pipeline-runtime-simplification.md) removes the legacy formats and consumers.

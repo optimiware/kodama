@@ -1,6 +1,6 @@
 # Git repositories and knowledge base
 
-**Scope:** Layer 1 native Git service ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md), O-31): Gerrit-style repository hierarchy, automatic project association, bootstrap by push, ref policy, push events, integration, and the Git-native knowledge base. Implementation is T-166–T-170 ([plan](../implementation/internal-git-service.md)); hosting installation and qualification follow on `main`.
+**Scope:** Layer 2 native shell Git service ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md), O-31): Gerrit-style repository hierarchy, automatic project association, bootstrap by push, ref policy, push events, integration, and the Git-native knowledge base. Implementation is T-166–T-170 ([plan](../implementation/internal-git-service.md)); hosting installation and qualification follow on `main`.
 
 ## Purpose
 
@@ -112,7 +112,7 @@ Volume snapshots and per-repository bundles remain the backup mechanism. Restore
 | GR-09 | Each receive MUST be authorized before any ref changes and recorded as one `git.refs_updated` event after it applies; a lost confirmation MUST be recoverable from the worker's journal and the repository's acknowledged sequence. |
 | GR-10 | An applied push MUST produce exactly one `git.refs_updated` event; triggers MUST deduplicate by event identity and pin the pushed commit. |
 | GR-11 | Pushes made by runs MUST carry their origin so triggers can exclude them. |
-| GR-12 | Integration MUST advance the default branch only to an approved candidate from the expected base; a moved target MUST require a new candidate. |
+| GR-12 | Integration MUST advance the default branch only to an eligible candidate from the expected base whose required wait or input is satisfied; a moved target MUST require a new candidate. |
 | GR-13 | Commits pinned by runs and evidence MUST stay reachable until retention releases them; pruning and maintenance MUST NOT remove them. |
 | GR-14 | Archive MUST refuse new pushes and runs without deleting history; deletion MUST follow retention and record audit. |
 | GR-15 | Request size, pack size, ref count, duration and per-tenant concurrency MUST be bounded and refusals MUST be explicit. |
@@ -151,7 +151,7 @@ Roles follow [identity and RBAC](identity-tenancy-and-rbac.md): `engineer` manag
 | GR-A05 | A run pushes its own run and agent branches but not the default branch, tags or `refs/kodama/*`; a pushed hook, config or option changes no server behavior | GR-07, GR-08 |
 | GR-A06 | A lost confirmation is recovered from the worker journal and produces exactly one event; a replayed event starts nothing | GR-09, GR-10 |
 | GR-A07 | A developer `git push` to the default branch starts one run for the pushed commit; replay and later branch movement start nothing else; a run's own push does not retrigger it | GR-10, GR-11 |
-| GR-A08 | Two integrations race for the default branch; one succeeds and the other is rejected; an integration step cannot push an unapproved commit | GR-07, GR-12 |
+| GR-A08 | Two integrations race for the default branch; one succeeds and the other is rejected; an integration step cannot push a candidate whose required wait or input is unsatisfied | GR-07, GR-12 |
 | GR-A09 | Pruning and maintenance keep every pinned commit; archive blocks pushes and runs and keeps history | GR-13, GR-14 |
 | GR-A10 | Oversized pushes, excessive refs and slow clients are refused or cut off with explicit errors without affecting another tenant | GR-15 |
 | GR-A11 | An engineer seeds an empty repository with an existing history, then pushes other branches and tags: commit IDs are identical; a seed receive with any extra ref is refused whole; the grant cannot be reused; a concurrent second seed is refused; a non-empty repository is refused | GR-16, GR-19 |

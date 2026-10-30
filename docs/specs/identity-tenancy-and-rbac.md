@@ -13,9 +13,9 @@ Kodama uses a straightforward permission model separating **human configuration 
 | Role | Permissions |
 | --- | --- |
 | `admin` | Manage tenant/project settings, memberships, secrets metadata, and MCP servers |
-| `engineer` | Configure `.kodama/*.yaml` pipelines and scoped services; clone/push Git repositories; create/transition tasks; trigger runs |
-| `reviewer` | Resolve `decision` and `promotion` tasks in the role inbox |
-| `operator` | Manage tenant/project container services, resolve `incident` inbox tasks, and inspect runtime state |
+| `engineer` | Configure `.kodama/*.yaml` pipelines and scoped services; clone/push Git repositories; create tasks; start/rerun runs |
+| `reviewer` | Resolve pipeline waits assigned to the reviewer role |
+| `operator` | Manage tenant/project container services, resolve operator-assigned waits, and inspect runtime state |
 | `viewer` | Read-only access to projects, tasks, runs, logs, and artifact metadata |
 
 2. **Project-space workload permissions (Steps and Agents):**
@@ -38,8 +38,8 @@ Kodama uses a straightforward permission model separating **human configuration 
 | --- | --- |
 | IT-01 | Human API, MCP, and `kodactl` requests MUST authenticate via external OAuth/OIDC and check current tenant/project `memberships`. |
 | IT-02 | All database tables MUST enforce tenant ownership via composite keys and forced PostgreSQL RLS under a non-owner runtime role. |
-| IT-03 | Steps and agents executing in a project MUST receive project-space runtime access to that project's configured repositories, secrets, services, tasks, and gateways, and MUST be denied cross-tenant access. |
-| IT-04 | Resolving a role-inbox task (`decision`, `promotion`, `incident`) MUST verify that the caller holds the assigned role in that project or tenant. |
+| IT-03 | Steps and agents executing in a project MUST receive project-space runtime access to that project's configured repositories, secrets, services, tasks, AI Gateway, and external MCP proxy, and MUST be denied cross-tenant access. |
+| IT-04 | Resolving a pipeline wait MUST verify that the caller currently holds the wait's assigned role or correlation in that project or tenant and that the run, step, and wait are current. |
 | IT-05 | Cross-tenant references MUST return non-disclosing `404 not_found` responses. |
 
 ## Acceptance
@@ -49,4 +49,4 @@ Kodama uses a straightforward permission model separating **human configuration 
 | IT-A01 | Unauthenticated or unauthorized role requests are rejected across HTTP, MCP, Git, and `kodactl` | IT-01, IT-05 |
 | IT-A02 | Pooled PostgreSQL connections and RLS policies prevent any cross-tenant read or write | IT-02, IT-05 |
 | IT-A03 | A pipeline step or `kodama agent` in project A can access project A's repos, secrets, services, and tasks, but cannot access tenant B | IT-03, IT-05 |
-| IT-A04 | Only a user with the matching role can resolve a blocking role-inbox task | IT-04 |
+| IT-A04 | Only a user currently holding the wait's assigned role can resolve it; a stale wait, wrong run, or foreign task is refused | IT-04 |
