@@ -9,6 +9,7 @@ import (
 	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	runtimeauthpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
+	statepg "github.com/optimiware/kodama/internal/state/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 )
 
@@ -37,7 +38,7 @@ import (
 // the last: an artifact store over a database without it keeps serving
 // attempt_private artifacts and refuses to record provenance it cannot keep.
 func Contributions() []storage.Contribution {
-	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations(), runtimeauthpg.ResourceMigrations(), artifactspg.ProvenanceMigrations()}
+	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations(), runtimeauthpg.ResourceMigrations(), artifactspg.ProvenanceMigrations(), statepg.Migrations()}
 }
 
 // Manifest validates the contribution list.

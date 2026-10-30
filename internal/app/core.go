@@ -95,7 +95,7 @@ var sentinelTables = []string{
 	"tenants", "projects", "memberships", "audit", "outbox", "event_inbox", "idempotency", "work_items",
 	"secrets", "pipeline_definitions", "workspaces", "artifacts", "runs", "step_attempts", "runtime_grants", "log_records",
 	"agent_profiles", "gates", "environments", "deployments", "model_settings", "model_requests", "mcp_servers", "mcp_invocations",
-	"work_item_dependencies", "chatops_destinations", "chatops_deliveries", "git_triggers", "git_trigger_deliveries", "git_trigger_admissions",
+	"work_item_dependencies", "chatops_destinations", "chatops_deliveries", "git_triggers", "git_trigger_deliveries", "git_trigger_admissions", "state_entries",
 }
 
 // Core is the constructed core assembly: every dependency is built and checked,
