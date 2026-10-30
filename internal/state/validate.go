@@ -47,7 +47,11 @@ func AbsoluteKey(binding Binding, key string) (string, error) {
 	if err := statev1.ValidateKey(key); err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	return binding.Prefix + key, nil
+	absolute := binding.Prefix + key
+	if len(absolute) > statev1.MaxKeyBytes {
+		return "", fmt.Errorf("%w: the resolved key exceeds the maximum length", ErrInvalid)
+	}
+	return absolute, nil
 }
 
 // RelativeKey removes the binding prefix from a stored key. It fails closed if

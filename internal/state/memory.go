@@ -17,6 +17,7 @@ var (
 	ErrExists      = errors.New("state: key already exists")
 	ErrDenied      = errors.New("state: denied")
 	ErrUnavailable = errors.New("state: unavailable")
+	ErrQuota       = errors.New("state: quota exceeded")
 )
 
 // Scope is the tenant/project ownership of a state namespace.

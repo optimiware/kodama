@@ -10,7 +10,14 @@ import (
 	"strings"
 
 	statev1 "github.com/optimiware/kodama/contracts/state/v1"
+	"github.com/optimiware/kodama/internal/domain"
 )
+
+// ArtifactVerifier checks a state entry's explicit retention roots against the
+// artifact module's current ownership and content metadata.
+type ArtifactVerifier interface {
+	VerifyArtifact(ctx context.Context, scope Scope, id domain.ArtifactID, digest string) error
+}
 
 // BindingResolver authenticates the attempt and resolves one declared alias.
 // It is supplied by composition; the state package never accepts a caller's
@@ -29,8 +36,9 @@ type BindingReauthorizer interface {
 // Handler serves the runtime state API under
 // /runtime/v3/attempts/{attempt}/state/{binding}/entries.
 type Handler struct {
-	Store    Store
-	Resolver BindingResolver
+	Store     Store
+	Resolver  BindingResolver
+	Artifacts ArtifactVerifier
 }
 
 // NewHandler constructs a handler. Both dependencies are required.
@@ -157,6 +165,10 @@ func (h *Handler) put(w http.ResponseWriter, r *http.Request, scope Scope, bindi
 		writeError(w, http.StatusForbidden, "state_binding_denied", "state write denied")
 		return
 	}
+	if err := h.verifyReferences(r, scope, req); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	actor := attemptActor(r)
 	var (
 		entry statev1.Entry
@@ -226,6 +238,21 @@ func statePath(path string) (attempt, alias string, ok bool) {
 	return attempt, alias, true
 }
 
+func (h *Handler) verifyReferences(r *http.Request, scope Scope, req statev1.WriteRequest) error {
+	if len(req.ArtifactReferences) == 0 {
+		return nil
+	}
+	if h.Artifacts == nil {
+		return fmt.Errorf("%w: artifact verification is not configured", ErrUnavailable)
+	}
+	for _, ref := range req.ArtifactReferences {
+		if err := h.Artifacts.VerifyArtifact(r.Context(), scope, domain.ArtifactID(ref.ArtifactID), ref.Digest); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (h *Handler) reauthorize(r *http.Request) error {
 	checker, ok := h.Resolver.(BindingReauthorizer)
 	if !ok {
@@ -253,6 +280,8 @@ func writeStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusPreconditionFailed, "version_conflict", "state version does not match")
 	case errors.Is(err, ErrInvalid):
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid state request")
+	case errors.Is(err, ErrQuota):
+		writeError(w, http.StatusTooManyRequests, "state_quota_exceeded", "state quota exceeded")
 	case errors.Is(err, ErrDenied):
 		writeError(w, http.StatusForbidden, "state_binding_denied", "state access denied")
 	default:
@@ -262,6 +291,8 @@ func writeStoreError(w http.ResponseWriter, err error) {
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }

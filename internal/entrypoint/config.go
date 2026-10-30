@@ -67,6 +67,7 @@ type Config struct {
 	SecretsDir   string
 	IdentityDir  string
 	ResultsFile  string
+	ContextFile  string // private immutable context document; default <IdentityDir>/context.json
 	TokenFile    string // current runtime token, written 0600 after admit/renewal; default <IdentityDir>/token
 	ScratchDir   string // diagnostics log and bundle; default os.TempDir()
 
@@ -112,6 +113,7 @@ func (c *Config) applyDefaults() {
 	def(&c.SecretsDir, DefaultSecretsDir)
 	def(&c.IdentityDir, DefaultIdentityDir)
 	def(&c.ResultsFile, DefaultResultsFile)
+	def(&c.ContextFile, filepath.Join(c.IdentityDir, "context.json"))
 	def(&c.AdmissionCredentialFile, filepath.Join(c.IdentityDir, "admission"))
 	def(&c.CheckoutCredentialFile, filepath.Join(c.IdentityDir, "checkout-credential"))
 	def(&c.TokenFile, filepath.Join(c.IdentityDir, "token"))
@@ -180,7 +182,7 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
-	for name, p := range map[string]string{"results file": c.ResultsFile, "token file": c.TokenFile} {
+	for name, p := range map[string]string{"results file": c.ResultsFile, "context file": c.ContextFile, "token file": c.TokenFile} {
 		a, err := filepath.Abs(p)
 		if err != nil {
 			return fmt.Errorf("%s: %w", name, err)

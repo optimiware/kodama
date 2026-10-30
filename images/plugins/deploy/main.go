@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -45,6 +46,9 @@ type common struct {
 	desired           string
 	rollback          string
 	timeout           time.Duration
+	resultFile        string
+	outputsDir        string
+	contextFile       string
 }
 
 func main() {
@@ -81,6 +85,9 @@ func main() {
 	fs.StringVar(&c.desired, "desired-release", "", "desired release ID")
 	fs.StringVar(&c.rollback, "rollback-release", "", "recorded release to roll back to")
 	fs.DurationVar(&c.timeout, "timeout", 5*time.Minute, "operation timeout")
+	fs.StringVar(&c.resultFile, "result-file", os.Getenv("KODAMA_RESULTS_FILE"), "result manifest path")
+	fs.StringVar(&c.outputsDir, "outputs-dir", envOr("KODAMA_OUTPUTS_DIR", "/kodama/outputs"), "declared outputs root")
+	fs.StringVar(&c.contextFile, "context-file", os.Getenv("KODAMA_CONTEXT_FILE"), "private runtime context document")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		os.Exit(2)
 	}
@@ -125,27 +132,41 @@ func main() {
 			write(out)
 			fail(err)
 		}
+		emitResult(c, out)
 		write(out)
 	case "status":
 		resource, obs, err := eng.Status(ctx, cfg)
-		write(map[string]any{"resource": resource, "observation": obs})
+		out := map[string]any{"resource": resource, "observation": obs}
+		if err == nil {
+			emitResult(c, out)
+		}
+		write(out)
 		if err != nil {
 			fail(err)
 		}
 	case "reconcile":
 		out, err := eng.Reconcile(ctx, cfg)
+		if err == nil {
+			emitResult(c, out)
+		}
 		write(out)
 		if err != nil {
 			fail(err)
 		}
 	case "rollback":
 		out, err := eng.Rollback(ctx, cfg, c.rollback)
+		if err == nil {
+			emitResult(c, out)
+		}
 		write(out)
 		if err != nil {
 			fail(err)
 		}
 	case "cleanup":
 		out, err := eng.Cleanup(ctx, cfg)
+		if err == nil {
+			emitResult(c, out)
+		}
 		write(out)
 		if err != nil {
 			fail(err)
@@ -247,4 +268,86 @@ func envFirst(names ...string) string {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: deploy apply|status|reconcile|rollback|cleanup|identify [flags]")
+}
+
+// contextOutputs is the small part of the pinned context the plugin needs to
+// produce its declared result manifest. The entrypoint owns the full context;
+// this command never infers outputs from the pipeline file.
+type contextOutputs struct {
+	Outputs []struct {
+		Name string  `json:"name"`
+		Type string  `json:"type"`
+		Path *string `json:"path"`
+	} `json:"outputs"`
+}
+
+func emitResult(c common, outcome any) {
+	if c.resultFile == "" || c.contextFile == "" {
+		return
+	}
+	raw, err := os.ReadFile(c.contextFile)
+	if err != nil {
+		return
+	}
+	var ctx contextOutputs
+	if json.Unmarshal(raw, &ctx) != nil || len(ctx.Outputs) == 0 {
+		return
+	}
+	resource := map[string]any{}
+	if doc, ok := outcome.(map[string]any); ok {
+		if r, ok := doc["resource"].(map[string]any); ok {
+			resource = r
+		}
+	} else if doc, ok := outcome.(engine.Outcome); ok {
+		resource = map[string]any{
+			"desiredRelease": doc.Resource.DesiredRelease, "providerVersion": doc.Resource.ProviderVersion,
+			"providerRelease": doc.Resource.ProviderRelease,
+		}
+	}
+	outputs := map[string]any{}
+	for _, decl := range ctx.Outputs {
+		switch decl.Type {
+		case "artifact", "ociArtifact":
+			if decl.Path == nil || decl.Type != "artifact" {
+				continue
+			}
+			if err := os.MkdirAll(filepath.Dir(*decl.Path), 0o755); err != nil {
+				fail(err)
+			}
+			data, _ := json.MarshalIndent(outcome, "", "  ")
+			if err := os.WriteFile(*decl.Path, append(data, '\n'), 0o644); err != nil {
+				fail(err)
+			}
+		case "string":
+			value := ""
+			switch decl.Name {
+			case "release_id":
+				value = stringValue(resource["desiredRelease"])
+			case "provider_version":
+				value = stringValue(resource["providerVersion"])
+			case "provider_release":
+				value = stringValue(resource["providerRelease"])
+			}
+			outputs[decl.Name] = value
+		case "boolean":
+			outputs[decl.Name] = false
+		case "integer":
+			outputs[decl.Name] = 0
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(c.resultFile), 0o755); err != nil {
+		fail(err)
+	}
+	data, err := json.Marshal(map[string]any{"outcome": "completed", "outputs": outputs})
+	if err != nil {
+		fail(err)
+	}
+	if err := os.WriteFile(c.resultFile, append(data, '\n'), 0o644); err != nil {
+		fail(err)
+	}
+}
+
+func stringValue(v any) string {
+	s, _ := v.(string)
+	return s
 }

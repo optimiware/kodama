@@ -262,6 +262,8 @@ func classify(err error) error {
 		switch pg.Code {
 		case "23505":
 			return state.ErrExists
+		case "23514":
+			return state.ErrQuota
 		case "40001", "40P01", "55P03", "57014", "53300":
 			return fmt.Errorf("%w: %v", state.ErrUnavailable, err)
 		}

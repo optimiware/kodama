@@ -274,6 +274,10 @@ func (a *attempt) execute() (verdict, *abortError) {
 		a.needles = append(a.needles, append([]byte(nil), v...))
 	}
 
+	if err := a.writeContextFile(); err != nil {
+		a.note("cannot write the private context document: %v", err)
+		return failed(ReasonCommandStartFailed, nil), nil
+	}
 	if v, ab := a.materializeArtifactFiles(); ab != nil {
 		return verdict{}, ab
 	} else if v != nil {
@@ -476,6 +480,9 @@ func (a *attempt) childEnv(secrets *secretSet) []string {
 	env["KODAMA_WORKSPACE"] = cfg.WorkspaceDir
 	env["KODAMA_OUTPUTS_DIR"] = cfg.OutputsDir
 	env["KODAMA_INPUTS_DIR"] = cfg.InputsDir
+	env["KODAMA_CONTEXT_FILE"] = cfg.ContextFile
+	env["KODAMA_RUNTIME_URL"] = cfg.ServerURL
+	env["KODAMA_TOKEN_FILE"] = cfg.TokenFile
 	env["KODAMA_RESULTS_FILE"] = cfg.ResultsFile
 	// The command is told the directory its files are actually in: the
 	// process-owned child of the volume (when secrets were declared), never the

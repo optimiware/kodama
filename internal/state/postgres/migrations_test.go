@@ -13,10 +13,10 @@ func TestStateMigrationContributionIsOrdered(t *testing.T) {
 		t.Fatal(err)
 	}
 	migrations := m.Migrations()
-	if len(migrations) != 4 {
+	if len(migrations) != 5 {
 		t.Fatalf("migrations: %+v", migrations)
 	}
-	if migrations[2].ID != "300_state.sql" || migrations[3].ID != "301_state_grants.sql" {
+	if migrations[2].ID != "300_state.sql" || migrations[3].ID != "301_state_grants.sql" || migrations[4].ID != "302_state_quota.sql" {
 		t.Fatalf("unexpected state migrations: %+v", migrations[2:])
 	}
 }

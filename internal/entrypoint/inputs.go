@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -123,3 +124,16 @@ func (a *attempt) downloadInput(input runtimev1.ArtifactInput, resp runtimev1.Ar
 const runtimev1MaxInputBytes int64 = 1 << 30
 
 func domainArtifact(id string) (out domain.ArtifactID) { return domain.ArtifactID(id) }
+
+// writeContextFile publishes the immutable context to the private identity
+// directory for trusted plugins. It is not placed in shared scratch.
+func (a *attempt) writeContextFile() error {
+	raw, err := json.Marshal(a.c)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(a.s.cfg.ContextFile), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(a.s.cfg.ContextFile, append(raw, '\n'), 0o600)
+}
