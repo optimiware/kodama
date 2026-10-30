@@ -1,7 +1,7 @@
 ---
 id: T-172
 milestone: kernel
-status: planned
+status: done
 depends_on: []
 decision_blockers: []
 owns: [docs/contracts/pipeline-format.md, docs/contracts/event-catalog.md, docs/specs/pipeline-execution.md, docs/specs/work-management.md, docs/specs/git-repositories.md]

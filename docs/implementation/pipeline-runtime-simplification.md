@@ -128,7 +128,7 @@ One ordered owner moves the shell responsibilities out of the kernel before para
 
 Define a small `internal/kernel` API that is independent of the shell:
 
-- **Model:** canonical pipeline plan, execution order, step kind (`container`, `wait`, `condition`), run state, step state, wait specification/state, resource specification/state, runtime binding, secret reference, result/reason codes.
+- **Model:** canonical pipeline plan, execution order, step kind (`container`, `wait`), `when` predicates, run state, step state, wait specification/state, resource specification/state, runtime binding, secret reference, result/reason codes.
 - **Ports:**
   - `StateStore`: load a run, claim a run/step, commit a transition with outbox intent, list runnable work, rebuild a run view.
   - `Runtime`: `Start`, `Observe`, `Logs`, `Stop`, `Remove`, `Capabilities` for one workload attempt.
@@ -154,7 +154,7 @@ Replace blocking all-in-one execution with explicit progression:
 3. Commit command intent before an external effect.
 4. Launch or adopt a workload by stable identity.
 5. Observe until settled; persist state and outbox intent.
-6. Select the next eligible step, wait, condition, or terminal state.
+6. Select the next eligible step, open wait, or terminal state.
 7. Reconcile after restart, lost response, or expired lease.
 
 Required behavior:
@@ -225,7 +225,7 @@ A fresh isolated database is an explicit owner choice that skips stages 1–2; i
 Required final shape:
 
 - `tasks`: required same-project `pipeline_id`; `current_run_id` constrained to belong to **that task and project**, not merely the project; `status`, `current_step_key`, `waiting_for`, `assigned_role`, `result`, `progress_version`, `progress_run_version`; title/body, parent, repository/branch, context, assignment and optimistic content version retained. A task has no current run before its first execution and at most one afterwards.
-- `run_steps`: `step_kind` (`container`, `wait`, `condition`); wait identity, assignment, correlation, expected input, state, result, deadline, consumed signal and version; image/command requirements relaxed for non-container steps; indexes for due waits and task current-run lookup.
+- `run_steps`: `step_kind` (`container`, `wait`); wait identity, assignment, correlation, expected input, state, result, deadline, consumed signal and version; image/command requirements relaxed for wait steps; indexes for due waits and task current-run lookup.
 - RLS/grants: preserve tenant predicates, composite ownership, narrow runtime column grants, forced RLS, and narrow grants over immutable run snapshots and wait results.
 - Migration tests for duplicate pipeline names, cross-project and cross-task references, wait-state constraints, and removed-column absence at the contract stage.
 
@@ -530,7 +530,7 @@ Parallel agents must not independently decide these. The listed resolution is th
 | Rework loops | Keep execution acyclic; express rework as declared forward steps or an explicit new run with explicit source/output continuity, never reuse of a discarded workspace |
 | Agent-requested waits | The container settles, records a bounded request/result, then a declared wait consumes it; no mid-command suspension |
 | Meaning of resume | Continue the same run through a declared next step with persisted references; do not replay the previous command |
-| Conditions | Use bounded `when` predicates over declared inputs, prior step results and wait outcomes; add a condition step kind only when a requirement demands it |
+| Conditions | `when` is the only conditional construct: a bounded predicate over declared inputs, prior step results and wait outcomes. No condition step kind unless a requirement demands one |
 | Rejection and joins | A rejected input is a recorded outcome, not infrastructure failure; skipped prerequisites and joins have explicit semantics; protected steps cannot be reached unconditionally |
 | Deadline races | One atomic version-checked decision across resolution, expiry and cancellation; duplicates return the recorded result |
 | Assignment and correlation | Represent separately; every changed candidate needs a fresh wait identity and decision |
