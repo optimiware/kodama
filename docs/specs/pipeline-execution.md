@@ -86,7 +86,7 @@ A step is evaluated once, when every prerequisite in `depends_on` is terminal, i
 | --- | --- | --- |
 | 1 | Join: with `join: all` (default) every prerequisite succeeded; with `join: any` at least one succeeded | `skipped`, reason `prerequisite_skipped` |
 | 2 | `when` evaluates to true | `skipped`, reason `condition_false` |
-| 3 | Every `requires` entry names a wait that is `succeeded` with that outcome | `skipped`, reason `requires_unmet` |
+| 3 | Protected steps only: every `requires` entry names a wait that is `succeeded` with its `approving` outcome | `skipped`, reason `requires_unmet` |
 
 Otherwise the step runs, or opens its wait. Evaluation reads only persisted values. The `when` result and a digest of the values read are recorded with the step in the same transition; recovery reuses the record and never re-evaluates.
 
@@ -94,7 +94,7 @@ A rejection is a recorded outcome, not a failure. A wait decided with any declar
 
 A failed step fails the run. No further step starts, steps that never started become `skipped` with reason `run_failed`, and every open wait is decided `cancelled`. Cancelling a run instead marks steps that never started `cancelled`. A run whose steps all settle without failure is `succeeded`, even when branches were skipped.
 
-A step with `authority` is a **protected step**. It is eligible only through check 3, so a skipped, rejected, expired or cancelled wait never satisfies it and it cannot run unconditionally. The shell repeats the check when it issues authority ([integration](git-repositories.md#integration)).
+A step with `authority` is a **protected step**. It is eligible only through check 3, so only a wait decided with its single `approving` outcome satisfies it: a rejection, any other declared outcome, `expired`, and a skipped, failed or cancelled wait never do, and the step cannot run unconditionally. The format refuses a definition whose `requires` names anything else ([protected steps](../contracts/pipeline-format.md#protected-steps)), and the engine checks the recorded outcome again regardless. Timeout branching on unprotected steps uses `when` only. The shell repeats the check when it issues authority ([integration](git-repositories.md#integration)).
 
 ## Wait decisions
 
@@ -106,11 +106,24 @@ A wait has a version and exactly one decision, taken from `waiting`:
 
 Each decision is one version-checked compare-and-set, committed with the step transition, task-projection intent and outbox events in one transaction. Resolution, expiry and cancellation race on that single check, and the deadline is compared with the store's one clock inside it, so a resolution committing at or after the deadline loses to expiry. The first commit wins. A later request performs no transition, creates no second continuation, and returns the recorded decision:
 
-- a repeat of the winning signal identity returns the recorded result as success;
-- a different signal, or a resolution after expiry or cancellation, returns the recorded decision marked as not applied and is recorded once as `signal.refused`;
+- a replay of a recorded signal returns its recorded result ([signal identity and routing](#signal-identity-and-routing));
+- a new signal addressed to a wait that is already decided is refused as `decided`, returns the recorded decision marked not applied, and is recorded once as `signal.refused`;
 - a request carrying an outdated expected version against a still-waiting wait is refused as a version conflict and applies nothing.
 
 The continuation derives from the recorded decision and is re-driven by reconciliation after a crash. The guarantee is one committed decision and an idempotent continuation; commands that run afterwards are not exactly-once.
+
+## Signal identity and routing
+
+Every signal, inbox resolution or external, carries a caller-supplied key of 1 to 128 characters. Its **signal identity** is the tuple (tenant, project, authenticated caller principal, key). The shell derives an opaque `signalId` from the tuple; the raw key never appears in events. Two callers, projects or tenants that use the same key have unrelated identities.
+
+A durable signal record binds the identity to its original target, a digest of the request (address, outcome, answer) and the result, applied or refused. A winning signal's record commits in the same transaction as its decision; a refusal's record commits when the refusal is returned. Records outlive the wait and run they refer to; a refusal that resolved no target is retained for a bounded period set by the shell. Routing runs in this order:
+
+1. **Identity lookup.** If the identity has a record, return its recorded result unchanged, whatever the wait's state now is and however many other waits have opened. The signal stays bound to its original target and is never re-routed. A repeat with a different request digest is refused as `key_reuse` and changes nothing.
+2. **Address a wait.** For a new identity addressed by wait identity, resolve it inside the caller's tenant and project and the caller's authority. A missing, foreign or unauthorized wait is refused as `unknown_wait`, indistinguishably, and discloses nothing about other tenants. A wait that is already decided is refused as `decided` with its recorded decision.
+3. **Address by correlation.** For a new identity addressed by correlation, match only open waits of the caller's project that carry exactly those values. Zero matches is `unknown_wait` and several is `ambiguous_correlation`. Closed waits are never matched, so a late new signal cannot reach one.
+4. **Decide.** One match proceeds to the single decision in [wait decisions](#wait-decisions).
+
+Each refusal is recorded under the caller's own signal identity, so retrying it returns the same refusal.
 
 ## Assignment and correlation
 
@@ -122,7 +135,7 @@ A wait carries separate attributes:
 | Assignment | Who may decide it through the inbox | Changeable only by an authorized, version-checked reassignment that never alters identity, correlation or a decision |
 | Correlation | What is being decided | Immutable key/value pairs read when the wait opens |
 
-An inbox resolution addresses the wait identity; an external signal addresses the complete correlation and must match exactly one open wait of the project, otherwise it is refused as unknown or ambiguous. When both are given they must agree. A decision belongs to one wait and is never inherited by another wait, step or run, even when assignment, input kind and correlation are identical. A changed candidate (any changed correlation value) can only arise in a different wait, a later declared wait step or a new run, and needs its own identity and decision.
+An inbox resolution addresses the wait identity; an external signal addresses the complete correlation. When both are given they must agree. [Routing](#signal-identity-and-routing) defines how an address selects a wait. A decision belongs to one wait and is never inherited by another wait, step or run, even when assignment, input kind and correlation are identical. A changed candidate (any changed correlation value) can only arise in a different wait, a later declared wait step or a new run, and needs its own identity and decision.
 
 ## Shared workspace and services
 
@@ -160,9 +173,10 @@ Delivery is at least once. Consumers deduplicate against run, step, wait, event,
 | PX-37 | Resume MUST continue the same run through the next declared step from persisted references without replaying a settled or uncertain command; loss of required workspace or service state during a wait MUST fail the run, and a run with an open wait MUST stay `running`. |
 | PX-38 | A `when` predicate MUST be evaluated once, when all prerequisites are terminal, over persisted values; the result MUST be recorded and reused on recovery; the engine MUST NOT add a condition step kind or execute arbitrary code. |
 | PX-39 | A wait decided with any declared outcome, including a rejection, MUST settle `succeeded` with that outcome and MUST NOT fail the run or be treated as an infrastructure failure; skipped prerequisites and joins MUST follow the ordered eligibility rules, and run failure MUST skip unstarted steps and decide open waits `cancelled`. |
-| PX-40 | A protected step MUST be eligible only when every `requires` wait is `succeeded` with the required outcome, MUST be skipped otherwise, and MUST NOT be reachable unconditionally by `when`, `join` or a skipped, rejected, expired or cancelled wait. |
+| PX-40 | A protected step MUST be eligible only when every `requires` wait is `succeeded` with its single `approving` outcome, MUST be skipped otherwise, and MUST NOT be reachable unconditionally by `when`, `join`, a rejection, any other outcome, `expired`, or a skipped, failed or cancelled wait; timeout branching on unprotected steps MUST use `when` only. |
 | PX-41 | A wait MUST have exactly one decision (resolved, expired or cancelled) taken by one version-checked compare-and-set against the store clock; losing requests MUST change nothing, MUST NOT create a second continuation, and MUST return the recorded decision. |
 | PX-42 | Wait identity, assignment and correlation MUST be separate; identity and correlation MUST be immutable, assignment MUST change only by a version-checked authorized operation, a decision MUST NOT be inherited by another wait, and a changed candidate MUST have a fresh wait identity and decision. |
+| PX-43 | A signal identity MUST be the tuple (tenant, project, caller principal, caller key); routing MUST look up that identity before any wait matching, a recorded identity MUST return its recorded result permanently and stay bound to its original target, a changed request under a recorded key MUST be refused, and a new request MUST match only open waits of the caller's scope, with foreign and unknown waits indistinguishable. |
 
 PX-01–PX-05 are retired by this amendment. They described the previous run model, project workflow triggers, and kernel composition. Historical acceptance reports that cite them remain historical evidence for the superseded model.
 
@@ -177,7 +191,10 @@ PX-01–PX-05 are retired by this amendment. They described the previous run mod
 | PX-A28 | A rework branch runs as a declared forward step without repeating an earlier step; a continuing new run starts from the pinned candidate commit in a fresh workspace and inherits no wait or decision; a second run for a task with a non-terminal current run is refused | PX-35 |
 | PX-A29 | An agent step that records a question and succeeds causes its downstream wait to open with that request; one that records none skips the wait; a failed step's outputs open nothing; a workload cannot resolve a wait with its run token | PX-36 |
 | PX-A30 | After a controller restart between wait decision and the next step, the same run starts the next declared step once without re-running any settled step; loss of the workspace during a wait fails the run with `workspace_lost` | PX-37 |
-| PX-A31 | A `when` over a missing output is false and skips the step; the recorded result is reused after restart even if the referenced value changed; every grammar bound is enforced | PX-38 |
-| PX-A32 | A reviewer rejection takes the declared rejected branch and the run succeeds; `join: all` skips on a skipped prerequisite and `join: any` runs; a failed step skips unstarted steps and cancels open waits; a protected step is skipped after rejection, expiry or cancellation | PX-39, PX-40 |
-| PX-A33 | Concurrent resolution, expiry and run cancellation of one wait commit exactly one decision; a duplicate of the winner returns its result, a different signal returns the recorded decision unapplied, and one continuation runs | PX-41 |
+| PX-A31 | A `when` over a missing output is false and skips the step; a skipped prerequisite still reads `status == "skipped"` while its outputs and outcome are missing; the recorded result is reused after restart even if the referenced value changed; every grammar bound is enforced | PX-38 |
+| PX-A32 | A reviewer rejection takes the declared rejected branch and the run succeeds; `join: all` skips on a skipped prerequisite and `join: any` runs; a failed step skips unstarted steps and cancels open waits; a protected step is skipped after rejection, any non-approving outcome, expiry or cancellation | PX-39, PX-40 |
+| PX-A33 | Concurrent resolution, expiry and run cancellation of one wait commit exactly one decision; a replay of the winning key returns its result, a new signal for the decided wait is refused as `decided` with the recorded decision, and one continuation runs | PX-41, PX-43 |
 | PX-A34 | A candidate change in a new run yields a new wait identity and an open inbox entry that the earlier decision does not satisfy; reassignment changes who may decide but not identity or correlation; an external signal matching zero or two open waits is refused | PX-42 |
+| PX-A35 | With `on_expiry: continue`, an unprotected step whose `when` tests `outcome == "expired"` runs after expiry; a protected step requiring that wait is skipped with `requires_unmet`, as it is after a rejection | PX-39, PX-40 |
+| PX-A36 | After a wait is resolved, a retry of the winning key returns the recorded decision, including after the wait closed and after another wait with an identical correlation opened; a new signal by correlation matches only the open wait, and a new signal for the closed one is refused | PX-41, PX-43 |
+| PX-A37 | An identical key from another tenant, project or caller is an independent identity; a changed request under a recorded key is refused as `key_reuse`; zero and multiple correlation matches are refused as `unknown_wait` and `ambiguous_correlation`, and replaying each returns the same refusal; a foreign wait ID is refused exactly as an unknown one | PX-43 |

@@ -86,7 +86,7 @@ Integration is an ordinary pipeline step, not a server-side merge:
 The shell issues integration authority only when all of these hold when the push is authorized:
 
 - the run's pipeline is the repository's configured integration pipeline;
-- the step is its eligible protected step, so every `requires` wait is `succeeded` with the declared outcome ([PX-40](pipeline-execution.md#requirements)); a skipped, rejected, expired or cancelled wait never satisfies it;
+- the step is its eligible protected step, so every `requires` wait is `succeeded` with its single `approving` outcome ([PX-40](pipeline-execution.md#requirements)); a rejection, any other outcome, `expired`, and a skipped, failed or cancelled wait never satisfy it;
 - each required wait's recorded `candidate` correlation equals the update's new commit;
 - the ref is the protected default branch, the expected old value is `B`, and the update is a fast-forward.
 
@@ -130,7 +130,7 @@ Volume snapshots and per-repository bundles remain the backup mechanism. Restore
 | GR-18 | `.kodama/<processname>.yaml` at an accepted default-branch commit MUST be indexed into `pipelines` atomically with the trigger event, and an invalid definition MUST NOT displace a valid one. |
 | GR-19 | Bootstrapping MUST preserve pushed objects and commit IDs exactly and MUST NOT change any externally hosted repository, its credentials, its workspaces or its admitted runs. |
 | GR-21 | Integration authority MUST be issued only to the eligible protected step of the repository's configured integration pipeline, for the exact ref and expected-old/new pair, once, and MUST end when the step settles; a task status, bare event, container-supplied approval, or an earlier step MUST NOT confer it. |
-| GR-22 | Every wait required by an integration step MUST be `succeeded` with its declared outcome and MUST record a `candidate` correlation equal to the pushed commit; a changed candidate, including a recomputed one after the default branch moves, MUST require a fresh wait identity and decision. |
+| GR-22 | Every wait required by an integration step MUST be `succeeded` with its `approving` outcome and MUST record a `candidate` correlation equal to the pushed commit; a changed candidate, including a recomputed one after the default branch moves, MUST require a fresh wait identity and decision. |
 
 GR-20 and GR-A13–GR-A15 are cited by historical task records and are not reused. GR-17 and GR-A12 of the earlier numbering (provider import) remain deferred by O-32 and are not renumbered.
 
@@ -167,7 +167,7 @@ Roles follow [identity and RBAC](identity-tenancy-and-rbac.md): `engineer` manag
 | GR-A10 | Oversized pushes, excessive refs and slow clients are refused or cut off with explicit errors without affecting another tenant | GR-15 |
 | GR-A11 | An engineer seeds an empty repository with an existing history, then pushes other branches and tags: commit IDs are identical; a seed receive with any extra ref is refused whole; the grant cannot be reused; a concurrent second seed is refused; a non-empty repository is refused | GR-16, GR-19 |
 | GR-A12 | After seeding, a direct push to the default branch is refused unless the repository opted in; integration still advances it; pushing `.kodama/implement.yaml` indexes the pipeline and starts its run | GR-17, GR-18 |
-| GR-A16 | An integration step whose review wait was rejected, expired, cancelled or skipped is skipped and receives no authority; one whose wait approved a different commit is refused; a container that writes `approved=true`, a task status and a bare `wait.resolved` event integrate nothing | GR-21, GR-22 |
+| GR-A16 | An integration step whose review wait was rejected, decided with a non-approving outcome, expired, cancelled or skipped is skipped and receives no authority, and a definition whose integration step requires the rejection outcome is refused when indexed; one whose wait approved a different commit is refused; a container that writes `approved=true`, a task status and a bare `wait.resolved` event integrate nothing | GR-21, GR-22 |
 | GR-A17 | After the default branch moves, the recomputed candidate cannot be pushed under the earlier approval; a new wait and approval for it allows the push once, and replaying that push is refused | GR-12, GR-21, GR-22 |
 
 ## Unresolved decisions

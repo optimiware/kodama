@@ -36,10 +36,10 @@ Resolution addresses the exact run, step and wait:
 
 1. Authenticate the actor and verify current membership of the assigned role.
 2. Check the wait identity, the caller's expected wait version, an outcome from the wait's declared set (never a reserved one), and an answer of at most 4 KiB.
-3. Submit one decision carrying an idempotency key that becomes the signal identity, with the actor, outcome, answer and time recorded immutably.
-4. Return the recorded decision. A duplicate key returns the recorded result; a request that lost a race to another resolution, expiry or cancellation returns that recorded decision unapplied.
+3. Submit one decision carrying a caller key. With the tenant, project and actor it forms the signal identity ([signal identity and routing](pipeline-execution.md#signal-identity-and-routing)), and the actor, outcome, answer and time are recorded immutably.
+4. Return the result. A retry of a recorded key returns its recorded result even after the wait closed; a new request that lost a race to another resolution, expiry or cancellation returns that recorded decision unapplied.
 
-Reassignment changes only the assignment: an authorized, version-checked, audited operation that removes the previous assignee's authority at once and leaves identity, correlation and outcomes unchanged. A changed candidate appears as a new wait and a new inbox entry; a decision on an earlier wait is never presented as applying to it, and an attempt to resolve a closed or earlier wait is refused as stale without touching the current one.
+Reassignment changes only the assignment: an authorized, version-checked, audited operation that removes the previous assignee's authority at once and leaves identity, correlation and outcomes unchanged. A changed candidate appears as a new wait and a new inbox entry; a decision on an earlier wait is never presented as applying to it, and a new attempt to resolve a closed or earlier wait is refused as stale without touching the current one, while a replay of a recorded key still returns its recorded result.
 
 A successful resolution is not approval by itself. The recorded outcome selects the pipeline's next branch, and rejection has no special effect beyond that outcome ([rejection and joins](pipeline-execution.md#eligibility-skipping-and-joins)). A task's current execution cannot advance through a second, independently stored state machine.
 
@@ -54,9 +54,9 @@ A successful resolution is not approval by itself. The recorded outcome selects 
 | WM-17 | Task projection updates MUST reject stale run versions, and task content edits MUST use an independent optimistic version. |
 | WM-18 | Task, wait, and projection state MUST commit with audit/outbox intent; external effects MUST run outside the transaction and be reconciled after failure or restart. |
 | WM-19 | The inbox MUST list a wait only to callers who currently hold its assigned role, MUST bind each entry to the wait identity and version, and MUST NOT grant access through correlation; a wait without assignment MUST have no inbox entry. |
-| WM-20 | Resolution MUST verify current authority, the exact run/step/wait, the expected version, a declared outcome and a bounded answer, MUST record an immutable actor input, and MUST be submitted as the single PX-41 decision with an idempotency key; a duplicate MUST return the recorded result. |
+| WM-20 | Resolution MUST verify current authority, the exact run/step/wait, the expected version, a declared outcome and a bounded answer, MUST record an immutable actor input, and MUST be submitted as the single PX-41 decision under a caller key forming the PX-43 signal identity; a replay of a recorded key MUST return its recorded result, including after the wait closed. |
 | WM-21 | Reassignment MUST be authorized, version-checked and audited, MUST revoke the previous assignee's authority at once, and MUST NOT change wait identity, correlation or declared outcomes. |
-| WM-22 | A changed candidate MUST appear as a new wait and inbox entry; a decision on one wait MUST NOT be presented as applying to another, and resolving a closed or earlier wait MUST be refused as stale. |
+| WM-22 | A changed candidate MUST appear as a new wait and inbox entry; a decision on one wait MUST NOT be presented as applying to another, and a new request to resolve a closed or earlier wait MUST be refused as stale; a replay of a recorded key is not a new request. |
 
 WM-15 and WM-16 are retained by identifier as superseded and are not renumbered. WM-01–WM-04 are retired by this amendment. They described the removed project workflow, parking fields, and blocking-task inbox. Historical acceptance reports that cite them remain historical evidence for the superseded model.
 
@@ -71,5 +71,6 @@ WM-15 and WM-16 are retained by identifier as superseded and are not renumbered.
 | WM-A08 | A user without the assigned role, a user holding a different role, and a caller who knows only the correlation values cannot see or resolve the wait; a user who loses the role stops seeing it at once | WM-19, WM-20 |
 | WM-A09 | Two reviewers submit different outcomes concurrently; the first commit decides, a retry with the winner's idempotency key returns its result, and the other reviewer receives the recorded decision unapplied; an undeclared or reserved outcome is refused | WM-20 |
 | WM-A10 | Reassigning a wait removes the old assignee's authority and leaves identity and correlation unchanged; a new commit produces a new wait and inbox entry, and the earlier review cannot be applied to it | WM-21, WM-22 |
+| WM-A11 | After a reviewer's approval closes a wait, a retry with the same key returns the recorded approval, including after a later wait with an identical correlation has opened; a fresh key against the closed wait is refused as stale; another reviewer reusing the first key with a different outcome is refused as key reuse | WM-20, WM-22 |
 
 Transport identity checks, human-only actor policy, and real NATS-triggered execution belong to the shell integration checkpoint in the [simplification plan](../implementation/pipeline-runtime-simplification.md).
