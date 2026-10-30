@@ -181,3 +181,40 @@ func TestMemoryListAndRecreateGeneration(t *testing.T) {
 		t.Fatal("recreated key reused an old ETag")
 	}
 }
+
+type testVerifier struct{ err error }
+
+func (v testVerifier) VerifyArtifact(context.Context, Scope, domain.ArtifactID, string) error {
+	return v.err
+}
+
+func TestHTTPVerifyArtifactReferencesBeforeWrite(t *testing.T) {
+	mem := NewMemory(nil)
+	h, _ := NewHandler(mem, testResolver{scope: testScope(), write: true})
+	h.Artifacts = testVerifier{err: nil}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	body := `{"value":{"release":"v1"},"artifactReferences":[{"artifactId":"art_1","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/runtime/v3/attempts/att_test/state/release/entries?key=releases/v1", strings.NewReader(body))
+	req.Header.Set("If-None-Match", "*")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("verified references: %s", resp.Status)
+	}
+	resp.Body.Close()
+
+	req, _ = http.NewRequest(http.MethodPut, srv.URL+"/runtime/v3/attempts/att_test/state/release/entries?key=releases/v2", strings.NewReader(body))
+	req.Header.Set("If-None-Match", "*")
+	h.Artifacts = testVerifier{err: ErrDenied}
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("denied reference: %s", resp.Status)
+	}
+	resp.Body.Close()
+}
