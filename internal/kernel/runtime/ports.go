@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"slices"
 	"time"
@@ -13,7 +14,7 @@ import (
 // engine needs to decide the next step after a restart, with no transient
 // backend configuration. Steps keep their attempt and result, commands keep
 // their workload binding and outcome, Workloads keep the latest observation of
-// each attempt, and Waits keep their consumed results, so a restarted engine can
+// each attempt, and Waits keep their recorded decisions, so a restarted engine can
 // reconcile uncertain effects by stable identity and evaluate conditions over
 // prior results and wait outcomes. It round-trips through encoding/json.
 type RunRecord struct {
@@ -125,6 +126,35 @@ func (r RunRecord) Validate() error {
 	return nil
 }
 
+// RequirementsMet checks, from recorded state alone, that a protected step may
+// start: every Requires entry names a wait step that succeeded with a resolved
+// decision whose outcome is that wait's approving outcome. A rejection, any other
+// declared outcome, expired, and a skipped, failed, cancelled or still-open wait
+// never satisfy it, whatever the step's when or join says. An unprotected step
+// has no requirements. The engine calls this regardless of the format's own
+// validation.
+func (r RunRecord) RequirementsMet(key domain.StepID) error {
+	i := slices.IndexFunc(r.Plan.Steps, func(p PlanStep) bool { return p.Key == key })
+	if i < 0 {
+		return invalid("the plan has no step %s", key)
+	}
+	for _, req := range r.Plan.Steps[i].Requires {
+		pi := slices.IndexFunc(r.Plan.Steps, func(p PlanStep) bool { return p.Key == req.Wait && p.Kind == StepWait })
+		si := slices.IndexFunc(r.Run.Steps, func(s Step) bool { return s.Key == req.Wait })
+		wi := slices.IndexFunc(r.Waits, func(w Wait) bool { return w.StepKey == req.Wait })
+		if pi < 0 || si < 0 || wi < 0 {
+			return fmt.Errorf("%w: step %s: no wait %s", ErrRequiresUnmet, key, req.Wait)
+		}
+		approving, ok := r.Plan.Steps[pi].Wait.ApprovingOutcome()
+		w := r.Waits[wi]
+		if !ok || req.Outcome != approving || r.Run.Steps[si].State != StepSucceeded ||
+			w.State != WaitResolved || w.Decision.Kind != DecisionResolved || w.Decision.Outcome != approving {
+			return fmt.Errorf("%w: step %s needs wait %s decided %q", ErrRequiresUnmet, key, req.Wait, approving)
+		}
+	}
+	return nil
+}
+
 // StepResult returns the retained workload result of a settled container step,
 // for conditions over prior step results.
 func (r RunRecord) StepResult(key domain.StepID) (Result, bool) {
@@ -136,12 +166,13 @@ func (r RunRecord) StepResult(key domain.StepID) (Result, bool) {
 	return Result{}, false
 }
 
-// WaitOutcome returns the recorded outcome of a consumed wait step, for
-// conditions over wait outcomes.
+// WaitOutcome returns the recorded outcome of a decided wait step that has one:
+// a declared outcome, or expired when the wait continued after its deadline. It
+// reads recorded state only, for when predicates over wait outcomes.
 func (r RunRecord) WaitOutcome(key domain.StepID) (string, bool) {
 	for _, w := range r.Waits {
-		if w.StepKey == key && w.State == WaitConsumed {
-			return w.Result.Outcome, true
+		if w.StepKey == key && w.Decision.Outcome != "" {
+			return w.Decision.Outcome, true
 		}
 	}
 	return "", false
@@ -228,7 +259,7 @@ func (a Admission) Validate() error {
 			if !ok {
 				return invalid("wait step %s has no wait", p.Key)
 			}
-			if w.Spec != *p.Wait {
+			if !w.Spec.Equal(*p.Wait) {
 				return invalid("wait %s does not match its plan step", w.ID)
 			}
 		}
@@ -253,7 +284,7 @@ func (a Admission) Validate() error {
 // ErrClaimHeld, ErrClaimExpired or a *domain.Error with domain.CodeVersionConflict
 // rather than overwriting silently.
 //
-// Three methods (Admit, RequestCancel, ConsumeWait) are the writes that arrive
+// Three methods (Admit, RequestCancel, DecideSignal) are the writes that arrive
 // from outside the claim holder: admission, cancellation and wait resolution.
 // They are atomic and idempotent without a claim and must never wait for a lease.
 type StateStore interface {
@@ -284,13 +315,26 @@ type StateStore interface {
 	// Runnable lists runs with claimable work, bounded by q.Limit.
 	Runnable(ctx context.Context, q RunnableQuery) ([]RunRef, error)
 	// RequestCancel records a cancellation request without a claim. It blocks
-	// new execution claims and is idempotent.
+	// new execution claims and is idempotent. In the same transaction it decides
+	// every pending and open wait of the run as cancelled.
 	RequestCancel(ctx context.Context, scope domain.Scope, id domain.RunID) (Run, error)
-	// ConsumeWait applies a signal as one version-checked decision. A duplicate
-	// of the consuming signal returns the recorded result; every other signal
-	// for a closed wait is refused with the Wait.Consume errors. The consumption
-	// and its wait.resolved event commit together.
-	ConsumeWait(ctx context.Context, sig Signal, now time.Time) (Consumption, error)
+	// LookupSignal returns the durable record or tombstone of a signal identity,
+	// or the zero lookup when there is none. It is the first step of routing and
+	// is independent of any wait, step or run still existing: records have no
+	// expiry, ordinary wait and run retention never removes them, and the only
+	// removal is deleting the project. There is deliberately no per-record delete.
+	LookupSignal(ctx context.Context, id SignalIdentity) (SignalLookup, error)
+	// DecideSignal routes and decides one authenticated signal in a single
+	// transaction by applying RouteSignal against the identity's lookup and the
+	// project's waits. It commits, together and atomically, the updated wait (a
+	// resolution, or an expiry found at the deadline), the new decision record or
+	// tombstone, the continuation intent and the outbox events (wait.resolved,
+	// wait.expired or signal.refused). A replay of a recorded identity returns the
+	// recorded result and writes nothing; a changed request under a recorded key
+	// returns ErrKeyReuse and writes nothing. Resolution, expiry and cancellation
+	// race on one version-checked decision against the store's one clock; the
+	// first commit wins and no second continuation is created.
+	DecideSignal(ctx context.Context, req SignalRequest, now time.Time) (SignalResult, error)
 	// View rebuilds the read model from retained run, step and wait records.
 	View(ctx context.Context, scope domain.Scope, id domain.RunID) (RunView, error)
 }

@@ -75,15 +75,15 @@ func evidenceRecord(t *testing.T) rt.RunRecord {
 	must(t, stop2.RecordResult(okRes))
 	must(t, run.FinishStep("build", rt.StepSucceeded, rt.ReasonNone, okRes))
 
-	wait, err := rt.NewWait(scope, "w1", "run1", "review", *plan.Steps[1].Wait, "corr-1")
+	wait, err := rt.NewWait(scope, "w1", "run1", "review", *plan.Steps[1].Wait)
 	must(t, err)
-	must(t, wait.Open(t0))
+	must(t, wait.Open(t0, map[string]string{"candidate": "c1"}, "please review"))
 	must(t, run.AdvanceStep("review", rt.StepWaiting, rt.ReasonNone))
-	if _, err := wait.Consume(signal(wait, "sig-1"), t0.Add(minute)); err != nil {
+	if _, err := wait.Resolve(signalReq(wait, "sig-1"), t0.Add(minute)); err != nil {
 		t.Fatal(err)
 	}
 	must(t, run.AdvanceStep("review", rt.StepSucceeded, rt.ReasonNone))
-	must(t, run.AdvanceStep("gate", rt.StepSucceeded, rt.ReasonNone))
+	must(t, run.AdvanceStep("notify", rt.StepSkipped, rt.ReasonConditionFalse))
 
 	must(t, run.AdvanceStep("test", rt.StepRunning, rt.ReasonNone))
 	b3 := bind("test", 1, 1)
@@ -431,7 +431,7 @@ func exhaustedRun(t *testing.T, rem rt.Remaining) rt.Run {
 	must(t, r.AdvanceStep("build", rt.StepRunning, rt.ReasonNone))
 	r.RequestCancel()
 	must(t, r.AdvanceStep("build", rt.StepCancelled, rt.ReasonCancelled))
-	for _, k := range []domain.StepID{"review", "gate", "test"} {
+	for _, k := range []domain.StepID{"review", "notify", "test"} {
 		must(t, r.AdvanceStep(k, rt.StepCancelled, rt.ReasonCancelled))
 	}
 	must(t, r.Settle(rt.OutcomeCancelled, rt.ReasonCancelled))
@@ -473,7 +473,7 @@ func testRetainedWorkloads(t *testing.T) {
 		for name, rem := range bad {
 			r := mustRun(t)
 			r.RequestCancel()
-			for _, k := range []domain.StepID{"build", "review", "gate", "test"} {
+			for _, k := range []domain.StepID{"build", "review", "notify", "test"} {
 				must(t, r.AdvanceStep(k, rt.StepCancelled, rt.ReasonCancelled))
 			}
 			must(t, r.Settle(rt.OutcomeCancelled, rt.ReasonCancelled))
@@ -553,7 +553,7 @@ func testLateReconciliation(t *testing.T) {
 	t.Run("pending cleanup cannot use the exhausted path", func(t *testing.T) {
 		r := mustRun(t)
 		r.RequestCancel()
-		for _, k := range []domain.StepID{"build", "review", "gate", "test"} {
+		for _, k := range []domain.StepID{"build", "review", "notify", "test"} {
 			must(t, r.AdvanceStep(k, rt.StepCancelled, rt.ReasonCancelled))
 		}
 		must(t, r.Settle(rt.OutcomeCancelled, rt.ReasonCancelled))

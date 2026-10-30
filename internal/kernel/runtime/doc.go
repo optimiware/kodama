@@ -29,9 +29,23 @@
 //     wraps [ErrNotReached] proves the command never reached the backend and
 //     permits a retry. Every other failure is uncertain; the engine observes
 //     the workload or resource by its stable identity and adopts or stops it.
-//   - A wait commits before it is announced, and one version-checked decision
-//     settles the race between resolution, expiry and cancellation. A
-//     duplicate resolution returns the recorded result.
+//   - A wait commits before it is announced and takes exactly one decision
+//     (resolved, expired or cancelled) in one version-checked step, so
+//     resolution, expiry and cancellation race on a single check against the
+//     store's clock. A wait declares a closed set of outcomes and at most one
+//     approving outcome; only that outcome can satisfy a protected step's
+//     requirement, and a rejection is an ordinary recorded outcome, not a
+//     failure.
+//   - Signals are durable. A [SignalIdentity] is (tenant, project, caller
+//     principal, caller key). [RouteSignal] looks the identity up before any
+//     wait matching: a [SignalRecord] (original target and the complete
+//     decision) or a smaller [SignalTombstone] (a refusal that resolved no
+//     target) returns its recorded result permanently and is never re-routed.
+//     Neither expires; they are removed only with their project. A changed
+//     request under a recorded key is [ErrKeyReuse] and writes nothing.
+//   - There is no condition step kind. Step kinds are container and wait;
+//     conditional eligibility is a when predicate that the engine evaluates once
+//     over persisted values.
 //   - A claim is a lease with owner, expiry and a monotonic [Fence]. The owner
 //     extends it with [RenewClaim], which keeps the fence and is persisted
 //     atomically; [AcquireClaim] never renews. A stale writer cannot commit or
@@ -47,7 +61,7 @@
 //     items without reopening execution.
 //   - Durable records carry the execution evidence recovery needs: step
 //     attempts and results, command bindings and outcomes, the latest workload
-//     observation per attempt and consumed wait results ([RunRecord]), so a
+//     observation per attempt and recorded wait decisions ([RunRecord]), so a
 //     restarted engine reconciles by stable identity with no transient backend
 //     configuration.
 //

@@ -35,9 +35,11 @@ func mustPlan(t *testing.T) rt.Plan {
 		Steps: []rt.PlanStep{
 			{Key: "build", Kind: rt.StepContainer, Workload: &rt.WorkloadSpec{Image: "golang:1", Commands: []string{"go build"}}},
 			{Key: "review", Kind: rt.StepWait, DependsOn: []domain.StepID{"build"},
-				Wait: &rt.WaitSpec{ForKind: rt.WaitForRole, For: "reviewer", Input: "approval", Timeout: time.Hour}},
-			{Key: "gate", Kind: rt.StepCondition, DependsOn: []domain.StepID{"review"}, When: "review.outcome == approved"},
-			{Key: "test", Kind: rt.StepContainer, DependsOn: []domain.StepID{"gate"}, Workload: &rt.WorkloadSpec{Image: "golang:1", Commands: []string{"go test"}}},
+				Wait: func() *rt.WaitSpec { s := reviewSpec(); return &s }()},
+			{Key: "notify", Kind: rt.StepContainer, DependsOn: []domain.StepID{"review"}, When: `review.outcome == "rejected"`,
+				Workload: &rt.WorkloadSpec{Image: "alpine:3", Commands: []string{"notify"}}},
+			{Key: "test", Kind: rt.StepContainer, DependsOn: []domain.StepID{"review"}, When: `review.outcome == "approved"`,
+				Workload: &rt.WorkloadSpec{Image: "golang:1", Commands: []string{"go test"}}},
 		},
 	}
 }
@@ -51,21 +53,30 @@ func mustRun(t *testing.T) rt.Run {
 	return r
 }
 
+// reviewSpec is the wait the fixtures use: assigned to a role, correlated on the
+// candidate commit, and with approved as its single approving outcome.
+func reviewSpec() rt.WaitSpec {
+	return rt.WaitSpec{Assign: "reviewer", Correlate: map[string]string{"candidate": "implement.outputs.commit"},
+		Input: "approval", Outcomes: []string{"approved", "rejected"}, Approving: "approved", Timeout: time.Hour}
+}
+
+// openWait returns the review wait of run1 opened at t0 for candidate c1.
 func openWait(t *testing.T) rt.Wait {
 	t.Helper()
-	w, err := rt.NewWait(scope, "w1", "run1", "review", rt.WaitSpec{ForKind: rt.WaitForRole, For: "reviewer", Input: "approval", Timeout: time.Hour}, "corr-1")
+	w, err := rt.NewWait(scope, "w1", "run1", "review", reviewSpec())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Open(t0); err != nil {
+	if err := w.Open(t0, map[string]string{"candidate": "c1"}, "please review"); err != nil {
 		t.Fatal(err)
 	}
 	return w
 }
 
-func signal(w rt.Wait, id string) rt.Signal {
-	return rt.Signal{Scope: w.Scope, ID: id, RunID: w.RunID, StepKey: w.StepKey, WaitID: w.ID,
-		Correlation: w.Correlation, WaitVersion: w.Version, Actor: "alice", Outcome: "approved", InputRef: "obj/1"}
+// signalReq is the inbox resolution of w by alice under the given key.
+func signalReq(w rt.Wait, key string) rt.SignalRequest {
+	return rt.SignalRequest{Identity: rt.SignalIdentity{Scope: w.Scope, Caller: "user-alice", Key: key}, WaitID: w.ID,
+		ExpectedVersion: w.Version, Outcome: "approved", Answer: "looks good", Actor: "user:alice"}
 }
 
 func Test_unit_kernel_runtime_contract(t *testing.T) {
@@ -94,13 +105,12 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			{rt.StepWait, W, C, true},
 			{rt.StepWait, P, R, false}, // a wait never runs a workload
 			{rt.StepWait, P, S, false}, // consumption needs an open wait
-			{rt.StepWait, P, K, false},
+			{rt.StepWait, P, K, true},  // a wait behind a false when, join or requires is skipped
+			{rt.StepWait, P, F, true},  // correlation_missing: the wait never opens
+			{rt.StepWait, W, K, false},
 			{rt.StepWait, S, W, false},
-			{rt.StepCondition, P, S, true},
-			{rt.StepCondition, P, K, true},
-			{rt.StepCondition, P, R, false},
-			{rt.StepCondition, P, W, false},
-			{rt.StepCondition, S, K, false},
+			{rt.StepKind("condition"), P, S, false}, // there is no condition step kind
+			{rt.StepKind("condition"), P, K, false},
 			{rt.StepKind(""), P, R, false},
 		} {
 			if got := rt.CanStep(tc.kind, tc.from, tc.to); got != tc.ok {
@@ -140,140 +150,9 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		}
 	})
 
-	t.Run("wait lifecycle and single consumption", func(t *testing.T) {
-		w := openWait(t)
-		if w.Deadline != t0.Add(time.Hour) || w.Version != 2 {
-			t.Fatalf("open wait deadline %v version %d", w.Deadline, w.Version)
-		}
-		sig := signal(w, "sig-1")
-		got, err := w.Consume(sig, t0.Add(minute))
-		if err != nil || got.Duplicate || got.Result.Outcome != "approved" || w.State != rt.WaitConsumed {
-			t.Fatalf("consume: %+v %v state %s", got, err, w.State)
-		}
-		if err := w.Validate(); err != nil {
-			t.Fatal(err)
-		}
-		version := w.Version
-
-		// A repeat of the consuming signal returns the recorded result, not a second continuation.
-		dup, err := w.Consume(sig, t0.Add(2*minute))
-		if err != nil || !dup.Duplicate || dup.Result != got.Result || w.Version != version {
-			t.Fatalf("duplicate: %+v %v version %d", dup, err, w.Version)
-		}
-		// A different signal for the consumed wait is late and changes nothing.
-		late := signal(w, "sig-2")
-		late.Outcome = "rejected"
-		if _, err := w.Consume(late, t0.Add(3*minute)); !errors.Is(err, rt.ErrWaitClosed) || w.Result.Outcome != "approved" || w.Version != version {
-			t.Fatalf("late signal: %v result %+v", err, w.Result)
-		}
-	})
-
-	t.Run("wait refuses stale, foreign, unopened, expired and cancelled signals", func(t *testing.T) {
-		mutate := func(f func(*rt.Signal)) func(rt.Wait) rt.Signal {
-			return func(w rt.Wait) rt.Signal { s := signal(w, "s"); f(&s); return s }
-		}
-		for name, tc := range map[string]struct {
-			sig  func(rt.Wait) rt.Signal
-			want error
-		}{
-			"stale version":       {mutate(func(s *rt.Signal) { s.WaitVersion-- }), rt.ErrWaitStale},
-			"foreign tenant":      {mutate(func(s *rt.Signal) { s.Scope = other }), rt.ErrWaitForeign},
-			"foreign run":         {mutate(func(s *rt.Signal) { s.RunID = "run2" }), rt.ErrWaitForeign},
-			"foreign step":        {mutate(func(s *rt.Signal) { s.StepKey = "other" }), rt.ErrWaitForeign},
-			"foreign wait id":     {mutate(func(s *rt.Signal) { s.WaitID = "w2" }), rt.ErrWaitForeign},
-			"foreign correlation": {mutate(func(s *rt.Signal) { s.Correlation = "other" }), rt.ErrWaitForeign},
-		} {
-			w := openWait(t)
-			before := w
-			if _, err := w.Consume(tc.sig(w), t0.Add(minute)); !errors.Is(err, tc.want) || w != before {
-				t.Errorf("%s: err %v, mutated %v", name, err, w != before)
-			}
-		}
-		bad := openWait(t)
-		s := signal(bad, "s")
-		s.Outcome = "Approved!"
-		if _, err := bad.Consume(s, t0); !errors.Is(err, domain.ErrInvalidValue) {
-			t.Errorf("malformed outcome: %v", err)
-		}
-
-		// Unopened wait.
-		p, _ := rt.NewWait(scope, "w1", "run1", "review", rt.WaitSpec{ForKind: rt.WaitForRole, For: "r", Input: "i"}, "c")
-		ps := signal(p, "s")
-		ps.WaitVersion = p.Version
-		if _, err := p.Consume(ps, t0); !errors.Is(err, rt.ErrWaitNotOpen) {
-			t.Errorf("unopened: %v", err)
-		}
-
-		// Deadline: expiry wins at and after the deadline; not before.
-		w := openWait(t)
-		if err := w.Expire(t0.Add(time.Hour - 1)); !errors.Is(err, rt.ErrWaitNotDue) {
-			t.Errorf("early expire: %v", err)
-		}
-		if _, err := w.Consume(signal(w, "s"), t0.Add(time.Hour)); !errors.Is(err, rt.ErrWaitExpired) {
-			t.Errorf("signal at deadline: %v", err)
-		}
-		if err := w.Expire(t0.Add(time.Hour)); err != nil || w.State != rt.WaitExpired {
-			t.Fatalf("expire: %v %s", err, w.State)
-		}
-		if _, err := w.Consume(signal(w, "s"), t0.Add(time.Hour)); !errors.Is(err, rt.ErrWaitClosed) {
-			t.Errorf("signal after expiry: %v", err)
-		}
-		if err := w.Cancel(); !errors.Is(err, rt.ErrWaitClosed) {
-			t.Errorf("cancel after expiry: %v", err)
-		}
-
-		// Cancellation and resolution race on one decision: the first wins.
-		c := openWait(t)
-		sig := signal(c, "s")
-		if err := c.Cancel(); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := c.Consume(sig, t0); !errors.Is(err, rt.ErrWaitClosed) {
-			t.Errorf("signal after cancel: %v", err)
-		}
-		r := openWait(t)
-		if _, err := r.Consume(signal(r, "s"), t0); err != nil {
-			t.Fatal(err)
-		}
-		if err := r.Cancel(); !errors.Is(err, rt.ErrWaitClosed) {
-			t.Errorf("cancel after consume: %v", err)
-		}
-		if err := r.Open(t0); !errors.Is(err, rt.ErrIllegalTransition) {
-			t.Errorf("reopen: %v", err)
-		}
-		// A wait without a timeout never expires.
-		nt, _ := rt.NewWait(scope, "w9", "run1", "review", rt.WaitSpec{ForKind: rt.WaitForExternal, For: "ci", Input: "result"}, "c")
-		_ = nt.Open(t0)
-		if err := nt.Expire(t0.Add(1000 * time.Hour)); !errors.Is(err, rt.ErrWaitNotDue) {
-			t.Errorf("no-timeout expire: %v", err)
-		}
-	})
-
-	t.Run("step and wait must agree", func(t *testing.T) {
-		step, _ := rt.NewStep("review", rt.StepWait)
-		w, _ := rt.NewWait(scope, "w1", "run1", "review", rt.WaitSpec{ForKind: rt.WaitForRole, For: "r", Input: "i"}, "c")
-		if err := rt.CheckStepWait(step, w); err != nil {
-			t.Fatal(err)
-		}
-		if err := rt.CheckStepWait(step, openWait(t)); err == nil {
-			t.Error("a pending step with an open wait must disagree")
-		}
-		_ = step.Advance(rt.StepWaiting, rt.ReasonNone)
-		if err := rt.CheckStepWait(step, openWait(t)); err != nil {
-			t.Error(err)
-		}
-		if err := rt.CheckStepWait(step, w); err == nil {
-			t.Error("a waiting step with a pending wait must disagree")
-		}
-		_ = step.Advance(rt.StepSucceeded, rt.ReasonNone)
-		if err := rt.CheckStepWait(step, openWait(t)); err == nil {
-			t.Error("a settled step with an open wait must disagree")
-		}
-		cs, _ := rt.NewStep("build", rt.StepContainer)
-		if err := rt.CheckStepWait(cs, w); err == nil {
-			t.Error("a container step has no wait")
-		}
-	})
+	t.Run("step kinds, wait outcomes and protected steps", testStepKindsAndWaits)
+	t.Run("wait decisions", testWaitDecisions)
+	t.Run("signal identity, routing and durable records", testSignalRecords)
 
 	t.Run("fence comparison rejects a stale writer", func(t *testing.T) {
 		for _, tc := range []struct {
@@ -372,11 +251,11 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			must(t, r.FinishStep(k, rt.StepSucceeded, rt.ReasonNone, okRes))
 		}
 		must(t, r.AdvanceStep("review", rt.StepWaiting, rt.ReasonNone))
-		if r.Status() != rt.StatusWaiting {
+		if r.Status() != rt.StatusRunning { // a run with an open wait stays running
 			t.Fatalf("status %s", r.Status())
 		}
 		must(t, r.AdvanceStep("review", rt.StepSucceeded, rt.ReasonNone))
-		must(t, r.AdvanceStep("gate", rt.StepSucceeded, rt.ReasonNone))
+		must(t, r.AdvanceStep("notify", rt.StepSkipped, rt.ReasonConditionFalse))
 		must(t, r.AdvanceStep("test", rt.StepRunning, rt.ReasonNone))
 		must(t, r.FinishStep("test", rt.StepSucceeded, rt.ReasonNone, okRes))
 
@@ -422,7 +301,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 	t.Run("cleanup completes directly when nothing is retained", func(t *testing.T) {
 		r := mustRun(t)
 		r.RequestCancel()
-		for _, k := range []domain.StepID{"build", "review", "gate", "test"} {
+		for _, k := range []domain.StepID{"build", "review", "notify", "test"} {
 			must(t, r.AdvanceStep(k, rt.StepCancelled, rt.ReasonCancelled))
 		}
 		must(t, r.Settle(rt.OutcomeCancelled, rt.ReasonCancelled))
@@ -465,7 +344,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		}
 		// A run is cancelled only after cancellation was requested.
 		fresh := mustRun(t)
-		for _, k := range []domain.StepID{"build", "review", "gate", "test"} {
+		for _, k := range []domain.StepID{"build", "review", "notify", "test"} {
 			must(t, fresh.AdvanceStep(k, rt.StepCancelled, rt.ReasonCancelled))
 		}
 		if err := fresh.Settle(rt.OutcomeCancelled, rt.ReasonCancelled); err == nil {
@@ -560,7 +439,8 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			"container with wait": func(p *rt.Plan) { p.Steps[0].Wait = p.Steps[1].Wait },
 			"wait with workload":  func(p *rt.Plan) { p.Steps[1].Workload = p.Steps[0].Workload },
 			"wait no input":       func(p *rt.Plan) { p.Steps[1].Wait.Input = "" },
-			"condition no when":   func(p *rt.Plan) { p.Steps[2].When = "" },
+			"condition step kind": func(p *rt.Plan) { p.Steps[2].Kind = "condition"; p.Steps[2].Workload = nil },
+			"when too long":       func(p *rt.Plan) { p.Steps[2].When = strings.Repeat("a", rt.MaxWhenBytes+1) },
 			"unknown kind":        func(p *rt.Plan) { p.Steps[2].Kind = "agent" },
 			"service lifetime":    func(p *rt.Plan) { p.Services = []rt.ServiceSpec{{Name: "db", Lifetime: "forever", Image: "pg"}} },
 		} {
@@ -572,7 +452,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		}
 
 		run := mustRun(t)
-		wait, _ := rt.NewWait(scope, "w1", "run1", "review", *plan.Steps[1].Wait, "corr-1")
+		wait, _ := rt.NewWait(scope, "w1", "run1", "review", *plan.Steps[1].Wait)
 		ev := rt.Event{ID: "e1", Scope: scope, RunID: "run1", Kind: rt.EventRunCreated, Version: 1, At: t0}
 		adm := rt.Admission{Run: run, Plan: plan, Waits: []rt.Wait{wait}, Events: []rt.Event{ev}}
 		must(t, adm.Validate())
@@ -785,7 +665,8 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			rt.ReasonDependencyFailed, rt.ReasonConditionFalse, rt.ReasonLaunchNotReached, rt.ReasonLaunchUncertain,
 			rt.ReasonStopUncertain, rt.ReasonWorkloadLost, rt.ReasonServiceLost, rt.ReasonWorkspaceLost,
 			rt.ReasonSecretUnavailable, rt.ReasonCapabilityUnsatisfied, rt.ReasonPreparationFailed,
-			rt.ReasonCleanupFailed, rt.ReasonCleanupExhausted} {
+			rt.ReasonCleanupFailed, rt.ReasonCleanupExhausted, rt.ReasonPrerequisiteSkipped, rt.ReasonRequiresUnmet,
+			rt.ReasonRunFailed, rt.ReasonRunCancelled, rt.ReasonCorrelationMissing} {
 			if !re.MatchString(string(r)) || r.Validate() != nil {
 				t.Errorf("reason %q", r)
 			}
@@ -800,7 +681,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		}
 		// Pinned wire values.
 		for got, want := range map[string]string{
-			string(rt.StepContainer): "container", string(rt.StepWait): "wait", string(rt.StepCondition): "condition",
+			string(rt.StepContainer): "container", string(rt.StepWait): "wait",
 			string(rt.EventWaitResolved): "wait.resolved", string(rt.EventStepStateChanged): "run_step.state_changed",
 			string(rt.CommandLaunch): "launch_workload",
 		} {
@@ -844,10 +725,12 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		if wait.Validate() == nil || wait.State.Closed() {
 			t.Error("zero wait")
 		}
-		if _, err := wait.Consume(rt.Signal{}, t0); err == nil {
-			t.Error("zero wait consumed a zero signal")
+		if _, err := wait.Resolve(rt.SignalRequest{}, t0); err == nil {
+			t.Error("zero wait resolved by a zero signal")
 		}
-		if wait.Open(t0) == nil || wait.Cancel() == nil || wait.Expire(t0) == nil {
+		_, errExpire := wait.Expire(t0)
+		_, errCancel := wait.Cancel(t0, rt.ReasonRunCancelled)
+		if errOpen := wait.Open(t0, nil, ""); errOpen == nil || errExpire == nil || errCancel == nil {
 			t.Error("zero wait transitioned")
 		}
 		if claim.Active(t0) || claim.Validate() == nil || claim.Fence.Validate() == nil {
@@ -872,7 +755,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 		if (rt.RuntimeBinding{}).Validate() == nil || (rt.ResourceSpec{}).Validate() == nil ||
 			(rt.ResourceHandle{}).Validate() == nil || (rt.Event{}).Validate() == nil || (rt.LogChunk{}).Validate() == nil ||
 			(rt.WorkloadObservation{}).Validate() == nil || (rt.ResourceObservation{}).Validate() == nil ||
-			(rt.Result{}).Validate() == nil || (rt.Signal{}).Validate() == nil || (rt.ClaimRequest{}).Validate() == nil {
+			(rt.Result{}).Validate() == nil || (rt.SignalRequest{}).Validate() == nil || (rt.ClaimRequest{}).Validate() == nil {
 			t.Error("a zero value validated")
 		}
 		if rt.ClassifyEffect(nil) != rt.CommandConfirmed {

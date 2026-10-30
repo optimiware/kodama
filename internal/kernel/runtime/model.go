@@ -3,11 +3,13 @@ package runtime
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/optimiware/kodama/internal/domain"
 )
@@ -26,8 +28,7 @@ var (
 	ErrClaimHeld = errors.New("runtime: claim held")
 	// ErrClaimExpired reports a claim whose lease has run out.
 	ErrClaimExpired = errors.New("runtime: claim expired")
-	// ErrWaitClosed reports a signal for a wait already consumed by another
-	// signal, expired or cancelled.
+	// ErrWaitClosed reports a request for a wait that is already decided.
 	ErrWaitClosed = errors.New("runtime: wait closed")
 	// ErrWaitExpired reports a signal that arrived at or after the deadline.
 	ErrWaitExpired = errors.New("runtime: wait deadline passed")
@@ -35,9 +36,15 @@ var (
 	ErrWaitNotOpen = errors.New("runtime: wait not open")
 	// ErrWaitStale reports a signal issued against an older wait version.
 	ErrWaitStale = errors.New("runtime: stale wait version")
-	// ErrWaitForeign reports a signal naming another tenant, project, run,
-	// step, wait or correlation.
-	ErrWaitForeign = errors.New("runtime: foreign wait")
+	// ErrInvalidOutcome reports an outcome the wait did not declare.
+	ErrInvalidOutcome = errors.New("runtime: outcome not declared by the wait")
+	// ErrKeyReuse reports a caller key already recorded with a different request.
+	// It is a response to the caller only: it creates no record, emits no event
+	// and never changes the recorded result.
+	ErrKeyReuse = errors.New("runtime: key_reuse")
+	// ErrRequiresUnmet reports a protected step whose required waits are not all
+	// decided with their approving outcome.
+	ErrRequiresUnmet = errors.New("runtime: requires unmet")
 	// ErrWaitNotDue reports an expiry request before the deadline.
 	ErrWaitNotDue = errors.New("runtime: wait not due")
 	// ErrNotReached marks an external effect as affirmatively known not to
@@ -82,6 +89,11 @@ const (
 	ReasonCancelled             Reason = "cancelled"
 	ReasonDependencyFailed      Reason = "dependency_failed"
 	ReasonConditionFalse        Reason = "condition_false"
+	ReasonPrerequisiteSkipped   Reason = "prerequisite_skipped"
+	ReasonRequiresUnmet         Reason = "requires_unmet"
+	ReasonRunFailed             Reason = "run_failed"
+	ReasonRunCancelled          Reason = "run_cancelled"
+	ReasonCorrelationMissing    Reason = "correlation_missing"
 	ReasonLaunchNotReached      Reason = "launch_not_reached"
 	ReasonLaunchUncertain       Reason = "launch_uncertain"
 	ReasonStopUncertain         Reason = "stop_uncertain"
@@ -437,15 +449,15 @@ type StepKind string
 const (
 	// StepContainer runs an image and commands in the shared workspace.
 	StepContainer StepKind = "container"
-	// StepWait pauses the run, with no workload, until a correlated signal or deadline.
+	// StepWait pauses the run, with no workload, until its single decision.
 	StepWait StepKind = "wait"
-	// StepCondition evaluates a bounded predicate over declared values and selects what runs.
-	StepCondition StepKind = "condition"
 )
 
-// Valid reports whether k is a known kind. The zero kind is invalid.
+// Valid reports whether k is a known kind. The zero kind is invalid. There is no
+// condition kind: conditional eligibility is a when predicate on a step, which
+// the engine evaluates once over persisted values (see PlanStep.When).
 func (k StepKind) Valid() bool {
-	return k == StepContainer || k == StepWait || k == StepCondition
+	return k == StepContainer || k == StepWait
 }
 
 // StepState is the lifecycle state of one step.
@@ -468,18 +480,16 @@ func (s StepState) Terminal() bool {
 }
 
 // stepTransitions lists the legal moves per kind. Container steps run; wait
-// steps wait and never run or skip; condition steps settle at once.
+// steps wait and never run. Either may be skipped before it starts (join, when
+// or requires), and a wait step may fail before it opens (correlation_missing).
 var stepTransitions = map[StepKind]map[StepState][]StepState{
 	StepContainer: {
 		StepPending: {StepRunning, StepSkipped, StepFailed, StepCancelled},
 		StepRunning: {StepSucceeded, StepFailed, StepCancelled},
 	},
 	StepWait: {
-		StepPending: {StepWaiting, StepCancelled},
+		StepPending: {StepWaiting, StepSkipped, StepFailed, StepCancelled},
 		StepWaiting: {StepSucceeded, StepFailed, StepCancelled},
-	},
-	StepCondition: {
-		StepPending: {StepSucceeded, StepFailed, StepSkipped, StepCancelled},
 	},
 }
 
@@ -522,9 +532,6 @@ func (s Step) Validate() error {
 	}
 	if _, ok := stepTransitions[s.Kind][s.State]; !ok && !s.State.Terminal() {
 		return invalid("state %q is not valid for a %s step", s.State, s.Kind)
-	}
-	if s.State == StepSkipped && s.Kind == StepWait {
-		return invalid("a wait step cannot be skipped")
 	}
 	if err := s.validateEvidence(); err != nil {
 		return err
@@ -629,44 +636,137 @@ func (s *Step) advance(to StepState, reason Reason, res Result) error {
 // Waits
 // ---------------------------------------------------------------------------
 
-// WaitTargetKind says what a wait is for.
-type WaitTargetKind string
-
-// Wait target kinds.
+// Reserved wait outcomes. A wait cannot declare them: the kernel records them
+// itself when a deadline or a cancellation decides the wait.
 const (
-	// WaitForRole is assigned to a role that resolves it.
-	WaitForRole WaitTargetKind = "role"
-	// WaitForExternal is resolved by an external callback with a correlation.
-	WaitForExternal WaitTargetKind = "external"
+	WaitOutcomeExpired   = "expired"
+	WaitOutcomeCancelled = "cancelled"
 )
 
-// WaitSpec is the declared shape of a wait step. See the pipeline format's
-// steps[].wait (for, input, timeout).
-type WaitSpec struct {
-	ForKind WaitTargetKind `json:"forKind"`
-	// For is the role name or external correlation family.
-	For string `json:"for"`
-	// Input names the expected input the resolution must supply.
-	Input string `json:"input"`
-	// Timeout is the deadline measured from opening; zero means none.
-	Timeout time.Duration `json:"timeout,omitempty"`
+// Bounds fixed by the pipeline format and pipeline execution.
+const (
+	MinWaitTimeout     = time.Minute
+	MaxWaitTimeout     = 30 * 24 * time.Hour
+	MaxWaitOutcomes    = 8
+	MaxCorrelationKeys = 4
+	MaxAnswerBytes     = 4096
+	MaxRequestBytes    = 4096
+	MaxSignalKeyLength = 128
+)
+
+var (
+	correlationKeyRE = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+	inputKindRE      = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
+	outcomeRE        = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+)
+
+// ExpiryAction says what a wait's deadline does to its step.
+type ExpiryAction string
+
+// Expiry actions.
+const (
+	// ExpiryFail fails the step with reason wait_expired. It is the default.
+	ExpiryFail ExpiryAction = "fail"
+	// ExpiryContinue records the reserved outcome expired and settles the step
+	// as succeeded, so a when predicate can branch on it.
+	ExpiryContinue ExpiryAction = "continue"
+)
+
+// Effective returns the action with the default applied.
+func (a ExpiryAction) Effective() ExpiryAction {
+	if a == "" {
+		return ExpiryFail
+	}
+	return a
 }
 
-// Validate checks the spec.
+// WaitSpec is the declared shape of a wait step: the pipeline format's
+// steps[].wait. Assignment (Assign) and correlation (Correlate) are separate
+// attributes that answer different questions.
+type WaitSpec struct {
+	// Assign is an optional opaque role label naming who may decide the wait
+	// through the inbox. The shell validates it; the kernel never interprets it.
+	Assign string `json:"assign,omitempty"`
+	// Correlate maps up to four keys to the references read when the wait opens.
+	// An external signal must present every key and value.
+	Correlate map[string]string `json:"correlate,omitempty"`
+	// Request optionally references a declared output recorded with the wait.
+	Request string `json:"request,omitempty"`
+	// Input is the kind label of the input the resolver supplies.
+	Input string `json:"input"`
+	// Outcomes is the closed set of 1 to 8 outcomes a resolver may choose.
+	Outcomes []string `json:"outcomes"`
+	// Approving is the single outcome that counts as approval for a protected
+	// step. It is optional, but a protected step may only require a wait that
+	// declares it. No other outcome, however named, ever authorizes a protected step.
+	Approving string `json:"approving,omitempty"`
+	// Timeout is the required deadline measured from the commit that opens the wait.
+	Timeout  time.Duration `json:"timeout"`
+	OnExpiry ExpiryAction  `json:"onExpiry,omitempty"`
+}
+
+// Declares reports whether outcome is one of the declared outcomes.
+func (w WaitSpec) Declares(outcome string) bool { return slices.Contains(w.Outcomes, outcome) }
+
+// ApprovingOutcome returns the single approving outcome, if one is declared.
+func (w WaitSpec) ApprovingOutcome() (string, bool) { return w.Approving, w.Approving != "" }
+
+// Equal reports whether two specs are identical.
+func (w WaitSpec) Equal(o WaitSpec) bool {
+	return w.Assign == o.Assign && w.Request == o.Request && w.Input == o.Input && w.Approving == o.Approving &&
+		w.Timeout == o.Timeout && w.OnExpiry == o.OnExpiry && slices.Equal(w.Outcomes, o.Outcomes) &&
+		maps.Equal(w.Correlate, o.Correlate)
+}
+
+// Validate checks the spec against the pipeline format's wait rules.
 func (w WaitSpec) Validate() error {
-	if w.ForKind != WaitForRole && w.ForKind != WaitForExternal {
-		return invalid("wait target kind %q", w.ForKind)
+	if w.Assign == "" && len(w.Correlate) == 0 {
+		return invalid("a wait requires assign or correlate")
 	}
-	if strings.TrimSpace(w.For) == "" || strings.TrimSpace(w.Input) == "" {
-		return invalid("a wait requires a target and an expected input")
+	if len(w.Assign) > 64 || (w.Assign != "" && strings.TrimSpace(w.Assign) == "") {
+		return invalid("wait assign %q", w.Assign)
 	}
-	if w.Timeout < 0 {
-		return invalid("wait timeout must not be negative")
+	if len(w.Correlate) > MaxCorrelationKeys {
+		return invalid("a wait correlates on at most %d keys", MaxCorrelationKeys)
+	}
+	for k, ref := range w.Correlate {
+		if !correlationKeyRE.MatchString(k) || strings.TrimSpace(ref) == "" || len(ref) > 128 {
+			return invalid("wait correlation %q", k)
+		}
+	}
+	if len(w.Request) > 128 {
+		return invalid("wait request reference is too long")
+	}
+	if !inputKindRE.MatchString(w.Input) {
+		return invalid("wait input kind %q", w.Input)
+	}
+	if n := len(w.Outcomes); n < 1 || n > MaxWaitOutcomes {
+		return invalid("a wait declares 1 to %d outcomes, not %d", MaxWaitOutcomes, n)
+	}
+	for i, o := range w.Outcomes {
+		if !outcomeRE.MatchString(o) {
+			return invalid("wait outcome %q", o)
+		}
+		if o == WaitOutcomeExpired || o == WaitOutcomeCancelled {
+			return invalid("outcome %q is reserved", o)
+		}
+		if slices.Contains(w.Outcomes[:i], o) {
+			return invalid("duplicate outcome %q", o)
+		}
+	}
+	if w.Approving != "" && !w.Declares(w.Approving) {
+		return invalid("approving outcome %q is not a declared outcome", w.Approving)
+	}
+	if w.Timeout < MinWaitTimeout || w.Timeout > MaxWaitTimeout {
+		return invalid("wait timeout %s is outside %s to %s", w.Timeout, MinWaitTimeout, MaxWaitTimeout)
+	}
+	if e := w.OnExpiry; e != "" && e != ExpiryFail && e != ExpiryContinue {
+		return invalid("wait on_expiry %q", e)
 	}
 	return nil
 }
 
-// WaitID is the unique identity of one wait of one run.
+// WaitID is the unique, never reused identity of one wait of one run.
 type WaitID string
 
 // Validate checks the identity syntax.
@@ -682,57 +782,139 @@ var idRE = regexp.MustCompile(domain.IDPattern)
 // WaitState is the lifecycle state of a wait record.
 type WaitState string
 
-// Wait states.
+// Wait states. A wait has exactly one decision, taken from open (or, for
+// cancellation, from pending); resolved, expired and cancelled are the three
+// decisions.
 const (
 	WaitPending   WaitState = "pending"
 	WaitOpen      WaitState = "open"
-	WaitConsumed  WaitState = "consumed"
+	WaitResolved  WaitState = "resolved"
 	WaitExpired   WaitState = "expired"
 	WaitCancelled WaitState = "cancelled"
 )
 
-// Closed reports whether the wait can no longer change.
+// Closed reports whether the wait is decided and can no longer change.
 func (s WaitState) Closed() bool {
-	return s == WaitConsumed || s == WaitExpired || s == WaitCancelled
+	return s == WaitResolved || s == WaitExpired || s == WaitCancelled
 }
 
-// WaitResult is the immutable record of the one signal that consumed a wait.
-type WaitResult struct {
-	SignalID string `json:"signalId"`
-	Actor    string `json:"actor"`
-	// Outcome is the bounded lower_snake_case answer (for example approved or
-	// rejected). A rejection is a recorded outcome, not an infrastructure failure.
-	Outcome string `json:"outcome"`
-	// InputRef references the immutable input the shell recorded.
-	InputRef string    `json:"inputRef,omitempty"`
-	At       time.Time `json:"at"`
+// DecisionKind is how a wait was decided.
+type DecisionKind string
+
+// Decision kinds.
+const (
+	DecisionResolved  DecisionKind = "resolved"
+	DecisionExpired   DecisionKind = "expired"
+	DecisionCancelled DecisionKind = "cancelled"
+)
+
+// Decision is the complete, replayable decision of a wait. It is self-contained:
+// a signal record retains a copy so a replay never reads the wait.
+type Decision struct {
+	Kind DecisionKind `json:"kind"`
+	// SignalID is the deciding signal of a resolved decision; empty otherwise.
+	SignalID SignalID `json:"signalId,omitempty"`
+	// Outcome is the declared outcome of a resolved decision, the reserved
+	// outcome expired for an expiry that continues, and empty otherwise.
+	Outcome string `json:"outcome,omitempty"`
+	// Answer is the optional answer text, at most MaxAnswerBytes.
+	Answer string `json:"answer,omitempty"`
+	// Actor references the deciding actor of a resolved decision.
+	Actor string `json:"actor,omitempty"`
+	// Reason is run_cancelled or run_failed for a cancelled decision.
+	Reason Reason `json:"reason,omitempty"`
+	// Version is the wait version this decision committed.
+	Version domain.Version `json:"version"`
+	At      time.Time      `json:"at"`
 }
 
-// Wait is the durable record of one wait step. Assignment (Spec) and
-// correlation are separate; every changed candidate needs a fresh wait ID.
+// Validate checks the decision's shape for its kind.
+func (d Decision) Validate() error {
+	if err := d.Version.Validate(); err != nil {
+		return err
+	}
+	if d.At.IsZero() {
+		return invalid("a decision records its time")
+	}
+	if len(d.Answer) > MaxAnswerBytes || !utf8.ValidString(d.Answer) {
+		return invalid("a decision answer is at most %d bytes of UTF-8", MaxAnswerBytes)
+	}
+	switch d.Kind {
+	case DecisionResolved:
+		if err := d.SignalID.Validate(); err != nil {
+			return err
+		}
+		if d.Actor == "" || d.Reason != ReasonNone {
+			return invalid("a resolved decision records its actor and no reason")
+		}
+		if !outcomeRE.MatchString(d.Outcome) || d.Outcome == WaitOutcomeExpired || d.Outcome == WaitOutcomeCancelled {
+			return invalid("resolved outcome %q", d.Outcome)
+		}
+	case DecisionExpired:
+		if d.SignalID != "" || d.Actor != "" || d.Answer != "" || d.Reason != ReasonNone ||
+			(d.Outcome != "" && d.Outcome != WaitOutcomeExpired) {
+			return invalid("an expired decision records only the reserved outcome")
+		}
+	case DecisionCancelled:
+		if d.SignalID != "" || d.Actor != "" || d.Answer != "" || d.Outcome != "" ||
+			(d.Reason != ReasonRunCancelled && d.Reason != ReasonRunFailed) {
+			return invalid("a cancelled decision records run_cancelled or run_failed")
+		}
+	default:
+		return invalid("decision kind %q", d.Kind)
+	}
+	return nil
+}
+
+// Wait is the durable record of one wait step. Identity, correlation and
+// request are immutable once the wait opens; the decision is taken once.
 type Wait struct {
-	Scope       domain.Scope   `json:"scope"`
-	ID          WaitID         `json:"id"`
-	RunID       domain.RunID   `json:"runId"`
-	StepKey     domain.StepID  `json:"stepKey"`
-	Spec        WaitSpec       `json:"spec"`
-	Correlation string         `json:"correlation"`
-	State       WaitState      `json:"state"`
-	Version     domain.Version `json:"version"`
-	OpenedAt    time.Time      `json:"openedAt,omitempty"`
-	// Deadline is zero when the wait has no timeout.
-	Deadline time.Time  `json:"deadline,omitempty"`
-	Result   WaitResult `json:"result,omitempty"`
+	Scope   domain.Scope  `json:"scope"`
+	ID      WaitID        `json:"id"`
+	RunID   domain.RunID  `json:"runId"`
+	StepKey domain.StepID `json:"stepKey"`
+	Spec    WaitSpec      `json:"spec"`
+	// Assignment is who may decide the wait through the inbox. It starts as
+	// Spec.Assign and changes only by an authorized, version-checked reassignment.
+	Assignment string `json:"assignment,omitempty"`
+	// Correlation holds the values read when the wait opened, one per declared key.
+	Correlation map[string]string `json:"correlation,omitempty"`
+	// Request is the bounded request text recorded when the wait opened.
+	Request string         `json:"request,omitempty"`
+	State   WaitState      `json:"state"`
+	Version domain.Version `json:"version"`
+	// OpenedAt and Deadline are zero until the wait opens.
+	OpenedAt time.Time `json:"openedAt,omitempty"`
+	Deadline time.Time `json:"deadline,omitempty"`
+	// Decision is zero until the wait is decided.
+	Decision Decision `json:"decision,omitempty"`
 }
 
-// NewWait returns a pending wait at version 1. It is committed before it is
-// announced; Open moves it to open.
-func NewWait(scope domain.Scope, id WaitID, run domain.RunID, step domain.StepID, spec WaitSpec, correlation string) (Wait, error) {
-	w := Wait{Scope: scope, ID: id, RunID: run, StepKey: step, Spec: spec, Correlation: correlation, State: WaitPending, Version: 1}
+// NewWait returns a pending wait at version 1. It is committed at admission and
+// opens, with its correlation values, when its step becomes eligible.
+func NewWait(scope domain.Scope, id WaitID, run domain.RunID, step domain.StepID, spec WaitSpec) (Wait, error) {
+	w := Wait{Scope: scope, ID: id, RunID: run, StepKey: step, Spec: spec, Assignment: spec.Assign, State: WaitPending, Version: 1}
 	return w, w.Validate()
 }
 
-// Validate checks the wait's shape and state-dependent fields.
+// Target returns the wait's address: run, step and wait identities.
+func (w Wait) Target() SignalTarget {
+	return SignalTarget{RunID: w.RunID, StepKey: w.StepKey, WaitID: w.ID}
+}
+
+func (w Wait) validCorrelation() error {
+	if len(w.Correlation) != len(w.Spec.Correlate) {
+		return invalid("wait %s records %d correlation values, declares %d", w.ID, len(w.Correlation), len(w.Spec.Correlate))
+	}
+	for k := range w.Spec.Correlate {
+		if v, ok := w.Correlation[k]; !ok || v == "" || len(v) > MaxRequestBytes {
+			return invalid("wait %s is missing correlation %q", w.ID, k)
+		}
+	}
+	return nil
+}
+
+// Validate checks the wait's shape and that its state, fields and decision agree.
 func (w Wait) Validate() error {
 	if err := w.Scope.Validate(); err != nil {
 		return err
@@ -749,159 +931,167 @@ func (w Wait) Validate() error {
 	if err := w.Spec.Validate(); err != nil {
 		return err
 	}
-	if strings.TrimSpace(w.Correlation) == "" {
-		return invalid("a wait requires a correlation")
-	}
 	if err := w.Version.Validate(); err != nil {
 		return err
 	}
+	if len(w.Request) > MaxRequestBytes || !utf8.ValidString(w.Request) {
+		return invalid("wait request is at most %d bytes of UTF-8", MaxRequestBytes)
+	}
+	opened := !w.OpenedAt.IsZero()
 	switch w.State {
 	case WaitPending:
-		if !w.OpenedAt.IsZero() {
-			return invalid("a pending wait has no open time")
+		if opened || !w.Deadline.IsZero() || len(w.Correlation) > 0 || w.Request != "" || w.Decision != (Decision{}) {
+			return invalid("a pending wait has no open time, values or decision")
 		}
-	case WaitOpen, WaitConsumed, WaitExpired, WaitCancelled:
-		if w.OpenedAt.IsZero() && w.State != WaitCancelled {
-			return invalid("a %s wait records when it opened", w.State)
-		}
+		return nil
+	case WaitOpen, WaitResolved, WaitExpired, WaitCancelled:
 	default:
 		return invalid("wait state %q", w.State)
 	}
-	if w.State == WaitConsumed {
-		if w.Result.SignalID == "" || w.Result.Actor == "" {
-			return invalid("a consumed wait records its signal and actor")
+	if w.State == WaitCancelled && !opened {
+		// Cancelled before it ever opened: no values were read.
+		if len(w.Correlation) > 0 || w.Request != "" || !w.Deadline.IsZero() {
+			return invalid("a wait cancelled before opening has no values")
 		}
-		if err := validCode("wait outcome", w.Result.Outcome); err != nil {
+	} else {
+		if !opened {
+			return invalid("a %s wait records when it opened", w.State)
+		}
+		if err := w.validCorrelation(); err != nil {
 			return err
 		}
-	} else if w.Result != (WaitResult{}) {
-		return invalid("only a consumed wait has a result")
+		if !w.Deadline.Equal(w.OpenedAt.Add(w.Spec.Timeout)) {
+			return invalid("wait %s deadline is not its open time plus its timeout", w.ID)
+		}
+	}
+	if w.State == WaitOpen {
+		if w.Decision != (Decision{}) {
+			return invalid("an open wait has no decision")
+		}
+		return nil
+	}
+	d := w.Decision
+	if err := d.Validate(); err != nil {
+		return err
+	}
+	if d.Version != w.Version {
+		return invalid("wait %s decision version %d is not its version %d", w.ID, d.Version, w.Version)
+	}
+	want := map[WaitState]DecisionKind{WaitResolved: DecisionResolved, WaitExpired: DecisionExpired, WaitCancelled: DecisionCancelled}[w.State]
+	if d.Kind != want {
+		return invalid("a %s wait carries a %s decision", w.State, d.Kind)
+	}
+	switch d.Kind {
+	case DecisionResolved:
+		if !w.Spec.Declares(d.Outcome) {
+			return invalid("outcome %q is not declared by wait %s", d.Outcome, w.ID)
+		}
+	case DecisionExpired:
+		if (w.Spec.OnExpiry.Effective() == ExpiryContinue) != (d.Outcome == WaitOutcomeExpired) {
+			return invalid("an expiry records the outcome expired exactly when on_expiry is continue")
+		}
 	}
 	return nil
 }
 
-// Open moves a pending wait to open and fixes its deadline. Callers commit the
-// open wait before announcing it.
-func (w *Wait) Open(now time.Time) error {
+// Open moves a pending wait to open, recording the correlation values and
+// request read at that moment and fixing the deadline. Callers commit the open
+// wait before announcing it. The values must be exactly the declared keys.
+func (w *Wait) Open(now time.Time, correlation map[string]string, request string) error {
 	if w.State != WaitPending {
 		return fmt.Errorf("%w: wait %s is %s", ErrIllegalTransition, w.ID, w.State)
 	}
-	w.State, w.OpenedAt, w.Version = WaitOpen, now, w.Version+1
-	if w.Spec.Timeout > 0 {
-		w.Deadline = now.Add(w.Spec.Timeout)
+	next := *w
+	next.State, next.OpenedAt, next.Version = WaitOpen, now, w.Version+1
+	next.Deadline = now.Add(w.Spec.Timeout)
+	next.Correlation, next.Request = maps.Clone(correlation), request
+	if err := next.Validate(); err != nil {
+		return err
 	}
+	*w = next
 	return nil
 }
 
-// Signal is an authorized, correlated resolution of one wait. The shell
-// authorizes the actor; the kernel only checks identity, version and state.
-type Signal struct {
-	Scope       domain.Scope  `json:"scope"`
-	ID          string        `json:"id"`
-	RunID       domain.RunID  `json:"runId"`
-	StepKey     domain.StepID `json:"stepKey"`
-	WaitID      WaitID        `json:"waitId"`
-	Correlation string        `json:"correlation"`
-	// WaitVersion is the open wait version the signal was issued against.
-	WaitVersion domain.Version `json:"waitVersion"`
-	Actor       string         `json:"actor"`
-	Outcome     string         `json:"outcome"`
-	InputRef    string         `json:"inputRef,omitempty"`
+func (w *Wait) decide(state WaitState, d Decision) {
+	w.State, w.Version, w.Decision = state, w.Version+1, d
+	w.Decision.Version = w.Version
 }
 
-// Validate checks the signal.
-func (s Signal) Validate() error {
-	if err := s.Scope.Validate(); err != nil {
-		return err
+// Resolve decides an open wait with the outcome and answer of req. The checks run
+// in this order: the wait must be open, a supplied expected version must match,
+// the deadline must not have been reached (expiry wins), and the outcome must be
+// declared. A refused request changes nothing. Replays and routing are handled
+// by RouteSignal through the durable signal record, not here.
+func (w *Wait) Resolve(req SignalRequest, now time.Time) (Decision, error) {
+	if err := req.Validate(); err != nil {
+		return Decision{}, err
 	}
-	if err := s.RunID.Validate(); err != nil {
-		return err
+	switch {
+	case w.State.Closed():
+		return Decision{}, ErrWaitClosed
+	case w.State != WaitOpen:
+		return Decision{}, ErrWaitNotOpen
+	case req.ExpectedVersion != 0 && req.ExpectedVersion != w.Version:
+		return Decision{}, fmt.Errorf("%w: signal %d, wait %d", ErrWaitStale, req.ExpectedVersion, w.Version)
+	case !now.Before(w.Deadline):
+		return Decision{}, ErrWaitExpired
+	case !w.Spec.Declares(req.Outcome):
+		return Decision{}, ErrInvalidOutcome
 	}
-	if err := s.StepKey.Validate(); err != nil {
-		return err
+	next := *w
+	next.decide(WaitResolved, Decision{Kind: DecisionResolved, SignalID: req.Identity.ID(), Outcome: req.Outcome,
+		Answer: req.Answer, Actor: req.Actor, At: now})
+	if err := next.Validate(); err != nil {
+		return Decision{}, err
 	}
-	if err := s.WaitID.Validate(); err != nil {
-		return err
-	}
-	if err := s.WaitVersion.Validate(); err != nil {
-		return err
-	}
-	if s.ID == "" || s.Actor == "" || s.Correlation == "" {
-		return invalid("a signal requires an id, an actor and a correlation")
-	}
-	return validCode("wait outcome", s.Outcome)
+	*w = next
+	return w.Decision, nil
 }
 
-// Consumption is the committed result of consuming a wait. Duplicate is true
-// when the same signal was already consumed: the recorded result is returned
-// and no second continuation is created.
-type Consumption struct {
-	Result    WaitResult `json:"result"`
-	Duplicate bool       `json:"duplicate,omitempty"`
-}
-
-// Consume applies sig at now. Exactly one signal consumes an open wait. A
-// repeat of the consuming signal returns the recorded result as a duplicate; a
-// different signal, or one for an expired, cancelled, stale, unopened or
-// foreign wait, is refused and changes nothing.
-func (w *Wait) Consume(sig Signal, now time.Time) (Consumption, error) {
-	if err := sig.Validate(); err != nil {
-		return Consumption{}, err
-	}
-	if err := w.Validate(); err != nil {
-		return Consumption{}, err
-	}
-	if sig.Scope != w.Scope || sig.RunID != w.RunID || sig.StepKey != w.StepKey ||
-		sig.WaitID != w.ID || sig.Correlation != w.Correlation {
-		return Consumption{}, ErrWaitForeign
-	}
-	switch w.State {
-	case WaitConsumed:
-		if w.Result.SignalID == sig.ID {
-			return Consumption{Result: w.Result, Duplicate: true}, nil
-		}
-		return Consumption{}, ErrWaitClosed
-	case WaitExpired, WaitCancelled:
-		return Consumption{}, ErrWaitClosed
-	case WaitPending:
-		return Consumption{}, ErrWaitNotOpen
-	}
-	if sig.WaitVersion != w.Version {
-		return Consumption{}, fmt.Errorf("%w: signal %d, wait %d", ErrWaitStale, sig.WaitVersion, w.Version)
-	}
-	if !w.Deadline.IsZero() && !now.Before(w.Deadline) {
-		return Consumption{}, ErrWaitExpired
-	}
-	w.State, w.Version = WaitConsumed, w.Version+1
-	w.Result = WaitResult{SignalID: sig.ID, Actor: sig.Actor, Outcome: sig.Outcome, InputRef: sig.InputRef, At: now}
-	return Consumption{Result: w.Result}, nil
-}
-
-// Expire closes an open wait whose deadline has passed. The engine then takes
-// the declared timeout branch, or fails the run when there is none.
-func (w *Wait) Expire(now time.Time) error {
+// Expire decides an open wait whose deadline has been reached. With on_expiry
+// continue the decision records the reserved outcome expired; with fail it
+// records none and the step fails with reason wait_expired.
+func (w *Wait) Expire(now time.Time) (Decision, error) {
 	if w.State != WaitOpen {
-		return fmt.Errorf("%w: wait %s is %s", ErrWaitClosed, w.ID, w.State)
+		return Decision{}, fmt.Errorf("%w: wait %s is %s", ErrWaitClosed, w.ID, w.State)
 	}
-	if w.Deadline.IsZero() || now.Before(w.Deadline) {
-		return ErrWaitNotDue
+	if now.Before(w.Deadline) {
+		return Decision{}, ErrWaitNotDue
 	}
-	w.State, w.Version = WaitExpired, w.Version+1
-	return nil
+	d := Decision{Kind: DecisionExpired, At: now}
+	if w.Spec.OnExpiry.Effective() == ExpiryContinue {
+		d.Outcome = WaitOutcomeExpired
+	}
+	next := *w
+	next.decide(WaitExpired, d)
+	if err := next.Validate(); err != nil {
+		return Decision{}, err
+	}
+	*w = next
+	return w.Decision, nil
 }
 
-// Cancel closes a pending or open wait. A closed wait is unchanged and refused.
-func (w *Wait) Cancel() error {
+// Cancel decides a pending or open wait because its run was cancelled or failed
+// (reason ReasonRunCancelled or ReasonRunFailed). A decided wait is refused and
+// unchanged.
+func (w *Wait) Cancel(now time.Time, reason Reason) (Decision, error) {
 	if w.State != WaitPending && w.State != WaitOpen {
-		return fmt.Errorf("%w: wait %s is %s", ErrWaitClosed, w.ID, w.State)
+		return Decision{}, fmt.Errorf("%w: wait %s is %s", ErrWaitClosed, w.ID, w.State)
 	}
-	w.State, w.Version = WaitCancelled, w.Version+1
-	return nil
+	next := *w
+	next.decide(WaitCancelled, Decision{Kind: DecisionCancelled, Reason: reason, At: now})
+	if err := next.Validate(); err != nil {
+		return Decision{}, err
+	}
+	*w = next
+	return w.Decision, nil
 }
 
-// CheckStepWait verifies that a wait step and its wait record agree: a waiting
-// step has an open wait, a pending step a pending one, and a terminal step a
-// closed one.
+// CheckStepWait verifies that a wait step and its wait record agree. A pending
+// step has a pending wait; a waiting step an open one. A step that succeeded
+// has a wait that was resolved or expired with continue; one that failed has an
+// expired or cancelled wait, or a wait that never opened; a skipped step has a
+// wait that never opened or was cancelled; a cancelled step a cancelled wait.
 func CheckStepWait(s Step, w Wait) error {
 	if s.Kind != StepWait {
 		return invalid("step %s is not a wait step", s.Key)
@@ -909,14 +1099,20 @@ func CheckStepWait(s Step, w Wait) error {
 	if s.Key != w.StepKey {
 		return invalid("wait %s belongs to step %s", w.ID, w.StepKey)
 	}
-	ok := false
-	switch {
-	case s.State == StepPending:
+	var ok bool
+	switch s.State {
+	case StepPending:
 		ok = w.State == WaitPending
-	case s.State == StepWaiting:
+	case StepWaiting:
 		ok = w.State == WaitOpen
-	case s.State.Terminal():
-		ok = w.State.Closed()
+	case StepSucceeded:
+		ok = w.State == WaitResolved || (w.State == WaitExpired && w.Spec.OnExpiry.Effective() == ExpiryContinue)
+	case StepFailed:
+		ok = w.State == WaitExpired || w.State == WaitCancelled || w.State == WaitPending
+	case StepSkipped:
+		ok = w.State == WaitPending || w.State == WaitCancelled
+	case StepCancelled:
+		ok = w.State == WaitCancelled
 	}
 	if !ok {
 		return invalid("step %s is %s but wait %s is %s", s.Key, s.State, w.ID, w.State)
@@ -955,24 +1151,54 @@ func (w WorkloadSpec) Validate() error {
 	return nil
 }
 
+// Requirement names one wait a protected step requires and the outcome it must
+// have been decided with, which must be that wait's approving outcome.
+type Requirement struct {
+	Wait    domain.StepID `json:"wait"`
+	Outcome string        `json:"outcome"`
+}
+
+// AuthorityIntegrate is the only authority value a protected step may carry. It
+// has no other meaning to the kernel: the shell issues the authority.
+const AuthorityIntegrate = "integrate"
+
+// MaxRequirements bounds a protected step's requires list.
+const MaxRequirements = 4
+
 // PlanStep is one step of an admitted plan. Kind selects exactly one of
-// Workload (container), Wait (wait) or When (condition).
+// Workload (container) or Wait (wait). There is no condition step: eligibility
+// beyond prerequisites is the optional When predicate.
 type PlanStep struct {
 	Key       domain.StepID   `json:"key"`
 	Kind      StepKind        `json:"kind"`
 	DependsOn []domain.StepID `json:"dependsOn,omitempty"`
-	// When is an optional bounded predicate over declared inputs, prior step
-	// results and wait outcomes. A condition step requires it. The grammar is
-	// frozen by the pipeline format, not here.
+	// When is an optional bounded predicate over declared inputs, prerequisite
+	// step results and wait outcomes. The engine evaluates it once, when every
+	// prerequisite is terminal, and records the result; its grammar is frozen by
+	// the pipeline format, not here.
 	When     string        `json:"when,omitempty"`
 	Workload *WorkloadSpec `json:"workload,omitempty"`
 	Wait     *WaitSpec     `json:"wait,omitempty"`
+	// Authority marks a protected container step. It is eligible only when every
+	// Requires wait was decided with its approving outcome.
+	Authority string        `json:"authority,omitempty"`
+	Requires  []Requirement `json:"requires,omitempty"`
 }
 
-// Validate checks the step against its kind.
+// Protected reports whether the step carries authority.
+func (p PlanStep) Protected() bool { return p.Authority != "" }
+
+// MaxWhenBytes bounds a when expression's text.
+const MaxWhenBytes = 256
+
+// Validate checks the step against its kind. Whether Requires names real
+// approving waits is a plan-level check (Plan.Validate).
 func (p PlanStep) Validate() error {
 	if err := p.Key.Validate(); err != nil {
 		return err
+	}
+	if len(p.When) > MaxWhenBytes {
+		return invalid("step %s when is longer than %d bytes", p.Key, MaxWhenBytes)
 	}
 	var err error
 	switch p.Kind {
@@ -986,14 +1212,25 @@ func (p PlanStep) Validate() error {
 			return invalid("wait step %s requires a wait and no workload", p.Key)
 		}
 		err = p.Wait.Validate()
-	case StepCondition:
-		if p.Wait != nil || p.Workload != nil || strings.TrimSpace(p.When) == "" {
-			return invalid("condition step %s requires only a condition", p.Key)
-		}
 	default:
 		return invalid("step %s kind %q", p.Key, p.Kind)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	switch {
+	case p.Authority == "" && len(p.Requires) > 0:
+		return invalid("step %s has requires but no authority", p.Key)
+	case p.Authority == "":
+		return nil
+	case p.Authority != AuthorityIntegrate:
+		return invalid("step %s authority %q", p.Key, p.Authority)
+	case p.Kind != StepContainer:
+		return invalid("a wait step cannot be protected: %s", p.Key)
+	case len(p.Requires) == 0 || len(p.Requires) > MaxRequirements:
+		return invalid("protected step %s requires 1 to %d waits", p.Key, MaxRequirements)
+	}
+	return nil
 }
 
 // Lifetime is how long a service outlives its run. Values match the pipeline
@@ -1071,20 +1308,40 @@ func (p Plan) Validate() error {
 	if len(p.Steps) == 0 {
 		return invalid("a plan requires at least one step")
 	}
-	seen := map[domain.StepID]bool{}
+	// ancestors maps each earlier step to its transitive prerequisites.
+	ancestors := map[domain.StepID]map[domain.StepID]bool{}
+	byKey := map[domain.StepID]PlanStep{}
 	for _, s := range p.Steps {
 		if err := s.Validate(); err != nil {
 			return err
 		}
+		anc := map[domain.StepID]bool{}
 		for _, d := range s.DependsOn {
-			if !seen[d] {
+			if _, ok := ancestors[d]; !ok {
 				return invalid("step %s depends on %q, which is not an earlier step", s.Key, d)
 			}
+			anc[d] = true
+			maps.Copy(anc, ancestors[d])
 		}
-		if seen[s.Key] {
+		if _, dup := ancestors[s.Key]; dup {
 			return invalid("duplicate step %s", s.Key)
 		}
-		seen[s.Key] = true
+		ancestors[s.Key], byKey[s.Key] = anc, s
+		for _, req := range s.Requires {
+			w, ok := byKey[req.Wait]
+			switch {
+			case !ok || w.Kind != StepWait || !anc[req.Wait]:
+				return invalid("step %s requires %q, which is not a wait that precedes it", s.Key, req.Wait)
+			case w.Wait.Approving == "":
+				return invalid("step %s requires wait %s, which declares no approving outcome", s.Key, req.Wait)
+			case req.Outcome != w.Wait.Approving:
+				return invalid("step %s requires wait %s outcome %q; only its approving outcome %q may authorize a protected step",
+					s.Key, req.Wait, req.Outcome, w.Wait.Approving)
+			}
+			if _, ok := w.Wait.Correlate["candidate"]; s.Authority == AuthorityIntegrate && !ok {
+				return invalid("integrate step %s requires wait %s, which must correlate on candidate", s.Key, req.Wait)
+			}
+		}
 	}
 	names := map[string]bool{}
 	for _, s := range p.Services {
@@ -1755,7 +2012,6 @@ type RunStatus string
 const (
 	StatusQueued    RunStatus = "queued"
 	StatusRunning   RunStatus = "running"
-	StatusWaiting   RunStatus = "waiting"
 	StatusCleaning  RunStatus = "cleaning"
 	StatusSucceeded RunStatus = "succeeded"
 	StatusFailed    RunStatus = "failed"
@@ -1936,22 +2192,12 @@ func (r Run) Status() RunStatus {
 		}
 		return StatusFailed
 	}
-	started, waiting := false, false
+	// A run with an open wait stays running; only the shell's task projection
+	// reports waiting.
 	for _, s := range r.Steps {
-		switch {
-		case s.State == StepRunning:
+		if s.State != StepPending {
 			return StatusRunning
-		case s.State == StepWaiting:
-			waiting = true
-		case s.State != StepPending:
-			started = true
 		}
-	}
-	if waiting {
-		return StatusWaiting
-	}
-	if started {
-		return StatusRunning
 	}
 	return StatusQueued
 }
@@ -2165,6 +2411,9 @@ const (
 	EventStepStateChanged    EventKind = "run_step.state_changed"
 	EventWaitOpened          EventKind = "wait.opened"
 	EventWaitResolved        EventKind = "wait.resolved"
+	EventWaitExpired         EventKind = "wait.expired"
+	EventWaitCancelled       EventKind = "wait.cancelled"
+	EventSignalRefused       EventKind = "signal.refused"
 	EventServiceStateChanged EventKind = "service.state_changed"
 )
 
