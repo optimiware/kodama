@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	statev1 "github.com/optimiware/kodama/contracts/state/v1"
 	"github.com/optimiware/kodama/internal/state"
 	statepg "github.com/optimiware/kodama/internal/state/postgres"
@@ -70,5 +71,11 @@ func TestPostgresStateLifecycle(t *testing.T) {
 	}
 	if _, err := store.Get(ctx, scope, "deploy", "resources/app"); !errors.Is(err, state.ErrNotFound) {
 		t.Fatalf("get deleted = %v", err)
+	}
+	var audits int
+	if err := storage.WithTenant(ctx, pool, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT count(*) FROM state_audit WHERE tenant_id=$1 AND project_id=$2`, string(scope.TenantID), string(scope.ProjectID)).Scan(&audits)
+	}); err != nil || audits != 3 {
+		t.Fatalf("audits = %d, err=%v", audits, err)
 	}
 }

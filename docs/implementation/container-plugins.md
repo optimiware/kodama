@@ -1219,7 +1219,7 @@ The following slice is implemented and exercised locally:
 | Area | State |
 | --- | --- |
 | `contracts/state/v1` | Implemented with bounded values, keys, artifact references and ETags |
-| `internal/state` | Memory and PostgreSQL stores, binding-relative keys, conditional lifecycle, project quota trigger, runtime HTTP handler and live PostgreSQL lifecycle/RLS tests |
+| `internal/state` | Memory and PostgreSQL stores, binding-relative keys, conditional lifecycle, project quota trigger, append-only audit, runtime HTTP handler and live PostgreSQL lifecycle/RLS tests |
 | `contracts/pipeline/v1alpha3` | State/artifact-file bindings and no v1alpha3 environment field |
 | Runtime bindings | State and artifact descriptors are pinned into v1/v2 contexts; `/runtime/v3` state route is composed and checks the run_shared wire |
 | Artifact inputs | Admission pins the verified descriptor, the entrypoint materializes it under `/kodama/inputs`, and the runtime download route checks the pinned attempt context |
@@ -1235,7 +1235,7 @@ The following slice is implemented and exercised locally:
 
 Not yet implemented in this branch:
 
-- State audit/outbox events, artifact retention pin/unpin joins and an atomic state-CAS plus runtime-session transaction.
+- State outbox publication, artifact retention pin/unpin joins and an atomic state-CAS plus runtime-session transaction (audit rows are implemented).
 - A distinct runtime context v3 wire; v1alpha3 currently extends the v2 context additively. The state route is versioned separately.
 - Source-backed CI origins and the Git trigger planner's no-work-item path (source-free project admission exists, but the planner still requires a work item).
 - Generic gate/QA evidence integration and the legacy delivery-core removal. The legacy delivery composition is still constructed by `internal/app`.
