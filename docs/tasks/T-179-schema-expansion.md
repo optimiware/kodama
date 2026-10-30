@@ -4,7 +4,7 @@ milestone: kernel
 status: planned
 depends_on: [T-172]
 decision_blockers: []
-owns: [internal/storage/, docs/implementation/database-schema.md]
+owns: [internal/storage/, docs/implementation/database-schema.md, internal/app/migrate_test.go, internal/app/sdlc_test.go, internal/artifacts/postgres/migrations_test.go, internal/identity/postgres/isolation_test.go, internal/runtimeauth/postgres/resource_test.go]
 check: make check-go PKGS='./internal/storage/...'
 resources: [go, integration]
 acceptance: [unit_storage_pipeline_runtime_expand, unit_storage_pipeline_name_unique]
