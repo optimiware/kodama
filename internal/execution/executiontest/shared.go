@@ -711,6 +711,7 @@ func sharedValidator(t testing.TB) *pipeline.Validator {
 		Profiles:       pipelinetest.Profiles{"coding-v1": true},
 		References:     pipelinetest.References{Secrets: map[string]bool{"token": true}, Environments: map[string]bool{"env_staging": true}},
 		EnableV1Alpha2: true,
+		EnableV1Alpha3: true,
 	})
 	if err != nil {
 		t.Fatal(err)

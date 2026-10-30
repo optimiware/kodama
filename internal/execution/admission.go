@@ -541,6 +541,16 @@ func (s *Service) Admit(ctx context.Context, caller Caller, cmd AdmitCommand) (*
 	return s.ConfirmSource(ctx, run.Scope, run.ID)
 }
 
+// AdmitProject prepares and commits a source-free project run.
+func (s *Service) AdmitProject(ctx context.Context, caller Caller, cmd ProjectAdmitCommand) (*Run, error) {
+	plan, err := s.PrepareProject(ctx, caller, cmd)
+	if err != nil {
+		return nil, err
+	}
+	run, _, err := s.d.Store.Admit(ctx, plan)
+	return run, err
+}
+
 // AdmitCleanup commits an internal cleanup run. M1 wiring has no deployment
 // authorization, so this returns ErrNotConfigured there.
 func (s *Service) AdmitCleanup(ctx context.Context, cmd CleanupCommand) (*Run, error) {
