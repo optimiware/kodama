@@ -133,13 +133,16 @@ func (s *Service) planShared(ctx context.Context, scope domain.Scope, runID doma
 // explicitly composed SharedConfig, for an ordinary work run and for an internal
 // deployment cleanup run alike; an unconfigured composition refuses both.
 func (s *Service) checkVersion(version string, allowShared bool) error {
-	if allowShared && s.d.Shared != nil && version == sharedAPIVersion {
+	if allowShared && s.d.Shared != nil && (version == sharedAPIVersion || version == sharedAPIVersionV3) {
 		return nil
 	}
 	return checkDefinitionVersion(version)
 }
 
-const sharedAPIVersion = "kodama/v1alpha2"
+const (
+	sharedAPIVersion   = "kodama/v1alpha2"
+	sharedAPIVersionV3 = "kodama/v1alpha3"
+)
 
 // ownsModel is the pre-mutation guard of every entry that could change a
 // persisted run_shared run (reconciliation, results, begin, receipts, attempt

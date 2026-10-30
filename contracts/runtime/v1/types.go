@@ -164,6 +164,39 @@ type EnvironmentPin struct {
 	ConfigDigest Digest               `json:"configDigest"`
 }
 
+// StateBinding is a runtime-authorized scoped key/value namespace. The server
+// resolves the alias and prefix; the workload cannot widen them.
+type StateBinding struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Prefix    string `json:"prefix"`
+	Write     bool   `json:"write"`
+}
+
+// Validate checks the binding's shape.
+func (s StateBinding) Validate() error {
+	return firstError(matches("state.name", "SafeName", s.Name), matches("state.namespace", "KubernetesName", s.Namespace))
+}
+
+// ArtifactInput is a verified file artifact made available to an executable
+// step. The entrypoint materializes it under /kodama/inputs/<name>.
+type ArtifactInput struct {
+	Name       string `json:"name"`
+	ArtifactID string `json:"artifactId"`
+	Digest     Digest `json:"digest"`
+}
+
+// Validate checks the descriptor's shape.
+func (a ArtifactInput) Validate() error {
+	if err := matches("artifactFiles.name", "SafeName", a.Name); err != nil {
+		return err
+	}
+	if a.ArtifactID == "" || len(a.ArtifactID) > 128 {
+		return fail("artifactFiles.artifactId", "must be present and bounded")
+	}
+	return a.Digest.Validate()
+}
+
 type Limits struct {
 	TimeoutSeconds     int64 `json:"timeoutSeconds"`
 	MaxOutputBytes     int64 `json:"maxOutputBytes"`
@@ -189,6 +222,8 @@ type Context struct {
 	Outputs        []OutputDecl     `json:"outputs"`
 	Secrets        []SecretBinding  `json:"secrets"`
 	Environment    *EnvironmentPin  `json:"environment"`
+	State          []StateBinding   `json:"state,omitempty"`
+	ArtifactFiles  []ArtifactInput  `json:"artifactFiles,omitempty"`
 	Limits         Limits           `json:"limits"`
 }
 

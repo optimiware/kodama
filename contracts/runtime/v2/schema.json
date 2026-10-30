@@ -489,6 +489,20 @@
         },
         "limits": {
           "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Limits"
+        },
+        "state": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/stateBinding"
+          }
+        },
+        "artifactFiles": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/artifactInput"
+          }
         }
       },
       "required": [

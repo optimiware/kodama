@@ -107,7 +107,7 @@ func (c ContextV2) Validate() error {
 		TenantID: c.TenantID, ProjectID: c.ProjectID, RunID: c.RunID, StepID: c.StepID, AttemptID: c.AttemptID, ActionKey: c.ActionKey,
 		Definition: c.Definition, WorkItem: c.WorkItem, DesignBaseline: c.DesignBaseline, Profile: c.Profile, Command: c.Command,
 		Workspace: runtimev1.Workspace{Access: runtimev1.AccessNone}, Inputs: c.Inputs, Outputs: c.Outputs, Secrets: c.Secrets,
-		Environment: c.Environment, Limits: c.Limits,
+		Environment: c.Environment, State: c.State, ArtifactFiles: c.ArtifactFiles, Limits: c.Limits,
 	}
 	return firstError(
 		shared.Validate(),

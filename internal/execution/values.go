@@ -236,12 +236,27 @@ type Specification struct {
 	AcceptanceCriteria []runtimev1.AcceptanceCriterion `json:"acceptanceCriteria"`
 }
 
+// StepState is one step's pinned state bindings.
+type StepState struct {
+	Step     string                   `json:"step"`
+	Bindings []runtimev1.StateBinding `json:"bindings"`
+}
+
+// StepArtifactFile is one verified artifact file binding.
+type StepArtifactFile struct {
+	Step  string                  `json:"step"`
+	Input runtimev1.ArtifactInput `json:"input"`
+}
+
 // Snapshot is the immutable set of pinned inputs of a run.
 type Snapshot struct {
 	Inputs  []PinnedInput `json:"inputs"`
 	Secrets []StepSecret  `json:"secrets"`
 	// Omitted for historical/no-environment runs, preserving their stored shape.
 	Environments []StepEnvironment `json:"environments,omitempty"`
+	// State and artifact file bindings are kodama/v1alpha3 additions.
+	States        []StepState        `json:"states,omitempty"`
+	ArtifactFiles []StepArtifactFile `json:"artifactFiles,omitempty"`
 	// Runtime is the runtime the run was admitted for; nil for a run admitted
 	// while none was configured.
 	Runtime *RuntimeBinding `json:"runtime,omitempty"`
@@ -267,6 +282,27 @@ func (s Snapshot) SecretsOf(step string) []runtimev1.SecretBinding {
 	return out
 }
 
+// StatesOf returns the step's pinned state bindings.
+func (s Snapshot) StatesOf(step string) []runtimev1.StateBinding {
+	for _, st := range s.States {
+		if st.Step == step {
+			return append([]runtimev1.StateBinding(nil), st.Bindings...)
+		}
+	}
+	return nil
+}
+
+// ArtifactsOf returns the step's pinned file artifacts.
+func (s Snapshot) ArtifactsOf(step string) []runtimev1.ArtifactInput {
+	var out []runtimev1.ArtifactInput
+	for _, a := range s.ArtifactFiles {
+		if a.Step == step {
+			out = append(out, a.Input)
+		}
+	}
+	return out
+}
+
 // Digest is the stable fingerprint of the pinned input snapshot of a run: the
 // definition, work item revision, source commit, inputs and secret versions.
 func Digest(def domain.DefinitionID, defDigest string, item domain.WorkItemID, revision domain.ContentRevision, commit string, snap Snapshot) (string, error) {
@@ -274,17 +310,28 @@ func Digest(def domain.DefinitionID, defDigest string, item domain.WorkItemID, r
 	sort.Slice(inputs, func(i, j int) bool { return inputs[i].Name < inputs[j].Name })
 	environments := append([]StepEnvironment(nil), snap.Environments...)
 	sort.Slice(environments, func(i, j int) bool { return environments[i].Step < environments[j].Step })
+	states := append([]StepState(nil), snap.States...)
+	sort.Slice(states, func(i, j int) bool { return states[i].Step < states[j].Step })
+	artifacts := append([]StepArtifactFile(nil), snap.ArtifactFiles...)
+	sort.Slice(artifacts, func(i, j int) bool {
+		if artifacts[i].Step != artifacts[j].Step {
+			return artifacts[i].Step < artifacts[j].Step
+		}
+		return artifacts[i].Input.Name < artifacts[j].Input.Name
+	})
 	doc := struct {
-		Definition   string            `json:"definition"`
-		Digest       string            `json:"definitionDigest"`
-		WorkItem     string            `json:"workItem"`
-		Revision     int64             `json:"contentRevision"`
-		Commit       string            `json:"sourceCommit"`
-		Inputs       []PinnedInput     `json:"inputs"`
-		Secrets      []StepSecret      `json:"secrets"`
-		Environments []StepEnvironment `json:"environments,omitempty"`
-		Runtime      *RuntimeBinding   `json:"runtime,omitempty"`
-	}{string(def), defDigest, string(item), int64(revision), commit, inputs, snap.Secrets, environments, snap.Runtime}
+		Definition   string             `json:"definition"`
+		Digest       string             `json:"definitionDigest"`
+		WorkItem     string             `json:"workItem"`
+		Revision     int64              `json:"contentRevision"`
+		Commit       string             `json:"sourceCommit"`
+		Inputs       []PinnedInput      `json:"inputs"`
+		Secrets      []StepSecret       `json:"secrets"`
+		Environments []StepEnvironment  `json:"environments,omitempty"`
+		States       []StepState        `json:"states,omitempty"`
+		Artifacts    []StepArtifactFile `json:"artifactFiles,omitempty"`
+		Runtime      *RuntimeBinding    `json:"runtime,omitempty"`
+	}{string(def), defDigest, string(item), int64(revision), commit, inputs, snap.Secrets, environments, states, artifacts, snap.Runtime}
 	b, err := json.Marshal(doc)
 	if err != nil {
 		return "", err

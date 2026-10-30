@@ -24,11 +24,14 @@ const (
 	ActionModelInvoke    Action = "model.invoke"
 	ActionToolInvoke     Action = "tool.invoke"
 	ActionDeploymentCall Action = "deployment.call"
+	ActionStateRead      Action = "state.read"
+	ActionStateWrite     Action = "state.write"
 )
 
 var knownActions = []Action{
 	ActionContextRead, ActionTokenRenew, ActionSecretResolve, ActionArtifactReserve, ActionArtifactComplete,
 	ActionSourcePropose, ActionResultSubmit, ActionModelInvoke, ActionToolInvoke, ActionDeploymentCall,
+	ActionStateRead, ActionStateWrite,
 }
 
 // ParseAction accepts exactly the known action names.
@@ -81,6 +84,7 @@ func DefaultActions(writer bool) []Action {
 	base := []Action{
 		ActionContextRead, ActionTokenRenew, ActionSecretResolve,
 		ActionArtifactReserve, ActionArtifactComplete, ActionResultSubmit,
+		ActionStateRead, ActionStateWrite,
 	}
 	if writer {
 		base = append(base, ActionSourcePropose)

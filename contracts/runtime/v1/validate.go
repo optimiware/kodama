@@ -120,6 +120,32 @@ func (c Context) Validate() error {
 	if e := c.Environment; e != nil {
 		return firstError(wrap("environment.id", e.ID.Validate()), wrap("environment.configDigest", e.ConfigDigest.Validate()))
 	}
+	seenState := map[string]bool{}
+	for _, s := range c.State {
+		if err := firstError(matches("state.name", "SafeName", s.Name), matches("state.namespace", "KubernetesName", s.Namespace)); err != nil {
+			return err
+		}
+		if seenState[s.Name] {
+			return fail("state", "duplicate binding name %q", s.Name)
+		}
+		seenState[s.Name] = true
+		if strings.HasPrefix(s.Prefix, "/") || strings.Contains(s.Prefix, "..") || strings.Contains(s.Prefix, "//") {
+			return fail("state.prefix", "must be a normalized relative prefix")
+		}
+	}
+	seenArtifact := map[string]bool{}
+	for _, a := range c.ArtifactFiles {
+		if err := firstError(matches("artifactFiles.name", "SafeName", a.Name), wrap("artifactFiles.digest", a.Digest.Validate())); err != nil {
+			return err
+		}
+		if seenArtifact[a.Name] {
+			return fail("artifactFiles", "duplicate name %q", a.Name)
+		}
+		seenArtifact[a.Name] = true
+		if a.ArtifactID == "" || len(a.ArtifactID) > 128 {
+			return fail("artifactFiles.artifactId", "must be present and bounded")
+		}
+	}
 	return nil
 }
 

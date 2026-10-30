@@ -77,7 +77,7 @@ func (s *Service) Prepare(ctx context.Context, caller Caller, cmd AdmitCommand) 
 	if err := s.checkKinds(ctx, doc); err != nil {
 		return nil, err
 	}
-	shared := doc.IsV1Alpha2()
+	shared := doc.IsShared()
 	var binding *RuntimeBinding
 	if !shared {
 		// A run_shared run derives its binding with the pins (planShared).
@@ -109,6 +109,10 @@ func (s *Service) Prepare(ctx context.Context, caller Caller, cmd AdmitCommand) 
 		return nil, err
 	}
 	snap, bindings, err := s.resolveEnvironmentSet(ctx, cmd.Scope, actor, doc, snap)
+	if err != nil {
+		return nil, err
+	}
+	snap, err = s.resolveStateBindings(doc, snap)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +172,7 @@ func (s *Service) PrepareCleanup(ctx context.Context, cmd CleanupCommand) (*Admi
 	if err := s.checkKinds(ctx, doc); err != nil {
 		return nil, err
 	}
-	shared := doc.IsV1Alpha2()
+	shared := doc.IsShared()
 	var binding *RuntimeBinding
 	if !shared {
 		if binding, err = s.bind(doc); err != nil {
@@ -195,6 +199,10 @@ func (s *Service) PrepareCleanup(ctx context.Context, cmd CleanupCommand) (*Admi
 		return nil, err
 	}
 	snap, bindings, err := s.resolveCleanupEnvironments(ctx, cmd.Scope, cmd.DeploymentID, doc, snap)
+	if err != nil {
+		return nil, err
+	}
+	snap, err = s.resolveStateBindings(doc, snap)
 	if err != nil {
 		return nil, err
 	}
@@ -360,7 +368,7 @@ func (s *Service) resolveConfiguration(ctx context.Context, scope domain.Scope, 
 			req.Secrets = append(req.Secrets, SecretUse{Step: st.ID, Name: n, Ref: st.SecretFiles[n], Delivery: runtimev1.DeliveryFile})
 		}
 	}
-	if doc.IsV1Alpha2() {
+	if doc.IsShared() {
 		svcNames := make([]string, 0, len(doc.Spec.Services))
 		for n := range doc.Spec.Services {
 			svcNames = append(svcNames, n)

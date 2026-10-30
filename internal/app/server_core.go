@@ -153,6 +153,9 @@ func (c *Core) Handler() http.Handler {
 	if c.runtimeV2 != nil {
 		mux.Handle(runtimeV2Prefix+"/", c.runtimeV2)
 	}
+	if c.runtimeV3 != nil {
+		mux.Handle("/runtime/v3/", c.runtimeV3)
+	}
 	// The workload routes of the model gateway and the MCP proxy (T-039), when the
 	// installation selected them: the attempt's runtime token is their only
 	// credential. Unselected, the router below answers its deny-by-default 404.
