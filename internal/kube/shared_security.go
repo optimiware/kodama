@@ -53,9 +53,10 @@ func roleSecurityOf(r execution.RoleShape, c PolicyConfig) (roleSecurity, error)
 			return roleSecurity{}, wrap(ErrPolicy, "the role adds a capability beyond the mapping helpers")
 		}
 	}
+	user, group, fsGroup := c.runSharedIdentity()
 	sec := &kubernetes.ContainerSecurity{
 		Privileged: ptr(false), AllowPrivilegeEscalation: ptr(len(r.CapabilitiesAdd) > 0),
-		RunAsNonRoot: ptr(true), RunAsUser: ptr(c.RunAsUser), RunAsGroup: ptr(c.RunAsGroup),
+		RunAsNonRoot: ptr(true), RunAsUser: ptr(user), RunAsGroup: ptr(group),
 		Capabilities: &kubernetes.Capabilities{Drop: []string{"ALL"}},
 	}
 	if len(r.CapabilitiesAdd) > 0 {
@@ -86,6 +87,6 @@ func roleSecurityOf(r execution.RoleShape, c PolicyConfig) (roleSecurity, error)
 	}
 	return roleSecurity{
 		hostUsers: ptr(false), container: sec,
-		pod: &kubernetes.PodSecurity{RunAsNonRoot: ptr(true), RunAsUser: ptr(c.RunAsUser), RunAsGroup: ptr(c.RunAsGroup), FSGroup: ptr(c.RunAsGroup)},
+		pod: &kubernetes.PodSecurity{RunAsNonRoot: ptr(true), RunAsUser: ptr(user), RunAsGroup: ptr(group), FSGroup: ptr(fsGroup)},
 	}, nil
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	runtimeauthpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/storage"
@@ -17,7 +18,7 @@ func TestMigrationBaselineIsTwoFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs := Contributions()
-	if len(cs) != 3 || cs[0].Module != "storage" || len(cs[0].Migrations) != 2 {
+	if len(cs) != 4 || cs[0].Module != "storage" || len(cs[0].Migrations) != 2 {
 		t.Fatalf("contributions = %+v", cs)
 	}
 	if cs[1].Module != "execution-run-resources" || len(cs[1].Migrations) != 1 || cs[1].Migrations[0].ID != execpg.RunResourcesMigrationID {
@@ -26,8 +27,11 @@ func TestMigrationBaselineIsTwoFiles(t *testing.T) {
 	if cs[2].Module != "runtimeauth-resource-grants" || len(cs[2].Migrations) != 1 || cs[2].Migrations[0].ID != runtimeauthpg.ResourceGrantsMigrationID {
 		t.Fatalf("the runtime-grant contribution is %+v", cs[2])
 	}
+	if cs[3].Module != "artifacts-workspace-provenance" || len(cs[3].Migrations) != 1 || cs[3].Migrations[0].ID != artifactspg.WorkspaceProvenanceMigrationID {
+		t.Fatalf("the workspace provenance contribution is %+v", cs[3])
+	}
 	ms := m.Migrations()
-	if len(ms) != 4 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID || ms[3].ID != runtimeauthpg.ResourceGrantsMigrationID {
+	if len(ms) != 5 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID || ms[3].ID != runtimeauthpg.ResourceGrantsMigrationID || ms[4].ID != artifactspg.WorkspaceProvenanceMigrationID {
 		t.Fatalf("manifest = %+v", ms)
 	}
 	// The schema file defines objects: the only privilege change it may make is a
@@ -74,21 +78,23 @@ func TestMigrateRefusesUnsafeIdentities(t *testing.T) {
 }
 
 // TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPrefix:
-// the T-112 run_shared schema and the T-113 resource-grant table are the only
-// contributions after the squashed baseline, in that order, so the ledger of every
+// the T-112 run_shared schema, the T-113 resource-grant table and the T-116
+// artifact workspace provenance are the only contributions after the squashed
+// baseline, in that order, so the ledger of every
 // earlier release is a strict prefix of the new manifest in the same order (the
 // ledger refuses a pending migration ordered before an applied one). Nothing
 // earlier moved and nothing else was added.
 func TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPrefix(t *testing.T) {
 	cs := Contributions()
-	if len(cs) != 3 {
+	if len(cs) != 4 {
 		t.Fatalf("%d contributions", len(cs))
 	}
-	if cs[0].Module != "storage" || cs[1].Module != "execution-run-resources" {
-		t.Fatalf("an earlier contribution moved: %s, %s", cs[0].Module, cs[1].Module)
+	if cs[0].Module != "storage" || cs[1].Module != "execution-run-resources" || cs[2].Module != "runtimeauth-resource-grants" ||
+		len(cs[2].Migrations) != 1 || cs[2].Migrations[0].ID != runtimeauthpg.ResourceGrantsMigrationID {
+		t.Fatalf("an earlier contribution moved: %s, %s, %s", cs[0].Module, cs[1].Module, cs[2].Module)
 	}
 	last := cs[len(cs)-1]
-	if last.Module != "runtimeauth-resource-grants" || len(last.Migrations) != 1 || last.Migrations[0].ID != runtimeauthpg.ResourceGrantsMigrationID {
+	if last.Module != "artifacts-workspace-provenance" || len(last.Migrations) != 1 || last.Migrations[0].ID != artifactspg.WorkspaceProvenanceMigrationID {
 		t.Fatalf("the final contribution is %+v", last.Module)
 	}
 	prior := cs[:len(cs)-1]
@@ -111,7 +117,7 @@ func TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPre
 			t.Fatalf("migration %d is %s, the prior ledger has %s", i, all[i].ID, id)
 		}
 	}
-	if all[len(all)-1].ID != runtimeauthpg.ResourceGrantsMigrationID {
+	if all[len(all)-1].ID != artifactspg.WorkspaceProvenanceMigrationID {
 		t.Fatalf("last migration %s", all[len(all)-1].ID)
 	}
 	// Both are additive and enable nothing: they create tables, columns and guards
@@ -124,8 +130,8 @@ func TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPre
 			}
 		}
 	}
-	// The grant table's runtime privileges are minimal: no DELETE, no blanket UPDATE.
-	for _, stmt := range statements(last.Migrations[0].SQL) {
+	// The runtime privileges of both tables are minimal: no DELETE, no blanket UPDATE.
+	for _, stmt := range append(statements(cs[2].Migrations[0].SQL), statements(last.Migrations[0].SQL)...) {
 		if strings.HasPrefix(stmt, "GRANT ") && strings.Contains(stmt, "{{runtime_role}}") &&
 			(strings.Contains(stmt, "DELETE") || strings.Contains(stmt, "ALL")) {
 			t.Fatalf("the grant migration gives the runtime role too much: %.80s", stmt)

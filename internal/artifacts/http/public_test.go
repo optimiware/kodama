@@ -99,6 +99,27 @@ func usableView(t *testing.T, download bool) artifacts.View {
 	return v
 }
 
+// sharedView is a usable file artifact whose producer was a run_shared attempt
+// with the given workspace state recorded.
+func sharedView(t *testing.T, state string, ignored bool) artifacts.View {
+	t.Helper()
+	data := []byte("shared bytes")
+	size := int64(len(data))
+	prov := pubProv
+	prov.WorkspaceState, prov.IgnoredPresent, prov.Lineage = state, ignored, "sha256:"+strings.Repeat("b", 64)
+	res := artifacts.Reservation{Scope: pubScope, Attempt: "att_2", Run: "run_1", Step: "build", Name: "out.txt", Kind: artifacts.KindFile, Role: artifacts.RoleOutput,
+		Digest: artifacts.DigestOf(data), MediaType: "text/plain", Size: &size, Provenance: prov}
+	a, err := artifacts.NewFile(domain.ArtifactID("art_shared_"+state), res, stagingSecret, pubT0.Add(time.Hour), pubT0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err = a.Complete(artifacts.Verification{Digest: artifacts.DigestOf(data), Size: size}, sealedSecret, pubT0.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return artifacts.View{Artifact: a}
+}
+
 func ociView(t *testing.T) artifacts.View {
 	t.Helper()
 	d := artifacts.DigestOf([]byte("manifest"))
@@ -353,6 +374,43 @@ func TestPublicMetadataContract(t *testing.T) {
 			if dto.Download != nil && (dto.Download.Method != artifactshttp.GET || !dto.Download.ExpiresAt.Equal(v.Download.ExpiresAt)) {
 				t.Errorf("%s: download %+v", name, dto.Download)
 			}
+		}
+	})
+
+	// DQ-16: a modified workspace is labeled, never indistinguishable from a clean
+	// one; an attempt_private producer's source stays exactly repository and commit.
+	t.Run("workspace provenance of a run_shared producer is public and additive", func(t *testing.T) {
+		source := func(v artifacts.View) map[string]any {
+			t.Helper()
+			svc := &fakePublic{view: func(publicCall) (artifacts.View, error) { return v, nil }}
+			srv := publicServer(t, svc, nil)
+			r := call(t, "GET", srv.URL+"/api/v1/tenants/t_acme/projects/p_inventory/artifacts/"+string(v.Artifact.ID()), "user:alice", nil)
+			if r.status != 200 {
+				t.Fatalf("%d %s", r.status, r.raw)
+			}
+			dec := json.NewDecoder(bytes.NewReader(r.raw))
+			dec.DisallowUnknownFields()
+			var dto artifactshttp.Artifact
+			if err := dec.Decode(&dto); err != nil {
+				t.Fatalf("not the generated representation: %v", err)
+			}
+			var doc struct {
+				Source map[string]any `json:"source"`
+			}
+			r.json(t, &doc)
+			return doc.Source
+		}
+		clean, modified, private := source(sharedView(t, "clean", false)), source(sharedView(t, "modified", true)), source(usableView(t, false))
+		if clean["workspaceState"] != "clean" || clean["ignoredPresent"] != false || modified["workspaceState"] != "modified" || modified["ignoredPresent"] != true {
+			t.Fatalf("clean %v, modified %v", clean, modified)
+		}
+		for name, src := range map[string]map[string]any{"clean": clean, "modified": modified} {
+			if src["lineage"] != "sha256:"+strings.Repeat("b", 64) || src["commit"] != pubProv.Commit || src["repositoryUrl"] != pubProv.RepositoryURL {
+				t.Errorf("%s: %v", name, src)
+			}
+		}
+		if len(private) != 2 || private["commit"] != pubProv.Commit {
+			t.Fatalf("an attempt_private producer's source changed shape: %v", private)
 		}
 	})
 

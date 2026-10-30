@@ -113,8 +113,22 @@ type Digest = string
 
 // SourceProvenance The trusted source the producing attempt worked from.
 type SourceProvenance struct {
-	Commit        string `json:"commit"`
-	RepositoryUrl string `json:"repositoryUrl"`
+	Commit string `json:"commit"`
+
+	// IgnoredPresent Present with `workspaceState`, whether ignored files were present when the command began.
+	IgnoredPresent *bool `json:"ignoredPresent,omitempty"`
+
+	// Lineage Present with `workspaceState`, the digest of the canonical lineage (the earlier attempts that touched the shared workspace) the producing attempt's context carried.
+	Lineage       *string `json:"lineage,omitempty"`
+	RepositoryUrl string  `json:"repositoryUrl"`
+
+	// WorkspaceState Present when the producer was a run_shared attempt: the state of its shared workspace
+	// that the server recorded when the attempt's command began. `clean` means the workspace
+	// was exactly `commit`; `modified` means it was not (the head moved, tracked files
+	// changed or untracked files were present), so the artifact does not stand for `commit`
+	// and is never evidence of an approved commit. Absent for an attempt_private producer.
+	// A plain string: clients must tolerate values they do not know.
+	WorkspaceState *string `json:"workspaceState,omitempty"`
 }
 
 // ArtifactId Opaque identifier. Ownership, kind and ordering must not be inferred from it.

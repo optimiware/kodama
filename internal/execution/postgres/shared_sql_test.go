@@ -13,6 +13,7 @@ import (
 	eventsv1 "github.com/optimiware/kodama/contracts/events/v1"
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/app"
+	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
@@ -353,9 +354,10 @@ func Test_shared_migration_is_additive(t *testing.T) {
 		pool := db.MigrationPool(ctx, 2)
 		opts := storage.MigrateOptions{RuntimeRole: db.RuntimeRole}
 		all := app.Contributions()
-		// The two additive contributions are last: the run-resource lifecycle's and the
-		// runtime authority's grants of those resources (T-113).
-		prior, err := storage.NewManifest(all[:len(all)-2]...)
+		// The three additive contributions are last: the run-resource lifecycle's, the
+		// runtime authority's grants of those resources (T-113) and the artifacts'
+		// workspace provenance (T-116).
+		prior, err := storage.NewManifest(all[:len(all)-3]...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -370,8 +372,8 @@ func Test_shared_migration_is_additive(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(res.Applied) != 2 || res.Applied[0] != execpg.RunResourcesMigrationID || res.Applied[1] != rtpg.ResourceGrantsMigrationID {
-			t.Fatalf("only the two new migrations apply after the prior ledger: %v", res.Applied)
+		if len(res.Applied) != 3 || res.Applied[0] != execpg.RunResourcesMigrationID || res.Applied[1] != rtpg.ResourceGrantsMigrationID || res.Applied[2] != artifactspg.WorkspaceProvenanceMigrationID {
+			t.Fatalf("only the three new migrations apply after the prior ledger: %v", res.Applied)
 		}
 		again, err := storage.Migrate(ctx, pool, full, opts)
 		if err != nil || len(again.Applied) != 0 {

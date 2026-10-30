@@ -86,7 +86,7 @@ func (f serviceInputFetcher) DownloadInput(ctx context.Context, target runtimev1
 func newRealEnv(t *testing.T) *artifactstest.Env {
 	t.Helper()
 	e := artifactstest.New(t, artifactstest.Options{})
-	m, err := storage.NewManifest(storage.BaseContribution(), artifactspg.ReleaseMigrations())
+	m, err := storage.NewManifest(storage.BaseContribution(), artifactspg.ProvenanceMigrations(), artifactspg.ReleaseMigrations())
 	if err != nil {
 		t.Fatal(err)
 	}

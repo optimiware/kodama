@@ -16,6 +16,7 @@ import (
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/httpapi"
+	"github.com/optimiware/kodama/internal/kube"
 	"github.com/optimiware/kodama/internal/logs"
 	logshttp "github.com/optimiware/kodama/internal/logs/http"
 	"github.com/optimiware/kodama/internal/pipeline"
@@ -24,6 +25,7 @@ import (
 	resultshttp "github.com/optimiware/kodama/internal/results/http"
 	"github.com/optimiware/kodama/internal/runtime/bootstrap"
 	"github.com/optimiware/kodama/internal/runtimeauth"
+	"github.com/optimiware/kodama/internal/runtimeauth/execbridge"
 	runtimehttp "github.com/optimiware/kodama/internal/runtimeauth/http"
 )
 
@@ -93,6 +95,13 @@ type ExecutionInputs struct {
 	// leaves the operation unserved and `runtime-secret-resolution` recorded
 	// as disabled.
 	Secrets SecretResolver
+
+	// Shared is the run_shared half of the slice (T-116): the persistence and
+	// token seams of the resource subjects. It is supplied exactly when the
+	// selected runtime contributes a SharedRuntime; one without the other is a
+	// construction error, and Deps.Shared must be left unset (the assembly binds
+	// the resource port of the SAME backend as the runtime).
+	Shared *SharedInputs
 }
 
 // LogCapture retains an attempt's log before its workload goes away: it
@@ -114,6 +123,11 @@ type ExecutionSlice struct {
 	Results *results.Service
 	// Runtime serves the runtime API under /runtime/v1.
 	Runtime http.Handler
+	// RuntimeV2 serves the run_shared runtime API under /runtime/v2; nil unless
+	// run_shared is composed.
+	RuntimeV2 http.Handler
+	// Policies is the installation's policy source when run_shared is composed.
+	Policies execution.Policies
 	// Auth is the runtime-authority service: the gateway and MCP proxy of the
 	// model/tool slice (T-039) verify the attempt's token through it.
 	Auth *runtimeauth.Service
@@ -159,6 +173,8 @@ func AssembleExecution(in ExecutionInputs) (*ExecutionSlice, error) {
 		return nil, missing("the runtime token verifier and artifact routes")
 	case in.Logs == nil:
 		return nil, missing("the log service")
+	case in.Deps.Shared != nil:
+		return nil, fmt.Errorf("%w: the assembly binds the run_shared resource port of the selected runtime itself", execution.ErrNotConfigured)
 	case in.Environments != nil && !admitsEnvironments(in.Plain):
 		return nil, fmt.Errorf("%w: an environment resolver needs a store that binds environments in its admission transaction", execution.ErrNotConfigured)
 	}
@@ -181,10 +197,21 @@ func AssembleExecution(in ExecutionInputs) (*ExecutionSlice, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := admitShared(in, set); err != nil {
+		return nil, err
+	}
 
 	// ---- runtime admission over the selected backend's Job observer ----
 	authCfg := in.Auth
 	authCfg.Jobs = set.Jobs
+	if in.Auth.Resources != nil {
+		return nil, fmt.Errorf("%w: the assembly binds the resource subjects of the selected runtime", execution.ErrNotConfigured)
+	}
+	if set.Shared != nil {
+		authCfg.Resources = &runtimeauth.ResourceConfig{
+			Store: in.Shared.Store, State: in.Shared.State, Workloads: set.Shared.Workloads, Tokens: in.Shared.Tokens, Verifier: in.Shared.Verifier,
+		}
+	}
 	if authCfg.Logger == nil {
 		authCfg.Logger = in.Log
 	}
@@ -201,6 +228,12 @@ func AssembleExecution(in ExecutionInputs) (*ExecutionSlice, error) {
 	trustedDeps.Store, trustedDeps.Runtime, trustedDeps.Planner = in.Plain, set.Runtime, set.Planner
 	if in.AgentPlanner != nil {
 		trustedDeps.Planner = in.AgentPlanner
+	}
+	if set.Shared != nil {
+		trustedDeps.Shared = &execution.SharedConfig{Resources: set.Shared.Resources, Policies: set.Shared.Policies}
+		if trustedDeps.Definitions != nil {
+			trustedDeps.Definitions = retireLegacy{Definitions: trustedDeps.Definitions, policies: set.Shared.Policies}
+		}
 	}
 	trustedDeps.Requirements = requirementsFor(in.Env, in.Deps.Requirements)
 	if in.Capture != nil {
@@ -236,10 +269,29 @@ func AssembleExecution(in ExecutionInputs) (*ExecutionSlice, error) {
 		return nil, fmt.Errorf("results service: %w", err)
 	}
 
-	runtimeAPI, err := newRuntimeAPI(runtimeAPIConfig{
+	apiCfg := runtimeAPIConfig{
 		Auth: auth, Results: res, Verifier: authCfg.Verifier, Artifacts: in.Artifacts, Deployments: in.Deployments, Secrets: in.Secrets,
 		RateLimit: in.Tuning.RateLimitPerMinute, Log: in.Log,
-	})
+	}
+	var resourceSecrets runtimehttp.ResourceSecretResolver
+	if set.Shared != nil {
+		if in.Shared.Secrets != nil {
+			rs, err := newResourceSecrets(in.Shared.Secrets, auth)
+			if err != nil {
+				return nil, err
+			}
+			resourceSecrets = rs
+		}
+		// The begin and the preparation receipt are recorded through the guarded
+		// service: its store carries the runtime-grant fence in the recording
+		// transaction (execution.GrantFence), and the bridge refuses without the
+		// session recheck.
+		apiCfg.V2 = &runtimeV2Config{
+			Service: auth, Begins: execbridge.Begins{Exec: guarded, Recheck: auth}, Receipts: execbridge.Receipts{Exec: guarded, Recheck: auth},
+			ResourceSecrets: resourceSecrets,
+		}
+	}
+	runtimeAPI, runtimeV2, err := newRuntimeAPI(apiCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +305,7 @@ func AssembleExecution(in ExecutionInputs) (*ExecutionSlice, error) {
 
 	// ---- workers ----
 	s := &ExecutionSlice{
-		Trusted: trusted, Guarded: guarded, Results: res, Runtime: runtimeAPI, Auth: auth, RegisterPublic: register, Backend: set.Runtime.Capabilities().Backend,
+		Trusted: trusted, Guarded: guarded, Results: res, Runtime: runtimeAPI, RuntimeV2: runtimeV2, Auth: auth, RegisterPublic: register, Backend: set.Runtime.Capabilities().Backend,
 		ReconcileTenant: func(ctx context.Context, tenant domain.TenantID) error {
 			_, err := trusted.ReconcileTenant(ctx, tenant)
 			return err
@@ -265,6 +317,13 @@ func AssembleExecution(in ExecutionInputs) (*ExecutionSlice, error) {
 	}
 	if in.Deployments != nil {
 		s.Routes = append(s.Routes, "deployment-callbacks")
+	}
+	if set.Shared != nil {
+		s.Policies = set.Shared.Policies
+		s.Routes = append(s.Routes, "runtime-v2")
+		if resourceSecrets == nil {
+			s.Disabled = append(s.Disabled, "service-secret-resolution")
+		}
 	}
 	if in.Secrets != nil {
 		s.Routes = append(s.Routes, capSecretResolution)
@@ -315,6 +374,38 @@ func (l *LateRegistrar) Register(ctx context.Context, cmd runtimeauth.RegisterCo
 	}
 	return r.Register(ctx, cmd)
 }
+
+// RegisterResource registers a run resource's admission credential with the
+// bound runtime authority, with the same refusal until it is bound (and for a
+// registrar that has no resource subjects).
+func (l *LateRegistrar) RegisterResource(ctx context.Context, cmd runtimeauth.ResourceRegisterCommand) error {
+	l.mu.RLock()
+	r := l.r
+	l.mu.RUnlock()
+	rr, ok := r.(interface {
+		RegisterResource(context.Context, runtimeauth.ResourceRegisterCommand) error
+	})
+	if !ok {
+		return fmt.Errorf("%w: runtime admission of run resources is not bound", runtimeauth.ErrUnavailable)
+	}
+	return rr.RegisterResource(ctx, cmd)
+}
+
+// RegisterV2 registers the admission credential of a run_shared attempt on the v2
+// wire, with the same refusal until bound (and for a registrar without the v2
+// wire). The Kubernetes runtime registers its run_shared attempts through it.
+func (l *LateRegistrar) RegisterV2(ctx context.Context, cmd runtimeauth.RegisterCommandV2) (runtimeauth.Registration, error) {
+	l.mu.RLock()
+	r := l.r
+	l.mu.RUnlock()
+	r2, ok := r.(bootstrap.RegistrarV2)
+	if !ok {
+		return runtimeauth.Registration{}, fmt.Errorf("%w: runtime admission of run_shared attempts is not bound", runtimeauth.ErrUnavailable)
+	}
+	return r2.RegisterV2(ctx, cmd)
+}
+
+var _ kube.RegistrarV2 = (*LateRegistrar)(nil)
 
 // requirementsFor is the installation's runtime requirement policy. Production
 // and test keep execution's default (a pinned image run in isolation within
@@ -427,7 +518,22 @@ type runtimeAPIConfig struct {
 	Secrets   SecretResolver
 	RateLimit int
 	Log       *slog.Logger
+	// V2 is set exactly when run_shared is composed: it adds the /runtime/v2
+	// routes and fences the v1 shared routes with a v1 wire guard, so a run_shared
+	// attempt cannot reach them on /runtime/v1.
+	V2 *runtimeV2Config
 }
+
+// runtimeV2Config configures the /runtime/v2 handler.
+type runtimeV2Config struct {
+	Service         *runtimeauth.Service
+	Begins          runtimehttp.BeginRecorder
+	Receipts        runtimehttp.ReceiptRecorder
+	ResourceSecrets runtimehttp.ResourceSecretResolver
+}
+
+// runtimeV2Prefix is the run_shared runtime API's path prefix.
+const runtimeV2Prefix = "/runtime/v2"
 
 // runtimePrefix is the runtime API's path prefix; the frozen contract's
 // BasePath is runtimePrefix + "/attempts/{attemptId}".
@@ -438,7 +544,31 @@ const runtimePrefix = "/runtime/v1"
 // (resolveSecret until the secret route is supplied) and any other path answer
 // the contract's not_found envelope, so an unwired route is observable, never a
 // silent success.
-func newRuntimeAPI(c runtimeAPIConfig) (http.Handler, error) {
+func newRuntimeAPI(c runtimeAPIConfig) (v1 http.Handler, v2 http.Handler, err error) {
+	h, err := newRuntimeV1(c)
+	if err != nil {
+		return nil, nil, err
+	}
+	if c.V2 == nil {
+		return h.mux, nil, nil
+	}
+	v2, err = newRuntimeV2(c, h)
+	if err != nil {
+		return nil, nil, err
+	}
+	return h.mux, v2, nil
+}
+
+// runtimeV1 is the v1 runtime API and the shared-body handlers the v2 routes
+// reuse: one implementation serves both wires.
+type runtimeV1 struct {
+	mux http.Handler
+	// shared are the v1 owners' handlers of the operations whose bodies v2
+	// shares unchanged (runtimehttp.SharedOps), unguarded.
+	shared map[string]http.Handler
+}
+
+func newRuntimeV1(c runtimeAPIConfig) (*runtimeV1, error) {
 	auth, err := runtimehttp.NewHandler(runtimehttp.Config{Service: c.Auth, Logger: c.Log})
 	if err != nil {
 		return nil, err
@@ -490,6 +620,25 @@ func newRuntimeAPI(c runtimeAPIConfig) (http.Handler, error) {
 			owner[op.ID] = router
 		}
 	}
+	shared := map[string]http.Handler{}
+	for _, id := range runtimehttp.SharedOps {
+		if h, ok := owner[id]; ok {
+			shared[id] = h
+		}
+	}
+	if c.V2 != nil {
+		// With run_shared composed, an attempt of a run_shared run belongs to the
+		// v2 wire: the v1 routes whose bodies v2 shares are fenced so such an
+		// attempt cannot reach them here (context_version_mismatch, nothing
+		// changed), exactly as a v1 attempt cannot reach the v2 ones.
+		guard, err := runtimehttp.NewWireGuard(c.V2.Service, runtimeauth.WireV1, c.Log)
+		if err != nil {
+			return nil, err
+		}
+		for id, h := range shared {
+			owner[id] = guard.Wrap(id, h)
+		}
+	}
 	mux := http.NewServeMux()
 	for _, op := range runtimev1.Operations {
 		h, ok := owner[op.ID]
@@ -509,7 +658,22 @@ func newRuntimeAPI(c runtimeAPIConfig) (http.Handler, error) {
 		// not_found / invalid_request envelope and names nothing internal.
 		auth.ServeHTTP(w, r)
 	})
-	return mux, nil
+	return &runtimeV1{mux: mux, shared: shared}, nil
+}
+
+// newRuntimeV2 composes the /runtime/v2 routes: admission, renewal and context
+// of attempts and of run resources, the command-begin, the preparation receipt
+// and the service secrets are served by the runtime authority over execution's
+// committed state; the bodies shared with v1 (secrets, artifacts, source, result)
+// are the v1 owners' handlers behind the handler's own v2 wire guard.
+func newRuntimeV2(c runtimeAPIConfig, v1 *runtimeV1) (http.Handler, error) {
+	if c.V2 == nil || c.V2.Service == nil || c.V2.Begins == nil || c.V2.Receipts == nil {
+		return nil, fmt.Errorf("%w: the run_shared runtime routes need the runtime authority, the begin and the receipt recorders", execution.ErrNotConfigured)
+	}
+	return runtimehttp.NewV2Handler(runtimehttp.V2Config{
+		Service: c.V2.Service, Begins: c.V2.Begins, Receipts: c.V2.Receipts, ResourceSecrets: c.V2.ResourceSecrets,
+		Shared: v1.shared, Logger: c.Log,
+	})
 }
 
 // runtimeAuthenticator verifies the runtime session token of the artifact

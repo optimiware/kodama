@@ -170,7 +170,9 @@ paths:
     get:
       operationId: getRun
       summary: Read a run with its pinned input snapshot
-      description: Requires run:read. A run of another tenant or project is 404.
+      description: >-
+        Requires run:read. A run of another tenant or project is 404. A run admitted under the run_shared
+        model also carries runModel, deadlineAt, executionOrder, effectiveAccess and resources.
       responses:
         '200':
           description: The run; the ETag is its version.
@@ -529,6 +531,76 @@ components:
           format: date-time
           nullable: true
         finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        runModel:
+          type: string
+          description: >-
+            The value is run_shared. Present only when the run was admitted under the run_shared model (one disposable workspace
+            carried through its steps, run-scoped support services; docs/contracts/run-resources.md) and
+            only in the answer of getRun. A run without it is an attempt_private run, which behaves as
+            before. The members below are present exactly when this one is.
+        deadlineAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: The run's pinned total deadline; it covers gate waits and bounds every resource.
+        executionOrder:
+          type: array
+          items:
+            type: string
+          description: The frozen order in which executable steps and gates are processed.
+        effectiveAccess:
+          type: object
+          additionalProperties:
+            type: string
+          description: >-
+            The effective workspace access of every executable step, by step ID: none, read or write.
+            (Plain strings, not an enum: a new enum would rename released client constants.)
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunResource'
+          description: >-
+            Safe observations of the run's resources (the network boundary, the workspace, the
+            preparation and the support services), for the caller's current authorization. A UID,
+            fingerprint, spec, endpoint, log or credential is never part of it.
+        cleanupReason:
+          type: string
+          nullable: true
+          description: >-
+            Why a draining run is held nonterminal by its resources (resource_stop_unconfirmed or
+            cleanup_pending); null otherwise. It is derived, never a business status.
+    RunResource:
+      type: object
+      additionalProperties: false
+      required: [kind, key, phase, reason, readyAt, stoppedAt, removedAt]
+      properties:
+        kind:
+          type: string
+          description: network, workspace, preparation or service.
+        key:
+          type: string
+          description: network, workspace, preparation or service.NAME.
+        phase:
+          type: string
+          description: >-
+            The observed phase of the resource: pending, ready, failed, stopped, absent or unknown. It is
+            not a run, step or attempt status.
+        reason:
+          type: string
+          nullable: true
+          description: A safe, stable reason code (for example preparation_failed, service_lost, policy_unavailable).
+        readyAt:
+          type: string
+          format: date-time
+          nullable: true
+        stoppedAt:
+          type: string
+          format: date-time
+          nullable: true
+        removedAt:
           type: string
           format: date-time
           nullable: true

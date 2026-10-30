@@ -126,6 +126,14 @@ func nullable(s string) *string {
 }
 
 func scanArtifact(r rowScanner) (artifacts.Artifact, error) {
+	rec, err := scanRecord(r)
+	if err != nil {
+		return artifacts.Artifact{}, err
+	}
+	return artifacts.Restore(rec)
+}
+
+func scanRecord(r rowScanner) (artifacts.Record, error) {
 	var (
 		tenant, project, id, run, attempt, step, name, kind, role, digest, state, disp string
 		mediaType, registry, srcURL, srcCommit, staging, sealed, claimToken            *string
@@ -137,7 +145,7 @@ func scanArtifact(r rowScanner) (artifacts.Artifact, error) {
 	if err := r.Scan(&tenant, &project, &id, &run, &attempt, &step, &name, &kind, &role, &digest, &mediaType, &size, &registry,
 		&srcURL, &srcCommit, &state, &disp, &staging, &sealed, &transferExp, &verifiedAt, &verifiedSize,
 		&claimToken, &claimGen, &claimUntil, &created, &updated, &version); err != nil {
-		return artifacts.Artifact{}, err
+		return artifacts.Record{}, err
 	}
 	res := artifacts.Reservation{
 		Scope:   domain.Scope{TenantID: domain.TenantID(tenant), ProjectID: domain.ProjectID(project)},
@@ -156,7 +164,44 @@ func scanArtifact(r rowScanner) (artifacts.Artifact, error) {
 	} else {
 		rec.Claim = artifacts.Claim{Generation: claimGen}
 	}
+	return rec, nil
+}
+
+// restore hydrates the workspace provenance of a run_shared producer (its own
+// table, absent from a database that never applied the migration) and restores
+// the artifact.
+func restore(ctx context.Context, tx pgx.Tx, rec artifacts.Record) (artifacts.Artifact, error) {
+	if rec.Reservation.Provenance.IsZero() {
+		return artifacts.Restore(rec)
+	}
+	ok, err := hasProvenanceTable(ctx, tx)
+	if err != nil {
+		return artifacts.Artifact{}, err
+	}
+	if ok {
+		var state string
+		var ignored bool
+		var lineage *string
+		err := tx.QueryRow(ctx, `SELECT workspace_state, ignored_present, lineage FROM artifact_workspace_provenance
+WHERE tenant_id = $1 AND project_id = $2 AND artifact_id = $3`, string(rec.Reservation.Scope.TenantID), string(rec.Reservation.Scope.ProjectID), string(rec.ID)).
+			Scan(&state, &ignored, &lineage)
+		switch {
+		case err == nil:
+			p := rec.Reservation.Provenance
+			p.WorkspaceState, p.IgnoredPresent, p.Lineage = state, ignored, str(lineage)
+			rec.Reservation.Provenance = p
+		case !errors.Is(err, pgx.ErrNoRows):
+			return artifacts.Artifact{}, err
+		}
+	}
 	return artifacts.Restore(rec)
+}
+
+// hasProvenanceTable reports whether the workspace provenance migration applied.
+func hasProvenanceTable(ctx context.Context, tx pgx.Tx) (bool, error) {
+	var present bool
+	err := tx.QueryRow(ctx, `SELECT to_regclass('public.artifact_workspace_provenance') IS NOT NULL`).Scan(&present)
+	return present, err
 }
 
 func getArtifact(ctx context.Context, tx pgx.Tx, scope domain.Scope, id domain.ArtifactID, lock string) (artifacts.Artifact, error) {
@@ -164,11 +209,14 @@ func getArtifact(ctx context.Context, tx pgx.Tx, scope domain.Scope, id domain.A
 	if lock != "" {
 		q += ` ` + lock
 	}
-	a, err := scanArtifact(tx.QueryRow(ctx, q, string(scope.TenantID), string(scope.ProjectID), string(id)))
+	rec, err := scanRecord(tx.QueryRow(ctx, q, string(scope.TenantID), string(scope.ProjectID), string(id)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return artifacts.Artifact{}, artifacts.ErrNotFound
 	}
-	return a, err
+	if err != nil {
+		return artifacts.Artifact{}, err
+	}
+	return restore(ctx, tx, rec)
 }
 
 // ---- reads ----------------------------------------------------------------
@@ -207,12 +255,15 @@ func (s *Store) FindByName(ctx context.Context, scope domain.Scope, attempt doma
 }
 
 func findByName(ctx context.Context, tx pgx.Tx, scope domain.Scope, attempt domain.AttemptID, name string) (artifacts.Artifact, error) {
-	a, err := scanArtifact(tx.QueryRow(ctx, `SELECT `+artifactColumns+` FROM artifacts
+	rec, err := scanRecord(tx.QueryRow(ctx, `SELECT `+artifactColumns+` FROM artifacts
 WHERE tenant_id = $1 AND project_id = $2 AND attempt_id = $3 AND name = $4`, string(scope.TenantID), string(scope.ProjectID), string(attempt), name))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return artifacts.Artifact{}, artifacts.ErrNotFound
 	}
-	return a, err
+	if err != nil {
+		return artifacts.Artifact{}, err
+	}
+	return restore(ctx, tx, rec)
 }
 
 // ReferencesForAttempt implements artifacts.Repository.
@@ -231,15 +282,27 @@ WHERE tenant_id = $1 AND project_id = $2 AND attempt_id = $3 AND id = ANY($4)`, 
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
+		var recs []artifacts.Record
 		for rows.Next() {
-			a, err := scanArtifact(rows)
+			rec, err := scanRecord(rows)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			recs = append(recs, rec)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, rec := range recs {
+			a, err := restore(ctx, tx, rec)
 			if err != nil {
 				return err
 			}
 			out[a.ID()] = a.Reference()
 		}
-		return rows.Err()
+		return nil
 	})
 	return out, err
 }
@@ -299,6 +362,29 @@ VALUES ($1, $2, $3, $4, 'staging', 0, 'live', $5, $6)`, string(res.Scope.TenantI
 }
 
 func insertArtifact(ctx context.Context, tx pgx.Tx, a artifacts.Artifact) error {
+	if err := insertArtifactRow(ctx, tx, a); err != nil {
+		return err
+	}
+	p := a.Reservation().Provenance
+	if p.WorkspaceState == "" {
+		return nil
+	}
+	// A run_shared producer's recorded workspace state is kept with the artifact
+	// or the reservation fails: it is never dropped.
+	ok, err := hasProvenanceTable(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: the database has not applied the workspace provenance migration", artifacts.ErrUnavailable)
+	}
+	r := a.Reservation()
+	_, err = tx.Exec(ctx, `INSERT INTO artifact_workspace_provenance (tenant_id, project_id, artifact_id, workspace_state, ignored_present, lineage, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)`, string(r.Scope.TenantID), string(r.Scope.ProjectID), string(a.ID()), p.WorkspaceState, p.IgnoredPresent, nullable(p.Lineage), a.CreatedAt())
+	return err
+}
+
+func insertArtifactRow(ctx context.Context, tx pgx.Tx, a artifacts.Artifact) error {
 	r := a.Reservation()
 	var size *int64
 	if r.Size != nil {

@@ -19,7 +19,49 @@ func runText(m map[string]any) string {
 	if v := field(m, "failureReason"); v != "-" {
 		fmt.Fprintf(&b, "failure reason: %s\n", v)
 	}
+	sharedText(&b, m)
 	return b.String()
+}
+
+// sharedText renders the additive members of a run_shared run: the run model, its
+// total deadline, the frozen execution order with each step's effective workspace
+// access, and the safe observations of its resources. A run without them is an
+// attempt_private run and renders exactly as before.
+func sharedText(b *strings.Builder, m map[string]any) {
+	model := field(m, "runModel")
+	if model == "-" {
+		return
+	}
+	fmt.Fprintf(b, "run model: %s  deadline: %s\n", model, field(m, "deadlineAt"))
+	if order, ok := m["executionOrder"].([]any); ok && len(order) > 0 {
+		access, _ := m["effectiveAccess"].(map[string]any)
+		parts := make([]string, 0, len(order))
+		for _, id := range order {
+			name, _ := id.(string)
+			if a, ok := access[name].(string); ok && a != "" {
+				name += " (" + a + ")"
+			}
+			parts = append(parts, name)
+		}
+		fmt.Fprintf(b, "execution order: %s\n", strings.Join(parts, " -> "))
+	}
+	if v := field(m, "cleanupReason"); v != "-" {
+		fmt.Fprintf(b, "held by resources: %s\n", v)
+	}
+	resources, _ := m["resources"].([]any)
+	if len(resources) == 0 {
+		b.WriteString("resources: none\n")
+		return
+	}
+	b.WriteString("resources:\n")
+	for _, r := range resources {
+		rm, _ := r.(map[string]any)
+		fmt.Fprintf(b, "    %-18s %-9s", field(rm, "key"), field(rm, "phase"))
+		if v := field(rm, "reason"); v != "-" {
+			fmt.Fprintf(b, " (%s)", v)
+		}
+		fmt.Fprintf(b, "  ready %s  stopped %s  removed %s\n", field(rm, "readyAt"), field(rm, "stoppedAt"), field(rm, "removedAt"))
+	}
 }
 
 func runListText(m map[string]any) string {

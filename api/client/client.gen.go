@@ -353,6 +353,7 @@ const (
 // Defines values for PipelineDocumentApiVersion.
 const (
 	Kodamav1alpha1 PipelineDocumentApiVersion = "kodama/v1alpha1"
+	Kodamav1alpha2 PipelineDocumentApiVersion = "kodama/v1alpha2"
 )
 
 // Defines values for PipelineDocumentKind.
@@ -1783,7 +1784,7 @@ type PipelineDefinitionPage struct {
 	NextCursor *string              `json:"nextCursor"`
 }
 
-// PipelineDocument One pipeline document of apiVersion kodama/v1alpha1. The authoritative structural schema is contracts/pipeline/v1/schema.json; it is not duplicated here. Unknown fields, duplicate keys, YAML-only constructs and mutable image references are rejected.
+// PipelineDocument One pipeline document of apiVersion kodama/v1alpha1, or of kodama/v1alpha2 when the installation enabled the run_shared model (registration of a v1alpha2 document is refused otherwise). The authoritative structural schemas are contracts/pipeline/v1/schema.json and contracts/pipeline/v1alpha2/schema.json; they are not duplicated here. Unknown fields, duplicate keys, YAML-only constructs and mutable image references are rejected.
 type PipelineDocument struct {
 	ApiVersion           PipelineDocumentApiVersion `json:"apiVersion"`
 	Kind                 PipelineDocumentKind       `json:"kind"`
@@ -1919,6 +1920,28 @@ type RequiredEvidence struct {
 // RequiredEvidenceRole evidence: named by the gate step; report: the candidate's design conformance report; support: an artifact the report cites for a check.
 type RequiredEvidenceRole string
 
+// ResourceLogMeta The `meta` record of a log read with `resource` (see the query parameter).
+type ResourceLogMeta struct {
+	Completeness LogCompleteness `json:"completeness"`
+	Follow       bool            `json:"follow"`
+	Limits       LogLimits       `json:"limits"`
+
+	// Origin Where the served bytes came from.
+	Origin   LogOrigin   `json:"origin"`
+	Reasons  []LogReason `json:"reasons"`
+	Resource string      `json:"resource"`
+
+	// RunId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RunId ID  `json:"runId"`
+	Tail  int `json:"tail"`
+
+	// Terminal The run had finished when the read began.
+	Terminal bool `json:"terminal"`
+
+	// Type Always `meta`.
+	Type string `json:"type"`
+}
+
 // ResyncRequired defines model for ResyncRequired.
 type ResyncRequired struct {
 	Code    ResyncRequiredCode `json:"code"`
@@ -1993,12 +2016,24 @@ type RoleBindingsPatch struct {
 // Run defines model for Run.
 type Run struct {
 	CancelRequestedAt *time.Time `json:"cancelRequestedAt"`
-	ContentRevision   *int64     `json:"contentRevision"`
-	CreatedAt         time.Time  `json:"createdAt"`
-	DefinitionDigest  string     `json:"definitionDigest"`
+
+	// CleanupReason Why a draining run is held nonterminal by its resources (resource_stop_unconfirmed or cleanup_pending); null otherwise. It is derived, never a business status.
+	CleanupReason   *string   `json:"cleanupReason"`
+	ContentRevision *int64    `json:"contentRevision"`
+	CreatedAt       time.Time `json:"createdAt"`
+
+	// DeadlineAt The run's pinned total deadline; it covers gate waits and bounds every resource.
+	DeadlineAt       *time.Time `json:"deadlineAt"`
+	DefinitionDigest string     `json:"definitionDigest"`
 
 	// DefinitionId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	DefinitionId ID `json:"definitionId"`
+
+	// EffectiveAccess The effective workspace access of every executable step, by step ID: none, read or write. (Plain strings, not an enum: a new enum would rename released client constants.)
+	EffectiveAccess *map[string]string `json:"effectiveAccess,omitempty"`
+
+	// ExecutionOrder The frozen order in which executable steps and gates are processed.
+	ExecutionOrder *[]string `json:"executionOrder,omitempty"`
 
 	// FailureReason The recorded failure intent; the run fails once its attempts settle.
 	FailureReason *Reason    `json:"failureReason"`
@@ -2012,9 +2047,15 @@ type Run struct {
 	Purpose RunPurpose `json:"purpose"`
 
 	// Reason A classified, content-free reason code.
-	Reason       Reason    `json:"reason"`
-	RequestedBy  RunsActor `json:"requestedBy"`
-	SourceCommit *string   `json:"sourceCommit"`
+	Reason      Reason    `json:"reason"`
+	RequestedBy RunsActor `json:"requestedBy"`
+
+	// Resources Safe observations of the run's resources (the network boundary, the workspace, the preparation and the support services), for the caller's current authorization. A UID, fingerprint, spec, endpoint, log or credential is never part of it.
+	Resources *[]RunResource `json:"resources,omitempty"`
+
+	// RunModel The value is run_shared. Present only when the run was admitted under the run_shared model (one disposable workspace carried through its steps, run-scoped support services; docs/contracts/run-resources.md) and only in the answer of getRun. A run without it is an attempt_private run, which behaves as before. The members below are present exactly when this one is.
+	RunModel     *string `json:"runModel,omitempty"`
+	SourceCommit *string `json:"sourceCommit"`
 
 	// SourceRetention A work run dispatches only after its retained source reference is confirmed.
 	SourceRetention RunSourceRetention `json:"sourceRetention"`
@@ -2036,6 +2077,24 @@ type RunSourceRetention string
 type RunPage struct {
 	Items      []Run   `json:"items"`
 	NextCursor *string `json:"nextCursor"`
+}
+
+// RunResource defines model for RunResource.
+type RunResource struct {
+	// Key network, workspace, preparation or service.NAME.
+	Key string `json:"key"`
+
+	// Kind network, workspace, preparation or service.
+	Kind string `json:"kind"`
+
+	// Phase The observed phase of the resource: pending, ready, failed, stopped, absent or unknown. It is not a run, step or attempt status.
+	Phase   string     `json:"phase"`
+	ReadyAt *time.Time `json:"readyAt"`
+
+	// Reason A safe, stable reason code (for example preparation_failed, service_lost, policy_unavailable).
+	Reason    *string    `json:"reason"`
+	RemovedAt *time.Time `json:"removedAt"`
+	StoppedAt *time.Time `json:"stoppedAt"`
 }
 
 // RunStatus defines model for RunStatus.
@@ -2185,8 +2244,22 @@ type Source struct {
 
 // SourceProvenance The trusted source the producing attempt worked from.
 type SourceProvenance struct {
-	Commit        string `json:"commit"`
-	RepositoryUrl string `json:"repositoryUrl"`
+	Commit string `json:"commit"`
+
+	// IgnoredPresent Present with `workspaceState`, whether ignored files were present when the command began.
+	IgnoredPresent *bool `json:"ignoredPresent,omitempty"`
+
+	// Lineage Present with `workspaceState`, the digest of the canonical lineage (the earlier attempts that touched the shared workspace) the producing attempt's context carried.
+	Lineage       *string `json:"lineage,omitempty"`
+	RepositoryUrl string  `json:"repositoryUrl"`
+
+	// WorkspaceState Present when the producer was a run_shared attempt: the state of its shared workspace
+	// that the server recorded when the attempt's command began. `clean` means the workspace
+	// was exactly `commit`; `modified` means it was not (the head moved, tracked files
+	// changed or untracked files were present), so the artifact does not stand for `commit`
+	// and is never evidence of an approved commit. Absent for an attempt_private producer.
+	// A plain string: clients must tolerate values they do not know.
+	WorkspaceState *string `json:"workspaceState,omitempty"`
 }
 
 // SourceRef defines model for SourceRef.
@@ -2861,6 +2934,9 @@ type GetRunLogsParams struct {
 
 	// Source Where to read from: the live Kubernetes log, or the retained capture of one producer. Captures of different sources are never merged.
 	Source *LogSource `form:"source,omitempty" json:"source,omitempty"`
+
+	// Resource Read the bounded log of the preparation (`preparation`) or of one support service (`service.NAME`) of a `run_shared` run instead of an attempt's. It excludes attemptId, follow and source; only `tail` combines with it. The stream is the same meta/chunk/summary NDJSON with `resource` in the meta record in place of `attemptId` and `stepId`, and known disclosed secret values are replaced with `[REDACTED]`. A resource that does not exist, or a run that is not run_shared, is 404.
+	Resource *string `form:"resource,omitempty" json:"resource,omitempty"`
 }
 
 // ListRunStepsParams defines parameters for ListRunSteps.
@@ -8321,6 +8397,22 @@ func NewGetRunLogsRequest(server string, tenantId TenantId, projectId ProjectId,
 		if params.Source != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "source", runtime.ParamLocationQuery, *params.Source); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Resource != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "resource", runtime.ParamLocationQuery, *params.Resource); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

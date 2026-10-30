@@ -21,6 +21,8 @@ Commands:
   migrate    Apply the core schema through the owner database identity
   bootstrap  Provision the first tenant and administrator (operator only)
   step       Run one attempt's command inside its workload (used by the runtimes)
+  prepare    Check out the run's pinned commit once into the shared workspace (run_shared preparation Job)
+  service-run  Deliver a run service's pinned secrets and run its command (run_shared services with secrets)
 
 Command groups of the command-line client:
   context, auth, work, workspace, pipeline, run, variable, secret, agent, gate, environment, deployment
@@ -49,10 +51,16 @@ func Main(ctx context.Context, args []string, getenv func(string) string, stdout
 	if len(command) > 0 && isCLIGroup(command[0]) {
 		return runCLI(ctx, command, getenv, stdout, stderr)
 	}
-	if len(command) > 0 && command[0] == entrypoint.CommandName {
-		// The in-workload entrypoint reads no environment selection and builds no
-		// adapter: it is a client of the runtime API (SD-12 concerns the server).
-		return entrypoint.StepCommand().Run(ctx, command[1:], getenv, stdout, stderr)
+	if len(command) > 0 {
+		// The in-workload commands (the attempt entrypoint and, for run_shared, the
+		// preparation and the service supervisor) read no environment selection and
+		// build no adapter: they are clients of the runtime API (SD-12 concerns the
+		// server).
+		for _, c := range workloadCommands() {
+			if command[0] == c.Name {
+				return c.Run(ctx, command[1:], getenv, stdout, stderr)
+			}
+		}
 	}
 	if len(command) == 0 || (command[0] != "server" && command[0] != "migrate" && command[0] != "bootstrap") {
 		root.Usage()
@@ -94,6 +102,14 @@ func Main(ctx context.Context, args []string, getenv func(string) string, stdout
 	}
 	logger.Info("server stopped")
 	return 0
+}
+
+// workloadCommands are the commands that run inside a workload the server
+// created: `step` (an attempt), `prepare` (a run's one checkout) and
+// `service-run` (a service with pinned secrets). The Kubernetes runtime injects
+// this same binary into every one of those workloads.
+func workloadCommands() []entrypoint.Command {
+	return []entrypoint.Command{entrypoint.StepCommand(), entrypoint.PrepareCommand(), entrypoint.ServiceRunCommand()}
 }
 
 func parseServerConfig(args []string, getenv func(string) string, output io.Writer) (Config, error) {

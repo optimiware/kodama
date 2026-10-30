@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/optimiware/kodama/internal/cli/client"
@@ -23,6 +24,8 @@ const (
 	maxLogLineBytes = 1 << 20
 	maxStepPages    = 50
 )
+
+var resourceKeys = regexp.MustCompile(`^(preparation|service\.[a-z][a-z0-9-]{0,29})$`)
 
 var logSources = map[string]bool{"auto": true, "live": true, "wrapper": true, "controller": true}
 
@@ -140,6 +143,7 @@ func bindLogs(fs *flag.FlagSet) root.RunFunc {
 	tail := fs.String("tail", "", "number of trailing lines (the server bounds and validates it)")
 	follow := fs.Bool("follow", false, "keep a live log open until it ends; output is buffered until then")
 	source := fs.String("source", "", "auto, live, wrapper or controller")
+	resource := fs.String("resource", "", "read the log of a run_shared run's preparation (preparation) or of a support service (service.NAME) instead of an attempt")
 	return func(ctx context.Context, inv *root.Invocation, args []string) (root.Result, error) {
 		runID, err := oneArg(args, "the run ID")
 		if err != nil {
@@ -147,6 +151,16 @@ func bindLogs(fs *flag.FlagSet) root.RunFunc {
 		}
 		set := explicit(fs)
 		q := url.Values{}
+		if set["resource"] {
+			if !resourceKeys.MatchString(*resource) {
+				return root.Result{}, root.Usagef("--resource must be preparation or service.NAME")
+			}
+			// A resource has no attempt, step, source or live stream: only the tail
+			// combines with it.
+			if set["step"] || set["attempt"] || set["follow"] || set["source"] {
+				return root.Result{}, root.Usagef("--resource excludes --step, --attempt, --follow and --source")
+			}
+		}
 		if set["tail"] {
 			if !limitPattern.MatchString(*tail) {
 				return root.Result{}, root.Usagef("--tail must be a positive integer")
@@ -168,6 +182,18 @@ func bindLogs(fs *flag.FlagSet) root.RunFunc {
 		c, scope, err := connect(inv)
 		if err != nil {
 			return root.Result{}, err
+		}
+		if set["resource"] {
+			q.Set("resource", *resource)
+			resp, err := c.Do(ctx, client.Request{Method: http.MethodGet, Scope: scope, Path: []string{"runs", runID, "logs"}, Query: q}, nil)
+			if err != nil {
+				return root.Result{}, err
+			}
+			doc, text, err := parseResourceLogs(resp.Body, runID, *resource)
+			if err != nil {
+				return root.Result{}, err
+			}
+			return root.Result{Data: doc, Text: text}, nil
 		}
 		attemptID, err := resolveAttempt(ctx, c, scope, runID, *step, *attempt)
 		if err != nil {
@@ -394,4 +420,139 @@ func logsText(m logMeta, sum logSummary, texts []string, truncs []bool) string {
 	}
 	b.WriteString(". This is the attempt's log, not the run's outcome.\n")
 	return b.String()
+}
+
+// parseResourceLogs validates the NDJSON protocol of a resource log: the same
+// meta, chunk*, summary sequence as an attempt's log, with `resource` in the meta
+// record in place of the attempt and step. The same rules hold: a missing
+// summary, an unexpected or late record, an identity other than the requested
+// one or a stop the CLI does not recognise renders nothing, so a partial read is
+// never mistaken for a complete one.
+func parseResourceLogs(body []byte, runID, resource string) (map[string]any, string, error) {
+	rd := bufio.NewReaderSize(bytes.NewReader(body), 64<<10)
+	var (
+		meta, summary map[string]any
+		sum           logSummary
+		chunks        = []any{}
+		texts         []string
+		truncs        []bool
+	)
+	for {
+		line, err := readRecord(rd)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, "", logFailure("logs_malformed", "the log response contains a record the CLI cannot read", nil)
+		}
+		if summary != nil {
+			return nil, "", logFailure("logs_malformed", "the log response has records after its summary", nil)
+		}
+		v, err := root.NormalizeJSON(line)
+		rec, ok := v.(map[string]any)
+		if err != nil || !ok {
+			return nil, "", logFailure("logs_malformed", "the log response contains a record that is not a JSON object", nil)
+		}
+		kind, _ := rec["type"].(string)
+		switch {
+		case kind == "meta" && meta == nil && len(chunks) == 0:
+			if !resourceMetaOK(rec) {
+				return nil, "", logFailure("logs_malformed", "the log metadata record is incomplete or has a member of the wrong type", nil)
+			}
+			meta = rec
+		case kind == "chunk" && meta != nil:
+			text, truncated, ok := decodeChunk(rec)
+			if !ok {
+				return nil, "", logFailure("logs_malformed", "a log chunk record is incomplete or has a member of the wrong type", nil)
+			}
+			entry := make(map[string]any, len(rec))
+			for k, v := range rec {
+				if k != "type" {
+					entry[k] = v
+				}
+			}
+			chunks = append(chunks, entry)
+			texts = append(texts, text)
+			truncs = append(truncs, truncated)
+		case kind == "summary" && meta != nil:
+			parsed, ok := decodeSummary(rec)
+			if !ok {
+				return nil, "", logFailure("logs_malformed", "the log summary record is incomplete or has a member of the wrong type", nil)
+			}
+			if !knownStops[parsed.Stop] {
+				return nil, "", logFailure("logs_malformed", "the log summary names a stop reason the CLI does not recognise; the retrieval is not treated as successful", nil)
+			}
+			sum, summary = parsed, rec
+		default:
+			return nil, "", logFailure("logs_malformed", "the log response is out of order or has an unknown record", nil)
+		}
+	}
+	if meta == nil {
+		return nil, "", logFailure("logs_incomplete", "the log response was empty: no metadata was received", nil)
+	}
+	if meta["runId"] != runID || meta["resource"] != resource {
+		return nil, "", logFailure("logs_mismatch", "the log response describes another run or resource than requested; nothing was rendered", nil)
+	}
+	details := map[string]any{"runId": runID, "resource": resource, "completeness": meta["completeness"]}
+	if summary == nil {
+		e := root.NewError(root.ExitFailure, "logs_incomplete", "the log response ended without a summary: the retrieval was interrupted. This says nothing about the run's outcome; retry `kodama run logs`")
+		e.Details = details
+		return nil, "", e
+	}
+	switch sum.Stop {
+	case "authorization_changed":
+		e := root.NewError(root.ExitAuth, "authorization_changed", "access to the log was revoked or lapsed while it was being read; nothing was rendered")
+		e.Details = details
+		return nil, "", e
+	case "unavailable", "interrupted":
+		e := root.NewError(root.ExitFailure, "logs_"+sum.Stop, "the log read ended %s upstream (stop %q); nothing was rendered. This says nothing about the run's outcome", map[string]string{"unavailable": "because a dependency was unavailable", "interrupted": "because the source was interrupted"}[sum.Stop], sum.Stop)
+		e.Details = details
+		return nil, "", e
+	}
+	var b strings.Builder
+	completeness, _ := meta["completeness"].(string)
+	origin, _ := meta["origin"].(string)
+	fmt.Fprintf(&b, "== run %s resource %s: origin %s, completeness %s", runID, resource, origin, completeness)
+	if reasons, _ := meta["reasons"].([]any); len(reasons) > 0 {
+		names := make([]string, 0, len(reasons))
+		for _, r := range reasons {
+			if s, ok := r.(string); ok {
+				names = append(names, s)
+			}
+		}
+		fmt.Fprintf(&b, " (%s)", strings.Join(names, ", "))
+	}
+	b.WriteString("\n")
+	for i, t := range texts {
+		b.WriteString(t)
+		if truncs[i] {
+			b.WriteString(" [line truncated]")
+		}
+		b.WriteString("\n")
+	}
+	fmt.Fprintf(&b, "== end: %s line(s), %s byte(s), stop %s", sum.Lines, sum.Bytes, sum.Stop)
+	if sum.Truncated {
+		b.WriteString(", output truncated by a server bound")
+	}
+	b.WriteString(". This is the resource's log, not the run's outcome.\n")
+	return map[string]any{"meta": meta, "lines": chunks, "summary": summary}, b.String(), nil
+}
+
+// resourceMetaOK validates the members the CLI relies on in a resource meta record.
+func resourceMetaOK(rec map[string]any) bool {
+	for _, key := range []string{"runId", "resource", "origin", "completeness"} {
+		if v, ok := rec[key].(string); !ok || v == "" {
+			return false
+		}
+	}
+	reasons, ok := rec["reasons"].([]any)
+	if !ok {
+		return false
+	}
+	for _, r := range reasons {
+		if _, ok := r.(string); !ok {
+			return false
+		}
+	}
+	return true
 }

@@ -65,7 +65,7 @@ func (e *Execution) Pinned(ctx context.Context, scope domain.Scope, id domain.At
 	if err != nil {
 		return runtimev1.Context{}, err
 	}
-	c, err := runtimev1.DecodeRequest[runtimev1.Context](at.Context)
+	c, _, err := DecodePinned(at.Context)
 	if err != nil {
 		return runtimev1.Context{}, results.Fail(results.ErrUnavailable, err, "the pinned context is unreadable")
 	}

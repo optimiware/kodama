@@ -58,6 +58,9 @@ type ChartConfig struct {
 	} `yaml:"tls"`
 	Runtime   ChartRuntime   `yaml:"runtime"`
 	Execution ChartExecution `yaml:"execution"`
+	// RunSharedSection is the optional run_shared opt-in (see ChartRunShared); the
+	// chart renders it only when runShared.enabled is set.
+	RunSharedSection *ChartRunShared `yaml:"runShared"`
 }
 
 // ChartRuntime is the runtime API as workloads reach it.
@@ -196,6 +199,9 @@ func (c ChartConfig) Policy(secretsDir string) (kube.PolicyConfig, error) {
 		RunAsUser: e.RunAsUser, RunAsGroup: e.RunAsGroup,
 		TerminationGrace: time.Duration(e.TerminationGraceSeconds) * time.Second,
 	}
+	if rs := c.RunSharedSection; rs != nil {
+		cfg.RunShared = &kube.RunSharedIdentity{RunAsUser: rs.Identity.RunAsUser, RunAsGroup: rs.Identity.RunAsGroup, FSGroup: rs.Identity.FSGroup}
+	}
 	for _, t := range e.Tenants {
 		id := domain.TenantID(t.TenantID)
 		if _, dup := cfg.Tenants[id]; dup {
@@ -236,27 +242,44 @@ func (r ChartResources) bounds() kube.ResourceBounds {
 	}
 }
 
+// configDocument is what the rendered settings document supplies beyond the
+// environment: the Kubernetes execution policy and the run_shared opt-in.
+type configDocument struct {
+	Policy    *kube.PolicyConfig
+	RunShared *RunSharedConfig
+}
+
 // withConfigFile layers the rendered settings document under the environment:
 // a variable that is set wins. It returns the environment lookup to use, the
 // execution policy of the document and any error.
 func withConfigFile(getenv func(string) string, secretsDir string) (func(string) string, *kube.PolicyConfig, error) {
+	lookup, doc, err := withConfigDocument(getenv, secretsDir)
+	return lookup, doc.Policy, err
+}
+
+// withConfigDocument is withConfigFile with the whole document's contribution.
+func withConfigDocument(getenv func(string) string, secretsDir string) (func(string) string, configDocument, error) {
 	path := getenv(ConfigFileVariable)
 	if path == "" {
-		return getenv, nil, nil
+		return getenv, configDocument{}, nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return getenv, nil, fmt.Errorf("settings document: %w", err)
+		return getenv, configDocument{}, fmt.Errorf("settings document: %w", err)
 	}
 	doc, err := ParseChartConfig(data)
 	if err != nil {
-		return getenv, nil, err
+		return getenv, configDocument{}, err
 	}
 	overlay, envErr := doc.Environment(secretsDir)
 	policy, policyErr := doc.Policy(secretsDir)
-	var pol *kube.PolicyConfig
+	shared, sharedErr := doc.RunShared()
+	var out configDocument
 	if policyErr == nil {
-		pol = &policy
+		out.Policy = &policy
+	}
+	if sharedErr == nil {
+		out.RunShared = shared
 	}
 	lookup := func(name string) string {
 		if v := getenv(name); v != "" {
@@ -264,7 +287,7 @@ func withConfigFile(getenv func(string) string, secretsDir string) (func(string)
 		}
 		return overlay[name]
 	}
-	return lookup, pol, errors.Join(envErr, policyErr)
+	return lookup, out, errors.Join(envErr, policyErr, sharedErr)
 }
 
 // inClusterKubeAPI is the Kubernetes API origin of a Pod, from the variables

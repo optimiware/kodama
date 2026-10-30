@@ -7,6 +7,7 @@ import (
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/delivery"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/runtimeauth"
@@ -304,17 +305,29 @@ func pinnedBindings(g runtimeauth.AdmissionGrant) (*runtimev1.EnvironmentPin, []
 	if !g.ContextDigest.Equal(runtimeauth.Digest(sum)) {
 		return nil, nil, errors.Join(runtimeauth.ErrUnavailable, errors.New("the pinned context does not match its digest"))
 	}
-	c, err := runtimev1.DecodeRequest[runtimev1.Context](g.Context)
-	if err != nil {
+	// The context is of the attempt's own wire: a run_shared attempt pins a v2
+	// context, whose secret bindings and environment pin have their v1 meaning.
+	var (
+		scope       domain.Scope
+		run         domain.RunID
+		attempt     domain.AttemptID
+		environment *runtimev1.EnvironmentPin
+		secretPins  []runtimev1.SecretBinding
+	)
+	if c, err := runtimev1.DecodeRequest[runtimev1.Context](g.Context); err == nil {
+		scope, run, attempt, environment, secretPins = c.Scope(), c.RunID, c.AttemptID, c.Environment, c.Secrets
+	} else if c2, err2 := runtimev2.DecodeRequest[runtimev2.ContextV2](g.Context); err2 == nil {
+		scope, run, attempt, environment, secretPins = domain.Scope{TenantID: c2.TenantID, ProjectID: c2.ProjectID}, c2.RunID, c2.AttemptID, c2.Environment, c2.Secrets
+	} else {
 		return nil, nil, errors.Join(runtimeauth.ErrUnavailable, errors.New("the pinned context is unreadable"))
 	}
-	if c.Scope() != g.Scope || c.RunID != g.RunID || c.AttemptID != g.AttemptID {
+	if scope != g.Scope || run != g.RunID || attempt != g.AttemptID {
 		return nil, nil, errors.Join(runtimeauth.ErrUnavailable, errors.New("the pinned context belongs to another attempt"))
 	}
 	var pin *runtimev1.EnvironmentPin
-	if c.Environment != nil {
-		p := *c.Environment
+	if environment != nil {
+		p := *environment
 		pin = &p
 	}
-	return pin, append([]runtimev1.SecretBinding(nil), c.Secrets...), nil
+	return pin, append([]runtimev1.SecretBinding(nil), secretPins...), nil
 }

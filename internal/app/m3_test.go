@@ -166,9 +166,9 @@ func TestM3CompositionSmoke(t *testing.T) {
 			modules = append(modules, c.Module)
 		}
 		// The squashed baseline is the whole existing schema; the additive
-		// run_shared contributions (T-112 resources, T-113 resource grants) are the
-		// only later ones.
-		if !slices.Equal(modules, []string{"storage", "execution-run-resources", "runtimeauth-resource-grants"}) {
+		// run_shared contributions (T-112 resources, T-113 resource grants, T-116
+		// artifact workspace provenance) are the only later ones.
+		if !slices.Equal(modules, []string{"storage", "execution-run-resources", "runtimeauth-resource-grants", "artifacts-workspace-provenance"}) {
 			t.Errorf("contributions = %v", modules)
 		}
 		if len(m.Migrations()) == 0 {

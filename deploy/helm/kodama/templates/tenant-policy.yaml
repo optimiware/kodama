@@ -22,6 +22,10 @@ metadata:
 spec:
   hard:
     {{- toYaml $.Values.execution.quota | nindent 4 }}
+    {{- if $.Values.runShared.enabled }}
+    # run_shared: the run scratch claims and their storage, and the run support services.
+    {{- toYaml $.Values.runShared.quota | nindent 4 }}
+    {{- end }}
 ---
 apiVersion: v1
 kind: LimitRange

@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/kube/kubernetes"
 )
@@ -26,8 +28,12 @@ type Expectation struct {
 	Recipe      Recipe
 	// Job is the object the executor creates (fingerprint annotation included).
 	Job kubernetes.Job
-	// Context is the committed pinned context.
+	// Context is the committed pinned context of an attempt_private attempt (the
+	// zero value for a run_shared one).
 	Context runtimev1.Context
+	// ContextV2 is the committed pinned context of a run_shared attempt (nil for
+	// an attempt_private one): the two wires never mix.
+	ContextV2 *runtimev2.ContextV2
 	// Shared is the committed run_shared launch (nil for attempt_private).
 	Shared *execution.SharedLaunch
 }
@@ -44,14 +50,24 @@ func (p ExecutionPolicy) Expect(rec AttemptRecord) (Expectation, error) {
 	if rec.ContextDigest != "sha256:"+hex.EncodeToString(sum[:]) {
 		return Expectation{}, wrap(ErrNotDispatchable, "the stored context does not match its digest")
 	}
-	c, err := runtimev1.DecodeRequest[runtimev1.Context](rec.Context)
+	// The wire of the pinned context decides the shape of everything below: a
+	// run_shared attempt carries a v2 context and a committed launch, an
+	// attempt_private one a v1 context and none. A context of one wire with the
+	// other's launch state is never rebuilt.
+	c, c2, err := decodePinned(rec)
 	if err != nil {
-		return Expectation{}, wrap(ErrNotDispatchable, "the stored context is unreadable")
+		return Expectation{}, err
 	}
-	if c.Scope() != rec.Scope || c.AttemptID != rec.AttemptID || c.RunID != rec.RunID || c.StepID != rec.StepID {
-		return Expectation{}, wrap(ErrNotDispatchable, "the stored context belongs to another attempt")
+	shim := c
+	if c2 != nil {
+		// The recipe needs the identity, image and access only: the v2 context is
+		// verified against the record field by field and then reduced to those.
+		shim = runtimev1.Context{
+			TenantID: c2.TenantID, ProjectID: c2.ProjectID, RunID: c2.RunID, StepID: c2.StepID, AttemptID: c2.AttemptID, ActionKey: c2.ActionKey,
+			Command: runtimev1.Command{Image: c2.Command.Image}, Workspace: runtimev1.Workspace{Access: c2.Workspace.Access},
+		}
 	}
-	r, err := p.NewRecipe(c, rec.ContextDigest)
+	r, err := p.NewRecipe(shim, rec.ContextDigest)
 	if err != nil {
 		return Expectation{}, err
 	}
@@ -61,8 +77,13 @@ func (p ExecutionPolicy) Expect(rec AttemptRecord) (Expectation, error) {
 	if r.JobName != rec.JobName {
 		return Expectation{}, wrap(ErrNotDispatchable, "the stored Job name is not the attempt's deterministic name")
 	}
-	fp, err := r.Fingerprint()
-	if err != nil {
+	var fp string
+	if c2 != nil {
+		// The fingerprint of a run_shared attempt is execution's own (it is not the
+		// planner's recipe fingerprint): it binds the workload name, the context
+		// digest, the image, the action key and the run's pinned policy digest.
+		fp = SharedFingerprint(r.JobName, rec.ContextDigest, c2.Command.Image, c2.ActionKey, rec.Shared.Policy.Digest)
+	} else if fp, err = r.Fingerprint(); err != nil {
 		return Expectation{}, err
 	}
 	if fp != rec.SpecFingerprint {
@@ -82,8 +103,41 @@ func (p ExecutionPolicy) Expect(rec AttemptRecord) (Expectation, error) {
 		},
 		Shared:      r.Shared(),
 		WorkspaceID: rec.WorkspaceID,
-		Recipe:      r, Job: r.JobObject(fp), Context: c,
+		Recipe:      r, Job: r.JobObject(fp), Context: c, ContextV2: c2,
 	}, nil
+}
+
+// SharedFingerprint is the spec fingerprint execution commits for a run_shared
+// attempt (execution's planSharedAttempt: scheme kodama/job-spec/v2). The Kubernetes
+// adapter reconstructs it from committed data so a persisted v2 attempt is verified
+// exactly as a v1 one is; the test over an execution-produced attempt pins the two
+// implementations together.
+func SharedFingerprint(jobName, contextDigest, image, actionKey, policyDigest string) string {
+	sum := sha256.Sum256([]byte("kodama/job-spec/v2|" + jobName + "|" + contextDigest + "|" + image + "|" + actionKey + "|" + policyDigest))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// decodePinned reads the committed context of an attempt on its own wire and
+// checks it belongs to the record. Exactly one of the results is set.
+func decodePinned(rec AttemptRecord) (runtimev1.Context, *runtimev2.ContextV2, error) {
+	if rec.Shared == nil {
+		c, err := runtimev1.DecodeRequest[runtimev1.Context](rec.Context)
+		if err != nil {
+			return runtimev1.Context{}, nil, wrap(ErrNotDispatchable, "the stored context is unreadable")
+		}
+		if c.Scope() != rec.Scope || c.AttemptID != rec.AttemptID || c.RunID != rec.RunID || c.StepID != rec.StepID {
+			return runtimev1.Context{}, nil, wrap(ErrNotDispatchable, "the stored context belongs to another attempt")
+		}
+		return c, nil, nil
+	}
+	c, err := runtimev2.DecodeRequest[runtimev2.ContextV2](rec.Context)
+	if err != nil {
+		return runtimev1.Context{}, nil, wrap(ErrNotDispatchable, "the stored context is not a run_shared context")
+	}
+	if (domain.Scope{TenantID: c.TenantID, ProjectID: c.ProjectID}) != rec.Scope || c.AttemptID != rec.AttemptID || c.RunID != rec.RunID || c.StepID != rec.StepID || c.ActionKey != rec.ActionKey {
+		return runtimev1.Context{}, nil, wrap(ErrNotDispatchable, "the stored context belongs to another attempt")
+	}
+	return runtimev1.Context{}, &c, nil
 }
 
 // VerifyJob decides whether an existing Job is the attempt's workload. Every

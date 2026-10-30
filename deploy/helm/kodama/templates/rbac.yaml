@@ -34,6 +34,20 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
     verbs: ["get", "list"]
+  {{- if $.Values.runShared.enabled }}
+  # run_shared (O-30): the run scratch claim, the support services' Pods and Services and the per-run
+  # NetworkPolicies are created and deleted by the control plane in the tenant namespace; Pod creation
+  # is for service Pods only (a preparation and the attempts are Jobs).
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims", "services"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["create", "delete"]
+  {{- end }}
   {{- if $.Values.execution.rbac.manageSecrets }}
   - apiGroups: [""]
     resources: ["secrets"]
@@ -82,6 +96,20 @@ rules:
   - apiGroups: ["authorization.k8s.io"]
     resources: ["subjectaccessreviews"]
     verbs: ["create"]
+  {{- if .Values.runShared.enabled }}
+  # run_shared (O-30): the run scratch claim is released only when no Pod uses it and no
+  # VolumeAttachment of its volume remains (volumes are found by their claimRef), and the claim's storage
+  # class is read to confirm delete reclaim. Read access only: the controller never writes these.
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["list"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

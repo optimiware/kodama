@@ -204,6 +204,10 @@ type KubernetesConfig struct {
 	// Policy is the execution policy supplied by the rendered settings document
 	// (ConfigFileVariable) instead of PolicyFile; at most one of them is set.
 	Policy *kube.PolicyConfig
+	// RunShared is the installation's run_shared opt-in from the settings
+	// document (nil: not configured, new-format admission stays closed). It is
+	// composed on Kubernetes only; the other backends refuse it (see validateRuntime).
+	RunShared *RunSharedConfig
 }
 
 // Tuning holds the operational bounds. The defaults are explicit development
@@ -416,6 +420,11 @@ func (c CoreConfig) Validate() error {
 	return errors.Join(errs...)
 }
 
+// runSharedConfigured reports whether the installation opted into the run_shared
+// model (the settings document's `runShared` section). Configuration validation
+// refuses it outside production, where only Kubernetes enforces its policy.
+func (c CoreConfig) runSharedConfigured() bool { return c.Runtime.Kubernetes.RunShared != nil }
+
 // guardEnv applies the construction guards of SD-12 to the settings that name
 // a development or test adapter: under production the development key file,
 // an issuer reached over plain HTTP (the OIDC fixture) and an object store
@@ -466,6 +475,16 @@ func (c CoreConfig) validateRuntime() []error {
 		k := r.Kubernetes
 		if k.APIURL == "" || k.TokenFile == "" || k.CAFile == "" || (k.PolicyFile == "") == (k.Policy == nil) {
 			add("the Kubernetes runtime needs the API URL, token, CA and execution policy files (KODAMA_KUBE_API, KODAMA_KUBE_TOKEN_FILE, KODAMA_KUBE_CA_FILE and exactly one of KODAMA_KUBE_POLICY_FILE or the settings document's execution policy)")
+		}
+	}
+	if rs := r.Kubernetes.RunShared; rs != nil {
+		// run_shared is composed on Kubernetes only: the Podman and Process
+		// compositions follow with their resource adapters (T-115) and refuse the
+		// configuration rather than start a backend that cannot enforce its policy.
+		if c.Env != Production {
+			add("run_shared is configured but the %s environment's runtime cannot enforce its execution policy: it is composed on Kubernetes only", c.Env)
+		} else if err := rs.Validate(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	t := c.Tuning
@@ -559,7 +578,8 @@ func LoadCoreConfig(getenv func(string) string, process Config) (CoreConfig, err
 	var errs []error
 	// The rendered settings document (the chart's config.yaml) supplies defaults
 	// under the environment; anything it cannot serve is a startup error.
-	getenv, policy, cfgErr := withConfigFile(getenv, dir)
+	getenv, document, cfgErr := withConfigDocument(getenv, dir)
+	policy := document.Policy
 	if cfgErr != nil {
 		errs = append(errs, cfgErr)
 	}
@@ -639,6 +659,7 @@ func LoadCoreConfig(getenv func(string) string, process Config) (CoreConfig, err
 		c.Runtime.SigningGeneration = n
 	}
 	c.Runtime.Kubernetes.Policy = policy
+	c.Runtime.Kubernetes.RunShared = document.RunShared
 	if env == Production {
 		if c.Runtime.Kubernetes.APIURL == "" {
 			c.Runtime.Kubernetes.APIURL = inClusterKubeAPI(getenv)

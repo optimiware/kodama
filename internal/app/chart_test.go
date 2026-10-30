@@ -162,7 +162,11 @@ func newChartRenderer(t testing.TB, values object) *chartRenderer {
 			}
 			return b.String(), nil
 		},
-		"toYaml":  yamlText,
+		"toYaml": yamlText,
+		"toJson": func(v any) (string, error) {
+			b, err := json.Marshal(v)
+			return string(b), err
+		},
 		"nindent": func(n int, s string) string { return "\n" + indentText(n, s) },
 		"indent":  indentText,
 		"quote": func(v any) string {

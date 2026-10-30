@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 
+	artifactspg "github.com/optimiware/kodama/internal/artifacts/postgres"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	runtimeauthpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/storage"
@@ -31,8 +32,12 @@ import (
 // preparation workload's and the services' credentials and sessions, in their own
 // table) are the one contribution after it, for the same reason and with the same
 // guarantee: nothing serves the resource routes until the assembly wires them.
+// The workspace provenance of artifacts a run_shared attempt produces (T-116: the
+// state the server recorded when the attempt's command began, in its own table) is
+// the last: an artifact store over a database without it keeps serving
+// attempt_private artifacts and refuses to record provenance it cannot keep.
 func Contributions() []storage.Contribution {
-	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations(), runtimeauthpg.ResourceMigrations()}
+	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations(), runtimeauthpg.ResourceMigrations(), artifactspg.ProvenanceMigrations()}
 }
 
 // Manifest validates the contribution list.

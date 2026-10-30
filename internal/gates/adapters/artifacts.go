@@ -56,6 +56,14 @@ func (e *Evidence) Describe(ctx context.Context, scope domain.Scope, id domain.A
 		ID: a.ID(), Scope: a.Scope(), RunID: res.Run, StepID: res.Step, Attempt: a.Attempt(), Digest: string(a.Digest()), Usable: a.Usable(),
 		Repository: a.Provenance().RepositoryURL, Commit: a.Provenance().Commit,
 	}
+	if a.Provenance().Modified() {
+		// The producer worked in a scratch workspace that was not the commit it
+		// started from (the state the server recorded at its command begin): the
+		// artifact does not stand for that commit and so connects to no candidate
+		// (DQ-16). It stays a usable artifact; it is just not evidence of an
+		// approved commit.
+		meta.Repository, meta.Commit = "", ""
+	}
 	if size, ok := a.Size(); ok {
 		meta.Size = size
 	}

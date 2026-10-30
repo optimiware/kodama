@@ -86,6 +86,19 @@ paths:
             of one producer. Captures of different sources are never merged.
           schema:
             $ref: '#/components/schemas/LogSource'
+        - name: resource
+          in: query
+          required: false
+          description: >-
+            Read the bounded log of the preparation (`preparation`) or of one support service
+            (`service.NAME`) of a `run_shared` run instead of an attempt's. It excludes attemptId,
+            follow and source; only `tail` combines with it. The stream is the same
+            meta/chunk/summary NDJSON with `resource` in the meta record in place of `attemptId` and
+            `stepId`, and known disclosed secret values are replaced with `[REDACTED]`. A resource
+            that does not exist, or a run that is not run_shared, is 404.
+          schema:
+            type: string
+            pattern: '^(preparation|service\.[a-z][a-z0-9-]{0,29})$'
       responses:
         '200':
           description: >-
@@ -187,6 +200,31 @@ components:
         terminal:
           type: boolean
           description: The attempt had finished when the read began.
+        limits: {$ref: '#/components/schemas/LogLimits'}
+    ResourceLogMeta:
+      type: object
+      required: [type, runId, resource, origin, completeness, reasons, tail, follow, terminal, limits]
+      additionalProperties: false
+      description: The `meta` record of a log read with `resource` (see the query parameter).
+      properties:
+        type:
+          type: string
+          description: Always `meta`.
+        runId: {$ref: 'common.yaml#/components/schemas/ID'}
+        resource:
+          type: string
+          pattern: '^(preparation|service\.[a-z][a-z0-9-]{0,29})$'
+        origin: {$ref: '#/components/schemas/LogOrigin'}
+        completeness: {$ref: '#/components/schemas/LogCompleteness'}
+        reasons:
+          type: array
+          maxItems: 8
+          items: {$ref: '#/components/schemas/LogReason'}
+        tail: {type: integer, minimum: 1}
+        follow: {type: boolean}
+        terminal:
+          type: boolean
+          description: The run had finished when the read began.
         limits: {$ref: '#/components/schemas/LogLimits'}
     LogChunk:
       type: object

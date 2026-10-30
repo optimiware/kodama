@@ -289,8 +289,10 @@ components:
     PipelineDocument:
       type: object
       description: >-
-        One pipeline document of apiVersion kodama/v1alpha1. The authoritative structural
-        schema is contracts/pipeline/v1/schema.json; it is not duplicated here. Unknown
+        One pipeline document of apiVersion kodama/v1alpha1, or of kodama/v1alpha2 when the
+        installation enabled the run_shared model (registration of a v1alpha2 document is refused
+        otherwise). The authoritative structural schemas are contracts/pipeline/v1/schema.json and
+        contracts/pipeline/v1alpha2/schema.json; they are not duplicated here. Unknown
         fields, duplicate keys, YAML-only constructs and mutable image references are rejected.
       additionalProperties: true
       x-go-type: rawjson.RawMessage
@@ -301,7 +303,7 @@ components:
       properties:
         apiVersion:
           type: string
-          enum: [kodama/v1alpha1]
+          enum: [kodama/v1alpha1, kodama/v1alpha2]
         kind:
           type: string
           enum: [Pipeline]
