@@ -468,15 +468,14 @@ if grep -Eqi 'secret|access_key' "${WORK_DIR}/backend-blue.hcl"; then die "the b
 # The backend settings are accepted by OpenTofu (the endpoint is a dead local port, so only the settings are exercised).
 BACKEND_PROBE="${WORK_DIR}/backend-probe"
 mkdir -p "${BACKEND_PROBE}"
-cp "${STAGE_DIR}/scw/versions.tf" "${BACKEND_PROBE}/versions.tf"
-sed -i.bak 's/^provider "scaleway".*/provider "scaleway" {}/;/^  project_id/d;/^  region /d;/^  zone /d' "${BACKEND_PROBE}/versions.tf"
-probe_out="$(SCW_S3_ENDPOINT="http://127.0.0.1:9" TF_DATA_DIR="${WORK_DIR}/probe-data" \
-  AWS_ACCESS_KEY_ID=x AWS_SECRET_ACCESS_KEY=y AWS_MAX_ATTEMPTS=1 \
-  tofu -chdir="${BACKEND_PROBE}" init -input=false -reconfigure -backend-config="${WORK_DIR}/backend-blue.hcl" 2>&1 || true)"
-if grep -Eq 'Unsupported argument|Invalid backend|unknown (attribute|argument)' <<<"${probe_out}"; then
+printf 'terraform {\n  backend "s3" {}\n}\n' >"${BACKEND_PROBE}/main.tf"
+sed 's#https://s3.fr-par.scw.cloud#http://127.0.0.1:9#' "${WORK_DIR}/backend-blue.hcl" >"${WORK_DIR}/backend-probe.hcl"
+probe_out="$(TF_DATA_DIR="${WORK_DIR}/probe-data" AWS_ACCESS_KEY_ID=x AWS_SECRET_ACCESS_KEY=y AWS_MAX_ATTEMPTS=1 \
+  tofu -chdir="${BACKEND_PROBE}" init -input=false -reconfigure -backend-config="${WORK_DIR}/backend-probe.hcl" 2>&1 || true)"
+grep -q 'Failed to get existing workspaces' <<<"${probe_out}" || {
   printf '%s\n' "${probe_out}" >&2
-  die "OpenTofu rejected the generated S3 backend settings"
-fi
+  die "OpenTofu did not accept the generated S3 backend settings"
+}
 
 # Clusters never share files, installation ids or data directories.
 export STAGE_STATE_DIR="${WORK_DIR}/cluster-state"
