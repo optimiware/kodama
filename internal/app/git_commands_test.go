@@ -14,7 +14,7 @@ import (
 
 	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	gitjwt "github.com/optimiware/kodama/internal/gitauth/jwt"
-	"github.com/optimiware/kodama/internal/kernel/serve"
+	"github.com/optimiware/kodama/internal/shell/serve"
 )
 
 func gitMain(ctx context.Context, env map[string]string, args ...string) (code int, stdout, stderr string) {

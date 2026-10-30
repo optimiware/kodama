@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/optimiware/kodama/internal/kernel/runner"
-	"github.com/optimiware/kodama/internal/kernel/serve"
+	"github.com/optimiware/kodama/internal/shell/serve"
 )
 
 // runKernel serves the ADR 0013 kernel assembly: projects, tasks, pipelines,

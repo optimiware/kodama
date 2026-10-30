@@ -17,7 +17,7 @@ import (
 
 	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
-	"github.com/optimiware/kodama/internal/kernel/store"
+	"github.com/optimiware/kodama/internal/shell/store"
 )
 
 // Stable failure reasons of a run's Git preparation. A run that cannot have its

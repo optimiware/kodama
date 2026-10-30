@@ -19,7 +19,7 @@ Implement the kernel `StateStore` port in memory and freeze one exported contrac
 
 ## Deliverables
 - A memory adapter behind the T-171 port, built on the existing `internal/memdb` transaction kernel where it fits; it is test and development support, never a production fallback.
-- One exported contract suite in `test/support/kernelcontracts` covering: claim races and takeover, fence rejection of a stale writer, optimistic versions, duplicate transitions, outbox intent committed with state and rolled back with it, cancellation that still permits cleanup claims, wait consumption and duplicate-signal convergence, and rebuild of a run view from retained records.
+- One exported contract suite in `test/support/kernelcontracts` covering: claim races and takeover, fence rejection of a stale writer, optimistic versions, duplicate transitions, outbox intent committed with state and rolled back with it, cancellation that still permits cleanup claims, wait consumption and duplicate-signal convergence, scoped signal-identity lookup that returns the recorded decision after closure, and rebuild of a run view from retained records.
 - Tenant and project scope enforced on every operation; a foreign or mismatched scope is a not-found, not a silent success.
 - Tests that the suite itself fails when a deliberately broken adapter is supplied, so it cannot pass vacuously.
 
