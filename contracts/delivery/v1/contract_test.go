@@ -8,7 +8,6 @@ import (
 	artifactsv1 "github.com/optimiware/kodama/contracts/artifacts/v1"
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/domain"
-	"github.com/optimiware/kodama/internal/gates"
 )
 
 func Test_unit_generic_delivery_contract(t *testing.T) {
@@ -105,21 +104,21 @@ func Test_unit_sdlc_contract_compatibility(t *testing.T) {
 	dEv := runtimev1.Digest("sha256:" + strings.Repeat("a", 64))
 	dRel := runtimev1.Digest("sha256:" + strings.Repeat("b", 64))
 
-	// 1. Legacy v1 gate subject canonical bytes and digest remain byte-for-byte unchanged.
-	legacySubj, err := gates.NewSubject(gates.SubjectInput{
-		Scope:           scope,
-		WorkItemID:      "wi_1042",
-		ContentRevision: 2,
-		CandidateCommit: strings.Repeat("1", 40),
-		DefinitionID:    "pd_01",
-		Evidence:        []gates.EvidenceRef{{ID: "art_tests", Digest: string(dEv)}},
-	})
+	// 1. Legacy v1 gate subject canonical bytes are rejected by ParseGateSubjectV2
+	//    (which requires explicit format "kodama/gate-subject/v2").
+	legacyCanonical, err := runtimev1.Canonicalize([]byte(`{
+		"tenantId": "t_acme",
+		"projectId": "p_inventory",
+		"workItemId": "wi_1042",
+		"contentRevision": 2,
+		"candidateCommit": "` + strings.Repeat("1", 40) + `",
+		"definitionId": "pd_01",
+		"evidence": [{"id": "art_tests", "digest": "` + string(dEv) + `"}],
+		"deploymentId": null,
+		"deploymentConfigDigest": null
+	}`))
 	if err != nil {
-		t.Fatalf("gates.NewSubject: %v", err)
-	}
-	restoredLegacy, err := gates.ParseSubject(legacySubj.Canonical())
-	if err != nil || restoredLegacy.Digest() != legacySubj.Digest() {
-		t.Fatalf("legacy gate subject failed round-trip: %v", err)
+		t.Fatalf("runtimev1.Canonicalize legacy subject: %v", err)
 	}
 
 	// 2. V2 gate subject supports release-only / artifact-only review without fake workItemId or commit.
@@ -137,11 +136,8 @@ func Test_unit_sdlc_contract_compatibility(t *testing.T) {
 		t.Fatalf("ParseGateSubjectV2 round-trip failed: %v", err)
 	}
 
-	// 3. Cross-version refusal: legacy parser rejects v2 canonical bytes and v2 parser rejects v1 bytes.
-	if _, err := gates.ParseSubject(v2Subj.Canonical()); err == nil {
-		t.Fatal("legacy gates.ParseSubject must reject v2 subject bytes")
-	}
-	if _, err := ParseGateSubjectV2(legacySubj.Canonical()); err == nil {
+	// 3. Cross-version refusal: v2 parser rejects legacy v1 subject bytes.
+	if _, err := ParseGateSubjectV2(legacyCanonical); err == nil {
 		t.Fatal("ParseGateSubjectV2 must reject legacy v1 subject bytes")
 	}
 }

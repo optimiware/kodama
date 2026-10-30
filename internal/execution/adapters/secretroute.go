@@ -48,12 +48,13 @@ import (
 // refused. It is refused as soon as the attempt is no longer active. No value
 // is cached, logged or returned in an error.
 type SecretRoute struct {
-	verifier runtimeauth.TokenVerifier
-	gens     Generations
-	store    runtimeauth.Store
-	pins     EnvironmentSnapshots
-	source   secrets.VersionSource
-	clock    func() time.Time
+	verifier  runtimeauth.TokenVerifier
+	gens      Generations
+	store     runtimeauth.Store
+	pins      EnvironmentSnapshots
+	source    secrets.VersionSource
+	clock     func() time.Time
+	stepUnion bool
 }
 
 // EnvironmentSnapshots reads the immutable configuration snapshot retained
@@ -79,6 +80,20 @@ func NewSecretRoute(verifier runtimeauth.TokenVerifier, gens Generations, store 
 		clock = time.Now
 	}
 	return &SecretRoute{verifier: verifier, gens: gens, store: store, pins: pins, source: source, clock: clock}, nil
+}
+
+// NewSecretUnionRoute constructs a SecretRoute that resolves the authorized
+// union of a step's pinned environment credentials and its explicit step-declared
+// secret bindings (ADR-0012, VS-15). Every environment credential in the retained
+// snapshot must appear unaltered in the grant's digest-checked context, and any
+// conflicting name, reference, version or delivery form fails closed.
+func NewSecretUnionRoute(verifier runtimeauth.TokenVerifier, gens Generations, store runtimeauth.Store, pins EnvironmentSnapshots, source secrets.VersionSource, clock func() time.Time) (*SecretRoute, error) {
+	r, err := NewSecretRoute(verifier, gens, store, pins, source, clock)
+	if err != nil {
+		return nil, err
+	}
+	r.stepUnion = true
+	return r, nil
 }
 
 // Resolve resolves one declared secret for the route's attempt. attempt is the
@@ -225,14 +240,57 @@ func (a routeAuthority) environmentBindings(ctx context.Context, scope domain.Sc
 		return nil, errEnvironmentRefused
 	}
 	named := make(map[runtimev1.SecretBinding]bool, len(snap.Secrets))
+	byName := make(map[string]runtimev1.SecretBinding, len(snap.Secrets))
+	byRef := make(map[string]runtimev1.SecretBinding, len(snap.Secrets))
 	for _, b := range snap.Secrets {
 		named[b] = true
+		byName[b.Name] = b
+		byRef[b.Ref] = b
 	}
-	out := []runtimev1.SecretBinding{}
-	for _, b := range declared {
-		if named[b] {
-			out = append(out, b)
+	if !a.r.stepUnion {
+		out := []runtimev1.SecretBinding{}
+		for _, b := range declared {
+			if named[b] {
+				out = append(out, b)
+			}
 		}
+		return out, nil
+	}
+	// Under VS-15 (stepUnion), every credential of the retained environment
+	// snapshot must be present unaltered in the grant's digest-checked context,
+	// and step-declared bindings compose without name/ref collisions.
+	seenEnv := 0
+	out := make([]runtimev1.SecretBinding, 0, len(declared))
+	seen := make(map[string]runtimev1.SecretBinding, len(declared))
+	seenRef := make(map[string]runtimev1.SecretBinding, len(declared))
+	for _, b := range declared {
+		if envB, ok := byName[b.Name]; ok && envB != b {
+			return nil, errEnvironmentRefused
+		}
+		if envB, ok := byRef[b.Ref]; ok && envB != b {
+			return nil, errEnvironmentRefused
+		}
+		if prev, ok := seen[b.Name]; ok {
+			if prev != b {
+				return nil, errEnvironmentRefused
+			}
+			continue
+		}
+		if prev, ok := seenRef[b.Ref]; ok {
+			if prev != b {
+				return nil, errEnvironmentRefused
+			}
+			continue
+		}
+		if named[b] {
+			seenEnv++
+		}
+		seen[b.Name] = b
+		seenRef[b.Ref] = b
+		out = append(out, b)
+	}
+	if seenEnv != len(snap.Secrets) {
+		return nil, errEnvironmentRefused
 	}
 	return out, nil
 }
