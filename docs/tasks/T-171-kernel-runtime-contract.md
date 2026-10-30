@@ -19,7 +19,7 @@ Create the consumer-owned contract the standalone pipeline runtime is built on: 
 
 ## Deliverables
 - A new `internal/kernel/runtime` package containing only value types and ports:
-  - run, step and step-kind (`container`, `wait`, `condition`), wait specification and wait state, resource specification and state, runtime binding, secret reference, result/reason codes;
+  - run, step and step-kind (`container`, `wait`), `when` predicates, wait specification and wait state, resource specification and state, runtime binding, secret reference, result/reason codes;
   - a claim with owner identity, expiry and monotonic fence, and a command intent;
   - explicit run outcome and cleanup state kept separate;
   - `StateStore`, `Runtime`, `ResourceManager`, `SecretResolver`, `WorkspacePreparer`, `LogSink` and `Clock` ports.
