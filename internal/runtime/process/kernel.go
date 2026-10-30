@@ -32,6 +32,14 @@ package process
 // an object that was stopped or removed is never started again: its record
 // stays as a tombstone, so a delayed create after a stop is refused.
 //
+// A workload has ended only when its whole process group is verifiably gone,
+// not when its leader's status is collected. The leader's result and the
+// group's termination are separate facts: descendants a leader leaves behind
+// keep the workload running, keep the workspace held, and are terminated and
+// verified gone before a stop or removal is confirmed or the holder released.
+// An accepted fence is persisted before any other effect of the call, and
+// exit evidence is kept in memory until a record carrying it was saved.
+//
 // A workload is launched behind a gate: the process starts blocked, the
 // adapter records its process group durably, and only then opens the gate. A
 // process whose group was never recorded cannot have run the command.
@@ -225,7 +233,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	h := &host{cfg: cfg, st: kstore(dir), live: map[string]*kproc{}}
+	h := &host{cfg: cfg, st: kstore(dir), live: map[string]*kproc{}, killOnExit: func(pgid int) { _ = syscall.Kill(-pgid, syscall.SIGKILL) }}
 	return &Kernel{Runtime: &KernelRuntime{h}, Resources: &KernelResources{h}, h: h}, nil
 }
 
@@ -249,14 +257,45 @@ type host struct {
 	mu   sync.Mutex
 	live map[string]*kproc // by type-key
 	sup  sync.WaitGroup
+
+	// killOnExit kills what a workload's leader left in its process group; tests
+	// replace it to leave descendants behind. It is set before any launch.
+	killOnExit func(pgid int)
 }
 
 // kproc is a process this adapter instance launched.
 type kproc struct {
-	pgid     int
+	pgid int
+	// done is closed once the leader was reaped and its status collected. It says
+	// nothing about the rest of the group: see host.groupGone.
 	done     chan struct{}
 	exit     error
 	timedOut atomic.Bool
+
+	// ev is the decided exit evidence, kept in memory until a record carrying it
+	// was saved: a failed save must not turn the result into a lost workload or
+	// a cancellation, so the decision is made once and replayed.
+	evMu sync.Mutex
+	ev   *exitEvidence
+}
+
+// exitEvidence is how the leader ended.
+type exitEvidence struct {
+	code      int
+	timedOut  bool
+	cancelled bool
+}
+
+// evidence decides, once, how the leader ended: after the stop intent it was
+// cancelled, unless it timed out; before it, it ended on its own.
+func (p *kproc) evidence(stopping bool) exitEvidence {
+	p.evMu.Lock()
+	defer p.evMu.Unlock()
+	if p.ev == nil {
+		timedOut := p.timedOut.Load()
+		p.ev = &exitEvidence{code: exitCodeOf(p.exit), timedOut: timedOut, cancelled: stopping && !timedOut}
+	}
+	return *p.ev
 }
 
 func (p *kproc) ended() bool {
@@ -293,6 +332,30 @@ func admitFence(rec *kRecord, f kr.Fence) error {
 		return fmt.Errorf("%w: %s %s: held %d, current %d", kr.ErrStaleFence, rec.Type, rec.ID, f, rec.Fence)
 	}
 	rec.Fence = f
+	return nil
+}
+
+// admitFence applies the fence rule and persists a newly admitted higher fence
+// at once, before any fast path, refusal or uncertain termination can return:
+// a writer that was accepted must supersede every lower fence even when nothing
+// else about the object changed.
+func (h *host) admitFence(rec *kRecord, f kr.Fence) error {
+	before := rec.Fence
+	if err := admitFence(rec, f); err != nil {
+		return err
+	}
+	if rec.Fence != before {
+		return h.st.save(*rec)
+	}
+	return nil
+}
+
+// checkBackend refuses a binding that names another backend before any record
+// is read or created.
+func checkBackend(b kr.RuntimeBinding) error {
+	if b.Backend != Backend {
+		return fmt.Errorf("%w: the binding is for backend %q", domain.ErrInvalidValue, b.Backend)
+	}
 	return nil
 }
 
@@ -343,7 +406,7 @@ func (r *KernelRuntime) Start(ctx context.Context, req kr.StartRequest) (kr.Work
 		if err := checkWorkload(rec, b); err != nil {
 			return kr.WorkloadObservation{}, notReached("%w", err)
 		}
-		if err := admitFence(&rec, b.Fence); err != nil {
+		if err := h.admitFence(&rec, b.Fence); err != nil {
 			return kr.WorkloadObservation{}, notReached("%w", err)
 		}
 		if rec.fenced() {
@@ -370,8 +433,8 @@ func (h *host) validateStart(req kr.StartRequest) error {
 	if err := b.Validate(); err != nil {
 		return err
 	}
-	if b.Backend != Backend {
-		return fmt.Errorf("%w: the binding is for backend %q", domain.ErrInvalidValue, b.Backend)
+	if err := checkBackend(b); err != nil {
+		return err
 	}
 	if err := req.Spec.Validate(); err != nil {
 		return err
@@ -588,10 +651,36 @@ func (h *host) enforceTimeout(p *kproc, timeout time.Duration) {
 func (h *host) supervise(typ, key string, p *kproc, cmd *exec.Cmd) {
 	defer h.sup.Done()
 	err := cmd.Wait()
-	_ = syscall.Kill(-p.pgid, syscall.SIGKILL)
 	p.exit = err
 	close(p.done)
+	// The leader's status is collected; the group is a separate question. Kill
+	// what it left and wait, bounded, for the group to be verifiably gone before
+	// anything is recorded as released.
+	deadline := time.Now().Add(h.cfg.KillGrace)
+	for {
+		h.killOnExit(p.pgid)
+		if alive, _ := memberAlive(p.pgid); !alive || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	h.noteExit(typ, key)
+}
+
+// memberAlive reports whether any process of the group exists. Only when the
+// group is gone is it verified absent; a group of another user is not ours.
+func memberAlive(pgid int) (bool, error) {
+	if pgid <= 1 {
+		return false, nil
+	}
+	err := syscall.Kill(-pgid, 0)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, syscall.ESRCH), errors.Is(err, syscall.EPERM):
+		return false, nil
+	}
+	return false, fmt.Errorf("process: probing process group %d: %w", pgid, err)
 }
 
 // noteExit records the exit of a launched process, unless a Stop did.
@@ -603,35 +692,57 @@ func (h *host) noteExit(typ, key string) {
 		return
 	}
 	if h.settle(&rec) {
-		_ = h.st.save(rec)
+		if err := h.st.save(rec); err != nil {
+			return // the evidence stays in memory; the next operation saves it
+		}
 	}
+	h.releaseHolder(rec)
 }
 
 // settle records, once, how the leader of a process this instance launched
 // ended. A leader that ended after the stop intent was recorded was
 // cancelled; one that ended before it ended on its own. The caller holds the
-// object's lock, so exactly one of exit and stop decides. It reports whether
-// the record changed.
+// object's lock, so exactly one of exit and stop decides, and the decision is
+// replayed if the record that carries it could not be saved. It records the
+// leader's result only: whether the group is gone, and so whether the
+// workspace is released, is groupGone's question. It reports whether the
+// record changed.
 func (h *host) settle(rec *kRecord) bool {
-	if rec.ExitKnown || rec.Pgid == 0 {
+	if rec.ExitKnown {
+		// Durable (every caller saves a change before it asks again): the
+		// in-memory evidence is no longer needed.
+		h.forget(rec.Type, rec.Key)
+		return false
+	}
+	if rec.Pgid == 0 {
 		return false
 	}
 	p := h.proc(rec.Type, rec.Key)
 	if p == nil || !p.ended() {
 		return false
 	}
-	rec.ExitKnown, rec.ExitCode = true, exitCodeOf(p.exit)
-	rec.TimedOut = p.timedOut.Load()
-	rec.Cancelled = rec.Stopping && !rec.TimedOut
-	if rec.Type == typeWorkload {
-		h.dropWorkloadHolder(*rec)
-	}
-	h.forget(rec.Type, rec.Key)
+	ev := p.evidence(rec.Stopping)
+	rec.ExitKnown, rec.ExitCode, rec.TimedOut, rec.Cancelled = true, ev.code, ev.timedOut, ev.cancelled
 	return true
 }
 
-// dropWorkloadHolder releases the workspace the workload held, once its
-// process group is verifiably gone.
+// awaitLeader waits, bounded, for the supervisor to collect the status of the
+// leader of a process this instance launched whose group is already gone.
+func (h *host) awaitLeader(rec kRecord) {
+	p := h.proc(rec.Type, rec.Key)
+	if p == nil {
+		return
+	}
+	t := time.NewTimer(5 * time.Second)
+	defer t.Stop()
+	select {
+	case <-p.done:
+	case <-t.C:
+	}
+}
+
+// dropWorkloadHolder releases the workspace the workload held. Callers verified
+// that its process group is gone.
 func (h *host) dropWorkloadHolder(rec kRecord) {
 	entries, err := os.ReadDir(filepath.Join(string(h.st), kHoldersDir))
 	if err != nil {
@@ -642,10 +753,25 @@ func (h *host) dropWorkloadHolder(rec kRecord) {
 	}
 }
 
-// groupGone reports whether the record's process group is verifiably gone.
+// releaseHolder drops the holder marker of a workload whose process group is
+// verifiably gone, never before: surviving descendants still hold the workspace.
+func (h *host) releaseHolder(rec kRecord) {
+	if rec.Type != typeWorkload || rec.Pgid == 0 {
+		return
+	}
+	if gone, err := h.groupGone(rec); err == nil && gone {
+		h.dropWorkloadHolder(rec)
+	}
+}
+
+// groupGone reports whether the record's process group is verifiably gone: no
+// member remains, not merely that the leader ended. A process this instance
+// launched is probed by its group; an adopted one is verified by the leader's
+// recorded start time, so a recycled pid is never mistaken for it.
 func (h *host) groupGone(rec kRecord) (bool, error) {
 	if p := h.proc(rec.Type, rec.Key); p != nil {
-		return p.ended(), nil
+		alive, err := memberAlive(p.pgid)
+		return !alive, err
 	}
 	if rec.Pgid == 0 {
 		return true, nil
@@ -722,18 +848,22 @@ func (h *host) stopLocked(ctx context.Context, rec *kRecord) error {
 		if err := h.terminate(ctx, *rec); err != nil {
 			return err
 		}
+		h.awaitLeader(*rec)
 		h.settle(rec)
 		if !rec.ExitKnown {
 			// An adopted group ended without an exit status anyone saw.
 			rec.ExitKnown, rec.Cancelled = true, true
 		}
-		if rec.Type == typeWorkload {
-			h.dropWorkloadHolder(*rec)
-		}
-		h.forget(rec.Type, rec.Key)
 	}
 	rec.Stopped = true
-	return h.st.save(*rec)
+	if err := h.st.save(*rec); err != nil {
+		return err
+	}
+	if rec.Pgid != 0 {
+		h.releaseHolder(*rec) // terminate verified the group gone
+		h.forget(rec.Type, rec.Key)
+	}
+	return nil
 }
 
 // ---- observing a workload ----
@@ -761,10 +891,8 @@ func (h *host) observeWorkload(b kr.RuntimeBinding, rec *kRecord) (kr.WorkloadOb
 		}
 	}
 	switch {
-	case rec.Removed || (rec.Untracked):
+	case rec.Removed || rec.Untracked:
 		obs.Phase = kr.PhaseAbsent
-	case rec.ExitKnown:
-		obs.Phase, obs.Result = kr.PhaseExited, resultOf(*rec)
 	case rec.Pgid == 0 && rec.Stopped:
 		obs.Phase = kr.PhaseAbsent // stopped before any process existed: it never ran
 	case rec.Pgid == 0:
@@ -772,6 +900,8 @@ func (h *host) observeWorkload(b kr.RuntimeBinding, rec *kRecord) (kr.WorkloadOb
 		// command cannot run, now or later.
 		obs.Phase, obs.Result = kr.PhaseExited, kr.Result{Code: kr.ResultLost, Reason: kr.ReasonLaunchNotReached}
 	default:
+		// The workload has ended only when its whole group is gone, whatever the
+		// leader's status says.
 		gone, err := h.groupGone(*rec)
 		switch {
 		case err != nil:
@@ -779,8 +909,23 @@ func (h *host) observeWorkload(b kr.RuntimeBinding, rec *kRecord) (kr.WorkloadOb
 		case !gone:
 			obs.Phase = kr.PhaseRunning
 		default:
-			// It ended while no adapter watched: its status is unknown.
-			obs.Phase, obs.Result = kr.PhaseExited, kr.Result{Code: kr.ResultLost, Reason: kr.ReasonWorkloadLost}
+			if !rec.ExitKnown {
+				// A leader this instance launched is reaped just before its status is
+				// collected: wait for it rather than call the workload lost.
+				h.awaitLeader(*rec)
+				if h.settle(rec) {
+					if err := h.st.save(*rec); err != nil {
+						return kr.WorkloadObservation{}, err
+					}
+				}
+			}
+			h.releaseHolder(*rec)
+			if rec.ExitKnown {
+				obs.Phase, obs.Result = kr.PhaseExited, resultOf(*rec)
+			} else {
+				// It ended while no adapter watched: its status is unknown.
+				obs.Phase, obs.Result = kr.PhaseExited, kr.Result{Code: kr.ResultLost, Reason: kr.ReasonWorkloadLost}
+			}
 		}
 	}
 	return obs, nil
@@ -792,6 +937,9 @@ func (h *host) observeWorkload(b kr.RuntimeBinding, rec *kRecord) (kr.WorkloadOb
 func (r *KernelRuntime) Observe(_ context.Context, b kr.RuntimeBinding) (kr.WorkloadObservation, error) {
 	h := r.h
 	if err := b.Validate(); err != nil {
+		return kr.WorkloadObservation{}, err
+	}
+	if err := checkBackend(b); err != nil {
 		return kr.WorkloadObservation{}, err
 	}
 	key := objectKey(b.Scope, typeWorkload, b.WorkloadID)
@@ -822,6 +970,9 @@ func (r *KernelRuntime) Stop(ctx context.Context, b kr.RuntimeBinding) (kr.Workl
 	if err := b.Validate(); err != nil {
 		return kr.WorkloadObservation{}, err
 	}
+	if err := checkBackend(b); err != nil {
+		return kr.WorkloadObservation{}, notReached("%w", err)
+	}
 	key := objectKey(b.Scope, typeWorkload, b.WorkloadID)
 	unlock := h.st.lock(typeWorkload, key)
 	defer unlock()
@@ -829,7 +980,7 @@ func (r *KernelRuntime) Stop(ctx context.Context, b kr.RuntimeBinding) (kr.Workl
 	if err != nil {
 		return kr.WorkloadObservation{}, err
 	}
-	if err := admitFence(&rec, b.Fence); err != nil {
+	if err := h.admitFence(&rec, b.Fence); err != nil {
 		return kr.WorkloadObservation{}, err
 	}
 	if !rec.Removed {
@@ -837,8 +988,6 @@ func (r *KernelRuntime) Stop(ctx context.Context, b kr.RuntimeBinding) (kr.Workl
 			return kr.WorkloadObservation{Binding: b, Phase: kr.PhaseUnknown, ObservedAt: h.now()},
 				fmt.Errorf("%w: stopping workload %s: %w", kr.ErrUncertain, b.WorkloadID, err)
 		}
-	} else if err := h.st.save(rec); err != nil {
-		return kr.WorkloadObservation{}, err
 	}
 	return h.observeWorkload(b, &rec)
 }
@@ -851,6 +1000,9 @@ func (r *KernelRuntime) Remove(ctx context.Context, b kr.RuntimeBinding) (kr.Wor
 	if err := b.Validate(); err != nil {
 		return kr.WorkloadObservation{}, err
 	}
+	if err := checkBackend(b); err != nil {
+		return kr.WorkloadObservation{}, notReached("%w", err)
+	}
 	key := objectKey(b.Scope, typeWorkload, b.WorkloadID)
 	unlock := h.st.lock(typeWorkload, key)
 	defer unlock()
@@ -858,7 +1010,7 @@ func (r *KernelRuntime) Remove(ctx context.Context, b kr.RuntimeBinding) (kr.Wor
 	if err != nil {
 		return kr.WorkloadObservation{}, err
 	}
-	if err := admitFence(&rec, b.Fence); err != nil {
+	if err := h.admitFence(&rec, b.Fence); err != nil {
 		return kr.WorkloadObservation{}, err
 	}
 	if err := h.removeLocked(ctx, &rec); err != nil {
@@ -928,6 +1080,9 @@ func (h *host) tombstoneOr(typ, key string, b kr.RuntimeBinding, removed bool) (
 func (r *KernelRuntime) Logs(_ context.Context, b kr.RuntimeBinding, opts kr.LogOptions) (io.ReadCloser, error) {
 	h := r.h
 	if err := b.Validate(); err != nil {
+		return nil, err
+	}
+	if err := checkBackend(b); err != nil {
 		return nil, err
 	}
 	key := objectKey(b.Scope, typeWorkload, b.WorkloadID)
@@ -1036,14 +1191,21 @@ type ReconcileReport struct {
 	// Retained could not be stopped or removed and stay recorded; a later
 	// Reconcile retries them.
 	Retained []string
+	// Skipped changed after they were selected as orphans (a writer took them
+	// over with a newer fence, or the caller owns the run now) and were left
+	// alone.
+	Skipped []string
 }
 
 // Reconcile removes the workloads, services and workspaces whose run the caller
 // no longer owns: orphans a crashed or superseded engine left behind. It stops
 // each (workloads and services first, so a workspace is released) and removes
-// it, using the object's own recorded fence. Objects of an owned run, tombstones
-// and directories that are not recorded here are left alone; a failure retains
-// the object and the next call retries.
+// it. Its authority is the record it observed when it selected the orphan: under
+// the object's lock the record must still be that instance at that fence, so an
+// object an engine adopted or took over in between (its fence advanced) is
+// skipped, never stopped. Objects of an owned run, tombstones and directories
+// that are not recorded here are left alone; a failure retains the object and
+// the next call retries.
 func (k *Kernel) Reconcile(ctx context.Context, owned func(domain.Scope, domain.RunID) bool) (ReconcileReport, error) {
 	h := k.h
 	recs, err := h.st.list()
@@ -1056,22 +1218,32 @@ func (k *Kernel) Reconcile(ctx context.Context, owned func(domain.Scope, domain.
 			if rec.Type != typ || rec.Removed || owned(rec.Scope, rec.RunID) {
 				continue
 			}
-			if err := h.reconcileOne(ctx, rec); err != nil {
+			switch err := h.reconcileOne(ctx, rec, owned); {
+			case errors.Is(err, errChanged):
+				rep.Skipped = append(rep.Skipped, rec.ID)
+			case err != nil:
 				rep.Retained = append(rep.Retained, rec.ID)
-				continue
+			default:
+				rep.Removed = append(rep.Removed, rec.ID)
 			}
-			rep.Removed = append(rep.Removed, rec.ID)
 		}
 	}
 	return rep, nil
 }
 
-func (h *host) reconcileOne(ctx context.Context, rec kRecord) error {
+// errChanged reports an orphan whose record is no longer the one that was
+// selected.
+var errChanged = errors.New("process: the object changed after it was selected")
+
+func (h *host) reconcileOne(ctx context.Context, rec kRecord, owned func(domain.Scope, domain.RunID) bool) error {
 	unlock := h.st.lock(rec.Type, rec.Key)
 	defer unlock()
 	cur, found, err := h.st.load(rec.Type, rec.Key)
 	if err != nil || !found || cur.Removed {
 		return err
+	}
+	if cur.UID != rec.UID || cur.Fence != rec.Fence || cur.Scope != rec.Scope || cur.RunID != rec.RunID || owned(cur.Scope, cur.RunID) {
+		return errChanged
 	}
 	if cur.Type == typeWorkspace {
 		held, ok, err := h.st.holder(cur.Key)

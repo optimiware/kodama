@@ -223,7 +223,7 @@ func Test_unit_process_kernel_runtime_contract(t *testing.T) {
 			if !errors.Is(err, kr.ErrNotReached) || kr.ClassifyEffect(err) != kr.CommandRejected {
 				t.Fatalf("%s: %v", name, err)
 			}
-			if !errors.Is(err, kr.ErrCapability) && name != "image without commands" {
+			if !errors.Is(err, kr.ErrCapability) {
 				t.Fatalf("%s is not a capability refusal: %v", name, err)
 			}
 			h := kr.ResourceHandle{Scope: spec.Scope, RunID: spec.RunID, Kind: spec.Kind, Name: spec.Name, Identity: spec.Identity, Fence: 1}

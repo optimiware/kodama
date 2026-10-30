@@ -58,7 +58,7 @@ func admitResource(spec kr.ResourceSpec, hasPrepare bool) error {
 		case len(s.Secrets) > 0:
 			return notReached("%w: process materializes no service secrets", kr.ErrCapability)
 		case len(s.Commands) == 0:
-			return notReached("%w: process does not interpret the image of service %s: it declares no commands", domain.ErrInvalidValue, s.Name)
+			return notReached("%w: process does not interpret the image of service %s: it declares no commands", kr.ErrCapability, s.Name)
 		}
 	}
 	return nil
@@ -93,7 +93,7 @@ func (r *KernelResources) Ensure(ctx context.Context, spec kr.ResourceSpec) (kr.
 		if err := checkResource(rec, handle); err != nil {
 			return kr.ResourceObservation{}, notReached("%w", err)
 		}
-		if err := admitFence(&rec, spec.Fence); err != nil {
+		if err := h.admitFence(&rec, spec.Fence); err != nil {
 			return kr.ResourceObservation{}, notReached("%w", err)
 		}
 		if rec.fenced() {
@@ -440,14 +440,11 @@ func (r *KernelResources) Stop(ctx context.Context, handle kr.ResourceHandle) (k
 	if err != nil {
 		return kr.ResourceObservation{}, err
 	}
-	if err := admitFence(&rec, handle.Fence); err != nil {
+	if err := h.admitFence(&rec, handle.Fence); err != nil {
 		return kr.ResourceObservation{}, err
 	}
 	switch {
 	case rec.Removed:
-		if err := h.st.save(rec); err != nil {
-			return kr.ResourceObservation{}, err
-		}
 	case typ == typeWorkspace:
 		if _, err := h.stopWorkspace(&rec); err != nil {
 			return kr.ResourceObservation{}, err
@@ -480,7 +477,7 @@ func (r *KernelResources) Remove(ctx context.Context, handle kr.ResourceHandle) 
 	if err != nil {
 		return kr.ResourceObservation{}, err
 	}
-	if err := admitFence(&rec, handle.Fence); err != nil {
+	if err := h.admitFence(&rec, handle.Fence); err != nil {
 		return kr.ResourceObservation{}, err
 	}
 	if typ == typeWorkspace && !rec.Removed {
