@@ -44,8 +44,18 @@ func (r RunRecord) Validate() error {
 		return invalid("the run has %d steps, the plan %d", len(r.Run.Steps), len(r.Plan.Steps))
 	}
 	for i, s := range r.Run.Steps {
-		if s.Key != r.Plan.Steps[i].Key || s.Kind != r.Plan.Steps[i].Kind {
-			return invalid("run step %s does not match plan step %s", s.Key, r.Plan.Steps[i].Key)
+		ps := r.Plan.Steps[i]
+		if s.Key != ps.Key || s.Kind != ps.Kind {
+			return invalid("run step %s does not match plan step %s", s.Key, ps.Key)
+		}
+		// A step without a when has nothing to evaluate. One with a when that
+		// started must have evaluated it true.
+		if ps.When == "" && s.Predicate.Evaluated {
+			return invalid("step %s has no when predicate but records an evaluation", s.Key)
+		}
+		started := s.State == StepRunning || s.State == StepWaiting || s.State == StepSucceeded
+		if ps.When != "" && started && !(s.Predicate.Evaluated && s.Predicate.Result) {
+			return invalid("step %s started without a true when evaluation", s.Key)
 		}
 	}
 	if r.Claim != (Claim{}) {
@@ -124,6 +134,16 @@ func (r RunRecord) Validate() error {
 		}
 	}
 	return nil
+}
+
+// Predicate returns the retained when evaluation of a step, if it was evaluated.
+func (r RunRecord) Predicate(key domain.StepID) (PredicateEvaluation, bool) {
+	for _, s := range r.Run.Steps {
+		if s.Key == key && s.Predicate.Evaluated {
+			return s.Predicate, true
+		}
+	}
+	return PredicateEvaluation{}, false
 }
 
 // RequirementsMet checks, from recorded state alone, that a protected step may
@@ -308,8 +328,9 @@ type StateStore interface {
 	Renew(ctx context.Context, held Claim, ttl time.Duration, now time.Time) (Claim, error)
 	// Commit applies a Transition atomically with its outbox intent: it checks
 	// the claim's fence and lease (Claim.Authorizes) and the expected versions,
-	// then persists the run, waits, commands, workload observations, resources
-	// and events together, and extends the lease when Transition.RenewTTL is
+	// then persists the run (applying CheckRunUpdate against the stored run, so a
+	// recorded predicate evaluation or terminal step never changes), waits,
+	// commands, workload observations, resources and events together, and extends the lease when Transition.RenewTTL is
 	// set. A stale writer is refused with ErrStaleFence and nothing is persisted.
 	Commit(ctx context.Context, t Transition) (RunRecord, error)
 	// Runnable lists runs with claimable work, bounded by q.Limit.
@@ -441,8 +462,8 @@ type PrepareRequest struct {
 	RunID domain.RunID `json:"runId"`
 	// PlanDigest identifies the admitted plan the inputs are for.
 	PlanDigest string `json:"planDigest"`
-	// Inputs are the plan's declared non-secret inputs.
-	Inputs map[string]string `json:"inputs,omitempty"`
+	// Inputs are the plan's admitted non-secret inputs, with their types.
+	Inputs map[string]InputValue `json:"inputs,omitempty"`
 }
 
 // WorkspacePreparer supplies the pinned inputs for preparing a run's workspace:

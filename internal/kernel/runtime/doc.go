@@ -45,7 +45,13 @@
 //     request under a recorded key is [ErrKeyReuse] and writes nothing.
 //   - There is no condition step kind. Step kinds are container and wait;
 //     conditional eligibility is a when predicate that the engine evaluates once
-//     over persisted values.
+//     over persisted values. The step retains a [PredicateEvaluation] (result and
+//     a digest of the values read), committed with the step's move and never
+//     changed afterwards ([CheckRunUpdate]); recovery reuses it.
+//   - An admitted [Plan] is plain values for the frozen pipeline format: join,
+//     declared outputs, bindings, and run inputs that keep their declared type
+//     ([InputValue]) so the no-coercion grammar can tell the string "1" from the
+//     integer 1. Parsing and evaluation live outside this package.
 //   - A claim is a lease with owner, expiry and a monotonic [Fence]. The owner
 //     extends it with [RenewClaim], which keeps the fence and is persisted
 //     atomically; [AcquireClaim] never renews. A stale writer cannot commit or

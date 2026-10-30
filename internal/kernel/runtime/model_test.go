@@ -53,6 +53,21 @@ func mustRun(t *testing.T) rt.Run {
 	return r
 }
 
+// predicate returns an evaluation of a when predicate that read one value.
+func predicate(t *testing.T, result bool) rt.PredicateEvaluation {
+	t.Helper()
+	d, err := rt.DigestPredicateReads([]rt.PredicateRead{{Ref: "review.outcome", Type: rt.InputString, Present: true, Value: "approved"}})
+	must(t, err)
+	return rt.PredicateEvaluation{Evaluated: true, Result: result, InputDigest: d, At: t0}
+}
+
+// skipForCondition records a false evaluation and skips the step for condition_false.
+func skipForCondition(t *testing.T, r *rt.Run, key domain.StepID) {
+	t.Helper()
+	must(t, r.RecordPredicate(key, predicate(t, false)))
+	must(t, r.AdvanceStep(key, rt.StepSkipped, rt.ReasonConditionFalse))
+}
+
 // reviewSpec is the wait the fixtures use: assigned to a role, correlated on the
 // candidate commit, and with approved as its single approving outcome.
 func reviewSpec() rt.WaitSpec {
@@ -153,6 +168,9 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 	t.Run("step kinds, wait outcomes and protected steps", testStepKindsAndWaits)
 	t.Run("wait decisions", testWaitDecisions)
 	t.Run("signal identity, routing and durable records", testSignalRecords)
+	t.Run("wait resolution checks its own scope and address", testResolveAddress)
+	t.Run("the admitted plan carries join, outputs, bindings and typed inputs", testPlanRepresentation)
+	t.Run("a step retains its when evaluation", testPredicateEvaluation)
 
 	t.Run("fence comparison rejects a stale writer", func(t *testing.T) {
 		for _, tc := range []struct {
@@ -255,7 +273,7 @@ func Test_unit_kernel_runtime_contract(t *testing.T) {
 			t.Fatalf("status %s", r.Status())
 		}
 		must(t, r.AdvanceStep("review", rt.StepSucceeded, rt.ReasonNone))
-		must(t, r.AdvanceStep("notify", rt.StepSkipped, rt.ReasonConditionFalse))
+		skipForCondition(t, &r, "notify")
 		must(t, r.AdvanceStep("test", rt.StepRunning, rt.ReasonNone))
 		must(t, r.FinishStep("test", rt.StepSucceeded, rt.ReasonNone, okRes))
 

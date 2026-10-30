@@ -83,8 +83,9 @@ func evidenceRecord(t *testing.T) rt.RunRecord {
 		t.Fatal(err)
 	}
 	must(t, run.AdvanceStep("review", rt.StepSucceeded, rt.ReasonNone))
-	must(t, run.AdvanceStep("notify", rt.StepSkipped, rt.ReasonConditionFalse))
+	skipForCondition(t, &run, "notify")
 
+	must(t, run.RecordPredicate("test", predicate(t, true)))
 	must(t, run.AdvanceStep("test", rt.StepRunning, rt.ReasonNone))
 	b3 := bind("test", 1, 1)
 	launch3, _ := rt.NewWorkloadCommand("c-test-1", b3, rt.CommandLaunch, t0.Add(3*minute))

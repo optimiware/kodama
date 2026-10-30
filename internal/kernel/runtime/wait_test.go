@@ -980,3 +980,105 @@ func testSignalRecords(t *testing.T) {
 		}
 	})
 }
+
+// testResolveAddress proves the exported mutator enforces scope and address
+// itself, independent of RouteSignal's filtering.
+func testResolveAddress(t *testing.T) {
+	foreignRequests := map[string]func(rt.Wait) rt.SignalRequest{
+		"foreign tenant": func(w rt.Wait) rt.SignalRequest {
+			r := signalReq(w, "k")
+			r.Identity.Scope = domain.Scope{TenantID: "t2", ProjectID: "p1"}
+			return r
+		},
+		"foreign project": func(w rt.Wait) rt.SignalRequest {
+			r := signalReq(w, "k")
+			r.Identity.Scope = domain.Scope{TenantID: "t1", ProjectID: "p2"}
+			return r
+		},
+		"wrong wait id": func(w rt.Wait) rt.SignalRequest {
+			r := signalReq(w, "k")
+			r.WaitID = "w2"
+			return r
+		},
+		"wrong correlation with the right wait id": func(w rt.Wait) rt.SignalRequest {
+			r := signalReq(w, "k")
+			r.Correlation = map[string]string{"candidate": "other"}
+			return r
+		},
+		"wrong correlation only": func(w rt.Wait) rt.SignalRequest {
+			r := signalReq(w, "k")
+			r.WaitID, r.Correlation = "", map[string]string{"candidate": "other"}
+			return r
+		},
+		"partial correlation": func(w rt.Wait) rt.SignalRequest {
+			r := signalReq(w, "k")
+			r.WaitID, r.Correlation = "", map[string]string{"candidate": "c1", "extra": "x"}
+			return r
+		},
+		"correlation of another key": func(w rt.Wait) rt.SignalRequest {
+			r := signalReq(w, "k")
+			r.WaitID, r.Correlation = "", map[string]string{"commit": "c1"}
+			return r
+		},
+	}
+	t.Run("a request for another tenant, project, wait or correlation is refused and changes nothing", func(t *testing.T) {
+		for name, mk := range foreignRequests {
+			w := openWait(t)
+			before := w
+			before.Correlation = maps.Clone(w.Correlation)
+			d, err := w.Resolve(mk(w), t0.Add(minute))
+			if !errors.Is(err, rt.ErrWaitForeign) || d != (rt.Decision{}) || !reflect.DeepEqual(w, before) || w.State != rt.WaitOpen {
+				t.Errorf("%s: %v %+v state %s", name, err, d, w.State)
+			}
+		}
+		// The refusal also holds for waits that are not open: the address check comes first.
+		closed := openWait(t)
+		_, err := closed.Resolve(signalReq(closed, "winner"), t0.Add(minute))
+		must(t, err)
+		recorded := closed
+		recorded.Correlation = maps.Clone(closed.Correlation)
+		for name, mk := range foreignRequests {
+			if _, err := closed.Resolve(mk(closed), t0.Add(2*minute)); !errors.Is(err, rt.ErrWaitForeign) || !reflect.DeepEqual(closed, recorded) {
+				t.Errorf("closed wait, %s: %v", name, err)
+			}
+		}
+		// A foreign identity is never recorded as the deciding signal.
+		w := openWait(t)
+		foreign := foreignRequests["foreign tenant"](w)
+		_, _ = w.Resolve(foreign, t0.Add(minute))
+		if w.Decision.SignalID != "" || w.State == rt.WaitResolved {
+			t.Error("a foreign signal identity was recorded")
+		}
+	})
+
+	t.Run("the right scope and address resolve", func(t *testing.T) {
+		for name, mut := range map[string]func(*rt.SignalRequest){
+			"by wait id": func(*rt.SignalRequest) {},
+			"by complete correlation only": func(r *rt.SignalRequest) {
+				r.WaitID, r.Correlation = "", map[string]string{"candidate": "c1"}
+			},
+			"by both, agreeing": func(r *rt.SignalRequest) { r.Correlation = map[string]string{"candidate": "c1"} },
+		} {
+			w := openWait(t)
+			req := signalReq(w, "k")
+			mut(&req)
+			d, err := w.Resolve(req, t0.Add(minute))
+			if err != nil || d.Kind != rt.DecisionResolved || d.SignalID != req.Identity.ID() || w.State != rt.WaitResolved {
+				t.Errorf("%s: %v %+v", name, err, d)
+			}
+		}
+	})
+
+	t.Run("routing and the mutator agree", func(t *testing.T) {
+		// Whatever RouteSignal would apply, the mutator accepts; whatever the mutator refuses
+		// as foreign, RouteSignal turns into unknown_wait without touching the wait.
+		for name, mk := range foreignRequests {
+			w := openWait(t)
+			out, err := rt.RouteSignal(mk(w), rt.SignalLookup{}, []rt.Wait{w}, nil, t0.Add(minute))
+			must(t, err)
+			if out.Result.Applied || out.Wait != nil || out.Result.Target != (rt.SignalTarget{}) {
+				t.Errorf("%s: routed %+v", name, out.Result)
+			}
+		}
+	})
+}

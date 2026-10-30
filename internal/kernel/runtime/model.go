@@ -7,6 +7,7 @@ import (
 	"path"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -36,6 +37,9 @@ var (
 	ErrWaitNotOpen = errors.New("runtime: wait not open")
 	// ErrWaitStale reports a signal issued against an older wait version.
 	ErrWaitStale = errors.New("runtime: stale wait version")
+	// ErrWaitForeign reports a request whose tenant, project, wait identity or
+	// correlation does not belong to the wait it was applied to. Nothing is changed.
+	ErrWaitForeign = errors.New("runtime: foreign wait")
 	// ErrInvalidOutcome reports an outcome the wait did not declare.
 	ErrInvalidOutcome = errors.New("runtime: outcome not declared by the wait")
 	// ErrKeyReuse reports a caller key already recorded with a different request.
@@ -514,6 +518,64 @@ type Step struct {
 	// evidence conditions evaluate over prior step results and it survives
 	// restart. A succeeded container step always records it.
 	Result Result `json:"result,omitempty"`
+	// Predicate is the retained evaluation of the step's when predicate. It is
+	// recorded once and never re-evaluated: recovery reuses it.
+	Predicate PredicateEvaluation `json:"predicate,omitempty"`
+}
+
+// PredicateEvaluation is the immutable record of one evaluation of a step's when
+// predicate: its result and a digest of the values it read. The zero value means
+// the predicate has not been evaluated, which differs from evaluated and false.
+type PredicateEvaluation struct {
+	Evaluated bool `json:"evaluated,omitempty"`
+	// Result is the predicate's value; meaningful only when Evaluated.
+	Result bool `json:"result,omitempty"`
+	// InputDigest is the digest of the values the evaluation read (see
+	// DigestPredicateReads), so an audit can show what the decision rested on.
+	InputDigest string    `json:"inputDigest,omitempty"`
+	At          time.Time `json:"at,omitempty"`
+}
+
+// Validate checks the record: an unevaluated record is entirely zero, an
+// evaluated one has its digest and time.
+func (p PredicateEvaluation) Validate() error {
+	if !p.Evaluated {
+		if p != (PredicateEvaluation{}) {
+			return invalid("an unevaluated predicate records nothing")
+		}
+		return nil
+	}
+	if p.InputDigest == "" || len(p.InputDigest) > 128 || p.At.IsZero() {
+		return invalid("an evaluated predicate records its input digest and time")
+	}
+	return nil
+}
+
+// PredicateRead is one value an evaluation read: a reference, its type, and
+// either its value or the fact that it was missing.
+type PredicateRead struct {
+	Ref  string    `json:"ref"`
+	Type InputType `json:"type"`
+	// Present is false for a missing value, which is distinct from the empty string.
+	Present bool   `json:"present"`
+	Value   string `json:"value,omitempty"`
+}
+
+// DigestPredicateReads returns the canonical digest of the values an evaluation
+// read, independent of the order they were read in. A missing value carries no
+// Value, and the type is part of the digest, so the string "1" and the integer 1
+// digest differently.
+func DigestPredicateReads(reads []PredicateRead) (string, error) {
+	sorted := slices.Clone(reads)
+	slices.SortFunc(sorted, func(a, b PredicateRead) int { return strings.Compare(a.Ref, b.Ref) })
+	fields := []string{"predicate-reads", strconv.Itoa(len(sorted))}
+	for i, r := range sorted {
+		if strings.TrimSpace(r.Ref) == "" || !r.Type.Valid() || (!r.Present && r.Value != "") || (i > 0 && sorted[i-1].Ref == r.Ref) {
+			return "", invalid("predicate read %q", r.Ref)
+		}
+		fields = append(fields, r.Ref, string(r.Type), strconv.FormatBool(r.Present), r.Value)
+	}
+	return "sha256:" + digestFields(fields...), nil
 }
 
 // NewStep returns a pending step at version 1.
@@ -536,6 +598,9 @@ func (s Step) Validate() error {
 	if err := s.validateEvidence(); err != nil {
 		return err
 	}
+	if err := s.validatePredicate(); err != nil {
+		return err
+	}
 	if err := s.Version.Validate(); err != nil {
 		return err
 	}
@@ -547,6 +612,24 @@ func (s Step) Validate() error {
 	}
 	if !s.reasonRequired() && s.Reason != ReasonNone {
 		return invalid("a %s step has no reason", s.State)
+	}
+	return nil
+}
+
+// validatePredicate checks the retained when evaluation against the step state:
+// a step skipped for condition_false carries a false evaluation, a false
+// evaluation ends in skipped, and a true one never does.
+func (s Step) validatePredicate() error {
+	if err := s.Predicate.Validate(); err != nil {
+		return err
+	}
+	falseSkip := s.State == StepSkipped && s.Reason == ReasonConditionFalse
+	p := s.Predicate
+	switch {
+	case falseSkip && !(p.Evaluated && !p.Result):
+		return invalid("step %s skipped for condition_false records its false evaluation", s.Key)
+	case p.Evaluated && !p.Result && !(s.State == StepPending || falseSkip || s.State == StepCancelled):
+		return invalid("step %s evaluated false but is %s", s.Key, s.State)
 	}
 	return nil
 }
@@ -1017,14 +1100,23 @@ func (w *Wait) decide(state WaitState, d Decision) {
 	w.Decision.Version = w.Version
 }
 
-// Resolve decides an open wait with the outcome and answer of req. The checks run
-// in this order: the wait must be open, a supplied expected version must match,
+// Resolve decides an open wait with the outcome and answer of req. The request
+// must belong to the wait: the same tenant and project, the wait's identity when
+// it names one, and the wait's complete correlation when it presents any;
+// otherwise it is ErrWaitForeign and nothing changes. Then the checks run in this
+// order: the wait must be open, a supplied expected version must match,
 // the deadline must not have been reached (expiry wins), and the outcome must be
 // declared. A refused request changes nothing. Replays and routing are handled
 // by RouteSignal through the durable signal record, not here.
 func (w *Wait) Resolve(req SignalRequest, now time.Time) (Decision, error) {
 	if err := req.Validate(); err != nil {
 		return Decision{}, err
+	}
+	// A request decides only the wait it addresses, in its own tenant and project:
+	// the mutator enforces this itself rather than trusting the router's filter.
+	if req.Identity.Scope != w.Scope || (req.WaitID != "" && req.WaitID != w.ID) ||
+		(len(req.Correlation) > 0 && !maps.Equal(req.Correlation, w.Correlation)) {
+		return Decision{}, ErrWaitForeign
 	}
 	switch {
 	case w.State.Closed():
@@ -1165,6 +1257,110 @@ const AuthorityIntegrate = "integrate"
 // MaxRequirements bounds a protected step's requires list.
 const MaxRequirements = 4
 
+// Bounds fixed by the pipeline format.
+const (
+	MaxStepOutputs      = 8
+	MaxStepBindings     = 8
+	MaxInputs           = 16
+	MaxInputStringBytes = 256
+)
+
+var (
+	inputNameRE  = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
+	outputNameRE = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+	envNameRE    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+)
+
+// JoinMode says how a step's skipped prerequisites combine.
+type JoinMode string
+
+// Join modes. The empty mode means all.
+const (
+	// JoinAll runs the step only when every prerequisite succeeded. It is the default.
+	JoinAll JoinMode = "all"
+	// JoinAny runs the step when at least one prerequisite succeeded. It needs at
+	// least two prerequisites.
+	JoinAny JoinMode = "any"
+)
+
+// Effective returns the mode with the default applied.
+func (j JoinMode) Effective() JoinMode {
+	if j == "" {
+		return JoinAll
+	}
+	return j
+}
+
+// InputType is the declared type of a run input. The condition grammar compares
+// without coercion, so the admitted plan keeps the type of every value.
+type InputType string
+
+// Input types.
+const (
+	InputString  InputType = "string"
+	InputInteger InputType = "integer"
+	InputBoolean InputType = "boolean"
+)
+
+// Valid reports whether t is a known input type.
+func (t InputType) Valid() bool { return t == InputString || t == InputInteger || t == InputBoolean }
+
+// InputValue is one admitted run input: a value together with its declared type.
+// Exactly the field matching Type is meaningful; the others must be zero, so the
+// string "true", the boolean true, the string "1" and the integer 1 are four
+// distinct values.
+type InputValue struct {
+	Type    InputType `json:"type"`
+	String  string    `json:"string,omitempty"`
+	Integer int64     `json:"integer,omitempty"`
+	Boolean bool      `json:"boolean,omitempty"`
+}
+
+// StringInput returns a string input value.
+func StringInput(v string) InputValue { return InputValue{Type: InputString, String: v} }
+
+// IntegerInput returns an integer input value.
+func IntegerInput(v int64) InputValue { return InputValue{Type: InputInteger, Integer: v} }
+
+// BooleanInput returns a boolean input value.
+func BooleanInput(v bool) InputValue { return InputValue{Type: InputBoolean, Boolean: v} }
+
+// Validate checks the value against its type and the format's bounds.
+func (v InputValue) Validate() error {
+	switch v.Type {
+	case InputString:
+		if v.Integer != 0 || v.Boolean {
+			return invalid("a string input carries only a string")
+		}
+		if len(v.String) > MaxInputStringBytes || !utf8.ValidString(v.String) {
+			return invalid("a string input is at most %d bytes of UTF-8", MaxInputStringBytes)
+		}
+	case InputInteger:
+		if v.String != "" || v.Boolean {
+			return invalid("an integer input carries only an integer")
+		}
+	case InputBoolean:
+		if v.String != "" || v.Integer != 0 {
+			return invalid("a boolean input carries only a boolean")
+		}
+	default:
+		return invalid("input type %q", v.Type)
+	}
+	return nil
+}
+
+// Text renders the value as the canonical text recorded in digests. The type is
+// not part of the text; callers that need it keep InputValue.Type alongside.
+func (v InputValue) Text() string {
+	switch v.Type {
+	case InputInteger:
+		return strconv.FormatInt(v.Integer, 10)
+	case InputBoolean:
+		return strconv.FormatBool(v.Boolean)
+	}
+	return v.String
+}
+
 // PlanStep is one step of an admitted plan. Kind selects exactly one of
 // Workload (container) or Wait (wait). There is no condition step: eligibility
 // beyond prerequisites is the optional When predicate.
@@ -1183,6 +1379,17 @@ type PlanStep struct {
 	// Requires wait was decided with its approving outcome.
 	Authority string        `json:"authority,omitempty"`
 	Requires  []Requirement `json:"requires,omitempty"`
+	// Join is how skipped prerequisites combine; empty means all.
+	Join JoinMode `json:"join,omitempty"`
+	// Outputs are the names a container step may record (at most 8). A
+	// reference such as a wait's request or correlation, or another step's
+	// when, reads them as <step>.outputs.<name>; resolving references is the
+	// engine's work, not the plan's.
+	Outputs []string `json:"outputs,omitempty"`
+	// Bindings inject the current value of a visible reference into a container
+	// step's environment (at most 8): variable name to reference. A binding may
+	// not collide with the step's env, its secrets or the built-in KODAMA_ names.
+	Bindings map[string]string `json:"bindings,omitempty"`
 }
 
 // Protected reports whether the step carries authority.
@@ -1218,6 +1425,9 @@ func (p PlanStep) Validate() error {
 	if err != nil {
 		return err
 	}
+	if err := p.validateShape(); err != nil {
+		return err
+	}
 	switch {
 	case p.Authority == "" && len(p.Requires) > 0:
 		return invalid("step %s has requires but no authority", p.Key)
@@ -1229,6 +1439,36 @@ func (p PlanStep) Validate() error {
 		return invalid("a wait step cannot be protected: %s", p.Key)
 	case len(p.Requires) == 0 || len(p.Requires) > MaxRequirements:
 		return invalid("protected step %s requires 1 to %d waits", p.Key, MaxRequirements)
+	}
+	return nil
+}
+
+// validateShape checks join, outputs and bindings.
+func (p PlanStep) validateShape() error {
+	if j := p.Join; j != "" && j != JoinAll && j != JoinAny {
+		return invalid("step %s join %q", p.Key, j)
+	}
+	if p.Join == JoinAny && len(p.DependsOn) < 2 {
+		return invalid("step %s: join any needs at least two prerequisites", p.Key)
+	}
+	if p.Kind != StepContainer && (len(p.Outputs) > 0 || len(p.Bindings) > 0) {
+		return invalid("step %s: outputs and bindings belong to container steps", p.Key)
+	}
+	if len(p.Outputs) > MaxStepOutputs || len(p.Bindings) > MaxStepBindings {
+		return invalid("step %s declares more than %d outputs or %d bindings", p.Key, MaxStepOutputs, MaxStepBindings)
+	}
+	for i, o := range p.Outputs {
+		if !outputNameRE.MatchString(o) || slices.Contains(p.Outputs[:i], o) {
+			return invalid("step %s output %q", p.Key, o)
+		}
+	}
+	for name, ref := range p.Bindings {
+		if !envNameRE.MatchString(name) || strings.HasPrefix(name, "KODAMA_") || strings.TrimSpace(ref) == "" || len(ref) > 128 {
+			return invalid("step %s binding %q", p.Key, name)
+		}
+		if _, clash := p.Workload.Env[name]; clash || slices.ContainsFunc(p.Workload.Secrets, func(s SecretRef) bool { return s.Name == name }) {
+			return invalid("step %s binding %q collides with its environment", p.Key, name)
+		}
 	}
 	return nil
 }
@@ -1293,9 +1533,10 @@ type Plan struct {
 	// Digest identifies the canonical definition snapshot.
 	Digest string `json:"digest"`
 	// Steps are in deterministic execution order; a step depends only on earlier steps.
-	Steps    []PlanStep        `json:"steps"`
-	Services []ServiceSpec     `json:"services,omitempty"`
-	Inputs   map[string]string `json:"inputs,omitempty"`
+	Steps    []PlanStep    `json:"steps"`
+	Services []ServiceSpec `json:"services,omitempty"`
+	// Inputs are the admitted run inputs, each with its declared type.
+	Inputs map[string]InputValue `json:"inputs,omitempty"`
 }
 
 // Validate checks that the plan is well formed: unique step keys, each step
@@ -1307,6 +1548,17 @@ func (p Plan) Validate() error {
 	}
 	if len(p.Steps) == 0 {
 		return invalid("a plan requires at least one step")
+	}
+	if len(p.Inputs) > MaxInputs {
+		return invalid("a plan admits at most %d inputs", MaxInputs)
+	}
+	for name, v := range p.Inputs {
+		if !inputNameRE.MatchString(name) {
+			return invalid("input name %q", name)
+		}
+		if err := v.Validate(); err != nil {
+			return fmt.Errorf("input %s: %w", name, err)
+		}
 	}
 	// ancestors maps each earlier step to its transitive prerequisites.
 	ancestors := map[domain.StepID]map[domain.StepID]bool{}
@@ -2218,6 +2470,74 @@ func (r *Run) RequestCancel() {
 // one container step runs at a time, so one executable step holds the workspace.
 func (r *Run) AdvanceStep(key domain.StepID, to StepState, reason Reason) error {
 	return r.moveStep(key, to, reason, nil)
+}
+
+// RecordPredicate retains the evaluation of a pending step's when predicate. It
+// is recorded once, in the same transition as the step's move, and never
+// re-evaluated: a second record is refused whatever it says.
+func (r *Run) RecordPredicate(key domain.StepID, ev PredicateEvaluation) error {
+	if r.Settled() {
+		return fmt.Errorf("%w: run %s is settled", ErrExecutionClosed, r.ID)
+	}
+	i := slices.IndexFunc(r.Steps, func(s Step) bool { return s.Key == key })
+	if i < 0 {
+		return invalid("run %s has no step %s", r.ID, key)
+	}
+	s := r.Steps[i]
+	if s.State != StepPending || s.Predicate.Evaluated {
+		return fmt.Errorf("%w: step %s is %s and its predicate is already settled", ErrIllegalTransition, key, s.State)
+	}
+	if !ev.Evaluated {
+		return invalid("record an evaluated predicate")
+	}
+	s.Predicate = ev
+	s.Version++
+	if err := s.Validate(); err != nil {
+		return err
+	}
+	r.Steps[i] = s
+	r.Version++
+	return nil
+}
+
+// CheckRunUpdate reports whether next may replace prev in one Transition. It
+// enforces immutability: the run version advances by one; step identities and
+// kinds are unchanged; a recorded predicate evaluation is never changed or
+// removed; a terminal step, and a settled outcome, never change; attempts never
+// go backwards; a requested cancellation is never withdrawn. A StateStore applies
+// it to the stored run inside Commit.
+func CheckRunUpdate(prev, next Run) error {
+	if prev.Scope != next.Scope || prev.ID != next.ID || prev.PipelineID != next.PipelineID {
+		return invalid("the update belongs to another run")
+	}
+	if next.Version != prev.Version+1 {
+		return invalid("run version %d does not follow %d", next.Version, prev.Version)
+	}
+	if len(prev.Steps) != len(next.Steps) {
+		return invalid("an update cannot add or remove steps")
+	}
+	for i, p := range prev.Steps {
+		n := next.Steps[i]
+		if p.Key != n.Key || p.Kind != n.Kind {
+			return invalid("an update cannot change step %s", p.Key)
+		}
+		if p.Predicate.Evaluated && p.Predicate != n.Predicate {
+			return fmt.Errorf("%w: step %s predicate was evaluated once and is never re-evaluated", ErrIllegalTransition, p.Key)
+		}
+		if p.State.Terminal() && (n.State != p.State || n.Reason != p.Reason || n.Result != p.Result || n.Attempt != p.Attempt) {
+			return fmt.Errorf("%w: step %s is %s and final", ErrIllegalTransition, p.Key, p.State)
+		}
+		if n.Attempt < p.Attempt {
+			return fmt.Errorf("%w: step %s attempt went backwards", ErrIllegalTransition, p.Key)
+		}
+	}
+	if prev.Settled() && (next.Outcome != prev.Outcome || next.Reason != prev.Reason) {
+		return fmt.Errorf("%w: run %s already settled as %s", ErrIllegalTransition, prev.ID, prev.Outcome)
+	}
+	if prev.CancelRequested && !next.CancelRequested {
+		return fmt.Errorf("%w: a cancellation is never withdrawn", ErrIllegalTransition)
+	}
+	return nil
 }
 
 // FinishStep settles a running container step with the workload's result, which
