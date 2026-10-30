@@ -88,12 +88,16 @@ func TestKubernetesPluginDeploysDummyApp(t *testing.T) {
 	}
 	cleanupArgs := []string{"cleanup", "--operation-id", "cleanup-1"}
 	cleanupArgs = append(cleanupArgs, common...)
-	cleanupOut := run(t, nil, bin, cleanupArgs...)
-	if !strings.Contains(string(cleanupOut), `"deletedAt"`) {
-		t.Fatalf("cleanup did not delete: %s", cleanupOut)
-	}
-	if err := exec.Command(kubectl, "--kubeconfig", kubeconfig, "-n", "plugin-test", "get", "deployment", "dummy-app").Run(); err == nil {
-		t.Fatal("deployment still exists after cleanup")
+	if os.Getenv("KODAMA_KEEP_DUMMY") == "" {
+		cleanupOut := run(t, nil, bin, cleanupArgs...)
+		if !strings.Contains(string(cleanupOut), `"deletedAt"`) {
+			t.Fatalf("cleanup did not delete: %s", cleanupOut)
+		}
+		if err := exec.Command(kubectl, "--kubeconfig", kubeconfig, "-n", "plugin-test", "get", "deployment", "dummy-app").Run(); err == nil {
+			t.Fatal("deployment still exists after cleanup")
+		}
+	} else {
+		t.Log("KODAMA_KEEP_DUMMY set: dummy-app remains for inspection")
 	}
 
 	// The state API retains history and rejects a different payload for the same
