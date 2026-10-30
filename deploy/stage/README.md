@@ -14,7 +14,7 @@ deploy/stage/
       secrets.tf          # Namespaces, credentials, database roles, every Secret
       oauthsonas.tf       # Persona OIDC issuer (digest-pinned) with access code and ingress allowlist
       values/
-        kodama.yaml.tftpl # Renders external profile values validated by deploy/helm/kodama/values.schema.json
+        kodama.yaml.tftpl # Renders external profile values validated by deploy/charts/kodama/values.schema.json
         nats.yaml.tftpl   # NATS JetStream (TLS + token auth + persistent fileStore)
         loki.yaml.tftpl   # Loki SingleBinary (S3-backed, 30d retention, structured metadata enabled)
         alloy.yaml.tftpl  # Grafana Alloy (non-root Pod API log collection -> Loki structured metadata)

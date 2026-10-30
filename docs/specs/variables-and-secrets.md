@@ -27,7 +27,7 @@ Development uses a local keyfile of 32-byte KEKs supplied outside the database. 
 
 Configuration document version 2 selects `secrets.adapter: keyfile | kms`. Production requires KMS and one `secrets.kms.provider: aws | gcp | scw`; test uses keyfile and development injects its ephemeral wrapper. T-105 constructs the selected workload-authenticated client, validates key mappings and performs the existing bounded startup wrap/unwrap probe before serving. The `scw` configuration name maps to the established Scaleway persisted KEK identity. Invalid settings, denied credentials and probe failures stop startup. Client resources close on construction failure and after drained shutdown. Live cloud/deployment qualification is T-104; full retained-data recovery remains T-029 under VS-10.
 
-`secrets.keyfile.current/files` selects pre-provisioned 32-byte files. `secrets.kms.kekId/current/resources` selects pre-provisioned keys and retained labels; label mappings and installation identity remain stable across rollouts. Startup never rotates or creates a cloud key. See [chart configuration](../../deploy/helm/kodama/README.md#kms-selection) for fields and credential projections.
+`secrets.keyfile.current/files` selects pre-provisioned 32-byte files. `secrets.kms.kekId/current/resources` selects pre-provisioned keys and retained labels; label mappings and installation identity remain stable across rollouts. Startup never rotates or creates a cloud key. See [chart configuration](../../deploy/charts/kodama/README.md#kms-selection) for fields and credential projections.
 
 ### Workload delivery
 

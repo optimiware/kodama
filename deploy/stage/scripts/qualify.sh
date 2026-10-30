@@ -6,7 +6,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 usage() {
   cat <<'USAGE'
-Usage: deploy/stage/scripts/qualify.sh <command> --session <name> [--contract <stage_contract.json>] [--database scaleway|sql]
+Usage: deploy/stage/scripts/qualify.sh <command> --name <cluster> --session <name> [--contract <stage_contract.json>] [--database scaleway|sql]
 
   prepare   Creates (idempotently) the qualification session of the stage installation: its database on the stage
             PostgreSQL instance, namespace, generated keys and Secrets, NATS server and database relays, through
@@ -16,7 +16,10 @@ Usage: deploy/stage/scripts/qualify.sh <command> --session <name> [--contract <s
             removes its database. The session's state is removed with it.
   show      Prints the session handle.
 
-State lives outside the checkout (KODAMA_QUAL_STATE_DIR, then STAGE_STATE_DIR, default ~/kodama-stage/state).
+--name (or KODAMA_STAGE_CLUSTER) is the cluster the session belongs to (see deploy.sh). Its kubeconfig defaults to the one
+deploy.sh wrote for it and must select the contract's cluster. The session's files live in
+<state dir>/clusters/<name>/qualification/<session>/ (KODAMA_QUAL_STATE_DIR replaces the directory holding qualification/);
+its OpenTofu state is the object scw/<name>/qualification/<session>.tfstate in the state bucket (KODAMA_TFSTATE_BUCKET).
 prepare and destroy need KUBECONFIG, KODAMA_IMAGES_FILE and the operator's Scaleway credentials (SCW_*); destroy
 also needs go (it purges the session's qualification/<session>/ objects).
 
@@ -31,11 +34,13 @@ USAGE
 
 CMD="${1:-}"
 if [[ -n "${CMD}" ]]; then shift; fi
+NAME="${KODAMA_STAGE_CLUSTER:-}"
 SESSION=""
 CONTRACT_FILE=""
 DATABASE_MODE="${KODAMA_QUAL_DATABASE:-scaleway}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --name) NAME="$2"; shift 2 ;;
     --session) SESSION="$2"; shift 2 ;;
     --contract) CONTRACT_FILE="$2"; shift 2 ;;
     --database) DATABASE_MODE="$2"; shift 2 ;;
@@ -47,8 +52,11 @@ done
 [[ "${DATABASE_MODE}" =~ ^(scaleway|sql)$ ]] || die "--database must be scaleway or sql"
 [[ "${SESSION}" =~ ^[a-z][a-z0-9]{0,9}$ ]] || die "--session must be 1-10 lowercase letters or digits, starting with a letter"
 
-STATE_ROOT="${KODAMA_QUAL_STATE_DIR:-${STAGE_STATE_DIR:-${HOME}/kodama-stage/state}}"
-refuse_legacy_state_dir "${STATE_ROOT}"
+validate_cluster_name "${NAME}"
+export KODAMA_STAGE_CLUSTER="${NAME}"
+refuse_legacy_state_dir "${STAGE_STATE_DIR:-${HOME}/kodama-stage/state}"
+CDIR="$(cluster_dir "${NAME}")"
+STATE_ROOT="${KODAMA_QUAL_STATE_DIR:-${CDIR}}"
 SESSION_DIR="${STATE_ROOT}/qualification/${SESSION}"
 QUAL_DIR="${STAGE_DIR}/qualification"
 
@@ -61,8 +69,10 @@ fi
 require_cmd tofu helm kubectl python3
 [[ -n "${CONTRACT_FILE}" ]] || die "--contract is required"
 validate_stage_contract "${CONTRACT_FILE}"
+if [[ -z "${KUBECONFIG:-}" && -f "${CDIR}/kubeconfig" ]]; then export KUBECONFIG="${CDIR}/kubeconfig"; fi
 KUBECONFIG_PATH="${KUBECONFIG:-${HOME}/.kube/config}"
 [[ -f "${KUBECONFIG_PATH}" ]] || die_infra "KUBECONFIG is unset or unreadable"
+assert_kubeconfig_matches_contract "${KUBECONFIG_PATH}" "${CONTRACT_FILE}"
 
 mkdir -p "${SESSION_DIR}"
 chmod 0700 "${STATE_ROOT}" "${SESSION_DIR}" 2>/dev/null || true
@@ -76,12 +86,12 @@ STACK_TFVARS="${WORK_DIR}/stack.tfvars.json"
 write_stack_tfvars "${CONTRACT_FILE}" "${STACK_TFVARS}" "${KUBECONFIG_PATH}"
 PROJECT_ID=""
 if [[ "${DATABASE_MODE}" == "scaleway" ]]; then
-  PROJECT_ID="${SCW_DEFAULT_PROJECT_ID:-$(python3 - "${STAGE_DIR}/scw/terraform.tfvars" <<'PY' 2>/dev/null || true
+  PROJECT_ID="${SCW_DEFAULT_PROJECT_ID:-$(python3 - "${CDIR}/scw.tfvars" <<'PY' 2>/dev/null || true
 import re, sys
 print(re.search(r'project_id\s*=\s*"([^"]+)"', open(sys.argv[1]).read()).group(1))
 PY
 )}"
-  [[ -n "${PROJECT_ID}" ]] || die "the Scaleway project id is unknown (SCW_DEFAULT_PROJECT_ID or deploy/stage/scw/terraform.tfvars)"
+  [[ -n "${PROJECT_ID}" ]] || die "the Scaleway project id is unknown (SCW_DEFAULT_PROJECT_ID or ${CDIR}/scw.tfvars)"
 fi
 
 VARS="${WORK_DIR}/qualification.tfvars.json"
@@ -107,8 +117,9 @@ with open(out, "w") as fh:
 PY
 chmod 0600 "${VARS}"
 
-tf() { tofu -chdir="${QUAL_DIR}" "$@"; }
-tf init -input=false -backend-config="path=${SESSION_DIR}/qualification.tfstate" -reconfigure >/dev/null
+# The session initializes in its own data directory, so sessions and clusters can run at the same time.
+tf() { TF_DATA_DIR="${SESSION_DIR}/tfdata" tofu_state -chdir="${QUAL_DIR}" "$@"; }
+TF_DATA_DIR="${SESSION_DIR}/tfdata" tf_init_remote "${QUAL_DIR}" "scw/${NAME}/qualification/${SESSION}.tfstate"
 
 json_field() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.argv[2]])' "$1" "$2"; }
 
@@ -195,7 +206,7 @@ case "${CMD}" in
     tf output -json session >"${SESSION_DIR}/session.json"
     tf output -json contract >"${SESSION_DIR}/contract.json"
     tf output -raw kodama_values >"${SESSION_DIR}/values.yaml"
-    helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${SESSION_DIR}/values.yaml" >/dev/null
+    helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${SESSION_DIR}/values.yaml" >/dev/null
     log_info "session ${SESSION} prepared: $(json_field "${SESSION_DIR}/session.json" url)"
     ;;
   destroy)

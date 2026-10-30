@@ -9,7 +9,7 @@
 #   kubectl -n kodama-system create secret generic kodama-dev-runtime \
 #     --from-file=database-runtime-url=... --from-file=nats-token=... --from-file=master-key=...
 #
-#   helm template kodama deploy/helm/kodama -n kodama-system -f deploy/helm/kodama/values-dev.yaml
+#   helm template kodama deploy/charts/kodama -n kodama-system -f deploy/charts/kodama/values-dev.yaml
 
 profile: development
 

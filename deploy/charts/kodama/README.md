@@ -53,18 +53,18 @@ Run from the repository root.
 
 ```sh
 # Render without a cluster (schema validation happens here)
-helm template kodama deploy/helm/kodama --namespace kodama-system
-helm template kodama deploy/helm/kodama --namespace kodama-system -f deploy/helm/kodama/values-dev.yaml
-helm template kodama deploy/helm/kodama --namespace kodama-system -f deploy/helm/kodama/values-external.yaml
+helm template kodama deploy/charts/kodama --namespace kodama-system
+helm template kodama deploy/charts/kodama --namespace kodama-system -f deploy/charts/kodama/values-dev.yaml
+helm template kodama deploy/charts/kodama --namespace kodama-system -f deploy/charts/kodama/values-external.yaml
 
 # Lint every profile
-helm lint --strict deploy/helm/kodama
-helm lint --strict deploy/helm/kodama -f deploy/helm/kodama/values-dev.yaml
-helm lint --strict deploy/helm/kodama -f deploy/helm/kodama/values-external.yaml
+helm lint --strict deploy/charts/kodama
+helm lint --strict deploy/charts/kodama -f deploy/charts/kodama/values-dev.yaml
+helm lint --strict deploy/charts/kodama -f deploy/charts/kodama/values-external.yaml
 
 # Install (after creating the referenced Secrets; real install qualified by T-026)
-helm upgrade --install kodama deploy/helm/kodama --namespace kodama-system --create-namespace \
-  -f deploy/helm/kodama/values-external.yaml \
+helm upgrade --install kodama deploy/charts/kodama --namespace kodama-system --create-namespace \
+  -f deploy/charts/kodama/values-external.yaml \
   --set image.repository=<registry>/kodama --set image.tag=<tag> --set image.digest=sha256:<64 hex>
 ```
 
@@ -266,7 +266,7 @@ Removing a tenant from `execution.tenants` during an upgrade keeps its namespace
 The Go tests in this directory implement `helm_render_profiles` and `helm_policy_assertions` and need no cluster:
 
 ```sh
-KODAMA_REQUIRE_HELM=1 go test -count=1 ./deploy/helm/kodama/...
+KODAMA_REQUIRE_HELM=1 go test -count=1 ./deploy/charts/kodama/...
 ```
 
 Without `KODAMA_REQUIRE_HELM=1`, the tests skip when `helm` is not on `PATH`; with it, a missing binary fails. Each test uses an isolated Helm cache/config. They are structural (no golden files).

@@ -3,8 +3,8 @@
 #
 # Every host name, ARN, key name and digest below is a PLACEHOLDER (example.invalid, all-1 digests).
 # Override them (for example with a private values file) before a real install:
-#   helm template kodama deploy/helm/kodama -n kodama-system \
-#     -f deploy/helm/kodama/values-external.yaml \
+#   helm template kodama deploy/charts/kodama -n kodama-system \
+#     -f deploy/charts/kodama/values-external.yaml \
 #     --set image.repository=... --set image.digest=sha256:<64 hex>
 #
 # KMS: exactly one provider, selected by `secrets.kms.provider`.

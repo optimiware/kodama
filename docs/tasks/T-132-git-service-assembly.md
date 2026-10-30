@@ -4,8 +4,8 @@ milestone: production
 status: planned
 depends_on: [T-116, T-127, T-128, T-129, T-130, T-131]
 decision_blockers: []
-owns: [internal/app/, internal/cli/, internal/productmcp/, api/git-credentials.yaml, api/openapi.yaml, api/client/, deploy/helm/kodama/, go.mod, go.sum, docs/operations/, docs/implementation/assembly-status.md]
-check: make check-go PKGS='./internal/app/... ./internal/cli/... ./internal/productmcp/... ./api/client/... ./deploy/helm/kodama/...' && make api-check && make test-m1 test-m2 test-m3
+owns: [internal/app/, internal/cli/, internal/productmcp/, api/git-credentials.yaml, api/openapi.yaml, api/client/, deploy/charts/kodama/, go.mod, go.sum, docs/operations/, docs/implementation/assembly-status.md]
+check: make check-go PKGS='./internal/app/... ./internal/cli/... ./internal/productmcp/... ./api/client/... ./deploy/charts/kodama/...' && make api-check && make test-m1 test-m2 test-m3
 resources: [go]
 acceptance: [unit_app_git_service_composition, unit_app_git_route_forwards_with_assertion, unit_app_git_worker_command, unit_app_production_refuses_git_fixtures, unit_cli_repository_commands, unit_cli_git_credential_helper, unit_productmcp_project_repository_task_tools, unit_chart_git_hosting_render]
 ---

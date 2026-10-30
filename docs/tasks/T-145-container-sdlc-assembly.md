@@ -5,7 +5,7 @@ status: deferred
 depends_on: [T-144, T-132]
 decision_blockers: []
 plan: true
-owns: [internal/app/, internal/cli/, internal/delivery/, internal/deliverycleanup/, images/deployment-tools/, api/, deploy/helm/kodama/, go.mod, go.sum, docs/operations/, docs/implementation/assembly-status.md]
+owns: [internal/app/, internal/cli/, internal/delivery/, internal/deliverycleanup/, images/deployment-tools/, api/, deploy/charts/kodama/, go.mod, go.sum, docs/operations/, docs/implementation/assembly-status.md]
 check: make check-go PKGS='./internal/app/... ./internal/cli/... ./internal/delivery/... ./internal/deliverycleanup/... ./api/client/...' && make api-check && make test-chart && make docs-check
 resources: [go]
 acceptance: [unit_container_sdlc_composition, unit_generic_tools_without_catalogues, unit_sdlc_cli_roundtrip, unit_legacy_delivery_drain]

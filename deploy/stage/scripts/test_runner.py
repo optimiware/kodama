@@ -87,7 +87,7 @@ class RunnerBase(unittest.TestCase):
         self.scripts.mkdir(parents=True)
         for name in ("lib.sh", "readiness-cases.json", "verify_image_revision.py"):
             shutil.copyfile(SOURCE / name, self.scripts / name)
-        chart = self.repo / "deploy/helm/kodama"
+        chart = self.repo / "deploy/charts/kodama"
         chart.mkdir(parents=True)
         (chart / "Chart.yaml").write_text("name: offline-fixture\n")
         for args in (["init", "-q"], ["add", "."], ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"]):
@@ -131,7 +131,7 @@ if args[0] == 'list':
         if any(pkg.endswith(a.removeprefix('./').removesuffix('/...')) for a in args[1:]): print(pkg)
     sys.exit(0)
 if os.environ.get('MOCK_COMMIT') and chart:
-    pathlib.Path('deploy/helm/kodama/Chart.yaml').write_text('changed: true')
+    pathlib.Path('deploy/charts/kodama/Chart.yaml').write_text('changed: true')
     subprocess.run(['git', 'add', '.'], check=True)
     subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'drift'], check=True)
 if chart: pkgs = [x for x in pkgs if x.endswith('kube-full')]

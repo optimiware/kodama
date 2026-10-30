@@ -4,7 +4,7 @@ milestone: M4
 status: deferred
 depends_on: [T-056]
 decision_blockers: []
-owns: [deploy/helm/kodama/profiles/hosted/, test/e2e/hosted-isolation/, docs/operations/hosted-isolation.md]
+owns: [deploy/charts/kodama/profiles/hosted/, test/e2e/hosted-isolation/, docs/operations/hosted-isolation.md]
 ---
 # T-055 — Untrusted hosted execution qualification
 

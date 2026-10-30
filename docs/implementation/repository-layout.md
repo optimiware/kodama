@@ -41,7 +41,7 @@ internal/
   cli/                     # command modules; no domain logic
 api/                       # module-owned OpenAPI fragments
 contracts/runtime/         # shared runtime JSON schemas/fixtures
-deploy/helm/kodama/         # chart
+deploy/charts/kodama/         # chart
 dev/                       # Compose dependencies, fixtures, probes, locks
 dev/internal/, dev/cmd/    # scoped Compose/kind environment and repository checks, stack chosen by DEV_STACK (Go, stdlib only)
 test/e2e/                  # milestone-specific suites

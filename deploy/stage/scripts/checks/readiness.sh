@@ -46,7 +46,7 @@ if [[ -z "${VALUES_FILE}" ]]; then
   render_kodama_values_from_contract "${CONTRACT_FILE}" "${VALUES_FILE}"
 fi
 verify_values_provenance "${VALUES_FILE}"
-helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${VALUES_FILE}" >/dev/null
+helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${VALUES_FILE}" >/dev/null
 
 suite_rc=0
 if [[ -z "${RESULTS_FILE}" ]]; then

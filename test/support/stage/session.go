@@ -67,6 +67,7 @@ func (s *Session) ValuesFile() string { return filepath.Join(s.Dir, "values.yaml
 const (
 	EnvSession    = "KODAMA_QUAL_SESSION"
 	EnvStateDir   = "KODAMA_QUAL_STATE_DIR"
+	EnvCluster    = "KODAMA_STAGE_CLUSTER"
 	EnvKubeconfig = "KODAMA_TEST_KUBECONFIG"
 )
 
@@ -94,6 +95,9 @@ func LoadSession(t testing.TB) *Session {
 		state = os.Getenv("STAGE_STATE_DIR")
 		if state == "" {
 			state = filepath.Join(home, "kodama-stage", "state")
+		}
+		if cluster := os.Getenv(EnvCluster); cluster != "" {
+			state = filepath.Join(state, "clusters", cluster)
 		}
 	}
 	dir := filepath.Join(state, "qualification", name)
@@ -134,7 +138,7 @@ func LoadSession(t testing.TB) *Session {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.ChartDir = filepath.Join(filepath.Dir(strings.TrimSpace(string(out))), "deploy", "helm", "kodama")
+	s.ChartDir = filepath.Join(filepath.Dir(strings.TrimSpace(string(out))), "deploy", "charts", "kodama")
 	return &s
 }
 

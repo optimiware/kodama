@@ -1,9 +1,10 @@
 terraform {
   required_version = ">= 1.8.0"
 
-  # Partial configuration: deploy.sh passes -backend-config=path=$STAGE_STATE_DIR/<root>.tfstate so state
-  # (which holds database and API-key secrets) lives outside the checkout.
-  backend "local" {}
+  # Partial configuration: the scripts pass the bucket, key and endpoint (-backend-config). State lives in the Scaleway
+  # Object Storage bucket created once by scripts/state-bucket.sh, one object per cluster name, with native locking.
+  # It holds database and API-key secrets: protect the bucket like a credential store.
+  backend "s3" {}
 
   required_providers {
     helm = {

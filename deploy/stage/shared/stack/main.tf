@@ -52,7 +52,7 @@ locals {
 
   # The Helm provider does not notice edits inside a local chart directory, so the release description
   # carries a digest of every chart file: a chart change always produces an upgrade.
-  kodama_chart_dir    = "${path.module}/../../../helm/kodama"
+  kodama_chart_dir    = "${path.module}/../../../charts/kodama"
   kodama_chart_digest = substr(sha256(join("", [for f in sort(tolist(fileset(local.kodama_chart_dir, "**"))) : "${f}:${filesha256("${local.kodama_chart_dir}/${f}")}" if !endswith(f, "_test.go")])), 0, 16)
 
   grafana_values = templatefile("${path.module}/values/grafana.yaml.tftpl", {
@@ -211,7 +211,7 @@ resource "helm_release" "cert_manager" {
 # does not need the cert-manager CRDs at plan time.
 resource "helm_release" "cluster_issuer" {
   name             = "kodama-cluster-issuer"
-  chart            = "${path.module}/charts/cluster-issuer"
+  chart            = "${path.module}/../../../charts/cluster-issuer"
   namespace        = "cert-manager"
   create_namespace = false
   atomic           = true

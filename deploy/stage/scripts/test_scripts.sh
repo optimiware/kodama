@@ -22,6 +22,8 @@ shellcheck -x \
   "${STAGE_DIR}/scripts/lib.sh" \
   "${STAGE_DIR}/scripts/deps-init.sh" \
   "${STAGE_DIR}/scripts/deploy.sh" \
+  "${STAGE_DIR}/scripts/cluster.sh" \
+  "${STAGE_DIR}/scripts/state-bucket.sh" \
   "${STAGE_DIR}/scripts/qualify.sh" \
   "${STAGE_DIR}/scripts/gate.sh" \
   "${STAGE_DIR}/scripts/evidence.sh" \
@@ -121,8 +123,8 @@ EOF
     tofu -chdir="${RENDER_DIR}" console <<<"jsonencode(local.${tpl})" \
       | python3 -c 'import json,sys; sys.stdout.write(json.loads(json.loads(sys.stdin.read().strip())))' >"${RENDER_DIR}/${tpl}.yaml"
   done
-  helm lint --strict "${REPO_ROOT}/deploy/helm/kodama" -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
-  helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
+  helm lint --strict "${REPO_ROOT}/deploy/charts/kodama" -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
+  helm template kodama "${REPO_ROOT}/deploy/charts/kodama" --namespace kodama-system -f "${WORK_DIR}/values-${cloud}.yaml" >/dev/null
 done
 
 log_info "4. Shared stack: OpenTofu validation and chart/Secret key drift checks"
@@ -148,7 +150,7 @@ tofu -chdir="${STAGE_DIR}/shared/stack" validate >/dev/null
 tofu -chdir="${STAGE_DIR}/qualification" init -input=false -backend=false >/dev/null
 tofu -chdir="${STAGE_DIR}/qualification" validate >/dev/null
 
-helm template kodama "${REPO_ROOT}/deploy/helm/kodama" --namespace kodama-system -f "${WORK_DIR}/values-scw.yaml" >"${WORK_DIR}/chart-scw.yaml"
+helm template kodama "${REPO_ROOT}/deploy/charts/kodama" --namespace kodama-system -f "${WORK_DIR}/values-scw.yaml" >"${WORK_DIR}/chart-scw.yaml"
 python3 - "${WORK_DIR}/chart-scw.yaml" "${STAGE_DIR}/shared/stack/secrets.tf" <<'PY'
 import re
 import sys
@@ -446,4 +448,75 @@ prepare_results_for_contract "${WORK_DIR}/contract-aws-prod.json" "${WORK_DIR}/v
   --results-dir "${RESULTS_DIR}" --evidence-root "${EVIDENCE_ROOT}"
 
 [[ -f "${EVIDENCE_ROOT}/latest-release-aws.json" ]] || die "missing latest-release-aws.json receipt"
+log_info "8. Named clusters: state keys, isolation, kubeconfig guard and the protected state bucket"
+python3 "${STAGE_DIR}/scripts/state_s3.py" selftest
+
+for good in blue stage1 a a-b; do validate_cluster_name "${good}"; done
+for bad in "" Blue 1blue blue- -blue "blue_green" "this-name-is-far-too-long"; do
+  if (validate_cluster_name "${bad}") 2>/dev/null; then die "expected cluster name '${bad}' to be rejected"; fi
+done
+
+export KODAMA_TFSTATE_BUCKET="kodama-tfstate-test"
+for name in blue green; do
+  render_backend_config "${WORK_DIR}/backend-${name}.hcl" "scw/${name}/infra.tfstate"
+done
+grep -q 'key *= "scw/blue/infra.tfstate"' "${WORK_DIR}/backend-blue.hcl" || die "backend config lost the cluster key"
+grep -q 'key *= "scw/green/infra.tfstate"' "${WORK_DIR}/backend-green.hcl" || die "two clusters must have distinct state keys"
+grep -q 'use_lockfile *= true' "${WORK_DIR}/backend-blue.hcl" || die "state locking is not enabled"
+if grep -Eqi 'secret|access_key' "${WORK_DIR}/backend-blue.hcl"; then die "the backend config must not hold credentials"; fi
+
+# The backend settings are accepted by OpenTofu (the endpoint is a dead local port, so only the settings are exercised).
+BACKEND_PROBE="${WORK_DIR}/backend-probe"
+mkdir -p "${BACKEND_PROBE}"
+cp "${STAGE_DIR}/scw/versions.tf" "${BACKEND_PROBE}/versions.tf"
+sed -i.bak 's/^provider "scaleway".*/provider "scaleway" {}/;/^  project_id/d;/^  region /d;/^  zone /d' "${BACKEND_PROBE}/versions.tf"
+probe_out="$(SCW_S3_ENDPOINT="http://127.0.0.1:9" TF_DATA_DIR="${WORK_DIR}/probe-data" \
+  AWS_ACCESS_KEY_ID=x AWS_SECRET_ACCESS_KEY=y AWS_MAX_ATTEMPTS=1 \
+  tofu -chdir="${BACKEND_PROBE}" init -input=false -reconfigure -backend-config="${WORK_DIR}/backend-blue.hcl" 2>&1 || true)"
+if grep -Eq 'Unsupported argument|Invalid backend|unknown (attribute|argument)' <<<"${probe_out}"; then
+  printf '%s\n' "${probe_out}" >&2
+  die "OpenTofu rejected the generated S3 backend settings"
+fi
+
+# Clusters never share files, installation ids or data directories.
+export STAGE_STATE_DIR="${WORK_DIR}/cluster-state"
+(use_cluster scw blue && printf '%s %s %s\n' "${CDIR}" "${INSTALLATION_ID}" "${TFVARS}") >"${WORK_DIR}/use-blue"
+(use_cluster scw green && printf '%s %s %s\n' "${CDIR}" "${INSTALLATION_ID}" "${TFVARS}") >"${WORK_DIR}/use-green"
+grep -q "clusters/blue kodama-blue .*clusters/blue/scw.tfvars" "${WORK_DIR}/use-blue" || die "cluster blue has the wrong files or installation id"
+grep -q "clusters/green kodama-green .*clusters/green/scw.tfvars" "${WORK_DIR}/use-green" || die "cluster green has the wrong files or installation id"
+
+# A kubeconfig that selects another cluster is refused before anything is applied.
+touch "${WORK_DIR}/blue.kubeconfig"
+MOCK_CLUSTER_SERVER="https://k8s.scw.stage.optimi.dev:443" PATH="${MOCK_BIN}:${PATH}" \
+  assert_kubeconfig_matches_contract "${WORK_DIR}/blue.kubeconfig" "${WORK_DIR}/contract-scw.json"
+if (MOCK_CLUSTER_SERVER="https://neighbour.example.com" PATH="${MOCK_BIN}:${PATH}" \
+  assert_kubeconfig_matches_contract "${WORK_DIR}/blue.kubeconfig" "${WORK_DIR}/contract-scw.json") 2>/dev/null; then
+  die "expected a kubeconfig of another cluster to be refused"
+fi
+
+# Destroy refuses a production tier and a prompt-less run, before any state is read.
+mkdir -p "${STAGE_STATE_DIR}/clusters/prod"
+printf 'environment_tier = "production"\n' >"${STAGE_STATE_DIR}/clusters/prod/scw.tfvars"
+if "${STAGE_DIR}/scripts/cluster.sh" destroy --cloud scw --name prod --yes 2>/dev/null; then
+  die "expected cluster.sh destroy to refuse a production tier cluster"
+fi
+printf 'environment_tier = "staging"\n' >"${STAGE_STATE_DIR}/clusters/blue/scw.tfvars" 2>/dev/null || {
+  mkdir -p "${STAGE_STATE_DIR}/clusters/blue"
+  printf 'environment_tier = "staging"\n' >"${STAGE_STATE_DIR}/clusters/blue/scw.tfvars"
+}
+if "${STAGE_DIR}/scripts/cluster.sh" destroy --cloud scw --name blue </dev/null 2>/dev/null; then
+  die "expected cluster.sh destroy without --yes and without a terminal to be refused"
+fi
+if KODAMA_TFSTATE_BUCKET=x SCW_ACCESS_KEY=x SCW_SECRET_KEY=y python3 "${STAGE_DIR}/scripts/state_s3.py" delete "scw/blue/" 2>/dev/null; then
+  die "expected state_s3.py to refuse a prefix instead of an exact key"
+fi
+
+# Nothing in the stage tooling can delete the state bucket.
+if grep -rnEi 'bucket delete|s3 rb|rb s3://|aws_s3_bucket|scaleway_object_bucket' \
+  "${STAGE_DIR}/scripts/cluster.sh" "${STAGE_DIR}/scripts/state-bucket.sh" "${STAGE_DIR}/scripts/state_s3.py" "${STAGE_DIR}/scripts/deploy.sh" \
+  "${STAGE_DIR}/scripts/qualify.sh"; then
+  die "a stage script may delete or manage the state bucket"
+fi
+unset STAGE_STATE_DIR KODAMA_TFSTATE_BUCKET
+
 log_info "PASS all stage OpenTofu, Helm, ShellCheck, stack validation and critical-path gate checks"
