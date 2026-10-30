@@ -20,9 +20,16 @@ const (
 // The only Localhost profiles a probe Pod may reference: the installation
 // installed seccomp and AppArmor profiles of the O-30 `step` role (seam S3).
 // seccompProfile.localhostProfile is relative to the kubelet seccomp root.
+// The AppArmor profile is the named, installed, versioned
+// kodama-rootless-build-v2 (flags=(unconfined) plus userns, per the 2026-10-30
+// owner amendment of O-30); the generic AppArmor Unconfined profile type and
+// every other Localhost name, including the v1 name, stay refused.
 const (
 	StepSeccompProfile  = "kodama/kodama-rootless-build-v1.json"
-	StepAppArmorProfile = "kodama-rootless-build-v1"
+	StepAppArmorProfile = "kodama-rootless-build-v2"
+	// StepAppArmorKernelState is what /proc/self/attr/current shows inside a
+	// step Pod: an unconfined-flag profile is listed in unconfined mode.
+	StepAppArmorKernelState = StepAppArmorProfile + " (unconfined)"
 )
 
 // allowedAddCaps are the only capabilities a probe Pod may add: the two the
@@ -163,6 +170,13 @@ func profileAllowed(field string, v any) (string, bool) {
 	return t, false
 }
 
+func installedProfileName(field string) string {
+	if field == "appArmorProfile" {
+		return StepAppArmorProfile
+	}
+	return StepSeccompProfile
+}
+
 func isLocalhostProfile(field string, v any) bool {
 	p, _ := v.(map[string]any)
 	if t, _ := p["type"].(string); t != "Localhost" {
@@ -188,7 +202,7 @@ func guardSecurity(pod, where string, sc, podSC map[string]any, container bool) 
 	for _, field := range []string{"seccompProfile", "appArmorProfile"} {
 		if p, ok := sc[field]; ok {
 			if desc, allowed := profileAllowed(field, p); !allowed {
-				return fmt.Errorf("guard: pod %s %s sets %s %q (only RuntimeDefault or the installed %s profile is permitted)", pod, where, field, desc, "kodama-rootless-build-v1")
+				return fmt.Errorf("guard: pod %s %s sets %s %q (only RuntimeDefault or the installed %s profile is permitted)", pod, where, field, desc, installedProfileName(field))
 			}
 		}
 	}

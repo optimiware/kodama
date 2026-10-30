@@ -1,9 +1,9 @@
 # Run builder node profile (T-120)
 
-**Status: configured, not qualified.** This is the installable seccomp and AppArmor node profile for ordinary
-`run_shared` step Pods ([O-30](../decisions.md#revised-scope--2026-10-29-o-30)). The files below exist and are
-unit-tested offline. Nothing has been installed on a node, and no rootless Buildah build has been run under these
-profiles. Installation on the stage cluster and the real build qualification are
+**Status: configured, requalification pending.** This is the installable seccomp and AppArmor node profile for ordinary
+`run_shared` step Pods ([O-30](../decisions.md#revised-scope--2026-10-29-o-30), AppArmor amended 2026-10-30). The files
+below exist and are unit-tested offline. The stage evidence that motivated the AppArmor v2 profile (below) is an
+experiment, not a qualification: the real build qualification is
 [T-121](../tasks/T-121-run-profile-requalification.md); until that passes, rendered files are not support
 evidence and no `buildah` capability may be advertised from them.
 
@@ -22,17 +22,30 @@ recorded the exact denials on Ubuntu 24.04.5, kernel `6.8.0-136-generic`, contai
   permission, and the nodes set `kernel.apparmor_restrict_unprivileged_userns=1`. `unshare -U` works but
   `unshare -Urm` fails (`write failed /proc/self/uid_map: Operation not permitted`, `can't mount none on /`).
 
+The first AppArmor profile (`kodama-rootless-build-v1`, the containerd default shape with `userns,` and mount rules) was
+not enough on the stage nodes (Ubuntu 24.04.5, kernel 6.8, AppArmor 4.0): Buildah's `chroot` isolation remounts `/dev`
+with `ro, nosuid, noexec, remount, rbind, rprivate` and AppArmor denied it (`failed flags match`). The kernel keeps
+`MS_PRIVATE` on a remount while the AppArmor parser cannot express propagation flags in remount rules, so **no confined
+AppArmor rule can allow it** (an explicit `remount options in (… rprivate …)` rule compiled and was still denied). The
+owner therefore decided on 2026-10-30 ([O-30 amendment](../decisions.md#revised-scope--2026-10-29-o-30)) that the step
+role's AppArmor profile is `kodama-rootless-build-v2`: unconfined by AppArmor but permitted to create user namespaces,
+the approach Ubuntu itself ships for buildah, podman, crun and runc. On stage that profile built a Containerfile with
+`RUN` and `chown`, with the seccomp profile still enforced (`Seccomp: 2`), `CapBnd 0xc0` (`SETUID`/`SETGID` only) and
+UID 1000 in a Pod user namespace.
+
 The profiles replace both defaults for step Pods only. They do **not** add `SYS_ADMIN`, run privileged Pods, or touch
 the shared defaults, `attempt_private` workloads or any other Pod.
 
 | Artifact | Path | Pod reference |
 | --- | --- | --- |
 | seccomp | [`seccomp/kodama-rootless-build-v1.json`](../../deploy/profiles/run-builders/seccomp/kodama-rootless-build-v1.json) | `seccompProfile: {type: Localhost, localhostProfile: kodama/kodama-rootless-build-v1.json}` |
-| AppArmor | [`apparmor/kodama-rootless-build-v1`](../../deploy/profiles/run-builders/apparmor/kodama-rootless-build-v1) | `appArmorProfile: {type: Localhost, localhostProfile: kodama-rootless-build-v1}` |
+| AppArmor | [`apparmor/kodama-rootless-build-v2`](../../deploy/profiles/run-builders/apparmor/kodama-rootless-build-v2) | `appArmorProfile: {type: Localhost, localhostProfile: kodama-rootless-build-v2}` |
 | installer | [`installer/node-profiles.yaml`](../../deploy/profiles/run-builders/installer/node-profiles.yaml) (rendered by `cmd/render`) | not referenced by Pods |
 
-A change in profile behavior ships as a new name (`-v2`); `v1` content only changes to fix defects, and that changes
-the installed hashes.
+A change in profile behavior ships as a new name; a published name is never reinterpreted. The seccomp profile is
+still `v1`; the AppArmor profile is `v2` because its behavior changed (the `v1` AppArmor name was never used by a
+delivered run and is no longer shipped). `v1` seccomp content only changes to fix defects, and that changes the
+installed hashes.
 
 ## The seccomp profile
 
@@ -57,7 +70,7 @@ These syscalls are not capabilities. The kernel still requires `CAP_SYS_ADMIN` i
 target. The step container itself holds only `SETUID`/`SETGID`, so it cannot mount or reconfigure anything in the
 Pod's own namespaces; only a nested user namespace it creates gives it capabilities, over that namespace alone. A
 `clone3` flag set lives in a struct that seccomp cannot inspect, so namespace creation is no longer filtered by flags;
-the boundary is the user-namespace/capability model plus the AppArmor profile.
+the boundary is the user-namespace/capability model plus the rest of the step role (AppArmor no longer confines it; see below).
 
 Still denied, as in the default: kernel modules (`init_module`, `finit_module`, `delete_module`), `kexec_*`, `reboot`,
 `bpf`, `perf_event_open` (Buildah rootless does not need it), `swapon`/`swapoff`, `settimeofday`/`clock_settime`/`stime`,
@@ -68,20 +81,39 @@ processes it is already allowed to trace.
 
 ## The AppArmor profile
 
-Source: the containerd **v2.3.6** template (`contrib/apparmor/template.go`, same revision), instantiated for the profile
-name `kodama-rootless-build-v1` with the same `attach_disconnected,mediate_deleted` flags. Deviations:
+Source: [`apparmor/kodama-rootless-build-v2`](../../deploy/profiles/run-builders/apparmor/kodama-rootless-build-v2), the
+whole profile being:
 
-| Deviation | Why |
-| --- | --- |
-| `abi <abi/4.0>,` instead of `abi/3.0` | The `userns` rule class exists from abi 4.0 (AppArmor 4.x, Ubuntu 24.04 ships 4.0.1) |
-| `userns,` | With `apparmor_restrict_unprivileged_userns=1`, a profile that grants `userns` is how a confined process may create a user namespace |
-| `deny mount,` replaced by `mount,` `remount,` `umount,` `pivot_root,` | The kernel only lets the build mount in namespaces it owns; the default's blanket deny blocked the build's own mounts |
-| `unix,` added | abi 4.0 mediates the `unix` class separately; abi 3.0 left it unmediated. Added for parity so local sockets keep working |
-| Fixed signal peers (`unconfined`, `runc`, `crun`, itself) | The template fills the container-daemon and rootlesskit peers at load time; this file is installed verbatim. The nodes' containerd is assumed unconfined (T-121 verifies) |
+```text
+abi <abi/4.0>,
+include <tunables/global>
 
-Unchanged: `network`, `capability`, `file`, and every default denial of host `/proc` and `/sys` writes
-(`/proc/sys`, `sysrq-trigger`, `kcore`, `/sys/firmware`, powercap, `/sys/kernel/security`, non-cgroup `/sys/fs`).
-The unit tests compare these lines against the default and compile the file with `apparmor_parser` 4.x when it is installed.
+profile kodama-rootless-build-v2 flags=(unconfined) {
+  userns,
+}
+```
+
+`flags=(unconfined)` makes AppArmor mediate nothing for the confined process, and `userns,` is the rule that lets it
+create a user namespace while `kernel.apparmor_restrict_unprivileged_userns=1` (the Ubuntu 24.04 default); `abi/4.0` is
+needed for the `userns` class. The kernel lists such a profile in **unconfined** mode, so the in-Pod view is
+`/proc/self/attr/current` = `kodama-rootless-build-v2 (unconfined)` and the node's profile list shows the same entry; an
+`(enforce)` or `(complain)` listing of that name is not the shipped profile. `ValidateAppArmor` accepts exactly this
+body: it requires `flags=(unconfined)` and `userns,` and refuses a profile that adds any rule (including includes), drops
+`userns`, changes the flags or the name.
+
+**What it does not protect.** AppArmor no longer confines the step container: the `/proc`, `/sys` and `kcore` write
+denials, the mount rules and the signal/ptrace peer rules of the earlier v1 profile are gone. Containment of a step is the
+other layers, all unchanged: a non-root UID 1000 in a Pod user namespace (`hostUsers: false`), capabilities dropped to
+`SETUID`/`SETGID`, the Localhost seccomp profile above (which still denies kernel modules, `bpf`, `kexec`, `reboot` and the
+rest), and the absence of privileged mode, host namespaces, `hostPath` and engine sockets. A profile name is also not an
+escape hatch: the generic AppArmor `Unconfined` profile type stays refused everywhere (Kodama's step template, adoption
+verification and the qualification guard); only this named, installed, versioned `Localhost` profile is allowed, and only
+`run_shared` step Pods reference it (services and preparation keep `RuntimeDefault`).
+
+History: the abandoned v1 profile was derived from the containerd **v2.3.6** template. Its
+`deny mount,` replacement (explicit mount rules), `unix,` rule and default `/proc`/`/sys` denials cannot be kept, because
+the kernel's `MS_PRIVATE` remount cannot be allowed by any confined rule. The unit tests compare the shipped file with the
+exact expected body and compile it with `apparmor_parser` 4.x when it is installed.
 
 ## Pod fields that reference the profiles
 
@@ -97,7 +129,7 @@ spec:
         allowPrivilegeEscalation: true  # only because SETUID/SETGID are added (newuidmap/newgidmap)
         capabilities: {drop: [ALL], add: [SETUID, SETGID]}
         seccompProfile: {type: Localhost, localhostProfile: kodama/kodama-rootless-build-v1.json}
-        appArmorProfile: {type: Localhost, localhostProfile: kodama-rootless-build-v1}
+        appArmorProfile: {type: Localhost, localhostProfile: kodama-rootless-build-v2}
 ```
 
 Pod Security: this shape is admitted by `baseline` (it permits `SETUID`/`SETGID`, a `Localhost` seccomp profile and a
@@ -111,8 +143,8 @@ the kubelet. Both are visible failures; neither falls back to a weaker profile.
 
 ## What stays forbidden
 
-For tenant Pods: `SYS_ADMIN` (or any capability beyond `SETUID`/`SETGID`), `privileged`, `Unconfined` seccomp or
-AppArmor, host namespaces, `hostPath`, container-engine sockets, `/dev/fuse`, devices and a root user. Admission and
+For tenant Pods: `SYS_ADMIN` (or any capability beyond `SETUID`/`SETGID`), `privileged`, the generic `Unconfined`
+seccomp or AppArmor profile type (the named `kodama-rootless-build-v2` `Localhost` profile is not that type), host namespaces, `hostPath`, container-engine sockets, `/dev/fuse`, devices and a root user. Admission and
 adoption verify the fields above ([seam S3](../implementation/run-workspace-services-builders.md)). A wider ceiling
 needs a new owner decision.
 
@@ -137,9 +169,9 @@ kubectl -n kodama-node-profiles rollout status daemonset/kodama-node-profiles --
 
 The DaemonSet Pod on each node (including tainted nodes) copies the seccomp file atomically, loads the AppArmor
 profile through the **host's** `apparmor_parser` (`nsenter -t 1 -m`, profile on stdin; the profile is never written to
-the host file system), writes `INSTALLED`, and reports ready only after the kernel lists the profile in enforce mode. It stays
+the host file system), writes `INSTALLED`, and reports ready only after the kernel lists the profile exactly as `kodama-rootless-build-v2 (unconfined)`. It stays
 running and re-checks every five minutes, so profiles are re-applied after a node reboot (which clears loaded
-AppArmor profiles), a Pod restart, file drift or a profile that was switched to complain mode. A failed read of the
+AppArmor profiles), a Pod restart, file drift or a profile listed in any other state (for example enforce or complain). A failed read of the
 kernel's profile list is reported as not ready and retried; it is never treated as absence. Pods scheduled onto a freshly joined node before the installer is ready fail
 visibly and are retried.
 
@@ -161,13 +193,15 @@ kubectl debug node/$NODE -it --profile=sysadmin --image=docker.io/library/ubuntu
     ls -l /var/lib/kubelet/seccomp/kodama/kodama-rootless-build-v1.json
     cat  /var/lib/kubelet/seccomp/kodama/INSTALLED
     sha256sum /var/lib/kubelet/seccomp/kodama/kodama-rootless-build-v1.json
-    aa-status | grep kodama-rootless-build-v1
+    aa-status | grep kodama-rootless-build
     sysctl kernel.apparmor_restrict_unprivileged_userns'
 ```
 
-Expected: the JSON file exists; `INSTALLED` names `kodama-rootless-build-v1` with the seccomp and AppArmor sha256 values
-(compare with `sha256sum` of the repository files); `aa-status` lists `kodama-rootless-build-v1` as an enforced
-profile. Delete the debug Pod afterwards (`kubectl get pods` shows `node-debugger-*`). Loaded and present is still
+Expected: the JSON file exists; `INSTALLED` names `profile=kodama-rootless-build-v2` with the seccomp (`kodama/kodama-rootless-build-v1.json`) and
+AppArmor sha256 values (compare with `sha256sum` of the repository files); `aa-status` (or
+`/sys/kernel/security/apparmor/profiles`) lists exactly `kodama-rootless-build-v2 (unconfined)`. A node that was
+loaded with the abandoned v1 profile also lists `kodama-rootless-build-v1 (enforce)`; no Pod references it, and it is
+harmless until a reboot clears it (or `apparmor_parser -R` on the host removes it). Delete the debug Pod afterwards (`kubectl get pods` shows `node-debugger-*`). Loaded and present is still
 **not** qualified: T-121 must run a real build.
 
 ## Roll back and uninstall
@@ -175,41 +209,48 @@ profile. Delete the debug Pod afterwards (`kubectl get pods` shows `node-debugge
 Deleting the installer DaemonSet leaves the profiles in place, which is deliberate so running step Pods keep working.
 To remove the profiles:
 
-1. Make sure no Pod references them (`kubectl get pods -A -o yaml | grep kodama-rootless-build-v1`) and that the
+1. Make sure no Pod references them (`kubectl get pods -A -o yaml | grep kodama-rootless-build`) and that the
    policy no longer admits `run_shared` steps.
 2. `kubectl -n kodama-node-profiles delete daemonset kodama-node-profiles`.
 3. `go run ./deploy/profiles/run-builders/cmd/render --uninstall | kubectl apply -f -` and wait with
    `kubectl -n kodama-node-profiles rollout status daemonset/kodama-node-profiles-uninstall`. Each node removes the
    seccomp file and `INSTALLED` and unloads the AppArmor profile; the Pod reports ready only after the profile is no
-   longer loaded. `aa-status | grep kodama-rootless-build-v1` returns nothing afterwards.
+   longer loaded. `aa-status | grep kodama-rootless-build-v2` returns nothing afterwards.
 4. `go run ./deploy/profiles/run-builders/cmd/render --uninstall | kubectl delete -f -`, then
    `kubectl delete -f deploy/profiles/run-builders/installer/node-profiles.yaml`.
 
 To roll back a profile **change**, reapply the previous revision of `node-profiles.yaml`; the changed profile hash in
 the DaemonSet Pod template rolls every node. Because the profile name embeds a version, a new profile version
-(`-v2`) can be installed side by side and selected by the policy; old step Pods keep running with `v1`.
+(for example `-v3`) can be installed side by side and selected by a new policy id; old step Pods keep running with `v2`.
+Rolling back to a confined AppArmor profile is not available for Buildah's `chroot` isolation (the reason for v2): the
+alternatives are the previous, non-working v1 revision or removing the profiles and the `run_shared` admission.
 
 ## Local checks performed
 
 * The unit tests (`make check-go PKGS='./deploy/profiles/run-builders/...'`) prove the profile content, denials,
   deterministic rendering with a digest-pinned image, hostPath restriction, and the installer script's install, repair
   and uninstall paths against a fake `nsenter`/`apparmor_parser`.
-* `apparmor_parser -QK -S` compiled the AppArmor profile on Ubuntu 24.04 with AppArmor 4.0.1.
+* The AppArmor profile compiles with `apparmor_parser -QK -S` (the unit test does it when the parser is installed;
+  set `KODAMA_REQUIRE_APPARMOR_PARSER=1` to make a missing parser a failure).
 * The seccomp profile loaded in a local Podman container (crun) with all capabilities dropped and
   `unshare -Urm` followed by a `tmpfs` mount and `chroot` succeeded. That machine has no AppArmor and its default
   profile is more permissive, so it proves the file parses and permits the syscalls, nothing about the stage nodes.
 
-## Assumptions T-121 must verify on the real nodes
+## Assumptions T-121 verified on the real nodes
+
+T-121 verified these on the Scaleway stage on 2026-10-30 (qualification run `fbaeac`, verdict `qualified`;
+[report](../acceptance/run-resource-profile.md)).
 
 1. The host has `/usr/sbin/apparmor_parser` ≥ 4.0 and `/etc/apparmor.d/abi/4.0`, and `apparmor_parser -r -K` on stdin
-   loads the profile (the installer fails loudly otherwise), and the kernel's feature set accepts the `userns`, `mount`
-   and `unix` rules without downgrading them.
-2. With `apparmor_restrict_unprivileged_userns=1`, `userns,` in this profile lets the step container create a user
+   loads the v2 profile (the installer fails loudly otherwise). The kernel lists it as
+   `kodama-rootless-build-v2 (unconfined)`.
+2. With `apparmor_restrict_unprivileged_userns=1`, the profile's `userns,` rule lets the step container create a user
    namespace and `newuidmap`/`newgidmap` write maps in a `hostUsers: false` Pod. `allowPrivilegeEscalation: true`
-   must be enough for them to gain file capabilities.
-3. `unshare -Urm` and `buildah build` (chroot isolation, VFS) succeed; the nested `/proc`/`/sys` mounts are not
-   blocked by the retained `/proc`/`/sys` denials or by the kernel's mount-visibility rules (a masked `/proc` can block
-   fresh `proc` mounts; if so, the S3 `procMount: unmasked` field is the documented follow-up, not a new profile).
+   is enough for them to gain file capabilities.
+3. `unshare -Urm` and `buildah build` (chroot isolation, VFS) succeed. v2 has no AppArmor mount, `/proc` or `/sys`
+   rules; what still constrains the nested mounts is the kernel: mounts are allowed only inside the namespaces the
+   step owns, mounts inherited from the Pod stay locked, and a masked `/proc` can block fresh `proc` mounts. The
+   default `procMount` was sufficient on stage.
 4. The kubelet accepts the runtime-spec seccomp JSON and kubelet/containerd 2.3.6 reports `Seccomp: 2` with the new filter
    (`grep Seccomp /proc/self/status`). The tenant namespace's Pod Security level admits the intended step shape (see
    above). Pod Security `baseline` also rejects privileged, `Unconfined` seccomp or AppArmor, host namespaces and

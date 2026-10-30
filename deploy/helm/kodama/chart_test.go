@@ -1300,7 +1300,7 @@ func Test_helm_run_shared_render(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"runShared:", "legacyFormat: open", "runShared: open", "storageClass: \"sbs-default\"", "isolation: tenant", "publicEgress: true",
-		"seccomp: \"kodama-rootless-build-v1\"", "capabilitiesAdd: [\"SETUID\",\"SETGID\"]", "fsGroup: 1000"} {
+		"seccomp: \"kodama-rootless-build-v1\"", "lsm: \"kodama-rootless-build-v2\"", "capabilitiesAdd: [\"SETUID\",\"SETGID\"]", "fsGroup: 1000"} {
 		if !strings.Contains(settings, want) {
 			t.Errorf("the settings document lacks %q", want)
 		}

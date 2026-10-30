@@ -30,8 +30,10 @@ data:
     #   2. loads the AppArmor profile with the HOST's apparmor_parser by entering the host mount
     #      namespace (nsenter -t 1 -m), feeding the profile on stdin. The profile is never
     #      written to the host file system and the host's /etc/apparmor.d includes resolve there.
+    #      The profile (kodama-rootless-build-v2) is flags=(unconfined) plus `userns,`, so the
+    #      kernel lists it as "kodama-rootless-build-v2 (unconfined)", never as enforce.
     # Then it records what it installed (status file + log) and re-checks every CHECK_INTERVAL
-    # seconds, reloading the AppArmor profile if the node lost it (for example after a reboot,
+    # seconds, reloading the AppArmor profile if the node lost it or lists it in any other state (for example after a reboot,
     # which clears loaded profiles; the DaemonSet Pod is restarted and re-applies it as well).
     #
     # MODE=uninstall (the separate uninstall DaemonSet) removes the seccomp file and the status file
@@ -47,8 +49,10 @@ data:
     AA_PROFILES_FILE=${AA_PROFILES_FILE:-/sys/kernel/security/apparmor/profiles}
     AA_ABI_FILE=${AA_ABI_FILE:-/etc/apparmor.d/abi/4.0}
     SECCOMP_FILE=kodama-rootless-build-v1.json
-    APPARMOR_FILE=kodama-rootless-build-v1
-    APPARMOR_NAME=kodama-rootless-build-v1
+    APPARMOR_FILE=kodama-rootless-build-v2
+    APPARMOR_NAME=kodama-rootless-build-v2
+    # The only healthy kernel state: an unconfined-flag profile is listed in "unconfined" mode.
+    APPARMOR_HEALTHY="$APPARMOR_NAME (unconfined)"
 
     log() { printf '%s kodama-node-profiles: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
     fail() { log "ERROR: $*"; exit 1; }
@@ -69,14 +73,15 @@ data:
       log "installed seccomp profile kodama/$SECCOMP_FILE sha256=$(sha256sum "$dst" | cut -d' ' -f1)"
     }
 
-    # apparmor_state prints the kernel's state of the profile: "enforce" (exactly the enforce-mode
-    # entry), "other" (loaded in complain or any other mode) or "absent". It returns nonzero, printing
+    # apparmor_state prints the kernel's state of the profile: "healthy" (exactly the
+    # "<name> (unconfined)" entry), "other" (loaded in enforce, complain or any other mode) or
+    # "absent". It returns nonzero, printing
     # nothing, when the kernel's profile list cannot be read, so a failed inspection is never mistaken
     # for absence.
     apparmor_state() {
       list=$(host cat "$AA_PROFILES_FILE" 2>/dev/null) || return 1
-      if printf '%s\n' "$list" | grep -qx "$APPARMOR_NAME (enforce)"; then
-        echo enforce
+      if printf '%s\n' "$list" | grep -qxF "$APPARMOR_HEALTHY"; then
+        echo healthy
       elif printf '%s\n' "$list" | grep -q "^$APPARMOR_NAME "; then
         echo other
       else
@@ -94,7 +99,7 @@ data:
         fail "apparmor_parser could not load $APPARMOR_NAME"
       fi
       state=$(apparmor_state) || fail "cannot inspect the kernel profile list after loading $APPARMOR_NAME"
-      [ "$state" = enforce ] || fail "$APPARMOR_NAME is not loaded in enforce mode after loading (state: $state)"
+      [ "$state" = healthy ] || fail "$APPARMOR_NAME is not listed as \"$APPARMOR_HEALTHY\" after loading (state: $state)"
       log "loaded apparmor profile $APPARMOR_NAME sha256=$(sha256sum "$src" | cut -d' ' -f1)"
     }
 
@@ -156,9 +161,9 @@ data:
       sleep "$CHECK_INTERVAL" &
       wait $! || true
       if state=$(apparmor_state); then
-        if [ "$state" = enforce ]; then
+        if [ "$state" = healthy ]; then
           install_seccomp
-          # Both profiles verified (seccomp file repaired if it drifted, AppArmor in enforce mode):
+          # Both profiles verified (seccomp file repaired if it drifted, AppArmor listed as unconfined):
           # restore readiness that a transient inspection failure removed, and the normal interval.
           cmp -s "$PROFILES_DIR/$SECCOMP_FILE" "$HOST_SECCOMP_DIR/$SECCOMP_FILE" || fail "seccomp profile does not match after installing it"
           if [ ! -e "$STATE_DIR/ready" ]; then
@@ -168,8 +173,8 @@ data:
           fi
           CHECK_INTERVAL=$healthy_interval
         else
-          # Missing (for example after a reboot) or not in enforce mode (complain): reload.
-          log "apparmor profile $APPARMOR_NAME is $state, not enforce; reloading"
+          # Missing (for example after a reboot) or in any state other than the healthy one: reload.
+          log "apparmor profile $APPARMOR_NAME is $state, not \"$APPARMOR_HEALTHY\"; reloading"
           rm -f "$STATE_DIR/ready"
           apply
         fi
@@ -183,73 +188,6 @@ data:
       checks=$((checks + 1))
       if [ -n "${RUN_CHECKS:-}" ] && [ "$checks" -ge "$RUN_CHECKS" ]; then exit 0; fi
     done
-  kodama-rootless-build-v1: |
-    # kodama-rootless-build-v1 (profile version 1)
-    #
-    # Derived from the containerd default container profile (template
-    # contrib/apparmor/template.go at containerd v2.3.6, the version the stage nodes run).
-    # Deviations from that template, each deliberate:
-    #   * abi <abi/4.0>   (the template uses abi/3.0, which has no `userns` class).
-    #   * userns,         permits creating user namespaces; on Ubuntu 24.04 with
-    #                     kernel.apparmor_restrict_unprivileged_userns=1 this rule is what lets
-    #                     a confined process create one.
-    #   * `deny mount,` replaced by mount/remount/umount/pivot_root rules, which the kernel
-    #     only honours for namespaces the caller owns (nested user namespace); without
-    #     CAP_SYS_ADMIN in a user namespace the process cannot mount anything.
-    #   * unix,           the abi/4.0 `unix` class is mediated separately from `network,`; the
-    #                     template's abi/3.0 does not mediate it, so it is allowed to keep parity.
-    #   * The daemon and rootlesskit signal peers are fixed (`unconfined` is already allowed;
-    #     no rootlesskit on the nodes) because this file is installed verbatim, not templated.
-    # Everything else, including the denials of host /proc, /sys and kcore writes, is unchanged.
-    abi <abi/4.0>,
-
-    #include <tunables/global>
-
-    profile kodama-rootless-build-v1 flags=(attach_disconnected,mediate_deleted) {
-      #include <abstractions/base>
-
-      network,
-      unix,
-      capability,
-      file,
-      userns,
-
-      # Mounts happen only inside the build's own user+mount namespace.
-      mount,
-      remount,
-      umount,
-      pivot_root,
-
-      # Host (privileged) processes may send signals to container processes.
-      signal (receive) peer=unconfined,
-      # runc may send signals to container processes.
-      signal (receive) peer=runc,
-      # crun may send signals to container processes.
-      signal (receive) peer=crun,
-      # Container processes may send signals amongst themselves.
-      signal (send,receive) peer=kodama-rootless-build-v1,
-
-      deny @{PROC}/* w,   # deny write for all files directly in /proc (not in a subdir)
-      # deny write to files not in /proc/<number>/** or /proc/sys/**
-      deny @{PROC}/{[^1-9/],[^1-9/][^0-9/],[^1-9s/][^0-9y/][^0-9s/],[^1-9/][^0-9/][^0-9/][^0-9/]*}/** w,
-      deny @{PROC}/sys/[^k]** w,  # deny /proc/sys except /proc/sys/k* (effectively /proc/sys/kernel)
-      deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,  # deny everything except shm* in /proc/sys/kernel/
-      deny @{PROC}/sysrq-trigger rwklx,
-      deny @{PROC}/kcore rwklx,
-
-      deny /sys/[^f]*/** wklx,
-      deny /sys/f[^s]*/** wklx,
-      deny /sys/fs/[^c]*/** wklx,
-      deny /sys/fs/c[^g]*/** wklx,
-      deny /sys/fs/cg[^r]*/** wklx,
-      deny /sys/firmware/** rwklx,
-      deny /sys/devices/virtual/powercap/** rwklx,
-      deny /sys/kernel/security/** rwklx,
-
-      # allow processes within the container to trace each other,
-      # provided all other LSM and yama setting allow it.
-      ptrace (trace,tracedby,read,readby) peer=kodama-rootless-build-v1,
-    }
   kodama-rootless-build-v1.json: |
     {
       "defaultAction": "SCMP_ACT_ERRNO",
@@ -780,10 +718,45 @@ data:
         }
       ]
     }
+  kodama-rootless-build-v2: |
+    # kodama-rootless-build-v2
+    #
+    # Owner decision of 2026-10-30 (amends O-30 in docs/decisions.md): the AppArmor profile of the
+    # run_shared step role is unconfined by AppArmor but permitted to create user namespaces.
+    #
+    # Why. Buildah's chroot isolation remounts /dev with the flags "ro, nosuid, noexec, remount,
+    # rbind, rprivate". The kernel keeps MS_PRIVATE on a remount, while the AppArmor parser cannot
+    # express propagation flags in remount rules, so no confined profile can allow that mount: the
+    # v1 profile (the containerd default shape plus mount rules) and an explicit
+    # `remount options in (... rprivate ...)` rule were both denied with "failed flags match"
+    # (Scaleway stage, Ubuntu 24.04.5, kernel 6.8, AppArmor 4.0, containerd 2.3.6).
+    # With `flags=(unconfined)` plus `userns,` (the approach Ubuntu ships for buildah, podman, crun
+    # and runc) the same node built a Containerfile with RUN and chown successfully, with the
+    # seccomp Localhost profile still enforced (Seccomp: 2), CapBnd 0xc0 (SETUID/SETGID only) and
+    # UID 1000 in a Pod user namespace.
+    #
+    # `userns,` is what lets the process create a user namespace while
+    # kernel.apparmor_restrict_unprivileged_userns=1 (the Ubuntu 24.04 default).
+    #
+    # What this profile does NOT do: it confines nothing. The step role's confinement is the
+    # non-root UID, the Pod user namespace (hostUsers false), the capability set (drop ALL, only
+    # SETUID/SETGID), the Localhost seccomp profile kodama/kodama-rootless-build-v1.json, and
+    # the absence of privileged mode, host namespaces, hostPath and an engine socket.
+    # Only the named, installed, versioned profile is allowed; the generic AppArmor Unconfined
+    # profile type stays refused everywhere.
+    #
+    # The profile body must stay exactly `userns,`: runbuilders.ValidateAppArmor rejects any
+    # added rule or a missing flags/userns. A behavior change needs a new version and file name.
+    abi <abi/4.0>,
+    include <tunables/global>
+
+    profile kodama-rootless-build-v2 flags=(unconfined) {
+      userns,
+    }
 kind: ConfigMap
 metadata:
   annotations:
-    kodama.io/profile-version: kodama-rootless-build-v1
+    kodama.io/profile-version: kodama-rootless-build-v2
   labels:
     app.kubernetes.io/component: node-profiles
     app.kubernetes.io/name: kodama-node-profiles
@@ -795,7 +768,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   annotations:
-    kodama.io/profile-version: kodama-rootless-build-v1
+    kodama.io/profile-version: kodama-rootless-build-v2
   labels:
     app.kubernetes.io/component: node-profiles-install
     app.kubernetes.io/name: kodama-node-profiles
@@ -809,7 +782,7 @@ spec:
   template:
     metadata:
       annotations:
-        kodama.io/profiles-sha256: 88e8e041dc42a61f2c64360348b6f21d54852a9304ab4751f0feb4d8d7f5bbdb
+        kodama.io/profiles-sha256: bf904a3b85845ab6f0bd733d90b6150ca9fcd3e7dc4d31fd47a8337728bd0715
       labels:
         app.kubernetes.io/name: kodama-node-profiles
         app.kubernetes.io/part-of: kodama
@@ -863,8 +836,8 @@ spec:
             items:
               - key: kodama-rootless-build-v1.json
                 path: kodama-rootless-build-v1.json
-              - key: kodama-rootless-build-v1
-                path: kodama-rootless-build-v1
+              - key: kodama-rootless-build-v2
+                path: kodama-rootless-build-v2
             name: kodama-node-profiles
           name: profiles
         - configMap:

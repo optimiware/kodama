@@ -162,9 +162,8 @@ func StepViewViolations(v StepView, wantUser string) []string {
 	want("cap_bnd", stepCapBnd)
 	want("no_new_privs", "0")
 	want("seccomp", "2")
-	if !strings.HasPrefix(v.KV["apparmor"], StepAppArmorProfile+" (enforce)") {
-		bad = append(bad, fmt.Sprintf("apparmor=%q, want %s (enforce)", v.KV["apparmor"], StepAppArmorProfile))
-	}
+	// The exact entry: an enforce-mode or any other listing is not the decided profile.
+	want("apparmor", StepAppArmorKernelState)
 	m := strings.Fields(v.KV["uid_map"])
 	if len(m) != 3 || (m[0] == "0" && m[1] == "0") || m[2] != strconv.Itoa(PodRange) {
 		bad = append(bad, fmt.Sprintf("uid_map=%q is not a %d-ID user-namespace range", v.KV["uid_map"], PodRange))

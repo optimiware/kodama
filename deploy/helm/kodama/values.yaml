@@ -365,7 +365,7 @@ runShared:
       step:
         capabilitiesAdd: [SETUID, SETGID]
         seccomp: kodama-rootless-build-v1
-        lsm: kodama-rootless-build-v1
+        lsm: kodama-rootless-build-v2
         procMount: ""
       # The preparation image runs `kodama prepare`: it defaults to the release image (it contains git).
       # Override with another digest-pinned reference only if it provides git and the kodama binary.

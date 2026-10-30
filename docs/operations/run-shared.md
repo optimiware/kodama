@@ -21,7 +21,7 @@ Disabled (the default) the chart renders none of this, the namespaces stay `rest
 
 ## Prerequisites
 
-1. **Node profiles (T-120).** The seccomp and AppArmor profiles named by the step role (`kodama-rootless-build-v1`) are installed and ready on **every worker node**: [run builder node profile](run-builder-profile.md). Kodama cannot read node files. A missing profile is refused by the kubelet before anything runs (container creation fails for a missing seccomp file, the Pod is rejected for a missing AppArmor profile), never inside Buildah and never with a weaker profile, but the installation should not depend on that signal: the chart **refuses to render** `run_shared` with a named profile until the operator sets `runShared.nodeProfilesInstalled=true` after checking one Ready installer Pod per node.
+1. **Node profiles (T-120).** The seccomp and AppArmor profiles named by the step role (`kodama-rootless-build-v1` seccomp, `kodama-rootless-build-v2` AppArmor, which is unconfined by AppArmor with `userns,`; see [what it protects](run-builder-profile.md#the-apparmor-profile)) are installed and ready on **every worker node**: [run builder node profile](run-builder-profile.md). Kodama cannot read node files. A missing profile is refused by the kubelet before anything runs (container creation fails for a missing seccomp file, the Pod is rejected for a missing AppArmor profile), never inside Buildah and never with a weaker profile, but the installation should not depend on that signal: the chart **refuses to render** `run_shared` with a named profile until the operator sets `runShared.nodeProfilesInstalled=true` after checking one Ready installer Pod per node.
 2. **Builder image.** Buildah's subordinate ID ranges exist only for UID 1000 (the image's `build` user). The run_shared workload identity (`runShared.identity`, default 1000/1000/1000) is separate from the legacy identity (`execution.job.runAsUser`, 65532): legacy Jobs are unchanged.
 3. **Storage.** A CSI storage class that supports `ReadWriteOncePod`, delete reclaim and the Pod user-namespace/idmapped mounts. Stage: `sbs-default` (`WaitForFirstConsumer`, `Delete`). The adapter refuses a class whose reclaim policy is not `Delete`; a `WaitForFirstConsumer` claim is ready as soon as it is Pending without a volume (the first consumer binds it).
 4. **Network.** A CNI that enforces NetworkPolicy (Cilium on stage). The chart keeps the namespace default deny, DNS and callback rules; the per-run policies the controller creates add the tenant model: other tenants, the control plane, the Kubernetes API, node and cloud-metadata addresses stay denied, and public egress is TCP 80/443 to non-private addresses except `runShared.clusterCIDRs` (list the Pod, Service and node ranges that are not private; they are never reachable). Private destinations need a named egress profile.
@@ -52,7 +52,7 @@ runShared:
       step:
         capabilitiesAdd: [SETUID, SETGID]
         seccomp: kodama-rootless-build-v1
-        lsm: kodama-rootless-build-v1
+        lsm: kodama-rootless-build-v2
     builders: {rootless: [ko, buildah]}   # builder service mode is `none` until T-123
     requires: []                          # add builder_rootless once qualified and vouched
 execution:

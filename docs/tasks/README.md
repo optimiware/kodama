@@ -133,7 +133,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-134 Wire the Podman and Process run-resource ports](T-134-local-run-shared-wiring.md) | T-115, T-116 | planned |
 | [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | planned |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
-| [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | planned |
+| [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | done |
 | [T-122 O-30 scope amendment](T-122-o30-scope-amendment.md) | T-109, T-110, T-112 | done |
 | [T-123 BuildKit builder service](T-123-buildkit-builder-service.md) | T-117 | deferred |
 | [T-124 Align the qualification driver with O-30](T-124-runprofile-driver-o30.md) | T-111, T-122 | done |

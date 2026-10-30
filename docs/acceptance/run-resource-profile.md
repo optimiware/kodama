@@ -1,6 +1,39 @@
-# Rootless run-resource profile qualification (T-111 / P1)
+# Rootless run-resource profile qualification (P1: T-111 driver, T-121 qualification)
 
-**Status: P1 is not qualified; this is a historical, honestly blocked record.** T-111 closes as *driver and report delivery only*. The owner moved Kubernetes configuration to planned T-120 and the full real qualification (`Test_run_resource_profile_qualification` passing, retained under the single integration lease) to planned T-121; downstream T-113/T-114/T-115 are gated on T-121. Nothing in T-120 has been applied and no broader relaxation (node AppArmor profile, Pod Security level) has been made. On the one real run below, node prerequisites outside this task's authority were missing: run-scoped storage, ko, PostgreSQL and the outer CNI were proven on that run, Buildah, BuildKit and the browser sandbox were not, and nothing here substitutes unit, template or legacy kind evidence for them. In the offline `-tags unit` layer the real test is skipped by design; that skip is not qualification evidence, and the full acceptance is transferred intact to T-121.
+**Status: P1 is qualified for the O-30 profile on the Scaleway stage cluster (T-121, 2026-10-30).** The delivered driver (T-111, aligned with O-30 by T-124) reported verdict `qualified` with every required check passing and cleanup verified, on the exact candidate `cfcc0e3b`. This qualifies only the combinations marked qualified below on this target; it is not product runtime behavior (T-117 accepts the assembled product) and not a stage rollout approval.
+
+## T-121 qualification (current)
+
+| Item | Value |
+| --- | --- |
+| Target | Scaleway stage cluster `kodama-stage-scw` (Kodama-dedicated), 4 workers; probes ran only in three driver-created namespaces `krp-t111-fbaeac`, `-na`, `-nb`, deleted by UID-checked teardown |
+| Kubernetes / nodes | server v1.37.1 (kubectl v1.37.2); Ubuntu 24.04.5 LTS, kernel `6.8.0-136-generic`, containerd 2.3.6, cgroup v2, `seccompDefault: false`, `kernel.apparmor_restrict_unprivileged_userns=1` |
+| CNI / CSI | Cilium v1.20.2 (tunnel, kube-proxy replacement); Scaleway CSI v0.3.6, class `sbs-default` (`WaitForFirstConsumer`, `Delete`) |
+| Node profiles (T-120, installed by T-121) | seccomp `kodama/kodama-rootless-build-v1.json` (sha256 `3b08de50…2dac3e`) and AppArmor `kodama-rootless-build-v2` (sha256 `13a8af78…e70554`, `flags=(unconfined)` + `userns,`; listed by the kernel as `(unconfined)`), loaded on all four nodes by the installer DaemonSet |
+| Step role (exact, seam S3) | UID/GID 1000, `hostUsers: false` (65,536-ID mapping), drop ALL + `SETUID`/`SETGID` (CapBnd `0xc0`), `allowPrivilegeEscalation: true`, Localhost seccomp (`Seccomp: 2`) and Localhost AppArmor v2; Pod Security `baseline` admits it, `restricted` does not |
+| Images | ko `ghcr.io/ko-build/ko@sha256:ae515f52…0a82`; Buildah 1.43.5 `quay.io/buildah/stable@sha256:baaa8fe5…fbcd`; PostgreSQL, registry and httpd as in [`pins.json`](../../test/integration/kube/runprofile/pins.json) |
+| Run | `verify.sh` (no unit tag) at candidate `cfcc0e3b`, run id `fbaeac`, 2026-10-30 05:28:11–05:32:02 UTC, `Test_run_resource_profile_qualification` PASS; 216 receipts `receipts.jsonl` (sha256 `44542890…cc7514`) and `report.json` (sha256 `db067748…0125fc5`) retained on the recording machine, not committed |
+
+| Combination | Status | Checks |
+| --- | --- | --- |
+| RWOP run storage shared sequentially across images and UIDs (SBS ext4, idmapped, Delete reclaim) | **qualified** | `storage.rwop_sequential`, `storage.rwop_exclusive`, `storage.idmapped_ownership`, `storage.release_delete` |
+| ko build and push in the exact step role (Go dependency via the in-run module proxy, authenticated TLS registry) | **qualified** | `step.role_shape.ko`, `build.ko` |
+| Buildah build and push in the exact step role (VFS under HOME, chroot isolation, `RUN`, several numeric owners, dependency fetch, authenticated push, digest match) | **qualified** | `step.role_shape`, `psa.builder_pod`, `build.buildah_vfs` |
+| PostgreSQL non-root (user-namespaced, read-only root) readiness and data round trip | **qualified** | `service.postgres` |
+| Tenant network model: same-tenant other run reachable, foreign tenant, Kubernetes API and cloud metadata denied (connect-only probes with live positive controls), public HTTPS open (TLS) | **qualified** | `network.matrix` |
+| Buildah overlay/FUSE | not advertised | `build.buildah_overlay_fuse` |
+| BuildKit, browser | out of scope (O-30; BuildKit deferred to T-123) | none |
+
+### What it took (for reproducibility)
+
+1. **Run 1** failed on two transient causes: the Buildah index digest pinned the previous day had been garbage-collected by quay.io (image pull `NotFound`), and the ko build's `kubectl exec` stream dropped (websocket 1006). Re-pinned Buildah; the ko failure did not recur.
+2. **Runs 2–3** isolated the real blocker. With the confined AppArmor profile v1 the step role created user and mount namespaces (`unshare -Urm` ok), but Buildah's chroot isolation remounts `/dev` with `ro, nosuid, noexec, remount, rbind, rprivate`, and the node audit log showed `apparmor="DENIED" operation="mount" info="failed flags match"`. AppArmor 4.0 keeps the propagation flag on remount requests while its policy language cannot express propagation flags in remount rules, so no confined rule can allow it (an explicit remount rule was still denied). A `posix_mqueue` getattr denial also appeared.
+3. A reversible experiment on one node with Ubuntu's own approach for buildah/podman (`flags=(unconfined)` + `userns,`) built a Containerfile with `RUN` and `chown` while seccomp, the `SETUID`/`SETGID` ceiling and the Pod user namespace stayed in force. The owner selected it (O-30 amendment, 2026-10-30) as the versioned profile `kodama-rootless-build-v2`; v1's AppArmor host-path denials are given up for the step role only.
+4. **Run 4** qualified.
+
+**Residual:** nodes that loaded the confined v1 profile keep it loaded (unreferenced) until reboot or `apparmor_parser -R`. Upstream images rebuilt under the same tag lose their old digests (quay.io collected two Buildah pins within a day): mirror pinned builder images into an installation registry before relying on them.
+
+## T-111 historical record (blocked; superseded)
 
 **Historical receipts.** Everything below was produced by the driver at commit `8e60d6f2`, before the closeout driver-safety fixes (closed namespace-kind allowlist, precondition-based namespace deletion, and cleanup that cannot be reported verified after a failed lookup). The delivered driver differs from that candidate, so these receipts are not retargeted to it: they remain the exact record of the earlier candidate. In particular the run's "cleanup verified" came from the earlier name-only teardown; the observations behind it (namespaces absent, no PV or attachment left) were additionally confirmed afterwards with read-only `kubectl get`, but T-121 must obtain cleanup evidence from the delivered driver. The original history is archived by the coordinator outside Git.
 

@@ -34,7 +34,7 @@ workspace:
   idmapped: true
   storageClass: kodama-run-scratch
 roles:                         # per-workload security shapes; the verified source of truth for adapters
-  step:           {user: nonroot, userNamespace: pod, capabilitiesAdd: [SETUID, SETGID], seccomp: kodama-rootless-build-v1, lsm: kodama-rootless-build-v1, devices: []}
+  step:           {user: nonroot, userNamespace: pod, capabilitiesAdd: [SETUID, SETGID], seccomp: kodama-rootless-build-v1, lsm: kodama-rootless-build-v2, devices: []}
   service:        {user: nonroot, userNamespace: pod, capabilitiesAdd: [], seccomp: RuntimeDefault, devices: []}
   builderService: {user: nonroot, userNamespace: pod, capabilitiesAdd: [], seccomp: RuntimeDefault, devices: []}   # unused until T-123
   preparation:    {user: nonroot, userNamespace: pod, capabilitiesAdd: [], seccomp: RuntimeDefault, devices: [], image: "registry.example.invalid/kodama-prepare@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}

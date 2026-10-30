@@ -78,7 +78,7 @@ func ValidateManifests(stream []byte, p Profiles) error {
 			}
 		case "ConfigMap":
 			data := child(doc, "data")
-			if text(data, SeccompFile) != string(p.Seccomp) || text(data, ProfileVersion) != string(p.AppArmor) {
+			if text(data, SeccompFile) != string(p.Seccomp) || text(data, AppArmorProfile) != string(p.AppArmor) {
 				return errors.New("manifest: ConfigMap profile content differs from the shipped files")
 			}
 			if text(data, "install.sh") != string(installScript) {

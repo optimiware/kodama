@@ -27,7 +27,7 @@ type sharedEnv struct {
 
 func builderRole(r execution.RoleShape) execution.RoleShape {
 	r.CapabilitiesAdd = []string{"SETUID", "SETGID"}
-	r.Seccomp, r.LSM, r.ProcMount = "kodama-rootless-build-v1", "kodama-rootless-build-v1", "unmasked"
+	r.Seccomp, r.LSM, r.ProcMount = "kodama-rootless-build-v1", "kodama-rootless-build-v2", "unmasked"
 	return r
 }
 
@@ -173,7 +173,7 @@ func Test_unit_kube_shared_attempt_template(t *testing.T) {
 		t.Fatalf("container security %+v", sc)
 	}
 	if sc.SeccompProfile.Type != "Localhost" || sc.SeccompProfile.LocalhostProfile != "kodama/kodama-rootless-build-v1.json" ||
-		sc.AppArmorProfile.Type != "Localhost" || sc.AppArmorProfile.LocalhostProfile != "kodama-rootless-build-v1" || sc.ProcMount != "Unmasked" {
+		sc.AppArmorProfile.Type != "Localhost" || sc.AppArmorProfile.LocalhostProfile != "kodama-rootless-build-v2" || sc.ProcMount != "Unmasked" {
 		t.Fatalf("profiles %+v %+v procMount %q", sc.SeccompProfile, sc.AppArmorProfile, sc.ProcMount)
 	}
 	if init := pod.InitContainers[0]; *init.SecurityContext.AllowPrivilegeEscalation || len(init.SecurityContext.Capabilities.Add) != 0 || init.SecurityContext.SeccompProfile.Type != "RuntimeDefault" {

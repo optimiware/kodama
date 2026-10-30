@@ -42,7 +42,7 @@ func Test_unit_runprofile_step_role_shape(t *testing.T) {
 			"runAsUser 1000":           psc["runAsUser"] == float64(1000) && psc["runAsGroup"] == float64(1000),
 			"runAsNonRoot":             psc["runAsNonRoot"] == true,
 			"seccomp Localhost":        fmt.Sprint(psc["seccompProfile"]) == "map[localhostProfile:kodama/kodama-rootless-build-v1.json type:Localhost]",
-			"apparmor Localhost":       fmt.Sprint(psc["appArmorProfile"]) == "map[localhostProfile:kodama-rootless-build-v1 type:Localhost]",
+			"apparmor Localhost":       fmt.Sprint(psc["appArmorProfile"]) == "map[localhostProfile:kodama-rootless-build-v2 type:Localhost]",
 			"drop ALL":                 fmt.Sprint(caps["drop"]) == "[ALL]",
 			"add SETUID SETGID":        fmt.Sprint(caps["add"]) == "[SETUID SETGID]",
 			"allowPrivilegeEscalation": csc["allowPrivilegeEscalation"] == true,
@@ -130,7 +130,7 @@ func Test_unit_runprofile_step_role_shape(t *testing.T) {
 
 	// In-Pod view: the exact bounding set, escalation permitted, installed profiles.
 	good := ParseStepView(strings.Join([]string{"uid=1000", "gid=1000", "user=build", "cap_bnd=00000000000000c0", "no_new_privs=0", "seccomp=2",
-		"apparmor=kodama-rootless-build-v1 (enforce)", "uid_map=0 1182859264 65536", "subuid_line=build:1:999", "subuid_line=build:1001:64535",
+		"apparmor=kodama-rootless-build-v2 (unconfined)", "uid_map=0 1182859264 65536", "subuid_line=build:1:999", "subuid_line=build:1001:64535",
 		"subgid_line=build:1:999", "subgid_line=build:1001:64535"}, "\n"))
 	if bad := StepViewViolations(good, "build"); len(bad) != 0 {
 		t.Fatalf("good view rejected: %v", bad)
@@ -144,6 +144,18 @@ func Test_unit_runprofile_step_role_shape(t *testing.T) {
 		v.KV[key] = val
 		if len(StepViewViolations(v, "build")) == 0 {
 			t.Errorf("view with %s=%q accepted", key, val)
+		}
+	}
+	// Only the exact unconfined-flag listing of the v2 profile is the decided in-Pod AppArmor view.
+	for _, val := range []string{"kodama-rootless-build-v2 (enforce)", "kodama-rootless-build-v2 (complain)", "kodama-rootless-build-v1 (unconfined)",
+		"unconfined", "kodama-rootless-build-v2 (unconfined) extra", "cri-containerd.apparmor.d (enforce)", ""} {
+		v := ParseStepView("")
+		for k, x := range good.KV {
+			v.KV[k] = x
+		}
+		v.KV["apparmor"] = val
+		if len(StepViewViolations(v, "build")) == 0 {
+			t.Errorf("view with apparmor=%q accepted", val)
 		}
 	}
 	if err := SubIDFit(good.SubUID, "build", StepUID, 60000); err != nil {

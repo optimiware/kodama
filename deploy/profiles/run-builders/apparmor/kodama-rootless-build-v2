@@ -1,0 +1,34 @@
+# kodama-rootless-build-v2
+#
+# Owner decision of 2026-10-30 (amends O-30 in docs/decisions.md): the AppArmor profile of the
+# run_shared step role is unconfined by AppArmor but permitted to create user namespaces.
+#
+# Why. Buildah's chroot isolation remounts /dev with the flags "ro, nosuid, noexec, remount,
+# rbind, rprivate". The kernel keeps MS_PRIVATE on a remount, while the AppArmor parser cannot
+# express propagation flags in remount rules, so no confined profile can allow that mount: the
+# v1 profile (the containerd default shape plus mount rules) and an explicit
+# `remount options in (... rprivate ...)` rule were both denied with "failed flags match"
+# (Scaleway stage, Ubuntu 24.04.5, kernel 6.8, AppArmor 4.0, containerd 2.3.6).
+# With `flags=(unconfined)` plus `userns,` (the approach Ubuntu ships for buildah, podman, crun
+# and runc) the same node built a Containerfile with RUN and chown successfully, with the
+# seccomp Localhost profile still enforced (Seccomp: 2), CapBnd 0xc0 (SETUID/SETGID only) and
+# UID 1000 in a Pod user namespace.
+#
+# `userns,` is what lets the process create a user namespace while
+# kernel.apparmor_restrict_unprivileged_userns=1 (the Ubuntu 24.04 default).
+#
+# What this profile does NOT do: it confines nothing. The step role's confinement is the
+# non-root UID, the Pod user namespace (hostUsers false), the capability set (drop ALL, only
+# SETUID/SETGID), the Localhost seccomp profile kodama/kodama-rootless-build-v1.json, and
+# the absence of privileged mode, host namespaces, hostPath and an engine socket.
+# Only the named, installed, versioned profile is allowed; the generic AppArmor Unconfined
+# profile type stays refused everywhere.
+#
+# The profile body must stay exactly `userns,`: runbuilders.ValidateAppArmor rejects any
+# added rule or a missing flags/userns. A behavior change needs a new version and file name.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile kodama-rootless-build-v2 flags=(unconfined) {
+  userns,
+}

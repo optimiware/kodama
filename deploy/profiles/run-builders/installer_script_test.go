@@ -34,7 +34,7 @@ func newScriptEnv(t *testing.T) *scriptEnv {
 	}
 	p := Embedded()
 	e.write(filepath.Join(e.profiles, SeccompFile), string(p.Seccomp))
-	e.write(filepath.Join(e.profiles, ProfileVersion), string(p.AppArmor))
+	e.write(filepath.Join(e.profiles, AppArmorProfile), string(p.AppArmor))
 	e.write(e.loaded, "")
 	e.write(e.abi, "")
 	e.write(filepath.Join(dir, "bin", "nsenter"), "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n")
@@ -45,8 +45,8 @@ case "$1" in
     cat >/dev/null
     echo "$*" >>"$PARSER_LOG"
     [ -n "${FAIL_PARSER:-}" ] && exit 1
-    grep -v '^kodama-rootless-build-v1 ' "$AA_PROFILES_FILE" >"$AA_PROFILES_FILE.tmp" || true
-    echo "kodama-rootless-build-v1 (enforce)" >>"$AA_PROFILES_FILE.tmp"
+    grep -v '^kodama-rootless-build-v2 ' "$AA_PROFILES_FILE" >"$AA_PROFILES_FILE.tmp" || true
+    echo "kodama-rootless-build-v2 (unconfined)" >>"$AA_PROFILES_FILE.tmp"
     mv "$AA_PROFILES_FILE.tmp" "$AA_PROFILES_FILE"
     ;;
   -R) cat >/dev/null; echo "-R" >>"$PARSER_LOG"; : >"$AA_PROFILES_FILE" ;;
@@ -63,8 +63,9 @@ if [ -n "${SLEEP_PLAN:-}" ] && [ -s "$SLEEP_PLAN" ]; then
   sed 1d "$SLEEP_PLAN" >"$SLEEP_PLAN.n" && mv "$SLEEP_PLAN.n" "$SLEEP_PLAN"
 fi
 case "$action" in
-  restore) echo "kodama-rootless-build-v1 (enforce)" >"$AA_PROFILES_FILE" ;;
-  complain) echo "kodama-rootless-build-v1 (complain)" >"$AA_PROFILES_FILE" ;;
+  restore) echo "kodama-rootless-build-v2 (unconfined)" >"$AA_PROFILES_FILE" ;;
+  complain) echo "kodama-rootless-build-v2 (complain)" >"$AA_PROFILES_FILE" ;;
+  enforce) echo "kodama-rootless-build-v2 (enforce)" >"$AA_PROFILES_FILE" ;;
   remove) rm -f "$AA_PROFILES_FILE" ;;
 esac
 `)
@@ -110,7 +111,7 @@ func Test_unit_builder_profile_installer_script(t *testing.T) {
 		t.Fatal("seccomp profile not installed byte-for-byte")
 	}
 	status, _ := os.ReadFile(filepath.Join(e.seccomp, "INSTALLED"))
-	for _, want := range []string{"profile=" + ProfileVersion, "seccomp=kodama/" + SeccompFile, "apparmor=" + ProfileVersion, "applied="} {
+	for _, want := range []string{"profile=" + ProfileVersion, "seccomp=kodama/" + SeccompFile, "apparmor=" + AppArmorProfile, "applied="} {
 		if !strings.Contains(string(status), want) {
 			t.Errorf("status lacks %q:\n%s", want, status)
 		}
@@ -118,7 +119,7 @@ func Test_unit_builder_profile_installer_script(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(e.state, "ready")); err != nil {
 		t.Fatal("ready marker missing")
 	}
-	if loaded, _ := os.ReadFile(e.loaded); !strings.Contains(string(loaded), ProfileVersion) {
+	if loaded, _ := os.ReadFile(e.loaded); !strings.Contains(string(loaded), AppArmorProfile) {
 		t.Fatal("apparmor profile not loaded")
 	}
 	leftovers, _ := filepath.Glob(filepath.Join(e.seccomp, ".*"))
@@ -136,7 +137,7 @@ func Test_unit_builder_profile_installer_script(t *testing.T) {
 	if again, _ := os.ReadFile(filepath.Join(e.seccomp, SeccompFile)); !bytes.Equal(again, Embedded().Seccomp) {
 		t.Fatal("seccomp profile not repaired")
 	}
-	if loaded, _ := os.ReadFile(e.loaded); !strings.Contains(string(loaded), ProfileVersion) {
+	if loaded, _ := os.ReadFile(e.loaded); !strings.Contains(string(loaded), AppArmorProfile) {
 		t.Fatal("apparmor profile not reloaded")
 	}
 
@@ -165,7 +166,7 @@ func Test_unit_builder_profile_installer_script(t *testing.T) {
 			t.Errorf("%s still present after uninstall", name)
 		}
 	}
-	if loaded, _ := os.ReadFile(e.loaded); strings.Contains(string(loaded), ProfileVersion) {
+	if loaded, _ := os.ReadFile(e.loaded); strings.Contains(string(loaded), AppArmorProfile) {
 		t.Fatal("apparmor profile still loaded after uninstall")
 	}
 }
@@ -175,17 +176,17 @@ func (e *scriptEnv) parserCalls() int {
 	return len(strings.Fields(string(raw)))
 }
 
-func Test_unit_builder_profile_installer_enforce_mode(t *testing.T) {
+func Test_unit_builder_profile_installer_unconfined_state(t *testing.T) {
 	e := newScriptEnv(t)
-	// A resident check that finds the profile in complain mode reloads it and ends in enforce mode.
+	// A resident check that finds the profile in complain mode reloads it and ends listed as "(unconfined)".
 	out, err := e.run("RUN_CHECKS=1", "SLEEP_ACTION=complain")
 	if err != nil {
 		t.Fatalf("resident check: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "is other, not enforce; reloading") {
+	if !strings.Contains(out, "is other, not \""+AppArmorKernelState+"\"; reloading") {
 		t.Fatalf("complain mode was not detected:\n%s", out)
 	}
-	if loaded, _ := os.ReadFile(e.loaded); strings.TrimSpace(string(loaded)) != ProfileVersion+" (enforce)" {
+	if loaded, _ := os.ReadFile(e.loaded); strings.TrimSpace(string(loaded)) != AppArmorKernelState {
 		t.Fatalf("profile list after reload = %q", loaded)
 	}
 	if calls := e.parserCalls(); calls < 4 { // two loads, each "-r -K"
@@ -195,7 +196,7 @@ func Test_unit_builder_profile_installer_enforce_mode(t *testing.T) {
 		t.Fatal("ready marker missing after the reload")
 	}
 
-	// An enforce-mode profile is left alone by the resident check.
+	// A profile listed as "(unconfined)" is left alone by the resident check.
 	healthy := newScriptEnv(t)
 	if out, err := healthy.run("RUN_CHECKS=1"); err != nil || strings.Contains(out, "reloading") {
 		t.Fatalf("healthy check reloaded: %v\n%s", err, out)
@@ -204,10 +205,21 @@ func Test_unit_builder_profile_installer_enforce_mode(t *testing.T) {
 		t.Fatalf("healthy node loaded the profile more than once: %d", calls)
 	}
 
-	// A load that leaves the profile in complain mode is a failure, not success.
+	// Only the exact "(unconfined)" entry is healthy: a resident check that finds the name listed
+	// in enforce mode (a different profile body loaded under the name) reloads it too.
+	enforcing := newScriptEnv(t)
+	if out, err := enforcing.run("RUN_CHECKS=1", "SLEEP_ACTION=enforce"); err != nil || !strings.Contains(out, "is other, not") {
+		t.Fatalf("enforce-mode listing was accepted as healthy: %v\n%s", err, out)
+	}
+	// A load that leaves the profile in complain or enforce mode is a failure, not success.
+	enforceLoad := newScriptEnv(t)
+	enforceLoad.write(filepath.Join(enforceLoad.dir, "bin", "apparmor_parser"), "#!/bin/sh\ncat >/dev/null\necho 'kodama-rootless-build-v2 (enforce)' >\"$AA_PROFILES_FILE\"\n")
+	if out, err := enforceLoad.run(); err == nil || !strings.Contains(out, "is not listed as") {
+		t.Fatalf("enforce-mode load accepted: %v\n%s", err, out)
+	}
 	complaining := newScriptEnv(t)
-	complaining.write(filepath.Join(complaining.dir, "bin", "apparmor_parser"), "#!/bin/sh\ncat >/dev/null\necho 'kodama-rootless-build-v1 (complain)' >\"$AA_PROFILES_FILE\"\n")
-	if out, err := complaining.run(); err == nil || !strings.Contains(out, "not loaded in enforce mode") {
+	complaining.write(filepath.Join(complaining.dir, "bin", "apparmor_parser"), "#!/bin/sh\ncat >/dev/null\necho 'kodama-rootless-build-v2 (complain)' >\"$AA_PROFILES_FILE\"\n")
+	if out, err := complaining.run(); err == nil || !strings.Contains(out, "is not listed as") {
 		t.Fatalf("complain-mode load accepted: %v\n%s", err, out)
 	}
 }
@@ -247,7 +259,7 @@ func Test_unit_builder_profile_installer_inspection_failure(t *testing.T) {
 	}
 	// A removal that leaves the profile loaded fails.
 	stuck := newScriptEnv(t)
-	stuck.write(stuck.loaded, ProfileVersion+" (complain)\n")
+	stuck.write(stuck.loaded, AppArmorProfile+" (complain)\n")
 	stuck.write(filepath.Join(stuck.dir, "bin", "apparmor_parser"), "#!/bin/sh\ncat >/dev/null\n")
 	if out, err := stuck.run("MODE=uninstall"); err == nil || !strings.Contains(out, "still loaded") {
 		t.Fatalf("uninstall accepted a profile that is still loaded: %v\n%s", err, out)

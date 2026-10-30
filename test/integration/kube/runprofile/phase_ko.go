@@ -95,7 +95,7 @@ func (q *Qualifier) phaseKo(ctx context.Context) error {
 		q.add("step.role_shape.ko", "ko step role applied exactly", true, Fail, "the ko Pod does not carry the S3 step role: "+strings.Join(bad, "; "), rev, "")
 	} else {
 		q.add("step.role_shape.ko", "ko step role applied exactly", true, Pass,
-			"ko ran in the same S3 step role as Buildah: non-root 1000, hostUsers false, exactly SETGID/SETUID, escalation allowed, Localhost seccomp and AppArmor enforced; the live Pod object matches", rev, "")
+			"ko ran in the same S3 step role as Buildah: non-root 1000, hostUsers false, exactly SETGID/SETUID, escalation allowed, Localhost seccomp enforced, Localhost AppArmor kodama-rootless-build-v2 (unconfined, userns); the live Pod object matches", rev, "")
 	}
 	src, err := buildContext(map[string]string{"go.mod": "module example.com/koapp\n\ngo 1.22\n\nrequire example.com/dep v1.0.0\n", "main.go": koMain}, nil)
 	if err != nil {
