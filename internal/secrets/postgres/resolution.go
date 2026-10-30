@@ -40,6 +40,23 @@ func NewVersionSource(store *Store, wrapper secrets.KeyWrapper, installation str
 // ErrNotFound, a version the run did not pin is ErrNotPinned, and a revoked one
 // is ErrRevoked.
 func (v *VersionSource) Open(ctx context.Context, req secrets.VersionRequest) (secrets.PendingValue, error) {
+	return v.open(ctx, req, false)
+}
+
+var _ secrets.ScanSource = (*VersionSource)(nil)
+
+// OpenForScan reads a version the run was given, for comparison only (source
+// scanning, log redaction). Scanning is not use: a revoked version, and one whose
+// run already released its pins, are still read, because a value an earlier step
+// received stays a value that must never be published or logged. The run must have
+// pinned the version. Each read is audited as secret.scan before any plaintext is
+// returned (no audit, no value); the plaintext is never delivered to a caller of
+// the runtime interface.
+func (v *VersionSource) OpenForScan(ctx context.Context, req secrets.VersionRequest) (secrets.PendingValue, error) {
+	return v.open(ctx, req, true)
+}
+
+func (v *VersionSource) open(ctx context.Context, req secrets.VersionRequest, scan bool) (secrets.PendingValue, error) {
 	if err := req.Scope.Validate(); err != nil {
 		return nil, err
 	}
@@ -68,10 +85,10 @@ WHERE tenant_id = $1 AND project_id = $2 AND consumer_kind = $3 AND consumer_id 
 			return secrets.ErrNotPinned
 		case err != nil:
 			return err
-		case released:
+		case released && !scan:
 			return fmt.Errorf("%w: the run released its pins", secrets.ErrAttemptInactive)
 		}
-		if sv.Revoked() {
+		if sv.Revoked() && !scan {
 			return secrets.ErrRevoked
 		}
 		sk, err = getScopeKey(ctx, tx, req.Scope.TenantID, sv.Record().ScopeKeyID, false)
@@ -90,7 +107,33 @@ WHERE tenant_id = $1 AND project_id = $2 AND consumer_kind = $3 AND consumer_id 
 	if err != nil {
 		return nil, fmt.Errorf("%w: stored value failed authentication", secrets.ErrInconsistent)
 	}
+	if scan {
+		if err := v.auditScan(ctx, req, sec.ID(), sv.Record().KeyGeneration); err != nil {
+			clear(plain)
+			return nil, err
+		}
+	}
 	return &pending{src: v, req: req, secretID: sec.ID(), generation: sv.Record().KeyGeneration, value: plain}, nil
+}
+
+// auditScan records, in its own short transaction, that a version was read for
+// comparison. It holds identifiers only.
+func (v *VersionSource) auditScan(ctx context.Context, req secrets.VersionRequest, secretID string, generation int64) error {
+	s := v.store
+	m := secrets.Mutation{Actor: secrets.Actor{Type: secrets.ActorSystem, ID: "disclosure-scan"}, Reason: "scan", Now: s.now()}
+	if err := m.Validate(); err != nil {
+		return err
+	}
+	err := storage.WithTenant(ctx, s.db, req.Scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+		return s.audit(ctx, tx, m, auditEntry{Scope: req.Scope, Action: "secret.scan", ResourceType: "secret", ResourceID: secretID,
+			ResourceVersion: req.Version, Metadata: map[string]any{
+				"name": req.SecretName, "version": req.Version, "runId": string(req.RunID), "keyGeneration": generation,
+			}})
+	})
+	if err != nil {
+		return fmt.Errorf("%w: the scan could not be audited: %v", secrets.ErrUnavailable, err)
+	}
+	return nil
 }
 
 type pending struct {
@@ -119,7 +162,7 @@ func (p *pending) Finalize(ctx context.Context, info secrets.FinalizeInfo) error
 	}
 	now := s.now()
 	m := secrets.Mutation{
-		Actor:     secrets.Actor{Type: secrets.ActorWorkload, ID: string(info.AttemptID)},
+		Actor:     secrets.Actor{Type: secrets.ActorWorkload, ID: info.Subject()},
 		RequestID: info.RequestID, Now: now,
 	}
 	if err := m.Validate(); err != nil {
@@ -153,10 +196,10 @@ WHERE tenant_id = $1 AND project_id = $2 AND consumer_kind = $3 AND consumer_id 
 			return err
 		}
 		if err := s.audit(ctx, tx, m, auditEntry{Scope: req.Scope, Action: "secret.resolve", ResourceType: "secret", ResourceID: p.secretID,
-			ResourceVersion: req.Version, Metadata: map[string]any{
+			ResourceVersion: req.Version, Metadata: auditMeta{
 				"name": req.SecretName, "version": req.Version, "delivery": string(info.Delivery),
 				"runId": string(info.RunID), "attemptId": string(info.AttemptID), "keyGeneration": p.generation,
-			}}); err != nil {
+			}.withResource(info.ResourceKey)}); err != nil {
 			return err
 		}
 		callbackDone = true
@@ -177,4 +220,16 @@ WHERE tenant_id = $1 AND project_id = $2 AND consumer_kind = $3 AND consumer_id 
 // RunConsumer is the consumer reference of a pipeline run.
 func RunConsumer(id domain.RunID) secrets.ConsumerRef {
 	return secrets.ConsumerRef{Kind: secrets.ConsumerKindRun, ID: string(id)}
+}
+
+// auditMeta is the metadata of a resolution audit entry.
+type auditMeta map[string]any
+
+// withResource names the run service a value was delivered to; an attempt's
+// entry keeps exactly its earlier shape.
+func (m auditMeta) withResource(key string) map[string]any {
+	if key != "" {
+		m["resourceKey"] = key
+	}
+	return m
 }

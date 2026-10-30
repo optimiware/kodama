@@ -79,6 +79,13 @@ type Stack struct {
 	Service   *runtimeauth.Service
 	Handler   http.Handler
 	Logs      *SafeBuffer
+	// ResourceConfig, when set before NewService, enables the run_shared resource
+	// subjects of every service built by this stack.
+	ResourceConfig *runtimeauth.ResourceConfig
+	// Resources is the committed-resource fixture and ResourceStore the grant
+	// store over it (PostgreSQL stacks only).
+	Resources     *ResourceAuthority
+	ResourceStore *rtpg.ResourceStore
 }
 
 // Options tune the stack.
@@ -98,7 +105,7 @@ func New(t testing.TB, o Options) *Stack {
 		conns = 16
 	}
 	s := &Stack{T: t, DB: db, Owner: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, conns), Clock: NewClock(), Faults: &Faults{}, Logs: &SafeBuffer{}}
-	manifest, err := storage.NewManifest(storage.BaseContribution())
+	manifest, err := storage.NewManifest(storage.BaseContribution(), rtpg.ResourceMigrations())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +134,11 @@ func New(t testing.TB, o Options) *Stack {
 	if s.Verifier, err = jwt.NewVerifier(jwt.VerifierConfig{Ring: s.Ring, Issuer: Issuer, MaxLifetime: pol.MaxSession, Clock: s.Clock.Now}); err != nil {
 		t.Fatal(err)
 	}
+	s.Resources = newResourceAuthority(t, s)
+	if s.ResourceStore, err = rtpg.NewResourceStore(s.Runtime, s.Resources); err != nil {
+		t.Fatal(err)
+	}
+	s.ResourceConfig = &runtimeauth.ResourceConfig{Store: s.ResourceStore, State: s.Resources, Workloads: s.Resources, Tokens: s.Signer, Verifier: s.Verifier}
 	s.Service = s.NewService(pol, s.Store, s.Authority, s.Jobs, s.Signer)
 	if s.Handler, err = runtimehttp.NewHandler(runtimehttp.Config{Service: s.Service, Logger: newLogger(s.Logs)}); err != nil {
 		t.Fatal(err)
@@ -141,7 +153,7 @@ func (s *Stack) NewService(pol runtimeauth.Policy, store runtimeauth.Store, atte
 		Store: &faultStore{inner: store, f: s.Faults}, Attempts: &faultAttempts{inner: attempts, f: s.Faults}, Jobs: &faultJobs{inner: jobs, f: s.Faults},
 		Tokens: &faultIssuer{inner: issuer, f: s.Faults}, Verifier: s.Verifier,
 		Wrapper: runtimeauth.ExactWrapperPolicy{Supported: []string{"1.4.0"}},
-		Policy:  pol, Clock: s.Clock.Now, Logger: newLogger(s.Logs),
+		Policy:  pol, Clock: s.Clock.Now, Logger: newLogger(s.Logs), Resources: s.ResourceConfig,
 	})
 	if err != nil {
 		s.T.Fatal(err)

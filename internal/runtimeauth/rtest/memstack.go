@@ -57,3 +57,36 @@ func (m *MemStack) SeedAttempt(c runtimev1.Context, actions runtimeauth.ActionSe
 	m.Env.SeedAttempt(m.T, scope, c.RunID, c.AttemptID, job, digest, actions)
 	return Attempt{Scope: scope, Context: c, Job: job, Actions: actions}
 }
+
+// ResourceMemStack is a MemStack whose service also serves the run_shared
+// resource subjects over the memory resource fixture.
+type ResourceMemStack struct {
+	*MemStack
+	Resources *MemResources
+}
+
+// NewResourceMemStack builds the service with the attempt authority and the
+// resource authority in memory, sharing one signing ring (two audiences).
+func NewResourceMemStack(t testing.TB, opts ...memdb.Option) *ResourceMemStack {
+	t.Helper()
+	m := &MemStack{Env: NewMemEnv(t, opts...)}
+	s := &Stack{T: t, Clock: NewClock(), Faults: &Faults{}, Logs: &SafeBuffer{}, Jobs: &Jobs{}}
+	key, err := jwt.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Ring, err = jwt.NewKeyRing(1, key); err != nil {
+		t.Fatal(err)
+	}
+	if s.Signer, err = jwt.NewSigner(s.Ring, Issuer); err != nil {
+		t.Fatal(err)
+	}
+	if s.Verifier, err = jwt.NewVerifier(jwt.VerifierConfig{Ring: s.Ring, Issuer: Issuer, MaxLifetime: TestPolicy.MaxSession, Clock: s.Clock.Now}); err != nil {
+		t.Fatal(err)
+	}
+	res := NewMemResources()
+	s.ResourceConfig = &runtimeauth.ResourceConfig{Store: res, State: res, Workloads: res, Tokens: s.Signer, Verifier: s.Verifier}
+	s.Service = s.NewService(TestPolicy, m.Env.Grants, m.Env.Attempts, s.Jobs, s.Signer)
+	m.Stack = s
+	return &ResourceMemStack{MemStack: m, Resources: res}
+}

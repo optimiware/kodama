@@ -30,6 +30,15 @@ const (
 	OutputsPrefix = "/kodama/outputs"
 )
 
+// Runtime wires. `kodama step` speaks exactly one: v1 (attempt_private, the
+// default) or v2 (run_shared), selected by the controller through
+// KODAMA_RUNTIME_API. The entrypoint never negotiates: a context of the other
+// version is refused before any command.
+const (
+	RuntimeAPIv1 = "v1"
+	RuntimeAPIv2 = "v2"
+)
+
 // Version is the entrypoint version sent as AdmitRequest.ClientVersion. The
 // release build may override it with -ldflags.
 var Version = "0.1.0"
@@ -44,6 +53,12 @@ type Config struct {
 	CheckoutCredentialFile  string // default <IdentityDir>/checkout-credential; "username:password"; absent = anonymous
 	CAFile                  string // extra PEM roots for the runtime API and uploads
 	GitCAFile               string // GIT_SSL_CAINFO for clone; empty = system roots
+
+	// RuntimeAPI selects the runtime wire: "" and "v1" keep the frozen v1 routes and
+	// the per-attempt checkout; "v2" uses /runtime/v2/attempts, verifies the
+	// controller-prepared /workspace and calls begin before the command. A
+	// run_shared attempt never has a checkout credential.
+	RuntimeAPI string
 
 	WorkspaceDir string
 	OutputsDir   string
@@ -80,6 +95,9 @@ type Config struct {
 	ContainerLog io.Writer
 }
 
+// SharedRun reports whether the run_shared (v2) wire is selected.
+func (c *Config) SharedRun() bool { return c.RuntimeAPI == RuntimeAPIv2 }
+
 func (c *Config) applyDefaults() {
 	def := func(p *string, v string) {
 		if *p == "" {
@@ -97,6 +115,7 @@ func (c *Config) applyDefaults() {
 	def(&c.ScratchDir, os.TempDir())
 	def(&c.ClientVersion, Version)
 	def(&c.GitBinary, "git")
+	def(&c.RuntimeAPI, RuntimeAPIv1)
 	if c.Retry.MaxAttempts < 1 {
 		c.Retry = DefaultRetry
 	}
@@ -117,6 +136,11 @@ func (c *Config) applyDefaults() {
 // Validate checks the bootstrap inputs and the layout invariant that the
 // secrets directory is disjoint from the workspace, outputs and identity roots.
 func (c *Config) Validate() error {
+	switch c.RuntimeAPI {
+	case "", RuntimeAPIv1, RuntimeAPIv2:
+	default:
+		return fmt.Errorf("unsupported runtime API %q: use %s or %s", c.RuntimeAPI, RuntimeAPIv1, RuntimeAPIv2)
+	}
 	u, err := url.Parse(c.ServerURL)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return errors.New("server URL must be an absolute URL without credentials, query or fragment")
@@ -214,6 +238,7 @@ func ParseConfig(args []string, getenv func(string) string, output io.Writer) (C
 		fs.StringVar(p, flagName, setting(env, ""), usage+" (env KODAMA_STEP_"+strings.TrimPrefix(env, "KODAMA_")+" or "+env+")")
 	}
 	str(&c.ServerURL, "server-url", "KODAMA_SERVER_URL", "runtime API origin")
+	str(&c.RuntimeAPI, "runtime-api", "KODAMA_RUNTIME_API", "runtime wire: v1 (default) or v2 (run_shared)")
 	str(&c.AttemptID, "attempt-id", "KODAMA_ATTEMPT_ID", "attempt ID")
 	str(&c.IdentityDir, "identity-dir", "KODAMA_IDENTITY_DIR", "identity directory, default "+DefaultIdentityDir)
 	str(&c.AdmissionCredentialFile, "admission-credential-file", "KODAMA_ADMISSION_CREDENTIAL_FILE", "one-time admission credential file")

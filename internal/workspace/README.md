@@ -90,6 +90,17 @@ pending publication requires the same attempt to still hold the writer slot
 Only `git.Publisher` resolves publisher credentials; `git.Reader` and every
 use case see only secret references.
 
+### Cumulative writers and prior disclosures (task T-113)
+
+In a `run_shared` run the writers of one work item publish one after another: each writer is
+reserved on the workspace's accepted commit (the previous writer's published head), its
+bundle's prerequisites are that head, and the publisher's expected-tip compare-and-swap, the
+ancestry check and the human-push conflict behave as for the first writer
+(`cumulative_test.go`). `WithPriorDisclosures` makes the proposal scan include the values the
+run disclosed to its other steps and services (`RunDisclosures`; a failure refuses the proposal).
+The publisher never reads a workspace's `.git`; the entrypoint's sealed Git protects the
+step side (see the entrypoint README).
+
 ## Archive, restore, fence, retention
 
 * `Archive`: closes admission durably (version-checked), then waits up to

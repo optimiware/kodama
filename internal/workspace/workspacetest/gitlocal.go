@@ -577,6 +577,21 @@ func (r *LocalRepo) Tip(t testing.TB, ref string) workspace.Commit {
 	return c
 }
 
+// IsAncestor reports whether ancestor is an ancestor of (or equal to) descendant.
+func (r *LocalRepo) IsAncestor(t testing.TB, ancestor, descendant workspace.Commit) bool {
+	t.Helper()
+	_, err := git(context.Background(), r.Path, nil, nil, "merge-base", "--is-ancestor", string(ancestor), string(descendant))
+	if err == nil {
+		return true
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		return false
+	}
+	t.Fatal(err)
+	return false
+}
+
 // HumanPush plays an engineer: a commit on top of the branch tip, fast-forwarded
 // onto the branch directly.
 func (r *LocalRepo) HumanPush(t testing.TB, branch, msg string, files ...File) workspace.Commit {

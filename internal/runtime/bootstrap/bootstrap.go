@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 )
@@ -30,6 +31,13 @@ const CredentialFile = "admission"
 // implements it.
 type Registrar interface {
 	Register(ctx context.Context, cmd runtimeauth.RegisterCommand) (runtimeauth.Registration, error)
+}
+
+// RegistrarV2 registers the admission credential of a run_shared attempt, whose
+// pinned context is a ContextV2. runtimeauth.Service implements it; an Issuer
+// whose Registrar does not refuses a run_shared attempt (fail closed).
+type RegistrarV2 interface {
+	RegisterV2(ctx context.Context, cmd runtimeauth.RegisterCommandV2) (runtimeauth.Registration, error)
 }
 
 // Issuer persists and registers admission credentials.
@@ -60,6 +68,9 @@ func (i Issuer) Issue(ctx context.Context, spec execution.AttemptSpec, dir strin
 	if i.Registrar == nil {
 		return fmt.Errorf("%w: no admission registrar is configured", execution.ErrNotConfigured)
 	}
+	if spec.Shared != nil {
+		return i.issueShared(ctx, spec, dir)
+	}
 	c, err := spec.DecodeContext()
 	if err != nil {
 		return err
@@ -82,6 +93,68 @@ func (i Issuer) Issue(ctx context.Context, spec execution.AttemptSpec, dir strin
 		return fmt.Errorf("%w: runtime admission holds another credential: %w", execution.ErrConflict, err)
 	}
 	return fmt.Errorf("registering the admission credential: %w", err)
+}
+
+// issueShared is Issue for a run_shared attempt: the same one-time credential,
+// persisted before it is registered, registered with the ContextV2 the entrypoint
+// will receive. A run_shared attempt receives no checkout credential.
+func (i Issuer) issueShared(ctx context.Context, spec execution.AttemptSpec, dir string) error {
+	reg, ok := i.Registrar.(RegistrarV2)
+	if !ok {
+		return fmt.Errorf("%w: the admission registrar does not serve the run_shared wire", execution.ErrNotConfigured)
+	}
+	c, err := spec.DecodeContextV2()
+	if err != nil {
+		return err
+	}
+	cred, err := credential(filepath.Join(dir, CredentialFile))
+	if err != nil {
+		return err
+	}
+	var actions runtimeauth.ActionSet
+	switch {
+	case i.Ceiling != nil && i.Actions != nil:
+		return fmt.Errorf("%w: an action ceiling policy and an actions function are both configured", execution.ErrNotConfigured)
+	case i.Ceiling != nil:
+		actions = i.Ceiling.Actions(ctx, i.ceilingInputShared(ctx, spec, c))
+	case i.Actions != nil:
+		if actions, err = i.Actions(spec.Access); err != nil {
+			return err
+		}
+	default:
+		if actions, err = runtimeauth.NewActionSet(runtimeauth.DefaultActions(spec.Access == execution.AccessWrite)...); err != nil {
+			return err
+		}
+	}
+	_, err = reg.RegisterV2(ctx, runtimeauth.RegisterCommandV2{
+		Scope: spec.Scope, AttemptID: spec.AttemptID, Credential: cred, Actions: actions, Context: c,
+	})
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, runtimeauth.ErrConflict):
+		return fmt.Errorf("%w: runtime admission holds another credential: %w", execution.ErrConflict, err)
+	}
+	return fmt.Errorf("registering the admission credential: %w", err)
+}
+
+func (i Issuer) ceilingInputShared(ctx context.Context, spec execution.AttemptSpec, c runtimev2.ContextV2) runtimeauth.CeilingInput {
+	kind := runtimeauth.StepContainer
+	if c.Profile != nil {
+		kind = runtimeauth.StepAgent
+	}
+	if i.StepKind != nil {
+		switch k, err := i.StepKind(ctx, spec); {
+		case err != nil:
+			kind = ""
+		case k != "":
+			kind = k
+		}
+	}
+	return runtimeauth.CeilingInput{
+		Scope: spec.Scope, Kind: kind, Writer: spec.Access == execution.AccessWrite,
+		Profile: c.Profile, Deployment: c.Environment != nil,
+	}
 }
 
 func (i Issuer) actions(ctx context.Context, spec execution.AttemptSpec, c runtimev1.Context) (runtimeauth.ActionSet, error) {

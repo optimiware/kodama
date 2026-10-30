@@ -72,6 +72,15 @@ type MemOptions struct {
 	// Grants is the optional runtime-grant revoker joined to the store's
 	// transactions.
 	Grants memory.GrantRevoker
+	// GrantFence is the runtime-grant check joined to the transactions that record
+	// a begin or a preparation receipt (default: OpenMemFence, the contract
+	// suites' permissive fence; pass MemGrants to exercise the real check).
+	GrantFence memory.GrantFencer
+	// GrantFenceOf builds the fence over the store's own kernel (MemGrants); it
+	// takes precedence over GrantFence.
+	GrantFenceOf func(db *memdb.Store) memory.GrantFencer
+	// NoGrantFence builds the store with no fence: begins and receipts must refuse.
+	NoGrantFence bool
 	// Shared is the explicit run_shared opt-in (a test-injected fake port and
 	// policy); nil keeps new-format admission closed.
 	Shared *execution.SharedConfig
@@ -120,6 +129,13 @@ func NewMem(t testing.TB, o ...MemOptions) *Mem {
 	var err error
 	peers := m.World.Peers(m.Auth)
 	peers.Grants = opt.Grants
+	peers.GrantFence = opt.GrantFence
+	if opt.GrantFenceOf != nil {
+		peers.GrantFence = opt.GrantFenceOf(m.DB)
+	}
+	if peers.GrantFence == nil && !opt.NoGrantFence {
+		peers.GrantFence = OpenMemFence{}
+	}
 	m.Mem, err = memory.NewStore(m.DB, peers, memory.Options{Clock: m.Clock.Now, NewID: m.ID})
 	must(t, err)
 	m.Validator = pipelinetest.NewValidator(t, pipeline.KindContainer, pipeline.KindAgent, pipeline.KindGate)

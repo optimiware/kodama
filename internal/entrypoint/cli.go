@@ -70,6 +70,18 @@ func Execute(ctx context.Context, cfg Config) int {
 		}
 		return ExitUsage
 	}
+	if cfg.SharedRun() {
+		// run_shared: the v2 routes and the begin fence; the workspace is verified,
+		// never checked out, and no checkout credential is read.
+		client, err := NewClientV2(cfg.ServerURL, domain.AttemptID(cfg.AttemptID), cfg.CAFile, cfg.Retry, cfg.Logger)
+		if err != nil {
+			if cfg.Logger != nil {
+				cfg.Logger.Error("cannot create runtime client", "error", err.Error())
+			}
+			return ExitUsage
+		}
+		return NewStepV2(cfg, client, client, client).Run(ctx)
+	}
 	client, err := NewClient(cfg.ServerURL, domain.AttemptID(cfg.AttemptID), cfg.CAFile, cfg.Retry, cfg.Logger)
 	if err != nil {
 		if cfg.Logger != nil {

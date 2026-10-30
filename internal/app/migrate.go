@@ -7,6 +7,7 @@ import (
 	"net/url"
 
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
+	runtimeauthpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 )
 
@@ -26,9 +27,12 @@ import (
 // contribution an earlier release applied. The execution store reads their
 // columns unconditionally, so they must exist before the store serves a run;
 // the migration enables nothing: no route, backend, policy or admission of the
-// new format is wired by it.
+// new format is wired by it. The runtime grants of those resources (T-113: the
+// preparation workload's and the services' credentials and sessions, in their own
+// table) are the one contribution after it, for the same reason and with the same
+// guarantee: nothing serves the resource routes until the assembly wires them.
 func Contributions() []storage.Contribution {
-	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations()}
+	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations(), runtimeauthpg.ResourceMigrations()}
 }
 
 // Manifest validates the contribution list.

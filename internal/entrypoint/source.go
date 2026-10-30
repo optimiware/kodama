@@ -36,30 +36,40 @@ func (a *attempt) publish() (runtimev1.GitCommit, *verdict, *abortError) {
 		return "", &v, nil
 	}
 	pinned, tip := string(src.Commit), string(*src.ExpectedTip)
+	if a.sealed != nil {
+		// The command may have committed, reset or rewritten the scratch's repository:
+		// the private repository is pointed at whatever HEAD is now, as data.
+		if _, err := a.sealed.sync(ctx); err != nil {
+			if ab := a.classify(ctx, err); ab != nil {
+				return "", nil, ab
+			}
+			return reject(ReasonSourceFailed, "the workspace repository cannot be read: %v", err)
+		}
+	}
 
-	candidate, err := a.s.git.head(ctx, dir)
+	candidate, err := a.work().head(ctx, dir)
 	if err != nil {
 		if ab := a.classify(ctx, err); ab != nil {
 			return "", nil, ab
 		}
 		return reject(ReasonSourceFailed, "cannot read workspace HEAD: %v", err)
 	}
-	dirty, err := a.s.git.dirty(ctx, dir)
+	dirty, err := a.work().dirty(ctx, dir)
 	if err != nil {
 		return reject(ReasonSourceFailed, "cannot inspect workspace: %v", err)
 	}
 	if dirty {
 		msg := fmt.Sprintf("kodama: %s (attempt %s)", a.c.StepID, a.c.AttemptID)
-		if candidate, err = a.s.git.commitAll(ctx, dir, msg); err != nil {
+		if candidate, err = a.work().commitAll(ctx, dir, msg); err != nil {
 			return reject(ReasonSourceFailed, "cannot commit workspace changes: %v", err)
 		}
 	}
 	if candidate != pinned {
-		ok, err := a.s.git.isAncestor(ctx, dir, pinned, candidate)
+		ok, err := a.work().isAncestor(ctx, dir, pinned, candidate)
 		if err != nil || !ok {
 			return reject(ReasonSourceFailed, "the resulting commit %s does not descend from the pinned commit %s", candidate, pinned)
 		}
-		if path, err := a.s.git.scanForSecrets(ctx, dir, pinned, candidate, a.secretNeedles()); err != nil {
+		if path, err := a.work().scanForSecrets(ctx, dir, pinned, candidate, a.secretNeedles()); err != nil {
 			return reject(ReasonSourceFailed, "cannot scan source for injected secrets: %v", err)
 		} else if path != "" {
 			return reject(ReasonSecretInSource, "path %q in the source change contains an injected secret value; nothing was published", path)
@@ -78,7 +88,7 @@ func (a *attempt) publish() (runtimev1.GitCommit, *verdict, *abortError) {
 	}
 	defer os.RemoveAll(tmp)
 	bundle := filepath.Join(tmp, "source.bundle")
-	if err := a.s.git.bundle(ctx, dir, pinned, candidate, bundle); err != nil {
+	if err := a.work().bundle(ctx, dir, pinned, candidate, bundle); err != nil {
 		return reject(ReasonSourceFailed, "cannot create bundle: %v", err)
 	}
 	f, err := os.Open(bundle)
@@ -109,7 +119,17 @@ func (a *attempt) publish() (runtimev1.GitCommit, *verdict, *abortError) {
 	}
 
 	req := runtimev1.SourceProposalRequest{Commit: runtimev1.GitCommit(candidate), ExpectedTip: *src.ExpectedTip, BundleArtifactID: id}
-	return a.settle(ctx, req)
+	accepted, v, ab := a.settle(ctx, req)
+	if a.sealed != nil && v == nil && ab == nil {
+		// Accepted: the shared scratch's HEAD follows the published head, so the next
+		// holder begins on a clean tree whose head is the cumulative head. A failure
+		// here loses nothing published; the next begin reports the head it finds.
+		if err := a.sealed.advance(ctx, string(accepted)); err != nil {
+			a.note("the workspace HEAD could not follow the published commit: %v", err)
+			a.s.log.Warn("workspace head not advanced", "error", redactErr(err))
+		}
+	}
+	return accepted, v, ab
 }
 
 // settle repeats the identical proposal until the publication is accepted.

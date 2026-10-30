@@ -40,6 +40,7 @@ import (
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
 	pipelinepg "github.com/optimiware/kodama/internal/pipeline/postgres"
 	"github.com/optimiware/kodama/internal/runtime/runtimetest"
+	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/secrets"
 	"github.com/optimiware/kodama/internal/secrets/keyfile"
 	secretspg "github.com/optimiware/kodama/internal/secrets/postgres"
@@ -110,6 +111,17 @@ type Env struct {
 
 // Options tune the fixture. Zero values select the M1 wiring.
 type Options struct {
+	// RuntimeGrants builds the store as a runtime store with the real grant fence
+	// (execpg.SQLGrantFence) and applies the runtime resource grants migration, so
+	// begins and receipts are checked against real runtime_grants rows. The
+	// default store carries OpenSQLFence, the contract suites' permissive fence.
+	RuntimeGrants bool
+	// GrantFenceWrap wraps the real fence of a RuntimeGrants store (a test pauses
+	// inside the record's transaction, after the fence passed).
+	GrantFenceWrap func(execpg.GrantFencer) execpg.GrantFencer
+	// NoGrantFence builds a component store with no fence at all: begins and
+	// receipts must refuse.
+	NoGrantFence bool
 	// Hooks defaults to containers only.
 	Hooks execution.Hooks
 	// NoRuntime leaves the runtime port unset.
@@ -189,6 +201,9 @@ func New(t testing.TB, o ...Options) *Env {
 	contribs := []storage.Contribution{storage.BaseContribution()}
 	if opt.LegacySeed == nil {
 		contribs = append(contribs, execpg.RunResourceMigrations())
+		if opt.RuntimeGrants {
+			contribs = append(contribs, rtpg.ResourceMigrations())
+		}
 	}
 	manifest, err := storage.NewManifest(contribs...)
 	if err != nil {
@@ -241,9 +256,19 @@ func New(t testing.TB, o ...Options) *Env {
 	if opt.WrapAppender != nil {
 		appender = opt.WrapAppender(appender)
 	}
-	e.Store, err = execpg.NewStore(e.Runtime, appender, execpg.Peers{
-		Authority: adapters.BindAuthority, Workspaces: e.Workspaces, Secrets: e.Secrets,
-	}, execpg.Options{Clock: e.Clock.Now})
+	peers := execpg.Peers{Authority: adapters.BindAuthority, Workspaces: e.Workspaces, Secrets: e.Secrets, GrantFence: OpenSQLFence{}}
+	if opt.NoGrantFence {
+		peers.GrantFence = nil
+	}
+	if opt.RuntimeGrants {
+		peers.GrantFence = nil // NewRuntimeStore installs the real fence
+		if opt.GrantFenceWrap != nil {
+			peers.GrantFence = opt.GrantFenceWrap(execpg.SQLGrantFence{})
+		}
+		e.Store, err = execpg.NewRuntimeStore(e.Runtime, appender, peers, adapters.RevokeAttemptGrants, execpg.Options{Clock: e.Clock.Now})
+	} else {
+		e.Store, err = execpg.NewStore(e.Runtime, appender, peers, execpg.Options{Clock: e.Clock.Now})
+	}
 	must(t, err)
 	e.Keyed, err = execpg.NewKeyed(e.Idem, e.Store)
 	must(t, err)

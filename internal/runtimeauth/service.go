@@ -31,6 +31,9 @@ type Config struct {
 	Verifier TokenVerifier
 	Wrapper  WrapperPolicy
 	Policy   Policy
+	// Resources enables the preparation/service subjects of the run_shared model
+	// (runtime v2). Without it every resource operation is unavailable.
+	Resources *ResourceConfig
 	// Clock defaults to time.Now; Random to crypto/rand; Logger to a discard
 	// logger. The service logs only operation names, safe identifiers and the
 	// classified outcome.
@@ -61,6 +64,11 @@ func NewService(cfg Config) (*Service, error) {
 	if err := cfg.Policy.Validate(); err != nil {
 		return nil, err
 	}
+	if cfg.Resources != nil {
+		if err := cfg.Resources.validate(); err != nil {
+			return nil, err
+		}
+	}
 	if cfg.Clock == nil {
 		cfg.Clock = time.Now
 	}
@@ -89,6 +97,16 @@ func outcome(err error) string {
 		return "admission_consumed"
 	case errors.Is(err, ErrProfileUnsupported):
 		return "profile_unsupported"
+	case errors.Is(err, ErrResourceRevoked):
+		return "resource_revoked"
+	case errors.Is(err, ErrResourceUnbound):
+		return "resource_unbound"
+	case errors.Is(err, ErrContextVersionMismatch):
+		return "context_version_mismatch"
+	case errors.Is(err, ErrReceiptConflict):
+		return "receipt_conflict"
+	case errors.Is(err, ErrIdempotencyConflict):
+		return "idempotency_conflict"
 	case errors.Is(err, ErrConflict):
 		return "conflict"
 	case errors.Is(err, ErrNotFound):

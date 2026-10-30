@@ -539,6 +539,48 @@ func SharedLaunchOf(a *Aggregate, stepID string) (*SharedLaunch, error) {
 
 // ---- receipt and begin ----
 
+// GrantClaim names the runtime session a durable mutation is performed under: the
+// session and signing generation of the verified authorization. The runtime
+// authority has already verified the bearer; this is what the mutation hands to
+// its own transaction so the grant can be checked THERE (see GrantFence).
+type GrantClaim struct {
+	Session    string
+	Generation int64
+}
+
+// Validate refuses a claim that names no session.
+func (c GrantClaim) Validate() error {
+	if c.Session == "" || c.Generation < 1 {
+		return fmt.Errorf("%w: no runtime session is named", ErrInvalid)
+	}
+	return nil
+}
+
+// GrantFence is the transaction-bound check of a runtime grant, implemented by the
+// Env of a store whose database carries the runtime grants. A mutation that must
+// be atomic with revocation calls it AFTER the run row is locked (lock order:
+// run -> grants) and in the transaction that records its result: the grant row is
+// read under a share lock, so a revocation (a single UPDATE of the grant row,
+// outside any execution transaction) either committed before and is seen here, or
+// waits for this transaction. A grant that is revoked, missing, or not the
+// claim's session and generation is no authority: ErrAttemptRevoked for an
+// attempt's grant and ErrResourceRevoked for a resource's.
+type GrantFence interface {
+	AttemptGrantLive(ctx context.Context, scope domain.Scope, attempt domain.AttemptID, claim GrantClaim) error
+	ResourceGrantLive(ctx context.Context, scope domain.Scope, run domain.RunID, key string, claim GrantClaim) error
+}
+
+// fenceOf returns the grant fence of a mutation's transaction, or ErrNotConfigured:
+// recording on a runtime session without being able to check its grant in the
+// same transaction is refused, never skipped.
+func fenceOf(env Env) (GrantFence, error) {
+	f, ok := env.(GrantFence)
+	if !ok {
+		return nil, fmt.Errorf("%w: the store has no runtime grant fence", ErrNotConfigured)
+	}
+	return f, nil
+}
+
 // ReceiptAck acknowledges a recorded preparation receipt.
 type ReceiptAck struct {
 	Digest     string
@@ -550,10 +592,25 @@ type ReceiptAck struct {
 // preparation. The caller (the resource-subject route, P3) has verified the
 // bearer token against committed state; this use case rechecks everything under
 // the run lock and binds the digest to the workspace's committed UID.
-func (s *Service) RecordPreparationReceipt(ctx context.Context, scope domain.Scope, run domain.RunID, req runtimev2.PreparationReceiptRequest) (ReceiptAck, error) {
+//
+// The claim names the runtime session the receipt is recorded under; its grant is
+// checked in this same transaction, after the run lock (GrantFence): a revocation
+// committed after the caller's own check still stops the record, and a store
+// without the fence refuses.
+func (s *Service) RecordPreparationReceipt(ctx context.Context, scope domain.Scope, run domain.RunID, claim GrantClaim, req runtimev2.PreparationReceiptRequest) (ReceiptAck, error) {
+	if err := claim.Validate(); err != nil {
+		return ReceiptAck{}, err
+	}
 	var ack ReceiptAck
 	_, _, err := s.d.Store.Update(ctx, scope, run, UpdateOptions{}, func(ctx context.Context, env Env, agg *Aggregate) (Effects, error) {
 		if err := s.ownsModel(agg.Run); err != nil {
+			return Effects{}, err
+		}
+		fence, err := fenceOf(env)
+		if err != nil {
+			return Effects{}, err
+		}
+		if err := fence.ResourceGrantLive(ctx, scope, run, KeyPreparation, claim); err != nil {
 			return Effects{}, err
 		}
 		d, replay, err := agg.RecordPreparationReceipt(req, env.Now())
@@ -583,9 +640,17 @@ type BeginAck struct {
 // before the entrypoint starts the command. It linearizes against cancellation
 // under the run lock. A lost acknowledgment leaves the record in place: the
 // attempt is treated as begun and never retried automatically.
-func (s *Service) RecordBegin(ctx context.Context, scope domain.Scope, attempt domain.AttemptID, req runtimev2.BeginRequest) (BeginAck, error) {
+//
+// The claim names the runtime session the begin is recorded under; its grant is
+// checked in this same transaction, after the run lock (GrantFence), so a
+// revocation committed after the caller's own check records nothing. A store
+// without the fence refuses.
+func (s *Service) RecordBegin(ctx context.Context, scope domain.Scope, attempt domain.AttemptID, claim GrantClaim, req runtimev2.BeginRequest) (BeginAck, error) {
 	if err := firstOf(scope.Validate(), attempt.Validate()); err != nil {
 		return BeginAck{}, ErrNotFound
+	}
+	if err := claim.Validate(); err != nil {
+		return BeginAck{}, err
 	}
 	run, err := s.d.Store.RunOf(ctx, scope, attempt)
 	if err != nil {
@@ -610,6 +675,13 @@ func (s *Service) RecordBegin(ctx context.Context, scope domain.Scope, attempt d
 			// the begin. The record of an earlier begin stays.
 			after, aerr := advance(env, agg)
 			return Effects{After: after, Result: beginRevoked{}}, aerr
+		}
+		fence, err := fenceOf(env)
+		if err != nil {
+			return Effects{}, err
+		}
+		if err := fence.AttemptGrantLive(ctx, scope, attempt, claim); err != nil {
+			return Effects{}, err
 		}
 		rec, replay, err := agg.RecordBegin(BeginInput{Attempt: at, Request: req, Context: pinned}, env.Now())
 		if err != nil {

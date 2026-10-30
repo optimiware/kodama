@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 )
@@ -26,6 +27,13 @@ var messages = map[domain.ErrorCode]string{
 	runtimev1.CodeProfileUnsupported: "Wrapper version is not supported by this profile.",
 	domain.CodeUnavailable:           "The service cannot decide right now; retry.",
 	domain.CodeNotFound:              "Not found.",
+	// Codes new in runtime v2. The v1 routes answer context_version_mismatch for a
+	// run_shared attempt; the other codes are emitted by the v2 routes.
+	runtimev2.CodeContextVersionMismatch: "The attempt belongs to another runtime version.",
+	runtimev2.CodeReceiptConflict:        "A different preparation receipt is already recorded.",
+	runtimev2.CodeResourceUnbound:        "The resource instance is not bound yet.",
+	runtimev2.CodeResourceRevoked:        "The resource is no longer authorized.",
+	domain.CodeIdempotencyConflict:       "The request conflicts with the earlier one.",
 }
 
 // classify maps a service error to a contract code.
@@ -43,6 +51,16 @@ func classify(err error) domain.ErrorCode {
 		return runtimev1.CodeAdmissionConsumed
 	case errors.Is(err, runtimeauth.ErrProfileUnsupported):
 		return runtimev1.CodeProfileUnsupported
+	case errors.Is(err, runtimeauth.ErrContextVersionMismatch):
+		return runtimev2.CodeContextVersionMismatch
+	case errors.Is(err, runtimeauth.ErrResourceRevoked):
+		return runtimev2.CodeResourceRevoked
+	case errors.Is(err, runtimeauth.ErrResourceUnbound):
+		return runtimev2.CodeResourceUnbound
+	case errors.Is(err, runtimeauth.ErrReceiptConflict):
+		return runtimev2.CodeReceiptConflict
+	case errors.Is(err, runtimeauth.ErrIdempotencyConflict):
+		return domain.CodeIdempotencyConflict
 	}
 	// Includes ErrUnavailable and ErrConflict: no decision was made, nothing
 	// is granted, and the client may retry.
@@ -68,6 +86,11 @@ func routeCode(opID string, err error) domain.ErrorCode {
 	if allowed(opID, code) {
 		return code
 	}
+	// The one code the frozen v1 inventory lacks that a v1 route must still say: a
+	// run_shared attempt reached the v1 wire (nothing was changed).
+	if code == runtimev2.CodeContextVersionMismatch {
+		return code
+	}
 	switch code {
 	case domain.CodeForbidden, domain.CodeInvalidRequest:
 		return domain.CodeInvalidCredential
@@ -76,7 +99,7 @@ func routeCode(opID string, err error) domain.ErrorCode {
 }
 
 func statusOf(code domain.ErrorCode) int {
-	if s, ok := runtimev1.Status(code); ok {
+	if s, ok := runtimev2.Status(code); ok {
 		return s
 	}
 	return http.StatusServiceUnavailable

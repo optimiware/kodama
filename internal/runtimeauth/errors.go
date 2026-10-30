@@ -28,6 +28,22 @@ var (
 	// ErrNotFound is an absent attempt or grant. The HTTP layer never discloses
 	// it as such.
 	ErrNotFound = errors.New("runtimeauth: not found")
+	// ErrResourceRevoked is a preparation or service whose authority ended: stop
+	// intent, run cancellation or terminal state, or its deadline (403
+	// resource_revoked).
+	ErrResourceRevoked = errors.New("runtimeauth: resource revoked")
+	// ErrResourceUnbound is a resource whose workload UID execution has not bound
+	// yet (409 resource_unbound; the caller retries later).
+	ErrResourceUnbound = errors.New("runtimeauth: resource unbound")
+	// ErrContextVersionMismatch is an attempt of one runtime wire reaching the
+	// other wire's route (409 context_version_mismatch); nothing was changed.
+	ErrContextVersionMismatch = errors.New("runtimeauth: context version mismatch")
+	// ErrReceiptConflict is a different preparation receipt than the recorded one
+	// (409 receipt_conflict).
+	ErrReceiptConflict = errors.New("runtimeauth: receipt conflict")
+	// ErrIdempotencyConflict is a repeat of a once-only exchange (the begin of an
+	// attempt) with a different body (409 idempotency_conflict).
+	ErrIdempotencyConflict = errors.New("runtimeauth: idempotency conflict")
 	// ErrUnavailable is a dependency (database, signing key, execution state,
 	// Kubernetes observation) that could not give a conclusive answer. Callers
 	// retry; nothing was granted.
@@ -57,7 +73,7 @@ func failWith(kind error, cause error, format string, args ...any) error {
 	return &classified{kind: kind, msg: fmt.Sprintf(format, args...), cause: cause}
 }
 
-var kinds = []error{ErrInvalidRequest, ErrInvalidCredential, ErrForbidden, ErrAttemptRevoked, ErrAdmissionConsumed, ErrProfileUnsupported, ErrConflict, ErrNotFound, ErrUnavailable}
+var kinds = []error{ErrInvalidRequest, ErrInvalidCredential, ErrForbidden, ErrAttemptRevoked, ErrAdmissionConsumed, ErrProfileUnsupported, ErrConflict, ErrNotFound, ErrResourceRevoked, ErrResourceUnbound, ErrContextVersionMismatch, ErrReceiptConflict, ErrIdempotencyConflict, ErrUnavailable}
 
 // Classify returns err unchanged when it belongs to a known failure class and
 // otherwise wraps it as ErrUnavailable (fail closed).

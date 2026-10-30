@@ -216,6 +216,30 @@ attempt that allows more than the ceiling never widens it.
 - **Result/artifact/source/secret owners** call `Service.Authorize` for routing
   and `runtimeauth.CheckSession` inside their own transaction for mutations.
 
+## Run-resource subjects and the run_shared wire (task T-113)
+
+The preparation workload and the support services of a `run_shared` run have their own
+runtime subject ([runtime v2](../../docs/contracts/runtime-v2.md#resource-subjects)); they
+are not attempts. Not wired by `internal/app` (T-116), except that the migration is joined
+after the existing ones.
+
+| Piece | Where |
+| --- | --- |
+| Entity `ResourceGrant`: one-time credential (digest only), one session, bound to `(tenant, project, run, resource key)` and, once admitted, to the committed workload name/UID (+ the Pod pair of a Job-owned Pod); fingerprint and deadline fixed at registration; revocation irreversible | `resource.go` |
+| Consumer-owned ports: `ResourceObserver`/`ResourceTx.LockResource` (execution's committed state, locked against stop and cancellation), `ResourceStore`, `ResourceWorkloads` (S6: confirms a claimed Pod belongs to the committed UID), `ResourceTokenIssuer/Verifier` | `resource_ports.go` |
+| Use cases `RegisterResource` (S5; idempotent for the same credential, `ErrConflict` otherwise, only for the committed fingerprint and a deadline not beyond the committed one), `AdmitResource` (committed `(name, UID)` compared with the claim, Pod verified outside the transaction, replay with the same nonce, `admission_consumed`, `profile_unsupported`, `resource_unbound`), `RenewResource`, `ResourceContext`, `AuthorizeResource`, `RevokeResource`, `RevokeRunResources` | `resource_service.go` |
+| Authority: preparation = renew, own context, `preparation.complete`; service = renew, own context, `secret.resolve` for its pinned bindings; nothing else exists | `OpAllowed` |
+| Tokens: audience `kodama-runtime-resource`, same key and generation; an attempt token on a resource route and the reverse are `forbidden` (the service tries the other audience before answering) | `jwt/`, `verifyResource`/`verifyAttempt` |
+| Revocation: on every call the committed phase (stop intent, stopped/removed, cancelled/failed/terminal run, deadline), the fingerprint and the bound UID are re-read under lock; explicit revocation through `RevokeResource`/`postgres.RevokeResource` in execution's own transaction | `checkResourceSession` |
+| PostgreSQL: `runtime_resource_grants` (append-only contribution `004_runtime_resource_grants.sql`, RLS like `runtime_grants`, write-once triggers, no DELETE, restricted digest lookup) and `postgres.ResourceStore`/`ResourceAuthority`; `postgres.ResourceMigrations()` is joined last in `internal/app.Contributions()` | `postgres/` |
+| Wire: attempts of a `run_shared` run are registered with `RegisterV2` (ContextV2), admitted with `AdmitV2`, renewed with `RenewV2` and read with `ContextV2`; the grant's wire is its context's `contextVersion`, an attempt of the other wire is `context_version_mismatch` with nothing consumed (`Authorize` takes `ContextVersion`) | `admission.go`, `authorization.go` |
+| HTTP: `/runtime/v2/attempts/{id}/…` and `/runtime/v2/runs/{run}/resources/{key}/…` (`http.NewV2Handler`), `begin` and `preparation/complete` through `BeginRecorder`/`ReceiptRecorder`, service secrets through `ResourceSecretResolver`, the shared bodies (secrets, artifacts, source, result) through the v1 owners' handlers behind a `WireGuard` (T-116 also wraps the v1 handlers with a `WireV1` guard) | `http/v2.go` |
+| Bridge to execution: `execbridge.StateOf` (committed record and spec → `ResourceState`), `Begins`, `Receipts`, `Classify` | `execbridge/` |
+
+`begin` is authorized with `context.read`: the frozen action ceiling has no action of its
+own for it and it must never ride the result receipt's replay exemption; execution's
+`RecordBegin` linearizes the command authorization against cancellation.
+
 ## Checks
 
 ```sh
@@ -246,3 +270,29 @@ The execution authority and the Job observer in these tests are controlled
 fixtures (`rtest`). They prove this module's behavior against real PostgreSQL;
 they are not Kubernetes or execution-module qualification, which T-020, T-021
 and the kind tests supply.
+
+## Rechecking before durable mutations
+
+An `Authorization` (or `ResourceAuthorization`) is a decision made before the
+request body is read. The v2 `begin` and preparation-receipt handlers therefore
+call `Service.Reauthorize` / `ReauthorizeResource` after decoding the body and
+immediately before recording; `execbridge.Begins` and `Receipts` repeat it (an
+early refusal) and refuse (unavailable) when no `Recheck` is wired.
+
+That is not atomic: a standalone revocation (`Service.Revoke`, `RevokeResource`,
+`RevokeRunResources`) is a single `UPDATE` of the grant row that changes no
+execution state, so it can commit after the recheck and before execution records.
+Execution therefore checks the grant itself, in the transaction that records:
+the bridge passes the verified session and signing generation as an
+`execution.GrantClaim`, and `RecordBegin` / `RecordPreparationReceipt` call the
+store's `execution.GrantFence` after the run row is locked. The PostgreSQL fence
+(`execution/postgres.SQLGrantFence`, installed by `NewRuntimeStore`) reads
+`runtime_grants` / `runtime_resource_grants` with `FOR SHARE` and refuses a
+revoked, missing or foreign-session grant (`ErrAttemptRevoked` /
+`ErrResourceRevoked`). Either the revocation commits first and is seen, or the
+record commits first and the revocation waits for its share lock and lands after
+it. Lock order is unchanged (quota/work -> run/attempt -> grants -> secrets ->
+workspace -> events): the revocation locks only the grant row, so it cannot
+deadlock with a record, which takes the run first. A store without the fence (a
+component store, or a composition that forgot it) refuses these two records with
+`ErrNotConfigured`; nothing skips the check.

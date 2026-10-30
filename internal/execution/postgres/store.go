@@ -100,6 +100,10 @@ type Peers struct {
 	// RetainedRefPrefix is the workspace module's retained-reference namespace
 	// (it must equal the workspace service's option).
 	RetainedRefPrefix string
+	// GrantFence checks a runtime grant inside the transaction that records a
+	// begin or a preparation receipt. NewRuntimeStore defaults it to
+	// SQLGrantFence; a component store has none, and refuses those records.
+	GrantFence GrantFencer
 }
 
 // AttemptGrantRevoker revokes every runtime grant of an attempt inside the
@@ -147,6 +151,9 @@ func NewStore(db storage.TxBeginner, appender EventAppender, peers Peers, opts O
 func NewRuntimeStore(db storage.TxBeginner, appender EventAppender, peers Peers, grants AttemptGrantRevoker, opts Options) (*Store, error) {
 	if grants == nil {
 		return nil, fmt.Errorf("%w: the runtime grant revoker is required", execution.ErrNotConfigured)
+	}
+	if peers.GrantFence == nil {
+		peers.GrantFence = SQLGrantFence{}
 	}
 	return newStore(db, appender, peers, grants, opts)
 }

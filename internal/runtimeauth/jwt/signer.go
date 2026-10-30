@@ -9,6 +9,7 @@ import (
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 )
 
@@ -31,7 +32,10 @@ type Signer struct {
 	issuer string
 }
 
-var _ runtimeauth.TokenIssuer = (*Signer)(nil)
+var (
+	_ runtimeauth.TokenIssuer         = (*Signer)(nil)
+	_ runtimeauth.ResourceTokenIssuer = (*Signer)(nil)
+)
 
 // NewSigner requires a ring and a non-empty issuer.
 func NewSigner(ring *KeyRing, issuer string) (*Signer, error) {
@@ -50,6 +54,18 @@ func (s *Signer) Generation() int64 { return s.ring.Generation() }
 // Issue signs a token for the session. A request for a generation that is no
 // longer current fails closed.
 func (s *Signer) Issue(req runtimeauth.IssueRequest) (string, error) {
+	return s.issue(req, runtimev1.Audience)
+}
+
+// IssueResource signs a token of the resource audience (kodama-runtime-resource)
+// for a preparation or service session. The signing key, generation and claim
+// structure are the attempt tokens'; only the audience differs, so neither kind
+// of token verifies for the other's routes.
+func (s *Signer) IssueResource(req runtimeauth.IssueRequest) (string, error) {
+	return s.issue(req, runtimev2.ResourceAudience)
+}
+
+func (s *Signer) issue(req runtimeauth.IssueRequest, audience string) (string, error) {
 	if err := req.Tenant.Validate(); err != nil {
 		return "", errors.Join(runtimeauth.ErrInvalidRequest, errors.New("invalid tenant"))
 	}
@@ -76,7 +92,7 @@ func (s *Signer) Issue(req runtimeauth.IssueRequest) (string, error) {
 	}
 	c := claims{
 		Claims: josejwt.Claims{
-			Issuer: s.issuer, Subject: string(req.Session), Audience: josejwt.Audience{runtimev1.Audience},
+			Issuer: s.issuer, Subject: string(req.Session), Audience: josejwt.Audience{audience},
 			Expiry: josejwt.NewNumericDate(req.ExpiresAt), NotBefore: josejwt.NewNumericDate(req.IssuedAt),
 			IssuedAt: josejwt.NewNumericDate(req.IssuedAt), ID: hex.EncodeToString(id),
 		},

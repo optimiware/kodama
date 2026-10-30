@@ -272,6 +272,25 @@ func (e *txEnv) SettleWriter(_ context.Context, at *execution.Attempt, outcome e
 	return settle()
 }
 
+var _ execution.GrantFence = (*txEnv)(nil)
+
+// AttemptGrantLive implements execution.GrantFence over the store's grant peer,
+// joined to this transaction. A store without the peer refuses.
+func (e *txEnv) AttemptGrantLive(_ context.Context, scope domain.Scope, attempt domain.AttemptID, claim execution.GrantClaim) error {
+	if e.s.peers.GrantFence == nil || scope != e.scope {
+		return fmt.Errorf("%w: the store has no runtime grant fence", execution.ErrNotConfigured)
+	}
+	return e.s.peers.GrantFence.AttemptGrantLive(e.tx, scope, attempt, claim)
+}
+
+// ResourceGrantLive implements execution.GrantFence.
+func (e *txEnv) ResourceGrantLive(_ context.Context, scope domain.Scope, run domain.RunID, key string, claim execution.GrantClaim) error {
+	if e.s.peers.GrantFence == nil || scope != e.scope {
+		return fmt.Errorf("%w: the store has no runtime grant fence", execution.ErrNotConfigured)
+	}
+	return e.s.peers.GrantFence.ResourceGrantLive(e.tx, scope, run, key, claim)
+}
+
 func (e *txEnv) runSettles() error {
 	e.deferWriter = false
 	settles := e.settles

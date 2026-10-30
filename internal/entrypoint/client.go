@@ -20,6 +20,7 @@ import (
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -85,6 +86,12 @@ type Client struct {
 	mu      sync.Mutex
 	token   string
 	timeout time.Duration
+	// wire2 selects the run_shared wire: routes under /runtime/v2/attempts and the
+	// v2 error envelope (which adds codes the v1 envelope rejects).
+	wire2 bool
+	// disposed is set by dispose: the client holds no bearer token and sends no
+	// request any more.
+	disposed bool
 }
 
 // NewClient builds a client for one attempt. serverURL is the origin (and any
@@ -92,9 +99,29 @@ type Client struct {
 // /runtime/v1/attempts/{attemptID}. caFile, when set, adds PEM roots to the
 // system pool for the runtime API and upload targets.
 func NewClient(serverURL string, attemptID domain.AttemptID, caFile string, retry RetryPolicy, log *slog.Logger) (*Client, error) {
+	return newClient(serverURL, attemptID, caFile, retry, log, false)
+}
+
+// NewClientV2 is NewClient for the run_shared wire: routes are appended under
+// /runtime/v2/attempts/{attemptID}. The shared bodies (secrets, artifacts,
+// source, result) are the v1 DTOs, unchanged.
+func NewClientV2(serverURL string, attemptID domain.AttemptID, caFile string, retry RetryPolicy, log *slog.Logger) (*Client, error) {
+	return newClient(serverURL, attemptID, caFile, retry, log, true)
+}
+
+func newClient(serverURL string, attemptID domain.AttemptID, caFile string, retry RetryPolicy, log *slog.Logger, wire2 bool) (*Client, error) {
 	if err := attemptID.Validate(); err != nil {
 		return nil, err
 	}
+	version := "v1"
+	if wire2 {
+		version = "v2"
+	}
+	return newClientAt(strings.TrimRight(serverURL, "/")+"/runtime/"+version+"/attempts/"+string(attemptID), caFile, retry, log, wire2)
+}
+
+// newClientAt builds the HTTP adapter for a route family rooted at base.
+func newClientAt(base, caFile string, retry RetryPolicy, log *slog.Logger, wire2 bool) (*Client, error) {
 	if retry.MaxAttempts < 1 {
 		bounds := retry
 		retry = DefaultRetry
@@ -119,7 +146,8 @@ func NewClient(serverURL string, attemptID domain.AttemptID, caFile string, retr
 		transport.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	}
 	c := &Client{
-		base:  strings.TrimRight(serverURL, "/") + "/runtime/v1/attempts/" + string(attemptID),
+		wire2: wire2,
+		base:  base,
 		http:  &http.Client{Transport: transport, Timeout: 0, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		retry: retry,
 		log:   log,
@@ -137,8 +165,25 @@ func (c *Client) noteTimeout(parent, req context.Context, op string, bound time.
 
 func (c *Client) setToken(t string) {
 	c.mu.Lock()
-	c.token = t
+	if !c.disposed {
+		c.token = t
+	}
 	c.mu.Unlock()
+}
+
+// dispose drops the bearer token and makes the client refuse every later request
+// locally. It is irreversible: a process that must hold no authority while
+// untrusted code runs in its namespace calls it before that code starts.
+func (c *Client) dispose() {
+	c.mu.Lock()
+	c.token, c.disposed = "", true
+	c.mu.Unlock()
+}
+
+func (c *Client) isDisposed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.disposed
 }
 
 func (c *Client) bearer() string {
@@ -252,6 +297,9 @@ func doOnce[Resp any, P interface {
 	Validate() error
 }](ctx context.Context, c *Client, op, method, path string, payload []byte, auth bool, okStatuses []int) (result[Resp], time.Duration, error) {
 	var zero result[Resp]
+	if c.isDisposed() {
+		return zero, 0, &ProtocolError{Op: op, Err: errors.New("the client's credentials were disposed of")}
+	}
 	var rdr io.Reader
 	if payload != nil {
 		rdr = bytes.NewReader(payload)
@@ -289,6 +337,11 @@ func doOnce[Resp any, P interface {
 	}
 	for _, s := range okStatuses {
 		if resp.StatusCode == s {
+			if !c.wire2 && (op == "admit" || op == "getContext") && declaresContextVersion(data) {
+				// The v1 decoder tolerates added members, and a source-free ContextV2 is a
+				// superset of a v1 context: the version discriminator is the refusal.
+				return zero, 0, &ProtocolError{Op: op, Err: errors.New("the runtime answered a context of another runtime version")}
+			}
 			v, err := runtimev1.DecodeResponse[Resp, P](data)
 			if err != nil {
 				return zero, 0, &ProtocolError{Op: op, Err: err}
@@ -297,7 +350,11 @@ func doOnce[Resp any, P interface {
 		}
 	}
 	apiErr := &APIError{Op: op, Status: resp.StatusCode}
-	if e, derr := runtimev1.DecodeResponse[runtimev1.ErrorResponse](data); derr == nil {
+	if c.wire2 {
+		if e, derr := runtimev2.DecodeResponse[runtimev2.ErrorResponse](data); derr == nil {
+			apiErr.Code, apiErr.Message, apiErr.RequestID, apiErr.Details = e.Error.Code, e.Error.Message, e.Error.RequestID, e.Error.Details
+		}
+	} else if e, derr := runtimev1.DecodeResponse[runtimev1.ErrorResponse](data); derr == nil {
 		apiErr.Code, apiErr.Message, apiErr.RequestID, apiErr.Details = e.Error.Code, e.Error.Message, e.Error.RequestID, e.Error.Details
 	}
 	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
@@ -464,4 +521,59 @@ func (c *Client) uploadOnce(ctx context.Context, target runtimev1.Upload, body i
 		return &transient{err: &APIError{Op: op, Status: resp.StatusCode}}
 	}
 	return &APIError{Op: op, Status: resp.StatusCode}
+}
+
+// AdmitV2 exchanges the one-time admission credential on the run_shared wire and
+// stores the attempt token. The response carries the ContextV2; a v1 context is a
+// contract violation here (it fails validation) and starts nothing.
+func (c *Client) AdmitV2(ctx context.Context, req runtimev1.AdmitRequest) (runtimev2.AdmitResponseV2, error) {
+	if !c.wire2 {
+		return runtimev2.AdmitResponseV2{}, &ProtocolError{Op: "admit", Err: errors.New("the client speaks the v1 wire")}
+	}
+	if err := req.Validate(); err != nil {
+		return runtimev2.AdmitResponseV2{}, &ProtocolError{Op: "admit", Err: err}
+	}
+	r, err := call[runtimev2.AdmitResponseV2](ctx, c, "admit", http.MethodPost, "/admit", req, false, http.StatusOK)
+	if err != nil {
+		return runtimev2.AdmitResponseV2{}, err
+	}
+	c.setToken(r.value.Token.Token)
+	return r.value, nil
+}
+
+// ContextV2 fetches the immutable ContextV2.
+func (c *Client) ContextV2(ctx context.Context) (runtimev2.ContextV2, error) {
+	if !c.wire2 {
+		return runtimev2.ContextV2{}, &ProtocolError{Op: "getContext", Err: errors.New("the client speaks the v1 wire")}
+	}
+	r, err := call[runtimev2.ContextV2](ctx, c, "getContext", http.MethodGet, "/context", nil, true, http.StatusOK)
+	return r.value, err
+}
+
+// Begin records the command-begin fence. The command may start only after the
+// acknowledgment returned here.
+func (c *Client) Begin(ctx context.Context, req runtimev2.BeginRequest) (runtimev2.BeginResponse, error) {
+	if !c.wire2 {
+		return runtimev2.BeginResponse{}, &ProtocolError{Op: "begin", Err: errors.New("the client speaks the v1 wire")}
+	}
+	if err := req.Validate(); err != nil {
+		return runtimev2.BeginResponse{}, &ProtocolError{Op: "begin", Err: err}
+	}
+	r, err := call[runtimev2.BeginResponse](ctx, c, "begin", http.MethodPost, "/begin", req, true, http.StatusOK)
+	return r.value, err
+}
+
+// declaresContextVersion reports a context document that carries the v2
+// contextVersion discriminator, at the top level or in an admission's context.
+func declaresContextVersion(data []byte) bool {
+	var top struct {
+		ContextVersion *int64 `json:"contextVersion"`
+		Context        *struct {
+			ContextVersion *int64 `json:"contextVersion"`
+		} `json:"context"`
+	}
+	if json.Unmarshal(data, &top) != nil {
+		return false
+	}
+	return top.ContextVersion != nil || (top.Context != nil && top.Context.ContextVersion != nil)
 }

@@ -168,6 +168,22 @@ metadata.
    because the value version is bound into the ciphertext before the transaction
    starts; a concurrent rotation makes the loser fail with `412 version_conflict`.
 
+## Run services and prior disclosures (task T-113)
+
+`Resolver.ResolveResource(ctx, current, req, requestID)` releases one pinned binding to a
+run service with the order of `Resolve` (current authority, exact `(ref, version)` match against
+the grant's own pins, decrypt, authority again, atomic finalization); the grant
+(`ResourceGrant`) comes from the service's verified resource token and execution's
+committed record, and a step's binding is not a service's. The audit entry names the
+receiver `resource:<run>/<key>` and carries `resourceKey`; `FinalizeInfo.Subject()` is the
+audit identity.
+
+`Disclosures` (`RunBindings` + `VersionSource`) yields the plaintext values a run disclosed to
+its OTHER attempts and services, for `workspace.WithPriorDisclosures` and
+`logs.WithPriorDisclosures` (scanning and redaction only; nothing is delivered or audited).
+A binding that was revoked is skipped; any other failure makes the whole answer unavailable.
+The execution module bridges `RunBindings` (T-116).
+
 ## Limits stated plainly
 
 * Plaintext lifetime is bounded (buffers are cleared after use, request bodies are

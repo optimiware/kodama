@@ -60,6 +60,17 @@ type AuthorityBinder func(tx memdb.Tx) execution.TxAuthority
 // no grants, as the PostgreSQL component store.
 type GrantRevoker func(tx memdb.Tx, scope domain.Scope, attempt domain.AttemptID, now time.Time) error
 
+// GrantFencer is the transaction-joined check of a runtime grant (the memory
+// counterpart of the SQL fence): it reads the grant inside the caller's
+// transaction and answers execution.ErrAttemptRevoked or ErrResourceRevoked when
+// the grant is revoked, missing, or not the claim's session and generation. It is
+// optional on a store, but a store without it refuses to record a begin or a
+// preparation receipt (execution.ErrNotConfigured), never skips the check.
+type GrantFencer interface {
+	AttemptGrantLive(tx memdb.Tx, scope domain.Scope, attempt domain.AttemptID, claim execution.GrantClaim) error
+	ResourceGrantLive(tx memdb.Tx, scope domain.Scope, run domain.RunID, key string, claim execution.GrantClaim) error
+}
+
 // Peers are the peer joins of a Store. Every one except Grants is required: a
 // transition without its audit/outbox records, or a dispatch without authority,
 // workspace and secret bindings, must not be constructible.
@@ -70,6 +81,9 @@ type Peers struct {
 	Secrets    SecretPins
 	Events     EventAppender
 	Grants     GrantRevoker
+	// GrantFence is the runtime grant check joined to the transaction that records
+	// a begin or a preparation receipt.
+	GrantFence GrantFencer
 }
 
 // Options configure a Store.

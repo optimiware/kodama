@@ -13,6 +13,12 @@ import (
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 )
 
+// secretResolver is the one operation secret delivery needs from the runtime; the
+// attempt's Runtime and a resource subject's client both provide it.
+type secretResolver interface {
+	ResolveSecret(ctx context.Context, req runtimev1.SecretResolveRequest) (runtimev1.SecretResolveResponse, error)
+}
+
 // secretSet is the materialized secret material of one attempt. Values never
 // leave this struct except into the secrets directory and the child's
 // environment; they are not logged.
@@ -57,7 +63,7 @@ func envNameFor(name string) string {
 // left exactly as found: the files go into a fresh child directory created
 // exclusively (0700, named by the process) and owned by this process, and
 // set.dir names that child. cleanup removes it on every exit path.
-func materializeSecrets(ctx context.Context, rt Runtime, bindings []runtimev1.SecretBinding, root string) (*secretSet, error) {
+func materializeSecrets(ctx context.Context, rt secretResolver, bindings []runtimev1.SecretBinding, root string) (*secretSet, error) {
 	set := &secretSet{root: root, env: map[string]string{}}
 	if len(bindings) == 0 {
 		return set, nil

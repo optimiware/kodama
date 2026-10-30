@@ -5,6 +5,7 @@ import (
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -23,6 +24,20 @@ type Authorization struct {
 	Action    Action
 	// Actions is the effective action set at the time of the decision.
 	Actions ActionSet
+	// ContextVersion is the runtime wire the attempt belongs to (WireV1 or
+	// WireV2), fixed by its pinned context.
+	ContextVersion int64
+	// TokenGeneration is the signing generation of the verified token. Together
+	// with Session, Action and the route it is everything a mutation needs to
+	// recheck this authority inside its own transaction (SessionCheck).
+	TokenGeneration int64
+}
+
+// SessionCheck is the check that re-verifies this authorization inside a
+// transaction (CheckSession through postgres.Bind): the seam an execution
+// mutation that must not race with revocation calls in its own transaction.
+func (a Authorization) SessionCheck(currentGeneration int64, now time.Time) SessionCheck {
+	return SessionCheck{Route: a.AttemptID, Session: a.Session, TokenGeneration: a.TokenGeneration, CurrentGeneration: currentGeneration, Action: a.Action, Now: now}
 }
 
 // SessionCheck is one authorization decision over a token's claims.
@@ -92,9 +107,9 @@ func CheckSession(ctx context.Context, tx GrantTx, c SessionCheck) (AdmissionGra
 
 // withSession verifies the bearer, then runs CheckSession and fn in one tenant
 // transaction.
-func (s *Service) withSession(ctx context.Context, route domain.AttemptID, bearer string, action Action, fn func(g AdmissionGrant, now time.Time) error) (Authorization, error) {
+func (s *Service) withSession(ctx context.Context, route domain.AttemptID, bearer string, action Action, wire int64, fn func(g AdmissionGrant, now time.Time) error) (Authorization, error) {
 	var out Authorization
-	claims, err := s.cfg.Verifier.Verify(ctx, bearer)
+	claims, err := s.verifyAttempt(ctx, bearer)
 	if err != nil {
 		return out, err
 	}
@@ -110,7 +125,11 @@ func (s *Service) withSession(ctx context.Context, route domain.AttemptID, beare
 		if g.Scope.TenantID != claims.Tenant {
 			return fail(ErrInvalidCredential, "the token is not valid for this attempt")
 		}
-		out = Authorization{Scope: g.Scope, RunID: g.RunID, AttemptID: g.AttemptID, Session: claims.Session, Action: action, Actions: intersect(g.Actions, state.Actions)}
+		if g.Wire() != wire {
+			// Another runtime wire's attempt: nothing is issued or changed.
+			return fail(ErrContextVersionMismatch, "the attempt belongs to another runtime version")
+		}
+		out = Authorization{Scope: g.Scope, RunID: g.RunID, AttemptID: g.AttemptID, Session: claims.Session, Action: action, Actions: intersect(g.Actions, state.Actions), ContextVersion: wire, TokenGeneration: claims.Generation}
 		if fn != nil {
 			return fn(g, now)
 		}
@@ -137,6 +156,10 @@ type AuthorizeRequest struct {
 	AttemptID domain.AttemptID
 	Bearer    string
 	Action    Action
+	// ContextVersion is the runtime wire of the route being served: WireV1 (the
+	// zero value) or WireV2. An attempt of the other wire is
+	// ErrContextVersionMismatch before anything is done.
+	ContextVersion int64
 }
 
 // Authorize decides whether the bearer may use req.Action on req.AttemptID now.
@@ -148,7 +171,14 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (a Author
 	if err := req.AttemptID.Validate(); err != nil {
 		return Authorization{}, fail(ErrInvalidCredential, "the token is not valid for this attempt")
 	}
-	return s.withSession(ctx, req.AttemptID, req.Bearer, req.Action, nil)
+	wire := req.ContextVersion
+	if wire == 0 {
+		wire = WireV1
+	}
+	if wire != WireV1 && wire != WireV2 {
+		return Authorization{}, fail(ErrInvalidRequest, "unknown runtime wire")
+	}
+	return s.withSession(ctx, req.AttemptID, req.Bearer, req.Action, wire, nil)
 }
 
 func knownAction(a Action) bool {
@@ -161,10 +191,21 @@ func knownAction(a Action) bool {
 // moves it.
 func (s *Service) Renew(ctx context.Context, route domain.AttemptID, bearer string) (resp runtimev1.TokenResponse, err error) {
 	defer func() { err = Classify(err); s.logOp(ctx, "renew", route, err) }()
+	return s.renew(ctx, route, bearer, WireV1)
+}
+
+// RenewV2 is Renew on the run_shared wire (the same attempt token, audience
+// kodama-runtime).
+func (s *Service) RenewV2(ctx context.Context, route domain.AttemptID, bearer string) (resp runtimev2.TokenResponse, err error) {
+	defer func() { err = Classify(err); s.logOp(ctx, "renew", route, err) }()
+	return s.renew(ctx, route, bearer, WireV2)
+}
+
+func (s *Service) renew(ctx context.Context, route domain.AttemptID, bearer string, wire int64) (resp runtimev1.TokenResponse, err error) {
 	if err := route.Validate(); err != nil {
 		return resp, fail(ErrInvalidCredential, "the token is not valid for this attempt")
 	}
-	_, err = s.withSession(ctx, route, bearer, ActionTokenRenew, func(g AdmissionGrant, now time.Time) error {
+	_, err = s.withSession(ctx, route, bearer, ActionTokenRenew, wire, func(g AdmissionGrant, now time.Time) error {
 		exp, err := g.TokenExpiry(now, s.cfg.Policy.TokenTTL)
 		if err != nil {
 			return err
@@ -193,13 +234,30 @@ func (s *Service) Context(ctx context.Context, route domain.AttemptID, bearer st
 	if err := route.Validate(); err != nil {
 		return c, fail(ErrInvalidCredential, "the token is not valid for this attempt")
 	}
-	_, err = s.withSession(ctx, route, bearer, ActionContextRead, func(g AdmissionGrant, _ time.Time) error {
+	_, err = s.withSession(ctx, route, bearer, ActionContextRead, WireV1, func(g AdmissionGrant, _ time.Time) error {
 		var derr error
 		c, derr = decodeContext(g.Context)
 		return derr
 	})
 	if err != nil {
 		return runtimev1.Context{}, err
+	}
+	return c, nil
+}
+
+// ContextV2 returns the pinned ContextV2 of a run_shared attempt, unchanged.
+func (s *Service) ContextV2(ctx context.Context, route domain.AttemptID, bearer string) (c runtimev2.ContextV2, err error) {
+	defer func() { err = Classify(err); s.logOp(ctx, "context", route, err) }()
+	if err := route.Validate(); err != nil {
+		return c, fail(ErrInvalidCredential, "the token is not valid for this attempt")
+	}
+	_, err = s.withSession(ctx, route, bearer, ActionContextRead, WireV2, func(g AdmissionGrant, _ time.Time) error {
+		var derr error
+		c, derr = decodeContextV2(g.Context)
+		return derr
+	})
+	if err != nil {
+		return runtimev2.ContextV2{}, err
 	}
 	return c, nil
 }
@@ -217,5 +275,30 @@ func (s *Service) Revoke(ctx context.Context, scope domain.Scope, attempt domain
 	return s.cfg.Store.Do(ctx, scope.TenantID, func(ctx context.Context, tx GrantTx) error {
 		_, err := tx.RevokeAttempt(ctx, scope, attempt, s.now())
 		return err
+	})
+}
+
+// Reauthorize re-verifies, now and in one tenant transaction (the module-wide lock
+// order), that the session of a previous authorization is still current: the
+// grant is not revoked, the attempt is active and still holds the action, the
+// signing generation is current and the attempt still belongs to the wire. A
+// handler calls it after reading a request body and immediately before a durable
+// mutation, because an authorization decided before the body arrived is a
+// decision at a moment, not a permit. A mutation that must be atomic with
+// revocation additionally runs CheckSession in its own transaction.
+func (s *Service) Reauthorize(ctx context.Context, a Authorization) (err error) {
+	defer func() { err = Classify(err); s.logOp(ctx, "reauthorize", a.AttemptID, err) }()
+	if a.Session.Validate() != nil || a.Scope.Validate() != nil || a.AttemptID.Validate() != nil {
+		return fail(ErrInvalidCredential, "the authorization is malformed")
+	}
+	return s.cfg.Store.Do(ctx, a.Scope.TenantID, func(ctx context.Context, tx GrantTx) error {
+		g, _, err := CheckSession(ctx, tx, a.SessionCheck(s.cfg.Tokens.Generation(), s.now()))
+		if err != nil {
+			return err
+		}
+		if g.Scope != a.Scope || g.AttemptID != a.AttemptID || g.Wire() != a.ContextVersion {
+			return fail(ErrInvalidCredential, "the authorization is not this session's")
+		}
+		return nil
 	})
 }

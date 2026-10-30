@@ -17,6 +17,7 @@ import (
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
+	rtpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 	pgtest "github.com/optimiware/kodama/test/support/postgres"
 )
@@ -38,7 +39,7 @@ func Test_shared_forced_rls_ownership_and_guards(t *testing.T) {
 	if err != nil || in == nil {
 		t.Fatalf("claim: %v", err)
 	}
-	if _, err := s.Svc.RecordBegin(ctx, executiontest.ScopeA, in.AttemptID, beginBody()); err != nil {
+	if _, err := s.Svc.RecordBegin(ctx, executiontest.ScopeA, in.AttemptID, executiontest.ContractClaim, beginBody()); err != nil {
 		t.Fatal(err)
 	}
 	run := sr.Run()
@@ -352,7 +353,9 @@ func Test_shared_migration_is_additive(t *testing.T) {
 		pool := db.MigrationPool(ctx, 2)
 		opts := storage.MigrateOptions{RuntimeRole: db.RuntimeRole}
 		all := app.Contributions()
-		prior, err := storage.NewManifest(all[:len(all)-1]...)
+		// The two additive contributions are last: the run-resource lifecycle's and the
+		// runtime authority's grants of those resources (T-113).
+		prior, err := storage.NewManifest(all[:len(all)-2]...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -367,8 +370,8 @@ func Test_shared_migration_is_additive(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(res.Applied) != 1 || res.Applied[0] != execpg.RunResourcesMigrationID {
-			t.Fatalf("only the new migration applies after the prior ledger: %v", res.Applied)
+		if len(res.Applied) != 2 || res.Applied[0] != execpg.RunResourcesMigrationID || res.Applied[1] != rtpg.ResourceGrantsMigrationID {
+			t.Fatalf("only the two new migrations apply after the prior ledger: %v", res.Applied)
 		}
 		again, err := storage.Migrate(ctx, pool, full, opts)
 		if err != nil || len(again.Applied) != 0 {

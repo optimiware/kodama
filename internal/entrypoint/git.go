@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
@@ -48,9 +49,30 @@ type git struct {
 	home      string
 	pathEnv   string
 	redactors []string // exact strings removed from error output
+
+	// seal and cfg are set only by sealedGit (the run_shared workspace): extra
+	// environment that pins GIT_DIR/GIT_WORK_TREE/GIT_OBJECT_DIRECTORY/GIT_INDEX_FILE
+	// to a private repository, and extra -c settings. The v1 checkout never sets
+	// them and its invocations are byte-for-byte what they were.
+	seal []string
+	cfg  []string
+	// group runs every invocation in its own process group and, when its context
+	// ends, kills the whole group and stops waiting for output after a short
+	// delay. Git delegates to helpers (git-remote-https, filters) that inherit its
+	// pipes: killing Git alone leaves a stalled helper holding stderr open and the
+	// call waits for it past every deadline. The preparation and the sealed Git set
+	// it; the v1 checkout is unchanged.
+	group bool
 }
 
+// groupWaitDelay bounds how long a killed invocation's output pipes are awaited.
+const groupWaitDelay = 2 * time.Second
+
 func (g *git) base() []string {
+	return append(g.baseConfig(), g.cfg...)
+}
+
+func (g *git) baseConfig() []string {
 	return []string{
 		// The workspace volume is owned by the kubelet, not the non-root step, and
 		// restricted Pod Security forbids a chown. Hooks and global config are
@@ -88,6 +110,7 @@ func (g *git) env(extra ...string) []string {
 	if g.caFile != "" {
 		env = append(env, "GIT_SSL_CAINFO="+g.caFile)
 	}
+	env = append(env, g.seal...)
 	return append(env, extra...)
 }
 
@@ -107,11 +130,28 @@ func (g *git) run(ctx context.Context, dir string, extraEnv []string, args ...st
 	cmd.Env = g.env(extraEnv...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &limitedBuffer{buf: &stderr, max: 8 << 10}
+	g.confine(cmd)
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(g.redact(stderr.String()))
 		return nil, fmt.Errorf("git %s: %v: %s", firstArg(args), err, msg)
 	}
 	return stdout.Bytes(), nil
+}
+
+// confine puts the command in its own process group when g.group is set, so that
+// cancellation reaches its helpers and the wait for its pipes is bounded.
+func (g *git) confine(cmd *exec.Cmd) {
+	if !g.group {
+		return
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = groupWaitDelay
 }
 
 func firstArg(args []string) string {
@@ -283,6 +323,7 @@ func (g *git) scanForSecrets(ctx context.Context, dir, base, commit string, need
 	cmd.Dir = dir
 	cmd.Env = g.env()
 	cmd.Stdin = strings.NewReader(strings.Join(oids, "\n") + "\n")
+	g.confine(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", err

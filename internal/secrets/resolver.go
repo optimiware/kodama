@@ -61,12 +61,25 @@ type VersionRequest struct {
 }
 
 // FinalizeInfo is what the finalization audit records about the delivery. It
-// holds identifiers only.
+// holds identifiers only. Exactly one subject receives the value: an attempt
+// (AttemptID) or a run service (ResourceKey, with AttemptID empty).
 type FinalizeInfo struct {
 	AttemptID domain.AttemptID
 	RunID     domain.RunID
-	Delivery  runtimev1.SecretDelivery
-	RequestID string
+	// ResourceKey is the run resource ("service.NAME") a pinned binding is
+	// delivered to, for a delivery that is not to an attempt.
+	ResourceKey string
+	Delivery    runtimev1.SecretDelivery
+	RequestID   string
+}
+
+// Subject is the audit identity of the receiver: the attempt, or
+// "resource:<run>/<key>" for a run service.
+func (i FinalizeInfo) Subject() string {
+	if i.ResourceKey != "" {
+		return "resource:" + string(i.RunID) + "/" + i.ResourceKey
+	}
+	return string(i.AttemptID)
 }
 
 // PendingValue is a decrypted value that has not been released. Finalize
@@ -90,6 +103,17 @@ type VersionSource interface {
 	// reference, ErrNotPinned when the run does not retain it, ErrRevoked for a
 	// revoked version, and a *KeyError for provider failures.
 	Open(ctx context.Context, req VersionRequest) (PendingValue, error)
+}
+
+// ScanSource is the optional capability of a VersionSource to read a version the
+// run was given for comparison only: source scanning and log redaction. Scanning is
+// not use, so it still reads a version that was revoked (or whose run released its
+// pins) after an earlier step received it; it must audit the read (as a scan, never
+// as a delivery) before returning a value and must never feed a delivery path. A
+// source without it cannot serve disclosures of a revoked version, and the caller
+// fails closed.
+type ScanSource interface {
+	OpenForScan(ctx context.Context, req VersionRequest) (PendingValue, error)
 }
 
 // Resolver releases secret values to attempts that declared them.

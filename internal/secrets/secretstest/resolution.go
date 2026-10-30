@@ -42,6 +42,19 @@ func (*MemVersionSource) DevelopmentOnly() bool { return true }
 // not pin is ErrNotPinned, a released pin is ErrAttemptInactive and a revoked
 // version is ErrRevoked.
 func (v *MemVersionSource) Open(ctx context.Context, req secrets.VersionRequest) (secrets.PendingValue, error) {
+	return v.open(ctx, req, false)
+}
+
+var _ secrets.ScanSource = (*MemVersionSource)(nil)
+
+// OpenForScan is Open for comparison only (secrets.ScanSource): a revoked version
+// and a released pin are still read, the run must have pinned the version, and the
+// read is audited as secret.scan before any value is returned.
+func (v *MemVersionSource) OpenForScan(ctx context.Context, req secrets.VersionRequest) (secrets.PendingValue, error) {
+	return v.open(ctx, req, true)
+}
+
+func (v *MemVersionSource) open(ctx context.Context, req secrets.VersionRequest, scan bool) (secrets.PendingValue, error) {
 	if err := req.Scope.Validate(); err != nil {
 		return nil, err
 	}
@@ -65,10 +78,10 @@ func (v *MemVersionSource) Open(ctx context.Context, req secrets.VersionRequest)
 		switch {
 		case !ok || pin.Project != req.Scope.ProjectID:
 			return secrets.ErrNotPinned
-		case pin.ReleasedAt != nil:
+		case pin.ReleasedAt != nil && !scan:
 			return fmt.Errorf("%w: the run released its pins", secrets.ErrAttemptInactive)
 		}
-		if sv.Revoked() {
+		if sv.Revoked() && !scan {
 			return secrets.ErrRevoked
 		}
 		sk, err = getScopeKey(tx, sv.Record().ScopeKeyID)
@@ -85,6 +98,18 @@ func (v *MemVersionSource) Open(ctx context.Context, req secrets.VersionRequest)
 	plain, err := envelope.Open(material, sv.EnvelopeContext(v.installation, sec.Name()), sv.Envelope())
 	if err != nil {
 		return nil, fmt.Errorf("%w: stored value failed authentication", secrets.ErrInconsistent)
+	}
+	if scan {
+		s := v.store
+		m := secrets.Mutation{Actor: secrets.Actor{Type: secrets.ActorSystem, ID: "disclosure-scan"}, Reason: "scan", Now: s.now()}
+		err := s.cfg.Store.Update(ctx, req.Scope.TenantID, func(tx memdb.Tx) error {
+			return s.audit(tx, m, auditEntry{Scope: req.Scope, Action: "secret.scan", ResourceType: "secret", ResourceID: sec.ID(),
+				ResourceVersion: req.Version, Metadata: map[string]any{"name": req.SecretName, "version": req.Version, "runId": string(req.RunID)}})
+		})
+		if err != nil {
+			clear(plain)
+			return nil, fmt.Errorf("%w: the scan could not be audited: %v", secrets.ErrUnavailable, err)
+		}
 	}
 	return &pending{src: v, req: req, secretID: sec.ID(), generation: sv.Record().KeyGeneration, value: plain}, nil
 }
@@ -111,7 +136,7 @@ func (p *pending) Finalize(ctx context.Context, info secrets.FinalizeInfo) error
 		return fmt.Errorf("%w: finalization for another run", secrets.ErrInvalid)
 	}
 	now := s.now()
-	m := secrets.Mutation{Actor: secrets.Actor{Type: secrets.ActorWorkload, ID: string(info.AttemptID)}, RequestID: info.RequestID, Now: now}
+	m := secrets.Mutation{Actor: secrets.Actor{Type: secrets.ActorWorkload, ID: info.Subject()}, RequestID: info.RequestID, Now: now}
 	if err := m.Validate(); err != nil {
 		return err
 	}
@@ -141,10 +166,10 @@ func (p *pending) Finalize(ctx context.Context, info secrets.FinalizeInfo) error
 			return err
 		}
 		if err := s.audit(tx, m, auditEntry{Scope: req.Scope, Action: "secret.resolve", ResourceType: "secret", ResourceID: p.secretID,
-			ResourceVersion: req.Version, Metadata: map[string]any{
+			ResourceVersion: req.Version, Metadata: auditMeta{
 				"name": req.SecretName, "version": req.Version, "delivery": string(info.Delivery),
 				"runId": string(info.RunID), "attemptId": string(info.AttemptID), "keyGeneration": p.generation,
-			}}); err != nil {
+			}.withResource(info.ResourceKey)}); err != nil {
 			return err
 		}
 		callbackDone = true
@@ -162,4 +187,16 @@ func (p *pending) Finalize(ctx context.Context, info secrets.FinalizeInfo) error
 // RunConsumer is the consumer reference of a pipeline run.
 func RunConsumer(id domain.RunID) secrets.ConsumerRef {
 	return secrets.ConsumerRef{Kind: secrets.ConsumerKindRun, ID: string(id)}
+}
+
+// auditMeta is the metadata of a resolution audit entry.
+type auditMeta map[string]any
+
+// withResource names the run service a value was delivered to; an attempt's
+// entry keeps exactly its earlier shape.
+func (m auditMeta) withResource(key string) map[string]any {
+	if key != "" {
+		m["resourceKey"] = key
+	}
+	return m
 }

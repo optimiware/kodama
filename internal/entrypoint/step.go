@@ -17,6 +17,7 @@ import (
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/logs/contract"
 )
@@ -51,6 +52,9 @@ func (e *abortError) Error() string { return e.err.Error() }
 type Step struct {
 	cfg Config
 	rt  Runtime
+	// v2 is set only by NewStepV2: the run_shared wire's admission, context and
+	// begin. A Step with a nil v2 is the v1 attempt_private entrypoint, unchanged.
+	v2  RuntimeV2
 	up  Uploader
 	log *slog.Logger
 	git *git
@@ -88,10 +92,15 @@ func failed(reason string, exit *int64) verdict {
 }
 
 type attempt struct {
-	s         *Step
-	parent    context.Context
-	runCtx    context.Context
-	c         runtimev1.Context
+	s      *Step
+	parent context.Context
+	runCtx context.Context
+	c      runtimev1.Context
+	// c2 is the ContextV2 of a run_shared attempt (c is its v1 projection, which the
+	// shared output/source code reads); nil on the v1 wire. sealed is the private
+	// Git over the shared workspace, open from verification to the end of the step.
+	c2        *runtimev2.ContextV2
+	sealed    *sealedGit
 	artifacts map[domain.ArtifactID]runtimev1.ArtifactRef
 	names     map[string]bool
 	diag      []domain.ArtifactID
@@ -143,7 +152,7 @@ func (s *Step) Run(ctx context.Context) int {
 		s.log.Error("nonce", "error", err.Error())
 		return ExitError
 	}
-	admitted, err := s.rt.Admit(ctx, runtimev1.AdmitRequest{
+	admitted, err := s.admit(ctx, runtimev1.AdmitRequest{
 		AdmissionCredential: cred, Nonce: nonce, ClientVersion: s.cfg.ClientVersion, Job: s.cfg.Job,
 	})
 	if err != nil {
@@ -153,23 +162,23 @@ func (s *Step) Run(ctx context.Context) int {
 		}
 		return ExitAdmission
 	}
-	if string(admitted.Context.AttemptID) != s.cfg.AttemptID {
+	if string(admitted.c.AttemptID) != s.cfg.AttemptID {
 		s.log.Error("admitted context belongs to another attempt")
 		return ExitAdmission
 	}
-	s.writeToken(admitted.Token.Token)
-	s.log.Info("admitted", "attempt", s.cfg.AttemptID, "tokenExpiresAt", admitted.Token.ExpiresAt)
+	s.writeToken(admitted.token.Token)
+	s.log.Info("admitted", "attempt", s.cfg.AttemptID, "tokenExpiresAt", admitted.token.ExpiresAt)
 
 	runCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	renewDone := make(chan struct{})
 	go func() {
 		defer close(renewDone)
-		s.renewLoop(runCtx, cancel, admitted.Token)
+		s.renewLoop(runCtx, cancel, admitted.token)
 	}()
 	defer func() { cancel(nil); <-renewDone }()
 
-	fetched, err := s.rt.Context(runCtx)
+	fetched, err := s.fetch(runCtx)
 	if err != nil {
 		s.log.Error("context fetch failed", "error", err.Error())
 		if isRevoked(err) || errors.Is(context.Cause(runCtx), errAuthorityLost) {
@@ -180,22 +189,25 @@ func (s *Step) Run(ctx context.Context) int {
 	// The HTTP adapter validates responses; another Runtime implementation
 	// must not be able to make the entrypoint dereference a missing source or
 	// launch a command from a malformed context.
-	if err := fetched.Validate(); err != nil {
+	if err := fetched.validate(); err != nil {
 		s.log.Error("the runtime returned an invalid context", "error", err.Error())
 		return ExitAdmission
 	}
 	a := &attempt{
-		s: s, parent: ctx, runCtx: runCtx, c: fetched,
+		s: s, parent: ctx, runCtx: runCtx, c: fetched.c, c2: fetched.c2,
 		artifacts: map[domain.ArtifactID]runtimev1.ArtifactRef{}, names: map[string]bool{},
 	}
 	defer func() {
 		if a.finCancel != nil {
 			a.finCancel()
 		}
+		if a.sealed != nil {
+			a.sealed.Close()
+		}
 	}()
 	var v verdict
 	var abort *abortError
-	if !reflect.DeepEqual(admitted.Context, fetched) {
+	if !reflect.DeepEqual(admitted.c, fetched.c) || !reflect.DeepEqual(admitted.c2, fetched.c2) {
 		a.note("context returned by admit differs from GET /context; refusing to launch")
 		v = failed(ReasonContextMismatch, nil)
 	} else {
@@ -215,7 +227,13 @@ func (a *attempt) execute() (verdict, *abortError) {
 		a.note("the context declares no command")
 		return failed(ReasonCommandStartFailed, nil), nil
 	}
-	for _, d := range []string{cfg.WorkspaceDir, cfg.OutputsDir} {
+	dirs := []string{cfg.WorkspaceDir, cfg.OutputsDir}
+	if a.c2 != nil {
+		// The run workspace is the controller's mount and is never created here: a
+		// missing /workspace is a lost scratch, reported by the verification below.
+		dirs = dirs[1:]
+	}
+	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			a.note("cannot prepare %s: %v", d, err)
 			return failed(ReasonCommandStartFailed, nil), nil
@@ -226,7 +244,16 @@ func (a *attempt) execute() (verdict, *abortError) {
 		return failed(ReasonCommandStartFailed, nil), nil
 	}
 
-	if c.Workspace.Access != runtimev1.AccessNone {
+	var begin *runtimev2.BeginRequest
+	if a.c2 != nil {
+		// run_shared: no clone, reset or clean and no checkout credential. The
+		// controller prepared the scratch once; this only looks at it.
+		req, v := a.verifyWorkspace()
+		if v != nil {
+			return *v, nil
+		}
+		begin = req
+	} else if c.Workspace.Access != runtimev1.AccessNone {
 		if v := a.checkout(); v != nil {
 			return *v, nil
 		}
@@ -255,6 +282,15 @@ func (a *attempt) execute() (verdict, *abortError) {
 	if a.parent.Err() != nil {
 		a.note("the entrypoint was interrupted before the command was launched")
 		return failed(ReasonInterrupted, nil), nil
+	}
+
+	if begin != nil {
+		// The command-begin fence: the server records, durably and ordered against
+		// cancellation, that this attempt may run user code. The command starts only
+		// after the acknowledgment; a refusal or an unacknowledged call starts nothing.
+		if ab := a.recordBegin(*begin); ab != nil {
+			return verdict{}, ab
+		}
 	}
 
 	logCap := commandLogCapacity(c.Limits.MaxDiagnosticBytes)

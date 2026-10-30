@@ -20,7 +20,7 @@ func beginReq() runtimev2.BeginRequest {
 }
 
 func (r *rig) begin(in *execution.AttemptSpec) (execution.BeginAck, error) {
-	return r.s.Svc.RecordBegin(context.Background(), SharedScope, in.AttemptID, beginReq())
+	return r.s.Svc.RecordBegin(context.Background(), SharedScope, in.AttemptID, ContractClaim, beginReq())
 }
 
 func (r *rig) cancel() {
@@ -158,7 +158,7 @@ func sharedRegressions(t *testing.T, open func(testing.TB) SharedSubject) {
 				t.Fatal(err)
 			}
 			other := runtimev2.BeginRequest{Workspace: &runtimev2.BeginWorkspace{Head: CommitA, TrackedClean: false}}
-			if _, err := r.s.Svc.RecordBegin(ctx, SharedScope, a.AttemptID, other); !errors.Is(err, execution.ErrBeginConflict) {
+			if _, err := r.s.Svc.RecordBegin(ctx, SharedScope, a.AttemptID, ContractClaim, other); !errors.Is(err, execution.ErrBeginConflict) {
 				t.Fatalf("%v", err)
 			}
 		})
@@ -658,11 +658,11 @@ func sharedRegressions(t *testing.T, open func(testing.TB) SharedSubject) {
 				t.Fatal(err)
 			}
 			r.started(a)
-			ack, err := r.s.Svc.RecordBegin(ctx, SharedScope, a.AttemptID, runtimev2.BeginRequest{Workspace: nil})
+			ack, err := r.s.Svc.RecordBegin(ctx, SharedScope, a.AttemptID, ContractClaim, runtimev2.BeginRequest{Workspace: nil})
 			if err != nil || ack.WorkspaceState != runtimev2.StateNone || ack.IgnoredPresent {
 				t.Fatalf("begin %+v %v", ack, err)
 			}
-			if _, err := r.s.Svc.RecordBegin(ctx, SharedScope, a.AttemptID, beginReq()); !errors.Is(err, execution.ErrInvalid) && !errors.Is(err, execution.ErrBeginConflict) {
+			if _, err := r.s.Svc.RecordBegin(ctx, SharedScope, a.AttemptID, ContractClaim, beginReq()); !errors.Is(err, execution.ErrInvalid) && !errors.Is(err, execution.ErrBeginConflict) {
 				t.Fatalf("a source-backed begin body for a source-free attempt: %v", err)
 			}
 			r.settledSucceed(a, "")
@@ -1183,10 +1183,10 @@ func sharedRepairRegressions(t *testing.T, open func(testing.TB) SharedSubject) 
 				if _, err := svc.ReconcileTenant(ctx, SharedScope.TenantID); err != nil && !errors.Is(err, execution.ErrNotConfigured) {
 					t.Fatalf("tenant reconcile: %v", err)
 				}
-				if _, err := svc.RecordBegin(ctx, SharedScope, a.AttemptID, beginReq()); !errors.Is(err, execution.ErrNotConfigured) {
+				if _, err := svc.RecordBegin(ctx, SharedScope, a.AttemptID, ContractClaim, beginReq()); !errors.Is(err, execution.ErrNotConfigured) {
 					t.Fatalf("begin: %v", err)
 				}
-				if _, err := svc.RecordPreparationReceipt(ctx, SharedScope, r.run.ID, runtimev2.PreparationReceiptRequest{
+				if _, err := svc.RecordPreparationReceipt(ctx, SharedScope, r.run.ID, ContractClaim, runtimev2.PreparationReceiptRequest{
 					Commit: CommitA, TreeID: CommitC, HooksDisabled: true, Submodules: "skipped", CredentialsRemoved: true, Attempts: 1}); !errors.Is(err, execution.ErrNotConfigured) {
 					t.Fatalf("receipt: %v", err)
 				}

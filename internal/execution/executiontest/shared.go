@@ -726,7 +726,7 @@ func SharedCaps() execution.Capabilities {
 
 // NewSharedMem builds the memory fixture with the run_shared opt-in composed
 // explicitly from test doubles.
-func NewSharedMem(t testing.TB) (*Mem, SharedSubject) {
+func NewSharedMem(t testing.TB, mod ...func(*MemOptions)) (*Mem, SharedSubject) {
 	t.Helper()
 	res, pol := NewFakeResources(SharedBackend), NewPolicies()
 	lim := SharedLimit()
@@ -734,8 +734,12 @@ func NewSharedMem(t testing.TB) (*Mem, SharedSubject) {
 		ResourceBackoffBase: time.Second, ResourceBackoffMax: 8 * time.Second, TerminationDelay: -1}
 	counter := &CountingSources{}
 	wrap := func(in execution.Sources) execution.Sources { counter.Inner = in; return counter }
-	m := NewMem(t, MemOptions{Shared: &execution.SharedConfig{Resources: res, Policies: pol}, Limits: &lim, ServiceOptions: &so,
-		Cleanup: AllowCleanup{}, SourceWrap: wrap})
+	mo := MemOptions{Shared: &execution.SharedConfig{Resources: res, Policies: pol}, Limits: &lim, ServiceOptions: &so,
+		Cleanup: AllowCleanup{}, SourceWrap: wrap}
+	for _, f := range mod {
+		f(&mo)
+	}
+	m := NewMem(t, mo)
 	m.GrantAll()
 	m.Manual.SetCapabilities(SharedCaps())
 	m.Validator = sharedValidator(t)

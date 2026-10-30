@@ -1,0 +1,477 @@
+package entrypoint
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	"github.com/optimiware/kodama/internal/domain"
+)
+
+// ---- a writer attempt over a sealed shared workspace ----------------------------
+
+// sealedPub is a run_shared writer driven directly through publish: the workspace
+// is the repository a preparation left (commit c1, then c2 = the run's head).
+type sealedPub struct {
+	*unit
+	dir    string
+	c1, c2 string
+	a      *attempt
+	sg     *sealedGit
+}
+
+func newSealedPub(t *testing.T, trusted func(uint32) bool) *sealedPub {
+	t.Helper()
+	requireGit(t)
+	u := newUnit(t, `exit 0`)
+	dir := u.cfg.WorkspaceDir
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tgit(t, dir, "init", "-q", "-b", "work", "--template=")
+	writeFile(t, filepath.Join(dir, "a.txt"), "one")
+	tgit(t, dir, "add", ".")
+	tgit(t, dir, "commit", "-q", "--no-gpg-sign", "-m", "one")
+	c1 := tgit(t, dir, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(dir, "a.txt"), "two")
+	tgit(t, dir, "commit", "-qam", "two", "--no-gpg-sign")
+	c2 := tgit(t, dir, "rev-parse", "HEAD")
+	return attachSealed(t, u, dir, c1, c2, trusted)
+}
+
+func attachSealed(t *testing.T, u *unit, dir, c1, c2 string, trusted func(uint32) bool) *sealedPub {
+	t.Helper()
+	ws := writerWorkspace(c1, c2)
+	// The context validator wants the head to be the input until a writer
+	// published; the lineage says one did.
+	pub := runtimev1.GitCommit(c2)
+	ws.Lineage = []runtimev2.LineageEntry{{StepID: "gen", AttemptID: "att_unit00", Access: runtimev1.AccessWrite, BeganAt: timestamp(-time.Minute), WorkspaceState: runtimev2.StateClean, PublishedCommit: &pub}}
+	c := sharedContext(t, "true", ws)
+	s := u.build()
+	sg, err := newSealedGit(context.Background(), s.git, dir, u.cfg.ScratchDir, trusted)
+	if err != nil {
+		t.Fatalf("sealed git: %v", err)
+	}
+	t.Cleanup(sg.Close)
+	a := &attempt{
+		s: s, parent: context.Background(), runCtx: context.Background(), c: projectV2(c), c2: &c, sealed: sg,
+		artifacts: map[domain.ArtifactID]runtimev1.ArtifactRef{}, names: map[string]bool{},
+	}
+	return &sealedPub{unit: u, dir: dir, c1: c1, c2: c2, a: a, sg: sg}
+}
+
+func (p *sealedPub) failed(v *verdict, ab *abortError, reason string) {
+	p.t.Helper()
+	if ab != nil || v == nil || v.outcome != runtimev1.OutcomeFailed || v.reason != reason {
+		p.t.Fatalf("verdict = %+v, abort = %v; want failed/%s\nnotes: %s", v, ab, reason, p.a.notes.String())
+	}
+}
+
+// inspect runs the test's own Git over the workspace's OBJECTS only, through a
+// pristine repository, so reading a hostile workspace for assertions never runs it.
+func (p *sealedPub) inspect(args ...string) string {
+	p.t.Helper()
+	pristine := p.t.TempDir()
+	tgit(p.t, pristine, "init", "-q", "--template=")
+	cmd := exec.Command("git", args...)
+	cmd.Dir = pristine
+	cmd.Env = append(gitEnv(), "GIT_DIR="+filepath.Join(pristine, ".git"), "GIT_OBJECT_DIRECTORY="+filepath.Join(p.dir, ".git", "objects"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		p.t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func absent(t *testing.T, path, why string) {
+	t.Helper()
+	if _, err := os.Stat(path); err == nil {
+		t.Errorf("%s: %s exists", why, filepath.Base(path))
+	}
+}
+
+// ---- never checks out or resets ---------------------------------------------------------------
+
+func Test_unit_entrypoint_v2_never_checks_out_or_resets(t *testing.T) {
+	requireGit(t)
+	// A shim around git that records every invocation (arguments, working
+	// directory, and whether the checkout credential reached its environment).
+	shim := func(t *testing.T, logPath string) string {
+		path := filepath.Join(t.TempDir(), "git")
+		real, _ := exec.LookPath("git")
+		script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\t%%s\\n' \"$PWD\" \"$*\" >> %q\nenv | grep -q ghp_checkout_secret && echo CREDENTIAL-IN-ENV >> %q\nexec %q \"$@\"\n", logPath, logPath, real)
+		writeFile(t, path, script)
+		if err := os.Chmod(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	forbidden := []string{"clone", "fetch", "checkout", "reset", "clean", "remote", "pull", "restore", "switch", "config", "submodule", "stash", "gc", "maintenance"}
+	subcommand := func(args string) string {
+		f := strings.Fields(args)
+		for i := 0; i < len(f); i++ {
+			if f[i] == "-c" {
+				i++
+				continue
+			}
+			return f[i]
+		}
+		return ""
+	}
+
+	t.Run("a reader leaves the scratch exactly as it found it", func(t *testing.T) {
+		su := newShared(t, nothing, sourceBacked("read"))
+		logPath := filepath.Join(su.root, "git.log")
+		su.cfg.GitBinary = shim(t, logPath)
+		// A scratch the earlier steps left untidy: modified, untracked and ignored.
+		writeFile(t, filepath.Join(su.cfg.WorkspaceDir, "main.go"), "package edited\n")
+		writeFile(t, filepath.Join(su.cfg.WorkspaceDir, "generated.txt"), "generated by step one")
+		writeFile(t, filepath.Join(su.cfg.WorkspaceDir, "build", "out.bin"), "artifact")
+		// The checkout credential a v1 attempt would use is present and must never be read.
+		writeFile(t, su.cfg.CheckoutCredentialFile, "bot:ghp_checkout_secret\n")
+		before := dirSnapshot(t, su.cfg.WorkspaceDir)
+		su.wantExit(su.run(), ExitOK)
+		if after := dirSnapshot(t, su.cfg.WorkspaceDir); after != before {
+			t.Fatalf("the scratch changed:\n%s\n--\n%s", before, after)
+		}
+		raw, err := os.ReadFile(logPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "CREDENTIAL-IN-ENV") || strings.Contains(string(raw), "ghp_checkout_secret") {
+			t.Fatal("the checkout credential reached Git")
+		}
+		for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+			dir, args, _ := strings.Cut(line, "\t")
+			sub := subcommand(args)
+			for _, bad := range forbidden {
+				if sub == bad {
+					t.Fatalf("v2 ran git %s: %s", sub, args)
+				}
+			}
+			// Git never runs inside the workspace at all: the work tree is named by
+			// the environment, and the only repository created is the private one.
+			if strings.HasPrefix(dir, su.cfg.WorkspaceDir) && sub == "init" {
+				t.Fatalf("git init in the workspace: %s", line)
+			}
+			if sub == "init" && !strings.Contains(args, "kodama-seal-") {
+				t.Fatalf("git init outside the private repository: %s", args)
+			}
+		}
+		if !strings.Contains(su.logs.String(), `"msg":"launching command"`) {
+			t.Fatal("the command did not run")
+		}
+	})
+
+	t.Run("a missing or wrong workspace is never repaired by a checkout", func(t *testing.T) {
+		su := newShared(t, nothing, sourceBacked("read"))
+		logPath := filepath.Join(su.root, "git.log")
+		su.cfg.GitBinary = shim(t, logPath)
+		writeFile(t, su.cfg.CheckoutCredentialFile, "bot:ghp_checkout_secret\n")
+		if err := os.RemoveAll(filepath.Join(su.cfg.WorkspaceDir, ".git")); err != nil {
+			t.Fatal(err)
+		}
+		su.wantExit(su.run(), ExitOK)
+		wantReason(t, su.lastResult(), ReasonWorkspaceUnverified)
+		raw, _ := os.ReadFile(logPath)
+		for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+			if _, args, _ := strings.Cut(line, "\t"); args != "" && (subcommand(args) == "clone" || subcommand(args) == "fetch" || subcommand(args) == "init" && !strings.Contains(args, "kodama-seal-")) {
+				t.Fatalf("an unverified workspace was repaired: %s", args)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(su.cfg.WorkspaceDir, ".git")); err == nil {
+			t.Fatal("a repository was recreated in the workspace")
+		}
+	})
+
+	t.Run("a v2 attempt never reads the checkout credential, even a malformed one", func(t *testing.T) {
+		su := newShared(t, nothing, sourceFree)
+		if err := os.MkdirAll(su.cfg.CheckoutCredentialFile, 0o755); err != nil { // unreadable as a file
+			t.Fatal(err)
+		}
+		su.wantExit(su.run(), ExitOK)
+		if r := su.lastResult(); r.Outcome != runtimev1.OutcomeCompleted {
+			t.Fatalf("result %+v", r)
+		}
+	})
+}
+
+// ---- publication on the shared scratch ---------------------------------------------------------
+
+func Test_unit_publication_git_hardening(t *testing.T) {
+	requireGit(t)
+
+	// poison makes the workspace repository hostile in every way a step that ran
+	// arbitrary code could: configuration that executes programs, hooks, attribute
+	// filters, a redirected work tree. Every program only drops a sentinel file.
+	poison := func(t *testing.T, p *sealedPub, secretDir string) (sentinels []string) {
+		t.Helper()
+		bin := t.TempDir()
+		script := func(name string) string {
+			sentinel := filepath.Join(bin, name+".ran")
+			path := filepath.Join(bin, name)
+			writeFile(t, path, fmt.Sprintf("#!/bin/sh\ntouch %q\ncat\n", sentinel))
+			if err := os.Chmod(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			sentinels = append(sentinels, sentinel)
+			return path
+		}
+		hooks := filepath.Join(bin, "hooks")
+		for _, h := range []string{"pre-commit", "commit-msg", "post-commit", "reference-transaction", "pre-auto-gc", "post-checkout"} {
+			path := filepath.Join(hooks, h)
+			sentinel := filepath.Join(bin, "hook-"+h+".ran")
+			writeFile(t, path, fmt.Sprintf("#!/bin/sh\ntouch %q\n", sentinel))
+			_ = os.Chmod(path, 0o755)
+			sentinels = append(sentinels, sentinel)
+			// The repository's own hooks directory as well.
+			own := filepath.Join(p.dir, ".git", "hooks", h)
+			writeFile(t, own, fmt.Sprintf("#!/bin/sh\ntouch %q\n", sentinel+".own"))
+			_ = os.Chmod(own, 0o755)
+			sentinels = append(sentinels, sentinel+".own")
+		}
+		include := filepath.Join(bin, "included.cfg")
+		writeFile(t, include, fmt.Sprintf("[filter \"viainclude\"]\n\tclean = %s\n", script("include-clean")))
+		cfg := fmt.Sprintf(`[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	fsmonitor = %s
+	hooksPath = %s
+	sshCommand = %s
+	askPass = %s
+	editor = %s
+	pager = %s
+	untrackedCache = true
+	autocrlf = true
+[filter "evil"]
+	clean = %s
+	smudge = %s
+	process = %s
+	required = true
+[diff "evil"]
+	textconv = %s
+[credential]
+	helper = !%s
+[commit]
+	gpgsign = true
+[gpg]
+	program = %s
+[include]
+	path = %s
+[user]
+	name = Mallory
+	email = mallory@evil.invalid
+[alias]
+	add = !%s
+`, script("fsmonitor"), hooks, script("ssh"), script("askpass"), script("editor"), script("pager"),
+			script("filter-clean"), script("filter-smudge"), script("filter-process"), script("textconv"), script("credhelper"),
+			script("gpg"), include, script("alias"))
+		if secretDir != "" {
+			cfg += fmt.Sprintf("[core]\n\tworktree = %s\n", secretDir)
+		}
+		writeFile(t, filepath.Join(p.dir, ".git", "config"), cfg)
+		writeFile(t, filepath.Join(p.dir, ".git", "info", "attributes"), "* filter=viainclude\n")
+		writeFile(t, filepath.Join(p.dir, ".gitattributes"), "*.txt filter=evil diff=evil\n* text eol=crlf\n")
+		return sentinels
+	}
+
+	t.Run("the workspace's own configuration is never executed", func(t *testing.T) {
+		p := newSealedPub(t, nil)
+		secrets := filepath.Join(p.root, "kodama-secrets")
+		writeFile(t, filepath.Join(secrets, "token"), "attempt-secret-token-value-0123")
+		sentinels := poison(t, p, secrets)
+		writeFile(t, filepath.Join(p.dir, "new.txt"), "step output\n")
+		writeFile(t, filepath.Join(p.dir, "a.txt"), "changed\n")
+
+		// begin's view first (state), then the publication.
+		st, err := p.sg.state(context.Background())
+		if err != nil || st.Head != p.c2 || st.TrackedClean || !st.UntrackedPresent {
+			t.Fatalf("state %+v %v", st, err)
+		}
+		commit, v, ab := p.a.publish()
+		if v != nil || ab != nil {
+			t.Fatalf("verdict %+v abort %v\n%s", v, ab, p.a.notes.String())
+		}
+		for _, s := range sentinels {
+			absent(t, s, "a program of the workspace configuration ran")
+		}
+		// The commit is the entrypoint's: fixed identity, no signature program, no
+		// foreign work tree (the secrets directory is not in it).
+		if who := p.inspect("log", "-1", "--format=%an <%ae>|%cn <%ce>", string(commit)); who != "Kodama <step@kodama.invalid>|Kodama <step@kodama.invalid>" {
+			t.Fatalf("author/committer = %q", who)
+		}
+		tree := p.inspect("ls-tree", "-r", "--name-only", string(commit))
+		for _, f := range []string{"new.txt", "a.txt", ".gitattributes"} {
+			if !strings.Contains(tree, f) {
+				t.Fatalf("the commit lacks %s: %q", f, tree)
+			}
+		}
+		if strings.Contains(tree, "token") {
+			t.Fatalf("a redirected work tree leaked into the commit: %q", tree)
+		}
+		// The attribute filters never touched the bytes (no CRLF rewrite either).
+		blob := p.inspect("show", string(commit)+":new.txt")
+		if blob != "step output" {
+			t.Fatalf("blob %q", blob)
+		}
+		if len(p.rt.proposals) != 1 || string(p.rt.proposals[0].ExpectedTip) != p.c2 {
+			t.Fatalf("proposals %+v", p.rt.proposals)
+		}
+		// Accepted: the scratch's own HEAD followed, and the tree is clean at it.
+		if head, err := p.sg.workspaceHead(); err != nil || head != string(commit) {
+			t.Fatalf("workspace head %q %v", head, err)
+		}
+		if st, err := p.sg.state(context.Background()); err != nil || st.Head != string(commit) || !st.TrackedClean || st.UntrackedPresent {
+			t.Fatalf("after publication: %+v %v", st, err)
+		}
+		for _, s := range sentinels {
+			absent(t, s, "a program ran while the workspace was inspected after publication")
+		}
+	})
+
+	t.Run("control: plain Git over the same repository runs the configuration", func(t *testing.T) {
+		p := newSealedPub(t, nil)
+		sentinels := poison(t, p, "")
+		writeFile(t, filepath.Join(p.dir, "new.txt"), "step output\n")
+		// What v1 does in its own private checkout: Git discovers the repository.
+		_, _ = p.a.s.git.commitAll(context.Background(), p.dir, "m")
+		ran := 0
+		for _, s := range sentinels {
+			if _, err := os.Stat(s); err == nil {
+				ran++
+			}
+		}
+		if ran == 0 {
+			t.Fatal("the hostile configuration is inert even for plain Git: the test would prove nothing")
+		}
+	})
+
+	t.Run("a repository that is not the controller's is refused", func(t *testing.T) {
+		for name, mutate := range map[string]func(p *sealedPub){
+			".git replaced by a symlink": func(p *sealedPub) {
+				real := filepath.Join(p.root, "evil.git")
+				_ = os.Rename(filepath.Join(p.dir, ".git"), real)
+				_ = os.Symlink(real, filepath.Join(p.dir, ".git"))
+			},
+			".git replaced by a gitdir file": func(p *sealedPub) {
+				real := filepath.Join(p.root, "evil.git")
+				_ = os.Rename(filepath.Join(p.dir, ".git"), real)
+				writeFile(t, filepath.Join(p.dir, ".git"), "gitdir: "+real+"\n")
+			},
+			"objects is a symlink": func(p *sealedPub) {
+				obj := filepath.Join(p.dir, ".git", "objects")
+				_ = os.Rename(obj, filepath.Join(p.root, "objects.real"))
+				_ = os.Symlink(filepath.Join(p.root, "objects.real"), obj)
+			},
+			"HEAD is a symlink": func(p *sealedPub) {
+				head := filepath.Join(p.dir, ".git", "HEAD")
+				_ = os.Rename(head, filepath.Join(p.root, "HEAD.real"))
+				_ = os.Symlink(filepath.Join(p.root, "HEAD.real"), head)
+			},
+			"the ref HEAD names is a symlink": func(p *sealedPub) {
+				ref := filepath.Join(p.dir, ".git", "refs", "heads", "work")
+				_ = os.Rename(ref, filepath.Join(p.root, "ref.real"))
+				_ = os.Symlink(filepath.Join(p.root, "ref.real"), ref)
+			},
+			"HEAD names a ref with dot segments": func(p *sealedPub) {
+				writeFile(t, filepath.Join(p.dir, ".git", "HEAD"), "ref: refs/heads/../../../../etc/passwd\n")
+			},
+			"the ref is not a commit": func(p *sealedPub) {
+				writeFile(t, filepath.Join(p.dir, ".git", "refs", "heads", "work"), "not-a-commit\n")
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				p := newSealedPub(t, nil)
+				mutate(p)
+				if _, err := p.sg.sync(context.Background()); err == nil {
+					t.Fatal("an untrustworthy repository was read")
+				}
+				_, v, ab := p.a.publish()
+				p.failed(v, ab, ReasonSourceFailed)
+				if len(p.rt.proposals) != 0 {
+					t.Fatal("something was proposed from an untrustworthy repository")
+				}
+			})
+		}
+		t.Run("a repository owned by another identity", func(t *testing.T) {
+			requireGit(t)
+			u := newUnit(t, "exit 0")
+			dir := u.cfg.WorkspaceDir
+			_ = os.MkdirAll(dir, 0o755)
+			c := preparedWorkspace(t, dir)
+			c1 := c
+			_, err := newSealedGit(context.Background(), u.build().git, dir, u.cfg.ScratchDir, func(uint32) bool { return false })
+			if err == nil || !strings.Contains(err.Error(), "owned by another identity") {
+				t.Fatalf("a foreign-owned repository: %v (head %s)", err, c1)
+			}
+		})
+	})
+
+	t.Run("work that does not descend from the run's head is refused", func(t *testing.T) {
+		p := newSealedPub(t, nil)
+		tgit(t, p.dir, "reset", "-q", "--hard", p.c1) // a step rewound the scratch before the run's head
+		_, v, ab := p.a.publish()
+		p.failed(v, ab, ReasonSourceFailed)
+		if len(p.rt.proposals) != 0 || len(p.rt.reserved) != 0 {
+			t.Fatalf("a rewound history was proposed: %+v", p.rt.proposals)
+		}
+	})
+
+	t.Run("an injected secret never enters source, whatever the workspace says", func(t *testing.T) {
+		p := newSealedPub(t, nil)
+		poison(t, p, "")
+		p.a.needles = append(p.a.needles, []byte("attempt-secret-token-value-0123"))
+		writeFile(t, filepath.Join(p.dir, "leak.txt"), "token=attempt-secret-token-value-0123\n")
+		_, v, ab := p.a.publish()
+		p.failed(v, ab, ReasonSecretInSource)
+		if len(p.rt.proposals) != 0 {
+			t.Fatal("a secret was proposed")
+		}
+	})
+
+	t.Run("later writers build on the earlier writer's published head", func(t *testing.T) {
+		p := newSealedPub(t, nil)
+		writeFile(t, filepath.Join(p.dir, "first.txt"), "from the first writer\n")
+		first, v, ab := p.a.publish()
+		if v != nil || ab != nil {
+			t.Fatalf("first writer: %+v %v\n%s", v, ab, p.a.notes.String())
+		}
+		if string(first) == p.c2 {
+			t.Fatal("nothing was published")
+		}
+		// The next writer's context says the run's head is the first writer's commit,
+		// and the expected tip is that commit.
+		u2 := newUnit(t, `exit 0`)
+		u2.cfg.WorkspaceDir, u2.cfg.ScratchDir = p.dir, filepath.Join(u2.root, "scratch")
+		p2 := attachSealed(t, u2, p.dir, p.c1, string(first), nil)
+		// attachSealed's context is built for (input, head): fix the pinned parts to the cumulative head.
+		writeFile(t, filepath.Join(p.dir, "second.txt"), "from the second writer\n")
+		second, v, ab := p2.a.publish()
+		if v != nil || ab != nil {
+			t.Fatalf("second writer: %+v %v\n%s", v, ab, p2.a.notes.String())
+		}
+		if parent := p.inspect("rev-parse", string(second)+"^"); parent != string(first) {
+			t.Fatalf("the second commit's parent is %s, want the first writer's %s", parent, first)
+		}
+		if len(p2.rt.proposals) != 1 || string(p2.rt.proposals[0].ExpectedTip) != string(first) {
+			t.Fatalf("proposal %+v", p2.rt.proposals)
+		}
+		// Its bundle needs only the earlier head as prerequisite.
+		bf := filepath.Join(t.TempDir(), "b.bundle")
+		if err := os.WriteFile(bf, p2.up.object("art_unit001"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		heads := p.inspect("bundle", "list-heads", bf)
+		if !strings.Contains(heads, string(second)) {
+			t.Fatalf("bundle heads %q", heads)
+		}
+	})
+}

@@ -277,6 +277,62 @@ adds no route, wire field, artifact, port or flag: `Config.ContainerLog` is set 
   `Test_container_log_redaction`, `Test_container_log_bounds`). The kubelet's own
   container-log rotation and node loss are outside this contract.
 
+## `run_shared` (v2), `kodama prepare` and `kodama service-run` (task T-113)
+
+Not wired by `internal/app`: T-116 registers `PrepareCommand()` and
+`ServiceRunCommand()` beside `StepCommand()` and has the runtimes pass the
+environment below. The sequence is
+[the v2 sequence](../../docs/implementation/step-entrypoint.md#run_shared-v2-sequence).
+
+**`kodama step` with `KODAMA_RUNTIME_API=v2`** (unset and `v1` keep every v1 byte;
+anything else is a usage error). `NewClientV2`/`NewStepV2`: admit and context on
+`/runtime/v2/attempts/{id}`; a context of the other version is refused before any
+command (a v1 body on the v2 wire fails validation; a `contextVersion` member on
+the v1 wire is a protocol error). No clone, reset or clean and no checkout
+credential: `verifyWorkspace` only looks. Source-free: the mount exists and a
+probe file can be created and removed (the scratch is never cleared). Source-backed:
+`sealedgit.go` reads `HEAD` and the one ref it names as data through checked,
+non-following opens (symlinks, gitfile `.git`, foreign owners refused), points a
+**private** repository at the workspace's objects, work tree and a private index,
+checks the pinned commits exist and computes head, `trackedClean`,
+`untrackedPresent`, `ignoredPresent`. `.git/config`, hooks, attribute filters,
+credential helpers, `core.worktree`, `include.path` and info files of the workspace
+are never read or executed. `POST /begin` is made after secrets are materialized and
+immediately before the child starts; the command runs only after an acknowledgment
+that is the derivation of the request (`403 attempt_revoked`, a transport failure or
+an inconsistent acknowledgment start nothing). A writer's publication uses the same
+sealed Git, bundles on top of the run's cumulative head (`headCommit`, the
+reservation's input and the expected tip) and, once accepted, moves the scratch's own
+HEAD and index to the published commit so the next holder begins clean.
+
+**`kodama prepare`** (environment of seam S4: `KODAMA_SERVER_URL`, `KODAMA_CA_FILE`,
+`KODAMA_RUN_ID`, `KODAMA_RESOURCE_KEY=preparation`, `KODAMA_ADMISSION_CREDENTIAL_FILE`,
+`KODAMA_WORKLOAD_NAME`, `KODAMA_WORKLOAD_UID`, `KODAMA_POD_NAME`/`KODAMA_POD_UID` for a
+Job-owned Pod, `KODAMA_WORKSPACE_DIR`, `KODAMA_CHECKOUT_CREDENTIAL_FILE`): admission on
+`/runtime/v2/runs/{run}/resources/preparation` (retrying `resource_unbound` and unknown
+outcomes with the same nonce), a refetched context that must equal the admitted one, then
+up to `maxAttempts` checkout tries inside the one workload under one timeout (clamped to
+the committed deadline): empty workspace only (plus a fresh volume's `lost+found`),
+`git init`, `git fetch <https URL> <commit>` with the credential only as an HTTP header in
+that process's environment, `--no-recurse-submodules`, hooks/attributes/excludes disabled,
+`protocol.allow=never` plus https, `fsckObjects`, no redirects; `checkout --detach`, HEAD
+must equal the commit, tree ID computed; no remote or credential configuration is written,
+and the repository is scanned for any form of the credential before the receipt. A failed try
+removes only its own partial tree. The receipt (`attempts` = tries used) is posted after;
+it is idempotent and `receipt_conflict` is final. Exit codes add 14 (checkout exhausted).
+
+**`kodama service-run -- argv…`**: admission as `service.NAME`; the argv must equal the
+committed command; only the committed bindings are resolved (file secrets to
+`KODAMA_SECRETS_DIR/<name>` 0400 created exclusively, env secrets into the child's
+environment); the token is dropped before the service runs (no renewal, no other call);
+the child gets the process environment minus every `KODAMA_*` variable plus the committed
+env, runs in its own process group with stdout/stderr passed through, receives forwarded
+signals, is killed after the grace once the supervisor is stopped, and its exit status is
+mirrored (128+n for a signal). Exit 15: delivery or start failed.
+
+Tests: `Test_unit_entrypoint_v2_*`, `Test_unit_prepare_*`, `Test_unit_service_run_*`,
+`Test_unit_publication_git_hardening` and a round trip against the real runtime authority.
+
 ## Unit qualification (task T-082)
 
 Requirements: **PX-05**, **PX-07**, **VS-03**, **VS-07** (with PX-08/PX-10/VS-11 above).

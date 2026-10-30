@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
+	runtimeauthpg "github.com/optimiware/kodama/internal/runtimeauth/postgres"
 	"github.com/optimiware/kodama/internal/storage"
 )
 
@@ -16,14 +17,17 @@ func TestMigrationBaselineIsTwoFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs := Contributions()
-	if len(cs) != 2 || cs[0].Module != "storage" || len(cs[0].Migrations) != 2 {
+	if len(cs) != 3 || cs[0].Module != "storage" || len(cs[0].Migrations) != 2 {
 		t.Fatalf("contributions = %+v", cs)
 	}
 	if cs[1].Module != "execution-run-resources" || len(cs[1].Migrations) != 1 || cs[1].Migrations[0].ID != execpg.RunResourcesMigrationID {
 		t.Fatalf("the appended contribution is %+v", cs[1])
 	}
+	if cs[2].Module != "runtimeauth-resource-grants" || len(cs[2].Migrations) != 1 || cs[2].Migrations[0].ID != runtimeauthpg.ResourceGrantsMigrationID {
+		t.Fatalf("the runtime-grant contribution is %+v", cs[2])
+	}
 	ms := m.Migrations()
-	if len(ms) != 3 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID {
+	if len(ms) != 4 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID || ms[3].ID != runtimeauthpg.ResourceGrantsMigrationID {
 		t.Fatalf("manifest = %+v", ms)
 	}
 	// The schema file defines objects: the only privilege change it may make is a
@@ -69,21 +73,25 @@ func TestMigrateRefusesUnsafeIdentities(t *testing.T) {
 	}
 }
 
-// TestRunResourceMigrationIsAppendedLastAndPreservesTheLedgerPrefix: the T-112
-// run_shared schema is the final contribution, so the ledger of every earlier
-// release is a strict prefix of the new manifest in the same order (the ledger
-// refuses a pending migration ordered before an applied one), and it is the only
-// addition: nothing earlier moved, nothing else was added.
-func TestRunResourceMigrationIsAppendedLastAndPreservesTheLedgerPrefix(t *testing.T) {
+// TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPrefix:
+// the T-112 run_shared schema and the T-113 resource-grant table are the only
+// contributions after the squashed baseline, in that order, so the ledger of every
+// earlier release is a strict prefix of the new manifest in the same order (the
+// ledger refuses a pending migration ordered before an applied one). Nothing
+// earlier moved and nothing else was added.
+func TestRunResourceMigrationsAreAppendedAfterTheBaselineAndPreserveTheLedgerPrefix(t *testing.T) {
 	cs := Contributions()
+	if len(cs) != 3 {
+		t.Fatalf("%d contributions", len(cs))
+	}
+	if cs[0].Module != "storage" || cs[1].Module != "execution-run-resources" {
+		t.Fatalf("an earlier contribution moved: %s, %s", cs[0].Module, cs[1].Module)
+	}
 	last := cs[len(cs)-1]
-	if last.Module != "execution-run-resources" || len(last.Migrations) != 1 || last.Migrations[0].ID != execpg.RunResourcesMigrationID {
+	if last.Module != "runtimeauth-resource-grants" || len(last.Migrations) != 1 || last.Migrations[0].ID != runtimeauthpg.ResourceGrantsMigrationID {
 		t.Fatalf("the final contribution is %+v", last.Module)
 	}
 	prior := cs[:len(cs)-1]
-	if got := prior[len(prior)-1].Module; got != "storage" {
-		t.Fatalf("the previous last contribution moved: %s", got)
-	}
 	m, err := Manifest()
 	if err != nil {
 		t.Fatal(err)
@@ -103,15 +111,24 @@ func TestRunResourceMigrationIsAppendedLastAndPreservesTheLedgerPrefix(t *testin
 			t.Fatalf("migration %d is %s, the prior ledger has %s", i, all[i].ID, id)
 		}
 	}
-	if all[len(all)-1].ID != execpg.RunResourcesMigrationID {
+	if all[len(all)-1].ID != runtimeauthpg.ResourceGrantsMigrationID {
 		t.Fatalf("last migration %s", all[len(all)-1].ID)
 	}
-	// The migration is additive and enables nothing: it creates tables and columns
-	// only and no composition option exists in this package for the new format.
-	sql := last.Migrations[0].SQL
-	for _, forbidden := range []string{"DROP TABLE", "DROP COLUMN", "TRUNCATE", "DELETE FROM", "ALTER COLUMN"} {
-		if strings.Contains(sql, forbidden) {
-			t.Fatalf("the migration is not additive: %s", forbidden)
+	// Both are additive and enable nothing: they create tables, columns and guards
+	// only, and no composition option exists in this package for the new format.
+	for _, c := range cs[1:] {
+		sql := c.Migrations[0].SQL
+		for _, forbidden := range []string{"DROP TABLE", "DROP COLUMN", "TRUNCATE", "DELETE FROM", "ALTER COLUMN"} {
+			if strings.Contains(sql, forbidden) {
+				t.Fatalf("%s is not additive: %s", c.Module, forbidden)
+			}
+		}
+	}
+	// The grant table's runtime privileges are minimal: no DELETE, no blanket UPDATE.
+	for _, stmt := range statements(last.Migrations[0].SQL) {
+		if strings.HasPrefix(stmt, "GRANT ") && strings.Contains(stmt, "{{runtime_role}}") &&
+			(strings.Contains(stmt, "DELETE") || strings.Contains(stmt, "ALL")) {
+			t.Fatalf("the grant migration gives the runtime role too much: %.80s", stmt)
 		}
 	}
 }

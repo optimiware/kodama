@@ -8,6 +8,7 @@ import (
 	coreoidc "github.com/coreos/go-oidc/v3/oidc"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 )
@@ -20,9 +21,13 @@ type Verifier struct {
 	maxLifetime time.Duration
 	now         func() time.Time
 	oidc        *coreoidc.IDTokenVerifier
+	oidcRes     *coreoidc.IDTokenVerifier
 }
 
-var _ runtimeauth.TokenVerifier = (*Verifier)(nil)
+var (
+	_ runtimeauth.TokenVerifier         = (*Verifier)(nil)
+	_ runtimeauth.ResourceTokenVerifier = (*Verifier)(nil)
+)
 
 // VerifierConfig configures NewVerifier.
 type VerifierConfig struct {
@@ -51,6 +56,11 @@ func NewVerifier(cfg VerifierConfig) (*Verifier, error) {
 			SupportedSigningAlgs: []string{string(Algorithm)},
 			Now:                  now,
 		}),
+		oidcRes: coreoidc.NewVerifier(cfg.Issuer, keySet{ring: cfg.Ring}, &coreoidc.Config{
+			ClientID:             runtimev2.ResourceAudience,
+			SupportedSigningAlgs: []string{string(Algorithm)},
+			Now:                  now,
+		}),
 	}, nil
 }
 
@@ -63,10 +73,21 @@ func invalid(why string) error {
 // token and go-oidc's detailed message (which can quote token content) are
 // never propagated.
 func (v *Verifier) Verify(ctx context.Context, raw string) (runtimeauth.TokenClaims, error) {
+	return v.verify(ctx, raw, v.oidc)
+}
+
+// VerifyResource is Verify for the resource audience (kodama-runtime-resource).
+// A genuine attempt token fails here as invalid; the service layer decides
+// whether that means "wrong route family" (forbidden).
+func (v *Verifier) VerifyResource(ctx context.Context, raw string) (runtimeauth.TokenClaims, error) {
+	return v.verify(ctx, raw, v.oidcRes)
+}
+
+func (v *Verifier) verify(ctx context.Context, raw string, oidc *coreoidc.IDTokenVerifier) (runtimeauth.TokenClaims, error) {
 	if raw == "" || len(raw) > MaxTokenBytes {
 		return runtimeauth.TokenClaims{}, invalid("the token is missing or too large")
 	}
-	tok, err := v.oidc.Verify(ctx, raw)
+	tok, err := oidc.Verify(ctx, raw)
 	if err != nil {
 		var expired *coreoidc.TokenExpiredError
 		if errors.As(err, &expired) {

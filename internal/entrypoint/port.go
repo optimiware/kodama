@@ -12,6 +12,7 @@ import (
 	"io"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -29,6 +30,18 @@ type Runtime interface {
 	CompleteArtifact(ctx context.Context, id domain.ArtifactID, req runtimev1.ArtifactCompleteRequest) (runtimev1.ArtifactCompleteResponse, error)
 	ProposeSource(ctx context.Context, req runtimev1.SourceProposalRequest) (runtimev1.SourceProposalResponse, error)
 	SubmitResult(ctx context.Context, req runtimev1.ResultRequest) (runtimev1.ResultResponse, error)
+}
+
+// RuntimeV2 is the consumer-owned port of the run_shared (v2) wire for the three
+// exchanges whose shape differs from v1: admission and context return the
+// ContextV2, and begin is the command-begin fence. Everything else the attempt
+// does (token renewal, secrets, artifacts, source, result) goes through Runtime
+// with the unchanged v1 bodies; the v2 HTTP adapter (Client from NewClientV2)
+// implements both. Unit tests substitute a fake.
+type RuntimeV2 interface {
+	AdmitV2(ctx context.Context, req runtimev1.AdmitRequest) (runtimev2.AdmitResponseV2, error)
+	ContextV2(ctx context.Context) (runtimev2.ContextV2, error)
+	Begin(ctx context.Context, req runtimev2.BeginRequest) (runtimev2.BeginResponse, error)
 }
 
 // Uploader transfers one object to the short-lived instructions returned by an

@@ -21,6 +21,16 @@ type rig struct {
 	t   *testing.T
 	s   SharedSubject
 	run *execution.Run
+	// grant overrides ContractClaim for the receipt (a real-fence suite).
+	grant *execution.GrantClaim
+}
+
+// claimOf is the runtime session the rig records its receipt under.
+func (r *rig) claimOf() execution.GrantClaim {
+	if r.grant != nil {
+		return *r.grant
+	}
+	return ContractClaim
 }
 
 var sharedCaller = execution.Caller{PrincipalID: Engineer, RequestID: "req_shared"}
@@ -89,7 +99,7 @@ func (r *rig) res(key string) *execution.RunResource {
 }
 
 func (r *rig) receipt() (execution.ReceiptAck, error) {
-	return r.s.Svc.RecordPreparationReceipt(r.ctx(), SharedScope, r.run.ID, runtimev2.PreparationReceiptRequest{
+	return r.s.Svc.RecordPreparationReceipt(r.ctx(), SharedScope, r.run.ID, r.claimOf(), runtimev2.PreparationReceiptRequest{
 		Commit: CommitA, TreeID: CommitC, HooksDisabled: true, Submodules: runtimev2.SubmodulesSkipped, CredentialsRemoved: true, Attempts: 1,
 	})
 }
@@ -462,11 +472,11 @@ func SharedContract(t *testing.T, open func(testing.TB) SharedSubject) {
 		r.s.Resources.AutoReady = true
 		r.pass()
 		bad := runtimev2.PreparationReceiptRequest{Commit: CommitB, TreeID: CommitC, HooksDisabled: true, Submodules: "skipped", CredentialsRemoved: true, Attempts: 1}
-		if _, err := r.s.Svc.RecordPreparationReceipt(context.Background(), SharedScope, r.run.ID, bad); !errors.Is(err, execution.ErrInvalid) {
+		if _, err := r.s.Svc.RecordPreparationReceipt(context.Background(), SharedScope, r.run.ID, ContractClaim, bad); !errors.Is(err, execution.ErrInvalid) {
 			t.Fatalf("a commit other than the pinned input must be refused: %v", err)
 		}
 		bad = runtimev2.PreparationReceiptRequest{Commit: CommitA, TreeID: CommitC, HooksDisabled: true, Submodules: "skipped", CredentialsRemoved: true, Attempts: 3}
-		if _, err := r.s.Svc.RecordPreparationReceipt(context.Background(), SharedScope, r.run.ID, bad); !errors.Is(err, execution.ErrInvalid) {
+		if _, err := r.s.Svc.RecordPreparationReceipt(context.Background(), SharedScope, r.run.ID, ContractClaim, bad); !errors.Is(err, execution.ErrInvalid) {
 			t.Fatalf("more tries than the policy allows must be refused: %v", err)
 		}
 		first, err := r.receipt()
@@ -478,7 +488,7 @@ func SharedContract(t *testing.T, open func(testing.TB) SharedSubject) {
 			t.Fatalf("an identical repeat returns the original: %+v %v", again, err)
 		}
 		other := runtimev2.PreparationReceiptRequest{Commit: CommitA, TreeID: CommitB, HooksDisabled: true, Submodules: "skipped", CredentialsRemoved: true, Attempts: 1}
-		if _, err := r.s.Svc.RecordPreparationReceipt(context.Background(), SharedScope, r.run.ID, other); !errors.Is(err, execution.ErrReceiptConflict) {
+		if _, err := r.s.Svc.RecordPreparationReceipt(context.Background(), SharedScope, r.run.ID, ContractClaim, other); !errors.Is(err, execution.ErrReceiptConflict) {
 			t.Fatalf("a different receipt: %v", err)
 		}
 		// A tampered binding: the stored digest no longer matches another volume UID.
@@ -640,19 +650,19 @@ func SharedContract(t *testing.T, open func(testing.TB) SharedSubject) {
 		a := r.mustClaim()
 		r.started(a)
 		body := runtimev2.BeginRequest{Workspace: &runtimev2.BeginWorkspace{Head: CommitA, TrackedClean: true, UntrackedPresent: false, IgnoredPresent: true}}
-		ack, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, body)
+		ack, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, ContractClaim, body)
 		if err != nil || ack.Replayed || ack.WorkspaceState != runtimev2.StateClean || !ack.IgnoredPresent {
 			t.Fatalf("begin: %+v %v", ack, err)
 		}
-		again, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, body)
+		again, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, ContractClaim, body)
 		if err != nil || !again.Replayed || !again.BeganAt.Equal(ack.BeganAt) {
 			t.Fatalf("replay: %+v %v", again, err)
 		}
 		other := runtimev2.BeginRequest{Workspace: &runtimev2.BeginWorkspace{Head: CommitA, TrackedClean: false, UntrackedPresent: false, IgnoredPresent: true}}
-		if _, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, other); !errors.Is(err, execution.ErrBeginConflict) {
+		if _, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, ContractClaim, other); !errors.Is(err, execution.ErrBeginConflict) {
 			t.Fatalf("a different body: %v", err)
 		}
-		if _, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, runtimev2.BeginRequest{}); !errors.Is(err, execution.ErrInvalid) && !errors.Is(err, execution.ErrBeginConflict) {
+		if _, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, ContractClaim, runtimev2.BeginRequest{}); !errors.Is(err, execution.ErrInvalid) && !errors.Is(err, execution.ErrBeginConflict) {
 			t.Fatalf("a null workspace for a source-backed attempt: %v", err)
 		}
 		// A cancelled run refuses begin of a later attempt: command authorization
@@ -664,7 +674,7 @@ func SharedContract(t *testing.T, open func(testing.TB) SharedSubject) {
 		if _, err := r.s.Svc.Cancel(context.Background(), sharedCaller, SharedScope, r.run.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, b.AttemptID, body); !errors.Is(err, execution.ErrAttemptRevoked) {
+		if _, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, b.AttemptID, ContractClaim, body); !errors.Is(err, execution.ErrAttemptRevoked) {
 			t.Fatalf("begin after cancellation: %v", err)
 		}
 		// The recorded begin of a shows in the lineage of what would follow.
@@ -705,7 +715,7 @@ func SharedContract(t *testing.T, open func(testing.TB) SharedSubject) {
 			r.up()
 			a := r.mustClaim()
 			r.started(a)
-			if _, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, runtimev2.BeginRequest{Workspace: &runtimev2.BeginWorkspace{Head: CommitA, TrackedClean: true}}); err != nil {
+			if _, err := r.s.Svc.RecordBegin(context.Background(), SharedScope, a.AttemptID, ContractClaim, runtimev2.BeginRequest{Workspace: &runtimev2.BeginWorkspace{Head: CommitA, TrackedClean: true}}); err != nil {
 				t.Fatal(err)
 			}
 			if err := r.s.Drive.Observe(a, execution.Observation{Kind: execution.ObservedFailed, Class: execution.ClassInfrastructure, Reason: execution.ReasonInfrastructure, Launch: execution.LaunchNotStarted}); err != nil {
@@ -1157,6 +1167,13 @@ func NewSharedRun(t *testing.T, s SharedSubject, yaml string) *SharedRun {
 	r.admit(yaml)
 	return &SharedRun{r: r}
 }
+
+// Grant records the preparation receipt under the claim instead of the contract's
+// (for suites that run a real grant fence).
+func (s *SharedRun) Grant(c execution.GrantClaim) { s.r.grant = &c }
+
+// Receipt records the run's trusted preparation receipt through the use case.
+func (s *SharedRun) Receipt() (execution.ReceiptAck, error) { return s.r.receipt() }
 
 // Run is the admitted run.
 func (s *SharedRun) Run() *execution.Run { return s.r.run }

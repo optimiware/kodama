@@ -97,6 +97,12 @@ func ConsumesSource(c runtimev1.Context) bool {
 // must echo the request, carry one username:password line and a certificate
 // bundle. Errors never carry the provider's text or any credential.
 func IssueCheckout(ctx context.Context, p CheckoutProvider, spec execution.AttemptSpec, c runtimev1.Context) (*CheckoutMaterial, error) {
+	if spec.Shared != nil {
+		// A run_shared attempt receives no checkout credential: only the one-shot
+		// preparation workload holds read-only repository access, and it is gone
+		// before the first attempt starts.
+		return nil, nil
+	}
 	if !ConsumesSource(c) {
 		return nil, nil
 	}

@@ -264,9 +264,13 @@ outbox refusal rolls back every row of the transition (`...outbox refusal rolls 
 
 ### Constructor and profile handoff
 
-* **P3** (entrypoint/authority): call `Service.RecordPreparationReceipt(scope, run, req)` and
-  `Service.RecordBegin(scope, attempt, req)` from the verified resource/attempt routes (the use cases
-  re-verify under the run lock; the bearer verification and `ResourceIdentity` comparison against
+* **P3** (entrypoint/authority): call `Service.RecordPreparationReceipt(scope, run, claim, req)` and
+  `Service.RecordBegin(scope, attempt, claim, req)` from the verified resource/attempt routes (the use cases
+  re-verify under the run lock, and check the runtime grant of the `GrantClaim` (the verified session and signing
+  generation) through the transaction's `GrantFence` after the run lock: a revocation committed after the
+  caller's own check records nothing (`ErrAttemptRevoked` / `ErrResourceRevoked`); a store without the fence,
+  `postgres.SQLGrantFence` (installed by `NewRuntimeStore`) or `memory.Peers.GrantFence`, refuses with
+  `ErrNotConfigured`; the bearer verification and `ResourceIdentity` comparison against
   `RunResource.Name`/`UID`/`Stopping()` stay in P3). `RecordBegin` rechecks live command authority (revocation,
   cancellation, failure intent, the pinned deadline) before ANY acknowledgment, an identical replay included
   (`ErrAttemptRevoked` → `attempt_revoked`), and keeps the original record. Resource subjects are revoked from
