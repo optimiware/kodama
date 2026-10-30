@@ -53,9 +53,31 @@ spec:
             - name: KODAMA_MCP_RESOURCE
               value: {{ include "kodama.mcpResource" . | quote }}
             - name: KODAMA_MCP_AUDIENCE
-              value: {{ default .Values.config.oidc.audience .Values.mcp.audience | quote }}
+              value: {{ include "kodama.mcpAudience" . | quote }}
             - name: KODAMA_MCP_ISSUER
               value: {{ default .Values.config.oidc.issuer .Values.mcp.issuer | quote }}
+            - name: KODAMA_MCP_API_AUDIENCE
+              value: {{ include "kodama.mcpAPIAudience" . | quote }}
+            - name: KODAMA_MCP_API_ISSUER
+              value: {{ include "kodama.mcpAPIIssuer" . | quote }}
+            - name: KODAMA_MCP_API_RESOURCE
+              value: {{ include "kodama.mcpAPIResource" . | quote }}
+            - name: KODAMA_MCP_EXCHANGE_URL
+              value: {{ .Values.mcp.exchange.url | quote }}
+            - name: KODAMA_MCP_EXCHANGE_CLIENT_ID
+              value: {{ .Values.mcp.exchange.clientId | quote }}
+            - name: KODAMA_MCP_EXCHANGE_CLIENT_AUTH
+              value: {{ .Values.mcp.exchange.clientAuth | quote }}
+            - name: KODAMA_MCP_EXCHANGE_CLIENT_SECRET_FILE
+              value: {{ printf "/etc/kodama/mcp-exchange/%s" .Values.mcp.exchange.secretKey | quote }}
+            - name: KODAMA_MCP_EXCHANGE_SCOPES
+              value: {{ .Values.mcp.exchange.scopes | quote }}
+            {{- if .Values.mcp.exchange.caSecret }}
+            - name: KODAMA_MCP_EXCHANGE_CA_FILE
+              value: {{ printf "/etc/kodama/mcp-exchange-ca/%s" .Values.mcp.exchange.caKey | quote }}
+            {{- end }}
+            - name: KODAMA_MCP_SCOPES
+              value: {{ .Values.mcp.scopes | quote }}
             - name: KODAMA_MCP_LISTEN
               value: {{ printf ":%d" (int .Values.mcp.port) | quote }}
             - name: KODAMA_MCP_READ_ONLY
@@ -68,6 +90,8 @@ spec:
               value: {{ .Values.mcp.enableCredentialTools | quote }}
             - name: KODAMA_MCP_ALLOW_INSECURE_HTTP
               value: {{ .Values.mcp.allowInsecureHTTP | quote }}
+            - name: KODAMA_MCP_ALLOW_INSECURE_API_HTTP
+              value: {{ .Values.mcp.allowInsecureAPIHTTP | quote }}
             {{- if .Values.mcp.caSecret }}
             - name: KODAMA_MCP_OIDC_CA_FILE
               value: {{ printf "/etc/kodama/mcp-ca/%s" .Values.mcp.caKey | quote }}
@@ -82,6 +106,14 @@ spec:
             {{- if .Values.mcp.caSecret }}
             - name: mcp-ca
               mountPath: /etc/kodama/mcp-ca
+              readOnly: true
+            {{- end }}
+            - name: mcp-exchange
+              mountPath: /etc/kodama/mcp-exchange
+              readOnly: true
+            {{- if .Values.mcp.exchange.caSecret }}
+            - name: mcp-exchange-ca
+              mountPath: /etc/kodama/mcp-exchange-ca
               readOnly: true
             {{- end }}
           securityContext:
@@ -111,5 +143,19 @@ spec:
             items:
               - key: {{ .Values.mcp.caKey }}
                 path: {{ .Values.mcp.caKey }}
+        {{- end }}
+        - name: mcp-exchange
+          secret:
+            secretName: {{ .Values.mcp.exchange.existingSecret }}
+            items:
+              - key: {{ .Values.mcp.exchange.secretKey }}
+                path: {{ .Values.mcp.exchange.secretKey }}
+        {{- if .Values.mcp.exchange.caSecret }}
+        - name: mcp-exchange-ca
+          secret:
+            secretName: {{ .Values.mcp.exchange.caSecret }}
+            items:
+              - key: {{ .Values.mcp.exchange.caKey }}
+                path: {{ .Values.mcp.exchange.caKey }}
         {{- end }}
 {{- end }}

@@ -13,17 +13,17 @@ import (
 	"time"
 )
 
-type rawTokenKey struct{}
+type callerKey struct{}
 
-// WithRawToken records the already-verified bearer token for the tool handler.
-// It is deliberately not exported outside this package's HTTP composition.
-func withRawToken(ctx context.Context, token string) context.Context {
-	return context.WithValue(ctx, rawTokenKey{}, token)
+// withCaller records the verified request identity for the tool handler. The
+// subject token is available only to the exchange provider.
+func withCaller(ctx context.Context, caller Caller) context.Context {
+	return context.WithValue(ctx, callerKey{}, caller)
 }
 
-func rawToken(ctx context.Context) string {
-	token, _ := ctx.Value(rawTokenKey{}).(string)
-	return token
+func callerFrom(ctx context.Context) (Caller, bool) {
+	caller, ok := ctx.Value(callerKey{}).(Caller)
+	return caller, ok
 }
 
 // Executor calls the Kodama API for one MCP tool. It never follows redirects,
@@ -31,15 +31,16 @@ func rawToken(ctx context.Context) string {
 type Executor struct {
 	BaseURL          string
 	Client           *http.Client
+	Tokens           UpstreamTokenProvider
 	MaxResponseBytes int64
 	DefaultTenant    string
 	DefaultProject   string
 }
 
 // NewExecutor builds the fixed HTTP client. A nil CA uses the system roots.
-func NewExecutor(baseURL string, timeout time.Duration, maxBytes int64, ca []byte, defaultTenant, defaultProject string) (*Executor, error) {
-	if baseURL == "" || timeout <= 0 || maxBytes < 1024 {
-		return nil, errors.New("mcpserver: executor needs a base URL, positive timeout and response bound")
+func NewExecutor(baseURL string, timeout time.Duration, maxBytes int64, ca []byte, tokens UpstreamTokenProvider, defaultTenant, defaultProject string) (*Executor, error) {
+	if baseURL == "" || timeout <= 0 || maxBytes < 1024 || tokens == nil {
+		return nil, errors.New("mcpserver: executor needs a base URL, token provider, positive timeout and response bound")
 	}
 	transport, err := httpTransport(ca)
 	if err != nil {
@@ -51,7 +52,7 @@ func NewExecutor(baseURL string, timeout time.Duration, maxBytes int64, ca []byt
 			Timeout: timeout, Transport: transport,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
-		MaxResponseBytes: maxBytes, DefaultTenant: defaultTenant, DefaultProject: defaultProject,
+		Tokens: tokens, MaxResponseBytes: maxBytes, DefaultTenant: defaultTenant, DefaultProject: defaultProject,
 	}, nil
 }
 
@@ -59,9 +60,16 @@ func (e *Executor) Call(ctx context.Context, op Operation, args map[string]any) 
 	if args == nil {
 		args = map[string]any{}
 	}
-	token := rawToken(ctx)
-	if token == "" {
-		return nil, errors.New("mcpserver: no verified bearer token")
+	caller, ok := callerFrom(ctx)
+	if !ok || caller.SubjectToken == "" {
+		return nil, errors.New("mcpserver: no verified caller")
+	}
+	token, err := e.Tokens.Token(ctx, caller)
+	if err != nil {
+		return nil, fmt.Errorf("obtain delegated API credential: %w", err)
+	}
+	if token == "" || token == caller.SubjectToken {
+		return nil, errors.New("mcpserver: no separate delegated API credential")
 	}
 	if e.DefaultTenant != "" {
 		if _, ok := args["tenant_id"]; !ok {

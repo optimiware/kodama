@@ -14,6 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/optimiware/kodama/api"
+	identityoidc "github.com/optimiware/kodama/internal/identity/oidc"
 )
 
 const (
@@ -48,7 +49,34 @@ func New(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	executor, err := NewExecutor(cfg.APIURL, cfg.HTTPTimeout, cfg.MaxResponseBytes, apiCA, cfg.DefaultTenant, cfg.DefaultProject)
+	exchangeCA, err := ReadCA(cfg.ExchangeCAFile)
+	if err != nil {
+		return nil, err
+	}
+	secret, err := ReadSecret(cfg.ExchangeClientSecretFile)
+	if err != nil {
+		return nil, err
+	}
+	apiClient, err := httpClient(cfg.HTTPTimeout, oidcCA)
+	if err != nil {
+		return nil, err
+	}
+	apiVerifier, err := identityoidc.NewVerifier(identityoidc.Config{
+		Issuer: cfg.APIIssuer, Audience: cfg.APIAudience, AllowInsecureHTTP: cfg.AllowInsecureHTTP,
+		HTTPClient: apiClient,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mcpserver: API OIDC verifier: %w", err)
+	}
+	exchangeClient, err := httpClient(cfg.HTTPTimeout, exchangeCA)
+	if err != nil {
+		return nil, err
+	}
+	provider, err := NewExchangeProvider(cfg, exchangeClient, secret, apiVerifier)
+	if err != nil {
+		return nil, err
+	}
+	executor, err := NewExecutor(cfg.APIURL, cfg.HTTPTimeout, cfg.MaxResponseBytes, apiCA, provider, cfg.DefaultTenant, cfg.DefaultProject)
 	if err != nil {
 		return nil, err
 	}

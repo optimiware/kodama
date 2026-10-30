@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	coreoidc "github.com/coreos/go-oidc/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
@@ -149,14 +150,6 @@ func (s *callState) isUnavailable() bool {
 
 type stateKey struct{}
 
-// AccessToken is the verified, non-secret part of an API access token that a
-// consumer may need after authentication. It never carries the raw token.
-type AccessToken struct {
-	Principal identity.Principal
-	Expiry    time.Time
-	Scopes    []string
-}
-
 // Verify checks the token and returns its verified (issuer, subject). A bad
 // credential is identity.ErrUnauthenticated; an unreachable issuer, discovery
 // failure or JWKS failure is identity.ErrUnavailable. Neither message contains
@@ -170,41 +163,45 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (identity.Principal, 
 }
 
 // VerifyAccessToken verifies the token and returns the principal together with
-// its expiry and granted scopes. The scopes are informational for the caller:
-// Kodama authorizes by current membership and role, never by an OAuth scope.
-func (v *Verifier) VerifyAccessToken(ctx context.Context, raw string) (AccessToken, error) {
+// its expiry, granted scopes and optional delegation. The scopes are
+// informational for authorization: Kodama authorizes by current membership and
+// role, never by an OAuth scope alone.
+func (v *Verifier) VerifyAccessToken(ctx context.Context, raw string) (identity.AccessToken, error) {
 	if raw == "" || len(raw) > v.cfg.MaxTokenBytes {
-		return AccessToken{}, unauthenticated("the token is missing or too large")
+		return identity.AccessToken{}, unauthenticated("the token is missing or too large")
 	}
 	state := &callState{}
 	ctx = context.WithValue(ctx, stateKey{}, state)
 	verifier, err := v.discover(ctx)
 	if err != nil {
-		return AccessToken{}, err
+		return identity.AccessToken{}, err
 	}
 	tok, err := verifier.Verify(ctx, raw)
 	if err != nil {
 		if state.isUnavailable() {
-			return AccessToken{}, identity.Unavailablef(nil, "the issuer's signing keys could not be fetched")
+			return identity.AccessToken{}, identity.Unavailablef(nil, "the issuer's signing keys could not be fetched")
 		}
-		return AccessToken{}, unauthenticated(classify(err))
+		return identity.AccessToken{}, unauthenticated(classify(err))
 	}
 	claims := map[string]json.RawMessage{}
 	if err := tok.Claims(&claims); err != nil {
-		return AccessToken{}, unauthenticated("the claims are malformed")
+		return identity.AccessToken{}, unauthenticated("the claims are malformed")
 	}
 	if !v.cfg.AcceptIDTokenClaims {
 		for _, name := range []string{"nonce", "at_hash"} {
 			if _, ok := claims[name]; ok {
-				return AccessToken{}, unauthenticated("an ID token is not an API access token")
+				return identity.AccessToken{}, unauthenticated("an ID token is not an API access token")
 			}
 		}
 	}
 	p := identity.Principal{Issuer: tok.Issuer, Subject: tok.Subject}
 	if err := p.Validate(); err != nil {
-		return AccessToken{}, unauthenticated("the subject is missing or malformed")
+		return identity.AccessToken{}, unauthenticated("the subject is missing or malformed")
 	}
-	return AccessToken{Principal: p, Expiry: tok.Expiry, Scopes: scopesFromClaims(claims)}, nil
+	return identity.AccessToken{
+		Principal: p, Expiry: tok.Expiry, Scopes: scopesFromClaims(claims),
+		Delegation: delegationFromClaims(claims),
+	}, nil
 }
 
 func scopesFromClaims(claims map[string]json.RawMessage) []string {
@@ -223,6 +220,28 @@ func scopesFromClaims(claims map[string]json.RawMessage) []string {
 		}
 	}
 	return nil
+}
+
+// delegationFromClaims extracts the issuer-defined intermediary from the RFC
+// 8693 act claim. azp/client_id are deliberately not treated as delegation:
+// ordinary CLI access tokens can carry them, and marking those as delegated
+// would incorrectly remove human-only authority.
+func delegationFromClaims(claims map[string]json.RawMessage) *identity.Delegation {
+	actor := ""
+	if raw, ok := claims["act"]; ok {
+		var act struct {
+			Sub string `json:"sub"`
+		}
+		if json.Unmarshal(raw, &act) == nil {
+			actor = act.Sub
+		}
+	}
+	actor = strings.TrimSpace(actor)
+	if actor == "" || len(actor) > identity.MaxSubjectBytes || !utf8.ValidString(actor) ||
+		strings.ContainsFunc(actor, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return nil
+	}
+	return &identity.Delegation{Actor: actor, Scopes: scopesFromClaims(claims)}
 }
 
 func unauthenticated(reason string) error {

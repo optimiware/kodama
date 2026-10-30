@@ -69,7 +69,7 @@ _Avoid_: Ticket as a separate entity.
 
 **MCP proxy**: Kodama's workload-facing gateway that exposes approved external MCP tools to an agent attempt under the attempt's runtime authority.
 
-**MCP server**: The external OAuth-protected endpoint that exposes the Kodama public API as MCP tools to a human-authorized MCP client. It is a client of the API and holds no service credential; it is distinct from the MCP proxy.
+**MCP server**: The external OAuth-protected endpoint that exposes the Kodama public API as MCP tools to a human-authorized MCP client. It validates an MCP-bound token and exchanges it for a separate delegated API token; it holds no database, broker, object-store or KMS credential and is distinct from the MCP proxy.
 
 ## Execution and delivery
 

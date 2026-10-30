@@ -28,9 +28,18 @@ func operation(t *testing.T, id string) Operation {
 	return Operation{}
 }
 
+type staticToken string
+
+func (s staticToken) Token(context.Context, Caller) (string, error) { return string(s), nil }
+
 func testExecutor(t *testing.T, base string) *Executor {
 	t.Helper()
-	e, err := NewExecutor(base, 5*time.Second, 1<<20, nil, "", "")
+	return testExecutorWithToken(t, base, "api-tok")
+}
+
+func testExecutorWithToken(t *testing.T, base, token string) *Executor {
+	t.Helper()
+	e, err := NewExecutor(base, 5*time.Second, 1<<20, nil, staticToken(token), "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +59,7 @@ func TestExecutorCallsPublicAPI(t *testing.T) {
 	defer srv.Close()
 
 	e := testExecutor(t, srv.URL)
-	res, err := e.Call(withRawToken(context.Background(), "tok-1"), operation(t, "getMe"), map[string]any{})
+	res, err := e.Call(withCaller(context.Background(), Caller{SubjectToken: "tok-1"}), operation(t, "getMe"), map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,8 +69,8 @@ func TestExecutorCallsPublicAPI(t *testing.T) {
 	if got.Method != http.MethodGet || got.URL.Path != "/me" {
 		t.Fatalf("request = %s %s", got.Method, got.URL.Path)
 	}
-	if got.Header.Get("Authorization") != "Bearer tok-1" {
-		t.Fatalf("authorization = %q", got.Header.Get("Authorization"))
+	if got.Header.Get("Authorization") != "Bearer api-tok" {
+		t.Fatalf("authorization = %q, want the delegated token", got.Header.Get("Authorization"))
 	}
 	if res.Meta["kodama/requestId"] != "req_test" {
 		t.Fatalf("meta = %+v", res.Meta)
@@ -84,7 +93,7 @@ func TestExecutorMapsPathQueryHeadersAndBody(t *testing.T) {
 
 	e := testExecutor(t, srv.URL)
 	op := operation(t, "createRun")
-	res, err := e.Call(withRawToken(context.Background(), "tok"), op, map[string]any{
+	res, err := e.Call(withCaller(context.Background(), Caller{SubjectToken: "tok"}), op, map[string]any{
 		"tenant_id": "t_acme", "project_id": "p_inventory",
 		"idempotency_key": "key-1",
 		"body": map[string]any{
@@ -118,7 +127,7 @@ func TestExecutorMapsAPIErrors(t *testing.T) {
 	defer srv.Close()
 
 	e := testExecutor(t, srv.URL)
-	res, err := e.Call(withRawToken(context.Background(), "tok"), operation(t, "getMe"), nil)
+	res, err := e.Call(withCaller(context.Background(), Caller{SubjectToken: "tok"}), operation(t, "getMe"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,11 +142,11 @@ func TestExecutorBoundsAndRejectsFollow(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e, err := NewExecutor(srv.URL, time.Second, 1024, nil, "", "")
+	e, err := NewExecutor(srv.URL, time.Second, 1024, nil, staticToken("api-tok"), "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := e.Call(withRawToken(context.Background(), "tok"), operation(t, "getMe"), nil)
+	res, err := e.Call(withCaller(context.Background(), Caller{SubjectToken: "tok"}), operation(t, "getMe"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +154,7 @@ func TestExecutorBoundsAndRejectsFollow(t *testing.T) {
 		t.Fatalf("result = %+v", res)
 	}
 
-	if _, err := e.Call(withRawToken(context.Background(), "tok"), operation(t, "getRunLogs"), map[string]any{
+	if _, err := e.Call(withCaller(context.Background(), Caller{SubjectToken: "tok"}), operation(t, "getRunLogs"), map[string]any{
 		"tenant_id": "t", "project_id": "p", "id": "run", "follow": true,
 	}); err == nil {
 		t.Fatal("follow was accepted")
@@ -161,11 +170,11 @@ func TestExecutorInjectsDefaults(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e, err := NewExecutor(srv.URL, time.Second, 1<<20, nil, "t_default", "p_default")
+	e, err := NewExecutor(srv.URL, time.Second, 1<<20, nil, staticToken("api-tok"), "t_default", "p_default")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Call(withRawToken(context.Background(), "tok"), operation(t, "listWorkItems"), map[string]any{}); err != nil {
+	if _, err := e.Call(withCaller(context.Background(), Caller{SubjectToken: "tok"}), operation(t, "listWorkItems"), map[string]any{}); err != nil {
 		t.Fatal(err)
 	}
 	if path != "/tenants/t_default/projects/p_default/work-items" {
@@ -183,7 +192,7 @@ func TestExecutorMapsVersionAndEventHeaders(t *testing.T) {
 	defer srv.Close()
 	e := testExecutor(t, srv.URL)
 
-	if _, err := e.Call(withRawToken(context.Background(), "tok"), operation(t, "updateWorkItem"), map[string]any{
+	if _, err := e.Call(withCaller(context.Background(), Caller{SubjectToken: "tok"}), operation(t, "updateWorkItem"), map[string]any{
 		"tenant_id": "t", "project_id": "p", "id": "wi_1", "if_match": `"3"`,
 		"body": map[string]any{"title": "new"},
 	}); err != nil {
@@ -193,7 +202,7 @@ func TestExecutorMapsVersionAndEventHeaders(t *testing.T) {
 		t.Fatalf("If-Match = %q", got.Header.Get("If-Match"))
 	}
 
-	if _, err := e.Call(withRawToken(context.Background(), "tok"), operation(t, "observeProjectEvents"), map[string]any{
+	if _, err := e.Call(withCaller(context.Background(), Caller{SubjectToken: "tok"}), operation(t, "observeProjectEvents"), map[string]any{
 		"tenant_id": "t", "project_id": "p", "last_event_id": "cursor-1",
 	}); err != nil {
 		t.Fatal(err)

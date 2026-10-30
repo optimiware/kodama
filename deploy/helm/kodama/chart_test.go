@@ -50,15 +50,16 @@ type profile struct {
 	tenants    int
 	kms        string
 	ingress    bool
+	mcp        bool
 	mcpIngress bool
 }
 
 func baseProfiles(t *testing.T) []profile {
 	t.Helper()
 	return []profile{
-		{name: "default", tenants: 1, kms: "keyfile"},
+		{name: "default", tenants: 1, kms: "keyfile", mcp: true},
 		{name: "dev", files: []string{"values-dev.yaml"}, tenants: 1, kms: "keyfile"},
-		{name: "external-aws", files: []string{"values-external.yaml"}, tenants: 2, kms: "aws", ingress: true, mcpIngress: true},
+		{name: "external-aws", files: []string{"values-external.yaml"}, tenants: 2, kms: "aws", ingress: true, mcp: true, mcpIngress: true},
 	}
 }
 
@@ -89,7 +90,7 @@ func cloudProfiles(t *testing.T) []profile {
 		if err := os.WriteFile(path, data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		out = append(out, profile{name: "external-" + name, files: []string{path}, tenants: 2, kms: name, ingress: true, mcpIngress: true})
+		out = append(out, profile{name: "external-" + name, files: []string{path}, tenants: 2, kms: name, ingress: true, mcp: true, mcpIngress: true})
 	}
 	return out
 }
@@ -369,11 +370,19 @@ func Test_helm_render_profiles(t *testing.T) {
 		})
 		t.Run("template_"+p.name, func(t *testing.T) {
 			docs := render(t, p)
-			if got := len(ofKind(docs, "Deployment")); got != 2 {
-				t.Fatalf("want two Deployments (server and MCP), got %d", got)
+			wantDeployments := 1
+			if p.mcp {
+				wantDeployments = 2
 			}
-			if got := len(ofKind(docs, "Service")); got != 2 {
-				t.Errorf("want two Services (server and MCP), got %d", got)
+			if got := len(ofKind(docs, "Deployment")); got != wantDeployments {
+				t.Fatalf("Deployments = %d, want %d", got, wantDeployments)
+			}
+			wantServices := 1
+			if p.mcp {
+				wantServices = 2
+			}
+			if got := len(ofKind(docs, "Service")); got != wantServices {
+				t.Errorf("Services = %d, want %d", got, wantServices)
 			}
 			wantIngress := 0
 			if p.ingress {
@@ -461,6 +470,39 @@ func Test_helm_render_profiles(t *testing.T) {
 	})
 }
 
+func Test_helm_shared_mcp_host_routes(t *testing.T) {
+	helmBinary(t)
+	stdout, stderr, err := helm(t, "template", releaseName, ".", "--namespace", releaseNamespace,
+		"--set", "ingress.enabled=true,ingress.host=kodama.example.invalid",
+		"--set", "mcp.ingress.enabled=true,mcp.ingress.host=kodama.example.invalid,mcp.ingress.path=/mcp",
+		"--set", "mcp.ingress.tls.enabled=false",
+	)
+	if err != nil {
+		t.Fatalf("helm template: %v\n%s", err, stderr)
+	}
+	docs := parseDocuments(t, stdout)
+	var mcpIngress object
+	for _, ing := range ofKind(docs, "Ingress") {
+		if nameOf(ing) == "kodama-mcp" {
+			mcpIngress = ing
+		}
+	}
+	if mcpIngress == nil {
+		t.Fatal("shared-host MCP Ingress was not rendered")
+	}
+	var paths []string
+	rules := asList(dig(mcpIngress, "spec", "rules"))
+	if len(rules) != 1 {
+		t.Fatalf("MCP Ingress rules = %v", rules)
+	}
+	for _, p := range asList(dig(asMap(rules[0]), "http", "paths")) {
+		paths = append(paths, str(asMap(p)["path"]))
+	}
+	if !slices.Contains(paths, "/mcp") || !slices.Contains(paths, "/.well-known/oauth-protected-resource/mcp") {
+		t.Fatalf("MCP Ingress paths = %v", paths)
+	}
+}
+
 func configYAML(t *testing.T, docs []object, configMap, key string) object {
 	t.Helper()
 	for _, d := range ofKind(docs, "ConfigMap") {
@@ -501,17 +543,19 @@ func Test_helm_policy_assertions(t *testing.T) {
 		t.Run(p.name, func(t *testing.T) {
 			docs := render(t, p)
 			pods := collectPodSpecs(t, docs)
-			t.Run("single_server_replica", func(t *testing.T) { assertSingleReplica(t, docs) })
+			t.Run("single_server_replica", func(t *testing.T) { assertSingleReplica(t, docs, p.mcp) })
 			t.Run("pod_hardening", func(t *testing.T) { assertPodHardening(t, pods) })
 			t.Run("frozen_server_configuration", func(t *testing.T) { assertServerConfiguration(t, pods) })
-			t.Run("mcp_configuration", func(t *testing.T) { assertMCPConfiguration(t, docs, pods) })
-			t.Run("service_accounts", func(t *testing.T) { assertServiceAccounts(t, docs, pods) })
-			t.Run("secret_split", func(t *testing.T) { assertSecretSplit(t, pods) })
-			t.Run("rbac", func(t *testing.T) { assertRBAC(t, docs, pods) })
+			if p.mcp {
+				t.Run("mcp_configuration", func(t *testing.T) { assertMCPConfiguration(t, docs, pods) })
+			}
+			t.Run("service_accounts", func(t *testing.T) { assertServiceAccounts(t, docs, pods, p.mcp) })
+			t.Run("secret_split", func(t *testing.T) { assertSecretSplit(t, pods, p.mcp) })
+			t.Run("rbac", func(t *testing.T) { assertRBAC(t, docs, pods, p.mcp) })
 			t.Run("tenant_namespaces", func(t *testing.T) { assertTenantNamespaces(t, docs, p.tenants) })
 			t.Run("network_policy", func(t *testing.T) { assertNetworkPolicies(t, docs) })
 			t.Run("job_fixture", func(t *testing.T) { assertJobFixtures(t, pods) })
-			t.Run("images_pinned", func(t *testing.T) { assertImagesPinned(t, docs, pods) })
+			t.Run("images_pinned", func(t *testing.T) { assertImagesPinned(t, docs, pods, p.mcp) })
 			t.Run("no_plaintext_credentials", func(t *testing.T) { assertNoPlaintextCredentials(t, docs) })
 		})
 	}
@@ -529,10 +573,14 @@ func Test_helm_policy_assertions(t *testing.T) {
 	t.Run("negative_cases_fail_validation", func(t *testing.T) { assertNegativeCases(t) })
 }
 
-func assertSingleReplica(t *testing.T, docs []object) {
+func assertSingleReplica(t *testing.T, docs []object, mcp bool) {
 	deployments := ofKind(docs, "Deployment")
-	if len(deployments) != 2 {
-		t.Fatalf("want two Deployments (server and MCP), got %d", len(deployments))
+	want := 1
+	if mcp {
+		want = 2
+	}
+	if len(deployments) != want {
+		t.Fatalf("Deployments = %d, want %d", len(deployments), want)
 	}
 	for _, d := range deployments {
 		component := str(dig(d, "metadata", "labels", "app.kubernetes.io/component"))
@@ -686,8 +734,12 @@ func assertMCPConfiguration(t *testing.T, docs []object, pods []podSpec) {
 	}
 	for _, name := range []string{
 		"KODAMA_MCP_API_URL", "KODAMA_MCP_RESOURCE", "KODAMA_MCP_AUDIENCE", "KODAMA_MCP_ISSUER",
-		"KODAMA_MCP_LISTEN", "KODAMA_MCP_READ_ONLY", "KODAMA_MCP_TOOLSETS",
+		"KODAMA_MCP_API_AUDIENCE", "KODAMA_MCP_API_ISSUER", "KODAMA_MCP_API_RESOURCE",
+		"KODAMA_MCP_EXCHANGE_URL", "KODAMA_MCP_EXCHANGE_CLIENT_ID", "KODAMA_MCP_EXCHANGE_CLIENT_AUTH",
+		"KODAMA_MCP_EXCHANGE_CLIENT_SECRET_FILE", "KODAMA_MCP_EXCHANGE_SCOPES",
+		"KODAMA_MCP_SCOPES", "KODAMA_MCP_LISTEN", "KODAMA_MCP_READ_ONLY", "KODAMA_MCP_TOOLSETS",
 		"KODAMA_MCP_ENABLE_SECRET_WRITES", "KODAMA_MCP_ENABLE_CREDENTIAL_TOOLS", "KODAMA_MCP_ALLOW_INSECURE_HTTP",
+		"KODAMA_MCP_ALLOW_INSECURE_API_HTTP",
 	} {
 		if _, ok := env[name]; !ok {
 			t.Errorf("MCP env %s is not rendered", name)
@@ -703,29 +755,50 @@ func assertMCPConfiguration(t *testing.T, docs []object, pods []podSpec) {
 		t.Errorf("MCP API/resource URLs = %q / %q", env["KODAMA_MCP_API_URL"], env["KODAMA_MCP_RESOURCE"])
 	}
 	config := configYAML(t, docs, "kodama-config", "config.yaml")
-	if got, want := env["KODAMA_MCP_AUDIENCE"], str(dig(config, "oidc", "audience")); got != want {
-		t.Errorf("KODAMA_MCP_AUDIENCE = %q, want config.oidc.audience %q", got, want)
+	if got, want := env["KODAMA_MCP_AUDIENCE"], env["KODAMA_MCP_RESOURCE"]; got != want {
+		t.Errorf("KODAMA_MCP_AUDIENCE = %q, want the MCP resource %q", got, want)
 	}
-	if got, want := env["KODAMA_MCP_ISSUER"], str(dig(config, "oidc", "issuer")); got != want {
-		t.Errorf("KODAMA_MCP_ISSUER = %q, want config.oidc.issuer %q", got, want)
+	if got, want := env["KODAMA_MCP_API_AUDIENCE"], str(dig(config, "oidc", "audience")); got != want {
+		t.Errorf("KODAMA_MCP_API_AUDIENCE = %q, want config.oidc.audience %q", got, want)
 	}
-	if names, _ := volumeSecrets(mcp.spec); len(names) != 0 {
-		t.Errorf("MCP pod must not mount the server runtime Secret, got %v", names)
+	if got, want := env["KODAMA_MCP_API_ISSUER"], str(dig(config, "oidc", "issuer")); got != want {
+		t.Errorf("KODAMA_MCP_API_ISSUER = %q, want config.oidc.issuer %q", got, want)
+	}
+	if got := env["KODAMA_MCP_ISSUER"]; got != str(dig(config, "oidc", "issuer")) {
+		t.Errorf("KODAMA_MCP_ISSUER = %q", got)
+	}
+	if env["KODAMA_MCP_EXCHANGE_CLIENT_SECRET_FILE"] == "" || !strings.Contains(env["KODAMA_MCP_EXCHANGE_CLIENT_SECRET_FILE"], "client-secret") {
+		t.Errorf("exchange secret file = %q", env["KODAMA_MCP_EXCHANGE_CLIENT_SECRET_FILE"])
+	}
+	names, _ := volumeSecrets(mcp.spec)
+	if len(names) != 1 || names[0] != "kodama-mcp-exchange" {
+		t.Errorf("MCP pod must mount only the exchange Secret, got %v", names)
 	}
 }
 
-func assertServiceAccounts(t *testing.T, docs []object, pods []podSpec) {
+func assertServiceAccounts(t *testing.T, docs []object, pods []podSpec, mcpEnabled bool) {
 	server := str(podByRole(t, pods, roleServer).spec["serviceAccountName"])
-	mcp := str(podByRole(t, pods, roleMCP).spec["serviceAccountName"])
+	mcp := ""
+	if mcpEnabled {
+		mcp = str(podByRole(t, pods, roleMCP).spec["serviceAccountName"])
+	}
 	migration := str(podByRole(t, pods, roleMigration).spec["serviceAccountName"])
 	tenant := str(podByRole(t, pods, roleFixture).spec["serviceAccountName"])
-	for what, name := range map[string]string{"server": server, "mcp": mcp, "migration": migration, "tenant execution": tenant} {
+	accounts := map[string]string{"server": server, "migration": migration, "tenant execution": tenant}
+	if mcpEnabled {
+		accounts["mcp"] = mcp
+	}
+	for what, name := range accounts {
 		if name == "" || name == "default" {
 			t.Errorf("%s pod must use a dedicated service account, got %q", what, name)
 		}
 	}
-	if server == mcp || server == migration || server == tenant || mcp == migration || mcp == tenant || migration == tenant {
-		t.Errorf("service accounts must be distinct: server=%q mcp=%q migration=%q tenant=%q", server, mcp, migration, tenant)
+	seen := map[string]bool{}
+	for what, name := range accounts {
+		if seen[name] {
+			t.Errorf("service account %q is reused by %s", name, what)
+		}
+		seen[name] = true
 	}
 	exists := map[string]object{}
 	for _, sa := range ofKind(docs, "ServiceAccount") {
@@ -734,8 +807,10 @@ func assertServiceAccounts(t *testing.T, docs []object, pods []podSpec) {
 	if _, ok := exists["/"+server]; !ok {
 		t.Errorf("server ServiceAccount %q is not rendered", server)
 	}
-	if _, ok := exists["/"+mcp]; !ok {
-		t.Errorf("MCP ServiceAccount %q is not rendered", mcp)
+	if mcpEnabled {
+		if _, ok := exists["/"+mcp]; !ok {
+			t.Errorf("MCP ServiceAccount %q is not rendered", mcp)
+		}
 	}
 	if _, ok := exists["/"+migration]; !ok {
 		t.Errorf("migration ServiceAccount %q is not rendered", migration)
@@ -777,16 +852,20 @@ func volumeSecrets(spec object) (names []string, keys []string) {
 	return names, keys
 }
 
-func assertSecretSplit(t *testing.T, pods []podSpec) {
+func assertSecretSplit(t *testing.T, pods []podSpec, mcpEnabled bool) {
 	serverNames, serverKeys := volumeSecrets(podByRole(t, pods, roleServer).spec)
 	migrationNames, migrationKeys := volumeSecrets(podByRole(t, pods, roleMigration).spec)
-	mcpNames, _ := volumeSecrets(podByRole(t, pods, roleMCP).spec)
 	fixtureNames, _ := volumeSecrets(podByRole(t, pods, roleFixture).spec)
 	if len(fixtureNames) != 0 {
 		t.Errorf("tenant Job fixture must not mount Kubernetes Secrets, got %v", fixtureNames)
 	}
-	if len(mcpNames) != 0 {
-		t.Errorf("MCP pod must not mount Kubernetes Secrets, got %v", mcpNames)
+	if mcpEnabled {
+		mcpNames, _ := volumeSecrets(podByRole(t, pods, roleMCP).spec)
+		for _, name := range mcpNames {
+			if name == serverNames[0] || name == migrationNames[0] {
+				t.Errorf("MCP pod must not mount the server or migration Secret, got %v", mcpNames)
+			}
+		}
 	}
 	has := func(list []string, want string) bool {
 		for _, s := range list {
@@ -807,9 +886,12 @@ func assertSecretSplit(t *testing.T, pods []podSpec) {
 	}
 }
 
-func assertRBAC(t *testing.T, docs []object, pods []podSpec) {
+func assertRBAC(t *testing.T, docs []object, pods []podSpec, mcpEnabled bool) {
 	serverSA := str(podByRole(t, pods, roleServer).spec["serviceAccountName"])
-	mcpSA := str(podByRole(t, pods, roleMCP).spec["serviceAccountName"])
+	mcpSA := ""
+	if mcpEnabled {
+		mcpSA = str(podByRole(t, pods, roleMCP).spec["serviceAccountName"])
+	}
 	migrationSA := str(podByRole(t, pods, roleMigration).spec["serviceAccountName"])
 	tenantSA := str(podByRole(t, pods, roleFixture).spec["serviceAccountName"])
 	tenants := map[string]bool{}
@@ -1050,7 +1132,7 @@ func assertJobFixtures(t *testing.T, pods []podSpec) {
 	}
 }
 
-func assertImagesPinned(t *testing.T, docs []object, pods []podSpec) {
+func assertImagesPinned(t *testing.T, docs []object, pods []podSpec, mcpEnabled bool) {
 	var images []string
 	for _, p := range pods {
 		for _, c := range containers(p.spec) {
@@ -1059,8 +1141,12 @@ func assertImagesPinned(t *testing.T, docs []object, pods []podSpec) {
 	}
 	execution := configYAML(t, docs, "kodama-execution", "execution.yaml")
 	images = append(images, str(dig(execution, "entrypoint", "image")))
-	if len(images) < 5 {
-		t.Fatalf("expected to inspect at least 5 image references, got %v", images)
+	min := 4
+	if mcpEnabled {
+		min = 5
+	}
+	if len(images) < min {
+		t.Fatalf("expected to inspect at least %d image references, got %v", min, images)
 	}
 	for _, image := range images {
 		if !digestRef.MatchString(image) {
@@ -1076,9 +1162,11 @@ func assertImagesPinned(t *testing.T, docs []object, pods []podSpec) {
 	if got := str(dig(execution, "entrypoint", "image")); got != serverImage {
 		t.Errorf("entrypoint injection image %q must equal the server release image %q", got, serverImage)
 	}
-	mcp := podByRole(t, pods, roleMCP)
-	if got := str(asMap(asList(mcp.spec["containers"])[0])["image"]); got != serverImage {
-		t.Errorf("MCP image %q must equal the server release image %q", got, serverImage)
+	if mcpEnabled {
+		mcp := podByRole(t, pods, roleMCP)
+		if got := str(asMap(asList(mcp.spec["containers"])[0])["image"]); got != serverImage {
+			t.Errorf("MCP image %q must equal the server release image %q", got, serverImage)
+		}
 	}
 	fixture := podByRole(t, pods, roleFixture)
 	if got := str(asMap(asList(fixture.spec["initContainers"])[0])["image"]); got != serverImage {
@@ -1090,6 +1178,7 @@ func assertImagesPinned(t *testing.T, docs []object, pods []podSpec) {
 // match the credential pattern but carry no secret material.
 var credentialReferenceKeys = map[string]bool{
 	"secretName":                   true,
+	"secretKey":                    true,
 	"serviceAccountName":           true,
 	"automountServiceAccountToken": true,
 	"existingSecret":               true,
@@ -1102,8 +1191,9 @@ var credentialReferenceKeys = map[string]bool{
 // nonSecretEnvNames are boolean feature switches whose names contain a
 // credential-looking word but whose values are not credentials.
 var nonSecretEnvNames = map[string]bool{
-	"KODAMA_MCP_ENABLE_SECRET_WRITES":    true,
-	"KODAMA_MCP_ENABLE_CREDENTIAL_TOOLS": true,
+	"KODAMA_MCP_ENABLE_SECRET_WRITES":        true,
+	"KODAMA_MCP_ENABLE_CREDENTIAL_TOOLS":     true,
+	"KODAMA_MCP_EXCHANGE_CLIENT_SECRET_FILE": true,
 }
 
 // looksLikeCredentialKey reports whether a key name suggests secret material. Size limits and the
@@ -1230,7 +1320,7 @@ func assertNegativeCases(t *testing.T) {
 		{"mcp_port_zero", []string{"--set", "mcp.port=0"}, schemaFailure},
 		{"mcp_unknown_value", []string{"--set", "mcp.operator=true"}, schemaFailure},
 		{"mcp_ingress_without_host", []string{"--set", "mcp.ingress.enabled=true"}, schemaFailure},
-		{"mcp_ingress_shares_server_host", []string{"--set", "ingress.enabled=true,ingress.host=kodama.example.invalid,mcp.ingress.enabled=true,mcp.ingress.host=kodama.example.invalid"}, "must differ"},
+		{"mcp_ingress_shares_server_host", []string{"--set", "ingress.enabled=true,ingress.host=kodama.example.invalid,mcp.ingress.enabled=true,mcp.ingress.host=kodama.example.invalid"}, "shared MCP/server host"},
 		{"unknown_top_level_value", []string{"--set", "operator.enabled=true"}, schemaFailure},
 	}
 	for _, tc := range cases {

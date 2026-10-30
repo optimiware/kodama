@@ -12,8 +12,9 @@ import (
 const usageText = `Usage: kodama mcp serve [flags]
 
 Run the external MCP server for the Kodama public API. It is an OAuth resource
-server: it verifies the caller's bearer token and forwards it to Kodama. It has
-no database, broker, object-store or KMS credential.
+server: it verifies an MCP-bound token, exchanges it for a separate delegated
+Kodama API token, and never forwards the client token. It has no database,
+broker, object-store or KMS credential.
 
 Use "kodama mcp serve --help" for flags.`
 

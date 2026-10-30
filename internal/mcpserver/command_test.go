@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -39,12 +41,20 @@ func TestCommandServeRunsAndStops(t *testing.T) {
 	// the listener; the command must return when the context is cancelled.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
+	secret := filepath.Join(t.TempDir(), "client-secret")
+	if err := os.WriteFile(secret, []byte("exchange-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	env := map[string]string{
-		"KODAMA_MCP_API_URL":  "https://kodama.example/api/v1",
-		"KODAMA_MCP_RESOURCE": "https://mcp.example/mcp",
-		"KODAMA_MCP_AUDIENCE": "https://api.example",
-		"KODAMA_MCP_ISSUER":   "https://id.example",
-		"KODAMA_MCP_LISTEN":   "127.0.0.1:0",
+		"KODAMA_MCP_API_URL":                     "https://kodama.example/api/v1",
+		"KODAMA_MCP_RESOURCE":                    "https://mcp.example/mcp",
+		"KODAMA_MCP_AUDIENCE":                    "https://mcp.example/mcp",
+		"KODAMA_MCP_ISSUER":                      "https://id.example",
+		"KODAMA_MCP_API_AUDIENCE":                "https://api.example",
+		"KODAMA_MCP_EXCHANGE_URL":                "https://id.example/token",
+		"KODAMA_MCP_EXCHANGE_CLIENT_ID":          "kodama-mcp",
+		"KODAMA_MCP_EXCHANGE_CLIENT_SECRET_FILE": secret,
+		"KODAMA_MCP_LISTEN":                      "127.0.0.1:0",
 	}
 	var errb bytes.Buffer
 	code := Command(ctx, []string{"serve"}, func(k string) string { return env[k] }, io.Discard, &errb)

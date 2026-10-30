@@ -1,13 +1,11 @@
 package mcpserver
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
@@ -17,13 +15,15 @@ import (
 )
 
 // Authenticator is the MCP OAuth resource-server half. It verifies the bearer
-// locally and records the raw token only so the executor can forward the same
-// credential to Kodama. No token is stored, refreshed or minted here.
+// locally and records the raw token only so the exchange provider can obtain a
+// separate delegated API credential. No token is stored, refreshed or minted
+// here.
 type Authenticator struct {
 	verifier    *identityoidc.Verifier
 	resource    string
 	metadataURL string
 	issuer      string
+	scopes      []string
 }
 
 func NewAuthenticator(cfg Config, ca []byte) (*Authenticator, error) {
@@ -42,45 +42,53 @@ func NewAuthenticator(cfg Config, ca []byte) (*Authenticator, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Authenticator{verifier: verifier, resource: cfg.Resource, metadataURL: metadataURL, issuer: cfg.Issuer}, nil
-}
-
-func (a *Authenticator) verify(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
-	verified, err := a.verifier.VerifyAccessToken(ctx, token)
-	switch {
-	case err == nil:
-	case errors.Is(err, identity.ErrUnauthenticated):
-		return nil, fmt.Errorf("%w: the token is not valid for this MCP server", auth.ErrInvalidToken)
-	case errors.Is(err, identity.ErrUnavailable):
-		return nil, err
-	default:
-		return nil, err
+	scopes := append([]string(nil), cfg.Scopes...)
+	if len(scopes) == 0 {
+		scopes = []string{"openid"}
 	}
-	return &auth.TokenInfo{
-		Scopes: verified.Scopes, Expiration: verified.Expiry, UserID: verified.Principal.Subject,
-	}, nil
+	return &Authenticator{verifier: verifier, resource: cfg.Resource, metadataURL: metadataURL, issuer: cfg.Issuer, scopes: scopes}, nil
 }
 
-// Middleware records the raw bearer, verifies it, and then serves the MCP
-// handler. The raw token is available only to this package's executor.
+// Middleware verifies the incoming MCP token, records the verified caller and
+// then serves the MCP handler. The raw token is available only to the exchange
+// provider; it is never placed in tool arguments or results.
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
-	authHandler := auth.RequireBearerToken(a.verify, &auth.RequireBearerTokenOptions{
-		ResourceMetadataURL: a.metadataURL,
-		ClockSkew:           30 * time.Second,
-	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if token, ok := bearerToken(r); ok {
-			r = r.WithContext(withRawToken(r.Context(), token))
+		token, ok := bearerToken(r)
+		if !ok {
+			a.challenge(w, "invalid_request")
+			return
 		}
-		authHandler(next).ServeHTTP(w, r)
+		verified, err := a.verifier.VerifyAccessToken(r.Context(), token)
+		switch {
+		case err == nil:
+		case errors.Is(err, identity.ErrUnauthenticated):
+			a.challenge(w, "invalid_token")
+			return
+		default:
+			http.Error(w, "authentication dependency unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		caller := Caller{
+			SubjectToken: token, Principal: verified.Principal,
+			Scopes: append([]string(nil), verified.Scopes...), Expiry: verified.Expiry,
+		}
+		next.ServeHTTP(w, r.WithContext(withCaller(r.Context(), caller)))
 	})
+}
+
+func (a *Authenticator) challenge(w http.ResponseWriter, code string) {
+	w.Header().Set("WWW-Authenticate", fmt.Sprintf(
+		`Bearer resource_metadata=%q, error=%q`, a.metadataURL, code,
+	))
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
 }
 
 func (a *Authenticator) MetadataHandler() http.Handler {
 	return auth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
 		Resource:               a.resource,
 		AuthorizationServers:   []string{a.issuer},
-		ScopesSupported:        []string{"openid"},
+		ScopesSupported:        a.scopes,
 		BearerMethodsSupported: []string{"header"},
 		ResourceName:           "Kodama MCP",
 	})

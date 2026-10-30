@@ -64,12 +64,25 @@ ingress:
 mcp:
   enabled: true
   resource: "https://mcp.example.invalid/mcp"
-  audience: "https://kodama.example.invalid/api"
+  audience: "https://mcp.example.invalid/mcp"
   issuer: "https://issuer.example.invalid"
+  apiAudience: "https://kodama.example.invalid/api"
+  apiIssuer: "https://issuer.example.invalid"
+  apiResource: "https://kodama.example.invalid/api"
+  allowInsecureHTTP: false
+  allowInsecureAPIHTTP: true
+  exchange:
+    url: "https://issuer.example.invalid/token"
+    clientId: "kodama-mcp"
+    clientAuth: "client_secret_basic"
+    existingSecret: "kodama-mcp-exchange"
+    secretKey: "client-secret"
+    scopes: "kodama.api"
   ingress:
     enabled: true
     className: nginx
     host: mcp.example.invalid
+    path: "/"
     tls:
       enabled: true
       secretName: kodama-mcp-tls

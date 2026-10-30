@@ -66,6 +66,7 @@ Internal Git hosting ([ADR 0011](../adr/0011-internal-tenant-git-service.md), [G
 | IT-17 | `[internal hosting]` Each tenant's Git worker MUST run with its own namespace, service identity and volume, without platform database, broker or Kubernetes API credentials, and MUST accept traffic only through the control plane's verified forwarding. |
 | IT-18 | `[internal hosting]` Git credentials MUST use a distinct audience; human Git credentials MUST be derived from a verified login and re-checked against current roles on use; attempt grants MUST be bound to the attempt's liveness. |
 | IT-19 | `[internal hosting]` A worker identity MUST be bound to one tenant and MUST be refused for any other tenant's repositories, records or routes. |
+| IT-20 | A delegated access token MUST preserve the represented user and verified intermediary; authorization MUST re-check the represented user's current membership, and a delegated invocation MUST NOT satisfy a human-only permission. |
 
 ## Recovery
 
@@ -90,3 +91,4 @@ Rotate workload signing keys, fence old controllers/publishers, revoke old runti
 | IT-A13 | A tenant's Git worker cannot read another tenant's volume, reach the database, broker or Kubernetes API, or be reached from execution namespaces directly | IT-17, GR-03 |
 | IT-A14 | An access token, attempt token or forwarded assertion presented as a Git credential fails; a person whose role was removed cannot push with an unexpired Git credential; a finished attempt's grant cannot fetch | IT-18, GR-06 |
 | IT-A15 | Tenant A's worker identity is refused when authorizing a push or confirming an outcome for tenant B | IT-19 |
+| IT-A16 | A delegated MCP call is attributable to the represented user, re-checks that user's current membership, and is denied for a human-only gate/completion permission | IT-20 |

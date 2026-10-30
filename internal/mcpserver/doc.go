@@ -3,6 +3,7 @@
 //
 // It is deliberately not the in-product MCP proxy: the proxy exposes approved
 // external tools to Kodama attempts, while this package exposes Kodama's own
-// public operations to external MCP clients. It holds no service credential and
-// stores no access token.
+// public operations to external MCP clients. It exchanges the MCP-bound token
+// for a separate delegated API token, holds no database/broker/KMS credential,
+// and stores no access token.
 package mcpserver

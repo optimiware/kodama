@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -25,16 +27,20 @@ func (s staticOAuth) TokenSource(context.Context) (oauth2.TokenSource, error) {
 func (staticOAuth) Authorize(context.Context, *http.Request, *http.Response) error { return nil }
 
 type testServer struct {
-	mcp    *Server
-	http   *httptest.Server
-	issuer *oidctest.Stub
-	api    *httptest.Server
-	seen   chan string
+	mcp         *Server
+	http        *httptest.Server
+	issuer      *oidctest.Stub
+	api         *httptest.Server
+	exchange    *httptest.Server
+	seen        chan string
+	mcpAudience string
+	apiAudience string
+	apiToken    string
 }
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
-	seen := make(chan string, 4)
+	seen := make(chan string, 8)
 	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen <- r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
@@ -47,13 +53,50 @@ func newTestServer(t *testing.T) *testServer {
 		}
 	}))
 	t.Cleanup(apiSrv.Close)
+
 	issuer := oidctest.NewStub(t)
+	mcpAudience := "https://mcp.kodama.example.test/mcp"
+	apiAudience := "https://api.kodama.example.test"
+	issuer.Audience = mcpAudience
+	apiClaims := issuer.Claims("user|1")
+	apiClaims["aud"] = []string{apiAudience}
+	apiClaims["act"] = map[string]any{"sub": "kodama-mcp"}
+	apiToken := issuer.Token(t, apiClaims)
+
+	exchangeSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		if r.Form.Get("grant_type") != tokenExchangeGrant ||
+			r.Form.Get("subject_token") == "" ||
+			r.Form.Get("resource") != apiAudience ||
+			r.Form.Get("audience") != apiAudience {
+			http.Error(w, "bad exchange request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":      apiToken,
+			"token_type":        "Bearer",
+			"issued_token_type": accessTokenType,
+			"expires_in":        600,
+		})
+	}))
+	t.Cleanup(exchangeSrv.Close)
+
+	secretDir := t.TempDir()
+	secretFile := filepath.Join(secretDir, "client-secret")
+	if err := os.WriteFile(secretFile, []byte("exchange-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	mcpSrv := httptest.NewUnstartedServer(nil)
 	resource := "http://" + mcpSrv.Listener.Addr().String() + "/mcp"
-	audience := "https://api.kodama.example.test"
-	issuer.Audience = audience
 	srv, err := New(Config{
-		APIURL: apiSrv.URL + "/api/v1", Resource: resource, Audience: audience, Issuer: issuer.URL, Listen: "127.0.0.1:0",
+		APIURL: apiSrv.URL + "/api/v1", Resource: resource, Audience: mcpAudience, Issuer: issuer.URL, Listen: "127.0.0.1:0",
+		APIAudience: apiAudience, APIIssuer: issuer.URL, APIResource: apiAudience,
+		ExchangeURL: exchangeSrv.URL, ExchangeClientID: "kodama-mcp", ExchangeClientSecretFile: secretFile,
 		AllowInsecureHTTP: true, HTTPTimeout: 5 * time.Second, MaxResponseBytes: 1 << 20,
 	})
 	if err != nil {
@@ -62,7 +105,10 @@ func newTestServer(t *testing.T) *testServer {
 	mcpSrv.Config.Handler = srv.Handler()
 	mcpSrv.Start()
 	t.Cleanup(mcpSrv.Close)
-	return &testServer{mcp: srv, http: mcpSrv, issuer: issuer, api: apiSrv, seen: seen}
+	return &testServer{
+		mcp: srv, http: mcpSrv, issuer: issuer, api: apiSrv, exchange: exchangeSrv, seen: seen,
+		mcpAudience: mcpAudience, apiAudience: apiAudience, apiToken: apiToken,
+	}
 }
 
 func TestServerOAuthMetadataAndChallenge(t *testing.T) {
@@ -121,7 +167,7 @@ func TestServerMCPClientListsAndCallsTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := len(tools.Tools), 72; got != want {
+	if got, want := len(tools.Tools), len(ts.mcp.Operations()); got != want {
 		t.Fatalf("tools = %d, want %d (secret writes are opt-in)", got, want)
 	}
 	found := false
@@ -153,11 +199,41 @@ func TestServerMCPClientListsAndCallsTools(t *testing.T) {
 	}
 	select {
 	case got := <-ts.seen:
-		if got != "Bearer "+token {
-			t.Fatalf("forwarded authorization = %q", got)
+		if got != "Bearer "+ts.apiToken {
+			t.Fatalf("forwarded authorization = %q, want the exchanged API token", got)
+		}
+		if got == "Bearer "+token {
+			t.Fatal("the MCP client token was forwarded to the API")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("API was not called")
+	}
+}
+
+func TestServerExchangeFailureDoesNotCallAPI(t *testing.T) {
+	ts := newTestServer(t)
+	ts.exchange.Close()
+	token := ts.issuer.Token(t, ts.issuer.Claims("user|1"))
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
+		Endpoint: ts.mcp.cfg.Resource, HTTPClient: ts.http.Client(), OAuthHandler: staticOAuth{token: token},
+		DisableStandaloneSSE: true,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kodama_get_me", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError {
+		t.Fatalf("tool call succeeded despite failed exchange: %+v", res)
+	}
+	select {
+	case got := <-ts.seen:
+		t.Fatalf("API was called after exchange failure: %q", got)
+	default:
 	}
 }
 

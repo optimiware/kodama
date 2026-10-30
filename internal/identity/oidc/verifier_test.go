@@ -291,6 +291,7 @@ func TestVerifyAccessTokenReturnsExpiryAndScopes(t *testing.T) {
 	v := newVerifier(t, s, nil)
 	c := s.Claims("user|1")
 	c["scope"] = "openid profile"
+	c["act"] = map[string]any{"sub": "kodama-mcp"}
 	got, err := v.VerifyAccessToken(context.Background(), s.Token(t, c))
 	if err != nil {
 		t.Fatal(err)
@@ -300,5 +301,18 @@ func TestVerifyAccessTokenReturnsExpiryAndScopes(t *testing.T) {
 	}
 	if len(got.Scopes) != 2 || got.Scopes[0] != "openid" || got.Scopes[1] != "profile" {
 		t.Fatalf("scopes = %v", got.Scopes)
+	}
+	if got.Delegation == nil || got.Delegation.Actor != "kodama-mcp" {
+		t.Fatalf("delegation = %+v", got.Delegation)
+	}
+
+	plain := s.Claims("user|1")
+	plain["azp"] = "kodama-cli"
+	got, err = v.VerifyAccessToken(context.Background(), s.Token(t, plain))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Delegation != nil {
+		t.Fatalf("azp alone was treated as delegation: %+v", got.Delegation)
 	}
 }

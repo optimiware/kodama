@@ -24,11 +24,21 @@ spec:
     - host: {{ .Values.mcp.ingress.host | quote }}
       http:
         paths:
-          - path: /
+          {{- $path := default "/" .Values.mcp.ingress.path }}
+          - path: {{ $path | quote }}
             pathType: Prefix
             backend:
               service:
                 name: {{ include "kodama.mcpFullname" . }}
                 port:
                   name: http
+          {{- if eq $path "/mcp" }}
+          - path: /.well-known/oauth-protected-resource/mcp
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "kodama.mcpFullname" . }}
+                port:
+                  name: http
+          {{- end }}
 {{- end }}

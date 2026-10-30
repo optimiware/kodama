@@ -30,6 +30,11 @@ secrets:
   migration:
     existingSecret: kodama-dev-migration
 
+# The development fixture issuer does not provide the RFC 8693 exchange used by
+# the MCP server. Enable it only after a fixture/issuer supports the contract.
+mcp:
+  enabled: false
+
 config:
   nats:
     url: "nats://nats.kodama-deps.svc.cluster.local:4222"
