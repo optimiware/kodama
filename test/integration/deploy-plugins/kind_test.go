@@ -49,6 +49,9 @@ func TestKubernetesPluginDeploysDummyApp(t *testing.T) {
 	run(t, nil, kubectl, "--kubeconfig", kubeconfig, "create", "namespace", "plugin-test", "--dry-run=client", "-o", "yaml")
 	// The dry-run above proves the client is usable; creation is idempotent below.
 	runAllow(t, nil, kubectl, "--kubeconfig", kubeconfig, "create", "namespace", "plugin-test")
+	// The fixture owns this fixed namespace and name; remove a prior kept run
+	// before exercising the ownership check on a clean target.
+	runAllow(t, nil, kubectl, "--kubeconfig", kubeconfig, "-n", "plugin-test", "delete", "deployment", "dummy-app", "--ignore-not-found=true")
 	loadDummyImage(t, kind, kubeconfig)
 
 	store := state.NewMemory(nil)
@@ -69,11 +72,12 @@ func TestKubernetesPluginDeploysDummyApp(t *testing.T) {
 	}
 	bundle := writeBundle(t, dummyManifest())
 
+	image := envOr("KODAMA_DUMMY_IMAGE", "docker.io/library/nginx:1.27-alpine")
 	common := []string{
 		"--state-url", srv.URL, "--state-attempt", "att_demo", "--state-binding", "release",
 		"--action-key", "run-demo:deploy", "--recipe", "kubernetes-manifests",
-		"--namespace", "plugin-test", "--release", "dummy-app", "--kubeconfig", kubeconfig,
-		"--bundle", bundle, "--desired-release", "dummy-v1", "--timeout", "2m",
+		"--cluster", "kind-" + cluster, "--namespace", "plugin-test", "--release", "dummy-app", "--kubeconfig", kubeconfig,
+		"--bundle", bundle, "--image", image, "--allow-mutable-image", "--desired-release", "dummy-v1", "--timeout", "2m",
 	}
 	out := run(t, nil, bin, append([]string{"apply"}, common...)...)
 	if !strings.Contains(string(out), `"status": "succeeded"`) {

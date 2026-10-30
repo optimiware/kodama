@@ -65,17 +65,21 @@ func (s *Store) insertStep(ctx context.Context, tx pgx.Tx, scope domain.Scope, s
 	if err != nil {
 		return err
 	}
+	refs, err := jsonb(nonNil(st.ArtifactRefs))
+	if err != nil {
+		return err
+	}
 	retry := make([]string, 0, len(st.RetryOn))
 	for _, c := range st.RetryOn {
 		retry = append(retry, string(c))
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO step_runs
 		(tenant_id, project_id, run_id, step_id, ordinal, spec, action_key, status, reason, next_attempt_at, gate_ref, attempts_started,
-		 max_attempts, backoff_seconds, retry_on, output_commit, outputs, version, created_at, updated_at, finished_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+		 max_attempts, backoff_seconds, retry_on, output_commit, outputs, artifact_refs, version, created_at, updated_at, finished_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 		string(scope.TenantID), string(scope.ProjectID), string(st.RunID), st.ID, st.Ordinal, spec, st.ActionKey, string(st.Status), string(st.Reason),
 		ntm(st.NextAttemptAt), nstr(st.GateRef), st.AttemptsStarted, st.MaxAttempts, st.BackoffSeconds, retry, nstr(st.OutputCommit), outputs,
-		int64(st.Version), micros(st.CreatedAt), micros(st.UpdatedAt), ntm(st.FinishedAt))
+		refs, int64(st.Version), micros(st.CreatedAt), micros(st.UpdatedAt), ntm(st.FinishedAt))
 	return err
 }
 
@@ -91,11 +95,15 @@ func (s *Store) updateStep(ctx context.Context, tx pgx.Tx, scope domain.Scope, s
 	if err != nil {
 		return err
 	}
+	refs, err := jsonb(nonNil(st.ArtifactRefs))
+	if err != nil {
+		return err
+	}
 	tag, err := tx.Exec(ctx, `UPDATE step_runs SET status=$5, reason=$6, next_attempt_at=$7, gate_ref=$8, attempts_started=$9, output_commit=$10,
-		outputs=$11, version=$12, updated_at=$13, finished_at=$14
-		WHERE tenant_id=$1 AND project_id=$2 AND run_id=$3 AND step_id=$4 AND version=$12-1`,
+		outputs=$11, artifact_refs=$12, version=$13, updated_at=$14, finished_at=$15
+		WHERE tenant_id=$1 AND project_id=$2 AND run_id=$3 AND step_id=$4 AND version=$13-1`,
 		string(scope.TenantID), string(scope.ProjectID), string(st.RunID), st.ID, string(st.Status), string(st.Reason), ntm(st.NextAttemptAt),
-		nstr(st.GateRef), st.AttemptsStarted, nstr(st.OutputCommit), outputs, int64(st.Version), micros(st.UpdatedAt), ntm(st.FinishedAt))
+		nstr(st.GateRef), st.AttemptsStarted, nstr(st.OutputCommit), outputs, refs, int64(st.Version), micros(st.UpdatedAt), ntm(st.FinishedAt))
 	if err != nil {
 		return err
 	}

@@ -881,7 +881,8 @@ func TestM2ContractCompatibility(t *testing.T) {
 		want := []string{
 			"DELETE /tenants/{tenantId}/projects/{projectId}/mcp-servers/{id}", "GET /tenants/{tenantId}/projects/{projectId}/mcp-servers",
 			"GET /tenants/{tenantId}/projects/{projectId}/model-settings", "PATCH /tenants/{tenantId}/projects/{projectId}/mcp-servers/{id}",
-			"POST /tenants/{tenantId}/projects/{projectId}/mcp-servers", "PUT /tenants/{tenantId}/projects/{projectId}/model-settings",
+			"POST /tenants/{tenantId}/projects/{projectId}/mcp-servers", "POST /tenants/{tenantId}/projects/{projectId}/runs/project",
+			"PUT /tenants/{tenantId}/projects/{projectId}/model-settings",
 		}
 		if !slices.Equal(added, want) {
 			t.Fatalf("operations added by M2: %v, want %v", added, want)

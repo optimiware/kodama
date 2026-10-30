@@ -271,6 +271,31 @@ type Upload struct {
 	ExpiresAt Timestamp         `json:"expiresAt"`
 }
 
+// ArtifactReadResponse is a short-lived download instruction for one verified
+// artifact pinned in the attempt context.
+type ArtifactReadResponse struct {
+	ArtifactID domain.ArtifactID `json:"artifactId"`
+	Digest     Digest            `json:"digest"`
+	Download   Upload            `json:"download"`
+}
+
+// Validate checks the response envelope.
+func (r ArtifactReadResponse) Validate() error {
+	if err := r.ArtifactID.Validate(); err != nil {
+		return err
+	}
+	if err := r.Digest.Validate(); err != nil {
+		return err
+	}
+	if r.Download.Method != "GET" {
+		return fail("download.method", "must be GET")
+	}
+	if r.Download.Headers == nil || len(r.Download.Headers) > 32 {
+		return fail("download.headers", "must be an object of at most 32 entries")
+	}
+	return firstError(matches("download.url", "UploadURL", r.Download.URL), wrap("download.expiresAt", r.Download.ExpiresAt.Validate()))
+}
+
 // ArtifactReserveResponse: a file starts "reserved" with an Upload; an OCI
 // artifact is "registered" with a null Upload.
 type ArtifactReserveResponse struct {

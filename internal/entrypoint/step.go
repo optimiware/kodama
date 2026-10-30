@@ -274,6 +274,12 @@ func (a *attempt) execute() (verdict, *abortError) {
 		a.needles = append(a.needles, append([]byte(nil), v...))
 	}
 
+	if v, ab := a.materializeArtifactFiles(); ab != nil {
+		return verdict{}, ab
+	} else if v != nil {
+		return *v, nil
+	}
+
 	// Authority revoked (or the entrypoint interrupted) while preparing: the
 	// command must never be launched.
 	if a.authorityLost() {
@@ -469,6 +475,7 @@ func (a *attempt) childEnv(secrets *secretSet) []string {
 	env["KODAMA_SERVER_URL"] = cfg.ServerURL
 	env["KODAMA_WORKSPACE"] = cfg.WorkspaceDir
 	env["KODAMA_OUTPUTS_DIR"] = cfg.OutputsDir
+	env["KODAMA_INPUTS_DIR"] = cfg.InputsDir
 	env["KODAMA_RESULTS_FILE"] = cfg.ResultsFile
 	// The command is told the directory its files are actually in: the
 	// process-owned child of the volume (when secrets were declared), never the

@@ -171,7 +171,7 @@ func timestamp(t time.Time) runtimev1.Timestamp {
 // ToRuntimeRef converts a module reference to the runtime contract's trusted
 // artifact metadata for CheckResult.
 func ToRuntimeRef(ref artifacts.Reference) runtimev1.ArtifactRef {
-	return runtimev1.ArtifactRef{ID: ref.ID, Scope: ref.Scope, Attempt: ref.Attempt, Kind: runtimev1.ArtifactKind(ref.Kind), Usable: ref.Usable}
+	return runtimev1.ArtifactRef{ID: ref.ID, Scope: ref.Scope, Attempt: ref.Attempt, Kind: runtimev1.ArtifactKind(ref.Kind), Digest: runtimev1.Digest(ref.Digest), Usable: ref.Usable}
 }
 
 // RuntimeRefs converts a reference lookup result.

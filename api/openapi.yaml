@@ -2163,6 +2163,53 @@ paths:
       - $ref: '#/components/parameters/TenantId'
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/RunId'
+  /tenants/{tenantId}/projects/{projectId}/runs/project:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      description: Requires run:manage and an Idempotency-Key. Admits a kodama/v1alpha3 project run without a work item, workspace, deployment or source checkout. The definition and inputs are pinned; the caller's current project authority is checked at admission and dispatch.
+      operationId: createProjectRun
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRunRequest'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+          description: The admitted project run.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Location:
+              schema:
+                type: string
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "412":
+          $ref: '#/components/responses/PreconditionFailed'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+      summary: Start a source-free project run
   /tenants/{tenantId}/projects/{projectId}/secrets:
     get:
       description: Never contains values. Deleted secrets are not listed; read one by ID to see its tombstone.
@@ -5031,6 +5078,20 @@ components:
       required:
         - key
       type: object
+    CreateProjectRunRequest:
+      additionalProperties: false
+      properties:
+        definitionId:
+          $ref: '#/components/schemas/ID'
+        inputs:
+          additionalProperties:
+            $ref: '#/components/schemas/RunsScalar'
+          description: Run inputs by declared name. Unknown names and type mismatches are admission_refused.
+          maxProperties: 100
+          type: object
+      required:
+        - definitionId
+      type: object
     CreateRunRequest:
       additionalProperties: false
       properties:
@@ -7444,10 +7505,11 @@ components:
         inputSnapshot:
           $ref: '#/components/schemas/InputSnapshot'
         purpose:
-          description: Only work runs are created through this API.
+          description: Work runs use the work-item API; project runs are source-free admission; cleanup is internal.
           enum:
             - work
             - cleanup
+            - project
           type: string
         reason:
           $ref: '#/components/schemas/Reason'

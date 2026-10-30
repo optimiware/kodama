@@ -74,13 +74,13 @@ func scanRun(row pgx.Row, scope domain.Scope) (*execution.Run, error) {
 }
 
 const stepColumns = `step_id, ordinal, spec, action_key, status, reason, next_attempt_at, gate_ref, attempts_started, max_attempts,
-	backoff_seconds, retry_on, output_commit, outputs, version, created_at, updated_at, finished_at`
+	backoff_seconds, retry_on, output_commit, outputs, artifact_refs, version, created_at, updated_at, finished_at`
 
 func scanStep(row pgx.Row, run domain.RunID) (*execution.StepRun, error) {
 	var (
 		id, action, status, reason string
 		ordinal, attempts, max     int
-		spec, outputs              []byte
+		spec, outputs, refs        []byte
 		next, finished             *time.Time
 		gate, commit               *string
 		backoff, version           int64
@@ -88,7 +88,7 @@ func scanStep(row pgx.Row, run domain.RunID) (*execution.StepRun, error) {
 		created, updated           time.Time
 	)
 	if err := row.Scan(&id, &ordinal, &spec, &action, &status, &reason, &next, &gate, &attempts, &max, &backoff, &retryOn,
-		&commit, &outputs, &version, &created, &updated, &finished); err != nil {
+		&commit, &outputs, &refs, &version, &created, &updated, &finished); err != nil {
 		return nil, err
 	}
 	s := &execution.StepRun{
@@ -106,6 +106,11 @@ func scanStep(row pgx.Row, run domain.RunID) (*execution.StepRun, error) {
 	if len(outputs) > 0 && string(outputs) != "{}" {
 		if err := json.Unmarshal(outputs, &s.Outputs); err != nil {
 			return nil, fmt.Errorf("execution: stored outputs: %w", err)
+		}
+	}
+	if len(refs) > 0 && string(refs) != "{}" {
+		if err := json.Unmarshal(refs, &s.ArtifactRefs); err != nil {
+			return nil, fmt.Errorf("execution: stored artifact refs: %w", err)
 		}
 	}
 	return s, nil

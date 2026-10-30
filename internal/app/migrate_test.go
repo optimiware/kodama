@@ -21,7 +21,9 @@ func TestMigrationBaselineIsTwoFiles(t *testing.T) {
 	if len(cs) != 5 || cs[0].Module != "storage" || len(cs[0].Migrations) != 2 {
 		t.Fatalf("contributions = %+v", cs)
 	}
-	if cs[1].Module != "execution-run-resources" || len(cs[1].Migrations) != 1 || cs[1].Migrations[0].ID != execpg.RunResourcesMigrationID {
+	if cs[1].Module != "execution-run-resources" || len(cs[1].Migrations) != 3 ||
+		cs[1].Migrations[0].ID != execpg.RunResourcesMigrationID || cs[1].Migrations[1].ID != execpg.StepArtifactRefsMigrationID ||
+		cs[1].Migrations[2].ID != execpg.ProjectRunsMigrationID {
 		t.Fatalf("the appended contribution is %+v", cs[1])
 	}
 	if cs[2].Module != "runtimeauth-resource-grants" || len(cs[2].Migrations) != 1 || cs[2].Migrations[0].ID != runtimeauthpg.ResourceGrantsMigrationID {
@@ -34,7 +36,10 @@ func TestMigrationBaselineIsTwoFiles(t *testing.T) {
 		t.Fatalf("the state contribution is %+v", cs[4])
 	}
 	ms := m.Migrations()
-	if len(ms) != 7 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID || ms[3].ID != runtimeauthpg.ResourceGrantsMigrationID || ms[4].ID != artifactspg.WorkspaceProvenanceMigrationID || ms[5].ID != "300_state.sql" || ms[6].ID != "301_state_grants.sql" {
+	if len(ms) != 9 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID ||
+		ms[3].ID != execpg.StepArtifactRefsMigrationID || ms[4].ID != execpg.ProjectRunsMigrationID ||
+		ms[5].ID != runtimeauthpg.ResourceGrantsMigrationID || ms[6].ID != artifactspg.WorkspaceProvenanceMigrationID ||
+		ms[7].ID != "300_state.sql" || ms[8].ID != "301_state_grants.sql" {
 		t.Fatalf("manifest = %+v", ms)
 	}
 	// The schema file defines objects: the only privilege change it may make is a

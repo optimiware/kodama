@@ -109,7 +109,7 @@ func Test_unit_service_run_resolves_only_pinned_secrets(t *testing.T) {
 		pw := filepath.Join(u.cfg.SecretsDir, "postgres-password")
 		disposed := filepath.Join(u.root, "disposed")
 		u.rt.onDispose = func() { writeFile(t, disposed, "x") }
-		script := `test -f ` + disposed + ` || exit 99; printf '%s|%s|%s|%s|%s|%s' "$API_KEY" "$POSTGRES_DB" "$PGDATA" "$(cat ` + pw + `)" "${KODAMA_SERVER_URL:-unset}" "$(stat -f %Lp ` + pw + ` 2>/dev/null || stat -c %a ` + pw + `)" > ` + out + `; exit 7`
+		script := `test -f ` + disposed + ` || exit 99; printf '%s|%s|%s|%s|%s|%s' "$API_KEY" "$POSTGRES_DB" "$PGDATA" "$(cat ` + pw + `)" "${KODAMA_SERVER_URL:-unset}" "$(stat -f %Lp ` + pw + ` >/dev/null 2>&1 || stat -c %a ` + pw + `)" > ` + out + `; exit 7`
 		u.rt.ctx.Service.Command.Args = []string{script}
 		t.Setenv("KODAMA_SERVER_URL", "https://leak.example.invalid")
 		u.cfg.ChildEnv = serviceBaseEnv(os.Environ()) // as RunServiceRun builds it

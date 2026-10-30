@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	statev1 "github.com/optimiware/kodama/contracts/state/v1"
@@ -50,6 +51,7 @@ type Store interface {
 // Memory is the in-memory Store used by unit tests and development. Its
 // conditional semantics deliberately match the PostgreSQL contract.
 type Memory struct {
+	mu          sync.RWMutex
 	now         func() time.Time
 	entries     map[memKey]statev1.Entry
 	generations map[memKey]int64
@@ -73,6 +75,8 @@ func (m *Memory) Get(_ context.Context, scope Scope, namespace, key string) (sta
 	if err := validateLookup(scope, namespace, key); err != nil {
 		return statev1.Entry{}, err
 	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	e, ok := m.entries[memKey{scope, namespace, key}]
 	if !ok {
 		return statev1.Entry{}, ErrNotFound
@@ -84,18 +88,20 @@ func (m *Memory) List(_ context.Context, scope Scope, namespace, prefix, cursor 
 	if err := scope.Validate(); err != nil {
 		return nil, "", invalid(err)
 	}
-	if namespace == "" {
-		return nil, "", invalid(errors.New("namespace is required"))
+	if err := ValidateNamespace(namespace); err != nil {
+		return nil, "", invalid(err)
 	}
 	if limit <= 0 || limit > statev1.MaxListLimit {
 		limit = statev1.DefaultListLimit
 	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	keys := make([]string, 0)
 	for k := range m.entries {
 		if k.scope != scope || k.namespace != namespace || !statev1.InPrefix(prefix, k.key) {
 			continue
 		}
-		if cursor != "" && k.key <= cursor {
+		if cursor != "" && k.key < cursor {
 			continue
 		}
 		keys = append(keys, k.key)
@@ -117,6 +123,8 @@ func (m *Memory) Create(_ context.Context, scope Scope, namespace, key, actor st
 	if err := validateWrite(scope, namespace, key, req); err != nil {
 		return statev1.Entry{}, err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	mk := memKey{scope, namespace, key}
 	if _, ok := m.entries[mk]; ok {
 		return statev1.Entry{}, ErrExists
@@ -137,6 +145,8 @@ func (m *Memory) Update(_ context.Context, scope Scope, namespace, key, actor, e
 	if err := validateWrite(scope, namespace, key, req); err != nil {
 		return statev1.Entry{}, err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	mk := memKey{scope, namespace, key}
 	old, ok := m.entries[mk]
 	if !ok {
@@ -159,6 +169,8 @@ func (m *Memory) Delete(_ context.Context, scope Scope, namespace, key, expected
 	if err := validateLookup(scope, namespace, key); err != nil {
 		return err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	mk := memKey{scope, namespace, key}
 	old, ok := m.entries[mk]
 	if !ok {
@@ -175,8 +187,8 @@ func validateLookup(scope Scope, namespace, key string) error {
 	if err := scope.Validate(); err != nil {
 		return invalid(err)
 	}
-	if namespace == "" {
-		return invalid(errors.New("namespace is required"))
+	if err := ValidateNamespace(namespace); err != nil {
+		return invalid(err)
 	}
 	if err := statev1.ValidateKey(key); err != nil {
 		return invalid(err)

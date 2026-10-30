@@ -18,10 +18,13 @@ func loadOwn() []storage.Migration {
 }
 
 // RunResourcesMigrationID is the migration of the run_shared resource lifecycle
-// and persistence (T-112). Execution's own tables and constraints are in the
-// squashed baseline (internal/storage/migrations/001_schema.sql); this is the
-// one later change the execution package still contributes.
-const RunResourcesMigrationID = "003_run_resources.sql"
+// and persistence (T-112). StepArtifactRefsMigrationID pins verified descendant
+// artifact descriptors on the producing step.
+const (
+	RunResourcesMigrationID     = "003_run_resources.sql"
+	StepArtifactRefsMigrationID = "004_step_artifact_refs.sql"
+	ProjectRunsMigrationID      = "005_project_runs.sql"
+)
 
 // RunResourceMigrations returns the additive run_shared tables and columns as
 // their own contribution, after the squashed baseline. A composition that has
@@ -31,7 +34,7 @@ const RunResourcesMigrationID = "003_run_resources.sql"
 func RunResourceMigrations() storage.Contribution {
 	var out []storage.Migration
 	for _, m := range loadOwn() {
-		if m.ID == RunResourcesMigrationID {
+		if m.ID == RunResourcesMigrationID || m.ID == StepArtifactRefsMigrationID || m.ID == ProjectRunsMigrationID {
 			out = append(out, m)
 		}
 	}

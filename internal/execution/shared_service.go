@@ -239,6 +239,10 @@ func (s *Service) startSharedMutation(lim Limit) Mutation {
 			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
 				return Effects{}, normalizeAuth(err)
 			}
+		} else if run.Purpose == PurposeProject {
+			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
+				return Effects{}, normalizeAuth(err)
+			}
 		} else if run.DeploymentID == "" {
 			return Effects{}, ErrDenied
 		}
@@ -387,6 +391,10 @@ func (s *Service) claimSharedMutation(stepID string, src SourceInfo, lim Limit) 
 				}
 				return Effects{}, err
 			}
+			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
+				return Effects{}, normalizeAuth(err)
+			}
+		} else if run.Purpose == PurposeProject {
 			if err := env.Authorize(ctx, run.RequestedBy, run.Scope, PermRunManage); err != nil {
 				return Effects{}, normalizeAuth(err)
 			}

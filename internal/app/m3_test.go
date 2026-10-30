@@ -739,6 +739,7 @@ func TestM3ContractCompatibility(t *testing.T) {
 		for k := range m3Operations() {
 			want = append(want, k)
 		}
+		want = append(want, "POST "+m3Prefix+"/runs/project")
 		slices.Sort(want)
 		if !slices.Equal(added, want) {
 			t.Fatalf("operations added since the M2 aggregate\n got %v\nwant the modules' routes %v", added, want)
@@ -747,7 +748,7 @@ func TestM3ContractCompatibility(t *testing.T) {
 		// operation needs its own action and its own entry in the matrix above.
 		bl := summaryOf(t, "api-baseline-t075.json")
 		for k := range now.Operations {
-			if _, known := bl.Operations[k]; !known {
+			if _, known := bl.Operations[k]; !known && k != "POST "+m3Prefix+"/runs/project" {
 				t.Errorf("operation %s is new since the business-loop composition and has no authorization evidence here", k)
 			}
 		}

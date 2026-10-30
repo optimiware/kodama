@@ -37,6 +37,7 @@ type scriptRT struct {
 	resolve  func(runtimev1.SecretResolveRequest) (runtimev1.SecretResolveResponse, error)
 	reserve  func(runtimev1.ArtifactReserveRequest) (runtimev1.ArtifactReserveResponse, error)
 	complete func(domain.ArtifactID, runtimev1.ArtifactCompleteRequest) (runtimev1.ArtifactCompleteResponse, error)
+	download func(domain.ArtifactID) (runtimev1.ArtifactReadResponse, error)
 	propose  func(n int, req runtimev1.SourceProposalRequest) (runtimev1.SourceProposalResponse, error)
 	submit   func(n int, req runtimev1.ResultRequest) (runtimev1.ResultResponse, error)
 
@@ -124,6 +125,17 @@ func (s *scriptRT) ReserveArtifact(_ context.Context, req runtimev1.ArtifactRese
 	return runtimev1.ArtifactReserveResponse{ArtifactID: id, State: runtimev1.StateReserved, Upload: &runtimev1.Upload{
 		Method: "PUT", URL: "https://objects.example.invalid/" + string(id), Headers: map[string]string{}, ExpiresAt: timestamp(time.Hour),
 	}}, nil
+}
+
+func (s *scriptRT) DownloadArtifact(ctx context.Context, id domain.ArtifactID) (runtimev1.ArtifactReadResponse, error) {
+	s.mu.Lock()
+	s.rec("downloadArtifact")
+	fn := s.download
+	s.mu.Unlock()
+	if fn != nil {
+		return fn(id)
+	}
+	return runtimev1.ArtifactReadResponse{}, errors.New("unused")
 }
 
 func (s *scriptRT) CompleteArtifact(_ context.Context, id domain.ArtifactID, req runtimev1.ArtifactCompleteRequest) (runtimev1.ArtifactCompleteResponse, error) {
@@ -259,6 +271,7 @@ func newUnit(t *testing.T, script string) *unit {
 		TokenFile:               filepath.Join(root, "identity", "token"),
 		WorkspaceDir:            filepath.Join(root, "workspace"),
 		OutputsDir:              filepath.Join(root, "outputs"),
+		InputsDir:               filepath.Join(root, "inputs"),
 		SecretsDir:              filepath.Join(root, "secrets"),
 		IdentityDir:             filepath.Join(root, "identity"),
 		ResultsFile:             filepath.Join(root, "results.json"),

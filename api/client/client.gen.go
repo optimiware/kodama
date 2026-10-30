@@ -390,6 +390,7 @@ const (
 // Defines values for RunPurpose.
 const (
 	RunPurposeCleanup RunPurpose = "cleanup"
+	RunPurposeProject RunPurpose = "project"
 	RunPurposeWork    RunPurpose = "work"
 )
 
@@ -791,6 +792,15 @@ type CreateProject struct {
 	DisplayName    *string                 `json:"displayName,omitempty"`
 	Key            string                  `json:"key"`
 	Settings       *map[string]interface{} `json:"settings,omitempty"`
+}
+
+// CreateProjectRunRequest defines model for CreateProjectRunRequest.
+type CreateProjectRunRequest struct {
+	// DefinitionId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	DefinitionId ID `json:"definitionId"`
+
+	// Inputs Run inputs by declared name. Unknown names and type mismatches are admission_refused.
+	Inputs *map[string]RunsScalar `json:"inputs,omitempty"`
 }
 
 // CreateRunRequest defines model for CreateRunRequest.
@@ -2043,7 +2053,7 @@ type Run struct {
 	Id            ID            `json:"id"`
 	InputSnapshot InputSnapshot `json:"inputSnapshot"`
 
-	// Purpose Only work runs are created through this API.
+	// Purpose Work runs use the work-item API; project runs are source-free admission; cleanup is internal.
 	Purpose RunPurpose `json:"purpose"`
 
 	// Reason A classified, content-free reason code.
@@ -2067,7 +2077,7 @@ type Run struct {
 	WorkItemId *string `json:"workItemId"`
 }
 
-// RunPurpose Only work runs are created through this API.
+// RunPurpose Work runs use the work-item API; project runs are source-free admission; cleanup is internal.
 type RunPurpose string
 
 // RunSourceRetention A work run dispatches only after its retained source reference is confirmed.
@@ -2912,6 +2922,12 @@ type CreateRunParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// CreateProjectRunParams defines parameters for CreateProjectRun.
+type CreateProjectRunParams struct {
+	// IdempotencyKey Client-chosen key for run/deployment creation and gate decisions. The stored lookup key is (principal, tenant, method, canonical route, key); the request hash is stored and compared separately. A different request for the same key is 409 idempotency_conflict.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // ObserveRunEventsParams defines parameters for ObserveRunEvents.
 type ObserveRunEventsParams struct {
 	// Type Repeatable event-type filter; repeated values are disjunctive. The set is normalized (sorted, deduplicated) and bound into the cursor. An unsupported type is 400 invalid_request, never ignored. Other query members are rejected.
@@ -3139,6 +3155,9 @@ type RegisterPipelineDefinitionJSONRequestBody = PipelineDocument
 
 // CreateRunJSONRequestBody defines body for CreateRun for application/json ContentType.
 type CreateRunJSONRequestBody = CreateRunRequest
+
+// CreateProjectRunJSONRequestBody defines body for CreateProjectRun for application/json ContentType.
+type CreateProjectRunJSONRequestBody = CreateProjectRunRequest
 
 // CreateSecretJSONRequestBody defines body for CreateSecret for application/json ContentType.
 type CreateSecretJSONRequestBody = CreateSecretRequest
@@ -3842,6 +3861,11 @@ type ClientInterface interface {
 	CreateRunWithBody(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateRunParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateRun(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateRunParams, body CreateRunJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateProjectRunWithBody request with any body
+	CreateProjectRunWithBody(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateProjectRun(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, body CreateProjectRunJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetRun request
 	GetRun(ctx context.Context, tenantId TenantId, projectId ProjectId, id RunId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4673,6 +4697,30 @@ func (c *Client) CreateRunWithBody(ctx context.Context, tenantId TenantId, proje
 
 func (c *Client) CreateRun(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateRunParams, body CreateRunJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateRunRequest(c.Server, tenantId, projectId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateProjectRunWithBody(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateProjectRunRequestWithBody(c.Server, tenantId, projectId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateProjectRun(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, body CreateProjectRunJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateProjectRunRequest(c.Server, tenantId, projectId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -8122,6 +8170,73 @@ func NewCreateRunRequestWithBody(server string, tenantId TenantId, projectId Pro
 	return req, nil
 }
 
+// NewCreateProjectRunRequest calls the generic CreateProjectRun builder with application/json body
+func NewCreateProjectRunRequest(server string, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, body CreateProjectRunJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateProjectRunRequestWithBody(server, tenantId, projectId, params, "application/json", bodyReader)
+}
+
+// NewCreateProjectRunRequestWithBody generates requests for CreateProjectRun with any type of body
+func NewCreateProjectRunRequestWithBody(server string, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "tenantId", runtime.ParamLocationPath, tenantId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tenants/%s/projects/%s/runs/project", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithLocation("simple", false, "Idempotency-Key", runtime.ParamLocationHeader, params.IdempotencyKey)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Idempotency-Key", headerParam0)
+
+	}
+
+	return req, nil
+}
+
 // NewGetRunRequest generates requests for GetRun
 func NewGetRunRequest(server string, tenantId TenantId, projectId ProjectId, id RunId) (*http.Request, error) {
 	var err error
@@ -10604,6 +10719,11 @@ type ClientWithResponsesInterface interface {
 
 	CreateRunWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateRunParams, body CreateRunJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRunResponse, error)
 
+	// CreateProjectRunWithBodyWithResponse request with any body
+	CreateProjectRunWithBodyWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProjectRunResponse, error)
+
+	CreateProjectRunWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, body CreateProjectRunJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProjectRunResponse, error)
+
 	// GetRunWithResponse request
 	GetRunWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, id RunId, reqEditors ...RequestEditorFn) (*GetRunResponse, error)
 
@@ -12004,6 +12124,36 @@ func (r CreateRunResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateRunResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateProjectRunResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *Run
+	JSON400      *BadRequest
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+	JSON404      *NotFound
+	JSON409      *Conflict
+	JSON412      *PreconditionFailed
+	JSON429      *TooManyRequests
+	JSON503      *Unavailable
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateProjectRunResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateProjectRunResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -13461,6 +13611,23 @@ func (c *ClientWithResponses) CreateRunWithResponse(ctx context.Context, tenantI
 		return nil, err
 	}
 	return ParseCreateRunResponse(rsp)
+}
+
+// CreateProjectRunWithBodyWithResponse request with arbitrary body returning *CreateProjectRunResponse
+func (c *ClientWithResponses) CreateProjectRunWithBodyWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProjectRunResponse, error) {
+	rsp, err := c.CreateProjectRunWithBody(ctx, tenantId, projectId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateProjectRunResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateProjectRunWithResponse(ctx context.Context, tenantId TenantId, projectId ProjectId, params *CreateProjectRunParams, body CreateProjectRunJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProjectRunResponse, error) {
+	rsp, err := c.CreateProjectRun(ctx, tenantId, projectId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateProjectRunResponse(rsp)
 }
 
 // GetRunWithResponse request returning *GetRunResponse
@@ -17327,6 +17494,88 @@ func ParseCreateRunResponse(rsp *http.Response) (*CreateRunResponse, error) {
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Unavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateProjectRunResponse parses an HTTP response from a CreateProjectRunWithResponse call
+func ParseCreateProjectRunResponse(rsp *http.Response) (*CreateProjectRunResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateProjectRunResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Run
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest PreconditionFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest TooManyRequests

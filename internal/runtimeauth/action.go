@@ -17,6 +17,7 @@ const (
 	ActionSecretResolve    Action = "secret.resolve"
 	ActionArtifactReserve  Action = "artifact.reserve"
 	ActionArtifactComplete Action = "artifact.complete"
+	ActionArtifactRead     Action = "artifact.read"
 	ActionSourcePropose    Action = "source.propose"
 	ActionResultSubmit     Action = "result.submit"
 	// Model, tool and deployment calls live on their owning interfaces; the
@@ -29,7 +30,7 @@ const (
 )
 
 var knownActions = []Action{
-	ActionContextRead, ActionTokenRenew, ActionSecretResolve, ActionArtifactReserve, ActionArtifactComplete,
+	ActionContextRead, ActionTokenRenew, ActionSecretResolve, ActionArtifactReserve, ActionArtifactComplete, ActionArtifactRead,
 	ActionSourcePropose, ActionResultSubmit, ActionModelInvoke, ActionToolInvoke, ActionDeploymentCall,
 	ActionStateRead, ActionStateWrite,
 }
@@ -83,7 +84,7 @@ type ActionSet struct{ actions []Action }
 func DefaultActions(writer bool) []Action {
 	base := []Action{
 		ActionContextRead, ActionTokenRenew, ActionSecretResolve,
-		ActionArtifactReserve, ActionArtifactComplete, ActionResultSubmit,
+		ActionArtifactReserve, ActionArtifactComplete, ActionArtifactRead, ActionResultSubmit,
 		ActionStateRead, ActionStateWrite,
 	}
 	if writer {

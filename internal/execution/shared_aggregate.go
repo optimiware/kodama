@@ -376,6 +376,10 @@ func BuildContextV2(a *Aggregate, step *StepRun, attempt domain.AttemptID, rs Re
 		return runtimev2.ContextV2{}, Refusedf("the step timeout exceeds the configured limit")
 	}
 	access := sh.Access[step.ID]
+	artifactFiles, err := resolveArtifactFiles(a, step, run.Snapshot)
+	if err != nil {
+		return runtimev2.ContextV2{}, err
+	}
 	c := runtimev2.ContextV2{
 		ContextVersion: SharedContextVersion, RunModel: RunModelShared,
 		TenantID: run.Scope.TenantID, ProjectID: run.Scope.ProjectID, RunID: run.ID, StepID: step.ID, AttemptID: attempt, ActionKey: step.ActionKey,
@@ -390,7 +394,7 @@ func BuildContextV2(a *Aggregate, step *StepRun, attempt domain.AttemptID, rs Re
 		Secrets:       run.Snapshot.SecretsOf(step.ID),
 		Environment:   environment,
 		State:         run.Snapshot.StatesOf(step.ID),
-		ArtifactFiles: run.Snapshot.ArtifactsOf(step.ID),
+		ArtifactFiles: artifactFiles,
 		Limits: runtimev1.Limits{
 			TimeoutSeconds: int64(timeout / time.Second), MaxOutputBytes: lim.MaxOutputBytes,
 			MaxOutputFiles: lim.MaxOutputFiles, MaxDiagnosticBytes: lim.MaxDiagnosticBytes,

@@ -38,7 +38,7 @@ func TestHTTPConditionalLifecycle(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	base := srv.URL + "/runtime/v3/attempts/att_test/state/release/entries?key=website/releases/v1"
+	base := srv.URL + "/runtime/v3/attempts/att_test/state/release/entries?key=releases/v1"
 	body := `{"value":{"release":"v1"},"artifactReferences":[]}`
 	req, _ := http.NewRequest(http.MethodPut, base, strings.NewReader(body))
 	req.Header.Set("If-None-Match", "*")
@@ -114,13 +114,13 @@ func TestHTTPBindingAndPrefixAreEnforced(t *testing.T) {
 	defer srv.Close()
 
 	req, _ := http.NewRequest(http.MethodGet,
-		srv.URL+"/runtime/v3/attempts/att_test/state/release/entries?key=other/release", nil)
+		srv.URL+"/runtime/v3/attempts/att_test/state/release/entries?key=../escape", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("outside prefix: got %s", resp.Status)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("escape key: got %s", resp.Status)
 	}
 	resp.Body.Close()
 
@@ -130,10 +130,26 @@ func TestHTTPBindingAndPrefixAreEnforced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("outside list prefix: got %s", resp.Status)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("relative list prefix: got %s", resp.Status)
 	}
 	resp.Body.Close()
+
+	body := `{"value":{"release":"v1"}}`
+	req, _ = http.NewRequest(http.MethodPut,
+		srv.URL+"/runtime/v3/attempts/att_test/state/release/entries?key=releases/v1", strings.NewReader(body))
+	req.Header.Set("If-None-Match", "*")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create under binding: %s", resp.Status)
+	}
+	resp.Body.Close()
+	if _, err := mem.Get(context.Background(), testScope(), "deploy", "website/releases/v1"); err != nil {
+		t.Fatalf("binding prefix was not applied: %v", err)
+	}
 }
 
 func TestMemoryListAndRecreateGeneration(t *testing.T) {
@@ -148,6 +164,10 @@ func TestMemoryListAndRecreateGeneration(t *testing.T) {
 	items, next, err := mem.List(ctx, scope, "deploy", "a/", "", 1)
 	if err != nil || len(items) != 1 || next != "a/two" || items[0].Key != "a/one" {
 		t.Fatalf("list: %+v next=%q err=%v", items, next, err)
+	}
+	second, next2, err := mem.List(ctx, scope, "deploy", "a/", next, 1)
+	if err != nil || len(second) != 1 || second[0].Key != "a/two" || next2 != "" {
+		t.Fatalf("second page: %+v next=%q err=%v", second, next2, err)
 	}
 	first, _ := mem.Get(ctx, scope, "deploy", "a/one")
 	if err := mem.Delete(ctx, scope, "deploy", "a/one", first.ETag()); err != nil {

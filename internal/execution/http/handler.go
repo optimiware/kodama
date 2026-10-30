@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/httpapi"
@@ -74,6 +75,7 @@ func (h *Handler) RegisterRoutes(rt *httpapi.Router) error {
 	for _, r := range []httpapi.Route{
 		{Method: http.MethodGet, Path: projectBase, Action: ActionList, Handler: h.list},
 		{Method: http.MethodPost, Path: projectBase, Action: ActionCreate, Handler: h.create},
+		{Method: http.MethodPost, Path: projectBase + "/project", Action: ActionCreate, Handler: h.createProject},
 		{Method: http.MethodGet, Path: projectBase + "/{id}", Action: ActionRead, ResourceKind: resourceKind, ResourceParam: "id", Handler: h.get},
 		{Method: http.MethodGet, Path: projectBase + "/{id}/steps", Action: ActionSteps, ResourceKind: resourceKind, ResourceParam: "id", Handler: h.steps},
 		{Method: http.MethodPost, Path: projectBase + "/{id}/cancel", Action: ActionCancel, ResourceKind: resourceKind, ResourceParam: "id", Handler: h.cancel},
@@ -207,6 +209,62 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request, c *httpapi.Call
 	if _, err := h.svc.ConfirmSource(context.WithoutCancel(ctx), run.Scope, run.ID); err != nil {
 		_ = err // logged by the service's reconciler; never surfaced to the creator
 	}
+}
+
+// createProject admits a source-free project run. It is a separate route because
+// it has no work item, content revision or source commit to hash into the run
+// schema; the definition and inputs are still pinned through ProjectAdmitCommand.
+func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, c *httpapi.Call) {
+	scope, ok := h.scope(w, r, c)
+	if !ok {
+		return
+	}
+	body, err := httpapi.ReadBody(w, r)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	id, err := c.Identity(r, body)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if err := rejectDuplicateKeys(body); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	var req struct {
+		DefinitionID domain.DefinitionID        `json:"definitionId"`
+		Inputs       map[string]runtimev1.Value `json:"inputs,omitempty"`
+	}
+	if err := httpapi.DecodeJSONBytes(body, &req); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	cmd := execution.ProjectAdmitCommand{Scope: scope, DefinitionID: req.DefinitionID, Inputs: req.Inputs}
+	ctx := h.ctx(r, c)
+	plan, err := h.svc.PrepareProject(ctx, h.caller(c), cmd)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	render := func(run *execution.Run) (httpapi.Outcome, error) {
+		hd, err := runHeaders(r, run)
+		if err != nil {
+			return httpapi.Outcome{}, httpapi.InternalServerError(err)
+		}
+		resp, err := httpapi.NewStoredResponse(r, http.StatusCreated, runDTO(run), hd)
+		if err != nil {
+			return httpapi.Outcome{}, err
+		}
+		return httpapi.Outcome{Response: resp, Target: httpapi.Reference{Kind: resourceKind, ID: string(run.ID)}}, nil
+	}
+	resp, replayed, _, err := h.creator.CreateKeyed(ctx, id, c.AuthorizeReference, plan, render)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpapi.WriteStored(w, r, resp, replayed)
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request, c *httpapi.Call) {

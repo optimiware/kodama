@@ -56,11 +56,12 @@ type Request struct {
 }
 
 type Resource struct {
-	APIVersion string `json:"apiVersion"`
-	Kind       string `json:"kind"`
-	Namespace  string `json:"namespace,omitempty"`
-	Name       string `json:"name"`
-	UID        string `json:"uid,omitempty"`
+	APIVersion      string `json:"apiVersion"`
+	Kind            string `json:"kind"`
+	Namespace       string `json:"namespace,omitempty"`
+	Name            string `json:"name"`
+	UID             string `json:"uid,omitempty"`
+	ResourceVersion string `json:"resourceVersion,omitempty"`
 }
 
 type Result struct {

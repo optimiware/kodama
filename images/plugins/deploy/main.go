@@ -19,29 +19,32 @@ import (
 )
 
 type common struct {
-	stateURL      string
-	attempt       string
-	binding       string
-	tokenFile     string
-	actionKey     string
-	operationID   string
-	recipe        string
-	recipeVersion int64
-	driver        string
-	namespace     string
-	release       string
-	accountID     string
-	worker        string
-	project       string
-	region        string
-	service       string
-	kubeconfig    string
-	bundle        string
-	manifest      string
-	image         string
-	desired       string
-	rollback      string
-	timeout       time.Duration
+	stateURL          string
+	attempt           string
+	binding           string
+	tokenFile         string
+	actionKey         string
+	operationID       string
+	recipe            string
+	recipeVersion     int64
+	driver            string
+	cluster           string
+	namespace         string
+	release           string
+	accountID         string
+	worker            string
+	project           string
+	region            string
+	service           string
+	kubeconfig        string
+	bundle            string
+	manifest          string
+	image             string
+	auxiliaryImages   string
+	allowMutableImage bool
+	desired           string
+	rollback          string
+	timeout           time.Duration
 }
 
 func main() {
@@ -61,6 +64,7 @@ func main() {
 	fs.StringVar(&c.recipe, "recipe", "kubernetes-manifests", "recipe name")
 	fs.Int64Var(&c.recipeVersion, "recipe-version", 1, "recipe version")
 	fs.StringVar(&c.driver, "driver", "kubernetes", "driver: kubernetes, cloudflare, gcp")
+	fs.StringVar(&c.cluster, "cluster", os.Getenv("KODAMA_PLUGIN_CLUSTER"), "stable target cluster identity")
 	fs.StringVar(&c.namespace, "namespace", "", "target namespace")
 	fs.StringVar(&c.release, "release", "", "release name")
 	fs.StringVar(&c.accountID, "account-id", "", "Cloudflare account ID")
@@ -72,6 +76,8 @@ func main() {
 	fs.StringVar(&c.bundle, "bundle", "", "verified bundle path")
 	fs.StringVar(&c.manifest, "manifest", "", "local manifest path (development only)")
 	fs.StringVar(&c.image, "image", "", "expected primary image reference")
+	fs.StringVar(&c.auxiliaryImages, "auxiliary-images", "", "comma-separated digest-pinned auxiliary images")
+	fs.BoolVar(&c.allowMutableImage, "allow-mutable-image", false, "development-only mutable image opt-in")
 	fs.StringVar(&c.desired, "desired-release", "", "desired release ID")
 	fs.StringVar(&c.rollback, "rollback-release", "", "recorded release to roll back to")
 	fs.DurationVar(&c.timeout, "timeout", 5*time.Minute, "operation timeout")
@@ -100,8 +106,9 @@ func main() {
 		ActionKey: c.actionKey, OperationID: c.operationID, Resource: c.release,
 		Recipe: c.recipe, RecipeVersion: c.recipeVersion,
 		Configuration: mustJSON(map[string]any{
-			"namespace": c.namespace, "release": c.release, "kubeconfig": c.kubeconfig,
+			"cluster": c.cluster, "namespace": c.namespace, "release": c.release, "kubeconfig": c.kubeconfig,
 			"bundlePath": c.bundle, "manifestPath": c.manifest, "image": c.image,
+			"auxiliaryImages": splitList(c.auxiliaryImages), "allowMutableImage": c.allowMutableImage,
 			"accountId": c.accountID, "worker": c.worker,
 			"project": c.project, "region": c.region, "service": c.service,
 			"timeoutSeconds": int(c.timeout.Seconds()),
@@ -168,17 +175,28 @@ func driverFor(name string) (driver.Driver, error) {
 	}
 }
 
+func splitList(value string) []string {
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
 func artifacts(bundle, manifest, image string) []driver.Artifact {
+	var out []driver.Artifact
 	if bundle != "" {
-		return []driver.Artifact{{ID: "bundle", Digest: digestFile(bundle), Kind: driver.ArtifactFile, Path: bundle}}
+		out = append(out, driver.Artifact{ID: "bundle", Digest: digestFile(bundle), Kind: driver.ArtifactFile, Path: bundle})
 	}
 	if manifest != "" {
-		return []driver.Artifact{{ID: "manifest", Digest: digestFile(manifest), Kind: driver.ArtifactFile, Path: manifest}}
+		out = append(out, driver.Artifact{ID: "manifest", Digest: digestFile(manifest), Kind: driver.ArtifactFile, Path: manifest})
 	}
 	if image != "" {
-		return []driver.Artifact{{ID: "image", Digest: digestValue(image), Kind: driver.ArtifactOCIImage, Registry: image}}
+		out = append(out, driver.Artifact{ID: "image", Digest: digestValue(image), Kind: driver.ArtifactOCIImage, Registry: image})
 	}
-	return nil
+	return out
 }
 
 func digestFile(path string) string {

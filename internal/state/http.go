@@ -19,6 +19,13 @@ type BindingResolver interface {
 	ResolveBinding(ctx context.Context, r *http.Request, attempt, alias string) (Scope, Binding, error)
 }
 
+// BindingReauthorizer is the optional check made after the body is read and
+// immediately before a durable mutation. It closes the gap between the first
+// authorization and the write; it is not a transaction fence.
+type BindingReauthorizer interface {
+	ReauthorizeBinding(ctx context.Context, r *http.Request, attempt, alias string) error
+}
+
 // Handler serves the runtime state API under
 // /runtime/v3/attempts/{attempt}/state/{binding}/entries.
 type Handler struct {
@@ -69,8 +76,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request, scope Scope, binding Binding) {
 	if prefix := r.URL.Query().Get("prefix"); prefix != "" || r.URL.Query().Has("prefix") {
-		if !statev1.InPrefix(binding.Prefix, prefix) {
-			writeError(w, http.StatusForbidden, "state_binding_denied", "prefix outside binding")
+		absolutePrefix, err := AbsolutePrefix(binding, prefix)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_key", "invalid state prefix")
 			return
 		}
 		limit := statev1.DefaultListLimit
@@ -82,10 +90,34 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request, scope Scope, bindi
 			}
 			limit = n
 		}
-		items, next, err := h.Store.List(r.Context(), scope, binding.Namespace, prefix, r.URL.Query().Get("cursor"), limit)
+		cursor := r.URL.Query().Get("cursor")
+		if cursor != "" {
+			absoluteCursor, err := AbsoluteKey(binding, cursor)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_cursor", "invalid cursor")
+				return
+			}
+			cursor = absoluteCursor
+		}
+		items, next, err := h.Store.List(r.Context(), scope, binding.Namespace, absolutePrefix, cursor, limit)
 		if err != nil {
 			writeStoreError(w, err)
 			return
+		}
+		for i := range items {
+			relative, err := RelativeKey(binding, items[i].Key)
+			if err != nil {
+				writeStoreError(w, err)
+				return
+			}
+			items[i].Key = relative
+		}
+		if next != "" {
+			next, err = RelativeKey(binding, next)
+			if err != nil {
+				writeStoreError(w, err)
+				return
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items, "nextCursor": next})
 		return
@@ -99,6 +131,12 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request, scope Scope, bindi
 		writeStoreError(w, err)
 		return
 	}
+	relative, err := RelativeKey(binding, entry.Key)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	entry.Key = relative
 	w.Header().Set("ETag", strconv.Quote(entry.ETag()))
 	writeJSON(w, http.StatusOK, entry)
 }
@@ -113,6 +151,10 @@ func (h *Handler) put(w http.ResponseWriter, r *http.Request, scope Scope, bindi
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid state request")
+		return
+	}
+	if err := h.reauthorize(r); err != nil {
+		writeError(w, http.StatusForbidden, "state_binding_denied", "state write denied")
 		return
 	}
 	actor := attemptActor(r)
@@ -146,6 +188,10 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request, scope Scope, bi
 		writeError(w, http.StatusPreconditionRequired, "version_required", "If-Match is required")
 		return
 	}
+	if err := h.reauthorize(r); err != nil {
+		writeError(w, http.StatusForbidden, "state_binding_denied", "state write denied")
+		return
+	}
 	if err := h.Store.Delete(r.Context(), scope, binding.Namespace, key, expected); err != nil {
 		writeStoreError(w, err)
 		return
@@ -155,15 +201,12 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request, scope Scope, bi
 
 func (h *Handler) key(w http.ResponseWriter, r *http.Request, binding Binding) (string, bool) {
 	key := r.URL.Query().Get("key")
-	if err := statev1.ValidateKey(key); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_key", err.Error())
+	absolute, err := AbsoluteKey(binding, key)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_key", "invalid state key")
 		return "", false
 	}
-	if !statev1.InPrefix(binding.Prefix, key) {
-		writeError(w, http.StatusForbidden, "state_binding_denied", "key outside binding")
-		return "", false
-	}
-	return key, true
+	return absolute, true
 }
 
 func statePath(path string) (attempt, alias string, ok bool) {
@@ -183,10 +226,19 @@ func statePath(path string) (attempt, alias string, ok bool) {
 	return attempt, alias, true
 }
 
-func attemptActor(r *http.Request) string {
-	if v := r.Header.Get("X-Kodama-Attempt"); v != "" {
-		return v
+func (h *Handler) reauthorize(r *http.Request) error {
+	checker, ok := h.Resolver.(BindingReauthorizer)
+	if !ok {
+		return nil
 	}
+	attempt, alias, ok := statePath(r.URL.Path)
+	if !ok {
+		return ErrDenied
+	}
+	return checker.ReauthorizeBinding(r.Context(), r, attempt, alias)
+}
+
+func attemptActor(r *http.Request) string {
 	_, attempt, _ := statePath(r.URL.Path)
 	return attempt
 }

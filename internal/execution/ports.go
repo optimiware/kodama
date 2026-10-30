@@ -37,6 +37,13 @@ type Definitions interface {
 	Get(ctx context.Context, scope domain.Scope, id domain.DefinitionID) (pipeline.Definition, error)
 }
 
+// ArtifactResolver resolves the verified descriptor of an admitted artifact
+// input. It is a read-only admission seam; the artifact module owns ownership
+// and content state.
+type ArtifactResolver interface {
+	ResolveArtifact(ctx context.Context, scope domain.Scope, id domain.ArtifactID) (runtimev1.ArtifactRef, error)
+}
+
 // WorkSnapshot is the work item's content at one revision.
 type WorkSnapshot struct {
 	ID              domain.WorkItemID
@@ -367,6 +374,7 @@ type Dependencies struct {
 	Work          WorkContent
 	Configuration Configuration
 	Sources       Sources
+	Artifacts     ArtifactResolver
 	Limits        Limits
 	Planner       Planner
 	Hooks         Hooks

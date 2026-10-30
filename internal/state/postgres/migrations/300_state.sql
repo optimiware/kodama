@@ -16,8 +16,11 @@ CREATE TABLE state_entries (
     updated_at         timestamptz NOT NULL,
     updated_by         text NOT NULL DEFAULT '',
     PRIMARY KEY (tenant_id, project_id, namespace, key),
-    CONSTRAINT state_entries_name CHECK (char_length(namespace) BETWEEN 1 AND 128),
-    CONSTRAINT state_entries_key CHECK (char_length(key) BETWEEN 1 AND 512),
+    CONSTRAINT state_entries_name CHECK (namespace ~ '^[a-z0-9]([-a-z0-9]{0,126}[a-z0-9])?$'),
+    CONSTRAINT state_entries_key CHECK (char_length(key) BETWEEN 1 AND 512
+        AND key ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*$'
+        AND key !~ '(^|/)\.\.?($|/)' AND position('//' in key) = 0
+        AND left(key, 1) <> '/' AND right(key, 1) <> '/'),
     CONSTRAINT state_entries_generation CHECK (generation > 0),
     CONSTRAINT state_entries_revision CHECK (revision > 0),
     CONSTRAINT state_entries_value CHECK (jsonb_typeof(value) IS NOT NULL),

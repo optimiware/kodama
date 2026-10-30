@@ -310,7 +310,7 @@ func AssembleExecution(in ExecutionInputs) (*ExecutionSlice, error) {
 			_, err := trusted.ReconcileTenant(ctx, tenant)
 			return err
 		},
-		Routes: []string{"runtime-admission", "runtime-context", "step-result-callbacks", "source-proposals", "runtime-artifacts", "logs"},
+		Routes: []string{"runtime-admission", "runtime-context", "step-result-callbacks", "source-proposals", "runtime-artifacts", "runtime-artifact-reads", "logs"},
 		Disabled: []string{
 			"runtime-secret-resolution", "gates", "agents", "delivery", "cleanup-runs", "git-webhooks", "chatops",
 		},
@@ -591,6 +591,15 @@ func newRuntimeV1(c runtimeAPIConfig) (*runtimeV1, error) {
 	if err := artifactRoutes.RegisterRoutes(router); err != nil {
 		return nil, fmt.Errorf("register runtime artifact routes: %w", err)
 	}
+	if reader, ok := c.Artifacts.(artifactshttp.RuntimeReadService); ok {
+		readRoutes, err := artifactshttp.NewRuntimeRead(reader, artifactshttp.DefaultActions())
+		if err != nil {
+			return nil, err
+		}
+		if err := readRoutes.RegisterRoutes(router); err != nil {
+			return nil, fmt.Errorf("register runtime artifact read routes: %w", err)
+		}
+	}
 	var deployRoutes []deliveryhttp.RouteInfo
 	if c.Deployments != nil {
 		rt, err := deliveryhttp.NewRuntime(c.Deployments, deliveryhttp.DefaultRuntimeActions())
@@ -713,7 +722,7 @@ func (runtimeAuthorizer) Authorize(_ context.Context, p httpapi.Principal, actio
 		return httpapi.ErrDenied
 	}
 	switch action {
-	case a.Reserve, a.Complete:
+	case a.Reserve, a.Complete, a.Read:
 		if t.Resource.Kind != artifactshttp.ResourceAttempt {
 			return httpapi.ErrDenied
 		}

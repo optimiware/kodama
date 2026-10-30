@@ -29,6 +29,7 @@ const (
 	ReasonInterrupted          = "interrupted"
 	ReasonCheckoutFailed       = "checkout_failed"
 	ReasonSecretUnavailable    = "secret_unavailable"
+	ReasonArtifactUnavailable  = "artifact_unavailable"
 	ReasonContextMismatch      = "context_mismatch"
 	ReasonOutputMissing        = ReasonOutputInvalid // every declared-output violation is reported as output_invalid; the note names the cause
 	ReasonOutputInvalid        = "output_invalid"

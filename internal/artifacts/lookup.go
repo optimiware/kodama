@@ -131,3 +131,42 @@ func validPin(scope domain.Scope, id domain.ArtifactID, owner PinOwner) error {
 	}
 	return nil
 }
+
+// RuntimeMetadata returns one verified file input of an active attempt. The
+// attempt authority is checked on every call, and only an artifact pinned in
+// the attempt's context is readable. It deliberately bypasses the human
+// Reader: the verified runtime credential is the caller.
+func (s *Service) RuntimeMetadata(ctx context.Context, caller Caller, attempt domain.AttemptID, id domain.ArtifactID) (View, error) {
+	if err := id.Validate(); err != nil {
+		return View{}, invalidf("%v", err)
+	}
+	g, err := s.grantRead(ctx, caller, attempt)
+	if err != nil {
+		return View{}, err
+	}
+	var want InputRef
+	found := false
+	for _, in := range g.Inputs {
+		if in.ID == id {
+			want, found = in, true
+			break
+		}
+	}
+	if !found {
+		return View{}, ErrNotFound
+	}
+	a, err := s.cfg.Repository.Get(ctx, g.Scope, id)
+	if err != nil {
+		return View{}, s.dependency("load artifact", err)
+	}
+	if a.Digest() != want.Digest || a.Kind() != KindFile || a.State() != StateUsable ||
+		a.Disposition() != DispositionActive || a.SealedKey() == "" {
+		return View{}, fmt.Errorf("%w: no verified content to download", ErrIncomplete)
+	}
+	expires := s.clock().Add(s.cfg.DownloadTTL).Truncate(time.Microsecond)
+	t, err := s.cfg.Objects.PresignDownload(ctx, DownloadSpec{Key: a.SealedKey(), MediaType: a.MediaType(), ExpiresAt: expires})
+	if err != nil {
+		return View{}, unavailable("issue download instruction", err)
+	}
+	return View{Artifact: a, Download: &t}, nil
+}

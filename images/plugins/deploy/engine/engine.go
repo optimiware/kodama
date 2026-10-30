@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -23,6 +24,7 @@ const schemaVersion = 1
 var (
 	ErrBusy        = errors.New("deploy: another operation is active")
 	ErrConflict    = errors.New("deploy: operation input conflicts with the recorded operation")
+	ErrCheckpoint  = errors.New("deploy: durable checkpoint failed")
 	ErrUnavailable = errors.New("deploy: state service unavailable")
 )
 
@@ -161,7 +163,7 @@ func (e *Engine) Apply(ctx context.Context, cfg Config) (Outcome, error) {
 		}
 		switch existing.Status {
 		case "succeeded":
-			return Outcome{Resource: resource, Operation: existing}, nil
+			return e.finishExisting(ctx, resourceKey, resourceETag, resource, existing)
 		case "unknown":
 			return e.reconcileOperation(ctx, identity, resourceKey, resource, resourceETag, opKey, existing, cfg)
 		default:
@@ -182,7 +184,7 @@ func (e *Engine) Apply(ctx context.Context, cfg Config) (Outcome, error) {
 			return Outcome{}, ErrConflict
 		}
 		if op.Status == "succeeded" {
-			return Outcome{Resource: resource, Operation: op}, nil
+			return e.finishExisting(ctx, resourceKey, resourceETag, resource, op)
 		}
 		if op.Status == "unknown" {
 			return e.reconcileOperation(ctx, identity, resourceKey, resource, resourceETag, opKey, op, cfg)
@@ -193,24 +195,9 @@ func (e *Engine) Apply(ctx context.Context, cfg Config) (Outcome, error) {
 	now := e.now()
 	op := operationDoc{SchemaVersion: schemaVersion, ID: opID, Kind: "apply", Fingerprint: fingerprint,
 		Status: "pending", CreatedAt: now, UpdatedAt: now, Checkpoints: map[string]json.RawMessage{}}
-	opEntry, err := encode(op)
+	opEntry, etag, err := e.ensureOperation(ctx, opKey, op)
 	if err != nil {
 		return Outcome{}, err
-	}
-	if _, _, err := e.State.Create(ctx, opKey, statev1.WriteRequest{Value: opEntry}); err != nil {
-		if !isExists(err) {
-			return Outcome{}, err
-		}
-		existing, _, readErr := e.State.Read(ctx, opKey)
-		if readErr != nil {
-			return Outcome{}, readErr
-		}
-		if err := json.Unmarshal(existing.Value, &op); err != nil {
-			return Outcome{}, err
-		}
-		if op.Fingerprint != fingerprint {
-			return Outcome{}, ErrConflict
-		}
 	}
 	// Persist the active operation before any provider mutation.
 	resource.ActiveOperation = opID
@@ -226,37 +213,27 @@ func (e *Engine) Apply(ctx context.Context, cfg Config) (Outcome, error) {
 	if err := json.Unmarshal(resourceEntry.Value, &resource); err != nil {
 		return Outcome{}, err
 	}
-
-	checkpoint := func(cctx context.Context, name string, data json.RawMessage) error {
-		if len(data) > 4096 {
-			return fmt.Errorf("deploy: checkpoint %s is too large", name)
-		}
-		entry, etag, err := e.State.Read(cctx, opKey)
-		if err != nil {
-			return err
-		}
-		var current operationDoc
-		if err := json.Unmarshal(entry.Value, &current); err != nil {
-			return err
-		}
-		if current.Checkpoints == nil {
-			current.Checkpoints = map[string]json.RawMessage{}
-		}
-		current.Checkpoints[name] = data
-		current.UpdatedAt = e.now()
-		raw, err := encode(current)
-		if err != nil {
-			return err
-		}
-		_, _, err = e.State.Update(cctx, opKey, etag, statev1.WriteRequest{Value: raw})
-		return err
+	op.Status = "applying"
+	op.UpdatedAt = e.now()
+	opRaw, err := encode(op)
+	if err != nil {
+		return Outcome{}, err
 	}
+	opEntry, etag, err = e.State.Update(ctx, opKey, etag, statev1.WriteRequest{Value: opRaw})
+	if err != nil {
+		return Outcome{}, fmt.Errorf("deploy: record applying operation: %w", err)
+	}
+	_ = opEntry
+	checkpoint := e.checkpointFunc(opKey)
 	req := driver.Request{Protocol: "kodama.deploy-driver/v1", RequestID: opID, Method: "apply",
 		Deadline: e.deadline(cfg), Identity: identity, OperationID: opID, DesiredRelease: cfg.DesiredRelease,
 		Configuration: cfg.Configuration, Artifacts: cfg.Artifacts, Checkpoints: op.Checkpoints,
 		Previous: resourceEntry.Value}
 	result, err := e.Driver.Apply(ctx, req, checkpoint)
 	if err != nil {
+		if errors.Is(err, ErrCheckpoint) {
+			return e.failOperation(ctx, opKey, resourceKey, resourceETag, op, err)
+		}
 		effect := result.Effect
 		if effect == "" {
 			effect = "possible"
@@ -332,7 +309,9 @@ func (e *Engine) reconcileOperation(ctx context.Context, identity driver.Identit
 		}
 		op.UpdatedAt = e.now()
 		op.Observation = &obs
-		_ = e.saveOperation(ctx, opKey, op)
+		if saveErr := e.saveOperation(ctx, opKey, op); saveErr != nil {
+			err = errors.Join(err, saveErr)
+		}
 		return Outcome{Resource: resource, Operation: op}, err
 	}
 	if obs.State == driver.Absent || obs.State == driver.Unhealthy || obs.State == driver.Conflict {
@@ -341,13 +320,18 @@ func (e *Engine) reconcileOperation(ctx context.Context, identity driver.Identit
 		op.Error = "provider observation: " + string(obs.State)
 		op.Observation = &obs
 		op.UpdatedAt = e.now()
-		_ = e.saveOperation(ctx, opKey, op)
+		saveErr := e.saveOperation(ctx, opKey, op)
 		resource.ActiveOperation = ""
 		resource.LastOperation = op.ID
 		resource.UpdatedAt = e.now()
-		resourceRaw, _ := encode(resource)
-		_, _, _ = e.State.Update(ctx, resourceKey, resourceETag, statev1.WriteRequest{Value: resourceRaw})
-		return Outcome{Resource: resource, Operation: op}, fmt.Errorf("deploy: operation failed by observation")
+		resourceRaw, encErr := encode(resource)
+		if encErr != nil {
+			return Outcome{Resource: resource, Operation: op}, encErr
+		}
+		if _, _, err := e.State.Update(ctx, resourceKey, resourceETag, statev1.WriteRequest{Value: resourceRaw}); err != nil {
+			saveErr = errors.Join(saveErr, err)
+		}
+		return Outcome{Resource: resource, Operation: op}, errors.Join(fmt.Errorf("deploy: operation failed by observation"), saveErr)
 	}
 	return e.settle(ctx, opKey, resourceKey, resourceETag, op, driver.Result{Effect: "confirmed", Resources: obs.Resources}, &obs, cfg)
 }
@@ -369,46 +353,78 @@ func (e *Engine) Rollback(ctx context.Context, cfg Config, release string) (Outc
 	if opID == "" {
 		opID = cfg.ActionKey + ":rollback:" + release
 	}
-	opKey, _ := keyFor("operations", identity.ResourceKey+"/"+opID)
-	fingerprint, _ := fingerprint(Config{OperationID: opID, Recipe: cfg.Recipe, Configuration: cfg.Configuration, Artifacts: cfg.Artifacts, DesiredRelease: release}, identity)
+	if resource.ActiveOperation != "" && resource.ActiveOperation != opID {
+		return Outcome{}, ErrBusy
+	}
+	opKey, err := keyFor("operations", identity.ResourceKey+"/"+opID)
+	if err != nil {
+		return Outcome{}, err
+	}
+	cfg.DesiredRelease = release
+	if stored, err := e.readRelease(ctx, identity, release); err == nil {
+		// Rollback reuses the retained descriptors. A caller cannot substitute a
+		// different bundle for a recorded release.
+		cfg.Artifacts = stored.Artifacts
+	} else if !isNotFound(err) {
+		return Outcome{}, err
+	}
+	fingerprint, err := fingerprintFor("rollback", cfg, identity)
+	if err != nil {
+		return Outcome{}, err
+	}
+	if existing, err := e.readOperation(ctx, opKey); err == nil {
+		if existing.Fingerprint != fingerprint {
+			return Outcome{}, ErrConflict
+		}
+		switch existing.Status {
+		case "succeeded":
+			return e.finishExisting(ctx, resourceKeyFor(identity), resourceETag, resource, existing)
+		case "unknown":
+			return e.reconcileOperation(ctx, identity, resourceKeyFor(identity), resource, resourceETag, opKey, existing, cfg)
+		default:
+			return Outcome{}, fmt.Errorf("deploy: operation %s is %s", opID, existing.Status)
+		}
+	} else if !isNotFound(err) {
+		return Outcome{}, err
+	}
+	if resource.ActiveOperation != "" && resource.ActiveOperation != opID {
+		return Outcome{}, ErrBusy
+	}
 	now := e.now()
-	op := operationDoc{SchemaVersion: schemaVersion, ID: opID, Kind: "rollback", Fingerprint: fingerprint, Status: "pending", CreatedAt: now, UpdatedAt: now}
-	raw, _ := encode(op)
-	if _, _, err := e.State.Create(ctx, opKey, statev1.WriteRequest{Value: raw}); err != nil && !isExists(err) {
+	op := operationDoc{SchemaVersion: schemaVersion, ID: opID, Kind: "rollback", Fingerprint: fingerprint,
+		Status: "pending", CreatedAt: now, UpdatedAt: now, Checkpoints: map[string]json.RawMessage{}}
+	if _, _, err := e.ensureOperation(ctx, opKey, op); err != nil {
 		return Outcome{}, err
 	}
 	resource.ActiveOperation = opID
 	resource.UpdatedAt = now
-	resourceRaw, _ := encode(resource)
-	resourceEntry, resourceETag, err := e.State.Update(ctx, resourceKeyFor(identity), resourceETag, statev1.WriteRequest{Value: resourceRaw})
+	resourceRaw, err := encode(resource)
 	if err != nil {
 		return Outcome{}, err
 	}
-	_ = resourceEntry
+	if _, resourceETag, err = e.State.Update(ctx, resourceKeyFor(identity), resourceETag, statev1.WriteRequest{Value: resourceRaw, ArtifactReferences: cfg.references()}); err != nil {
+		return Outcome{}, fmt.Errorf("deploy: reserve resource: %w", err)
+	}
+	if err := e.setOperationApplying(ctx, opKey, &op); err != nil {
+		return Outcome{}, err
+	}
 	req := driver.Request{Protocol: "kodama.deploy-driver/v1", Method: "rollback", RequestID: opID,
 		Deadline: e.deadline(cfg), Identity: identity, OperationID: opID, DesiredRelease: release,
 		Configuration: cfg.Configuration, Artifacts: cfg.Artifacts, Previous: mustJSON(resource)}
-	result, err := e.Driver.Rollback(ctx, req, nil)
+	result, err := e.Driver.Rollback(ctx, req, e.checkpointFunc(opKey))
 	if err != nil {
-		op.Status = "unknown"
-		op.Effect = result.Effect
-		op.Error = err.Error()
-		op.UpdatedAt = e.now()
-		_ = e.saveOperation(ctx, opKey, op)
-		return Outcome{Resource: resource, Operation: op}, err
+		if errors.Is(err, ErrCheckpoint) || result.Effect == "none" {
+			return e.failOperation(ctx, opKey, resourceKeyFor(identity), resourceETag, op, err)
+		}
+		return e.markUnknown(ctx, opKey, resourceKeyFor(identity), resourceETag, op, result, err)
 	}
 	obs, err := e.Driver.Observe(ctx, req)
 	if err != nil || obs.State != driver.Ready {
 		if err == nil {
 			err = fmt.Errorf("deploy: provider is %s", obs.State)
 		}
-		op.Status = "unknown"
-		op.Error = err.Error()
-		op.UpdatedAt = e.now()
-		_ = e.saveOperation(ctx, opKey, op)
-		return Outcome{Resource: resource, Operation: op}, err
+		return e.markUnknown(ctx, opKey, resourceKeyFor(identity), resourceETag, op, result, err)
 	}
-	cfg.DesiredRelease = release
 	return e.settle(ctx, opKey, resourceKeyFor(identity), resourceETag, op, result, &obs, cfg)
 }
 
@@ -418,7 +434,10 @@ func (e *Engine) Cleanup(ctx context.Context, cfg Config) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	resourceKey, _ := keyFor("resources", identity.ResourceKey)
+	resourceKey, err := keyFor("resources", identity.ResourceKey)
+	if err != nil {
+		return Outcome{}, err
+	}
 	if resource.DeletedAt != nil {
 		return Outcome{Resource: resource}, nil
 	}
@@ -426,76 +445,99 @@ func (e *Engine) Cleanup(ctx context.Context, cfg Config) (Outcome, error) {
 	if opID == "" {
 		opID = cfg.ActionKey + ":cleanup"
 	}
-	opKey, _ := keyFor("operations", identity.ResourceKey+"/"+opID)
-	fingerprint, _ := fingerprint(cfg, identity)
-	now := e.now()
-	op := operationDoc{SchemaVersion: schemaVersion, ID: opID, Kind: "cleanup", Fingerprint: fingerprint, Status: "pending", CreatedAt: now, UpdatedAt: now}
-	raw, _ := encode(op)
-	opEntry, _, err := e.State.Create(ctx, opKey, statev1.WriteRequest{Value: raw})
-	if err != nil && !isExists(err) {
+	if resource.ActiveOperation != "" && resource.ActiveOperation != opID {
+		return Outcome{}, ErrBusy
+	}
+	opKey, err := keyFor("operations", identity.ResourceKey+"/"+opID)
+	if err != nil {
 		return Outcome{}, err
 	}
-	if err == nil {
-		op.Status = "applying"
-		op.UpdatedAt = now
-		raw, _ = encode(op)
-		_, _, _ = e.State.Update(ctx, opKey, opEntry.ETag(), statev1.WriteRequest{Value: raw})
+	fingerprint, err := fingerprintFor("cleanup", cfg, identity)
+	if err != nil {
+		return Outcome{}, err
+	}
+	if existing, err := e.readOperation(ctx, opKey); err == nil {
+		if existing.Fingerprint != fingerprint {
+			return Outcome{}, ErrConflict
+		}
+		switch existing.Status {
+		case "succeeded":
+			resource, err = e.finishCleanup(ctx, resourceKey, resourceETag, resource, existing)
+			return Outcome{Resource: resource, Operation: existing}, err
+		case "unknown":
+			return e.reconcileCleanup(ctx, identity, resourceKey, resource, resourceETag, opKey, existing, cfg)
+		default:
+			return Outcome{}, fmt.Errorf("deploy: operation %s is %s", opID, existing.Status)
+		}
+	} else if !isNotFound(err) {
+		return Outcome{}, err
+	}
+	now := e.now()
+	op := operationDoc{SchemaVersion: schemaVersion, ID: opID, Kind: "cleanup", Fingerprint: fingerprint,
+		Status: "pending", CreatedAt: now, UpdatedAt: now, Checkpoints: map[string]json.RawMessage{}}
+	if _, _, err := e.ensureOperation(ctx, opKey, op); err != nil {
+		return Outcome{}, err
+	}
+	resource.ActiveOperation = opID
+	resource.UpdatedAt = now
+	resourceRaw, err := encode(resource)
+	if err != nil {
+		return Outcome{}, err
+	}
+	if _, resourceETag, err = e.State.Update(ctx, resourceKey, resourceETag, statev1.WriteRequest{Value: resourceRaw, ArtifactReferences: cfg.references()}); err != nil {
+		return Outcome{}, fmt.Errorf("deploy: reserve cleanup: %w", err)
+	}
+	if err := e.setOperationApplying(ctx, opKey, &op); err != nil {
+		return Outcome{}, err
 	}
 	req := driver.Request{Protocol: "kodama.deploy-driver/v1", Method: "destroy", RequestID: opID,
 		Deadline: e.deadline(cfg), Identity: identity, OperationID: opID, Configuration: cfg.Configuration,
-		Artifacts: cfg.Artifacts, Previous: mustJSON(resource)}
-	result, err := e.Driver.Destroy(ctx, req, nil)
+		Artifacts: cfg.Artifacts, Previous: mustJSON(resource), Checkpoints: op.Checkpoints}
+	checkpoint := e.checkpointFunc(opKey)
+	result, err := e.Driver.Destroy(ctx, req, checkpoint)
 	if err != nil {
-		op.Status = "unknown"
-		op.Effect = result.Effect
-		op.Error = err.Error()
-		op.UpdatedAt = e.now()
-		_ = e.saveOperation(ctx, opKey, op)
+		if errors.Is(err, ErrCheckpoint) || result.Effect == "none" {
+			return e.failOperation(ctx, opKey, resourceKey, resourceETag, op, err)
+		}
+		return e.markUnknown(ctx, opKey, resourceKey, resourceETag, op, result, err)
+	}
+	obs, err := e.Driver.Observe(ctx, withMethod(req, "observe"))
+	if err != nil {
+		return e.markUnknown(ctx, opKey, resourceKey, resourceETag, op, result, err)
+	}
+	if obs.State != driver.Absent {
+		if obs.State == driver.Unknown || obs.State == driver.Progressing {
+			return e.markUnknown(ctx, opKey, resourceKey, resourceETag, op, result, fmt.Errorf("deploy: deletion is %s", obs.State))
+		}
+		return e.markUnknown(ctx, opKey, resourceKey, resourceETag, op, result, fmt.Errorf("deploy: resource still observed as %s", obs.State))
+	}
+	op.Status = "succeeded"
+	op.Effect = result.Effect
+	op.Result = &result
+	op.Observation = &obs
+	op.UpdatedAt = e.now()
+	if err := e.saveOperation(ctx, opKey, op); err != nil {
 		return Outcome{Resource: resource, Operation: op}, err
 	}
-	op.Status = "succeeded"
-	op.Effect = result.Effect
-	op.Result = &result
-	op.UpdatedAt = e.now()
-	_ = e.saveOperation(ctx, opKey, op)
-	resource.ActiveOperation = ""
-	resource.LastOperation = opID
-	resource.DeletedAt = &now
-	resource.UpdatedAt = now
-	resource.ArtifactReferences = nil
-	resourceRaw, _ := encode(resource)
-	_, _, err = e.State.Update(ctx, resourceKey, resourceETag, statev1.WriteRequest{Value: resourceRaw})
-	if err != nil {
-		return Outcome{}, err
-	}
-	return Outcome{Resource: resource, Operation: op}, nil
+	resource, err = e.finishCleanup(ctx, resourceKey, resourceETag, resource, op)
+	return Outcome{Resource: resource, Operation: op}, err
 }
 
-func (e *Engine) settle(ctx context.Context, opKey, resourceKey, resourceETag string, op operationDoc, result driver.Result, obs *driver.Observation, cfg Config) (Outcome, error) {
+func (e *Engine) settle(ctx context.Context, opKey, resourceKey, _ string, op operationDoc, result driver.Result, obs *driver.Observation, cfg Config) (Outcome, error) {
 	now := e.now()
-	op.Status = "succeeded"
-	op.Effect = result.Effect
-	op.Result = &result
-	op.Observation = obs
-	op.UpdatedAt = now
-	entry, etag, err := e.State.Read(ctx, opKey)
-	if err != nil {
-		return Outcome{}, err
-	}
-	_ = entry
-	opRaw, _ := encode(op)
-	if _, _, err := e.State.Update(ctx, opKey, etag, statev1.WriteRequest{Value: opRaw}); err != nil {
-		return Outcome{}, err
-	}
-	resourceRaw, resourceReadETag, err := e.State.Read(ctx, resourceKey)
+	resourceEntry, currentETag, err := e.State.Read(ctx, resourceKey)
 	if err != nil {
 		return Outcome{}, err
 	}
 	var resource resourceDoc
-	if err := json.Unmarshal(resourceRaw.Value, &resource); err != nil {
+	if err := json.Unmarshal(resourceEntry.Value, &resource); err != nil {
 		return Outcome{}, err
 	}
-	resource.ActiveOperation = ""
+	if resource.ActiveOperation != "" && resource.ActiveOperation != op.ID {
+		return Outcome{}, ErrBusy
+	}
+	// The authoritative resource keeps the reservation while secondary history
+	// is published. A crash after this write is recoverable by reconciliation.
 	resource.LastOperation = op.ID
 	resource.DesiredRelease = cfg.DesiredRelease
 	resource.ObservedRelease = obs.ObservedRelease
@@ -509,45 +551,87 @@ func (e *Engine) settle(ctx context.Context, opKey, resourceKey, resourceETag st
 	if err != nil {
 		return Outcome{}, err
 	}
-	updated, _, err := e.State.Update(ctx, resourceKey, resourceReadETag, statev1.WriteRequest{Value: raw, ArtifactReferences: cfg.references()})
-	if err != nil {
-		return Outcome{}, err
+	if _, currentETag, err = e.State.Update(ctx, resourceKey, currentETag, statev1.WriteRequest{Value: raw, ArtifactReferences: cfg.references()}); err != nil {
+		return Outcome{}, fmt.Errorf("deploy: record observed resource: %w", err)
 	}
 	if cfg.DesiredRelease != "" {
-		releaseKey, _ := keyFor("releases", resource.Identity.ResourceKey+"/"+cfg.DesiredRelease)
+		releaseKey, err := keyFor("releases", resource.Identity.ResourceKey+"/"+cfg.DesiredRelease)
+		if err != nil {
+			return Outcome{}, err
+		}
 		release := releaseDoc{SchemaVersion: schemaVersion, Release: cfg.DesiredRelease, Artifacts: cfg.Artifacts,
 			ProviderRelease: result.ProviderRelease, ProviderVersion: result.ProviderVersion, CreatedAt: now,
 			Resources: result.Resources, ArtifactReferences: cfg.references()}
-		releaseRaw, _ := encode(release)
-		_, _, _ = e.State.Create(ctx, releaseKey, statev1.WriteRequest{Value: releaseRaw, ArtifactReferences: cfg.references()})
+		releaseRaw, err := encode(release)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if _, _, err := e.State.Create(ctx, releaseKey, statev1.WriteRequest{Value: releaseRaw, ArtifactReferences: cfg.references()}); err != nil {
+			if !isExists(err) {
+				return Outcome{}, fmt.Errorf("deploy: publish release history: %w", err)
+			}
+			existing, _, err := e.State.Read(ctx, releaseKey)
+			if err != nil {
+				return Outcome{}, err
+			}
+			var prior releaseDoc
+			if err := json.Unmarshal(existing.Value, &prior); err != nil {
+				return Outcome{}, err
+			}
+			if !sameRelease(prior, release) {
+				return Outcome{}, ErrConflict
+			}
+		}
+	}
+	op.Status = "succeeded"
+	op.Effect = result.Effect
+	op.Result = &result
+	op.Observation = obs
+	op.UpdatedAt = e.now()
+	if err := e.saveOperation(ctx, opKey, op); err != nil {
+		return Outcome{Resource: resource, Operation: op}, fmt.Errorf("deploy: publish operation history: %w", err)
+	}
+	resource.ActiveOperation = ""
+	resource.UpdatedAt = e.now()
+	raw, err = encode(resource)
+	if err != nil {
+		return Outcome{}, err
+	}
+	updated, _, err := e.State.Update(ctx, resourceKey, currentETag, statev1.WriteRequest{Value: raw, ArtifactReferences: cfg.references()})
+	if err != nil {
+		return Outcome{Resource: resource, Operation: op}, fmt.Errorf("deploy: clear operation reservation: %w", err)
 	}
 	resource = resourceDoc{}
-	_ = json.Unmarshal(updated.Value, &resource)
+	if err := json.Unmarshal(updated.Value, &resource); err != nil {
+		return Outcome{}, err
+	}
 	return Outcome{Resource: resource, Operation: op}, nil
 }
 
 func (e *Engine) markUnknown(ctx context.Context, opKey, resourceKey, resourceETag string, op operationDoc, result driver.Result, cause error) (Outcome, error) {
 	op.Status = "unknown"
 	op.Effect = result.Effect
+	if op.Effect == "" {
+		op.Effect = "possible"
+	}
 	op.Error = cause.Error()
 	op.UpdatedAt = e.now()
 	op.Result = &result
-	raw, _ := encode(op)
-	_, etag, err := e.State.Read(ctx, opKey)
-	if err == nil {
-		_, _, _ = e.State.Update(ctx, opKey, etag, statev1.WriteRequest{Value: raw})
-	}
-	resourceEntry, resourceETag, err := e.State.Read(ctx, resourceKey)
-	if err == nil {
-		var resource resourceDoc
-		if json.Unmarshal(resourceEntry.Value, &resource) == nil {
+	saveErr := e.saveOperation(ctx, opKey, op)
+	resource := resourceDoc{}
+	resourceEntry, _, readErr := e.State.Read(ctx, resourceKey)
+	if readErr == nil {
+		if err := json.Unmarshal(resourceEntry.Value, &resource); err == nil {
 			resource.ActiveOperation = op.ID
 			resource.UpdatedAt = e.now()
-			raw, _ := encode(resource)
-			_, _, _ = e.State.Update(ctx, resourceKey, resourceETag, statev1.WriteRequest{Value: raw})
+			raw, err := encode(resource)
+			if err == nil {
+				_, _, err = e.State.Update(ctx, resourceKey, resourceEntry.ETag(), statev1.WriteRequest{Value: raw})
+			}
+			readErr = err
 		}
 	}
-	return Outcome{Operation: op}, cause
+	return Outcome{Resource: resource, Operation: op}, errors.Join(cause, saveErr, readErr)
 }
 
 func (e *Engine) failOperation(ctx context.Context, opKey, resourceKey, resourceETag string, op operationDoc, cause error) (Outcome, error) {
@@ -555,23 +639,22 @@ func (e *Engine) failOperation(ctx context.Context, opKey, resourceKey, resource
 	op.Effect = "none"
 	op.Error = cause.Error()
 	op.UpdatedAt = e.now()
-	raw, _ := encode(op)
-	_, etag, err := e.State.Read(ctx, opKey)
-	if err == nil {
-		_, _, _ = e.State.Update(ctx, opKey, etag, statev1.WriteRequest{Value: raw})
-	}
-	resourceEntry, resourceETag, err := e.State.Read(ctx, resourceKey)
-	if err == nil {
-		var resource resourceDoc
-		if json.Unmarshal(resourceEntry.Value, &resource) == nil {
+	saveErr := e.saveOperation(ctx, opKey, op)
+	resource := resourceDoc{}
+	resourceEntry, _, readErr := e.State.Read(ctx, resourceKey)
+	if readErr == nil {
+		if err := json.Unmarshal(resourceEntry.Value, &resource); err == nil {
 			resource.ActiveOperation = ""
 			resource.LastOperation = op.ID
 			resource.UpdatedAt = e.now()
-			raw, _ := encode(resource)
-			_, _, _ = e.State.Update(ctx, resourceKey, resourceETag, statev1.WriteRequest{Value: raw})
+			raw, err := encode(resource)
+			if err == nil {
+				_, _, err = e.State.Update(ctx, resourceKey, resourceEntry.ETag(), statev1.WriteRequest{Value: raw})
+			}
+			readErr = err
 		}
 	}
-	return Outcome{Operation: op}, cause
+	return Outcome{Resource: resource, Operation: op}, errors.Join(cause, saveErr, readErr)
 }
 
 func (e *Engine) identifyResource(ctx context.Context, cfg Config) (driver.Identity, resourceDoc, string, error) {
@@ -657,13 +740,17 @@ func (cfg Config) references() []statev1.ArtifactReference {
 }
 
 func fingerprint(cfg Config, identity driver.Identity) (string, error) {
+	return fingerprintFor("apply", cfg, identity)
+}
+
+func fingerprintFor(kind string, cfg Config, identity driver.Identity) (string, error) {
 	payload := struct {
 		Kind          string            `json:"kind"`
 		Resource      string            `json:"resource"`
 		Desired       string            `json:"desired"`
 		Artifacts     []driver.Artifact `json:"artifacts"`
 		Configuration json.RawMessage   `json:"configuration"`
-	}{Kind: "apply", Resource: identity.ResourceKey, Desired: cfg.DesiredRelease, Artifacts: cfg.Artifacts, Configuration: cfg.Configuration}
+	}{Kind: kind, Resource: identity.ResourceKey, Desired: cfg.DesiredRelease, Artifacts: cfg.Artifacts, Configuration: cfg.Configuration}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
@@ -713,6 +800,235 @@ func (e *Engine) saveOperation(ctx context.Context, key string, op operationDoc)
 	}
 	_, _, err = e.State.Update(ctx, key, etag, statev1.WriteRequest{Value: raw})
 	return err
+}
+
+func (e *Engine) checkpointFunc(opKey string) driver.Checkpoint {
+	return func(ctx context.Context, name string, data json.RawMessage) error {
+		if len(data) > 4096 {
+			return checkpointFailure(fmt.Errorf("checkpoint %s is too large", name))
+		}
+		entry, etag, err := e.State.Read(ctx, opKey)
+		if err != nil {
+			return checkpointFailure(err)
+		}
+		var current operationDoc
+		if err := json.Unmarshal(entry.Value, &current); err != nil {
+			return checkpointFailure(err)
+		}
+		if current.Checkpoints == nil {
+			current.Checkpoints = map[string]json.RawMessage{}
+		}
+		if prior, ok := current.Checkpoints[name]; ok {
+			if !bytes.Equal(prior, data) {
+				return checkpointFailure(ErrConflict)
+			}
+			return nil
+		}
+		current.Checkpoints[name] = data
+		current.UpdatedAt = e.now()
+		raw, err := encode(current)
+		if err != nil {
+			return checkpointFailure(err)
+		}
+		if _, _, err = e.State.Update(ctx, opKey, etag, statev1.WriteRequest{Value: raw}); err != nil {
+			return checkpointFailure(err)
+		}
+		return nil
+	}
+}
+
+func checkpointFailure(err error) error { return errors.Join(ErrCheckpoint, err) }
+
+func (e *Engine) ensureOperation(ctx context.Context, key string, op operationDoc) (statev1.Entry, string, error) {
+	raw, err := encode(op)
+	if err != nil {
+		return statev1.Entry{}, "", err
+	}
+	entry, etag, err := e.State.Create(ctx, key, statev1.WriteRequest{Value: raw})
+	if err == nil {
+		return entry, etag, nil
+	}
+	if !isExists(err) {
+		return statev1.Entry{}, "", err
+	}
+	entry, etag, err = e.State.Read(ctx, key)
+	if err != nil {
+		return statev1.Entry{}, "", err
+	}
+	var existing operationDoc
+	if err := json.Unmarshal(entry.Value, &existing); err != nil {
+		return statev1.Entry{}, "", err
+	}
+	if existing.Fingerprint != op.Fingerprint {
+		return statev1.Entry{}, "", ErrConflict
+	}
+	return entry, etag, nil
+}
+
+func (e *Engine) setOperationApplying(ctx context.Context, key string, op *operationDoc) error {
+	entry, etag, err := e.State.Read(ctx, key)
+	if err != nil {
+		return err
+	}
+	var current operationDoc
+	if err := json.Unmarshal(entry.Value, &current); err != nil {
+		return err
+	}
+	if current.Fingerprint != op.Fingerprint {
+		return ErrConflict
+	}
+	if current.Status != "pending" {
+		// Only the attempt that CASes pending -> applying may issue the
+		// mutation. A concurrent replay observes the operation rather than
+		// starting a second one.
+		return fmt.Errorf("deploy: operation %s is %s", op.ID, current.Status)
+	}
+	current.Status = "applying"
+	current.UpdatedAt = e.now()
+	raw, err := encode(current)
+	if err != nil {
+		return err
+	}
+	if _, _, err := e.State.Update(ctx, key, etag, statev1.WriteRequest{Value: raw}); err != nil {
+		return err
+	}
+	*op = current
+	return nil
+}
+
+func (e *Engine) finishExisting(ctx context.Context, resourceKey, _ string, resource resourceDoc, op operationDoc) (Outcome, error) {
+	if resource.ActiveOperation != "" && resource.ActiveOperation != op.ID {
+		return Outcome{}, ErrBusy
+	}
+	if resource.ActiveOperation == op.ID {
+		entry, etag, err := e.State.Read(ctx, resourceKey)
+		if err != nil {
+			return Outcome{}, err
+		}
+		var current resourceDoc
+		if err := json.Unmarshal(entry.Value, &current); err != nil {
+			return Outcome{}, err
+		}
+		if current.ActiveOperation != op.ID {
+			return Outcome{}, ErrConflict
+		}
+		current.ActiveOperation = ""
+		current.UpdatedAt = e.now()
+		raw, err := encode(current)
+		if err != nil {
+			return Outcome{}, err
+		}
+		updated, _, err := e.State.Update(ctx, resourceKey, etag, statev1.WriteRequest{Value: raw})
+		if err != nil {
+			return Outcome{}, err
+		}
+		resource = resourceDoc{}
+		if err := json.Unmarshal(updated.Value, &resource); err != nil {
+			return Outcome{}, err
+		}
+	}
+	return Outcome{Resource: resource, Operation: op}, nil
+}
+
+func (e *Engine) finishCleanup(ctx context.Context, resourceKey, _ string, resource resourceDoc, op operationDoc) (resourceDoc, error) {
+	entry, etag, err := e.State.Read(ctx, resourceKey)
+	if err != nil {
+		return resourceDoc{}, err
+	}
+	if err := json.Unmarshal(entry.Value, &resource); err != nil {
+		return resourceDoc{}, err
+	}
+	if resource.ActiveOperation != "" && resource.ActiveOperation != op.ID {
+		return resourceDoc{}, ErrBusy
+	}
+	if resource.DeletedAt == nil {
+		now := e.now()
+		resource.DeletedAt = &now
+	}
+	resource.ActiveOperation = ""
+	resource.LastOperation = op.ID
+	resource.UpdatedAt = e.now()
+	resource.ArtifactReferences = nil
+	raw, err := encode(resource)
+	if err != nil {
+		return resourceDoc{}, err
+	}
+	updated, _, err := e.State.Update(ctx, resourceKey, etag, statev1.WriteRequest{Value: raw})
+	if err != nil {
+		return resourceDoc{}, err
+	}
+	resource = resourceDoc{}
+	if err := json.Unmarshal(updated.Value, &resource); err != nil {
+		return resourceDoc{}, err
+	}
+	return resource, nil
+}
+
+func (e *Engine) reconcileCleanup(ctx context.Context, identity driver.Identity, resourceKey string, resource resourceDoc, resourceETag, opKey string, op operationDoc, cfg Config) (Outcome, error) {
+	req := driver.Request{Protocol: "kodama.deploy-driver/v1", Method: "observe", RequestID: op.ID,
+		Deadline: e.deadline(cfg), Identity: identity, OperationID: op.ID,
+		Configuration: cfg.Configuration, Artifacts: cfg.Artifacts, Previous: mustJSON(resource)}
+	obs, err := e.Driver.Observe(ctx, req)
+	if err != nil {
+		op.UpdatedAt = e.now()
+		op.Observation = &obs
+		if saveErr := e.saveOperation(ctx, opKey, op); saveErr != nil {
+			err = errors.Join(err, saveErr)
+		}
+		return Outcome{Resource: resource, Operation: op}, err
+	}
+	if obs.State != driver.Absent {
+		op.UpdatedAt = e.now()
+		op.Observation = &obs
+		if saveErr := e.saveOperation(ctx, opKey, op); saveErr != nil {
+			err = errors.Join(err, saveErr)
+		}
+		return Outcome{Resource: resource, Operation: op}, fmt.Errorf("deploy: deletion is %s", obs.State)
+	}
+	op.Status = "succeeded"
+	op.Result = &driver.Result{Effect: "confirmed", Resources: obs.Resources}
+	op.Observation = &obs
+	op.UpdatedAt = e.now()
+	if err := e.saveOperation(ctx, opKey, op); err != nil {
+		return Outcome{Resource: resource, Operation: op}, err
+	}
+	resource, err = e.finishCleanup(ctx, resourceKey, resourceETag, resource, op)
+	return Outcome{Resource: resource, Operation: op}, err
+}
+
+func (e *Engine) readRelease(ctx context.Context, identity driver.Identity, release string) (releaseDoc, error) {
+	key, err := keyFor("releases", identity.ResourceKey+"/"+release)
+	if err != nil {
+		return releaseDoc{}, err
+	}
+	entry, _, err := e.State.Read(ctx, key)
+	if err != nil {
+		return releaseDoc{}, err
+	}
+	var doc releaseDoc
+	if err := json.Unmarshal(entry.Value, &doc); err != nil {
+		return releaseDoc{}, err
+	}
+	return doc, nil
+}
+
+func sameRelease(a, b releaseDoc) bool {
+	a.CreatedAt = time.Time{}
+	b.CreatedAt = time.Time{}
+	left, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	right, err := json.Marshal(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(left, right)
+}
+
+func withMethod(req driver.Request, method string) driver.Request {
+	req.Method = method
+	return req
 }
 
 func mustJSON(v any) json.RawMessage {

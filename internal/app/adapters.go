@@ -18,6 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/agents"
 	"github.com/optimiware/kodama/internal/artifacts"
 	"github.com/optimiware/kodama/internal/delivery"
@@ -542,4 +543,25 @@ func (runStates) ReadResources(ctx context.Context, tx pgx.Tx, q obspg.ResourceQ
 		}
 	}
 	return out, nil
+}
+
+// artifactInputResolver is the admission-side read of one artifact descriptor.
+// The caller has already been authorized by execution; the artifact module
+// still checks scope ownership and content state.
+type artifactInputResolver struct {
+	svc *artifacts.Service
+}
+
+func (r artifactInputResolver) ResolveArtifact(ctx context.Context, scope domain.Scope, id domain.ArtifactID) (runtimev1.ArtifactRef, error) {
+	if r.svc == nil {
+		return runtimev1.ArtifactRef{}, execution.ErrNotConfigured
+	}
+	ref, err := r.svc.Reference(ctx, scope, id)
+	if err != nil {
+		return runtimev1.ArtifactRef{}, err
+	}
+	return runtimev1.ArtifactRef{
+		ID: ref.ID, Scope: ref.Scope, Attempt: ref.Attempt,
+		Kind: runtimev1.ArtifactKind(ref.Kind), Digest: runtimev1.Digest(ref.Digest), Usable: ref.Usable,
+	}, nil
 }

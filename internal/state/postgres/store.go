@@ -46,6 +46,9 @@ func New(cfg Config) (*Store, error) {
 var _ state.Store = (*Store)(nil)
 
 func (s *Store) Get(ctx context.Context, scope state.Scope, namespace, key string) (statev1.Entry, error) {
+	if err := validateTarget(namespace, key); err != nil {
+		return statev1.Entry{}, err
+	}
 	var entry statev1.Entry
 	err := s.tx(ctx, scope, true, func(ctx context.Context, tx pgx.Tx) error {
 		return scanEntry(tx.QueryRow(ctx, `SELECT namespace, key, value, artifact_references, generation, revision, updated_at, updated_by
@@ -56,6 +59,17 @@ func (s *Store) Get(ctx context.Context, scope state.Scope, namespace, key strin
 }
 
 func (s *Store) List(ctx context.Context, scope state.Scope, namespace, prefix, cursor string, limit int) ([]statev1.Entry, string, error) {
+	if err := state.ValidateNamespace(namespace); err != nil {
+		return nil, "", err
+	}
+	if err := state.ValidatePrefix(prefix); err != nil {
+		return nil, "", err
+	}
+	if cursor != "" {
+		if err := statev1.ValidateKey(cursor); err != nil {
+			return nil, "", fmt.Errorf("%w: %v", state.ErrInvalid, err)
+		}
+	}
 	if limit <= 0 || limit > statev1.MaxListLimit {
 		limit = statev1.DefaultListLimit
 	}
@@ -64,7 +78,7 @@ func (s *Store) List(ctx context.Context, scope state.Scope, namespace, prefix, 
 	err := s.tx(ctx, scope, true, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `SELECT namespace, key, value, artifact_references, generation, revision, updated_at, updated_by
 			FROM state_entries
-			WHERE tenant_id=$1 AND project_id=$2 AND namespace=$3 AND key LIKE $4 AND key > $5
+			WHERE tenant_id=$1 AND project_id=$2 AND namespace=$3 AND key LIKE $4 AND key >= $5
 			ORDER BY key LIMIT $6`, scope.TenantID, scope.ProjectID, namespace, prefix+"%", cursor, limit+1)
 		if err != nil {
 			return err
@@ -90,10 +104,13 @@ func (s *Store) List(ctx context.Context, scope state.Scope, namespace, prefix, 
 }
 
 func (s *Store) Create(ctx context.Context, scope state.Scope, namespace, key, actor string, req statev1.WriteRequest) (statev1.Entry, error) {
+	if err := validateTarget(namespace, key); err != nil {
+		return statev1.Entry{}, err
+	}
 	if err := req.Validate(); err != nil {
 		return statev1.Entry{}, fmt.Errorf("%w: %v", state.ErrInvalid, err)
 	}
-	refs, _ := json.Marshal(req.ArtifactReferences)
+	refs := referencesJSON(req.ArtifactReferences)
 	generation := randomGeneration()
 	now := s.now().UTC()
 	var entry statev1.Entry
@@ -109,6 +126,9 @@ func (s *Store) Create(ctx context.Context, scope state.Scope, namespace, key, a
 }
 
 func (s *Store) Update(ctx context.Context, scope state.Scope, namespace, key, actor, expected string, req statev1.WriteRequest) (statev1.Entry, error) {
+	if err := validateTarget(namespace, key); err != nil {
+		return statev1.Entry{}, err
+	}
 	if err := req.Validate(); err != nil {
 		return statev1.Entry{}, fmt.Errorf("%w: %v", state.ErrInvalid, err)
 	}
@@ -116,7 +136,7 @@ func (s *Store) Update(ctx context.Context, scope state.Scope, namespace, key, a
 	if err != nil {
 		return statev1.Entry{}, fmt.Errorf("%w: %v", state.ErrInvalid, err)
 	}
-	refs, _ := json.Marshal(req.ArtifactReferences)
+	refs := referencesJSON(req.ArtifactReferences)
 	var entry statev1.Entry
 	err = s.tx(ctx, scope, false, func(ctx context.Context, tx pgx.Tx) error {
 		row := tx.QueryRow(ctx, `UPDATE state_entries SET
@@ -125,12 +145,19 @@ func (s *Store) Update(ctx context.Context, scope state.Scope, namespace, key, a
 			  AND generation=$9 AND revision=$10
 			RETURNING namespace, key, value, artifact_references, generation, revision, updated_at, updated_by`,
 			scope.TenantID, scope.ProjectID, namespace, key, []byte(req.Value), refs, s.now().UTC(), actor, generation, revision)
-		return scanEntry(row, &entry)
+		if err := scanEntry(row, &entry); errors.Is(err, pgx.ErrNoRows) {
+			return state.ErrConflict
+		} else {
+			return err
+		}
 	})
 	return entry, classify(err)
 }
 
 func (s *Store) Delete(ctx context.Context, scope state.Scope, namespace, key, expected string) error {
+	if err := validateTarget(namespace, key); err != nil {
+		return err
+	}
 	generation, revision, err := parseETag(expected)
 	if err != nil {
 		return fmt.Errorf("%w: %v", state.ErrInvalid, err)
@@ -160,6 +187,29 @@ func (s *Store) tx(ctx context.Context, scope state.Scope, readOnly bool, fn fun
 		opts.AccessMode = pgx.ReadOnly
 	}
 	return storage.WithTenantOptions(ctx, s.db, scope.TenantID, opts, fn)
+}
+
+func validateTarget(namespace, key string) error {
+	if err := state.ValidateNamespace(namespace); err != nil {
+		return err
+	}
+	if err := statev1.ValidateKey(key); err != nil {
+		return fmt.Errorf("%w: %v", state.ErrInvalid, err)
+	}
+	return nil
+}
+
+func referencesJSON(refs []statev1.ArtifactReference) []byte {
+	if len(refs) == 0 {
+		return []byte("[]")
+	}
+	raw, err := json.Marshal(refs)
+	if err != nil {
+		// ArtifactReference contains only strings; a failure here is a
+		// programming error, not a caller error.
+		panic(fmt.Sprintf("state/postgres: encode artifact references: %v", err))
+	}
+	return raw
 }
 
 func scanEntry(row pgx.Row, e *statev1.Entry) error {

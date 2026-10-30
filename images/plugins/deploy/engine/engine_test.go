@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -43,11 +44,13 @@ func newEngine(t *testing.T, d driver.Driver) (*Engine, func()) {
 }
 
 type fakeDriver struct {
-	applies  int
-	observes int
-	obs      driver.Observation
-	applyErr error
-	applyRes driver.Result
+	applies   int
+	observes  int
+	destroys  int
+	destroyed bool
+	obs       driver.Observation
+	applyErr  error
+	applyRes  driver.Result
 }
 
 func (f *fakeDriver) Identify(context.Context, driver.IdentityRequest) (driver.Identity, error) {
@@ -64,12 +67,22 @@ func (f *fakeDriver) Apply(_ context.Context, _ driver.Request, cp driver.Checkp
 }
 func (f *fakeDriver) Observe(context.Context, driver.Request) (driver.Observation, error) {
 	f.observes++
+	if f.destroyed {
+		return driver.Observation{State: driver.Absent, ObservedAt: time.Unix(1000, 0).UTC()}, nil
+	}
 	if f.obs.State == "" {
 		f.obs = driver.Observation{State: driver.Ready, ObservedAt: time.Unix(1000, 0).UTC(), ObservedRelease: "v1"}
 	}
 	return f.obs, nil
 }
-func (f *fakeDriver) Destroy(context.Context, driver.Request, driver.Checkpoint) (driver.Result, error) {
+func (f *fakeDriver) Destroy(ctx context.Context, _ driver.Request, cp driver.Checkpoint) (driver.Result, error) {
+	if cp != nil {
+		if err := cp(ctx, "delete-intent", json.RawMessage(`{"ok":true}`)); err != nil {
+			return driver.Result{Effect: "none"}, err
+		}
+	}
+	f.destroys++
+	f.destroyed = true
 	return driver.Result{Effect: "confirmed"}, nil
 }
 func (f *fakeDriver) Rollback(context.Context, driver.Request, driver.Checkpoint) (driver.Result, error) {
@@ -170,5 +183,39 @@ func TestCreateRejectsUnconditionalWrite(t *testing.T) {
 	}
 	if _, err := mem.Create(ctx, scope, "n", "k", "b", statev1.WriteRequest{Value: json.RawMessage(`{"x":2}`)}); !errors.Is(err, state.ErrExists) {
 		t.Fatalf("duplicate create: %v", err)
+	}
+}
+
+type failingCheckpointState struct {
+	State
+}
+
+func (s failingCheckpointState) Update(ctx context.Context, key, etag string, req statev1.WriteRequest) (statev1.Entry, string, error) {
+	if bytes.Contains(req.Value, []byte("delete-intent")) {
+		return statev1.Entry{}, "", errors.New("checkpoint unavailable")
+	}
+	return s.State.Update(ctx, key, etag, req)
+}
+
+func TestCleanupDoesNotDestroyWhenCheckpointFails(t *testing.T) {
+	d := &fakeDriver{applyRes: driver.Result{Effect: "confirmed"}}
+	e, closeFn := newEngine(t, d)
+	defer closeFn()
+	if _, err := e.Apply(context.Background(), testConfig()); err != nil {
+		t.Fatal(err)
+	}
+	e.State = failingCheckpointState{State: e.State}
+	cfg := testConfig()
+	cfg.ActionKey = "run:step:cleanup"
+	cfg.OperationID = "cleanup-fail"
+	out, err := e.Cleanup(context.Background(), cfg)
+	if err == nil || !errors.Is(err, ErrCheckpoint) {
+		t.Fatalf("cleanup error = %v, want checkpoint failure", err)
+	}
+	if d.destroys != 0 {
+		t.Fatalf("provider destroy ran %d times", d.destroys)
+	}
+	if out.Operation.Status != "failed" || out.Resource.DeletedAt != nil {
+		t.Fatalf("outcome = %+v", out)
 	}
 }

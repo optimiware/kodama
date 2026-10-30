@@ -13,7 +13,7 @@
       "kodama.optimi.com/context-digest": "sha256:2235e86fa4018adb76aa4567fd50c6e70b7d6276a6c7950e284b811d8fc945dc",
       "kodama.optimi.com/project": "p_inv",
       "kodama.optimi.com/run": "run_1",
-      "kodama.optimi.com/spec-fingerprint": "sha256:4b4f64efb0de59e5c0c98e0e7be63ca39b7f13c1e454fb2decf794e65530ce80",
+      "kodama.optimi.com/spec-fingerprint": "sha256:c3900502b974fede1b433de63a53117c16f0c467f475c02e1186b6ebc5179e5f",
       "kodama.optimi.com/step": "build",
       "kodama.optimi.com/tenant": "t021_acme"
     }

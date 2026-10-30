@@ -53,7 +53,11 @@ var storageForbiddenRoots = []string{"/workspace", "/kodama", "/proc", "/sys", "
 // document beyond the format name, and runs no lookup.
 func (v *Validator) validateV2(ctx context.Context, scope domain.Scope, actor Actor, doc Document) (Validated, error) {
 	var d diagnostics
-	if !v.v2 && !v.v3 {
+	enabled := v.v2
+	if doc.IsV1Alpha3() {
+		enabled = v.v3
+	}
+	if !enabled {
 		d.add(CodeFormatDisabled, "$.apiVersion", "the pipeline format is not enabled in this installation")
 		return Validated{}, d.err(StageSemantic)
 	}
@@ -123,12 +127,13 @@ func svcPath(name string) string { return childPath("$.spec.services", name) }
 // kodama/v1alpha2 document. Shape findings (checkShapeV2) end the pass: the
 // semantic rules assume sane services, ports and edges.
 func (v *Validator) checkDocumentV2(doc Document, d *diagnostics) {
-	if !doc.IsShared() {
-		d.add(CodeInvalidValue, "$.apiVersion", "apiVersion must be %s", pipelinev1alpha2.APIVersion)
-		return
+	wantVersion := pipelinev1alpha2.APIVersion
+	if doc.IsV1Alpha3() {
+		wantVersion = pipelinev1alpha3.APIVersion
 	}
-	if doc.IsV1Alpha3() && doc.APIVersion != pipelinev1alpha3.APIVersion {
-		d.add(CodeInvalidValue, "$.apiVersion", "apiVersion must be %s", pipelinev1alpha3.APIVersion)
+	if !doc.IsShared() || doc.APIVersion != wantVersion {
+		d.add(CodeInvalidValue, "$.apiVersion", "apiVersion must be %s", wantVersion)
+		return
 	}
 	if doc.Kind != pipelinev1.Kind {
 		d.add(CodeInvalidValue, "$.kind", "kind must be %s", pipelinev1.Kind)
@@ -235,8 +240,9 @@ func (v *Validator) checkExecutableV2(i int, s Step, doc Document, r *resolver) 
 			if !namespaceRE.MatchString(b.Namespace) {
 				d.add(CodeInvalidFormat, bp+".namespace", "the state namespace must be a lowercase DNS label")
 			}
-			if b.Prefix != "" && (strings.HasPrefix(b.Prefix, "/") || strings.Contains(b.Prefix, "..") || strings.Contains(b.Prefix, "//")) {
-				d.add(CodeInvalidValue, bp+".prefix", "the state prefix must be a normalized relative path")
+			if b.Prefix != "" && (strings.HasPrefix(b.Prefix, "/") || !strings.HasSuffix(b.Prefix, "/") ||
+				strings.Contains(b.Prefix, "..") || strings.Contains(b.Prefix, "//")) {
+				d.add(CodeInvalidValue, bp+".prefix", "the state prefix must be a normalized relative path ending in /")
 			}
 			if b.Access != StateRead && b.Access != StateReadWrite {
 				d.add(CodeInvalidValue, bp+".access", "state access must be read or read-write")

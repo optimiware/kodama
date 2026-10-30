@@ -112,7 +112,22 @@ func (s *Service) grant(ctx context.Context, caller Caller, attempt domain.Attem
 	if err := attempt.Validate(); err != nil {
 		return AttemptGrant{}, invalidf("%v", err)
 	}
-	g, err := s.cfg.Authority.Grant(ctx, caller, attempt)
+	return s.checkGrant(ctx, caller, attempt, s.cfg.Authority.Grant)
+}
+
+func (s *Service) grantRead(ctx context.Context, caller Caller, attempt domain.AttemptID) (AttemptGrant, error) {
+	if err := attempt.Validate(); err != nil {
+		return AttemptGrant{}, invalidf("%v", err)
+	}
+	reader, ok := s.cfg.Authority.(AttemptReadAuthority)
+	if !ok {
+		return AttemptGrant{}, ErrForbidden
+	}
+	return s.checkGrant(ctx, caller, attempt, reader.GrantRead)
+}
+
+func (s *Service) checkGrant(ctx context.Context, caller Caller, attempt domain.AttemptID, lookup func(context.Context, Caller, domain.AttemptID) (AttemptGrant, error)) (AttemptGrant, error) {
+	g, err := lookup(ctx, caller, attempt)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrAuthorityMissing), errors.Is(err, ErrAttemptInactive), errors.Is(err, ErrNotFound), errors.Is(err, ErrForbidden):
