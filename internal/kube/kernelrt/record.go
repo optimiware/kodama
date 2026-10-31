@@ -409,21 +409,47 @@ func (c *core) reserve(ctx context.Context, ns string, id ident, fence runtime.F
 	return token, err
 }
 
+// checkEstablish is the one rule every version-checked write that records an
+// established instance applies: the instance may not be under a reaping claim
+// and may not differ from the one already recorded.
+func (r record) checkEstablish(op, uid string) error {
+	if got := r.created[op]; got != "" && got != uid {
+		return unverified("the %s was replaced by another instance", op)
+	}
+	if r.reaping[op] == uid {
+		return unverified("the %s is being deleted by its creator", op)
+	}
+	return nil
+}
+
 // settleMarker records that the reserved create has a known outcome and clears
 // that reservation only. established, when set, records the instance it
-// established, unless one is already recorded; reaped clears a reaping claim.
+// established; the exclusion and UID-consistency rules apply inside this same
+// version-checked write, so an instance whose creator has claimed it for
+// reaping, or that differs from the recorded one, is not recorded. The
+// reservation is cleared either way, and the refusal is reported. reaped clears
+// a reaping claim.
 func (c *core) settleMarker(ctx context.Context, ns string, id ident, op, token, established, reaped string) error {
+	var refused error
 	_, err := c.mutate(ctx, ns, id, func(r *record) error {
+		refused = nil
 		delete(r.markers, token)
-		if established != "" && r.created[op] == "" {
-			r.created[op] = established
+		if established != "" {
+			if err := r.checkEstablish(op, established); err != nil {
+				refused = err
+			} else {
+				r.created[op] = established
+			}
 		}
 		if reaped != "" && r.reaping[op] == reaped {
 			delete(r.reaping, op)
 		}
 		return nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return refused
 }
 
 // errNoReap: the identity is not closed or someone established the instance.
@@ -461,11 +487,8 @@ func (c *core) establish(ctx context.Context, ns string, id ident, rec record, o
 		return unverified("the %s was replaced by another instance", op)
 	}
 	_, err := c.mutate(ctx, ns, id, func(r *record) error {
-		if got := r.created[op]; got != "" && got != uid {
-			return unverified("the %s was replaced by another instance", op)
-		}
-		if r.reaping[op] == uid {
-			return unverified("the %s is being deleted by its creator", op)
+		if err := r.checkEstablish(op, uid); err != nil {
+			return err
 		}
 		r.created[op] = uid
 		return nil
@@ -585,6 +608,9 @@ func (c *core) guarded(ctx context.Context, ns string, id ident, g guard) error 
 		return rerr
 	}
 	if err := c.settleMarker(ctx, ns, id, g.op, token, uid, ""); err != nil {
+		if errors.Is(err, ErrUnverified) {
+			return notReached(err) // refused, not unknown: nothing new was established
+		}
 		return uncertain(err)
 	}
 	return nil

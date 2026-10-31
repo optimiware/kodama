@@ -715,11 +715,8 @@ func (c *core) establishClaim(ctx context.Context, ns string, id ident, rec reco
 		return rec, nil
 	}
 	return c.mutate(ctx, ns, id, func(r *record) error {
-		if got := r.created[opPVC]; got != "" && got != uid {
-			return unverified("the claim was replaced by another instance")
-		}
-		if r.reaping[opPVC] == uid {
-			return unverified("the claim is being deleted by its creator")
+		if err := r.checkEstablish(opPVC, uid); err != nil {
+			return err
 		}
 		r.created[opPVC] = uid
 		r.addVolumes(vol)

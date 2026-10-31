@@ -232,3 +232,46 @@ func Test_unit_kube_kernel_runtime_discovered_volumes_survive_an_attachment_list
 		t.Fatalf("released = %+v %v", rm, err)
 	}
 }
+
+// Every write that records an established instance applies the reaping
+// exclusion, including the settlement that ends a create.
+func Test_unit_kube_kernel_runtime_settlement_respects_a_reaping_claim(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	ws := h.ensureWorkspace(scopeA, "run-1", 1)
+	b := binding(scopeA, "run-1", "build", 1, "d", 1)
+	newer := bumpFence(b, 2)
+	id := workloadIdent(b)
+	j := h.ad.stepJob(id, h.startRequest(b, ws), h.target(), workspaceIdent(h, "run-1").base(), "", nil)
+
+	// A reserves, then its create finds the name taken by an instance that an
+	// earlier request made: it adopts through AlreadyExists.
+	h.cl.onNext("create job", func() { h.cl.putJob(testNS, j) })
+	// A's writes: the reservation, then the settlement. A pauses at the
+	// settlement, after its authority reread showed an active identity.
+	h.cl.onNext("update secret", func() {})
+	h.cl.onNext("update secret", func() {
+		job, _ := h.cl.job(testNS, h.jobName(b))
+		// The identity closes and the instance's creator claims it for reaping.
+		if _, err := h.ad.settle(ctx, testNS, id, newer.Fence, recStopped); err != nil {
+			t.Errorf("close: %v", err)
+		}
+		if ok, err := h.ad.claimReap(ctx, testNS, id, opJob, job.Metadata.UID); err != nil || !ok {
+			t.Errorf("claimReap = %v %v", ok, err)
+		}
+	})
+	_, err := h.start(h.startRequest(b, ws))
+	if !errors.Is(err, ErrUnverified) {
+		t.Fatalf("the adopter's establishment must be refused: %v", err)
+	}
+	rec := h.record(id)
+	if rec.created[opJob] != "" {
+		t.Fatalf("an instance under a reaping claim was established: %v", rec.created)
+	}
+	if rec.marked(opJob) {
+		t.Fatal("the adopter's own reservation must still be settled")
+	}
+	if _, err := h.rt.Observe(ctx, newer); !errors.Is(err, ErrUnverified) {
+		t.Fatalf("observation must not accept the doomed instance: %v", err)
+	}
+}
