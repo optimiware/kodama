@@ -14,7 +14,8 @@ import (
 
 // PublisherConfig configures a Publisher.
 type PublisherConfig struct {
-	Store Store
+	// Store is the outbox the publisher drains (a Store satisfies it).
+	Store Source
 	// Bus accepts a message durably or fails (natsbus.JetStream in a deployed
 	// profile).
 	Bus bus.Sink
@@ -109,8 +110,9 @@ type Result struct {
 func (p *Publisher) Drain(ctx context.Context) (Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.pass(ctx, func(tenant domain.TenantID) ([]Row, error) {
-		return p.cfg.Store.Pending(ctx, tenant, p.cfg.Now(), p.cfg.Batch)
+	return p.pass(ctx, func(tenant domain.TenantID) ([]Row, bool, error) {
+		rows, err := p.cfg.Store.Pending(ctx, tenant, p.cfg.Now(), p.cfg.Batch)
+		return rows, len(rows) < p.cfg.Batch, err
 	}, true)
 }
 
@@ -123,17 +125,29 @@ func (p *Publisher) Reconcile(ctx context.Context) (Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	cutoff := p.cfg.Now().Add(-p.cfg.Grace)
-	var after = map[domain.TenantID]int64{}
-	return p.pass(ctx, func(tenant domain.TenantID) ([]Row, error) {
+	after := map[domain.TenantID]int64{}
+	attempted := map[string]bool{} // a row is attempted once per pass
+	return p.pass(ctx, func(tenant domain.TenantID) ([]Row, bool, error) {
 		rows, err := p.cfg.Store.Unpublished(ctx, tenant, cutoff, after[tenant], p.cfg.Batch)
+		if err != nil {
+			return nil, true, err
+		}
 		if len(rows) > 0 {
 			after[tenant] = rows[len(rows)-1].Seq
 		}
-		return rows, err
+		fresh := make([]Row, 0, len(rows))
+		for _, r := range rows {
+			if key := string(tenant) + "\x00" + r.ID; !attempted[key] {
+				attempted[key] = true
+				fresh = append(fresh, r)
+			}
+		}
+		// The round ends on a short page or when nothing new came back.
+		return fresh, len(rows) < p.cfg.Batch || len(fresh) == 0, nil
 	}, false)
 }
 
-func (p *Publisher) pass(ctx context.Context, page func(domain.TenantID) ([]Row, error), stopOnFailure bool) (Result, error) {
+func (p *Publisher) pass(ctx context.Context, page func(domain.TenantID) (rows []Row, last bool, err error), stopOnFailure bool) (Result, error) {
 	var res Result
 	tenants, err := p.cfg.Store.Tenants(ctx)
 	if err != nil {
@@ -147,7 +161,7 @@ func (p *Publisher) pass(ctx context.Context, page func(domain.TenantID) ([]Row,
 	}
 	for _, tenant := range tenants {
 		for ctx.Err() == nil {
-			rows, err := page(tenant)
+			rows, last, err := page(tenant)
 			if err != nil {
 				note(fmt.Errorf("outbox: read outbox of %s: %w", tenant, err))
 				break
@@ -177,7 +191,7 @@ func (p *Publisher) pass(ctx context.Context, page func(domain.TenantID) ([]Row,
 				}
 				res.Published++
 			}
-			if len(rows) < p.cfg.Batch || (pageFailed && stopOnFailure) {
+			if last || (pageFailed && stopOnFailure) {
 				break
 			}
 		}

@@ -202,11 +202,9 @@ func TestOpenAgainstUnreachableURLFailsAtStartup(t *testing.T) {
 }
 
 func TestStreamSubjectsMustLieUnderTheRoot(t *testing.T) {
-	_, err := natsbus.NewJetStream(t.Context(), &nats.Conn{}, natsbus.JetStreamConfig{Subjects: "other.>"})
-	if err == nil {
-		t.Fatal("a stream outside kodama.v1 was accepted")
-	}
-	if _, err := natsbus.NewJetStream(t.Context(), nil, natsbus.JetStreamConfig{}); err == nil {
-		t.Fatal("a nil connection was accepted")
+	// The configuration is checked before the connection is used.
+	_, err := natsbus.Open(t.Context(), natsbus.Options{Profile: natsbus.Test, Conn: &nats.Conn{}, JetStream: natsbus.JetStreamConfig{Subjects: "other.>"}})
+	if !errors.Is(err, natsbus.ErrBrokerUnavailable) {
+		t.Fatalf("a stream outside kodama.v1 was accepted: %v", err)
 	}
 }

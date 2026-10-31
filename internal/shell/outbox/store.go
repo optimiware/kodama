@@ -19,14 +19,11 @@ type Tx interface {
 	Enqueue(ctx context.Context, row Row) (inserted bool, err error)
 }
 
-// Store is the consumer-owned port of the outbox table. All methods are scoped
-// by tenant except Tenants.
-type Store interface {
-	// Transact runs fn in one transaction: everything done through the Tx and the
-	// adapter's own handle commits when fn returns nil and is rolled back when it
-	// returns an error or the commit fails.
-	Transact(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
-
+// Source is what the publisher drains: the committed, unpublished rows of the
+// outbox table. It is separate from Store so that an adapter whose state
+// mutations commit through their own transactions (the kernel's PostgreSQL
+// store) can feed the publisher without implementing Transact.
+type Source interface {
 	// Tenants lists the tenants that have unpublished rows.
 	Tenants(ctx context.Context) ([]domain.TenantID, error)
 	// Pending lists up to limit unpublished rows of the tenant whose next
@@ -34,13 +31,25 @@ type Store interface {
 	Pending(ctx context.Context, tenant domain.TenantID, now time.Time, limit int) ([]Row, error)
 	// Unpublished lists up to limit unpublished rows of the tenant created at or
 	// before cutoff with Seq greater than after, ordered by Seq, regardless of
-	// their next attempt.
+	// their next attempt. An adapter without a sequence ignores after and leaves
+	// Seq zero; Reconcile never attempts a row twice in one pass, so it still
+	// terminates.
 	Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after int64, limit int) ([]Row, error)
 	// MarkPublished records the acknowledged publication of the row.
 	MarkPublished(ctx context.Context, tenant domain.TenantID, id string, at time.Time) error
 	// MarkFailed counts a failed attempt and defers the next one to next; the row
 	// stays in the outbox.
 	MarkFailed(ctx context.Context, tenant domain.TenantID, id string, next time.Time) error
+}
+
+// Store is the consumer-owned port of the outbox table: Source plus the
+// transaction in which state and intent commit together.
+type Store interface {
+	Source
+	// Transact runs fn in one transaction: everything done through the Tx and the
+	// adapter's own handle commits when fn returns nil and is rolled back when it
+	// returns an error or the commit fails.
+	Transact(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
 }
 
 // Writer commits a state change together with its events.

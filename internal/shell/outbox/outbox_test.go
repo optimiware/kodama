@@ -571,3 +571,87 @@ func TestPublisherRunDrainsOnKick(t *testing.T) {
 		t.Fatal("a publisher without a store and a bus was accepted")
 	}
 }
+
+// noCursor is a source whose Unpublished ignores the cursor and leaves Seq zero,
+// as an adapter over a store without a sequence does.
+type noCursor struct{ *outbox.MemoryStore }
+
+func (n noCursor) Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, _ int64, limit int) ([]outbox.Row, error) {
+	rows, err := n.MemoryStore.Unpublished(ctx, tenant, cutoff, 0, limit)
+	for i := range rows {
+		rows[i].Seq = 0
+	}
+	return rows, err
+}
+
+func TestReconcileTerminatesWithoutACursor(t *testing.T) {
+	ctx := context.Background()
+	c := newClock()
+	mem, broker := outbox.NewMemoryStore(), newBroker()
+	for i := range 5 {
+		_ = outbox.Writer{Store: mem, Now: c.now}.Commit(ctx, nil, intent("run.created", fmt.Sprintf("trg_%d", i), "run", ""))
+	}
+	c.advance(2 * time.Minute)
+	p := newPublisher(t, noCursor{mem}, broker, c) // batch of 2
+	broker.setDown(errors.New("down"))
+	if res, err := p.Reconcile(ctx); err != nil || res.Published != 0 || res.Failed != 2 {
+		t.Fatalf("reconcile during outage = %+v, %v (a page of failed rows is attempted once)", res, err)
+	}
+	broker.setDown(nil)
+	if res, err := p.Reconcile(ctx); err != nil || res.Published != 5 {
+		t.Fatalf("reconcile after recovery = %+v, %v", res, err)
+	}
+}
+
+func TestPublisherPagesEveryTenantAndDefersUnpublishableRows(t *testing.T) {
+	ctx := context.Background()
+	c := newClock()
+	store, broker := outbox.NewMemoryStore(), newBroker()
+	w := outbox.Writer{Store: store, Now: c.now}
+	for i := range 7 {
+		if err := w.Commit(ctx, nil, intent("x.y", fmt.Sprintf("a%02d", i), "r", "")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := intent("x.y", "b00", "r", "")
+	other.TenantID, other.TenantKey, other.ProjectID, other.ProjectKey = "t_b", "b", "", ""
+	if err := w.Commit(ctx, nil, other); err != nil {
+		t.Fatal(err)
+	}
+	p, err := outbox.NewPublisher(outbox.PublisherConfig{Store: store, Bus: broker, Batch: 3, Now: c.now, BaseBackoff: time.Second, MaxBackoff: 8 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := p.Drain(ctx); err != nil || res.Published != 8 || res.Failed != 0 || broker.len() != 8 {
+		t.Fatalf("drain = %+v, %v (%d on the broker)", res, err, broker.len())
+	}
+	if got := broker.stream[7].subject; got != "kodama.v1.b._.x.y" {
+		t.Fatalf("tenant-wide subject = %s", got)
+	}
+
+	// A row whose subject cannot be formed never reaches the bus, is deferred
+	// with a growing delay and does not hold back the others. (The writer refuses
+	// such an intent; this row stands for one written by another path.)
+	bad, _ := intent("x.y", "z-bad", "r", "").Row(c.now())
+	bad.TenantKey = "Bad Key"
+	good, _ := intent("x.y", "z-good", "r", "").Row(c.now())
+	if err := store.Transact(ctx, func(ctx context.Context, tx outbox.Tx) error {
+		for _, r := range []outbox.Row{bad, good} {
+			if _, err := tx.Enqueue(ctx, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := p.Drain(ctx)
+	if err != nil || res.Published != 1 || res.Failed != 1 || !store.Published(good.ID) || store.Published(bad.ID) {
+		t.Fatalf("drain with a bad subject = %+v, %v", res, err)
+	}
+	for attempts, want := range map[int]time.Duration{0: time.Second, 1: 2 * time.Second, 2: 4 * time.Second, 3: 8 * time.Second, 4: 8 * time.Second, 40: 8 * time.Second} {
+		if got := p.Backoff(attempts); got != want {
+			t.Errorf("Backoff(%d) = %s, want %s", attempts, got, want)
+		}
+	}
+}
