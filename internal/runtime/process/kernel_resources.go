@@ -81,7 +81,7 @@ func (r *KernelResources) Ensure(ctx context.Context, spec kr.ResourceSpec) (kr.
 	}
 	typ := resourceType(spec.Kind)
 	key := objectKey(spec.Scope, typ, spec.Identity)
-	handle := kr.ResourceHandle{Scope: spec.Scope, RunID: spec.RunID, Kind: spec.Kind, Name: spec.Name, Identity: spec.Identity, Fence: spec.Fence}
+	handle := kr.ResourceHandle{Scope: spec.Scope, Owner: spec.Owner, Lifetime: spec.Lifetime, RunID: spec.RunID, Kind: spec.Kind, Name: spec.Name, Identity: spec.Identity, Fence: spec.Fence}
 	unlock := h.st.lock(typ, key)
 	defer unlock()
 
