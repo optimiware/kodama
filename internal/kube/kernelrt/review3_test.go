@@ -331,6 +331,69 @@ func Test_unit_kube_kernel_runtime_applied_create_is_never_reported_not_reached(
 		}
 	})
 
+	t.Run("workspace: a conflicting claim that bound before compensation keeps its volume evidence", func(t *testing.T) {
+		h := newHarness(t)
+		spec := h.workspaceSpec(scopeA, "run-1", 1)
+		id := workspaceIdent(h, "run-1")
+		handle := h.workspaceHandle(scopeA, "run-1")
+		var conflicting string
+		h.cl.onNext("create pvc", func() {
+			if _, err := h.res.Ensure(ctx, spec); err != nil { // establishes claim B
+				t.Errorf("overlapping ensure: %v", err)
+			}
+			h.dropObject(h.cl.pvcs, id) // B disappears
+		})
+		// The overlapping call's create passes through its own after-hook first.
+		h.cl.onAfter("create pvc", func() {})
+		h.cl.onAfter("create pvc", func() {
+			// This call's claim A is being bound to a volume the cluster keeps, still
+			// attached: the volume names it by claimRef, but the claim does not yet
+			// carry the volume name, so the name is not known to the adapter.
+			conflicting = h.pvcUID(id)
+			pv := kubernetes.PersistentVolume{}
+			pv.Spec.PersistentVolumeReclaimPolicy = "Retain"
+			pv.Spec.ClaimRef = &kubernetes.ObjectReference{Namespace: testNS, Name: id.base(), UID: conflicting}
+			h.cl.pvs["pv-a"] = pv
+			name := "pv-a"
+			att := kubernetes.VolumeAttachment{}
+			att.Spec.Source.PersistentVolumeName = &name
+			att.Status.Attached = true
+			h.cl.attached = []kubernetes.VolumeAttachment{att}
+		})
+		_, err := h.res.Ensure(ctx, spec)
+		if runtime.ClassifyEffect(err) != runtime.CommandUncertain {
+			t.Fatalf("err = %v", err)
+		}
+		// Repeated Remove, before and after quiescence, never confirms: the volume
+		// is retained and attached.
+		for i := 0; i < 3; i++ {
+			o, err := h.res.Remove(ctx, handle)
+			if err != nil || o.ConfirmedRemoved() {
+				t.Fatalf("remove %d confirmed cleanup with a surviving volume: %+v %v", i, o, err)
+			}
+			h.clock.Advance(2 * time.Minute)
+		}
+		if ev, _ := h.res.ReleaseEvidence(ctx, handle); ev.Released() || !ev.Retained || !ev.Attached {
+			t.Fatalf("evidence = %+v", ev)
+		}
+		rec := h.record(id)
+		if len(rec.compensated) != 1 || rec.compensated[0] != conflicting || len(rec.volumes) != 1 || rec.volumes[0] != "pv-a" {
+			t.Fatalf("cleanup evidence not recorded: compensated %v volumes %v", rec.compensated, rec.volumes)
+		}
+		if rec.created[opPVC] == conflicting {
+			t.Fatal("the compensated claim must not become the established one")
+		}
+		// The same with the volume object gone but the attachment still reported.
+		delete(h.cl.pvs, "pv-a")
+		if o, err := h.res.Remove(ctx, handle); err != nil || o.ConfirmedRemoved() {
+			t.Fatalf("an attached volume without its PV object = %+v %v", o, err)
+		}
+		h.cl.attached = nil
+		if o, err := h.res.Remove(ctx, handle); err != nil || !o.ConfirmedRemoved() {
+			t.Fatalf("released = %+v %v", o, err)
+		}
+	})
+
 	t.Run("an adopted object is still not reached", func(t *testing.T) {
 		// The adopter made no create effect; the refusal stays a not-reached one.
 		h := newHarness(t)

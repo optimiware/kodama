@@ -195,11 +195,31 @@ func (c *core) deleteClaim(ctx context.Context, ns string, id ident) (kubernetes
 	return p, nil
 }
 
-// reapClaim deletes the claim with exactly this UID.
+// reapClaim deletes the claim with exactly this UID. Before it does, the UID
+// and any volume the claim is bound to are written to the record as cleanup
+// evidence, apart from the authoritative established UID: the claim is the only
+// pointer to its volume, and a volume found later through its claimRef must not
+// be mistaken for someone else's. If the evidence cannot be recorded the claim
+// is left alone.
 func (c *core) reapClaim(ctx context.Context, ns string, id ident, uid string) error {
 	p, found, err := c.getPVC(ctx, ns, id.base())
-	if err != nil || !found || p.Metadata.UID != uid || !id.owns(p.Metadata.Labels, p.Metadata.Annotations) {
+	if err != nil {
 		return err
+	}
+	ours := found && p.Metadata.UID == uid && id.owns(p.Metadata.Labels, p.Metadata.Annotations)
+	vol := ""
+	if ours {
+		vol = p.Spec.VolumeName
+	}
+	if _, err := c.mutate(ctx, ns, id, func(r *record) error {
+		r.addCompensated(uid)
+		r.addVolumes(vol)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !ours {
+		return nil
 	}
 	if err := c.cluster.DeletePVC(ctx, ns, p.Metadata.Name, kubernetes.DeleteOptions{UID: uid}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
 		return fmt.Errorf("kernelrt: deleting the workspace claim: %w", err)
@@ -752,7 +772,8 @@ func (c *core) evidence(ctx context.Context, ns string, id ident, rec record) (R
 	var names []string
 	for _, pv := range pvs {
 		ref := pv.Spec.ClaimRef
-		byClaim := ref != nil && ref.Namespace == ns && ref.Name == id.base() && (rec.created[opPVC] == "" || ref.UID == "" || ref.UID == rec.created[opPVC])
+		byClaim := ref != nil && ref.Namespace == ns && ref.Name == id.base() &&
+			(rec.created[opPVC] == "" || ref.UID == "" || ref.UID == rec.created[opPVC] || slices.Contains(rec.compensated, ref.UID))
 		if byClaim || slices.Contains(rec.volumes, pv.Metadata.Name) {
 			names = append(names, pv.Metadata.Name)
 			if !slices.Contains(known, pv.Metadata.Name) {

@@ -69,6 +69,11 @@ type record struct {
 	// through its claimRef. They are persisted because the claim, and later the
 	// volume object, can disappear while the volume is still attached.
 	volumes []string
+	// compensated are the UIDs of workspace claims this adapter created and then
+	// deleted as unwanted (a conflicting or revoked create). They are cleanup
+	// evidence only, never the authoritative established UID: their volumes are
+	// still found through claimRef after the claims are gone.
+	compensated []string
 	// claimGone is when the workspace claim was first observed gone.
 	claimGone time.Time
 	createdAt time.Time
@@ -112,6 +117,9 @@ func decodeRecord(s kubernetes.Secret) (record, error) {
 	if v := a[annVolumes]; v != "" {
 		r.volumes = strings.Split(v, ",")
 	}
+	if v := a[annCompensated]; v != "" {
+		r.compensated = strings.Split(v, ",")
+	}
 	if t, ok := parseTime(s.Metadata.CreationTimestamp); ok {
 		r.createdAt = t
 	}
@@ -143,6 +151,7 @@ func (r *record) apply(now time.Time) {
 	}
 	setOrDelete(a, annClaimGone, r.claimGone)
 	setOrEmpty(a, annVolumes, strings.Join(r.volumes, ","))
+	setOrEmpty(a, annCompensated, strings.Join(r.compensated, ","))
 	setOrEmpty(a, annWorkspace, r.workspace)
 	setOrEmpty(a, annSecretsDir, r.secretsDir)
 }
@@ -191,6 +200,15 @@ func (r *record) addVolumes(names ...string) {
 		}
 	}
 	slices.Sort(r.volumes)
+}
+
+// addCompensated records the UID of a claim that is about to be deleted as
+// unwanted.
+func (r *record) addCompensated(uid string) {
+	if uid != "" && !slices.Contains(r.compensated, uid) {
+		r.compensated = append(r.compensated, uid)
+		slices.Sort(r.compensated)
+	}
 }
 
 // revoked reports whether a writer holding fence no longer has authority: the

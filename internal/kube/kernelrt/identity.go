@@ -95,6 +95,7 @@ const (
 	annReapingPrefix = "kodama.io/reaping."
 	annCreatedPrefix = "kodama.io/created."
 	annClaimGone     = "kodama.io/claim-gone"
+	annCompensated   = "kodama.io/compensated-claims"
 	annWorkspace     = "kodama.io/workspace-claim"
 
 	// Operations that create one cluster object each.
