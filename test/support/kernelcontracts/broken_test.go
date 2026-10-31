@@ -79,6 +79,7 @@ type hooks struct {
 	load     func(in subject, ctx context.Context, s domain.Scope, id domain.RunID) (rt.RunRecord, error)
 	claim    func(in subject, ctx context.Context, req rt.ClaimRequest, now time.Time) (rt.RunRecord, error)
 	renew    func(in subject, ctx context.Context, held rt.Claim, ttl time.Duration, now time.Time) (rt.Claim, error)
+	release  func(in subject, ctx context.Context, held rt.Claim, now time.Time) error
 	commit   func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error)
 	runnable func(in subject, ctx context.Context, q rt.RunnableQuery) ([]rt.RunRef, error)
 	lookup   func(in subject, ctx context.Context, id rt.SignalIdentity) (rt.SignalLookup, error)
@@ -118,6 +119,13 @@ func (b *broken) Renew(ctx context.Context, held rt.Claim, ttl time.Duration, no
 		return b.h.renew(b.subject, ctx, held, ttl, now)
 	}
 	return b.subject.Renew(ctx, held, ttl, now)
+}
+
+func (b *broken) Release(ctx context.Context, held rt.Claim, now time.Time) error {
+	if b.h.release != nil {
+		return b.h.release(b.subject, ctx, held, now)
+	}
+	return b.subject.Release(ctx, held, now)
 }
 
 func (b *broken) Commit(ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
@@ -420,6 +428,141 @@ func brokenAdapters() []struct {
 				q.Now = q.Now.Add(1000 * time.Hour)
 				return in.Runnable(ctx, q)
 			}})},
+		// Outputs.
+		{"outputs are not persisted", "outputs/are_recorded_with_the_settlement_and_survive_takeover", "", wrap(hooks{
+			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
+				t.Outputs = nil
+				return in.Commit(ctx, t)
+			}})},
+		{"undeclared output names are accepted", "outputs/refuse_undeclared_oversized_late_and_unsettled", "an undeclared output name", wrap(hooks{
+			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
+				rec, err := in.Commit(ctx, t)
+				if err == nil || len(t.Outputs) == 0 {
+					return rec, err
+				}
+				// A store that does not check the plan's names: it records the value under one it knows.
+				outs := slices.Clone(t.Outputs)
+				for i, o := range outs {
+					vals := map[string]string{}
+					for _, v := range o.Values {
+						vals["commit"] = v
+					}
+					outs[i].Values = vals
+				}
+				t.Outputs = outs
+				if rec2, err2 := in.Commit(ctx, t); err2 == nil {
+					return rec2, nil
+				}
+				return rec, err
+			}})},
+		{"oversized output values are accepted", "outputs/refuse_undeclared_oversized_late_and_unsettled", "an oversized output value", wrap(hooks{
+			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
+				rec, err := in.Commit(ctx, t)
+				if err == nil || len(t.Outputs) == 0 {
+					return rec, err
+				}
+				outs := slices.Clone(t.Outputs)
+				for i, o := range outs {
+					vals := map[string]string{}
+					for k, v := range o.Values {
+						vals[k] = v[:min(len(v), rt.MaxOutputValueBytes)]
+					}
+					outs[i].Values = vals
+				}
+				t.Outputs = outs
+				if rec2, err2 := in.Commit(ctx, t); err2 == nil {
+					return rec2, nil
+				}
+				return rec, err
+			}})},
+		{"outputs refused after settlement are silently dropped", "outputs/refuse_undeclared_oversized_late_and_unsettled", "outputs added after the step settled", wrap(hooks{
+			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
+				rec, err := in.Commit(ctx, t)
+				if err != nil && errors.Is(err, rt.ErrIllegalTransition) && len(t.Outputs) > 0 {
+					if cur, lerr := in.Load(ctx, t.Scope, t.RunID); lerr == nil && cur.Run.Steps[0].State == rt.StepSucceeded {
+						t.Outputs = nil
+						return in.Commit(ctx, t)
+					}
+				}
+				return rec, err
+			}})},
+		// Claim release.
+		{"release does nothing", "release/frees_the_run_without_ending_it", "", wrap(hooks{
+			release: func(in subject, ctx context.Context, held rt.Claim, now time.Time) error { return nil }})},
+		{"release also cancels the run", "release/frees_the_run_without_ending_it", "the run is not changed", wrap(hooks{
+			release: func(in subject, ctx context.Context, held rt.Claim, now time.Time) error {
+				if err := in.Release(ctx, held, now); err != nil {
+					return err
+				}
+				_, err := in.RequestCancel(ctx, held.Scope, held.RunID)
+				return err
+			}})},
+		{"release ignores owner and fence", "release/never_takes_anothers_claim", "", wrap(hooks{
+			release: func(in subject, ctx context.Context, held rt.Claim, now time.Time) error {
+				cur, err := in.Load(ctx, held.Scope, held.RunID)
+				if err != nil {
+					return err
+				}
+				if cur.Claim != (rt.Claim{}) {
+					held = cur.Claim
+				}
+				return in.Release(ctx, held, now)
+			}})},
+		{"release finds the run in any project", "release/is_scoped_by_tenant_and_project", "", wrap(hooks{
+			release: func(in subject, ctx context.Context, held rt.Claim, now time.Time) error {
+				err := in.Release(ctx, held, now)
+				if !isCode(err, domain.CodeNotFound) {
+					return err
+				}
+				for _, p := range []domain.ProjectID{"p1", "p2"} {
+					for _, tn := range []domain.TenantID{"t1", "t2"} {
+						h := held
+						h.Scope = domain.Scope{TenantID: tn, ProjectID: p}
+						if cur, lerr := in.Load(ctx, h.Scope, h.RunID); lerr == nil {
+							h = cur.Claim
+							if h != (rt.Claim{}) {
+								return in.Release(ctx, h, now)
+							}
+						}
+					}
+				}
+				return err
+			}})},
+		// Secret materialization identity.
+		{"materializations are not persisted", "materialization/identity_is_durable_scoped_and_revoked_once", "", wrap(hooks{
+			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
+				t.Materializations = nil
+				return in.Commit(ctx, t)
+			}})},
+		{"a revoked materialization can be reopened", "materialization/identity_is_durable_scoped_and_revoked_once", "reopening a revoked materialization", wrap(hooks{
+			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
+				rec, err := in.Commit(ctx, t)
+				if err != nil && errors.Is(err, rt.ErrIllegalTransition) && len(t.Materializations) > 0 {
+					t.Materializations = nil
+					return in.Commit(ctx, t)
+				}
+				return rec, err
+			}})},
+		{"another tenant's materialization is recorded under this one", "materialization/identity_is_durable_scoped_and_revoked_once", "another tenant's identity", wrap(hooks{
+			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
+				rec, err := in.Commit(ctx, t)
+				if err == nil || len(t.Materializations) == 0 {
+					return rec, err
+				}
+				ms := slices.Clone(t.Materializations)
+				for i, m := range ms {
+					if m.Ref.Scope != t.Scope {
+						if ref, rerr := rt.NewMaterializationRef(t.Scope, m.Ref.RunID, m.Ref.StepKey, m.Ref.Attempt); rerr == nil {
+							ms[i].Ref = ref
+						}
+					}
+				}
+				t.Materializations = ms
+				if rec2, err2 := in.Commit(ctx, t); err2 == nil {
+					return rec2, nil
+				}
+				return rec, err
+			}})},
 		{"a returned record aliases the store", "admit/returns_copies", "", func(in subject) subject {
 			// An adapter that hands out the one shared record: the first mutation shows in later loads.
 			var cache *rt.RunRecord
@@ -458,7 +601,8 @@ func Test_unit_kernel_state_contract_rejects_broken_adapters(t *testing.T) {
 	for _, c := range cases {
 		groups[c.Group] = true
 	}
-	for _, g := range []kc.Group{kc.GroupAdmission, kc.GroupClaims, kc.GroupCommits, kc.GroupCancel, kc.GroupCleanup, kc.GroupWaits, kc.GroupScope, kc.GroupViews} {
+	for _, g := range []kc.Group{kc.GroupAdmission, kc.GroupClaims, kc.GroupCommits, kc.GroupCancel, kc.GroupCleanup, kc.GroupWaits, kc.GroupScope, kc.GroupViews,
+		kc.GroupOutputs, kc.GroupRelease, kc.GroupMaterialization} {
 		if !groups[g] {
 			t.Errorf("no case in group %s", g)
 		}

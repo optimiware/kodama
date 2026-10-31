@@ -49,6 +49,20 @@ func Test_unit_kernel_state_wait_consumption(t *testing.T) {
 	kernelcontracts.RunGroup(t, memory, kernelcontracts.GroupWaits)
 }
 
+// Test_unit_kernel_state_release covers giving up a claim without ending the run:
+// the fence and run are kept, the lease ends now, a holder that no longer holds
+// the claim changes nothing, and the release is scoped by tenant and project.
+func Test_unit_kernel_state_release(t *testing.T) {
+	kernelcontracts.RunGroup(t, memory, kernelcontracts.GroupRelease)
+}
+
+// Test_unit_kernel_state_outputs_and_materializations covers the durable evidence
+// the engine recovers from: a succeeded step's declared outputs and the scoped
+// identity of secret material.
+func Test_unit_kernel_state_outputs_and_materializations(t *testing.T) {
+	kernelcontracts.RunGroup(t, memory, kernelcontracts.GroupOutputs, kernelcontracts.GroupMaterialization)
+}
+
 func Test_unit_kernel_state_memory_adapter(t *testing.T) {
 	clock := kernelcontracts.NewClock()
 	t.Run("a store needs a clock", func(t *testing.T) {

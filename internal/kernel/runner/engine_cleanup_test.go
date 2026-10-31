@@ -228,7 +228,7 @@ func Test_unit_kernel_engine_cleanup(t *testing.T) {
 		e.expect(e.load("run1").Run.Cleanup.State == runtime.CleanupComplete, "the backend's reconciliation lets a late claim complete it")
 	})
 
-	t.Run("a run whose secrets cannot be revoked is not terminal", cleanupHoldsForRevocation)
+	t.Run("a run whose secrets cannot be revoked is not terminal", cleanupRevokesFromTheRecord)
 
 	t.Run("process backend", processCleanup)
 }

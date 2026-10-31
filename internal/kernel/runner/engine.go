@@ -18,17 +18,18 @@ type StepRef struct {
 	Attempt int
 }
 
-// Outputs is the engine's consumer-owned port for the declared outputs of a
-// container step. The run record has no field for them, so the shell (or a test)
-// retains them: Collect reads and durably records the declared outputs of a
-// step that settled as succeeded, and is idempotent on the step reference; Read
-// returns what was recorded, or nothing. The engine calls Collect only for a
-// succeeded step and Read only for one that succeeded, so the outputs of a
-// failed or cancelled step are never recorded or visible. An engine without an
-// Outputs port treats every output as missing.
-type Outputs interface {
+// OutputCollector is the engine's consumer-owned port for reading what a
+// container step's workload produced. It is only the source: Collect returns the
+// values of the declared names for a step that settled as succeeded, and the
+// engine records them in the run record (runtime.StepOutputs) in the same commit
+// that settles the step. After that commit the record is the authority, read by
+// every later claim whatever its configuration; nothing here is read back. The
+// engine calls Collect only for a succeeded step, so the outputs of a failed or
+// cancelled step are never produced. A value for a name the plan did not declare,
+// longer than runtime.MaxOutputValueBytes or not valid text is not recorded. An
+// engine without a collector records no output, and every output reads as missing.
+type OutputCollector interface {
 	Collect(ctx context.Context, ref StepRef, declared []string) (map[string]string, error)
-	Read(ctx context.Context, ref StepRef) (map[string]string, error)
 }
 
 // EngineConfig wires the engine to its ports. State, Runtime, Resources and
@@ -44,8 +45,8 @@ type EngineConfig struct {
 	// Workspace supplies the pinned preparation inputs; a nil preparer means a
 	// source-free run.
 	Workspace runtime.WorkspacePreparer
-	// Outputs records and reads declared step outputs; see Outputs.
-	Outputs Outputs
+	// Outputs supplies the declared outputs of a succeeded step; see OutputCollector.
+	Outputs OutputCollector
 	Clock   runtime.Clock
 
 	// Owner identifies this engine in claims; it must be unique per worker.
@@ -143,7 +144,8 @@ const (
 	// DriveTerminal: the run is terminal, its cleanup confirmed or exhausted.
 	DriveTerminal DriveStatus = "terminal"
 	// DriveWaiting: the run is parked on an open wait; Next is the earliest
-	// deadline. The lease is left to expire so a later claim resumes the run.
+	// deadline. The engine released its claim, so the next claim, made once a
+	// signal or the deadline wakes the run, does not wait for the lease to expire.
 	DriveWaiting DriveStatus = "waiting"
 	// DriveCleaning: execution ended and cleanup is unfinished but cannot make
 	// progress now (a retained resource or workload, or a transient failure).
@@ -151,9 +153,9 @@ const (
 	// DriveRetry: an observation or effect was inconclusive; a later claim
 	// reconciles it from the durable record.
 	DriveRetry DriveStatus = "retry"
-	// DriveHeld: the engine cannot revoke a settled step's secrets faithfully and
-	// holds the run rather than advance or skip; Report.Reason is the stable code
-	// (ReasonRevocationNoResolver, ReasonRevocationUnrecoverable).
+	// DriveHeld: a settled step's secret material is recorded as issued and this
+	// engine has no resolver to revoke it with, so it holds the run rather than
+	// advance or skip; Report.Reason is ReasonRevocationNoResolver.
 	DriveHeld DriveStatus = "held"
 	// DriveSkipped: the claim was not granted (held, or the purpose closed).
 	DriveSkipped DriveStatus = "skipped"
@@ -220,6 +222,12 @@ func (e *Engine) Drive(ctx context.Context, ref runtime.RunRef) (Report, error) 
 	d := &drive{e: e, ctx: ctx, rec: rec, claim: rec.Claim, fresh: map[string]pendingStart{}}
 	rep, err := d.run()
 	rep.Ref, rep.Run = ref, d.rec.Run
+	if err == nil && rep.Status == DriveWaiting {
+		// Parked on a wait: give the lease up so resumption is not delayed by it.
+		// A release that fails (or finds the claim gone) only means the lease
+		// expires as it would have.
+		_ = e.cfg.State.Release(context.WithoutCancel(ctx), d.claim, e.cfg.Clock.Now())
+	}
 	if errors.Is(err, runtime.ErrStaleFence) || errors.Is(err, runtime.ErrClaimExpired) {
 		rep.Status = DriveLost
 		return rep, nil
@@ -258,12 +266,6 @@ type drive struct {
 	fresh map[string]pendingStart
 	// nextWake is the earliest open-wait deadline seen in this pass.
 	nextWake time.Time
-	// mats are the secret materializations this drive created, by step.
-	mats map[domain.StepID]runtime.Materialization
-	// released are the steps whose secret access this drive revoked. Only the
-	// drive that resolved a step's secrets holds the materialization, so only it
-	// can revoke them; a later claim holds the run (DriveHeld) instead.
-	released map[domain.StepID]bool
 	// failing holds commands settled as final by a reconciliation that fails the
 	// run: they commit atomically with the run's failure.
 	failing []runtime.Command
@@ -363,6 +365,8 @@ type batch struct {
 	commands  []runtime.Command
 	workloads []runtime.WorkloadObservation
 	resources []runtime.ResourceObservation
+	outputs   []runtime.StepOutputs
+	mats      []runtime.MaterializationRecord
 	events    []pendingEvent
 }
 
@@ -395,7 +399,7 @@ func (d *drive) commit(b *batch) error {
 	now := d.e.cfg.Clock.Now()
 	t := runtime.Transition{Scope: prev.Scope, RunID: prev.ID, Claim: d.claim, Now: now, ExpectedVersion: prev.Version,
 		Run: sealed, Waits: b.waits, Commands: b.commands, Workloads: b.workloads, Resources: b.resources,
-		RenewTTL: d.e.cfg.LeaseTTL}
+		Outputs: b.outputs, Materializations: b.mats, RenewTTL: d.e.cfg.LeaseTTL}
 	for _, pe := range b.events {
 		v := pe.version
 		if v == 0 {

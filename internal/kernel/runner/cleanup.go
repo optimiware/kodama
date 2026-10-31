@@ -165,7 +165,7 @@ func (d *drive) cleanupAttempt() (flow, error) {
 	// Revocation first: a run is terminal only once no settled step's secret
 	// access remains. A release that fails leaves cleanup visibly pending.
 	if hold, err := d.revokeSettled(); err != nil {
-		return d.stop(DriveCleaning)
+		return d.retryRevocation(err, DriveCleaning)
 	} else if hold != runtime.ReasonNone {
 		return d.hold(hold, DriveHeld)
 	}
@@ -209,7 +209,7 @@ func (d *drive) cleanupAttempt() (flow, error) {
 // clears the record. It never reopens execution.
 func (d *drive) lateCleanup() (flow, error) {
 	if hold, err := d.revokeSettled(); err != nil {
-		return d.stop(DriveCleaning)
+		return d.retryRevocation(err, DriveCleaning)
 	} else if hold != runtime.ReasonNone {
 		return d.hold(hold, DriveHeld)
 	}

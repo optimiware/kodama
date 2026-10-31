@@ -390,7 +390,8 @@ func newFakeOutputs() *fakeOutputs {
 	return &fakeOutputs{values: map[domain.StepID]map[string]string{}}
 }
 
-// produce sets what a step's workload "wrote"; it is recorded only on Collect.
+// produce sets what a step's workload "wrote"; the engine reads it through Collect
+// when the step settles as succeeded and records it in the run record.
 func (f *fakeOutputs) produce(step domain.StepID, kv map[string]string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -404,48 +405,40 @@ func (f *fakeOutputs) Collect(_ context.Context, ref runner.StepRef, declared []
 	return f.values[ref.StepKey], nil
 }
 
-func (f *fakeOutputs) Read(_ context.Context, ref runner.StepRef) (map[string]string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, k := range f.collect {
-		if k == ref.StepKey {
-			return f.values[ref.StepKey], nil
-		}
-	}
-	return nil, nil
-}
-
 type fakeSecrets struct {
-	mu        sync.Mutex
-	resolved  []domain.StepID
+	mu       sync.Mutex
+	resolved []domain.StepID
+	// released lists the steps whose material was revoked, in order.
 	released  []domain.StepID
 	resolveFn func(step domain.StepID) error
-	// releaseFn runs at every Release; a returned error is a failed release and a
+	// revokeFn runs at every Revoke; a returned error is a failed revocation and a
 	// panic stands for a crash at that point.
-	releaseFn func(step domain.StepID) error
+	revokeFn func(step domain.StepID) error
 }
 
 func (f *fakeSecrets) Resolve(_ context.Context, req runtime.ResolveRequest) (runtime.Materialization, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	r := req.Ref
 	if f.resolveFn != nil {
-		if err := f.resolveFn(req.StepKey); err != nil {
+		if err := f.resolveFn(r.StepKey); err != nil {
 			return runtime.Materialization{}, err
 		}
 	}
-	f.resolved = append(f.resolved, req.StepKey)
-	return runtime.Materialization{Scope: req.Scope, RunID: req.RunID, StepKey: req.StepKey, Directory: "/run/secrets/" + string(req.StepKey), Refs: req.Refs}, nil
+	f.resolved = append(f.resolved, r.StepKey)
+	return runtime.Materialization{Scope: r.Scope, RunID: r.RunID, StepKey: r.StepKey, Attempt: r.Attempt, ID: r.ID,
+		Directory: "/run/secrets/" + string(r.StepKey), Refs: req.Refs}, nil
 }
 
-func (f *fakeSecrets) Release(_ context.Context, m runtime.Materialization) error {
+func (f *fakeSecrets) Revoke(_ context.Context, ref runtime.MaterializationRef) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.releaseFn != nil {
-		if err := f.releaseFn(m.StepKey); err != nil {
+	if f.revokeFn != nil {
+		if err := f.revokeFn(ref.StepKey); err != nil {
 			return err
 		}
 	}
-	f.released = append(f.released, m.StepKey)
+	f.released = append(f.released, ref.StepKey)
 	return nil
 }
 
