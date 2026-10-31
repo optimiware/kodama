@@ -287,11 +287,13 @@ func (d *drive) reload() error {
 	if err != nil {
 		return err
 	}
-	// Keep the claim the store holds: a commit extends the lease.
-	d.rec = rec
-	if rec.Claim.Fence == d.claim.Fence && rec.Claim.Owner == d.claim.Owner {
-		d.claim = rec.Claim
+	// Another owner holds the run now: this engine is a stale writer and stops
+	// before it tries to write.
+	if rec.Claim.Fence != d.claim.Fence || rec.Claim.Owner != d.claim.Owner {
+		return fmt.Errorf("%w: run %s is claimed by %s at fence %d", runtime.ErrStaleFence, rec.Run.ID, rec.Claim.Owner, rec.Claim.Fence)
 	}
+	// Keep the claim the store holds: a commit extends the lease.
+	d.rec, d.claim = rec, rec.Claim
 	d.nextWake = time.Time{}
 	return nil
 }
@@ -412,12 +414,17 @@ func (d *drive) renew() error {
 	return nil
 }
 
-// pause renews the lease and waits one poll interval.
+// pause renews the lease, waits one poll interval and reloads the record: a
+// cancellation, a wait decision or a takeover by another writer happens outside
+// this engine's commits, and a poll is where it learns of them.
 func (d *drive) pause() error {
 	if err := d.renew(); err != nil {
 		return err
 	}
-	return d.e.cfg.Sleep(d.ctx, d.e.cfg.PollInterval)
+	if err := d.e.cfg.Sleep(d.ctx, d.e.cfg.PollInterval); err != nil {
+		return err
+	}
+	return d.reload()
 }
 
 // stop ends the drive with a retry status: something inconclusive was left for a

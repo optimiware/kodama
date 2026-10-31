@@ -102,8 +102,10 @@ func (f *fakeRuntime) Capabilities(context.Context) (runtime.CapabilitySet, erro
 	return f.caps, nil
 }
 
-func (f *fakeRuntime) obs(w *fakeWorkload, b runtime.RuntimeBinding) runtime.WorkloadObservation {
-	return runtime.WorkloadObservation{Binding: b, Phase: w.phase, Result: w.result, ObservedAt: f.clock.Now()}
+// obs reports the workload under the binding it was created with, so an adopted
+// workload shows the identity, specification and fence of whoever created it.
+func (f *fakeRuntime) obs(w *fakeWorkload, _ runtime.RuntimeBinding) runtime.WorkloadObservation {
+	return runtime.WorkloadObservation{Binding: w.b, Phase: w.phase, Result: w.result, ObservedAt: f.clock.Now()}
 }
 
 func (f *fakeRuntime) absent(b runtime.RuntimeBinding) runtime.WorkloadObservation {
