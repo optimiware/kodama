@@ -102,6 +102,9 @@ type Custody struct {
 	// beforePublish runs after the material is prepared and before it is
 	// published (tests hold a Resolve there).
 	beforePublish func()
+	// underLock runs while the publication lock is held and the identity was
+	// confirmed open, before anything is published (tests hold a process there).
+	underLock func()
 }
 
 // NewCustody opens the custody directory, creating its layout.
@@ -164,9 +167,29 @@ func key(id string) string {
 
 func (c *Custody) path(sub, id string) string { return filepath.Join(c.root, sub, key(id)) }
 
-func (c *Custody) tombstoned(id string) bool {
+// ErrRevocationState reports that whether an identity is closed could not be
+// determined. Custody fails closed on it: nothing is published while the answer
+// is unknown, because a storage error must never reopen a revoked identity.
+var ErrRevocationState = errors.New("secret: cannot read the revocation state")
+
+// tombstoned reports whether the identity is closed. Only the confirmed absence
+// of its tombstone, in a tombstone directory that itself exists, is "open"; a
+// permission, I/O or any other error is returned and is never read as absence.
+func (c *Custody) tombstoned(id string) (bool, error) {
 	_, err := os.Lstat(c.path("tombstones", id))
-	return err == nil
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		// An absent tombstone only counts when the directory that would hold it is
+		// really there: a vanished directory is lost state, not an open identity.
+		if _, derr := os.Stat(filepath.Join(c.root, "tombstones")); derr != nil {
+			return false, fmt.Errorf("%w: %w", ErrRevocationState, derr)
+		}
+		return false, nil
+	default:
+		return false, fmt.Errorf("%w: %w", ErrRevocationState, err)
+	}
 }
 
 func (c *Custody) emit(e Event) {
@@ -209,13 +232,19 @@ func (c *Custody) Resolve(ctx context.Context, req runtime.ResolveRequest) (runt
 	if err := checkRefs(ref.Scope, req.Refs); err != nil {
 		return runtime.Materialization{}, err
 	}
-	if c.tombstoned(ref.ID) {
+	switch closed, err := c.tombstoned(ref.ID); {
+	case err != nil:
+		return runtime.Materialization{}, err
+	case closed:
 		c.emit(eventOf(ref, EventRefused, "", nil))
 		return runtime.Materialization{}, runtime.ErrMaterializationRevoked
 	}
 	// refused turns a failure into the revocation that caused it, when there was one.
 	refused := func(err error) error {
-		if c.tombstoned(ref.ID) {
+		switch closed, serr := c.tombstoned(ref.ID); {
+		case serr != nil:
+			return errors.Join(err, serr)
+		case closed:
 			c.emit(eventOf(ref, EventRefused, "", nil))
 			return runtime.ErrMaterializationRevoked
 		}
@@ -260,10 +289,19 @@ func (c *Custody) Resolve(ctx context.Context, req runtime.ResolveRequest) (runt
 	if err != nil {
 		return runtime.Materialization{}, fmt.Errorf("secret: lock: %w", err)
 	}
-	if c.tombstoned(ref.ID) { // under the lock: the revocation and the publication are atomic
+	// Under the lock the revocation and the publication are atomic. Publication
+	// needs the confirmed absence of the tombstone; an unreadable one refuses.
+	switch closed, err := c.tombstoned(ref.ID); {
+	case err != nil:
+		unlock()
+		return runtime.Materialization{}, err
+	case closed:
 		unlock()
 		c.emit(eventOf(ref, EventRefused, "", nil))
 		return runtime.Materialization{}, runtime.ErrMaterializationRevoked
+	}
+	if c.underLock != nil {
+		c.underLock()
 	}
 	dir := c.path("material", ref.ID)
 	previous, _ := os.ReadFile(c.path("index", ref.ID))
@@ -338,8 +376,12 @@ func (c *Custody) Published() []string {
 	return out
 }
 
-// Revoked reports whether the identity is closed.
-func (c *Custody) Revoked(ref runtime.MaterializationRef) bool { return c.tombstoned(ref.ID) }
+// Revoked reports whether the identity is closed. When that cannot be
+// determined it returns the error and true: an unknown state is never "open".
+func (c *Custody) Revoked(ref runtime.MaterializationRef) (bool, error) {
+	closed, err := c.tombstoned(ref.ID)
+	return closed || err != nil, err
+}
 
 // writeFileAtomic replaces name with data (mode 0600), synced, so a reader never
 // sees a partial file and a crash leaves the old or the new content.

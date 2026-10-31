@@ -948,10 +948,10 @@ func Test_unit_shell_run_sources_real_git(t *testing.T) {
 	e.advance(back, backWork, "tok-eng", map[string]string{"README.md": "backend v2\n"}) // the branch moved past the pin
 	e.register("run_prep", "running", false, readSource(backID, pinned, "backend"))
 
-	pins := sources.FilePins{Dir: filepath.Join(e.dir, "pins")}
+	snapshots := sources.FileSnapshots{Dir: filepath.Join(e.dir, "snapshots")}
 	prepare := func() *sources.Preparer {
 		p, err := sources.NewPreparer(sources.PreparerConfig{Runs: e.mem, Repositories: e.mem, Keys: staticKeys{},
-			Tips: tipTable{knowID: knowTip}, Pins: pins, BaseURL: e.srv.URL})
+			Tips: tipTable{knowID: knowTip}, Snapshots: snapshots, BaseURL: e.srv.URL})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -40,7 +40,7 @@ type env struct {
 	t     *testing.T
 	mem   *store.MemoryGit
 	dir   string
-	pins  sources.FilePins
+	snaps sources.FileSnapshots
 	tips  *tips
 	issue *issuer
 }
@@ -103,7 +103,7 @@ func newEnv(t *testing.T) *env {
 	e := &env{t: t, mem: store.NewMemoryGit(), dir: t.TempDir(), tips: &tips{at: map[string]string{}}}
 	e.mem.AddTenant(tenant, "acme")
 	e.mem.AddProject(tenant, project, "erp")
-	e.pins = sources.FilePins{Dir: filepath.Join(e.dir, "pins")}
+	e.snaps = sources.FileSnapshots{Dir: filepath.Join(e.dir, "snapshots")}
 	e.issue = &issuer{mem: e.mem}
 	return e
 }
@@ -132,7 +132,7 @@ func (e *env) run(id, status string, declared ...gitv1.Source) {
 
 func (e *env) preparer() *sources.Preparer {
 	e.t.Helper()
-	p, err := sources.NewPreparer(sources.PreparerConfig{Runs: e.mem, Repositories: e.mem, Keys: keys{}, Tips: e.tips, Pins: e.pins, BaseURL: "https://kodama.example/"})
+	p, err := sources.NewPreparer(sources.PreparerConfig{Runs: e.mem, Repositories: e.mem, Keys: keys{}, Tips: e.tips, Snapshots: e.snaps, BaseURL: "https://kodama.example/"})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func workspaceSpec(in runtime.PreparationInputs) runtime.ResourceSpec {
 		SpecDigest: in.Digest, Fence: 1, Preparation: &in}
 }
 
-func mustPins(t *testing.T, dir string) []string {
+func mustFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -233,13 +233,18 @@ func Test_unit_shell_source_preparation(t *testing.T) {
 		if other := e.inputs(p, "run1", "plan-2"); other.Digest == in.Digest {
 			t.Fatal("another plan has the same digest")
 		}
+		// The first preparation is recorded: a changed run record does not change what
+		// this run and plan were prepared with; another plan is prepared afresh.
 		e.run("run1", "running", src(front, commit('c'), "web"), src(back, commit('a'), "."))
-		if other := e.inputs(p, "run1", "plan-1"); other.Digest == in.Digest {
-			t.Fatal("another commit has the same digest")
+		if same := e.inputs(p, "run1", "plan-1"); same.Digest != in.Digest {
+			t.Fatal("a recorded preparation was rediscovered")
+		}
+		if other := e.inputs(p, "run1", "plan-3"); other.Digest == in.Digest || other.Sources[1].Revision != commit('c') {
+			t.Fatal("another plan did not read the current run record")
 		}
 	})
 
-	t.Run("a context repository is pinned once and survives a restart", func(t *testing.T) {
+	t.Run("a context repository is pinned in the recorded inputs and survives a restart", func(t *testing.T) {
 		e := newEnv(t)
 		ten, prj := e.repo("", "context", false), e.repo(project, "context", false)
 		e.tips.at[ten.ID], e.tips.at[prj.ID] = commit('1'), commit('2')
@@ -259,8 +264,8 @@ func Test_unit_shell_source_preparation(t *testing.T) {
 		if err := workspaceSpec(first).Validate(); err != nil {
 			t.Fatal(err)
 		}
-		if len(mustPins(t, e.pins.Dir)) != 2 {
-			t.Fatalf("pins on disk: %v", mustPins(t, e.pins.Dir))
+		if len(mustFiles(t, e.snaps.Dir)) != 1 {
+			t.Fatalf("snapshots on disk: %v", mustFiles(t, e.snaps.Dir))
 		}
 
 		// The knowledge base moves on; the run keeps what it was prepared with, also in a new process.
@@ -295,24 +300,154 @@ func Test_unit_shell_source_preparation(t *testing.T) {
 		e := newEnv(t)
 		e.run("run1", "running")
 		p := e.preparer()
-		if in := e.inputs(p, "run1", "plan"); len(in.Sources) != 0 {
+		if in := e.inputs(p, "run1", "plan-a"); len(in.Sources) != 0 {
 			t.Fatalf("an absent knowledge base has sources: %+v", in.Sources)
 		}
 		e.repo("", "context", true)
-		if in := e.inputs(p, "run1", "plan"); len(in.Sources) != 0 || len(in.Credentials) != 0 {
+		if in := e.inputs(p, "run1", "plan-b"); len(in.Sources) != 0 || len(in.Credentials) != 0 {
 			t.Fatalf("an empty knowledge base has sources: %+v", in)
 		}
-		// An archived repository is read like any other; one still provisioning is not usable.
+		// One still provisioning is not usable, and a failed preparation records nothing.
 		pr, _, err := e.mem.CreateRepository(context.Background(), store.Repository{TenantID: tenant, ProjectID: project, ID: "r_prov", Name: "context", DefaultBranch: "main"})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Inputs(context.Background(), prep("run1", "plan")); !errors.Is(err, sources.ErrSourceUnavailable) || !strings.Contains(err.Error(), pr.ID) {
+		if _, err := p.Inputs(context.Background(), prep("run1", "plan-c")); !errors.Is(err, sources.ErrSourceUnavailable) || !strings.Contains(err.Error(), pr.ID) {
 			t.Fatalf("a repository still provisioning: %v", err)
 		}
-		if len(mustPins(t, e.pins.Dir)) != 0 {
-			t.Fatal("a failed preparation recorded a pin")
+		if got := len(mustFiles(t, e.snaps.Dir)); got != 2 {
+			t.Fatalf("%d snapshots recorded for two successful preparations", got)
 		}
+	})
+
+	t.Run("recorded inputs are replayed, whatever the knowledge base becomes", func(t *testing.T) {
+		restart := func(e *env, repos sources.Repositories) *sources.Preparer {
+			p, err := sources.NewPreparer(sources.PreparerConfig{Runs: e.mem, Repositories: repos, Keys: keys{}, Tips: e.tips, Snapshots: e.snaps, BaseURL: "https://kodama.example"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return p
+		}
+		replays := func(t *testing.T, e *env, repos sources.Repositories, first runtime.PreparationInputs, plan string) {
+			t.Helper()
+			calls := e.tips.calls.Load()
+			for name, pp := range map[string]*sources.Preparer{"restarted": restart(e, repos), "again": restart(e, repos)} {
+				again := e.inputs(pp, "run1", plan)
+				if again.Digest != first.Digest || fmt.Sprint(again) != fmt.Sprint(first) {
+					t.Errorf("%s preparer did not replay the recorded inputs:\n%+v\n%+v", name, first, again)
+				}
+			}
+			if e.tips.calls.Load() != calls {
+				t.Error("a recorded input set was rediscovered from the branch")
+			}
+		}
+
+		t.Run("a context created after the first preparation", func(t *testing.T) {
+			e := newEnv(t)
+			e.run("run1", "running")
+			first := e.inputs(e.preparer(), "run1", "plan-1")
+			if len(first.Sources) != 0 {
+				t.Fatalf("%+v", first)
+			}
+			ten := e.repo("", "context", false)
+			e.tips.at[ten.ID] = commit('1')
+			replays(t, e, e.mem, first, "plan-1")
+			// A preparation for another plan is a new snapshot and sees the knowledge base.
+			if next := e.inputs(e.preparer(), "run1", "plan-2"); len(next.Sources) != 1 || next.Sources[0].Revision != commit('1') {
+				t.Fatalf("another plan: %+v", next)
+			}
+		})
+
+		t.Run("an empty context that becomes populated", func(t *testing.T) {
+			e := newEnv(t)
+			ten := e.repo("", "context", true)
+			e.tips.at[ten.ID] = commit('1')
+			e.run("run1", "running")
+			populated := &atomic.Bool{}
+			repos := flipRepos{Repositories: e.mem, populated: populated}
+			first := e.inputs(restart(e, repos), "run1", "plan-1")
+			if len(first.Sources) != 0 || len(first.Credentials) != 0 {
+				t.Fatalf("%+v", first)
+			}
+			populated.Store(true)
+			replays(t, e, repos, first, "plan-1")
+			if next := e.inputs(restart(e, repos), "run1", "plan-2"); len(next.Sources) != 1 {
+				t.Fatalf("another plan: %+v", next)
+			}
+		})
+
+		t.Run("a context whose default branch changes", func(t *testing.T) {
+			e := newEnv(t)
+			prj := e.repo(project, "context", false)
+			e.tips.at[prj.ID] = commit('1')
+			e.run("run1", "running")
+			branch := &atomic.Value{}
+			repos := flipRepos{Repositories: e.mem, branch: branch}
+			first := e.inputs(restart(e, repos), "run1", "plan-1")
+			if len(first.Sources) != 1 || first.Sources[0].Revision != commit('1') {
+				t.Fatalf("%+v", first)
+			}
+			branch.Store("trunk")
+			e.tips.at[prj.ID] = commit('5')
+			replays(t, e, repos, first, "plan-1")
+			if next := e.inputs(restart(e, repos), "run1", "plan-2"); next.Sources[0].Revision != commit('5') {
+				t.Fatalf("another plan: %+v", next)
+			}
+		})
+
+		t.Run("a damaged or foreign record is refused", func(t *testing.T) {
+			setup := func() (*env, *sources.Preparer, []string) {
+				e := newEnv(t)
+				e.run("run1", "running")
+				e.run("run2", "running")
+				p := e.preparer()
+				e.inputs(p, "run1", "plan")
+				e.inputs(p, "run2", "plan")
+				files := mustFiles(t, e.snaps.Dir)
+				if len(files) != 2 {
+					t.Fatalf("%v", files)
+				}
+				return e, p, files
+			}
+			refused := func(p *sources.Preparer) (n int) {
+				for _, id := range []string{"run1", "run2"} {
+					if _, err := p.Inputs(context.Background(), prep(id, "plan")); errors.Is(err, sources.ErrSourceUnavailable) {
+						n++
+					}
+				}
+				return n
+			}
+			// Another run's record under this run's key is not this run's inputs.
+			e, p, files := setup()
+			raw, _ := os.ReadFile(filepath.Join(e.snaps.Dir, files[0]))
+			if err := os.WriteFile(filepath.Join(e.snaps.Dir, files[1]), raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if n := refused(p); n != 1 {
+				t.Fatalf("%d runs refused a record that is another run's", n)
+			}
+			// A damaged record, and one whose digest no longer matches its content.
+			e, p, files = setup()
+			for _, f := range files {
+				if err := os.WriteFile(filepath.Join(e.snaps.Dir, f), []byte("{"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if n := refused(p); n != 2 {
+				t.Fatalf("%d runs used a damaged record", n)
+			}
+			e, p, files = setup()
+			for _, f := range files {
+				raw, _ := os.ReadFile(filepath.Join(e.snaps.Dir, f))
+				tampered := strings.Replace(string(raw), `"digest":"sha256:`, `"digest":"sha256:0`, 1)
+				if err := os.WriteFile(filepath.Join(e.snaps.Dir, f), []byte(tampered), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if n := refused(p); n != 2 {
+				t.Fatalf("%d runs used a record whose digest does not match", n)
+			}
+		})
 	})
 
 	t.Run("a source-free run prepares an empty, valid and stable input set", func(t *testing.T) {
@@ -492,16 +627,20 @@ func Test_unit_shell_source_preparation(t *testing.T) {
 		}
 	})
 
-	t.Run("pins are first-writer-wins across processes", func(t *testing.T) {
-		dir := filepath.Join(t.TempDir(), "pins")
+	t.Run("snapshots are first-writer-wins and refuse bad keys and bad inputs", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "a", "snapshots")
 		key := strings.Repeat("ab", 32)
+		inputs := func(i int) runtime.PreparationInputs {
+			return runtime.PreparationInputs{Scope: scope, RunID: "run1", Digest: fmt.Sprintf("d%d", i),
+				Sources: []runtime.SourceInput{{Name: "s", Locator: "https://x/git/a/b.git", Revision: commit("0123456789abcdef"[i]), Path: "."}}}
+		}
 		var wg sync.WaitGroup
-		got := make([]string, 8)
+		got := make([]runtime.PreparationInputs, 8)
 		for i := range got {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				c, err := (sources.FilePins{Dir: dir}).PutIfAbsent(context.Background(), key, commit("0123456789abcdef"[i]))
+				c, err := (sources.FileSnapshots{Dir: dir}).PutIfAbsent(context.Background(), key, inputs(i))
 				if err != nil {
 					t.Error(err)
 				}
@@ -510,23 +649,25 @@ func Test_unit_shell_source_preparation(t *testing.T) {
 		}
 		wg.Wait()
 		for _, c := range got {
-			if c != got[0] {
+			if c.Digest != got[0].Digest {
 				t.Fatalf("racing writers disagree: %v", got)
 			}
 		}
-		if c, ok, err := (sources.FilePins{Dir: dir}).Get(context.Background(), key); err != nil || !ok || c != got[0] {
-			t.Fatalf("read back: %q %v %v", c, ok, err)
+		if c, ok, err := (sources.FileSnapshots{Dir: dir}).Get(context.Background(), key); err != nil || !ok || c.Digest != got[0].Digest || c.Sources[0].Revision != got[0].Sources[0].Revision {
+			t.Fatalf("read back: %+v %v %v", c, ok, err)
 		}
-		if _, ok, _ := (sources.FilePins{Dir: dir}).Get(context.Background(), strings.Repeat("cd", 32)); ok {
-			t.Fatal("an unrecorded pin was found")
+		if _, ok, _ := (sources.FileSnapshots{Dir: dir}).Get(context.Background(), strings.Repeat("cd", 32)); ok {
+			t.Fatal("an unrecorded snapshot was found")
 		}
 		for _, bad := range []string{"../escape", "short", ""} {
-			if _, err := (sources.FilePins{Dir: dir}).PutIfAbsent(context.Background(), bad, commit('a')); err == nil {
+			if _, err := (sources.FileSnapshots{Dir: dir}).PutIfAbsent(context.Background(), bad, inputs(0)); err == nil {
 				t.Errorf("key %q accepted", bad)
 			}
 		}
-		if _, err := (sources.FilePins{Dir: dir}).PutIfAbsent(context.Background(), key, "main"); err == nil {
-			t.Error("a floating ref was recorded as a pin")
+		unpinned := inputs(0)
+		unpinned.Sources[0].Revision = ""
+		if _, err := (sources.FileSnapshots{Dir: dir}).PutIfAbsent(context.Background(), strings.Repeat("ef", 32), unpinned); err == nil {
+			t.Error("an unpinned input set was recorded")
 		}
 		leftovers, _ := filepath.Glob(filepath.Join(dir, ".tmp-*"))
 		if len(leftovers) != 0 {
@@ -537,7 +678,7 @@ func Test_unit_shell_source_preparation(t *testing.T) {
 	t.Run("the preparer refuses a base URL that carries a credential", func(t *testing.T) {
 		e := newEnv(t)
 		for _, base := range []string{"", "ssh://git", "https://user:pw@kodama.example"} {
-			if _, err := sources.NewPreparer(sources.PreparerConfig{Runs: e.mem, Repositories: e.mem, Keys: keys{}, Tips: e.tips, Pins: e.pins, BaseURL: base}); err == nil {
+			if _, err := sources.NewPreparer(sources.PreparerConfig{Runs: e.mem, Repositories: e.mem, Keys: keys{}, Tips: e.tips, Snapshots: e.snaps, BaseURL: base}); err == nil {
 				t.Errorf("base URL %q accepted", base)
 			}
 		}
@@ -587,6 +728,27 @@ func Test_unit_shell_source_preparation(t *testing.T) {
 			t.Fatalf("the checkout was not wired: %+v", g)
 		}
 	})
+}
+
+// flipRepos reports the knowledge base as populated, or on another default
+// branch, once switched (the memory store only reconfigures an empty repository).
+type flipRepos struct {
+	sources.Repositories
+	populated *atomic.Bool
+	branch    *atomic.Value // string; empty keeps the record's branch
+}
+
+func (f flipRepos) RepositoryByPath(ctx context.Context, tn domain.TenantID, projectKey, name string) (store.Repository, error) {
+	r, err := f.Repositories.RepositoryByPath(ctx, tn, projectKey, name)
+	if err == nil && f.populated != nil && f.populated.Load() {
+		r.Empty = false
+	}
+	if f.branch != nil {
+		if b, _ := f.branch.Load().(string); err == nil && b != "" {
+			r.DefaultBranch = b
+		}
+	}
+	return r, err
 }
 
 type fixed string

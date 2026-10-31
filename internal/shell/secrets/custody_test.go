@@ -244,8 +244,8 @@ func Test_unit_shell_secret_revocation(t *testing.T) {
 			if h.vault.fetches != fetches {
 				t.Fatalf("%s asked the vault for a revoked identity", name)
 			}
-			if !c.Revoked(ref) {
-				t.Fatalf("%s does not report the identity closed", name)
+			if closed, err := c.Revoked(ref); !closed || err != nil {
+				t.Fatalf("%s does not report the identity closed: %v %v", name, closed, err)
 			}
 		}
 		if len(first.Published()) != 0 {
@@ -506,6 +506,100 @@ func Test_unit_shell_secret_revocation(t *testing.T) {
 			if strings.Contains(content, "s3cret") {
 				t.Errorf("%s holds a value after revocation", p)
 			}
+		}
+	})
+
+	t.Run("an unreadable revocation state never reopens a closed identity", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("file permissions do not bind root")
+		}
+		h := newHarness(t)
+		c := h.open()
+		tombs := filepath.Join(h.root, "tombstones")
+		t.Cleanup(func() { _ = os.Chmod(tombs, 0o700) })
+
+		closed := ident(t, "build", 1)
+		if _, err := c.Resolve(context.Background(), request(closed, "TOKEN")); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Revoke(context.Background(), closed); err != nil {
+			t.Fatal(err)
+		}
+		// The tombstone exists, and cannot be read.
+		if err := os.Chmod(tombs, 0); err != nil {
+			t.Fatal(err)
+		}
+		fetches := h.vault.fetches
+		_, err := c.Resolve(context.Background(), request(closed, "TOKEN"))
+		if !errors.Is(err, ErrRevocationState) {
+			t.Fatalf("a Resolve with an unreadable tombstone: %v", err)
+		}
+		if len(c.Published()) != 0 || h.vault.fetches != fetches {
+			t.Fatalf("material was published or fetched for a closed identity: %v", c.Published())
+		}
+		if isClosed, err := c.Revoked(closed); !isClosed || err == nil {
+			t.Fatalf("an unknown state must read as closed, with its error: %v %v", isClosed, err)
+		}
+		// Whatever is unknown stays unpublished: other identities too.
+		if _, err := c.Resolve(context.Background(), request(ident(t, "deploy", 1), "TOKEN")); !errors.Is(err, ErrRevocationState) {
+			t.Fatalf("an identity whose state cannot be read was resolved: %v", err)
+		}
+		if len(c.Published()) != 0 {
+			t.Fatalf("material was published: %v", c.Published())
+		}
+		if err := os.Chmod(tombs, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Resolve(context.Background(), request(closed, "TOKEN")); !errors.Is(err, runtime.ErrMaterializationRevoked) {
+			t.Fatalf("the identity was reopened: %v", err)
+		}
+
+		// The same at the locked publication check: the identity is revoked while a
+		// Resolve is in flight, and the state becomes unreadable before it publishes.
+		inflight := ident(t, "build", 2)
+		entered, release := make(chan struct{}), make(chan struct{})
+		c.beforePublish = func() { close(entered); <-release }
+		done := make(chan error, 1)
+		go func() {
+			_, err := c.Resolve(context.Background(), request(inflight, "TOKEN"))
+			done <- err
+		}()
+		<-entered
+		if err := h.open().Revoke(context.Background(), inflight); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(tombs, 0); err != nil {
+			t.Fatal(err)
+		}
+		close(release)
+		if err := <-done; err == nil {
+			t.Fatal("the in-flight Resolve published while the tombstone was unreadable")
+		}
+		if len(c.Published()) != 0 {
+			t.Fatalf("the in-flight Resolve left material: %v", c.Published())
+		}
+		stage, _ := os.ReadDir(filepath.Join(h.root, "stage"))
+		if len(stage) != 0 {
+			t.Fatalf("staged material left behind: %v", stage)
+		}
+		c.beforePublish = nil
+		if err := os.Chmod(tombs, 0o700); err != nil {
+			t.Fatal(err)
+		}
+
+		// A vanished tombstone directory is lost state, not an open identity.
+		moved := tombs + ".gone"
+		if err := os.Rename(tombs, moved); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Resolve(context.Background(), request(ident(t, "fresh", 1), "TOKEN")); !errors.Is(err, ErrRevocationState) {
+			t.Fatalf("a missing tombstone directory was read as open: %v", err)
+		}
+		if err := os.Rename(moved, tombs); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Resolve(context.Background(), request(ident(t, "fresh", 1), "TOKEN")); err != nil {
+			t.Fatalf("an open identity is refused once the state is readable: %v", err)
 		}
 	})
 

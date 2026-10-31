@@ -5,11 +5,14 @@
 // adapter. The kernel learns nothing about Git from it: a locator is an opaque
 // string, a revision an exact commit, a credential a secret reference.
 //
-// A run's sources are pinned twice over. The commits a run declared are used as
-// declared. A context repository has no commit of its own: its branch tip is
-// resolved once, recorded durably, and every later call for the same run and plan
-// digest returns the recorded commit, so a restarted engine computes the same
-// digest and adopts its workspace instead of preparing it again.
+// A run's inputs are snapshotted. The commits a run declared are used as declared;
+// a context repository has no commit of its own, so its branch tip is resolved
+// when the inputs are first prepared. The complete result, which context
+// repositories were selected or absent, their identities, revisions and paths, is
+// recorded durably, and every later call for the same run and plan digest replays
+// that record without rediscovering any current metadata. A restarted engine
+// therefore computes the same digest and adopts its workspace instead of
+// preparing it again, whatever happened to the knowledge base meanwhile.
 package sources
 
 import (
@@ -51,13 +54,17 @@ type Tips interface {
 	Tip(ctx context.Context, scope domain.Scope, repo store.Repository, ref string) (commit string, err error)
 }
 
-// Pins durably records the commit a context repository was pinned to.
-type Pins interface {
-	// Get returns the recorded commit, if any.
-	Get(ctx context.Context, key string) (commit string, ok bool, err error)
-	// PutIfAbsent records commit under key unless key is already recorded, and
-	// returns what is recorded: the first writer wins, so racing engines agree.
-	PutIfAbsent(ctx context.Context, key, commit string) (string, error)
+// Snapshots durably records the complete preparation input set of one run and
+// plan the first time it is successfully prepared. Every later preparation
+// replays the record instead of reading current repository metadata, so the
+// inputs, and their digest, never change for a (run, plan digest).
+type Snapshots interface {
+	// Get returns the recorded inputs, if any.
+	Get(ctx context.Context, key string) (in runtime.PreparationInputs, ok bool, err error)
+	// PutIfAbsent records in under key unless a snapshot is already recorded and
+	// returns what is recorded: the first writer wins, so racing engines agree. It
+	// returns only once the record is durable.
+	PutIfAbsent(ctx context.Context, key string, in runtime.PreparationInputs) (runtime.PreparationInputs, error)
 }
 
 // Paths of the knowledge-base repositories in the workspace.
@@ -73,7 +80,7 @@ type PreparerConfig struct {
 	Repositories Repositories
 	Keys         Keys
 	Tips         Tips
-	Pins         Pins
+	Snapshots    Snapshots
 	// BaseURL is the Git service's base URL; repositories live at
 	// <BaseURL>/git/<tenant>/<project>/<name>.git. It never carries a credential.
 	BaseURL string
@@ -87,8 +94,8 @@ var _ runtime.WorkspacePreparer = (*Preparer)(nil)
 // NewPreparer validates the wiring.
 func NewPreparer(cfg PreparerConfig) (*Preparer, error) {
 	switch {
-	case cfg.Runs == nil || cfg.Repositories == nil || cfg.Keys == nil || cfg.Tips == nil || cfg.Pins == nil:
-		return nil, errors.New("sources: the preparer needs runs, repositories, keys, tips and pins")
+	case cfg.Runs == nil || cfg.Repositories == nil || cfg.Keys == nil || cfg.Tips == nil || cfg.Snapshots == nil:
+		return nil, errors.New("sources: the preparer needs runs, repositories, keys, tips and snapshots")
 	case !strings.HasPrefix(cfg.BaseURL, "https://") && !strings.HasPrefix(cfg.BaseURL, "http://"):
 		return nil, errors.New("sources: the Git base URL must be an http(s) endpoint")
 	case strings.Contains(cfg.BaseURL, "@") || strings.ContainsAny(cfg.BaseURL, "\r\n\x00"):
@@ -154,6 +161,42 @@ func (p *Preparer) Inputs(ctx context.Context, req runtime.PrepareRequest) (runt
 	if strings.TrimSpace(req.PlanDigest) == "" {
 		return runtime.PreparationInputs{}, fmt.Errorf("%w: preparation names the plan digest", domain.ErrInvalidValue)
 	}
+	key := snapshotKey(req)
+	recorded, ok, err := p.cfg.Snapshots.Get(ctx, key)
+	if err != nil {
+		return runtime.PreparationInputs{}, unavailable("reading the recorded inputs: %v", err)
+	}
+	if !ok {
+		fresh, err := p.discover(ctx, req)
+		if err != nil {
+			return runtime.PreparationInputs{}, err
+		}
+		if recorded, err = p.cfg.Snapshots.PutIfAbsent(ctx, key, fresh); err != nil {
+			return runtime.PreparationInputs{}, unavailable("recording the inputs: %v", err)
+		}
+	}
+	if err := checkSnapshot(req, recorded); err != nil {
+		return runtime.PreparationInputs{}, err
+	}
+	return recorded, nil
+}
+
+// checkSnapshot refuses a recorded input set that is not this run's and plan's,
+// is damaged or no longer meets the kernel's preparation contract.
+func checkSnapshot(req runtime.PrepareRequest, in runtime.PreparationInputs) error {
+	if in.Scope != req.Scope || in.RunID != req.RunID || in.Digest != digest(req, in) {
+		return unavailable("the recorded inputs of run %s are not its own", req.RunID)
+	}
+	if err := in.Validate(); err != nil {
+		return fmt.Errorf("%w: %w", ErrSourceUnavailable, err)
+	}
+	return nil
+}
+
+// discover reads the run's declared sources and the current knowledge base and
+// resolves the context repositories' branch tips. It is only called until the
+// first successful result has been recorded.
+func (p *Preparer) discover(ctx context.Context, req runtime.PrepareRequest) (runtime.PreparationInputs, error) {
 	info, err := p.cfg.Runs.RunGitInfo(ctx, req.Scope.TenantID, req.Scope.ProjectID, string(req.RunID))
 	if err != nil {
 		return runtime.PreparationInputs{}, unavailable("run %s: %v", req.RunID, err)
@@ -204,11 +247,12 @@ func (p *Preparer) Inputs(ctx context.Context, req runtime.PrepareRequest) (runt
 		case repo.Empty:
 			continue
 		}
-		ref := gitv1.HeadsPrefix + repo.DefaultBranch
-		pin := pinKey(req, repo.ID, ref)
-		commit, err := p.pinned(ctx, req.Scope, repo, ref, pin)
+		commit, err := p.cfg.Tips.Tip(ctx, req.Scope, repo, gitv1.HeadsPrefix+repo.DefaultBranch)
 		if err != nil {
-			return runtime.PreparationInputs{}, err
+			return runtime.PreparationInputs{}, unavailable("the tip of context repository %s: %v", repo.ID, err)
+		}
+		if !commitRE.MatchString(commit) {
+			return runtime.PreparationInputs{}, unavailable("the tip of context repository %s is not a full commit", repo.ID)
 		}
 		out.Sources = append(out.Sources, runtime.SourceInput{Name: c.name, Locator: p.url(tenantKey, projectKey, repo), Revision: commit, Path: c.path})
 		ids[repo.ID] = true
@@ -234,34 +278,9 @@ func (p *Preparer) Inputs(ctx context.Context, req runtime.PrepareRequest) (runt
 	return out, nil
 }
 
-// pinned returns the commit a context repository is pinned to for this run and
-// plan: the recorded one, or the branch tip resolved now and recorded. Once a pin
-// is recorded the branch is never read again for this run and plan.
-func (p *Preparer) pinned(ctx context.Context, scope domain.Scope, repo store.Repository, ref, key string) (string, error) {
-	commit, ok, err := p.cfg.Pins.Get(ctx, key)
-	if err != nil {
-		return "", unavailable("reading the pin of context repository %s: %v", repo.ID, err)
-	}
-	if !ok {
-		tip, err := p.cfg.Tips.Tip(ctx, scope, repo, ref)
-		if err != nil {
-			return "", unavailable("the tip of context repository %s: %v", repo.ID, err)
-		}
-		if !commitRE.MatchString(tip) {
-			return "", unavailable("the tip of context repository %s is not a full commit", repo.ID)
-		}
-		if commit, err = p.cfg.Pins.PutIfAbsent(ctx, key, tip); err != nil {
-			return "", unavailable("recording the pin of context repository %s: %v", repo.ID, err)
-		}
-	}
-	if !commitRE.MatchString(commit) {
-		return "", unavailable("the recorded pin of context repository %s is not a full commit", repo.ID)
-	}
-	return commit, nil
-}
-
-func pinKey(req runtime.PrepareRequest, repositoryID, ref string) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{string(req.Scope.TenantID), string(req.Scope.ProjectID), string(req.RunID), req.PlanDigest, repositoryID, ref}, "\x00")))
+// snapshotKey names the record of one run's inputs under one plan.
+func snapshotKey(req runtime.PrepareRequest) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{string(req.Scope.TenantID), string(req.Scope.ProjectID), string(req.RunID), req.PlanDigest}, "\x00")))
 	return hex.EncodeToString(sum[:])
 }
 
