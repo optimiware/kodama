@@ -1,7 +1,7 @@
 ---
 id: T-194
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-184]
 decision_blockers: []
 owns: [docs/implementation/pipeline-runtime-handoff.md, docs/status.md, docs/implementation/assembly-status.md]
