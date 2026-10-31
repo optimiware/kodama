@@ -23,6 +23,7 @@ One appended, expand-only migration, plus manifest, RLS, grants and guards:
 - **Wait decisions before settlement.** The 004/005 checks `run_steps_wait_resolved`, `run_steps_wait_expired` and `run_steps_wait_cancelled` force the step status to agree with the wait decision, so a wait decided while its step is still `waiting` or `pending` cannot be stored. The port decides waits independently of their steps, and the contract suite asserts it. Relax those constraints to allow a complete decision on a step that has not settled, while keeping the existing requirements that decision columns are complete and immutable once decided, and that a decided wait can never be reopened.
 - **Materialization records.** Add a tenant-isolated table keyed by scope, run, step and attempt holding the materialization identity, issue time and revocation time/evidence, with forced RLS, runtime grants limited to the needed columns, and a guard making `revoked` final and the identity and issue time immutable.
 - **Outputs immutability.** Guard `run_steps.outputs` so recorded step outputs cannot be rewritten after the settling commit, rather than relying on Go alone.
+- **Unpublished outbox index.** Add a partial index on `audit_events (tenant_id, created_at, id) WHERE published_at IS NULL`, so the bounded outbox query does not sort the tenant's whole unpublished set on every page.
 - Update the migration-count assertions in the owned test files to the new baseline, exact rather than loosened.
 
 Nothing is dropped; legacy task columns stay readable until the contract stage.
