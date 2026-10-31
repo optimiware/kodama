@@ -2,6 +2,8 @@
 
 **Architecture:** [ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.md) defines a pipeline-runtime kernel and four functional layers ([O-38](decisions.md#pipeline-runtime-and-four-layer-refinement--2026-10-30-o-38)). The kernel owns pipeline execution; the shell owns native Git, tasks, identity, persistence, API/MCP/CLI, and NATS. Each task selects a project-unique pipeline. The current `--assembly core` and `--assembly kernel` paths are transitional; their convergence and legacy deletion are in the [pipeline-runtime simplification plan](implementation/pipeline-runtime-simplification.md).
 
+**Pipeline-runtime position (after P2, [O-39](decisions.md#pipeline-runtime-delivery-decisions--2026-10-31-o-39)).** The kernel and shell capability packages are implemented and tested on the integration branch: the runtime contract, durable engine, memory and PostgreSQL run state, Process, Podman and Kubernetes lifecycle adapters, the project pipeline registry, run-derived Git integration authority, the outbox and NATS bus, and source and secret custody adapters. The new engine, run-state adapters, pipeline registry and custody adapters are not composed into `kodama server`: the executable is still the transitional `core` and `kernel` assemblies, the kernel assembly still runs the old blocking runner, and its task routes still use the project workflow. Only the outbox/NATS publisher, run-derived Git integration authority, the dispatcher's durable name and the source checkout of the old runner are in use there. Task tracking over pipelines (T-184) and the P3 cutover are pending. See the [post-P2 handoff](implementation/pipeline-runtime-handoff.md).
+
 Kodama is **early and not production-ready**. The core platform works end to end on a developer machine. Production deployment, key recovery and hosted use are still ahead. This page says plainly what is which.
 
 ## Works today
@@ -25,6 +27,7 @@ Verified by acceptance suites that run the real server against PostgreSQL, NATS 
 
 | Area | Where it stands |
 | --- | --- |
+| Single composition over the new kernel and shell (P3) | Not started. Needs production `Keys`, `Tips` and vault `Source` implementations, an engine host, task tracking (T-184) and one `internal/app` composition; deletion of the superseded implementation follows cutover (P4), and agent/gateway/MCP-proxy adaptation and the recipe set are a later workstream (P5). Entry point: [handoff](implementation/pipeline-runtime-handoff.md) |
 | Production profile | `KODAMA_ENV=production` selects the cloud KMS adapter; the stage kernel profile is deployable with the O-37 embedded-Git test-stage deviation. A supported production profile is not claimed: TLS hardening (O-27), per-tenant Git workers, recovery and PITR, and hosted authority remain |
 | Installed server on Kubernetes | The ADR 0013 kernel chart (`deploy/charts/kodama-kernel`) and `test/e2e/kube-kernel` qualification suite are implemented for a fresh Scaleway test stage. A passing live receipt is still required; the previous core-era T-104/T-090 reports are historical and are not relabelled |
 | Source, data and key recovery drills | Planned |
