@@ -25,7 +25,7 @@ Replace the blocking all-in-one runner with explicit, recoverable progression ov
   4. **Cleanup.** Execution outcome and cleanup are separate; a run is terminal only after owned resources are confirmed removed or cleanup remains visibly pending with retained identities and bounded retries.
 - One executable step holds the workspace at a time; the prior step settles and releases before the next starts.
 - Deterministic fail-fast and dependency ordering, tested with the memory state adapter and the Process backend.
-- Delete the blocking `Backend.Execute` path from this package once the new path covers its behaviour; do not keep two engines.
+- Mark the blocking `Backend.Execute` path as transitional. Its deletion belongs to the P3 cutover, because `internal/shell/serve` still calls `Runner`, `Backend.Execute` and `Process.Execute` outside this task's paths. It must not gain behaviour or be presented as a supported second engine.
 
 ## Acceptance
 `make check-go` with `Test_unit_kernel_engine_progression`, `Test_unit_kernel_engine_waits`, `Test_unit_kernel_engine_uncertain_launch` and `Test_unit_kernel_engine_cleanup` passing. Memory state plus Process proves reconstruction, not process-crash durability; that is qualified later on PostgreSQL.

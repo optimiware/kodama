@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/optimiware/kodama/internal/execution"
+	"github.com/optimiware/kodama/internal/runtime/bootstrap"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 )
 
@@ -166,7 +167,7 @@ func (r *Runtime) Capabilities() execution.Capabilities {
 // the workload name with that UID, its ID recorded, and only then started.
 // A stopped or removed workload is never started again (ErrConflict).
 func (r *Runtime) Start(ctx context.Context, spec execution.AttemptSpec) (execution.Workload, error) {
-	c, err := spec.DecodeContext()
+	c, err := bootstrap.LaunchContext(spec)
 	if err != nil {
 		return execution.Workload{}, err
 	}

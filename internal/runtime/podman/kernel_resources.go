@@ -70,7 +70,7 @@ func handleRec(h kr.ResourceHandle) krec {
 }
 
 func handleOf(spec kr.ResourceSpec) kr.ResourceHandle {
-	return kr.ResourceHandle{Scope: spec.Scope, RunID: spec.RunID, Kind: spec.Kind, Name: spec.Name, Identity: spec.Identity, Fence: spec.Fence}
+	return kr.ResourceHandle{Scope: spec.Scope, Owner: spec.Owner, Lifetime: spec.Lifetime, RunID: spec.RunID, Kind: spec.Kind, Name: spec.Name, Identity: spec.Identity, Fence: spec.Fence}
 }
 
 // verifiedWorkspace checks that h is the ready, unfenced workspace of the run,
