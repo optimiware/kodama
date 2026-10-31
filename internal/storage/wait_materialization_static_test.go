@@ -364,6 +364,25 @@ func Test_unit_storage_wait_decision_ordering(t *testing.T) {
 	})
 }
 
+// Test_unit_storage_wait_decision_ordering's outbox part: one partial index, no
+// table or row change.
+func Test_unit_storage_outbox_index(t *testing.T) {
+	stmts := waitStatements(t)
+	if !slices.Contains(stmts, "CREATE INDEX audit_events_unpublished ON audit_events (tenant_id, created_at, id) WHERE published_at IS NULL") {
+		t.Fatal("the partial index for unpublished outbox pages is missing or differs from the specified one")
+	}
+	if n := len(statementsMatching(stmts, `^CREATE (UNIQUE )?INDEX `)); n != 2 {
+		t.Errorf("%d indexes created, want the outbox index and the materialization scan index", n)
+	}
+	if len(statementsMatching(stmts, `audit_events`)) != 1 {
+		t.Error("audit_events is touched only to add the index")
+	}
+	// The retry-schedule index of the baseline stays; this one serves the creation order.
+	if !strings.Contains(migrationSQL(t, "001_schema.sql"), "CREATE INDEX audit_events_pending ON audit_events (tenant_id, next_attempt_at, id) WHERE published_at IS NULL") {
+		t.Error("the baseline's retry-schedule index changed")
+	}
+}
+
 // Test_unit_storage_materialization_records: the table records the identity,
 // issue time and revocation of a step attempt's secret material, tenant-isolated,
 // with narrow grants and a guard that makes `revoked` final.

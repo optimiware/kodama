@@ -38,7 +38,8 @@ wait decision be stored while its step has not settled (the kernel decides a wai
 independently of its step) and keeps a decided wait immutable and closed; it adds
 `run_materializations`, the tenant-isolated durable identity, issue time and
 revocation of a step attempt's secret material, with `revoked` final; and it guards
-`run_steps.outputs` so recorded outputs cannot change after the settling commit. See
+`run_steps.outputs` so recorded outputs cannot change after the settling commit, and
+adds the partial index `audit_events_unpublished` for bounded outbox pages. See
 [schema documentation](../../docs/implementation/database-schema.md#wait-decisions-and-materializations-006).
 
 ## Transactions and migrations

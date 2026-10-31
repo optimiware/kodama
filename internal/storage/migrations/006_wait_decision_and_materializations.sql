@@ -1,11 +1,11 @@
--- Wait decisions before settlement, secret materialization records and a guard on
--- recorded step outputs (T-189): the three things the kernel's StateStore (T-182)
--- needs that 004 and 005 cannot store. Appended after 005_durable_run_state.sql,
+-- Wait decisions before settlement, secret materialization records, a guard on
+-- recorded step outputs and an index for unpublished outbox pages (T-189): what
+-- the kernel's StateStore (T-182) needs that 004 and 005 cannot store. Appended after 005_durable_run_state.sql,
 -- which is left untouched. Expand-only: no table, column or data is dropped, no
 -- row is rewritten, and the legacy composition keeps reading and writing the
 -- columns it uses today. Three check constraints of 004 are replaced because their
 -- old form forbade the new shape (a decided wait whose step has not settled); no
--- other earlier object changes except by adding triggers, one table and grants.
+-- other earlier object changes except by adding triggers, one table, one index and grants.
 --
 -- The whole file is one transaction (the runner applies it atomically with its
 -- ledger row): a refusal or a failure leaves the database exactly as it was.
@@ -160,6 +160,16 @@ BEGIN
 END $$;
 CREATE TRIGGER run_materializations_guard BEFORE UPDATE ON run_materializations
     FOR EACH ROW EXECUTE FUNCTION kodama_run_materialization_guard();
+
+-- ---------------------------------------------------------------------------
+-- Unpublished outbox pages.
+-- ---------------------------------------------------------------------------
+-- The bounded outbox query reads a tenant's unpublished events in creation order,
+-- one page at a time. `audit_events_pending` is ordered by `next_attempt_at` for
+-- the publisher's retry schedule, so a page by (created_at, id) had to sort the
+-- tenant's whole unpublished set on every call. This partial index serves that
+-- order directly and holds only events not yet published; it changes no row.
+CREATE INDEX audit_events_unpublished ON audit_events (tenant_id, created_at, id) WHERE published_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- RLS and grants.

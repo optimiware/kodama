@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -220,6 +221,41 @@ func Test_wait_decision_ordering_postgres(t *testing.T) {
 			t.Errorf("a refused commit left the wait %q", st)
 		}
 	})
+}
+
+func Test_outbox_index_postgres(t *testing.T) {
+	e := newEnv(t)
+	pool := e.runtime(t, 2)
+	def := scalar[string](t, pool, tenantA, `SELECT indexdef FROM pg_indexes WHERE indexname = 'audit_events_unpublished'`)
+	if !strings.Contains(def, "(tenant_id, created_at, id)") || !strings.Contains(def, "WHERE (published_at IS NULL)") {
+		t.Fatalf("index = %s", def)
+	}
+	// The index changes no row: the seeded events are untouched, and a page in creation order
+	// is served by it (the planner may choose a scan on a table this small, so the choice is forced).
+	e.exec(t, `INSERT INTO audit_events (tenant_id, id, actor_type, actor_id, event_type, resource_type, resource_id)
+SELECT 'tenant-a', 'ev-' || n, 'system', 'system', 'seed', 'project', 'pa1' FROM generate_series(1, 50) n`)
+	var plan string
+	must(t, asTenant(t, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SET LOCAL enable_seqscan = off; SET LOCAL enable_bitmapscan = off`); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `EXPLAIN SELECT id FROM audit_events WHERE tenant_id = 'tenant-a' AND published_at IS NULL ORDER BY created_at, id LIMIT 10`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var line string
+			if err := rows.Scan(&line); err != nil {
+				return err
+			}
+			plan += line + "\n"
+		}
+		return rows.Err()
+	}))
+	if !strings.Contains(plan, "audit_events_unpublished") || strings.Contains(plan, "Sort") {
+		t.Fatalf("an unpublished page is not served in order by the index:\n%s", plan)
+	}
 }
 
 func Test_step_outputs_immutable_postgres(t *testing.T) {
