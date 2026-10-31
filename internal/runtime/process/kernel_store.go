@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/optimiware/kodama/internal/domain"
@@ -323,7 +326,7 @@ func (s kstore) dropHolder(wsKey, wlKey string) { _ = os.Remove(s.holderFile(wsK
 // held while its recorded process group lives; a marker without a group cannot
 // be one that runs (see the launch gate). An undeterminable marker or group is
 // an error, never "released".
-func (s kstore) holder(wsKey string) (kholder, bool, error) {
+func (s kstore) holder(wsKey string, probe groupProbe) (kholder, bool, error) {
 	dir := filepath.Join(string(s), kHoldersDir, wsKey)
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -344,7 +347,7 @@ func (s kstore) holder(wsKey string) (kholder, bool, error) {
 		if h.Pgid == 0 {
 			continue
 		}
-		alive, err := groupAlive(h.Pgid, h.StartID)
+		alive, err := probe.alive(h.Pgid, h.StartID, false)
 		if err != nil {
 			return kholder{}, false, err
 		}
@@ -353,4 +356,107 @@ func (s kstore) holder(wsKey string) (kholder, bool, error) {
 		}
 	}
 	return kholder{}, false, nil
+}
+
+// ---- process group probe ----
+
+// errUnverifiable reports a process group that exists but cannot be examined:
+// it can be neither signalled nor shown to be gone.
+var errUnverifiable = errors.New("process: the process group cannot be verified")
+
+// groupProbe is how the adapter looks at a process group. It is a value so tests
+// can inject what the operating system answers.
+type groupProbe struct {
+	// signal sends sig to the process group (signal 0 probes it).
+	signal func(pgid int, sig syscall.Signal) error
+	// leader reports the start time of the process pgid, and gone when no such
+	// process exists.
+	leader func(pid int) (start string, gone bool, err error)
+	// members counts the processes of the group that have not terminated
+	// (zombies awaiting reaping are not counted), whatever their credentials.
+	members func(pgid int) (int, error)
+}
+
+var osProbe = groupProbe{
+	signal:  func(pgid int, sig syscall.Signal) error { return syscall.Kill(-pgid, sig) },
+	leader:  startOf,
+	members: liveMembers,
+}
+
+// liveMembers lists the live members of a process group from the process table,
+// which shows processes of every user.
+func liveMembers(pgid int) (int, error) {
+	out, err := exec.Command("ps", "-A", "-o", "pgid=,stat=").Output()
+	if err != nil {
+		return 0, fmt.Errorf("ps: %w", err)
+	}
+	n := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 {
+			continue
+		}
+		if id, err := strconv.Atoi(f[0]); err == nil && id == pgid && !strings.HasPrefix(f[1], "Z") {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// alive reports whether a process of the group still exists, with an answer only
+// when the group is positively seen or positively gone:
+//
+//   - no such group is gone;
+//   - a group that can be signalled is alive, and (for a group this adapter did
+//     not launch, ours false) it is the recorded one only while its leader has
+//     the recorded start time: another leader is a recycled pid, so the original
+//     group is gone, and a group whose leader ended still has members;
+//   - a group that exists but permission is denied for is NOT thereby proven
+//     terminated: a descendant that changed its credentials looks exactly so
+//     (and some systems answer so for a group of zombies). It is gone only on
+//     independent evidence: its leader's pid is held by a process with a
+//     different start time (the id was recycled, which cannot happen while a
+//     member lives), or the process table shows no live member. It is alive when
+//     a live member exists, and unverifiable (an error, never absence) when the
+//     process table cannot be read.
+func (p groupProbe) alive(pgid int, startID string, ours bool) (bool, error) {
+	if pgid <= 1 {
+		return false, nil
+	}
+	err := p.signal(pgid, 0)
+	switch {
+	case err == nil:
+		if ours {
+			return true, nil
+		}
+		start, gone, err := p.leader(pgid)
+		switch {
+		case err != nil:
+			return false, fmt.Errorf("%w: examining the leader of group %d: %w", errUnverifiable, pgid, err)
+		case gone:
+			return true, nil // the leader ended; members of its group remain
+		}
+		return startID == "" || start == startID, nil // another leader: a recycled pid
+	case errors.Is(err, syscall.ESRCH):
+		return false, nil
+	case errors.Is(err, syscall.EPERM):
+		return p.deniedEvidence(pgid, startID)
+	}
+	return false, fmt.Errorf("%w: probing process group %d: %w", errUnverifiable, pgid, err)
+}
+
+// deniedEvidence decides about a group the system will not let us signal.
+func (p groupProbe) deniedEvidence(pgid int, startID string) (bool, error) {
+	start, gone, err := p.leader(pgid)
+	if err != nil {
+		return false, fmt.Errorf("%w: examining the leader of group %d: %w", errUnverifiable, pgid, err)
+	}
+	if !gone && startID != "" && start != startID {
+		return false, nil // the pid is another process: the original group is gone
+	}
+	n, err := p.members(pgid)
+	if err != nil {
+		return false, fmt.Errorf("%w: group %d denies permission and the process table is unreadable: %w", errUnverifiable, pgid, err)
+	}
+	return n > 0, nil
 }

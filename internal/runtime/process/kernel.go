@@ -37,6 +37,11 @@ package process
 // group's termination are separate facts: descendants a leader leaves behind
 // keep the workload running, keep the workspace held, and are terminated and
 // verified gone before a stop or removal is confirmed or the holder released.
+// A process group that exists but denies the probe permission (a descendant
+// changed its credentials) is not proven terminated: it counts as gone only on
+// independent evidence (a recycled leader pid, or no live member in the process
+// table) and is otherwise alive or unverifiable, so the holder is kept and stop
+// and removal are not confirmed.
 // An accepted fence is persisted before any other effect of the call, and
 // exit evidence is kept in memory until a record carrying it was saved.
 //
@@ -233,7 +238,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	h := &host{cfg: cfg, st: kstore(dir), live: map[string]*kproc{}, killOnExit: func(pgid int) { _ = syscall.Kill(-pgid, syscall.SIGKILL) }}
+	h := &host{cfg: cfg, st: kstore(dir), live: map[string]*kproc{}, killOnExit: func(pgid int) { _ = syscall.Kill(-pgid, syscall.SIGKILL) }, probe: osProbe}
 	return &Kernel{Runtime: &KernelRuntime{h}, Resources: &KernelResources{h}, h: h}, nil
 }
 
@@ -261,6 +266,8 @@ type host struct {
 	// killOnExit kills what a workload's leader left in its process group; tests
 	// replace it to leave descendants behind. It is set before any launch.
 	killOnExit func(pgid int)
+	// probe examines process groups; tests inject what the system answers.
+	probe groupProbe
 }
 
 // kproc is a process this adapter instance launched.
@@ -305,6 +312,13 @@ func (p *kproc) ended() bool {
 	default:
 		return false
 	}
+}
+
+// prober returns the process group probe; tests replace it.
+func (h *host) prober() groupProbe {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.probe
 }
 
 func (h *host) now() time.Time { return h.cfg.Now().UTC() }
@@ -501,7 +515,7 @@ func (r *KernelRuntime) launch(ctx context.Context, req kr.StartRequest, key str
 	case state == wsMissing:
 		return kr.WorkloadObservation{}, notReached("%w: the run workspace is lost", domain.ErrConflict)
 	}
-	if held, ok, err := h.st.holder(wsKey); err != nil {
+	if held, ok, err := h.st.holder(wsKey, h.prober()); err != nil {
 		return kr.WorkloadObservation{}, notReached("%w", err)
 	} else if ok {
 		return kr.WorkloadObservation{}, notReached("%w: workload %s holds it", ErrWorkspaceBusy, held.WorkloadID)
@@ -659,28 +673,12 @@ func (h *host) supervise(typ, key string, p *kproc, cmd *exec.Cmd) {
 	deadline := time.Now().Add(h.cfg.KillGrace)
 	for {
 		h.killOnExit(p.pgid)
-		if alive, _ := memberAlive(p.pgid); !alive || time.Now().After(deadline) {
+		if alive, err := h.prober().alive(p.pgid, "", true); (!alive && err == nil) || time.Now().After(deadline) {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 	h.noteExit(typ, key)
-}
-
-// memberAlive reports whether any process of the group exists. Only when the
-// group is gone is it verified absent; a group of another user is not ours.
-func memberAlive(pgid int) (bool, error) {
-	if pgid <= 1 {
-		return false, nil
-	}
-	err := syscall.Kill(-pgid, 0)
-	switch {
-	case err == nil:
-		return true, nil
-	case errors.Is(err, syscall.ESRCH), errors.Is(err, syscall.EPERM):
-		return false, nil
-	}
-	return false, fmt.Errorf("process: probing process group %d: %w", pgid, err)
 }
 
 // noteExit records the exit of a launched process, unless a Stop did.
@@ -770,14 +768,14 @@ func (h *host) releaseHolder(rec kRecord) {
 // recorded start time, so a recycled pid is never mistaken for it.
 func (h *host) groupGone(rec kRecord) (bool, error) {
 	if p := h.proc(rec.Type, rec.Key); p != nil {
-		alive, err := memberAlive(p.pgid)
-		return !alive, err
+		alive, err := h.prober().alive(p.pgid, rec.StartID, true)
+		return !alive && err == nil, err
 	}
 	if rec.Pgid == 0 {
 		return true, nil
 	}
-	alive, err := groupAlive(rec.Pgid, rec.StartID)
-	return !alive, err
+	alive, err := h.prober().alive(rec.Pgid, rec.StartID, false)
+	return !alive && err == nil, err
 }
 
 // terminate ends the process group of the record: SIGTERM, then SIGKILL after
@@ -1246,7 +1244,7 @@ func (h *host) reconcileOne(ctx context.Context, rec kRecord, owned func(domain.
 		return errChanged
 	}
 	if cur.Type == typeWorkspace {
-		held, ok, err := h.st.holder(cur.Key)
+		held, ok, err := h.st.holder(cur.Key, h.prober())
 		if err != nil {
 			return err
 		}
@@ -1267,7 +1265,7 @@ func (r *KernelResources) WorkspaceHolder(_ context.Context, w kr.ResourceHandle
 	if w.Kind != kr.ResourceWorkspace {
 		return "", false, fmt.Errorf("%w: %s is not a workspace", domain.ErrInvalidValue, w.Name)
 	}
-	hld, ok, err := r.h.st.holder(objectKey(w.Scope, typeWorkspace, w.Identity))
+	hld, ok, err := r.h.st.holder(objectKey(w.Scope, typeWorkspace, w.Identity), r.h.prober())
 	return hld.WorkloadID, ok, err
 }
 

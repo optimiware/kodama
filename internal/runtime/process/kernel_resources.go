@@ -414,7 +414,7 @@ func (h *host) stopWorkspace(rec *kRecord) (bool, error) {
 			return false, err
 		}
 	}
-	if _, held, err := h.st.holder(rec.Key); err != nil || held {
+	if _, held, err := h.st.holder(rec.Key, h.prober()); err != nil || held {
 		return false, err
 	}
 	rec.Stopped = true
