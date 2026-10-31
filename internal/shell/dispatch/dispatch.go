@@ -29,15 +29,49 @@ import (
 	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/kernel/pipeline"
+	"github.com/optimiware/kodama/internal/natsbus"
 	"github.com/optimiware/kodama/internal/shell/bus"
 	"github.com/optimiware/kodama/internal/shell/store"
 )
 
-// Consumer is the durable consumer name and the subject filter of the dispatcher.
+// Filter is the subject filter of the dispatcher.
+const Filter = bus.SubjectRoot + ".*.*." + eventsv1.TypeGitRefsUpdated
+
+// The dispatcher's durable consumer is the (service, purpose) pair of the shared
+// scheme (O-39), "kodama_shell_git-dispatch". It replaces the retired literal
+// RetiredConsumer: a durable consumer is keyed by name, so the rename starts a
+// new JetStream cursor (DeliverAll) and the old consumer is left unused; see the
+// event path note in docs/contracts/git-service.md. Re-delivery of an
+// already-dispatched event is a no-op (store.Dispatched, DispatchPush), so the
+// reset repeats work, not effects.
 const (
-	Consumer = "kernel-git-dispatch"
-	Filter   = bus.SubjectRoot + ".*.*." + eventsv1.TypeGitRefsUpdated
+	consumerService = "shell"
+	consumerPurpose = "git-dispatch"
+
+	// RetiredConsumer is the grandfathered durable name the dispatcher used
+	// before the scheme. It is kept only so that tests can prove it is no longer
+	// used; nothing subscribes under it.
+	RetiredConsumer = "kernel-git-dispatch"
 )
+
+// Consumer is the dispatcher's durable consumer name. It is produced by
+// natsbus.ConsumerName, so it is always in the scheme, and is checked again by
+// Subscribe of the adapter.
+var Consumer = mustConsumerName(consumerService, consumerPurpose)
+
+// mustConsumerName builds a name through the shared scheme. The arguments are
+// constants of this package, so a failure is a programming error found at
+// start, and no out-of-scheme name can be constructed.
+func mustConsumerName(service, purpose string) string {
+	name, err := natsbus.ConsumerName(service, purpose)
+	if err != nil {
+		panic("dispatch: " + err.Error())
+	}
+	if s, p, err := natsbus.ParseConsumerName(name); err != nil || s != service || p != purpose {
+		panic("dispatch: consumer name " + name + " does not round-trip through the scheme")
+	}
+	return name
+}
 
 // Refusal codes of a file that cannot be indexed, besides the stable diagnostic
 // codes of the pipeline package.
