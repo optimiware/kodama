@@ -249,7 +249,7 @@ func (f *kFix) start(b kr.RuntimeBinding, script string, mut ...func(*kr.StartRe
 
 func (f *kFix) workspaceSpec(fence kr.Fence, sources ...kr.SourceInput) kr.ResourceSpec {
 	return kr.ResourceSpec{
-		Scope: kScope, RunID: f.run, Kind: kr.ResourceWorkspace, Name: "workspace", Lifetime: kr.LifetimePipeline,
+		Scope: kScope, Owner: kr.OwnerFor(kr.LifetimePipeline, kScope), RunID: f.run, Kind: kr.ResourceWorkspace, Name: "workspace", Lifetime: kr.LifetimePipeline,
 		Identity: "ws-" + string(f.run), SpecDigest: "sha256:" + strings.Repeat("b", 64), Fence: fence,
 		Preparation: &kr.PreparationInputs{Scope: kScope, RunID: f.run, Sources: sources, Digest: "inputs-1"},
 	}
@@ -257,14 +257,14 @@ func (f *kFix) workspaceSpec(fence kr.Fence, sources ...kr.SourceInput) kr.Resou
 
 func (f *kFix) serviceSpec(name string, fence kr.Fence, commands ...string) kr.ResourceSpec {
 	return kr.ResourceSpec{
-		Scope: kScope, RunID: f.run, Kind: kr.ResourceService, Name: name, Lifetime: kr.LifetimePipeline,
+		Scope: kScope, Owner: kr.OwnerFor(kr.LifetimePipeline, kScope), RunID: f.run, Kind: kr.ResourceService, Name: name, Lifetime: kr.LifetimePipeline,
 		Identity: "svc-" + name + "-" + string(f.run), SpecDigest: "sha256:" + strings.Repeat("c", 64), Fence: fence,
 		Service: &kr.ServiceSpec{Name: name, Lifetime: kr.LifetimePipeline, Image: podmantest.Image, Commands: commands, Ports: []int{8080}},
 	}
 }
 
 func handle(s kr.ResourceSpec) kr.ResourceHandle {
-	return kr.ResourceHandle{Scope: s.Scope, RunID: s.RunID, Kind: s.Kind, Name: s.Name, Identity: s.Identity, Fence: s.Fence}
+	return kr.ResourceHandle{Scope: s.Scope, Owner: s.Owner, Lifetime: s.Lifetime, RunID: s.RunID, Kind: s.Kind, Name: s.Name, Identity: s.Identity, Fence: s.Fence}
 }
 
 // kWait polls until done reports true (the adapters' own calls are the only
@@ -375,7 +375,7 @@ func Test_unit_podman_kernel_runtime_contract(t *testing.T) {
 				r.Spec.Secrets = []kr.SecretRef{{Owner: domain.Owner{TenantID: kScope.TenantID, ProjectID: kScope.ProjectID}, Name: "TOKEN"}}
 			}),
 			"workspace of another run": f.start(b, "true", func(r *kr.StartRequest) {
-				r.Workspace = kr.ResourceHandle{Scope: kScope, RunID: "other_run", Kind: kr.ResourceWorkspace, Name: "w", Identity: "w", Fence: 1}
+				r.Workspace = kr.ResourceHandle{Scope: kScope, Owner: kr.OwnerFor(kr.LifetimePipeline, kScope), Lifetime: kr.LifetimePipeline, RunID: "other_run", Kind: kr.ResourceWorkspace, Name: "w", Identity: "w", Fence: 1}
 			}),
 		} {
 			_, err := f.rt.Start(ctx, req)
