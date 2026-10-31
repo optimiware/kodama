@@ -139,18 +139,13 @@ WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3 AND step_key = $4 AND a
 const stmtLockSignalIdentity = `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`
 
 const stmtGetSignal = `SELECT shape, request_digest, applied, refusal_reason, target_run_id, target_step_id, target_wait_id,
-  decision_kind, decision_outcome, decision_answer, decision_actor_ref, decision_version, decided_at, recorded_at
+  decision_kind, decision_outcome, decision_answer, decision_actor_ref, decision_version, decided_at, decision_reason, recorded_at
 FROM signal_records WHERE tenant_id = $1 AND project_id = $2 AND caller_principal = $3 AND caller_key = $4`
 
 const stmtInsertSignal = `INSERT INTO signal_records (tenant_id, project_id, caller_principal, caller_key, signal_id, shape,
   request_digest, applied, refusal_reason, target_run_id, target_step_id, target_wait_id, decision_kind, decision_outcome,
-  decision_answer, decision_actor_ref, decision_version, decided_at, recorded_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`
-
-// stmtWaitReason recovers the reason of a cancelled decision a refused signal
-// lost to, from the wait the signal targeted: signal_records has no column for it.
-const stmtWaitReason = `SELECT wait_reason FROM run_steps
-WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3 AND step_key = $4 AND wait_id = $5 AND wait_state = 'cancelled'`
+  decision_answer, decision_actor_ref, decision_version, decided_at, decision_reason, recorded_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`
 
 // stmtWinningSignal finds the one applied signal of a wait: the deciding signal
 // a refusal that lost to a resolution reports. It reads signal_records only, so
@@ -194,7 +189,7 @@ func allStatements() []string {
 		stmtSetLease, stmtSetLeaseExpiry, stmtRunnable,
 		stmtUpdateRun, stmtUpdateStep, stmtInsertCommand, stmtUpdateCommand, stmtInsertWorkload, stmtUpdateWorkload,
 		stmtInsertResource, stmtUpdateResource, stmtInsertMaterialization, stmtRevokeMaterialization,
-		stmtLockSignalIdentity, stmtGetSignal, stmtInsertSignal, stmtWaitReason, stmtWinningSignal, stmtSignalRunsByWait, stmtSignalRunsByCorrelation,
+		stmtLockSignalIdentity, stmtGetSignal, stmtInsertSignal, stmtWinningSignal, stmtSignalRunsByWait, stmtSignalRunsByCorrelation,
 		stmtInsertEvent, stmtGetEvent, stmtRunEvents,
 	}
 }

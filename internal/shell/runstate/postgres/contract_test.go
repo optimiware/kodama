@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,7 +104,8 @@ func Test_unit_runstate_postgres_contract(t *testing.T) {
 		t.Run("the durable columns are the state", func(t *testing.T) { testDurableColumns(t, e) })
 		t.Run("a replacement store recovers from the database alone", func(t *testing.T) { testRecovery(t, e) })
 		t.Run("the durable guards refuse what the rules would", func(t *testing.T) { testGuards(t, e) })
-		t.Run("a refusal that lost to a cancellation replays its reason", func(t *testing.T) { testCancellationReplay(t, e) })
+		t.Run("a refusal that lost to a cancellation replays on its own record", func(t *testing.T) { testCancellationReplay(t, e) })
+		t.Run("a legacy cancelled record fails closed", func(t *testing.T) { testLegacyCancelledRecord(t, e) })
 		t.Run("a wait timeout that is not a whole microsecond stays decidable", func(t *testing.T) { testSubMicrosecondTimeout(t, e) })
 		t.Run("a failed commit leaves neither state nor outbox", func(t *testing.T) { testAtomicOutbox(t, e) })
 		t.Run("admission refuses a pipeline that is not in the scope", func(t *testing.T) { testUnknownPipeline(t, e) })
@@ -328,11 +330,10 @@ func testEventReuse(t *testing.T, e *env) {
 	}
 }
 
-// testCancellationReplay covers what signal_records cannot hold. A refusal that
-// lost to a cancellation replays with the cancellation's reason; the record keeps
-// none (it has no column for it), so the reason is read back from the wait the
-// signal targeted. When that wait is gone the replay fails loudly instead of
-// guessing a reason. A schema column would make the record self-contained.
+// testCancellationReplay covers a refusal that lost to a cancellation, for both
+// reasons. The record carries the reason, so the lookup and the replay are
+// unchanged after the wait's step row is removed (as retention may), a changed
+// request under the same key is key reuse, and nothing is rerouted.
 func testCancellationReplay(t *testing.T, e *env) {
 	e.reset()
 	clock := kernelcontracts.NewClock()
@@ -382,21 +383,93 @@ func testCancellationReplay(t *testing.T, e *env) {
 		if res.Applied || res.Refusal != runtime.RefusalDecided || res.Decision.Kind != runtime.DecisionCancelled || res.Decision.Reason != reason {
 			t.Fatalf("%s: the refusal = %+v", reason, res)
 		}
-		again, err := s.DecideSignal(ctx, req, clock.Now())
-		must(t, err, "replay")
-		look, err := s.LookupSignal(ctx, req.Identity)
+		var stored string
+		must(t, e.owner.QueryRow(ctx, `SELECT decision_reason FROM signal_records WHERE tenant_id = 't1' AND caller_key = $1`, req.Identity.Key).Scan(&stored), "read the column")
+		if stored != string(reason) {
+			t.Fatalf("%s: decision_reason = %q", reason, stored)
+		}
+		before, err := s.LookupSignal(ctx, req.Identity)
 		must(t, err, "lookup")
-		if !again.Replayed || again.Decision != res.Decision || look.Record == nil || look.Record.Decision != res.Decision {
-			t.Fatalf("%s: the replay lost the decision: %+v / %+v", reason, again, look)
-		}
-		if err := look.Validate(); err != nil {
-			t.Fatalf("%s: the replayed record is not valid: %v", reason, err)
-		}
-		// The reason is not in the record: with the wait gone the replay fails, it never guesses.
+
+		// Retention removes the wait's step row: the record is all a replay needs.
 		e.ownerExec(`DELETE FROM run_steps WHERE tenant_id = 't1' AND run_id = $1 AND step_key = 'review'`, string(id))
-		if _, err := s.LookupSignal(ctx, req.Identity); !errors.Is(err, domain.ErrInvalidValue) {
-			t.Fatalf("%s: a reason that cannot be recovered must be an error: %v", reason, err)
+		after, err := s.LookupSignal(ctx, req.Identity)
+		must(t, err, "lookup after the wait is gone")
+		if before.Record == nil || after.Record == nil || *after.Record != *before.Record || after.Record.Decision.Reason != reason {
+			t.Fatalf("%s: the lookup changed: %+v then %+v", reason, before.Record, after.Record)
 		}
+		if err := after.Validate(); err != nil {
+			t.Fatalf("%s: the record is not valid: %v", reason, err)
+		}
+		n := e.count(`SELECT count(*) FROM audit_events WHERE tenant_id = 't1'`)
+		again, err := s.DecideSignal(ctx, req, clock.Now())
+		must(t, err, "replay after the wait is gone")
+		if !again.Replayed || again.Applied || again.Refusal != runtime.RefusalDecided || again.Decision != res.Decision || again.Target != res.Target {
+			t.Fatalf("%s: the replay = %+v, want %+v", reason, again, res)
+		}
+		changed := req
+		changed.Outcome = "rejected"
+		if _, err := s.DecideSignal(ctx, changed, clock.Now()); !errors.Is(err, runtime.ErrKeyReuse) {
+			t.Fatalf("%s: changed content under the same key: %v", reason, err)
+		}
+		changed = req
+		changed.Answer = "other"
+		if _, err := s.DecideSignal(ctx, changed, clock.Now()); !errors.Is(err, runtime.ErrKeyReuse) {
+			t.Fatalf("%s: a changed answer under the same key: %v", reason, err)
+		}
+		if got := e.count(`SELECT count(*) FROM audit_events WHERE tenant_id = 't1'`); got != n {
+			t.Fatalf("%s: replay and key reuse wrote %d outbox rows", reason, got-n)
+		}
+		if got := e.count(`SELECT count(*) FROM signal_records WHERE tenant_id = 't1' AND caller_key = $1`, req.Identity.Key); got != 1 {
+			t.Fatalf("%s: %d records under the key", reason, got)
+		}
+	}
+}
+
+// testLegacyCancelledRecord covers a record written before migration 007: a
+// cancelled decision with a null reason. It fails closed: the lookup and the
+// replay report that the reason was not recorded, nothing is fabricated, and the
+// signal is not routed again (the wait, still open for another identity, is not
+// touched and no record or event is added).
+func testLegacyCancelledRecord(t *testing.T, e *env) {
+	e.reset()
+	clock := kernelcontracts.NewClock()
+	s := e.store(clock)
+	ctx := context.Background()
+	w := waitingRun(t, s, clock, scope1, "run1", "c1")
+	// Written as migration 006 allowed it: the constraint added by 007 is NOT VALID
+	// for rows that already exist, which the owner reproduces by dropping it for the insert.
+	e.ownerExec(`ALTER TABLE signal_records DROP CONSTRAINT signal_records_decision_reason_shape`)
+	t.Cleanup(func() {
+		e.reset()
+		e.ownerExec(`ALTER TABLE signal_records ADD CONSTRAINT signal_records_decision_reason_shape CHECK (
+			(decision_kind IS NOT DISTINCT FROM 'cancelled') = (decision_reason IS NOT NULL)) NOT VALID`)
+	})
+	req := runtime.SignalRequest{Identity: runtime.SignalIdentity{Scope: scope1, Caller: "alice", Key: "legacy"}, WaitID: w.ID, Outcome: "approved", Actor: "user:alice"}
+	e.ownerExec(`INSERT INTO signal_records (tenant_id, project_id, caller_principal, caller_key, signal_id, shape, request_digest, applied,
+		refusal_reason, target_run_id, target_step_id, target_wait_id, decision_kind, decision_version, decided_at)
+		VALUES ('t1', 'p1', 'alice', 'legacy', $1, 'decision', $2, false, 'decided', 'run1', 'review', $3, 'cancelled', 3, $4)`,
+		string(req.Identity.ID()), req.Digest()[len("sha256:"):], string(w.ID), clock.Now())
+	events := e.count(`SELECT count(*) FROM audit_events`)
+
+	if _, err := s.LookupSignal(ctx, req.Identity); !errors.Is(err, domain.ErrInvalidValue) || !strings.Contains(err.Error(), "not recorded") {
+		t.Fatalf("lookup of a legacy cancelled record: %v", err)
+	}
+	if _, err := s.DecideSignal(ctx, req, clock.Now()); !errors.Is(err, domain.ErrInvalidValue) {
+		t.Fatalf("replay of a legacy cancelled record: %v", err)
+	}
+	rec, err := s.Load(ctx, scope1, "run1")
+	must(t, err, "load")
+	if rec.Waits[0].State != runtime.WaitOpen || e.count(`SELECT count(*) FROM audit_events`) != events ||
+		e.count(`SELECT count(*) FROM signal_records`) != 1 {
+		t.Fatalf("the refused replay changed the store: %+v", rec.Waits[0])
+	}
+	// A column value of a resolved or tombstone record is unaffected: only cancelled decisions need a reason.
+	res, err := s.DecideSignal(ctx, runtime.SignalRequest{Identity: runtime.SignalIdentity{Scope: scope1, Caller: "bob", Key: "fresh"}, WaitID: w.ID,
+		Outcome: "approved", Actor: "user:bob"}, clock.Now())
+	must(t, err, "another identity decides the wait")
+	if !res.Applied {
+		t.Fatalf("another identity: %+v", res)
 	}
 }
 

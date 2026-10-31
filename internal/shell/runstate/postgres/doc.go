@@ -50,10 +50,19 @@
 // to the microsecond (UTC) before comparing or storing it, and returns what it
 // read back, so a record equals what a later Load returns.
 //
-// # Known gap
+// # Signal records and legacy rows
 //
-// signal_records has no column for the reason of a cancelled decision
-// (run_cancelled or run_failed). A refusal that lost to a cancellation therefore
-// recovers the reason from the wait the signal targeted, and fails with
-// domain.ErrInvalidValue rather than guess once that wait no longer exists.
+// A signal record is self-contained: it holds the target, the digest and the
+// complete decision it lost to or made, including the reason of a cancelled
+// decision (signal_records.decision_reason, migration 007). A replay reads that
+// row and nothing else, so it works after the wait, step and run are removed by
+// retention. The deciding signal of a resolution a refusal lost to is the one
+// applied record of that wait, also in signal_records.
+//
+// Records of cancelled decisions written before migration 007 have a null
+// reason. The adapter fails closed on them: LookupSignal and DecideSignal return
+// an error wrapping domain.ErrInvalidValue that says the reason was not recorded.
+// It never fabricates a reason (not from the wait row, not a default) and never
+// routes the signal again, so the identity stays bound to its recorded
+// refusal. New records always carry the reason (the table checks it).
 package postgres

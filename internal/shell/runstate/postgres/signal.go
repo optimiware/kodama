@@ -57,12 +57,13 @@ func lookupSignal(ctx context.Context, tx pgx.Tx, id runtime.SignalIdentity) (ru
 		applied                         bool
 		refusal, runID, stepKey, waitID *string
 		kind, outcome, answer, actor    *string
+		reasonCol                       *string
 		version                         *int64
 		decidedAt                       *time.Time
 		recordedAt                      time.Time
 	)
 	err := tx.QueryRow(ctx, stmtGetSignal, id.Scope.TenantID, id.Scope.ProjectID, id.Caller, id.Key).
-		Scan(&shape, &digest, &applied, &refusal, &runID, &stepKey, &waitID, &kind, &outcome, &answer, &actor, &version, &decidedAt, &recordedAt)
+		Scan(&shape, &digest, &applied, &refusal, &runID, &stepKey, &waitID, &kind, &outcome, &answer, &actor, &version, &decidedAt, &reasonCol, &recordedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return runtime.SignalLookup{}, nil
 	}
@@ -96,13 +97,15 @@ func lookupSignal(ctx context.Context, tx pgx.Tx, id runtime.SignalIdentity) (ru
 				d.SignalID = signal
 			}
 		case runtime.DecisionCancelled:
-			// signal_records keeps no reason for a cancellation; the wait the signal
-			// targeted does, for as long as that wait exists.
-			reason, err := cancellationReason(ctx, tx, id.Scope, rec.Target)
-			if err != nil {
-				return runtime.SignalLookup{}, err
+			// The reason is part of the record, so a replay needs nothing else. A
+			// cancelled record written before migration 007 has none: it is refused
+			// (fail closed) rather than given a reason nobody recorded, and the
+			// signal is not routed again.
+			if reasonCol == nil {
+				return runtime.SignalLookup{}, fmt.Errorf("%w: signal %s lost to a cancellation recorded before its reason was kept (migration 007); "+
+					"the reason is not recorded and is not guessed", domain.ErrInvalidValue, sid)
 			}
-			d.Reason = reason
+			d.Reason = runtime.Reason(*reasonCol)
 		}
 		rec.Decision = d
 	}
@@ -118,16 +121,6 @@ func winningSignal(ctx context.Context, tx pgx.Tx, scope domain.Scope, target ru
 		return "", fmt.Errorf("runstate/postgres: read the signal that resolved wait %s: %w", target.WaitID, err)
 	}
 	return runtime.SignalID(signal), nil
-}
-
-func cancellationReason(ctx context.Context, tx pgx.Tx, scope domain.Scope, target runtime.SignalTarget) (runtime.Reason, error) {
-	var reason *string
-	err := tx.QueryRow(ctx, stmtWaitReason, scope.TenantID, scope.ProjectID, target.RunID, target.StepKey, target.WaitID).Scan(&reason)
-	if err != nil || reason == nil {
-		return "", fmt.Errorf("runstate/postgres: the reason of the cancellation of wait %s is not recorded: %w", target.WaitID,
-			errors.Join(domain.ErrInvalidValue, err))
-	}
-	return runtime.Reason(*reason), nil
 }
 
 // DecideSignal routes and decides one signal in a single transaction by applying
@@ -281,17 +274,17 @@ func decisionEvent(w runtime.Wait, now time.Time) runtime.Event {
 // insertSignal writes the durable record or tombstone of one signal identity.
 func insertSignal(ctx context.Context, tx pgx.Tx, l runtime.SignalLookup) error {
 	if r := l.Record; r != nil {
-		var refusal, kind, outcome, answer, actor, version, decided any
+		var refusal, kind, outcome, answer, actor, version, decided, reason any
 		if r.Refusal != "" {
 			refusal = string(r.Refusal)
 		}
 		if d := r.Decision; d != (runtime.Decision{}) {
 			kind, outcome, answer, actor = string(d.Kind), nz(d.Outcome), nz(d.Answer), nz(d.Actor)
-			version, decided = int64(d.Version), d.At
+			version, decided, reason = int64(d.Version), d.At, nz(string(d.Reason))
 		}
 		_, err := tx.Exec(ctx, stmtInsertSignal, r.Identity.Scope.TenantID, r.Identity.Scope.ProjectID, r.Identity.Caller, r.Identity.Key,
 			string(r.ID), "decision", strings.TrimPrefix(r.Digest, digestPrefix), r.Applied, refusal, r.Target.RunID, r.Target.StepKey,
-			r.Target.WaitID, kind, outcome, answer, actor, version, decided, r.RecordedAt)
+			r.Target.WaitID, kind, outcome, answer, actor, version, decided, reason, r.RecordedAt)
 		if err != nil {
 			return fmt.Errorf("runstate/postgres: record signal %s: %w", r.ID, err)
 		}
@@ -300,7 +293,7 @@ func insertSignal(ctx context.Context, tx pgx.Tx, l runtime.SignalLookup) error 
 	t := l.Tombstone
 	_, err := tx.Exec(ctx, stmtInsertSignal, t.Identity.Scope.TenantID, t.Identity.Scope.ProjectID, t.Identity.Caller, t.Identity.Key,
 		string(t.ID), "tombstone", strings.TrimPrefix(t.Digest, digestPrefix), false, string(t.Refusal), nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, t.RecordedAt)
+		nil, nil, nil, t.RecordedAt)
 	if err != nil {
 		return fmt.Errorf("runstate/postgres: record signal %s: %w", t.ID, err)
 	}
