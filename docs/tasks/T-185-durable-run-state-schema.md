@@ -1,7 +1,7 @@
 ---
 id: T-185
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-179]
 decision_blockers: []
 owns: [internal/storage/, docs/implementation/database-schema.md, internal/app/migrate_test.go, internal/app/sdlc_test.go, internal/artifacts/postgres/migrations_test.go, internal/identity/postgres/isolation_test.go, internal/runtimeauth/postgres/resource_test.go]

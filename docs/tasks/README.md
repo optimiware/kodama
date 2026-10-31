@@ -159,7 +159,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-182 PostgreSQL kernel state adapter](T-182-runstate-postgres.md) | T-174, T-179, T-185 | planned |
 | [T-183 Project pipeline registry](T-183-pipeline-registry.md) | T-179 | done |
 | [T-184 Task tracking and execution projection](T-184-task-tracking.md) | T-179, T-182 | planned |
-| [T-185 Durable run-state schema for the kernel record](T-185-durable-run-state-schema.md) | T-179 | planned |
+| [T-185 Durable run-state schema for the kernel record](T-185-durable-run-state-schema.md) | T-179 | done |
 | [T-186 Step outputs and claim release in the kernel contract](T-186-kernel-outputs-and-release.md) | T-175 | planned |
 | [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | deferred (parked until stage access) |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
