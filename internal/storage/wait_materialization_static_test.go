@@ -313,21 +313,21 @@ func Test_unit_storage_wait_decision_ordering(t *testing.T) {
 	t.Run("a_decided_step_never_goes_back", func(t *testing.T) {
 		var fn string
 		for _, s := range stmts {
-			if strings.HasPrefix(s, "CREATE FUNCTION kodama_run_step_wait_order_guard()") {
+			if strings.HasPrefix(s, "CREATE FUNCTION kodama_run_step_order_guard()") {
 				fn = s
 			}
 		}
 		for _, need := range []string{
-			"OLD.step_kind = 'wait' AND NEW.status IS DISTINCT FROM OLD.status",
-			"OLD.status IN ('succeeded', 'failed', 'skipped', 'cancelled')",
-			"OLD.status = 'waiting' AND NEW.status = 'pending'",
+			"IF NEW.status IS DISTINCT FROM OLD.status THEN",
+			"IF OLD.status IN ('succeeded', 'failed', 'skipped', 'cancelled')",
+			"OLD.step_kind = 'wait' AND OLD.status = 'waiting' AND NEW.status = 'pending'",
 		} {
 			if !strings.Contains(fn, need) {
-				t.Errorf("kodama_run_step_wait_order_guard lacks %q", need)
+				t.Errorf("kodama_run_step_order_guard lacks %q", need)
 			}
 		}
-		if !slices.Contains(stmts, "CREATE TRIGGER run_steps_wait_order_guard BEFORE UPDATE ON run_steps FOR EACH ROW EXECUTE FUNCTION kodama_run_step_wait_order_guard()") {
-			t.Error("the wait-order guard is not a BEFORE UPDATE row trigger on run_steps")
+		if !slices.Contains(stmts, "CREATE TRIGGER run_steps_order_guard BEFORE UPDATE ON run_steps FOR EACH ROW EXECUTE FUNCTION kodama_run_step_order_guard()") {
+			t.Error("the step-order guard is not a BEFORE UPDATE row trigger on run_steps")
 		}
 	})
 

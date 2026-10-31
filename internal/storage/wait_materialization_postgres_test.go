@@ -306,6 +306,83 @@ func Test_step_outputs_immutable_postgres(t *testing.T) {
 	}
 }
 
+// Test_step_outputs_reopen_bypass_postgres: outputs cannot be rewritten by first
+// reopening the settled step. The bypass is two updates (back to an unsettled state,
+// then settle again with other outputs); the first must be refused for every role,
+// whether or not the step recorded a result code or any outputs.
+func Test_step_outputs_reopen_bypass_postgres(t *testing.T) {
+	e := newEnv(t)
+	seedPipelineRuntime(t, e)
+	e.exec(t, `INSERT INTO run_steps (tenant_id, project_id, run_id, id, step_key, ordinal, image, step_kind) VALUES
+  ('tenant-a', 'pa1', 'r1', 's3', 'lint', 5, 'registry.example/lint@sha256:abc', 'container'),
+  ('tenant-a', 'pa1', 'r1', 's4', 'scan', 6, 'registry.example/scan@sha256:abc', 'container'),
+  ('tenant-a', 'pa1', 'r1', 's5', 'pack', 7, 'registry.example/pack@sha256:abc', 'container'),
+  ('tenant-a', 'pa1', 'r1', 's6', 'sign', 8, 'registry.example/sign@sha256:abc', 'container')`)
+	pool := e.runtime(t, 2)
+	// s1 settles with outputs, s3 without any, s4 with a result code and outputs; neither s1 nor
+	// s3 records a result_code, which is what once left them reopenable.
+	must(t, runtimeExec(t, pool, tenantA, `UPDATE run_steps SET status = 'running' WHERE id IN ('s1', 's3', 's4', 's5', 's6')`))
+	must(t, runtimeExec(t, pool, tenantA, `UPDATE run_steps SET status = 'succeeded', finished_at = now(), outputs = '{"commit": "abc"}' WHERE id = 's1'`))
+	must(t, runtimeExec(t, pool, tenantA, `UPDATE run_steps SET status = 'succeeded', finished_at = now() WHERE id = 's3'`))
+	must(t, runtimeExec(t, pool, tenantA, `UPDATE run_steps SET status = 'succeeded', finished_at = now(), attempt = 1, exit_code = 0, result_code = 'succeeded', outputs = '{"commit": "def"}' WHERE id = 's4'`))
+	must(t, runtimeExec(t, pool, tenantA, `UPDATE run_steps SET status = 'failed', finished_at = now() WHERE id = 's5'`))
+	must(t, runtimeExec(t, pool, tenantA, `UPDATE run_steps SET status = 'skipped', finished_at = now() WHERE id = 's6'`))
+	read := func(id string) string {
+		return scalar[string](t, pool, tenantA, `SELECT status || ' ' || outputs::text FROM run_steps WHERE id = $1`, id)
+	}
+	want := map[string]string{"s1": `succeeded {"commit": "abc"}`, "s3": "succeeded {}", "s4": `succeeded {"commit": "def"}`, "s5": "failed {}", "s6": "skipped {}"}
+	for id, w := range want {
+		if got := read(id); got != w {
+			t.Fatalf("%s = %s, want %s", id, got, w)
+		}
+	}
+
+	roles := map[string]func(sql string) error{
+		"runtime": func(sql string) error { return runtimeExec(t, pool, tenantA, sql) },
+		"owner":   func(sql string) error { return tryExec(t, e, sql) },
+	}
+	for role, exec := range roles {
+		for id := range want {
+			for _, back := range []string{"running", "pending", "waiting"} {
+				// The first update of the bypass: reopen the settled step.
+				err := exec(`UPDATE run_steps SET status = '` + back + `', finished_at = NULL WHERE id = '` + id + `'`)
+				if err == nil {
+					t.Errorf("%s reopened settled step %s as %s", role, id, back)
+					continue
+				}
+				if code := pgCode(err); code != "23514" {
+					t.Errorf("%s reopening %s as %s: SQLSTATE %q (%v), want 23514", role, id, back, code, err)
+				}
+			}
+			// Another settled state is no way around it either.
+			requireCode(t, exec(`UPDATE run_steps SET status = 'cancelled' WHERE id = '`+id+`'`), "23514", role+" re-settling "+id+" differently")
+			// The two statements together, and the second alone, cannot rewrite the outputs.
+			requireCode(t, exec(`UPDATE run_steps SET status = 'running', finished_at = NULL, outputs = '{"commit": "rewritten"}' WHERE id = '`+id+`'`), "23514", role+" reopening with new outputs "+id)
+			requireCode(t, exec(`UPDATE run_steps SET status = 'succeeded', finished_at = now(), outputs = '{"commit": "rewritten"}' WHERE id = '`+id+`'`), "23514", role+" settling again with new outputs "+id)
+			requireCode(t, exec(`UPDATE run_steps SET outputs = '{"commit": "rewritten"}' WHERE id = '`+id+`'`), "23514", role+" rewriting "+id)
+		}
+		for id, w := range want {
+			if got := read(id); got != w {
+				t.Fatalf("after the %s refusals %s = %s, want %s", role, id, got, w)
+			}
+		}
+	}
+
+	// Identical replay of the settling commit is not a change, for either role.
+	for role, exec := range roles {
+		for id, w := range map[string]string{"s1": `{"commit": "abc"}`, "s3": `{}`, "s4": `{"commit": "def"}`} {
+			if err := exec(`UPDATE run_steps SET status = 'succeeded', finished_at = now(), outputs = '` + w + `' WHERE id = '` + id + `'`); err != nil {
+				t.Errorf("%s replaying the settlement of %s: %v", role, id, err)
+			}
+		}
+	}
+	for id, w := range want {
+		if got := read(id); got != w {
+			t.Fatalf("after the replays %s = %s, want %s", id, got, w)
+		}
+	}
+}
+
 const (
 	matInsert = `INSERT INTO run_materializations (tenant_id, project_id, run_id, step_key, attempt, materialization_id, issued_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)`

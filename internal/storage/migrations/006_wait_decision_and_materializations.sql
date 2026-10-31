@@ -50,28 +50,31 @@ ALTER TABLE run_steps
         AND wait_reason IS NOT NULL AND wait_reason IN ('run_cancelled', 'run_failed')
         AND num_nonnulls(wait_outcome, wait_answer, wait_actor_ref, wait_consumed_signal_id) = 0));
 
--- A step of a wait never moves backwards, and a settled one never changes. With
--- the checks above a decided wait may sit on a `waiting` step; without this guard
--- a settled wait step could be set back to `waiting` (or `pending`) and appear to
--- reopen its wait. The order is pending, then waiting, then one settled state.
--- 004's guard already keeps the wait itself immutable once decided and never lets
--- a decided wait return to `waiting`.
-CREATE FUNCTION kodama_run_step_wait_order_guard() RETURNS trigger
+-- A settled step is final, whatever its kind, and a wait step never moves back.
+-- With the checks above a decided wait may sit on a `waiting` step; without this
+-- guard a settled wait step could be set back to `waiting` (or `pending`) and
+-- appear to reopen its wait. The same finality protects the outputs of a container
+-- step: were a succeeded step allowed back to `running`, its outputs could be
+-- rewritten by a second update that settles it again. The guard looks only at the
+-- status, so it holds whether or not the step recorded a result, outputs or exit
+-- code. A repeat of the recorded status is not a change. 004's guard already keeps
+-- the wait itself immutable once decided and never lets it return to `waiting`.
+CREATE FUNCTION kodama_run_step_order_guard() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
-    IF OLD.step_kind = 'wait' AND NEW.status IS DISTINCT FROM OLD.status THEN
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
         IF OLD.status IN ('succeeded', 'failed', 'skipped', 'cancelled') THEN
-            RAISE EXCEPTION 'a settled wait step cannot change its state' USING ERRCODE = '23514';
+            RAISE EXCEPTION 'a settled step cannot change its state' USING ERRCODE = '23514';
         END IF;
-        IF OLD.status = 'waiting' AND NEW.status = 'pending' THEN
+        IF OLD.step_kind = 'wait' AND OLD.status = 'waiting' AND NEW.status = 'pending' THEN
             RAISE EXCEPTION 'a wait step cannot move back to pending' USING ERRCODE = '23514';
         END IF;
     END IF;
     RETURN NEW;
 END $$;
-CREATE TRIGGER run_steps_wait_order_guard BEFORE UPDATE ON run_steps
-    FOR EACH ROW EXECUTE FUNCTION kodama_run_step_wait_order_guard();
+CREATE TRIGGER run_steps_order_guard BEFORE UPDATE ON run_steps
+    FOR EACH ROW EXECUTE FUNCTION kodama_run_step_order_guard();
 
 -- ---------------------------------------------------------------------------
 -- Step outputs are recorded with the settling commit and never rewritten.
