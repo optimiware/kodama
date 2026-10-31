@@ -39,6 +39,7 @@ type fakeCluster struct {
 	// mutation is applied anyway (a lost response).
 	inject map[string][]injected
 	hooks  map[string][]func()
+	after  map[string][]func()
 	// tampers rewrite the server document of one object, as a hostile or
 	// misconfigured actor could: typed fields stay as stored, the raw JSON the
 	// adapter verifies changes.
@@ -79,7 +80,7 @@ func newFake(clock *fakeClock) *fakeCluster {
 		pvs:        map[string]kubernetes.PersistentVolume{},
 		jobs:       map[string]any{}, pods: map[string]any{}, secrets: map[string]any{}, pvcs: map[string]any{}, services: map[string]any{},
 		logs:   map[string]string{},
-		inject: map[string][]injected{}, hooks: map[string][]func(){}, tampers: map[string][]func(map[string]any){}, calls: map[string]int{},
+		inject: map[string][]injected{}, hooks: map[string][]func(){}, after: map[string][]func(){}, tampers: map[string][]func(map[string]any){}, calls: map[string]int{},
 	}
 }
 
@@ -177,10 +178,27 @@ func (f *fakeCluster) ListPVs(context.Context) ([]kubernetes.PersistentVolume, e
 func (f *fakeCluster) ListVolumeAttachments(context.Context) ([]kubernetes.VolumeAttachment, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if in, ok := f.next("list volumeattachments"); ok && in.err != nil {
+		return nil, in.err
+	}
 	return append([]kubernetes.VolumeAttachment(nil), f.attached...), nil
 }
 
 // ---- generic object helpers ----
+
+// clone copies an object the way a decode from the wire would: nothing the
+// caller does to its copy reaches the stored object before an update is accepted.
+func clone[T any](v T) T {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	var out T
+	if err := json.Unmarshal(raw, &out); err != nil {
+		panic(err)
+	}
+	return out
+}
 
 func get[T any](f *fakeCluster, m map[string]any, op, ns, name string) (T, error) {
 	f.runHook(op)
@@ -194,7 +212,7 @@ func get[T any](f *fakeCluster, m map[string]any, op, ns, name string) (T, error
 	if !ok {
 		return zero, notFound(op)
 	}
-	return f.attach(v).(T), nil
+	return f.attach(clone(v.(T))).(T), nil
 }
 
 // runHook runs the next hook registered for op, outside the cluster lock, so a
@@ -210,6 +228,28 @@ func (f *fakeCluster) runHook(op string) {
 	if h != nil {
 		h()
 	}
+}
+
+// runAfter runs the next hook registered to follow op, once the call has
+// completed, so a test can interleave another actor between a create and the
+// caller's next step.
+func (f *fakeCluster) runAfter(op string) {
+	f.mu.Lock()
+	q := f.after[op]
+	var h func()
+	if len(q) > 0 {
+		h, f.after[op] = q[0], q[1:]
+	}
+	f.mu.Unlock()
+	if h != nil {
+		h()
+	}
+}
+
+func (f *fakeCluster) onAfter(op string, h func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.after[op] = append(f.after[op], h)
 }
 
 func (f *fakeCluster) onNext(op string, h func()) {
@@ -354,8 +394,9 @@ func create[T any](f *fakeCluster, m map[string]any, op, ns string, obj T) (T, e
 	if _, ok := m[key(ns, name)]; ok {
 		return obj, &kubernetes.Error{Op: op, Kind: kubernetes.ErrAlreadyExists}
 	}
+	obj = clone(obj)
 	f.stamp(meta(&obj), ns)
-	m[key(ns, name)] = obj
+	m[key(ns, name)] = clone(obj)
 	if injectedFault && in.err != nil {
 		return obj, in.err // applied, but the answer is lost
 	}
@@ -473,7 +514,9 @@ func (f *fakeCluster) GetJob(_ context.Context, ns, name string) (kubernetes.Job
 }
 
 func (f *fakeCluster) CreateJob(_ context.Context, ns string, j kubernetes.Job) (kubernetes.Job, error) {
-	return create(f, f.jobs, "create job", ns, j)
+	out, err := create(f, f.jobs, "create job", ns, j)
+	f.runAfter("create job")
+	return out, err
 }
 
 func (f *fakeCluster) DeleteJob(_ context.Context, ns, name string, o kubernetes.DeleteOptions) error {
@@ -489,7 +532,7 @@ func (f *fakeCluster) ListPods(_ context.Context, ns, selector string) ([]kubern
 	for _, v := range f.pods {
 		p := v.(kubernetes.Pod)
 		if p.Metadata.Namespace == ns && selectorMatches(selector, p.Metadata.Labels) {
-			out = append(out, f.attach(p).(kubernetes.Pod))
+			out = append(out, f.attach(clone(p)).(kubernetes.Pod))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Metadata.Name < out[j].Metadata.Name })
@@ -501,7 +544,9 @@ func (f *fakeCluster) GetPod(_ context.Context, ns, name string) (kubernetes.Pod
 }
 
 func (f *fakeCluster) CreatePod(_ context.Context, ns string, p kubernetes.Pod) (kubernetes.Pod, error) {
-	return create(f, f.pods, "create pod", ns, p)
+	out, err := create(f, f.pods, "create pod", ns, p)
+	f.runAfter("create pod")
+	return out, err
 }
 
 func (f *fakeCluster) DeletePod(_ context.Context, ns, name string, o kubernetes.DeleteOptions) error {
@@ -547,7 +592,7 @@ func (f *fakeCluster) UpdateSecret(_ context.Context, ns string, s kubernetes.Se
 	n, _ := strconv.Atoi(c.Metadata.ResourceVersion)
 	s.Metadata.ResourceVersion = strconv.Itoa(n + 1)
 	s.Metadata.UID, s.Metadata.CreationTimestamp, s.Metadata.Namespace = c.Metadata.UID, c.Metadata.CreationTimestamp, ns
-	f.secrets[key(ns, s.Metadata.Name)] = s
+	f.secrets[key(ns, s.Metadata.Name)] = clone(s)
 	if injectedFault && in.err != nil {
 		return s, in.err
 	}
@@ -565,7 +610,7 @@ func (f *fakeCluster) ListSecrets(_ context.Context, ns, selector string) ([]kub
 	for _, v := range f.secrets {
 		s := v.(kubernetes.Secret)
 		if s.Metadata.Namespace == ns && selectorMatches(selector, s.Metadata.Labels) {
-			out = append(out, s)
+			out = append(out, clone(s))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Metadata.Name < out[j].Metadata.Name })
@@ -579,7 +624,9 @@ func (f *fakeCluster) GetPVC(_ context.Context, ns, name string) (kubernetes.Per
 }
 
 func (f *fakeCluster) CreatePVC(_ context.Context, ns string, p kubernetes.PersistentVolumeClaim) (kubernetes.PersistentVolumeClaim, error) {
-	return create(f, f.pvcs, "create pvc", ns, p)
+	out, err := create(f, f.pvcs, "create pvc", ns, p)
+	f.runAfter("create pvc")
+	return out, err
 }
 
 func (f *fakeCluster) DeletePVC(_ context.Context, ns, name string, o kubernetes.DeleteOptions) error {
@@ -591,7 +638,9 @@ func (f *fakeCluster) GetService(_ context.Context, ns, name string) (kubernetes
 }
 
 func (f *fakeCluster) CreateService(_ context.Context, ns string, s kubernetes.Service) (kubernetes.Service, error) {
-	return create(f, f.services, "create service", ns, s)
+	out, err := create(f, f.services, "create service", ns, s)
+	f.runAfter("create service")
+	return out, err
 }
 
 func (f *fakeCluster) DeleteService(_ context.Context, ns, name string, o kubernetes.DeleteOptions) error {
@@ -607,7 +656,7 @@ func (f *fakeCluster) job(ns, name string) (kubernetes.Job, bool) {
 	if !ok {
 		return kubernetes.Job{}, false
 	}
-	return f.attach(v).(kubernetes.Job), true
+	return f.attach(clone(v.(kubernetes.Job))).(kubernetes.Job), true
 }
 
 func (f *fakeCluster) names(m map[string]any) []string {

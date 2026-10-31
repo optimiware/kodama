@@ -173,10 +173,7 @@ func (c *core) ensureWorkspace(ctx context.Context, t Target, id ident, rec reco
 			}
 			return p.Metadata.UID, nil
 		},
-		reap: func() error {
-			_, err := c.deleteClaim(ctx, ns, id)
-			return err
-		},
+		reap: func(uid string) error { return c.reapClaim(ctx, ns, id, uid) },
 	})
 }
 
@@ -196,6 +193,42 @@ func (c *core) deleteClaim(ctx context.Context, ns string, id ident) (kubernetes
 		}
 	}
 	return p, nil
+}
+
+// reapClaim deletes the claim with exactly this UID.
+func (c *core) reapClaim(ctx context.Context, ns string, id ident, uid string) error {
+	p, found, err := c.getPVC(ctx, ns, id.base())
+	if err != nil || !found || p.Metadata.UID != uid || !id.owns(p.Metadata.Labels, p.Metadata.Annotations) {
+		return err
+	}
+	if err := c.cluster.DeletePVC(ctx, ns, p.Metadata.Name, kubernetes.DeleteOptions{UID: uid}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
+		return fmt.Errorf("kernelrt: deleting the workspace claim: %w", err)
+	}
+	return nil
+}
+
+// reapPod deletes the service Pod with exactly this UID.
+func (c *core) reapPod(ctx context.Context, ns string, id ident, uid string) error {
+	p, found, err := c.getPod(ctx, ns, id.base())
+	if err != nil || !found || p.Metadata.UID != uid || !id.owns(p.Metadata.Labels, p.Metadata.Annotations) {
+		return err
+	}
+	if err := c.cluster.DeletePod(ctx, ns, p.Metadata.Name, kubernetes.DeleteOptions{UID: uid, Propagation: "Foreground"}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
+		return fmt.Errorf("kernelrt: deleting the Pod: %w", err)
+	}
+	return nil
+}
+
+// reapService deletes the Service with exactly this UID.
+func (c *core) reapService(ctx context.Context, ns string, id ident, uid string) error {
+	s, found, err := c.getService(ctx, ns, id.base())
+	if err != nil || !found || s.Metadata.UID != uid || !id.owns(s.Metadata.Labels, s.Metadata.Annotations) {
+		return err
+	}
+	if err := c.cluster.DeleteService(ctx, ns, s.Metadata.Name, kubernetes.DeleteOptions{UID: uid}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
+		return fmt.Errorf("kernelrt: deleting the Service: %w", err)
+	}
+	return nil
 }
 
 func (c *core) getPod(ctx context.Context, ns, name string) (kubernetes.Pod, bool, error) {
@@ -269,7 +302,7 @@ func (c *core) ensureService(ctx context.Context, t Target, id ident, rec record
 				}
 				return p.Metadata.UID, nil
 			},
-			reap: func() error { _, err := c.deleteServiceObjects(ctx, ns, id); return err },
+			reap: func(uid string) error { return c.reapPod(ctx, ns, id, uid) },
 		})
 		if err != nil {
 			return err
@@ -316,7 +349,7 @@ func (c *core) ensureService(ctx context.Context, t Target, id ident, rec record
 			}
 			return sv.Metadata.UID, nil
 		},
-		reap: func() error { _, err := c.deleteServiceObjects(ctx, ns, id); return err },
+		reap: func(uid string) error { return c.reapService(ctx, ns, id, uid) },
 	}))
 }
 
@@ -649,11 +682,15 @@ func (c *core) deleteWorkspace(ctx context.Context, ns string, id ident, rec rec
 // the volume object are gone.
 func (c *core) evidenceAndPersist(ctx context.Context, ns string, id ident, rec record) (ReleaseEvidence, record, error) {
 	ev, known, err := c.evidence(ctx, ns, id, rec)
-	if err != nil {
-		return ev, rec, err
-	}
-	if !containsAll(rec.volumes, known) {
-		rec, err = c.mutate(ctx, ns, id, func(r *record) error { r.addVolumes(known...); return nil })
+	// Persist what was discovered before judging the failure: an attachment list
+	// that cannot be read must not cost the identities already found, which the
+	// volume object may not outlive.
+	if len(known) > 0 && !containsAll(rec.volumes, known) {
+		next, perr := c.mutate(ctx, ns, id, func(r *record) error { r.addVolumes(known...); return nil })
+		if perr != nil {
+			return ev, rec, errors.Join(err, perr)
+		}
+		rec = next
 	}
 	return ev, rec, err
 }
@@ -680,6 +717,9 @@ func (c *core) establishClaim(ctx context.Context, ns string, id ident, rec reco
 	return c.mutate(ctx, ns, id, func(r *record) error {
 		if got := r.created[opPVC]; got != "" && got != uid {
 			return unverified("the claim was replaced by another instance")
+		}
+		if r.reaping[opPVC] == uid {
+			return unverified("the claim is being deleted by its creator")
 		}
 		r.created[opPVC] = uid
 		r.addVolumes(vol)

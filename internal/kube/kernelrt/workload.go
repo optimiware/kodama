@@ -185,7 +185,13 @@ func (r *Runtime) Start(ctx context.Context, req runtime.StartRequest) (runtime.
 	j := r.stepJob(id, req, t, ws.base(), material, serviceHostEnv(t.Namespace, svcs))
 	err = r.guarded(ctx, t.Namespace, id, guard{
 		op: opJob, fence: b.Fence,
-		mod: func(rc *record) { rc.workspace, rc.secretsDir = ws.base(), secretsDir },
+		mod: func(rc *record) error {
+			if rc.workspace != "" && (rc.workspace != ws.base() || rc.secretsDir != secretsDir) {
+				return invalidf("the workload was started against another workspace or secret layout")
+			}
+			rc.workspace, rc.secretsDir = ws.base(), secretsDir
+			return nil
+		},
 		create: func() (string, error) {
 			out, err := r.cluster.CreateJob(ctx, t.Namespace, j)
 			return out.Metadata.UID, err
@@ -204,7 +210,7 @@ func (r *Runtime) Start(ctx context.Context, req runtime.StartRequest) (runtime.
 			}
 			return existing.Metadata.UID, nil
 		},
-		reap: func() error { _, err := r.deleteWorkloadObjects(ctx, t.Namespace, id); return err },
+		reap: func(uid string) error { return r.reapJob(ctx, t.Namespace, id, uid) },
 	})
 	if err != nil {
 		return runtime.WorkloadObservation{}, err
@@ -273,7 +279,7 @@ func (c *core) ensureMaterial(ctx context.Context, ns string, id ident, fence ru
 			}
 			return got.Metadata.UID, nil
 		},
-		reap: func() error { return c.deleteMaterial(ctx, ns, id) },
+		reap: func(uid string) error { return c.reapMaterial(ctx, ns, id, uid) },
 	})
 	return name, err
 }
@@ -599,6 +605,53 @@ func (c *core) deleteMaterial(ctx context.Context, ns string, id ident) error {
 	}
 	err = c.cluster.DeleteSecret(ctx, ns, s.Metadata.Name, kubernetes.DeleteOptions{UID: s.Metadata.UID})
 	if err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
+		return fmt.Errorf("kernelrt: deleting the step secrets: %w", err)
+	}
+	return nil
+}
+
+// reapJob deletes the Job with exactly this UID, and the Pods that Job controls.
+// A different instance under the name is never touched.
+func (c *core) reapJob(ctx context.Context, ns string, id ident, uid string) error {
+	job, found, err := c.getJob(ctx, ns, id.base())
+	if err != nil || !found || job.Metadata.UID != uid {
+		return err
+	}
+	if !id.owns(job.Metadata.Labels, job.Metadata.Annotations) {
+		return fmt.Errorf("%w: job %s", ErrForeign, job.Metadata.Name)
+	}
+	if job.Metadata.DeletionTimestamp == "" {
+		if err := c.deleteJob(ctx, ns, job); err != nil {
+			return err
+		}
+	}
+	pods, err := c.jobPods(ctx, ns, id, job)
+	if err != nil {
+		return err
+	}
+	for _, p := range pods {
+		if p.Metadata.DeletionTimestamp != "" {
+			continue
+		}
+		if err := c.cluster.DeletePod(ctx, ns, p.Metadata.Name, kubernetes.DeleteOptions{UID: p.Metadata.UID, Propagation: "Foreground"}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
+			return fmt.Errorf("kernelrt: deleting a Pod: %w", err)
+		}
+	}
+	return nil
+}
+
+// reapMaterial deletes the step Secret with exactly this UID.
+func (c *core) reapMaterial(ctx context.Context, ns string, id ident, uid string) error {
+	s, err := c.cluster.GetSecret(ctx, ns, id.materialName())
+	switch {
+	case errors.Is(err, kubernetes.ErrNotFound):
+		return nil
+	case err != nil:
+		return fmt.Errorf("kernelrt: reading the step secrets: %w", err)
+	case s.Metadata.UID != uid || !id.owns(s.Metadata.Labels, s.Metadata.Annotations):
+		return nil
+	}
+	if err := c.cluster.DeleteSecret(ctx, ns, s.Metadata.Name, kubernetes.DeleteOptions{UID: uid}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
 		return fmt.Errorf("kernelrt: deleting the step secrets: %w", err)
 	}
 	return nil

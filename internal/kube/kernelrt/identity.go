@@ -92,6 +92,7 @@ const (
 	// marker is a create that was issued and may still land; a created UID is
 	// the instance this identity established.
 	annMarkerPrefix  = "kodama.io/inflight."
+	annReapingPrefix = "kodama.io/reaping."
 	annCreatedPrefix = "kodama.io/created."
 	annClaimGone     = "kodama.io/claim-gone"
 	annWorkspace     = "kodama.io/workspace-claim"

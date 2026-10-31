@@ -53,6 +53,12 @@ type record struct {
 	// created holds the UID of the object each operation established. A missing
 	// object with a recorded UID was lost; it is never silently recreated.
 	created map[string]string
+	// reaping holds, per operation, the UID of an object whose creator has
+	// claimed the right to delete it because the identity closed before anyone
+	// established it. While it is set no one may establish that instance, so
+	// "established by a newer writer" and "being reaped by its creator" exclude
+	// each other through the record's version check.
+	reaping map[string]string
 	// workspace is the workspace claim this workload was started against.
 	workspace string
 	// secretsDir is where the step's declared secrets are mounted; empty when
@@ -70,7 +76,7 @@ type record struct {
 
 func decodeRecord(s kubernetes.Secret) (record, error) {
 	a := s.Metadata.Annotations
-	r := record{secret: s, state: recState(a[annState]), markers: map[string]time.Time{}, created: map[string]string{}}
+	r := record{secret: s, state: recState(a[annState]), markers: map[string]time.Time{}, created: map[string]string{}, reaping: map[string]string{}}
 	switch r.state {
 	case recActive, recStopped, recRemoved:
 	default:
@@ -91,6 +97,8 @@ func decodeRecord(s kubernetes.Secret) (record, error) {
 			r.markers[strings.TrimPrefix(k, annMarkerPrefix)] = t
 		case strings.HasPrefix(k, annCreatedPrefix):
 			r.created[strings.TrimPrefix(k, annCreatedPrefix)] = v
+		case strings.HasPrefix(k, annReapingPrefix):
+			r.reaping[strings.TrimPrefix(k, annReapingPrefix)] = v
 		}
 	}
 	if v := a[annClaimGone]; v != "" {
@@ -117,7 +125,7 @@ func (r *record) apply(now time.Time) {
 	}
 	a := r.secret.Metadata.Annotations
 	for k := range a {
-		if strings.HasPrefix(k, annMarkerPrefix) || strings.HasPrefix(k, annCreatedPrefix) {
+		if strings.HasPrefix(k, annMarkerPrefix) || strings.HasPrefix(k, annCreatedPrefix) || strings.HasPrefix(k, annReapingPrefix) {
 			delete(a, k)
 		}
 	}
@@ -129,6 +137,9 @@ func (r *record) apply(now time.Time) {
 	}
 	for op, uid := range r.created {
 		a[annCreatedPrefix+op] = uid
+	}
+	for op, uid := range r.reaping {
+		a[annReapingPrefix+op] = uid
 	}
 	setOrDelete(a, annClaimGone, r.claimGone)
 	setOrEmpty(a, annVolumes, strings.Join(r.volumes, ","))
@@ -220,7 +231,7 @@ func (c *core) readRecord(ctx context.Context, ns string, id ident) (record, boo
 
 func (c *core) newRecord(id ident, fence runtime.Fence, state recState) record {
 	now := c.opts.Clock()
-	r := record{state: state, fence: fence, markers: map[string]time.Time{}, created: map[string]string{}}
+	r := record{state: state, fence: fence, markers: map[string]time.Time{}, created: map[string]string{}, reaping: map[string]string{}}
 	r.secret = kubernetes.Secret{
 		Metadata: kubernetes.ObjectMeta{Name: id.recordName(), Labels: id.labels(roleRecord), Annotations: id.annotations()},
 		Type:     "Opaque",
@@ -373,7 +384,7 @@ func (c *core) mutate(ctx context.Context, ns string, id ident, f func(*record) 
 // either lands before it (and the create is refused) or after it (and the
 // create is then revoked). The reservation is unique to this invocation; the
 // returned token settles exactly it.
-func (c *core) reserve(ctx context.Context, ns string, id ident, fence runtime.Fence, op string, mod func(*record)) (string, error) {
+func (c *core) reserve(ctx context.Context, ns string, id ident, fence runtime.Fence, op string, mod func(*record) error) (string, error) {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err
@@ -383,28 +394,62 @@ func (c *core) reserve(ctx context.Context, ns string, id ident, fence runtime.F
 		if err := r.revoked(fence); err != nil {
 			return err
 		}
+		// Committed intent is validated and initialized here, in the same
+		// version-checked write as the reservation: what an earlier writer
+		// committed is never overwritten.
+		if mod != nil {
+			if err := mod(r); err != nil {
+				return err
+			}
+		}
 		r.markers[token] = c.opts.Clock()
 		r.fence = max(r.fence, fence)
-		if mod != nil {
-			mod(r)
-		}
 		return nil
 	})
 	return token, err
 }
 
 // settleMarker records that the reserved create has a known outcome and clears
-// that reservation only. uid, when set, records the instance it established,
-// unless one is already recorded.
-func (c *core) settleMarker(ctx context.Context, ns string, id ident, op, token, uid string) error {
+// that reservation only. established, when set, records the instance it
+// established, unless one is already recorded; reaped clears a reaping claim.
+func (c *core) settleMarker(ctx context.Context, ns string, id ident, op, token, established, reaped string) error {
 	_, err := c.mutate(ctx, ns, id, func(r *record) error {
 		delete(r.markers, token)
-		if uid != "" && r.created[op] == "" {
-			r.created[op] = uid
+		if established != "" && r.created[op] == "" {
+			r.created[op] = established
+		}
+		if reaped != "" && r.reaping[op] == reaped {
+			delete(r.reaping, op)
 		}
 		return nil
 	})
 	return err
+}
+
+// errNoReap: the identity is not closed or someone established the instance.
+var errNoReap = errors.New("kernelrt: the instance is not the creator's to delete")
+
+// claimReap takes the right to delete the instance uid a closed identity's
+// creator made. It succeeds only while the identity is closed and no one has
+// established or adopted any instance of op, in one version-checked write; a
+// writer that establishes the instance first makes it fail, and once it
+// succeeds establishing that instance is refused. It reports whether the caller
+// may delete.
+func (c *core) claimReap(ctx context.Context, ns string, id ident, op, uid string) (bool, error) {
+	_, err := c.mutate(ctx, ns, id, func(r *record) error {
+		if r.state == recActive || r.created[op] != "" {
+			return errNoReap
+		}
+		if r.reaping[op] != "" && r.reaping[op] != uid {
+			return errNoReap
+		}
+		r.reaping[op] = uid
+		return nil
+	})
+	if errors.Is(err, errNoReap) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // establish records the UID of an object this identity found or created. A
@@ -418,6 +463,9 @@ func (c *core) establish(ctx context.Context, ns string, id ident, rec record, o
 	_, err := c.mutate(ctx, ns, id, func(r *record) error {
 		if got := r.created[op]; got != "" && got != uid {
 			return unverified("the %s was replaced by another instance", op)
+		}
+		if r.reaping[op] == uid {
+			return unverified("the %s is being deleted by its creator", op)
 		}
 		r.created[op] = uid
 		return nil
@@ -454,14 +502,16 @@ func (c *core) current(ctx context.Context, ns string, id ident, fence runtime.F
 type guard struct {
 	op    string
 	fence runtime.Fence
-	mod   func(*record)
+	// mod validates and initializes committed intent inside the reservation.
+	mod func(*record) error
 	// create issues the create and returns the new object's UID.
 	create func() (string, error)
 	// readBack reads an object that already holds the name, verifies it is this
 	// identity's and returns its UID.
 	readBack func() (string, error)
-	// reap deletes what the revoked create left behind.
-	reap func() error
+	// reap deletes exactly the instance with the given UID, if it is still the
+	// one occupying the name; it never removes by identity.
+	reap func(uid string) error
 }
 
 // guarded runs g: reserve, create, then recheck authority. A refused
@@ -489,7 +539,7 @@ func (c *core) guarded(ctx context.Context, ns string, id ident, g guard) error 
 		if rerr != nil {
 			if errors.Is(rerr, runtime.ErrNotReached) {
 				// The name is held by something else: this create is settled.
-				if serr := c.settleMarker(ctx, ns, id, g.op, token, ""); serr != nil {
+				if serr := c.settleMarker(ctx, ns, id, g.op, token, "", ""); serr != nil {
 					return uncertain(errors.Join(rerr, serr))
 				}
 			}
@@ -497,7 +547,7 @@ func (c *core) guarded(ctx context.Context, ns string, id ident, g guard) error 
 		}
 		uid = u
 	case kubernetes.Definite(err):
-		if serr := c.settleMarker(ctx, ns, id, g.op, token, ""); serr != nil {
+		if serr := c.settleMarker(ctx, ns, id, g.op, token, "", ""); serr != nil {
 			return uncertain(errors.Join(err, serr))
 		}
 		return notReached(fmt.Errorf("the cluster refused the %s: %w", g.op, err))
@@ -510,21 +560,31 @@ func (c *core) guarded(ctx context.Context, ns string, id ident, g guard) error 
 	}
 	if rerr := rec.revoked(g.fence); rerr != nil {
 		closed := rec.state != recActive
-		established := ""
+		established, reaped := "", ""
 		switch {
-		case closed && createdHere && g.reap != nil:
-			if derr := g.reap(); derr != nil {
-				return errors.Join(rerr, uncertain(derr))
+		case closed && createdHere && g.reap != nil && uid != "":
+			// Compensate only for the instance this call created, and only if the
+			// record still shows nobody established it: the claim and a newer
+			// writer's establishment are mutually exclusive.
+			ok, cerr := c.claimReap(ctx, ns, id, g.op, uid)
+			if cerr != nil {
+				return errors.Join(rerr, uncertain(cerr))
+			}
+			if ok {
+				if derr := g.reap(uid); derr != nil {
+					return errors.Join(rerr, uncertain(derr))
+				}
+				reaped = uid
 			}
 		case !closed:
 			established = uid // a newer writer's object; recorded, never deleted
 		}
-		if serr := c.settleMarker(ctx, ns, id, g.op, token, established); serr != nil {
+		if serr := c.settleMarker(ctx, ns, id, g.op, token, established, reaped); serr != nil {
 			return errors.Join(rerr, uncertain(serr))
 		}
 		return rerr
 	}
-	if err := c.settleMarker(ctx, ns, id, g.op, token, uid); err != nil {
+	if err := c.settleMarker(ctx, ns, id, g.op, token, uid, ""); err != nil {
 		return uncertain(err)
 	}
 	return nil

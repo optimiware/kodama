@@ -1,0 +1,234 @@
+package kernelrt
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/optimiware/kodama/internal/domain"
+	"github.com/optimiware/kodama/internal/kernel/runtime"
+	"github.com/optimiware/kodama/internal/kube/kubernetes"
+)
+
+// Finding 1: compensation is bound to the UID the call created and to durable
+// evidence that nobody else established or adopted it.
+func Test_unit_kube_kernel_runtime_compensation_is_bound_to_the_created_instance(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("a newer writer adopted the Job, it completed and was stopped: its result survives", func(t *testing.T) {
+		h := newHarness(t)
+		ws := h.ensureWorkspace(scopeA, "run-1", 1)
+		b := binding(scopeA, "run-1", "build", 1, "d", 1)
+		newer := bumpFence(b, 2)
+		var stopped runtime.WorkloadObservation
+		// A has created the Job and not yet re-read the record.
+		h.cl.onAfter("create job", func() {
+			if _, err := h.start(h.startRequest(newer, ws)); err != nil {
+				t.Errorf("newer start: %v", err)
+			}
+			h.cl.startPod(testNS, h.jobName(b))
+			h.cl.finishJob(testNS, h.jobName(b), 0)
+			o, err := h.rt.Stop(ctx, newer)
+			if err != nil {
+				t.Errorf("newer stop: %v", err)
+			}
+			stopped = o
+		})
+		_, err := h.start(h.startRequest(b, ws))
+		if !(errors.Is(err, ErrClosed) || errors.Is(err, runtime.ErrStaleFence)) {
+			t.Fatalf("A = %v", err)
+		}
+		if stopped.Phase != runtime.PhaseExited || stopped.Result.Code != runtime.ResultSucceeded {
+			t.Fatalf("the newer Stop = %+v", stopped)
+		}
+		if h.cl.deleteCount("job") != 0 {
+			t.Fatal("the stale creator reaped an established Job")
+		}
+		if o, err := h.rt.Observe(ctx, newer); err != nil || o.Phase != runtime.PhaseExited || o.Result.Code != runtime.ResultSucceeded {
+			t.Fatalf("the preserved result = %+v %v", o, err)
+		}
+	})
+
+	t.Run("an instance that replaced the created one is never the one reaped", func(t *testing.T) {
+		h := newHarness(t)
+		ws := h.ensureWorkspace(scopeA, "run-1", 1)
+		b := binding(scopeA, "run-1", "build", 1, "d", 1)
+		newer := bumpFence(b, 2)
+		var created string
+		j2 := h.ad.stepJob(workloadIdent(b), h.startRequest(b, ws), h.target(), workspaceIdent(h, "run-1").base(), "", nil)
+		h.cl.onAfter("create job", func() {
+			job, _ := h.cl.job(testNS, h.jobName(b))
+			created = job.Metadata.UID
+			// The identity is closed and the Job removed, then another instance takes the name.
+			if _, err := h.rt.Stop(ctx, newer); err != nil {
+				t.Errorf("newer stop: %v", err)
+			}
+			h.cl.putJob(testNS, j2)
+		})
+		if _, err := h.start(h.startRequest(b, ws)); !errors.Is(err, ErrClosed) {
+			t.Fatalf("A = %v", err)
+		}
+		job, ok := h.cl.job(testNS, h.jobName(b))
+		if !ok || job.Metadata.UID == created {
+			t.Fatalf("the replacement instance must remain: found %v", ok)
+		}
+		if h.cl.deleteCount("job") != 1 {
+			t.Fatalf("deletes = %d, want only the Stop's", h.cl.deleteCount("job"))
+		}
+	})
+
+	t.Run("an instance claimed for reaping cannot be adopted meanwhile", func(t *testing.T) {
+		h := newHarness(t)
+		ws := h.ensureWorkspace(scopeA, "run-1", 1)
+		b := binding(scopeA, "run-1", "build", 1, "d", 1)
+		newer := bumpFence(b, 2)
+		h.cl.onAfter("create job", func() {
+			h.cl.startPod(testNS, h.jobName(b))
+			h.cl.finishJob(testNS, h.jobName(b), 0)
+			// The identity is closed without anyone having observed the Job.
+			if _, err := h.ad.settle(ctx, testNS, workloadIdent(b), newer.Fence, recStopped); err != nil {
+				t.Errorf("close: %v", err)
+			}
+			h.cl.failNext("delete job", &kubernetes.Error{Op: "delete job", Kind: kubernetes.ErrForbidden}, false)
+		})
+		if _, err := h.start(h.startRequest(b, ws)); !errors.Is(err, ErrClosed) {
+			t.Fatalf("A = %v", err)
+		}
+		if _, err := h.rt.Observe(ctx, newer); !errors.Is(err, ErrUnverified) {
+			t.Fatalf("an instance its creator is deleting must not be adopted: %v", err)
+		}
+		if h.record(workloadIdent(b)).created[opJob] != "" {
+			t.Fatal("the doomed instance was established")
+		}
+	})
+
+	t.Run("workspace: a claim a newer writer adopted and stopped is kept", func(t *testing.T) {
+		h := newHarness(t)
+		spec := h.workspaceSpec(scopeA, "run-1", 1)
+		newer := spec
+		newer.Fence = 2
+		handle := resourceFence(h.workspaceHandle(scopeA, "run-1"), 2)
+		h.cl.onAfter("create pvc", func() {
+			if _, err := h.res.Ensure(ctx, newer); err != nil {
+				t.Errorf("newer ensure: %v", err)
+			}
+			if _, err := h.res.Stop(ctx, handle); err != nil {
+				t.Errorf("newer stop: %v", err)
+			}
+		})
+		if _, err := h.res.Ensure(ctx, spec); !(errors.Is(err, ErrClosed) || errors.Is(err, runtime.ErrStaleFence)) {
+			t.Fatalf("A = %v", err)
+		}
+		if len(h.cl.names(h.cl.pvcs)) != 1 || h.cl.deleteCount("pvc") != 0 {
+			t.Fatal("the stale creator deleted the established claim")
+		}
+	})
+
+	t.Run("service: an instance that replaced the created Pod is not reaped", func(t *testing.T) {
+		h := newHarness(t)
+		spec := h.serviceSpec(scopeA, "run-1", "db", 1)
+		id := workspaceIdentFor(h, spec)
+		handle := runtime.ResourceHandle{Scope: scopeA, RunID: "run-1", Kind: runtime.ResourceService, Name: "db", Identity: spec.Identity, Fence: 2}
+		var created string
+		h.cl.onAfter("create pod", func() {
+			p, _ := h.cl.GetPod(ctx, testNS, id.base())
+			created = p.Metadata.UID
+			if _, err := h.res.Stop(ctx, handle); err != nil { // closes the identity and deletes the Pod
+				t.Errorf("newer stop: %v", err)
+			}
+			if _, err := h.cl.CreatePod(ctx, testNS, h.ad.servicePod(id, *spec.Service, h.target(), 2)); err != nil {
+				t.Errorf("replacement: %v", err)
+			}
+		})
+		if _, err := h.res.Ensure(ctx, spec); !errors.Is(err, ErrClosed) {
+			t.Fatalf("A = %v", err)
+		}
+		p, err := h.cl.GetPod(ctx, testNS, id.base())
+		if err != nil || p.Metadata.UID == created {
+			t.Fatalf("the replacement Pod must remain: %v", err)
+		}
+		if h.cl.deleteCount("pod") != 1 {
+			t.Fatalf("pod deletes = %d, want only the Stop's", h.cl.deleteCount("pod"))
+		}
+	})
+}
+
+// Finding 2: the committed layout is validated and initialized inside the
+// reservation, never overwritten.
+func Test_unit_kube_kernel_runtime_committed_layout_is_not_overwritten_by_a_reservation(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	ws := h.ensureWorkspace(scopeA, "run-1", 1)
+	ref := runtime.SecretRef{Owner: domain.Owner{TenantID: "tenant-a"}, Name: "TOKEN"}
+	b := binding(scopeA, "run-1", "deploy", 1, "d", 1)
+	request := func(dir string) runtime.StartRequest {
+		req := h.startRequest(b, ws)
+		req.Spec.Secrets = []runtime.SecretRef{ref}
+		req.Secrets = runtime.Materialization{Scope: scopeA, RunID: "run-1", StepKey: "deploy", Directory: dir, Refs: []runtime.SecretRef{ref}}
+		return req
+	}
+	// A passes every earlier check against an empty record, then pauses at the
+	// write that reserves the Job create (its third record write: the step
+	// Secret's reservation, its settlement, then the Job's reservation).
+	h.cl.onNext("update secret", func() {})
+	h.cl.onNext("update secret", func() {})
+	h.cl.onNext("update secret", func() {
+		if _, err := h.start(request("/kodama/b")); err != nil {
+			t.Errorf("B: %v", err)
+		}
+	})
+	_, err := h.start(request("/kodama/a"))
+	if !isNotReached(err) || !errors.Is(err, domain.ErrInvalidValue) {
+		t.Fatalf("A must be refused for a different committed layout: %v", err)
+	}
+	id := workloadIdent(b)
+	rec := h.record(id)
+	if rec.secretsDir != "/kodama/b" {
+		t.Fatalf("the committed layout was overwritten: %q", rec.secretsDir)
+	}
+	if h.cl.count("create job") != 1 {
+		t.Fatalf("creates = %d; the losing call must not create", h.cl.count("create job"))
+	}
+	if o, err := h.rt.Observe(ctx, b); err != nil || o.Phase != runtime.PhaseRunning {
+		t.Fatalf("the established Job must still verify: %+v %v", o, err)
+	}
+}
+
+// Finding 3: identities discovered through claimRef are recorded even when the
+// attachment list cannot be read.
+func Test_unit_kube_kernel_runtime_discovered_volumes_survive_an_attachment_list_failure(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	o, _ := h.res.Ensure(ctx, h.workspaceSpec(scopeA, "run-1", 1))
+	id := workspaceIdent(h, "run-1")
+	uid := h.pvcUID(id)
+	pv := kubernetes.PersistentVolume{}
+	pv.Spec.PersistentVolumeReclaimPolicy = "Delete"
+	pv.Spec.ClaimRef = &kubernetes.ObjectReference{Namespace: testNS, Name: id.base(), UID: uid}
+	h.cl.pvs["pv-ref"] = pv
+	name := "pv-ref"
+	att := kubernetes.VolumeAttachment{}
+	att.Spec.Source.PersistentVolumeName = &name
+	att.Status.Attached = true
+	h.cl.attached = []kubernetes.VolumeAttachment{att}
+	h.dropObject(h.cl.pvcs, id) // deleted before anything saw it bound
+
+	h.cl.failNext("list volumeattachments", &kubernetes.Error{Op: "list", Kind: kubernetes.ErrUnavailable}, false)
+	if _, err := h.res.Remove(ctx, o.Handle); err == nil {
+		t.Fatal("an unreadable attachment list must be an error, never a release")
+	}
+	if got := h.record(id).volumes; len(got) != 1 || got[0] != "pv-ref" {
+		t.Fatalf("the discovered volume was not recorded: %v", got)
+	}
+	// The volume object vanishes while the node still reports it attached.
+	delete(h.cl.pvs, "pv-ref")
+	h.clock.Advance(2 * time.Minute)
+	if rm, err := h.res.Remove(ctx, o.Handle); err != nil || rm.ConfirmedRemoved() {
+		t.Fatalf("an attached volume is not released: %+v %v", rm, err)
+	}
+	h.cl.attached = nil
+	if rm, err := h.res.Remove(ctx, o.Handle); err != nil || !rm.ConfirmedRemoved() {
+		t.Fatalf("released = %+v %v", rm, err)
+	}
+}
