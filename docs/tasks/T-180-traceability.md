@@ -1,7 +1,7 @@
 ---
 id: T-180
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-172]
 decision_blockers: []
 owns: [docs/traceability.md]

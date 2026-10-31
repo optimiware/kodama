@@ -1,7 +1,7 @@
 ---
 id: T-171
 milestone: kernel
-status: planned
+status: done
 depends_on: []
 decision_blockers: []
 owns: [internal/kernel/runtime/]

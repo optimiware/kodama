@@ -145,7 +145,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-115 Podman and Process run resources](T-115-local-run-resources.md) | T-112, T-122 | done |
 | [T-116 Resource assembly, chart and migration](T-116-run-resource-assembly.md) | T-113, T-114, T-115, T-120 | done |
 | [T-134 Wire the Podman and Process run-resource ports](T-134-local-run-shared-wiring.md) | T-115, T-116 | planned |
-| [T-171 Kernel runtime contract and dependency boundary](T-171-kernel-runtime-contract.md) | — | planned |
+| [T-171 Kernel runtime contract and dependency boundary](T-171-kernel-runtime-contract.md) | — | done |
 | [T-172 Freeze the pipeline runtime contract decisions](T-172-contract-decisions.md) | — | done |
 | [T-173 Relocate shell responsibilities out of the kernel](T-173-kernel-shell-relocation.md) | — | done |
 | [T-174 Memory state adapter and kernel state contract suite](T-174-kernel-state-contract.md) | T-171, T-173 | done |
@@ -153,8 +153,8 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-176 Process runtime behind the kernel contract](T-176-process-runtime.md) | T-171 | done |
 | [T-177 Podman runtime behind the kernel contract](T-177-podman-runtime.md) | T-171 | done |
 | [T-178 Kubernetes runtime behind the kernel contract](T-178-kubernetes-runtime.md) | T-171 | done |
-| [T-179 Pipeline runtime schema expansion](T-179-schema-expansion.md) | T-172 | planned |
-| [T-180 Traceability for the frozen pipeline-runtime contract](T-180-traceability.md) | T-172 | planned |
+| [T-179 Pipeline runtime schema expansion](T-179-schema-expansion.md) | T-172 | done |
+| [T-180 Traceability for the frozen pipeline-runtime contract](T-180-traceability.md) | T-172 | done |
 | [T-181 Repair the legacy run_shared fixture](T-181-legacy-run-shared-fixture.md) | T-176 | done |
 | [T-182 PostgreSQL kernel state adapter](T-182-runstate-postgres.md) | T-174, T-179, T-185, T-186, T-189 | planned |
 | [T-183 Project pipeline registry](T-183-pipeline-registry.md) | T-179 | done |
