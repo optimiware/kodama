@@ -571,7 +571,9 @@ func newRunID(t *testing.T) domain.RunID {
 // SharedSpec returns a planned attempt (a fresh attempt ID) of the run that owns
 // workspace, whose workload runs script in image ("" selects HostImage) and
 // which carries the SharedLaunch of a run_shared attempt mounting that
-// workspace. Several calls give successive attempts of one run.
+// workspace. Its pinned context is the source-free ContextV2 a run_shared
+// attempt is admitted with (see bootstrap.LaunchContext); a plain attempt spec
+// is Spec. Several calls give successive attempts of one run.
 func SharedSpec(t testing.TB, workspace execution.ResourceHandle, image, script string) execution.AttemptSpec {
 	t.Helper()
 	if workspace.Kind != execution.KindWorkspace || workspace.Scope != Scope {
@@ -579,7 +581,7 @@ func SharedSpec(t testing.TB, workspace execution.ResourceHandle, image, script 
 	}
 	s := specOf(t, workspace.RunID, NewAttemptID(t), image, script)
 	s.Shared = SharedLaunch(t, workspace)
-	return s
+	return pinSharedContext(t, s)
 }
 
 // SharedLaunch is the launch of a run_shared attempt mounting workspace under

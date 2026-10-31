@@ -314,10 +314,10 @@ func Test_unit_process_workspace_shared_across_attempts(t *testing.T) {
 		reg := &registrarV2{}
 		p := Entrypoint{Binary: "/opt/kodama", ServerURL: "https://runtime.invalid", Issuer: bootstrap.Issuer{Registrar: reg}}
 
-		// The issuer registers a run_shared attempt with its ContextV2 (the v2
-		// spec); the attempt-private checks below use the v1 spec of the same run.
-		private := runtimetest.SharedSpec(t, ws, "", "true")
-		s := runtimetest.SharedSpecV2(t, ws, "", "true")
+		// The issuer registers a run_shared attempt with its ContextV2; the
+		// attempt-private checks below use a plain v1 attempt spec.
+		private := runtimetest.Spec(t, runtimetest.NewAttemptID(t), "", "true")
+		s := runtimetest.SharedSpec(t, ws, "", "true")
 		c := sourceContext(t, private)
 		dir := t.TempDir()
 		l := Launch{Spec: s, Context: c, Workload: s.Workload("11111111-2222-4333-8444-555555555555"), Dir: dir, Workspace: wsDir}
@@ -353,7 +353,6 @@ func Test_unit_process_workspace_shared_across_attempts(t *testing.T) {
 		// The same context without the shared launch still takes the v1 path and
 		// still needs checkout material the Process runtime cannot give.
 		l.Spec, l.Workspace = private, ""
-		l.Spec.Shared = nil
 		if _, err := p.Command(ctx, l); !errors.Is(err, bootstrap.ErrNoCheckout) {
 			t.Fatalf("an attempt-private source-consuming attempt: %v", err)
 		}
@@ -367,7 +366,7 @@ func Test_unit_process_workspace_shared_across_attempts(t *testing.T) {
 			t.Error("an attempt-private workload selected the v2 wire")
 		}
 		// A shared attempt without a run workspace is refused, never given a private one.
-		l.Spec.Shared = private.Shared
+		l.Spec.Shared = s.Shared
 		if _, err := p.Command(ctx, l); !errors.Is(err, execution.ErrConflict) {
 			t.Fatalf("a shared attempt without a workspace: %v", err)
 		}

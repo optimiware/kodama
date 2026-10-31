@@ -208,7 +208,7 @@ func (r *Runtime) Capabilities() execution.Capabilities {
 // for a concurrent one and adopts its workload; a stopped or removed workload
 // is never relaunched (ErrConflict).
 func (r *Runtime) Start(ctx context.Context, spec execution.AttemptSpec) (execution.Workload, error) {
-	c, err := spec.DecodeContext()
+	c, err := bootstrap.LaunchContext(spec)
 	if err != nil {
 		return execution.Workload{}, err
 	}
