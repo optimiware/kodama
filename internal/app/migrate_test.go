@@ -26,7 +26,7 @@ func TestMigrationBaselineIsThreeFiles(t *testing.T) {
 	for _, mig := range m.Migrations() {
 		ids = append(ids, mig.ID)
 	}
-	if !slices.Equal(ids, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql", "006_wait_decision_and_materializations.sql"}) {
+	if !slices.Equal(ids, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql", "006_wait_decision_and_materializations.sql", "007_signal_decision_reason.sql"}) {
 		t.Fatalf("unexpected baseline: %v", ids)
 	}
 }
@@ -35,7 +35,7 @@ func TestSimplifiedManifestMigration(t *testing.T) {
 	db := postgres.New(t)
 	ctx := t.Context()
 	result, err := Migrate(ctx, MigrateConfig{MigrationURL: db.MigrationURL, RuntimeRole: db.RuntimeRole})
-	if err != nil || len(result.Applied) != 6 {
+	if err != nil || len(result.Applied) != 7 {
 		t.Fatalf("migrate: %+v, %v", result, err)
 	}
 	pool := db.MigrationPool(ctx, 1)
@@ -44,7 +44,7 @@ func TestSimplifiedManifestMigration(t *testing.T) {
 		t.Fatalf("tables=%d, err=%v; want 21 (15 baseline tables plus git_credentials, signal_records, run_commands, run_workload_observations, run_resource_observations and run_materializations)", count, err)
 	}
 	result, err = Migrate(ctx, MigrateConfig{MigrationURL: db.MigrationURL, RuntimeRole: db.RuntimeRole})
-	if err != nil || result.Skipped != 6 || len(result.Applied) != 0 {
+	if err != nil || result.Skipped != 7 || len(result.Applied) != 0 {
 		t.Fatalf("reapply: %+v, %v", result, err)
 	}
 	if err := requireLegacySchema(ctx, db.RuntimePool(ctx, 1)); err == nil {
