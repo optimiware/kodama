@@ -39,7 +39,6 @@ type GitBackend interface {
 	AuthorizeSeed(ctx context.Context, tenant domain.TenantID, credentialID, receiveID string) error
 	RevokeRunCredentials(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, runID string) error
 	RunGitInfo(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, runID string) (RunGitInfo, error)
-	TaskApproved(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, taskID string) (bool, error)
 
 	CommitReceive(ctx context.Context, c ReceiveCommit) (ReceiveResult, error)
 }
@@ -83,7 +82,6 @@ type MemoryGit struct {
 	repos       map[domain.TenantID][]*Repository
 	creds       map[domain.TenantID][]*Credential
 	runs        map[string]RunGitInfo
-	approvals   map[string]bool // tenant/project/task -> approved; absent: no such task
 	events      []MemoryEvent
 
 	dispatch memDispatch
@@ -93,7 +91,7 @@ type MemoryGit struct {
 func NewMemoryGit() *MemoryGit {
 	return &MemoryGit{now: time.Now, tenants: map[string]domain.TenantID{}, projects: map[domain.TenantID][]Project{},
 		users: map[string]string{}, repos: map[domain.TenantID][]*Repository{}, creds: map[domain.TenantID][]*Credential{},
-		runs: map[string]RunGitInfo{}, approvals: map[string]bool{}}
+		runs: map[string]RunGitInfo{}}
 }
 
 // SetClock replaces the clock (tests).
@@ -145,26 +143,6 @@ func (m *MemoryGit) SetRun(r RunGitInfo) {
 	m.mu.Lock()
 	m.runs[string(r.TenantID)+"/"+string(r.ProjectID)+"/"+r.RunID] = r
 	m.mu.Unlock()
-}
-
-// SetTaskApproval registers a task and whether it is currently approved.
-func (m *MemoryGit) SetTaskApproval(tenant domain.TenantID, project domain.ProjectID, taskID string, approved bool) {
-	m.mu.Lock()
-	m.approvals[string(tenant)+"/"+string(project)+"/"+taskID] = approved
-	m.mu.Unlock()
-}
-
-// RemoveTask forgets a task.
-func (m *MemoryGit) RemoveTask(tenant domain.TenantID, project domain.ProjectID, taskID string) {
-	m.mu.Lock()
-	delete(m.approvals, string(tenant)+"/"+string(project)+"/"+taskID)
-	m.mu.Unlock()
-}
-
-func (m *MemoryGit) TaskApproved(_ context.Context, tenant domain.TenantID, project domain.ProjectID, taskID string) (bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.approvals[string(tenant)+"/"+string(project)+"/"+taskID], nil
 }
 
 // Events returns the audit rows committed so far, in order.
