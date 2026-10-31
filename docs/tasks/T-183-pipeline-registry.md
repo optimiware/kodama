@@ -1,7 +1,7 @@
 ---
 id: T-183
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-179]
 decision_blockers: []
 owns: [internal/shell/pipelines/]
