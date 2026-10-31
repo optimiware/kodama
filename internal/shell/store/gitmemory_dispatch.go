@@ -58,6 +58,35 @@ func (m *MemoryGit) AdmittedRuns() []MemoryRun {
 	return append([]MemoryRun(nil), m.dispatch.runs...)
 }
 
+// UnpublishedEvents implements OutboxBackend with the PostgreSQL semantics.
+func (m *MemoryGit) UnpublishedEvents(_ context.Context, tenant domain.TenantID, cutoff time.Time, after OutboxCursor, limit int) ([]OutboxEvent, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var eligible []MemoryEvent
+	for _, e := range m.events {
+		if e.TenantID != tenant || e.PublishedAt != nil || e.CreatedAt.After(cutoff) {
+			continue
+		}
+		if e.CreatedAt.Before(after.CreatedAt) || (e.CreatedAt.Equal(after.CreatedAt) && e.ID <= after.ID) {
+			continue
+		}
+		eligible = append(eligible, e)
+	}
+	sort.SliceStable(eligible, func(i, j int) bool {
+		if !eligible[i].CreatedAt.Equal(eligible[j].CreatedAt) {
+			return eligible[i].CreatedAt.Before(eligible[j].CreatedAt)
+		}
+		return eligible[i].ID < eligible[j].ID
+	})
+	if len(eligible) > limit {
+		eligible = eligible[:limit]
+	}
+	return m.outboxEvents(tenant, eligible), nil
+}
+
 func (m *MemoryGit) PendingEvents(_ context.Context, tenant domain.TenantID, now time.Time, limit int) ([]OutboxEvent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -76,14 +105,20 @@ func (m *MemoryGit) PendingEvents(_ context.Context, tenant domain.TenantID, now
 	if len(due) > limit {
 		due = due[:limit]
 	}
+	return m.outboxEvents(tenant, due), nil
+}
+
+// outboxEvents maps rows to the events with their subject keys; the caller
+// holds the lock.
+func (m *MemoryGit) outboxEvents(tenant domain.TenantID, rows []MemoryEvent) []OutboxEvent {
 	var tenantKey string
 	for k, id := range m.tenants {
 		if id == tenant {
 			tenantKey = k
 		}
 	}
-	out := make([]OutboxEvent, 0, len(due))
-	for _, e := range due {
+	out := make([]OutboxEvent, 0, len(rows))
+	for _, e := range rows {
 		projectKey := ""
 		if e.ProjectID != "" {
 			projectKey, _ = m.projectKey(tenant, e.ProjectID)
@@ -92,7 +127,7 @@ func (m *MemoryGit) PendingEvents(_ context.Context, tenant domain.TenantID, now
 			ID: e.ID, ActorType: e.ActorType, ActorID: e.ActorID, Type: e.Type, ResourceType: e.ResourceType, ResourceID: e.ResourceID,
 			Payload: e.Payload, CreatedAt: e.CreatedAt, Attempts: e.Attempts})
 	}
-	return out, nil
+	return out
 }
 
 func (m *MemoryGit) MarkPublished(_ context.Context, tenant domain.TenantID, id string, at time.Time) error {

@@ -7,13 +7,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
 
 	"github.com/optimiware/kodama/internal/domain"
+	"github.com/optimiware/kodama/internal/natsbus"
 	"github.com/optimiware/kodama/internal/shell/bus"
 	"github.com/optimiware/kodama/internal/shell/dispatch"
+	"github.com/optimiware/kodama/internal/shell/outbox"
 	"github.com/optimiware/kodama/internal/shell/store"
 )
 
@@ -21,8 +25,13 @@ import (
 // drains and what the dispatcher indexes and admits with. *store.Store and
 // *store.MemoryGit implement it.
 type EventStore interface {
-	store.OutboxBackend
+	outboxEvents
 	dispatch.Store
+}
+
+// outboxEvents is the part of EventStore the publisher's adapter uses.
+type outboxEvents interface {
+	store.OutboxBackend
 	TenantIDs(ctx context.Context) ([]domain.TenantID, error)
 }
 
@@ -46,7 +55,7 @@ type EventsConfig struct {
 // Events is the running event path: the outbox publisher and the dispatcher that
 // consumes git.refs_updated from the bus.
 type Events struct {
-	Publisher  *bus.Publisher
+	Publisher  *outbox.Publisher
 	Dispatcher *dispatch.Dispatcher
 	Bus        bus.Bus
 	stop       func()
@@ -65,7 +74,7 @@ func NewEvents(ctx context.Context, cfg EventsConfig) (*Events, error) {
 	if b == nil {
 		b = bus.NewMemory()
 	}
-	pub, err := bus.NewPublisher(bus.PublisherConfig{Outbox: storeOutbox{cfg.Store}, Bus: b, Interval: cfg.Interval, Now: cfg.Now, Logger: cfg.Logger})
+	pub, err := outbox.NewPublisher(outbox.PublisherConfig{Store: storeOutbox{cfg.Store}, Bus: b, Interval: cfg.Interval, Now: cfg.Now, Logger: cfg.Logger})
 	if err != nil {
 		return nil, err
 	}
@@ -90,35 +99,79 @@ func (e *Events) Close() {
 	}
 }
 
-// storeOutbox adapts the store to the publisher's port.
-type storeOutbox struct{ st EventStore }
+// storeOutbox adapts the store to the publisher's outbox.Source port. The rows
+// are audit_events rows the store wrote in the same transaction as the state
+// change they describe, so this adapter only drains them; it has no Transact.
+// A row's id is its audit_events id, stable across every republication; the
+// derivation from event type and deduplication key (outbox.EventID, EC-01) moves
+// to the store's intent writer.
+type storeOutbox struct{ st outboxEvents }
+
+var _ outbox.Source = storeOutbox{}
 
 func (o storeOutbox) Tenants(ctx context.Context) ([]domain.TenantID, error) {
 	return o.st.TenantIDs(ctx)
 }
 
-func (o storeOutbox) Pending(ctx context.Context, tenant domain.TenantID, now time.Time, limit int) ([]bus.Row, error) {
+func (o storeOutbox) Pending(ctx context.Context, tenant domain.TenantID, now time.Time, limit int) ([]outbox.Row, error) {
 	events, err := o.st.PendingEvents(ctx, tenant, now, limit)
+	return rows(events), err
+}
+
+// cursorOf is the opaque outbox.Cursor of an event: its (created_at, id)
+// position, which a failed publication never changes. It sorts as a string in
+// that order.
+func cursorOf(e store.OutboxEvent) string {
+	return fmt.Sprintf("%020d/%s", max(e.CreatedAt.UnixNano(), 0), e.ID)
+}
+
+// parseCursor is the inverse of cursorOf; the empty cursor is the start.
+func parseCursor(c string) (store.OutboxCursor, error) {
+	if c == "" {
+		return store.OutboxCursor{}, nil
+	}
+	n, id, ok := strings.Cut(c, "/")
+	ns, err := strconv.ParseInt(n, 10, 64)
+	if !ok || err != nil {
+		return store.OutboxCursor{}, fmt.Errorf("kernel: malformed outbox cursor %q", c)
+	}
+	return store.OutboxCursor{CreatedAt: time.Unix(0, ns).UTC(), ID: id}, nil
+}
+
+// Unpublished is the reconciliation page: the store applies the age cutoff and
+// the (created_at, id) cursor before the limit, so a page is at most limit rows
+// whatever the backlog, a stale deferred event is never crowded out by younger
+// ones, and a retry never moves a row across the cursor.
+func (o storeOutbox) Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after string, limit int) ([]outbox.Row, error) {
+	cur, err := parseCursor(after)
 	if err != nil {
 		return nil, err
 	}
-	rows := make([]bus.Row, 0, len(events))
+	events, err := o.st.UnpublishedEvents(ctx, tenant, cutoff, cur, limit)
+	if err != nil {
+		return nil, err
+	}
+	return rows(events), nil
+}
+
+func rows(events []store.OutboxEvent) []outbox.Row {
+	out := make([]outbox.Row, 0, len(events))
 	for _, e := range events {
-		rows = append(rows, bus.Row{
+		out = append(out, outbox.Row{
 			Message: bus.Message{ID: e.ID, TenantID: e.TenantID, ProjectID: e.ProjectID, Type: e.Type, ResourceType: e.ResourceType,
 				ResourceID: e.ResourceID, Actor: bus.Actor{Type: e.ActorType, ID: e.ActorID}, OccurredAt: e.CreatedAt.UTC(),
 				Data: json.RawMessage(e.Payload)},
-			TenantKey: e.TenantKey, ProjectKey: e.ProjectKey, Attempts: e.Attempts,
+			TenantKey: e.TenantKey, ProjectKey: e.ProjectKey, Attempts: e.Attempts, CreatedAt: e.CreatedAt, Cursor: cursorOf(e),
 		})
 	}
-	return rows, nil
+	return out
 }
 
-func (o storeOutbox) Published(ctx context.Context, tenant domain.TenantID, id string, at time.Time) error {
+func (o storeOutbox) MarkPublished(ctx context.Context, tenant domain.TenantID, id string, at time.Time) error {
 	return o.st.MarkPublished(ctx, tenant, id, at)
 }
 
-func (o storeOutbox) Failed(ctx context.Context, tenant domain.TenantID, id string, next time.Time) error {
+func (o storeOutbox) MarkFailed(ctx context.Context, tenant domain.TenantID, id string, next time.Time) error {
 	return o.st.PublishFailed(ctx, tenant, id, next)
 }
 
@@ -136,37 +189,64 @@ func ValidateNATSURL(raw string) error {
 	return nil
 }
 
-// connectBus returns the broker the kernel publishes to. Without a NATS URL the
-// events are delivered in process, which is logged once; with one, the
-// JetStream adapter is used, and a URL that cannot be reached or a server
-// without JetStream fails startup: there is no silent fallback. closeFn releases
-// the connection.
+// brokerProfile is the natsbus profile of the process: the environment, with an
+// unset one meaning development (the kernel assembly's own default).
+func brokerProfile(env string) natsbus.Profile {
+	if env == "" {
+		return natsbus.Development
+	}
+	return natsbus.Profile(env)
+}
+
+// connectBus returns the broker the kernel publishes to, through natsbus.Open.
+// The profile is validated first, so an unknown environment stops startup
+// whatever else is configured. The test and production profiles require NATS:
+// a missing URL, an unreachable server or one without JetStream fails startup,
+// and an injected bus is accepted only when natsbus.VerifyDeployed finds an
+// initialized JetStream adapter whose broker answers for the stream; there is no
+// silent in-process fallback. Development accepts an
+// injected bus, and without a NATS URL delivers in process, logged once.
+// closeFn releases the connection.
 func connectBus(ctx context.Context, cfg Config, log *slog.Logger) (b bus.Bus, closeFn func(), err error) {
-	switch {
-	case cfg.Bus != nil:
+	profile := brokerProfile(cfg.Env)
+	if !profile.Valid() {
+		return nil, nil, fmt.Errorf("kernel: event bus: %w: %q", natsbus.ErrProfileUnknown, cfg.Env)
+	}
+	if cfg.Bus != nil {
+		if profile.RequiresBroker() {
+			verify, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			if err := natsbus.VerifyDeployed(verify, cfg.Bus); err != nil {
+				return nil, nil, fmt.Errorf("kernel: event bus: injected bus refused in the %s profile: %w", profile, err)
+			}
+		}
 		return cfg.Bus, func() {}, nil
-	case cfg.NATSURL == "":
-		log.Info("no NATS URL is configured (KODAMA_NATS_URL): events are delivered in process; the outbox rows remain the durable state")
-		return bus.NewMemory(), func() {}, nil
 	}
-	if err := ValidateNATSURL(cfg.NATSURL); err != nil {
-		return nil, nil, err
-	}
-	opts := []nats.Option{nats.Name("kodama-kernel"), nats.Timeout(5 * time.Second)}
-	if cfg.NATSToken != "" {
-		opts = append(opts, nats.Token(cfg.NATSToken))
-	}
-	nc, err := nats.Connect(cfg.NATSURL, opts...)
-	if err != nil {
-		return nil, nil, fmt.Errorf("kernel: connect to NATS: %w", err)
+	if cfg.NATSURL != "" {
+		if err := ValidateNATSURL(cfg.NATSURL); err != nil {
+			return nil, nil, err
+		}
 	}
 	setup, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	js, err := bus.NewJetStream(setup, nc, bus.JetStreamConfig{Logger: log})
-	if err != nil {
-		nc.Close()
-		return nil, nil, fmt.Errorf("kernel: NATS JetStream is unusable: %w", err)
+	opts := natsbus.Options{Profile: profile, URL: cfg.NATSURL, JetStream: natsbus.JetStreamConfig{Logger: log}}
+	if cfg.NATSURL != "" {
+		extra := []nats.Option{nats.Name("kodama-kernel"), nats.Timeout(5 * time.Second)}
+		if cfg.NATSToken != "" {
+			extra = append(extra, nats.Token(cfg.NATSToken))
+		}
+		opts.Dial = func(url string, o ...nats.Option) (*nats.Conn, error) {
+			return nats.Connect(url, append(o, extra...)...)
+		}
 	}
-	log.Info("events are delivered through NATS JetStream")
-	return js, nc.Close, nil
+	br, err := natsbus.Open(setup, opts)
+	if err != nil {
+		return nil, nil, fmt.Errorf("kernel: event bus: %w", err)
+	}
+	if br.InProcess() {
+		log.Info("no NATS URL is configured (KODAMA_NATS_URL): events are delivered in process; the outbox rows remain the durable state")
+	} else {
+		log.Info("events are delivered through NATS JetStream")
+	}
+	return br.Bus, br.Close, nil
 }
