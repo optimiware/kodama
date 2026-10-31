@@ -667,6 +667,99 @@ VALUES ('tenant-a', 'pa1', 'user-1', 'key-1', 'sig1', 'decision', repeat('a', 64
 			t.Fatalf("after commit: wait %s, %d records; want resolved, 1", wait, records)
 		}
 	})
+
+	// Versions are guarded against every route a non-owner writer has: a statement
+	// that changes only a version, a NULL reset (SQL unknown passes a comparison and
+	// a pair check), and a version of a decided wait.
+	t.Run("version_guards_non_owner", func(t *testing.T) {
+		e := newEnv(t)
+		seedPipelineRuntime(t, e)
+		pool := e.runtime(t, 2)
+		ctx := testCtx(t)
+		must := func(sql string) {
+			t.Helper()
+			if err := runtimeExec(t, pool, tenantA, sql); err != nil {
+				t.Fatalf("%.100q: %v", sql, err)
+			}
+		}
+		version := func(sql string) (v *int64) {
+			t.Helper()
+			if err := e.mig.QueryRow(ctx, sql).Scan(&v); err != nil {
+				t.Fatal(err)
+			}
+			return v
+		}
+
+		// An open wait at version 3 cannot go back, whatever else is (not) changed.
+		must(openWaitSQL("s2", "w1", "fail"))
+		must(`UPDATE run_steps SET wait_version = 3 WHERE id = 's2'`)
+		for name, sql := range map[string]string{
+			"version-only regression":  `UPDATE run_steps SET wait_version = 2 WHERE id = 's2'`,
+			"regression to the start":  `UPDATE run_steps SET wait_version = 1 WHERE id = 's2'`,
+			"version cleared":          `UPDATE run_steps SET wait_version = NULL WHERE id = 's2'`,
+			"regression with a change": `UPDATE run_steps SET wait_assignment = 'operator', wait_version = 2 WHERE id = 's2'`,
+		} {
+			requireCode(t, runtimeExec(t, pool, tenantA, sql), "23514", name)
+		}
+		if v := version(`SELECT wait_version FROM run_steps WHERE id = 's2'`); v == nil || *v != 3 {
+			t.Fatalf("wait version = %v after refused regressions, want 3", v)
+		}
+		must(`UPDATE run_steps SET wait_version = 4 WHERE id = 's2'`) // forward without a change is allowed
+
+		// The decision commits its record and version together; afterwards the
+		// version is frozen along with the decision.
+		err := storage.WithTenant(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, `INSERT INTO signal_records (tenant_id, project_id, caller_principal, caller_key, signal_id, shape, request_digest, applied,
+  target_run_id, target_step_id, target_wait_id, decision_kind, decision_outcome, decision_actor_ref, decision_version, decided_at)
+VALUES ('tenant-a', 'pa1', 'user-1', 'key-1', 'sig1', 'decision', repeat('a', 64), true, 'r1', 's2', 'w1', 'resolved', 'approved', 'user-1', 5, now())`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(ctx, `UPDATE run_steps SET status = 'succeeded', finished_at = now(), wait_state = 'resolved', wait_outcome = 'approved',
+  wait_actor_ref = 'user-1', wait_decided_at = now(), wait_consumed_signal_id = 'sig1', wait_version = 5 WHERE id = 's2'`)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("decide: %v", err)
+		}
+		for name, sql := range map[string]string{
+			"decided version raised":    `UPDATE run_steps SET wait_version = 99 WHERE id = 's2'`,
+			"decided version raised +1": `UPDATE run_steps SET wait_version = 6 WHERE id = 's2'`,
+			"decided version lowered":   `UPDATE run_steps SET wait_version = 4 WHERE id = 's2'`,
+			"decided version cleared":   `UPDATE run_steps SET wait_version = NULL WHERE id = 's2'`,
+		} {
+			requireCode(t, runtimeExec(t, pool, tenantA, sql), "23514", name)
+		}
+		must(`UPDATE run_steps SET wait_version = wait_version WHERE id = 's2'`) // a no-op write is not a mutation
+		if v := version(`SELECT wait_version FROM run_steps WHERE id = 's2'`); v == nil || *v != 5 {
+			t.Fatalf("decided wait version = %v, want 5", v)
+		}
+
+		// Task progress: once initialized it is never cleared and never regresses.
+		must(`UPDATE tasks SET pipeline_id = 'pl1' WHERE id = 't2'`)
+		must(`UPDATE tasks SET current_run_id = 'r2', status = 'running', progress_version = 5, progress_run_version = 4 WHERE id = 't2'`)
+		for name, sql := range map[string]string{
+			"both versions cleared":        `UPDATE tasks SET progress_version = NULL, progress_run_version = NULL WHERE id = 't2'`,
+			"progress version cleared":     `UPDATE tasks SET progress_version = NULL WHERE id = 't2'`,
+			"run version cleared":          `UPDATE tasks SET progress_run_version = NULL WHERE id = 't2'`,
+			"progress version lowered":     `UPDATE tasks SET progress_version = 4 WHERE id = 't2'`,
+			"run version lowered":          `UPDATE tasks SET progress_run_version = 3 WHERE id = 't2'`,
+			"clear then restore, step 1":   `UPDATE tasks SET progress_version = NULL, progress_run_version = NULL, status = 'queued' WHERE id = 't2'`,
+			"run changed, run version off": `UPDATE tasks SET current_run_id = NULL, status = 'pending', progress_run_version = NULL WHERE id = 't2'`,
+		} {
+			requireCode(t, runtimeExec(t, pool, tenantA, sql), "23514", name)
+		}
+		var pv, rv *int64
+		if err := e.mig.QueryRow(ctx, `SELECT progress_version, progress_run_version FROM tasks WHERE id = 't2'`).Scan(&pv, &rv); err != nil ||
+			pv == nil || rv == nil || *pv != 5 || *rv != 4 {
+			t.Fatalf("progress = %v/%v (%v), want 5/4: a refused reset must change nothing", pv, rv, err)
+		}
+		// A different run may restart its own version; the overall version still only grows.
+		e.exec(t, `INSERT INTO runs (tenant_id, project_id, id, pipeline_id, task_id, definition_snapshot) VALUES ('tenant-a', 'pa1', 'r9', 'pl1', 't2', '{}')`)
+		requireCode(t, runtimeExec(t, pool, tenantA, `UPDATE tasks SET current_run_id = 'r9', progress_version = 4, progress_run_version = 1 WHERE id = 't2'`), "23514", "new run with a lower progress version")
+		must(`UPDATE tasks SET current_run_id = 'r9', progress_version = 6, progress_run_version = 1 WHERE id = 't2'`)
+		requireCode(t, runtimeExec(t, pool, tenantA, `UPDATE tasks SET progress_run_version = NULL WHERE id = 't2'`), "23514", "new run's version cleared")
+		must(`UPDATE tasks SET progress_version = 6, progress_run_version = 2 WHERE id = 't2'`)
+	})
 }
 
 type errBoom struct{}

@@ -247,6 +247,18 @@ func expandStatementShape(t *testing.T) {
 			t.Errorf("missing %q", tr)
 		}
 	}
+	// The guards compare versions with explicit NULL handling.
+	guards := strings.Join(statementsMatching(stmts, `^CREATE FUNCTION kodama_(run_step|task)_guard`), "\n")
+	for _, need := range []string{
+		"OLD.wait_version IS NOT NULL AND (NEW.wait_version IS NULL OR NEW.wait_version < OLD.wait_version)",
+		"NEW.wait_consumed_signal_id, NEW.wait_version)",
+		"OLD.progress_version IS NOT NULL AND (NEW.progress_version IS NULL OR NEW.progress_version < OLD.progress_version)",
+		"OLD.progress_run_version IS NOT NULL AND NEW.progress_run_version IS NULL",
+	} {
+		if !strings.Contains(guards, need) {
+			t.Errorf("version guard lacks %q", need)
+		}
+	}
 	// The signal record outlives its wait: no reference to run, step or wait, and
 	// it is removed only with the project.
 	signal := statementsMatching(stmts, `^CREATE TABLE signal_records`)
@@ -280,29 +292,37 @@ func expandStatementShape(t *testing.T) {
 // enforcement are executed by Test_pipeline_name_unique_postgres.
 func Test_unit_storage_pipeline_name_unique(t *testing.T) {
 	stmts := sqlStatements(expandSQL(t))
-	if len(stmts) < 4 {
+	if len(stmts) < 5 {
 		t.Fatalf("migration has %d statements", len(stmts))
 	}
 
 	t.Run("validation_precedes_every_change", func(t *testing.T) {
+		// Writers are excluded first, so nothing can commit between a check and the
+		// mapping that relies on it; the lock is held to the end of the transaction.
+		if stmts[0] != "LOCK TABLE pipelines, runs, tasks IN SHARE ROW EXCLUSIVE MODE" {
+			t.Errorf("statement 0 = %q, want the write-excluding lock on every table validated or mapped", stmts[0])
+		}
+		for _, release := range statementsMatching(stmts, `(?i)^(COMMIT|ROLLBACK|RESET|SET LOCAL lock_timeout)`) {
+			t.Errorf("the lock must be held through mapping: %q", release)
+		}
 		for i, want := range []struct{ errcode, probe string }{
 			{"23505", "GROUP BY tenant_id, project_id, name HAVING count(*) > 1"},
 			{"23514", "GROUP BY tenant_id, project_id, task_id HAVING count(DISTINCT pipeline_id) > 1"},
 		} {
-			s := stmts[i]
+			s := stmts[i+1]
 			if !strings.HasPrefix(s, "DO $$") || !strings.Contains(s, want.probe) ||
 				!strings.Contains(s, "RAISE EXCEPTION") || !strings.Contains(s, "USING ERRCODE = '"+want.errcode+"'") ||
 				!strings.Contains(s, "nothing was changed") {
-				t.Errorf("statement %d is not the expected refusing validation (%s): %.160s", i, want.errcode, s)
+				t.Errorf("statement %d is not the expected refusing validation (%s): %.160s", i+1, want.errcode, s)
 			}
 		}
-		if !strings.Contains(stmts[0], "FROM pipelines") || !strings.Contains(stmts[1], "FROM runs WHERE task_id IS NOT NULL") {
+		if !strings.Contains(stmts[1], "FROM pipelines") || !strings.Contains(stmts[2], "FROM runs WHERE task_id IS NOT NULL") {
 			t.Error("validation must read pipelines and runs")
 		}
 		// Nothing before the validations mutates.
-		for i := 2; i < len(stmts); i++ {
+		for i := 3; i < len(stmts); i++ {
 			if regexp.MustCompile(`^(ALTER|CREATE|UPDATE|INSERT|GRANT|DROP)`).MatchString(stmts[i]) {
-				if i != 2 || !strings.Contains(stmts[i], "pipelines_name_unique") {
+				if i != 3 || !strings.Contains(stmts[i], "pipelines_name_unique") {
 					t.Errorf("statement %d precedes the unique key: %.100s", i, stmts[i])
 				}
 				break
@@ -312,8 +332,8 @@ func Test_unit_storage_pipeline_name_unique(t *testing.T) {
 
 	t.Run("project_scoped_key_follows_validation", func(t *testing.T) {
 		const key = "ALTER TABLE pipelines ADD CONSTRAINT pipelines_name_unique UNIQUE (tenant_id, project_id, name)"
-		if stmts[2] != key {
-			t.Errorf("statement 2 = %q, want %q", stmts[2], key)
+		if stmts[3] != key {
+			t.Errorf("statement 3 = %q, want %q", stmts[3], key)
 		}
 		// The baseline repository-scoped key is left alone (retired at contract).
 		if statementsMatching(stmts, `(?i)DROP .*pipelines|pipelines.* DROP |ALTER TABLE pipelines DROP`) != nil {
@@ -332,6 +352,10 @@ func Test_unit_storage_pipeline_name_unique(t *testing.T) {
 			case regexp.MustCompile(`(?i)ORDER BY[^;]*repo_id`).MatchString(s):
 				t.Errorf("a repository is never chosen by ordering: %.100s", s)
 			}
+		}
+		lock := slices.Index(stmts, "LOCK TABLE pipelines, runs, tasks IN SHARE ROW EXCLUSIVE MODE")
+		if mapAt := slices.IndexFunc(stmts, func(s string) bool { return strings.HasPrefix(s, "UPDATE tasks ") }); lock != 0 || mapAt < 3 {
+			t.Errorf("the mapping (statement %d) must follow the lock (statement %d) and both validations", mapAt, lock)
 		}
 		maps := statementsMatching(stmts, `^UPDATE tasks `)
 		if len(maps) != 1 {

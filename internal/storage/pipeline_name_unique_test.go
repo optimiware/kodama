@@ -1,8 +1,10 @@
 package storage_test
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -223,5 +225,129 @@ INSERT INTO runs (tenant_id, project_id, id, pipeline_id, task_id, definition_sn
 		if n := count(t, pool, `SELECT count(*) FROM projects WHERE task_workflow = '{}'`); n != 2 {
 			t.Errorf("legacy task_workflow readable for %d projects, want 2", n)
 		}
+	})
+	// The migration's validation and mapping must not race application writers.
+	// The runner's advisory lock serializes runners only; the migration locks the
+	// tables it reads and maps, so a concurrent admission either commits before the
+	// validation (and is refused or mapped with it) or waits until the migration ends.
+	t.Run("concurrent_admission_cannot_bypass_validation", func(t *testing.T) {
+		seed := `
+INSERT INTO pipelines (tenant_id, project_id, id, name, source, definition) VALUES
+  ('tenant-a', 'pa1', 'plA', 'alpha', 'api', '{}'), ('tenant-a', 'pa1', 'plB', 'beta', 'api', '{}');
+INSERT INTO tasks (tenant_id, project_id, id, title, state) VALUES ('tenant-a', 'pa1', 't1', 'one', 'open');
+INSERT INTO runs (tenant_id, project_id, id, pipeline_id, task_id, definition_snapshot) VALUES
+  ('tenant-a', 'pa1', 'r1', 'plA', 't1', '{}');`
+		const secondRun = `INSERT INTO runs (tenant_id, project_id, id, pipeline_id, task_id, definition_snapshot)
+VALUES ('tenant-a', 'pa1', 'r2', 'plB', 't1', '{}')`
+
+		// waiters counts backends waiting on a heavyweight lock in this database.
+		waiters := func(ctx context.Context, pool *pgxpool.Pool) int {
+			var n int
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+		waitFor := func(ctx context.Context, pool *pgxpool.Pool, want int, what string) {
+			t.Helper()
+			deadline := time.Now().Add(20 * time.Second)
+			for waiters(ctx, pool) < want {
+				if time.Now().After(deadline) {
+					t.Fatalf("timed out waiting for %s", what)
+				}
+				time.Sleep(25 * time.Millisecond)
+			}
+		}
+
+		t.Run("admission_in_flight_is_validated", func(t *testing.T) {
+			db, pool, opts := priorSchema(t)
+			ctx := testCtx(t)
+			if _, err := pool.Exec(ctx, seed); err != nil {
+				t.Fatal(err)
+			}
+			app := db.MigrationPool(ctx, 2) // an application connection, apart from the runner's
+			tx, err := app.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(ctx) //nolint:errcheck
+			// The second run of the task is written but not committed: the checks of a
+			// migration that did not wait for it would not see it.
+			if _, err := tx.Exec(ctx, secondRun); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() {
+				_, err := storage.Migrate(ctx, pool, fullManifest(t), opts)
+				done <- err
+			}()
+			waitFor(ctx, app, 1, "the migration to wait for the in-flight admission")
+			select {
+			case err := <-done:
+				t.Fatalf("the migration did not wait for the in-flight admission: %v", err)
+			default:
+			}
+			if err := tx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			err = <-done
+			requireCode(t, err, "23514", "task with an admission that committed during the migration")
+			if n := applied(t, pool); n != 3 || columnExists(t, pool, "tasks", "pipeline_id") {
+				t.Errorf("refused migration left state: %d ledger rows", n)
+			}
+			if got := count(t, pool, `SELECT count(*) FROM runs WHERE task_id = 't1'`); got != 2 {
+				t.Errorf("runs of t1 = %d, want both", got)
+			}
+		})
+
+		t.Run("writers_wait_for_the_whole_migration", func(t *testing.T) {
+			db, pool, opts := priorSchema(t)
+			ctx := testCtx(t)
+			if _, err := pool.Exec(ctx, seed); err != nil {
+				t.Fatal(err)
+			}
+			holder, writer := db.MigrationPool(ctx, 2), db.MigrationPool(ctx, 2)
+			// A holds a row lock on tasks, so the migration acquires its locks on
+			// pipelines and runs and then waits for tasks: the locks are held while it
+			// waits, as they are through mapping.
+			hold, err := holder.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer hold.Rollback(ctx) //nolint:errcheck
+			if _, err := hold.Exec(ctx, `UPDATE tasks SET title = 'held' WHERE id = 't1'`); err != nil {
+				t.Fatal(err)
+			}
+			migrated := make(chan error, 1)
+			go func() {
+				_, err := storage.Migrate(ctx, pool, fullManifest(t), opts)
+				migrated <- err
+			}()
+			waitFor(ctx, holder, 1, "the migration to wait for tasks")
+			// A concurrent admission of a run on another pipeline must wait for it.
+			admitted := make(chan error, 1)
+			go func() { _, err := writer.Exec(ctx, secondRun); admitted <- err }()
+			waitFor(ctx, holder, 2, "the admission to wait for the migration")
+			select {
+			case err := <-admitted:
+				t.Fatalf("an admission committed while the migration held its locks: %v", err)
+			default:
+			}
+			if err := hold.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-migrated; err != nil {
+				t.Fatalf("migrate: %v", err)
+			}
+			if err := <-admitted; err != nil {
+				t.Fatalf("the waiting admission failed after the migration: %v", err)
+			}
+			// The mapping saw exactly what was validated: one run, one pipeline.
+			var pl *string
+			if err := pool.QueryRow(ctx, `SELECT pipeline_id FROM tasks WHERE id = 't1'`).Scan(&pl); err != nil || pl == nil || *pl != "plA" {
+				t.Fatalf("task t1 pipeline = %v (%v), want plA from the validated run", pl, err)
+			}
+		})
 	})
 }

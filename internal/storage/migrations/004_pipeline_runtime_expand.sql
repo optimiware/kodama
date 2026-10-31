@@ -10,6 +10,17 @@
 -- it was and names what an operator must resolve by hand. The migration never
 -- invents a pipeline, merges two definitions or picks a repository.
 
+-- Exclude concurrent application writers for the whole of validation and mapping.
+-- The migration runner's advisory lock serializes runners, not application
+-- transactions: without this lock a run (or a pipeline) committed after the checks
+-- but before the mapping would be mapped by the mapping without ever having been
+-- validated. SHARE ROW EXCLUSIVE conflicts with the row-level write locks that
+-- INSERT, UPDATE and DELETE take, so writers wait until this transaction ends,
+-- while readers continue; it also conflicts with itself, so two migrations cannot
+-- interleave. The lock is held to commit, through the mapping and every later
+-- statement. One statement acquires all three tables, in the same order every time.
+LOCK TABLE pipelines, runs, tasks IN SHARE ROW EXCLUSIVE MODE;
+
 -- Stage 2a: refuse duplicate project-scoped pipeline names. The baseline unique
 -- key includes the repository, so one name can be defined by an API row and by
 -- one or more repositories; name resolution would then depend on row order.
@@ -330,6 +341,11 @@ BEGIN
             OLD.wait_approving, OLD.wait_on_expiry, OLD.wait_deadline_at) THEN
         RAISE EXCEPTION 'wait identity, correlation and expected input are immutable once opened' USING ERRCODE = '23514';
     END IF;
+    -- The wait version never goes backwards and is never cleared, whatever else
+    -- the statement changes (or leaves unchanged).
+    IF OLD.wait_version IS NOT NULL AND (NEW.wait_version IS NULL OR NEW.wait_version < OLD.wait_version) THEN
+        RAISE EXCEPTION 'the wait version cannot decrease or be cleared' USING ERRCODE = '23514';
+    END IF;
     IF NEW.wait_state IS DISTINCT FROM OLD.wait_state THEN
         IF NOT ((OLD.wait_state IS NULL AND NEW.wait_state = 'waiting')
                 OR (OLD.wait_state = 'waiting' AND NEW.wait_state IN ('resolved', 'expired', 'cancelled'))) THEN
@@ -338,10 +354,10 @@ BEGIN
         END IF;
     END IF;
     IF OLD.wait_state IN ('resolved', 'expired', 'cancelled')
-       AND (NEW.wait_assignment, NEW.wait_outcome, NEW.wait_answer, NEW.wait_actor_ref, NEW.wait_decided_at, NEW.wait_consumed_signal_id)
+       AND (NEW.wait_assignment, NEW.wait_outcome, NEW.wait_answer, NEW.wait_actor_ref, NEW.wait_decided_at, NEW.wait_consumed_signal_id, NEW.wait_version)
            IS DISTINCT FROM
-           (OLD.wait_assignment, OLD.wait_outcome, OLD.wait_answer, OLD.wait_actor_ref, OLD.wait_decided_at, OLD.wait_consumed_signal_id) THEN
-        RAISE EXCEPTION 'a decided wait is immutable' USING ERRCODE = '23514';
+           (OLD.wait_assignment, OLD.wait_outcome, OLD.wait_answer, OLD.wait_actor_ref, OLD.wait_decided_at, OLD.wait_consumed_signal_id, OLD.wait_version) THEN
+        RAISE EXCEPTION 'a decided wait is immutable, including its version' USING ERRCODE = '23514';
     END IF;
     -- Every change to an opened wait is one version-checked step forward.
     IF OLD.wait_state IS NOT NULL
@@ -409,11 +425,19 @@ BEGIN
     IF OLD.pipeline_id IS NOT NULL AND NEW.pipeline_id IS DISTINCT FROM OLD.pipeline_id THEN
         RAISE EXCEPTION 'a task keeps its selected pipeline' USING ERRCODE = '23514';
     END IF;
-    -- An older projection never overwrites a newer one.
-    IF NEW.progress_version < OLD.progress_version THEN
-        RAISE EXCEPTION 'task progress version cannot decrease' USING ERRCODE = '23514';
+    -- A projection, once initialized, is never cleared and never goes backwards.
+    -- Each comparison handles NULL explicitly: an unknown result would pass.
+    IF OLD.progress_version IS NOT NULL
+       AND (NEW.progress_version IS NULL OR NEW.progress_version < OLD.progress_version) THEN
+        RAISE EXCEPTION 'task progress version cannot decrease or be cleared' USING ERRCODE = '23514';
     END IF;
-    IF NEW.current_run_id IS NOT DISTINCT FROM OLD.current_run_id
+    IF OLD.progress_run_version IS NOT NULL AND NEW.progress_run_version IS NULL THEN
+        RAISE EXCEPTION 'task progress run version cannot be cleared' USING ERRCODE = '23514';
+    END IF;
+    -- The run version belongs to the current run: it may restart for a different
+    -- run, but never decreases for the same one.
+    IF OLD.progress_run_version IS NOT NULL
+       AND NEW.current_run_id IS NOT DISTINCT FROM OLD.current_run_id
        AND NEW.progress_run_version < OLD.progress_run_version THEN
         RAISE EXCEPTION 'task progress run version cannot decrease for the same run' USING ERRCODE = '23514';
     END IF;
