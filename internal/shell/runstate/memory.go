@@ -13,7 +13,7 @@ import (
 )
 
 // runRow is one run's whole retained record. Run, plan, claim, waits, commands,
-// workload and resource observations live in one row so every Commit is one
+// workload and resource observations, step outputs and materializations live in one row so every Commit is one
 // atomic replacement, exactly as it is one transaction in a database.
 type runRow struct{ Rec runtime.RunRecord }
 
@@ -285,6 +285,26 @@ func (m *Memory) Renew(ctx context.Context, held runtime.Claim, ttl time.Duratio
 		return runtime.Claim{}, err
 	}
 	return out, nil
+}
+
+// Release ends the holder's lease without ending the run, through
+// runtime.ReleaseClaim. It is a no-op for a claim the caller no longer holds.
+func (m *Memory) Release(ctx context.Context, held runtime.Claim, now time.Time) error {
+	if err := checkRef(held.Scope, held.RunID); err != nil {
+		return err
+	}
+	return m.db.Update(ctx, held.Scope.TenantID, func(tx memdb.Tx) error {
+		rec, err := get(tx, held.Scope, held.RunID)
+		if err != nil {
+			return err
+		}
+		c, released, err := runtime.ReleaseClaim(rec.Claim, held, now)
+		if err != nil || !released {
+			return err
+		}
+		rec.Claim = c
+		return put(tx, rec)
+	})
 }
 
 // Commit applies one claim-fenced, version-checked transition with its outbox

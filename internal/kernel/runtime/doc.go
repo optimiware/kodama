@@ -61,6 +61,22 @@
 //     renew after takeover. Database fencing is not enough for
 //     external effects: the fence travels in every [RuntimeBinding] and
 //     [ResourceHandle] so an adapter can refuse a delayed create.
+//   - A step's declared outputs are durable. A [StepOutputs] record is committed
+//     in the same [Transition] that settles the step as succeeded ([CheckOutputs]
+//     refuses names the plan did not declare, oversized or non-text values, and
+//     outputs added after the settlement) and is the authority every later claim
+//     reads; no engine-side store backs it.
+//   - A holder can give a claim up without ending the run ([StateStore.Release],
+//     [ReleaseClaim]): scope, owner and fence are checked, the fence and the run
+//     are kept, the lease ends now, and a holder that no longer holds the claim
+//     changes nothing. A run parked on an open wait is released so resumption does
+//     not wait for the lease.
+//   - Secret material is revocable from the record. A [MaterializationRef] is the
+//     scoped identity of one step attempt's private material, derived from scope,
+//     run, step and attempt, recorded as issued before [SecretResolver.Resolve] is
+//     called and as revoked after [SecretResolver.Revoke] confirmed
+//     ([CheckMaterializations]); revocation needs the identity alone, never a
+//     directory, so a replacement engine revokes what it never saw.
 //   - Execution outcome and cleanup are separate. A run is terminal only after
 //     its owned resources are confirmed stopped and removed, or after bounded
 //     cleanup attempts are exhausted with the retained resource identities

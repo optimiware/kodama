@@ -79,6 +79,20 @@ func reviewWaitOf(rec runtime.RunRecord) runtime.Wait {
 // expiry and cancellation race on one version-checked decision, and the deadline's
 // declared branch is taken through when only.
 func Test_unit_kernel_engine_waits(t *testing.T) {
+	t.Run("parking on a wait releases the claim so a signal resumes the run at once", func(t *testing.T) {
+		e := newEnv(t)
+		e.park("run1", "")
+		parked := e.load("run1")
+		e.expect(!parked.Claim.Active(e.clock.Now()) && parked.Claim.Fence == 1 && parked.Claim.Owner == "w1",
+			"the claim is released and keeps its fence: %+v", parked.Claim)
+		refs, err := e.state.Runnable(context.Background(), runtime.RunnableQuery{Now: e.clock.Now(), Limit: 10})
+		e.expect(err == nil && len(refs) == 1, "the parked run is claimable at once: %v %v", refs, err)
+		e.decide(signal("run1", "k1", "approved"))
+		e.drive(e.engine("w2"), "run1") // no lease to wait out
+		got := e.load("run1")
+		e.expect(got.Run.Outcome == runtime.OutcomeSucceeded && got.Claim.Fence == 2, "the next claim resumed the run: %+v %+v", got.Run, got.Claim)
+	})
+
 	t.Run("a wait is persisted before it is announced and one signal resumes the run once", func(t *testing.T) {
 		e := newEnv(t)
 		rep := e.park("run1", "")
@@ -394,21 +408,8 @@ func Test_unit_kernel_engine_waits(t *testing.T) {
 		e.expect(e.rt.count(e.rt.starts) == 2, "deploy was launched once: %v", e.rt.starts)
 	})
 
-	t.Run("an outputs read that fails leaves the run for a later claim instead of failing it", func(t *testing.T) {
-		e := newEnv(t)
-		e.admit("run1", reviewPlan(""), 3)
-		e.outputs.produce("build", map[string]string{"commit": "c1"})
-		bad := &flakyOutputs{fakeOutputs: e.outputs, failReads: 1}
-		eng := e.engine("w1", func(c *runner.EngineConfig) { c.Outputs = bad })
-		rep := e.drive(eng, "run1")
-		e.expect(rep.Status == runner.DriveRetry && stepOf(e.load("run1"), "review").State == runtime.StepPending, "status %s", rep.Status)
-		e.expire()
-		rep = e.drive(eng, "run1")
-		e.expect(rep.Status == runner.DriveWaiting, "the next claim opens the wait: %s", rep.Status)
-	})
-
 	t.Run("a decided wait does not report success over lost state", lostStateBlocksResume)
-	t.Run("a failing outputs port is not a verdict on a condition or binding", transientReadsLeaveStepsPending)
+	t.Run("outputs are read from the run record by whichever engine holds the run", outputsComeFromTheRecord)
 
 	t.Run("process backend", processWaits)
 }
@@ -432,19 +433,6 @@ type raceStore struct {
 func (r *raceStore) Commit(ctx context.Context, t runtime.Transition) (runtime.RunRecord, error) {
 	r.before(t)
 	return r.StateStore.Commit(ctx, t)
-}
-
-type flakyOutputs struct {
-	*fakeOutputs
-	failReads int
-}
-
-func (f *flakyOutputs) Read(ctx context.Context, ref runner.StepRef) (map[string]string, error) {
-	if f.failReads > 0 {
-		f.failReads--
-		return nil, errors.New("store unavailable")
-	}
-	return f.fakeOutputs.Read(ctx, ref)
 }
 
 // Test_unit_kernel_engine_conditions exercises the frozen when grammar directly.

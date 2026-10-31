@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/optimiware/kodama/internal/kernel/runtime"
@@ -99,7 +98,7 @@ func (d *drive) openWait(ps runtime.PlanStep, ev *runtime.PredicateEvaluation) (
 	for key, ref := range ps.Wait.Correlate {
 		v, present, err := read(ref)
 		if err != nil {
-			return d.readFailed(ps, err)
+			return d.refused(ps)
 		}
 		if !present || v.Text() == "" || len(v.Text()) > runtime.MaxRequestBytes {
 			return d.failBeforeStart(ps, ev, runtime.ReasonCorrelationMissing)
@@ -110,7 +109,7 @@ func (d *drive) openWait(ps runtime.PlanStep, ev *runtime.PredicateEvaluation) (
 	if ref := ps.Wait.Request; ref != "" {
 		v, present, err := read(ref)
 		if err != nil {
-			return d.readFailed(ps, err)
+			return d.refused(ps)
 		}
 		if present && len(v.Text()) <= runtime.MaxRequestBytes {
 			request = v.Text()
@@ -128,13 +127,10 @@ func (d *drive) openWait(ps runtime.PlanStep, ev *runtime.PredicateEvaluation) (
 	return flowAgain, d.commit(bt)
 }
 
-// readFailed separates a port that failed (try again later) from a reference the
-// grammar refuses (the step cannot be prepared).
-func (d *drive) readFailed(ps runtime.PlanStep, err error) (flow, error) {
-	var t transientError
-	if errors.As(err, &t) {
-		return d.stop(DriveRetry)
-	}
+// refused fails a step whose condition, binding or reference the grammar
+// refuses: it cannot be prepared. Every reference is read from the run record,
+// so a read never fails for a reason that a later claim would not share.
+func (d *drive) refused(ps runtime.PlanStep) (flow, error) {
 	return d.failBeforeStart(ps, nil, runtime.ReasonPreparationFailed)
 }
 

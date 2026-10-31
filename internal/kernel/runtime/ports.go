@@ -27,6 +27,14 @@ type RunRecord struct {
 	// Workloads hold the latest observation of each workload attempt.
 	Workloads []WorkloadObservation `json:"workloads,omitempty"`
 	Resources []ResourceObservation `json:"resources,omitempty"`
+	// Outputs are the declared outputs of succeeded container steps, recorded
+	// with the step's settlement (see StepOutputs). They are the authority a
+	// condition or binding reads; no engine-side store backs them.
+	Outputs []StepOutputs `json:"outputs,omitempty"`
+	// Materializations are the durable identities of the private secret material
+	// of step attempts, recorded before the material is created and until it is
+	// revoked (see MaterializationRecord), so a replacement engine can revoke it.
+	Materializations []MaterializationRecord `json:"materializations,omitempty"`
 }
 
 // Validate checks that the record is coherent as read back from a store: the run
@@ -133,7 +141,17 @@ func (r RunRecord) Validate() error {
 			return invalid("resource %s is not available to this run", o.Handle.Name)
 		}
 	}
-	return nil
+	seenOutputs := map[domain.StepID]bool{}
+	for _, o := range r.Outputs {
+		if err := checkOutputsOf(r.Plan, r.Run, o); err != nil {
+			return err
+		}
+		if seenOutputs[o.StepKey] {
+			return invalid("step %s has its outputs recorded twice", o.StepKey)
+		}
+		seenOutputs[o.StepKey] = true
+	}
+	return checkMaterializationsOf(r.Run, r.Materializations)
 }
 
 // Predicate returns the retained when evaluation of a step, if it was evaluated.
@@ -321,6 +339,15 @@ type StateStore interface {
 	// (renew it instead). After cleanup is exhausted only a ClaimCleanup is
 	// admitted.
 	Claim(ctx context.Context, req ClaimRequest, now time.Time) (RunRecord, error)
+	// Release gives up the caller's lease without ending the run, through
+	// ReleaseClaim: an engine that parks a run on an open wait calls it so the
+	// next claim, once a signal or the deadline wakes the run, does not wait for
+	// the lease to expire. Scope, owner and fence are checked against the stored
+	// claim; the fence is kept, the lease ends at now and the run is not
+	// changed. It is a no-op that returns nil when the caller no longer holds the
+	// claim (taken over, expired or already released), and never releases another
+	// writer's. A run that does not exist in the scope is domain.CodeNotFound.
+	Release(ctx context.Context, held Claim, now time.Time) error
 	// Renew extends the caller's lease atomically through RenewClaim: scope,
 	// owner, fence and expiry are checked against the stored claim, the fence is
 	// unchanged, and the new expiry is persisted before the stored claim is
@@ -333,8 +360,9 @@ type StateStore interface {
 	// fence and lease (Claim.Authorizes) and the expected versions, then persists
 	// the run (applying CheckRunUpdate against the stored run, so a recorded
 	// predicate evaluation or terminal step never changes), waits, commands,
-	// workload observations, resources and events together, and extends the lease
-	// when Transition.RenewTTL is set. A stale writer is refused with
+	// workload observations, resources, step outputs (CheckOutputs),
+	// materialization records (CheckMaterializations) and events together, and
+	// extends the lease when Transition.RenewTTL is set. A stale writer is refused with
 	// ErrStaleFence and nothing is persisted.
 	Commit(ctx context.Context, t Transition) (RunRecord, error)
 	// Runnable lists runs with claimable work, bounded by q.Limit.
@@ -364,37 +392,51 @@ type StateStore interface {
 	View(ctx context.Context, scope domain.Scope, id domain.RunID) (RunView, error)
 }
 
-// Materialization is the private, declared secret material for one step. It
-// names a directory outside /workspace and the references it holds; it never
-// carries a value.
+// Materialization is the private, declared secret material for one step
+// attempt. It names a directory outside /workspace and the references it holds;
+// it never carries a value. ID and Attempt are the durable identity recorded
+// before the material was created (MaterializationRef): the directory is only the
+// place the material is mounted from, never what revocation depends on.
 type Materialization struct {
 	Scope     domain.Scope  `json:"scope"`
 	RunID     domain.RunID  `json:"runId"`
 	StepKey   domain.StepID `json:"stepKey"`
+	Attempt   int           `json:"attempt,omitempty"`
+	ID        string        `json:"id,omitempty"`
 	Directory string        `json:"directory"`
 	Refs      []SecretRef   `json:"refs,omitempty"`
 	// Revision identifies the resolved versions for rotation and audit.
 	Revision string `json:"revision,omitempty"`
 }
 
-// ResolveRequest asks for the declared secret references of one step.
+// ResolveRequest asks for the declared secret references of one step attempt,
+// to be materialized under the durable identity Ref, which the engine has
+// already recorded.
 type ResolveRequest struct {
-	Scope   domain.Scope  `json:"scope"`
-	RunID   domain.RunID  `json:"runId"`
-	StepKey domain.StepID `json:"stepKey"`
+	Ref MaterializationRef `json:"ref"`
 	// Refs are the references the plan declared for the step; see SelectSecrets.
 	Refs []SecretRef `json:"refs"`
 }
 
 // SecretResolver resolves only declared references into a private
-// materialization. It must not log, return or put a secret value in an event;
-// an unavailable reference fails with ReasonSecretUnavailable.
+// materialization and revokes it by its durable identity. It must not log,
+// return or put a secret value in an event; an unavailable reference fails with
+// ReasonSecretUnavailable.
 type SecretResolver interface {
-	// Resolve materializes the references for one step attempt.
+	// Resolve materializes the references for the attempt identified by req.Ref.
+	// It is idempotent on req.Ref.ID: a repeat replaces the material the identity
+	// already names, never adds a second copy, and the returned Materialization
+	// carries Ref's ID and Attempt.
 	Resolve(ctx context.Context, req ResolveRequest) (Materialization, error)
-	// Release removes the materialization and revokes access to it. It is
-	// idempotent and runs when the step settles, not only when the run ends.
-	Release(ctx context.Context, m Materialization) error
+	// Revoke removes the private material identified by ref and revokes access to
+	// it. It works from the identity alone, as it is called by an engine that
+	// never resolved the material, after a takeover or a crash between Resolve and
+	// the engine's next commit: an implementation must be able to find the
+	// material from ref.ID without the directory, and must not need Resolve to
+	// have returned. It is idempotent, succeeds when the identity names nothing
+	// (resolution failed or never started), and runs when the step settles, not
+	// only when the run ends. A failure is returned, never discarded.
+	Revoke(ctx context.Context, ref MaterializationRef) error
 }
 
 // StartRequest launches one workload attempt.

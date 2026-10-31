@@ -47,13 +47,6 @@ func conditionErr(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrCondition, fmt.Sprintf(format, args...))
 }
 
-// transientError marks a failure of a port rather than of the condition, so the
-// engine leaves the step for a later claim instead of failing it.
-type transientError struct{ err error }
-
-func (e transientError) Error() string { return e.err.Error() }
-func (e transientError) Unwrap() error { return e.err }
-
 // ---------------------------------------------------------------------------
 // References
 // ---------------------------------------------------------------------------
@@ -189,16 +182,13 @@ func (d *drive) reader(ps runtime.PlanStep) ReferenceReader {
 		if target.Kind != runtime.StepContainer || !slices.Contains(target.Outputs, r.name) {
 			return runtime.InputValue{}, false, conditionErr("%q is not a declared output", text)
 		}
-		// Only a succeeded step has outputs; those of any other outcome were never recorded.
-		if s.State != runtime.StepSucceeded || d.e.cfg.Outputs == nil {
+		// Only a succeeded step has outputs; those of any other outcome were never
+		// recorded. They are read from the run record, whichever engine loaded it.
+		if s.State != runtime.StepSucceeded {
 			return str("", false)
 		}
-		got, err := d.e.cfg.Outputs.Read(d.ctx, StepRef{Scope: d.rec.Run.Scope, RunID: d.rec.Run.ID, StepKey: r.step, Attempt: s.Attempt})
-		if err != nil {
-			return runtime.InputValue{}, false, transientError{err}
-		}
-		v, ok := got[r.name]
-		return str(v, ok && len(v) <= runtime.MaxRequestBytes)
+		v, ok := d.rec.Output(r.step, r.name)
+		return str(v, ok)
 	}
 }
 

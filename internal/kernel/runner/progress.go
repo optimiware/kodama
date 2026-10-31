@@ -47,7 +47,8 @@ func (d *drive) stageSettle() (flow, error) {
 	switch {
 	case waiting:
 		// Nothing else is eligible while a wait is open: park until a signal or
-		// the deadline. The lease is left to expire; a later claim resumes the run.
+		// the deadline. Drive releases the claim, so a later claim resumes the run
+		// at once.
 		d.report = Report{Status: DriveWaiting, Next: d.nextWake}
 		return flowStop, nil
 	case live:
@@ -134,10 +135,9 @@ func (d *drive) evaluate(ps runtime.PlanStep) (flow, error) {
 		} else {
 			e, err := d.evaluateWhen(ps)
 			if err != nil {
-				// A port that failed is not a verdict on the condition: the step
-				// stays pending for a later claim. Only a condition the grammar
-				// refuses fails it.
-				return d.readFailed(ps, err)
+				// The values are read from the record; only a condition the
+				// grammar refuses fails the step.
+				return d.refused(ps)
 			}
 			ev = &e
 		}
@@ -168,7 +168,7 @@ func (d *drive) startStep(ps runtime.PlanStep, ev *runtime.PredicateEvaluation) 
 	}
 	spec, err := d.workloadSpec(ps)
 	if err != nil {
-		return d.readFailed(ps, err)
+		return d.refused(ps)
 	}
 	digest, err := workloadDigest(spec, d.workspaceHandle().Identity)
 	if err != nil {

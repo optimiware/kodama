@@ -225,28 +225,31 @@ func (d *drive) stageRunning() (flow, error) {
 // resolved only now, only for the declared references, and released when the
 // step settles.
 func (d *drive) start(s runtime.Step, cmd runtime.Command, p pendingStart) (flow, error) {
-	delete(d.fresh, cmd.ID)
 	req := runtime.StartRequest{Binding: cmd.Binding, Spec: p.spec, Workspace: d.workspaceHandle(), Services: d.serviceHandles()}
 	if refs := p.spec.Secrets; len(refs) > 0 {
 		if d.e.cfg.Secrets == nil {
+			delete(d.fresh, cmd.ID)
 			return d.rejectLaunch(s, cmd, runtime.ReasonSecretUnavailable)
 		}
-		// A retry resolves again: the earlier attempt's material goes first.
-		if old, ok := d.mats[s.Key]; ok {
-			if err := d.e.cfg.Secrets.Release(d.ctx, old); err != nil {
-				return d.rejectLaunch(s, cmd, runtime.ReasonSecretUnavailable)
-			}
-			delete(d.mats, s.Key)
-		}
-		m, err := d.e.cfg.Secrets.Resolve(d.ctx, runtime.ResolveRequest{Scope: d.rec.Run.Scope, RunID: d.rec.Run.ID, StepKey: s.Key, Refs: refs})
+		ref, err := runtime.NewMaterializationRef(d.rec.Run.Scope, d.rec.Run.ID, s.Key, s.Attempt)
 		if err != nil {
+			return flowPass, err
+		}
+		// The identity is recorded before the resolver is asked to create material
+		// under it, so a crash or takeover at any later point leaves a record a
+		// replacement engine revokes by. The fresh intent is kept until it is
+		// committed: a lost version race reloads and comes back here.
+		if err := d.issue(ref); err != nil {
+			return flowPass, err
+		}
+		delete(d.fresh, cmd.ID)
+		m, err := d.e.cfg.Secrets.Resolve(d.ctx, runtime.ResolveRequest{Ref: ref, Refs: refs})
+		if err != nil || m.ID != ref.ID || m.Scope != ref.Scope || m.RunID != ref.RunID || m.StepKey != ref.StepKey || m.Attempt != ref.Attempt {
 			return d.rejectLaunch(s, cmd, runtime.ReasonSecretUnavailable)
 		}
-		if d.mats == nil {
-			d.mats = map[domain.StepID]runtime.Materialization{}
-		}
-		d.mats[s.Key] = m
 		req.Secrets = m
+	} else {
+		delete(d.fresh, cmd.ID)
 	}
 	obs, err := d.e.cfg.Runtime.Start(d.ctx, req)
 	state := runtime.ClassifyEffect(err)
