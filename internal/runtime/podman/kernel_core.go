@@ -362,7 +362,8 @@ func recordMatches(rec, want krec) error {
 }
 
 // fenceStop loads the record for a stop or remove and ratchets it to the stop
-// intent. A missing record leaves a tombstone, so a delayed create for the same
+// intent (and, when want.NetPending is set, to the removal's network cleanup
+// obligation, in the same write). A missing record leaves a tombstone, so a delayed create for the same
 // identity is rejected. A stop from a stale fence is refused and changes
 // nothing. The caller holds the lock.
 func (c *kernelCore) fenceStop(want krec) (krec, error) {
@@ -386,8 +387,12 @@ func (c *kernelCore) fenceStop(want krec) (krec, error) {
 	if want.Fence < rec.Fence {
 		return krec{}, fmt.Errorf("%w: fence %d is older than %d", kr.ErrStaleFence, want.Fence, rec.Fence)
 	}
-	if want.Fence > rec.Fence || !rec.Stopping {
+	if want.Fence > rec.Fence || !rec.Stopping || (want.NetPending && !rec.NetPending) {
 		rec.Fence, rec.Stopping = want.Fence, true
+		// The network cleanup obligation of a removal is part of the same durable
+		// write as the accepted stop intent, so it exists before any operation can
+		// make the object absent.
+		rec.NetPending = rec.NetPending || want.NetPending
 		if err := c.save(rec); err != nil {
 			return krec{}, err
 		}

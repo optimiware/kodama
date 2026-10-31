@@ -559,6 +559,10 @@ func (r *KernelResources) settle(ctx context.Context, h kr.ResourceHandle, remov
 			return kr.ResourceObservation{}, err
 		}
 	}
+	// A removal records its network cleanup obligation together with the stop
+	// intent: before the object can be made absent, and kept until the cleanup is
+	// confirmed or handed to a container that still uses the network.
+	want.NetPending = remove
 	rec, err := c.fenceStop(want)
 	if err != nil {
 		return kr.ResourceObservation{}, err

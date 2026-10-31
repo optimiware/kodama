@@ -394,13 +394,15 @@ func (k *KernelRuntime) settle(ctx context.Context, b kr.RuntimeBinding, remove 
 	defer unlock()
 	if remove {
 		// A cleanup from a fence older than the run network's is refused before
-		// any effect.
+		// any effect. A workload on the run network records its cleanup obligation
+		// in the same write as the stop intent, before its container can be removed.
 		if prior, ok, err := c.load(want.Name); err != nil {
 			return kr.WorkloadObservation{}, err
 		} else if ok && prior.Network != "" {
 			if err := c.checkNetworkFence(b.Scope, b.RunID, b.Fence); err != nil {
 				return kr.WorkloadObservation{}, err
 			}
+			want.NetPending = true
 		}
 	}
 	rec, err := c.fenceStop(want)

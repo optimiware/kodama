@@ -91,6 +91,12 @@ if [ -e "$D/down" ]; then echo "Error: cannot connect to Podman" >&2; exit 125; 
 for k in "delay-$1" "delay-$1-$2"; do
   if [ -e "$D/$k" ]; then s=$(cat "$D/$k"); rm -f "$D/$k"; sleep "$s"; fi
 done
+if [ -e "$D/chmod-after-rm" ] && [ "$1" = rm ]; then
+  p=$(cat "$D/chmod-after-rm"); rm -f "$D/chmod-after-rm"
+  "$REAL" "$@"; rc=$?
+  chmod a-w "$p"
+  exit $rc
+fi
 if [ -e "$D/fail-network-rm" ] && [ "$1" = network ] && [ "$2" = rm ]; then echo "Error: cannot remove network" >&2; exit 125; fi
 if [ -e "$D/fail-next" ] && [ "$1" != "create" ] && [ "$2" != "create" ]; then
   n=$(cat "$D/fail-next")
