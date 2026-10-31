@@ -2,7 +2,7 @@
 id: T-184
 milestone: kernel
 status: planned
-depends_on: [T-179, T-182]
+depends_on: [T-179, T-182, T-188]
 decision_blockers: []
 owns: [internal/shell/tasks/]
 check: make check-go PKGS='./internal/shell/tasks/...'
