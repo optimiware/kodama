@@ -40,8 +40,9 @@ const Filter = bus.SubjectRoot + ".*.*." + eventsv1.TypeGitRefsUpdated
 // The dispatcher's durable consumer is the (service, purpose) pair of the shared
 // scheme (O-39), "kodama_shell_git-dispatch". It replaces the retired literal
 // RetiredConsumer: a durable consumer is keyed by name, so the rename starts a
-// new JetStream cursor (DeliverAll) and the old consumer is left unused; see the
-// event path note in docs/contracts/git-service.md. Re-delivery of an
+// new JetStream cursor (DeliverAll) and the old consumer is left unused; the
+// operational note in docs/contracts/git-service.md (the consumer name paragraph of
+// the outbox section) records the same one-time replay. Re-delivery of an
 // already-dispatched event is a no-op (store.Dispatched, DispatchPush), so the
 // reset repeats work, not effects.
 const (

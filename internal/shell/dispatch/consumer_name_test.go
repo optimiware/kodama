@@ -2,6 +2,8 @@ package dispatch_test
 
 import (
 	"context"
+	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -18,19 +20,33 @@ func (r *recordingSubscriber) Subscribe(_ context.Context, name, filter string, 
 	return func() {}, nil
 }
 
-// subscribeReachesBroker reports whether natsbus.JetStream.Subscribe accepted the
-// name: it validates the name before it touches the stream, so a name that passes
-// reaches the (here absent) broker and faults on the zero adapter, while a name
-// that fails is returned as a validation error without reaching it.
-func subscribeReachesBroker(t *testing.T, name string) (reached bool, err error) {
+// errPastNameValidation is what the probe reports when Subscribe accepted the name.
+var errPastNameValidation = errors.New("past name validation")
+
+// subscribeValidatesName exercises only the local name validation of
+// natsbus.JetStream.Subscribe; it says nothing about a broker accepting the
+// consumer. Subscribe checks the name before it touches the stream, so on a zero
+// adapter (no stream) a name that passes faults at its first use of the nil
+// stream, while a name that fails is returned as an error first. Only that
+// nil-pointer dereference counts as "passed validation": any other panic is
+// re-raised so an unrelated failure cannot read as success.
+func subscribeValidatesName(t *testing.T, name string) (err error) {
 	t.Helper()
 	defer func() {
 		if r := recover(); r != nil {
-			reached, err = true, nil
+			var re runtime.Error
+			if e, ok := r.(error); ok && errors.As(e, &re) && strings.Contains(re.Error(), "nil pointer dereference") {
+				err = errPastNameValidation
+				return
+			}
+			panic(r)
 		}
 	}()
 	_, err = (&natsbus.JetStream{}).Subscribe(t.Context(), name, dispatch.Filter, func(context.Context, bus.Message) error { return nil })
-	return false, err
+	if err == nil {
+		t.Fatalf("Subscribe on an adapter without a stream returned no error for %q", name)
+	}
+	return err
 }
 
 func Test_unit_dispatch_durable_consumer_name(t *testing.T) {
@@ -48,13 +64,14 @@ func Test_unit_dispatch_durable_consumer_name(t *testing.T) {
 		t.Fatalf("name = %q (service %q, purpose %q)", name, service, purpose)
 	}
 
-	// Subscribe accepts it ...
-	if reached, err := subscribeReachesBroker(t, name); !reached || err != nil {
-		t.Fatalf("Subscribe refused %q: reached=%v err=%v", name, reached, err)
+	// Subscribe's local name validation passes it ...
+	if err := subscribeValidatesName(t, name); !errors.Is(err, errPastNameValidation) {
+		t.Fatalf("Subscribe's name validation refused %q: %v", name, err)
 	}
-	// ... and does refuse an out-of-scheme name, so the probe discriminates.
-	if reached, err := subscribeReachesBroker(t, "Not A.Name"); reached || err == nil {
-		t.Fatalf("Subscribe accepted an out-of-scheme name: reached=%v err=%v", reached, err)
+	// ... and refuses an out-of-scheme name, so the probe discriminates. Whether a
+	// broker accepts the consumer is outside this unit test.
+	if err := subscribeValidatesName(t, "Not A.Name"); err == nil || errors.Is(err, errPastNameValidation) {
+		t.Fatalf("Subscribe's name validation passed an out-of-scheme name: %v", err)
 	}
 
 	// It is not the retired literal, which the scheme does not produce.
