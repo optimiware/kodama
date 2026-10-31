@@ -311,11 +311,14 @@ func Test_unit_process_workspace_shared_across_attempts(t *testing.T) {
 		e := newSharedEnv(t)
 		ws := e.workspace(t)
 		wsDir := e.res.st.workspace(ws.Name)
-		reg := &registrar{}
+		reg := &registrarV2{}
 		p := Entrypoint{Binary: "/opt/kodama", ServerURL: "https://runtime.invalid", Issuer: bootstrap.Issuer{Registrar: reg}}
 
-		s := runtimetest.SharedSpec(t, ws, "", "true")
-		c := sourceContext(t, s)
+		// The issuer registers a run_shared attempt with its ContextV2 (the v2
+		// spec); the attempt-private checks below use the v1 spec of the same run.
+		private := runtimetest.SharedSpec(t, ws, "", "true")
+		s := runtimetest.SharedSpecV2(t, ws, "", "true")
+		c := sourceContext(t, private)
 		dir := t.TempDir()
 		l := Launch{Spec: s, Context: c, Workload: s.Workload("11111111-2222-4333-8444-555555555555"), Dir: dir, Workspace: wsDir}
 		cmd, err := p.Command(ctx, l)
@@ -344,9 +347,13 @@ func Test_unit_process_workspace_shared_across_attempts(t *testing.T) {
 				t.Errorf("checkout variable %q", e)
 			}
 		}
+		if len(reg.cmds2) != 1 || reg.cmds2[0].AttemptID != s.AttemptID || reg.cmds2[0].Context.ContextVersion != 2 || len(reg.cmds) != 0 {
+			t.Errorf("the attempt was not registered once on the v2 wire: v2 %d v1 %d", len(reg.cmds2), len(reg.cmds))
+		}
 		// The same context without the shared launch still takes the v1 path and
 		// still needs checkout material the Process runtime cannot give.
-		l.Spec.Shared, l.Workspace = nil, ""
+		l.Spec, l.Workspace = private, ""
+		l.Spec.Shared = nil
 		if _, err := p.Command(ctx, l); !errors.Is(err, bootstrap.ErrNoCheckout) {
 			t.Fatalf("an attempt-private source-consuming attempt: %v", err)
 		}
@@ -360,11 +367,22 @@ func Test_unit_process_workspace_shared_across_attempts(t *testing.T) {
 			t.Error("an attempt-private workload selected the v2 wire")
 		}
 		// A shared attempt without a run workspace is refused, never given a private one.
-		l.Spec.Shared = s.Shared
+		l.Spec.Shared = private.Shared
 		if _, err := p.Command(ctx, l); !errors.Is(err, execution.ErrConflict) {
 			t.Fatalf("a shared attempt without a workspace: %v", err)
 		}
 	})
+}
+
+// registrarV2 is a registrar that also serves the run_shared wire.
+type registrarV2 struct {
+	registrar
+	cmds2 []runtimeauth.RegisterCommandV2
+}
+
+func (r *registrarV2) RegisterV2(_ context.Context, cmd runtimeauth.RegisterCommandV2) (runtimeauth.Registration, error) {
+	r.cmds2 = append(r.cmds2, cmd)
+	return runtimeauth.Registration{}, nil
 }
 
 // sourceContext is the pinned context of s changed to consume the workspace.
