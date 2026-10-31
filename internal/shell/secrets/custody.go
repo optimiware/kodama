@@ -119,16 +119,110 @@ func NewCustody(cfg CustodyConfig) (*Custody, error) {
 	if root == "/workspace" || strings.HasPrefix(root, "/workspace/") {
 		return nil, errors.New("secret: the custody root must be outside /workspace")
 	}
-	for _, sub := range []string{"material", "index", "stage", "tombstones"} {
-		if err := os.MkdirAll(filepath.Join(root, sub), 0o700); err != nil {
-			return nil, fmt.Errorf("secret: custody directory: %w", err)
-		}
-	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Custody{root: root, source: cfg.Source, observe: cfg.Observe, log: log}, nil
+	c := &Custody{root: root, source: cfg.Source, observe: cfg.Observe, log: log}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil, fmt.Errorf("secret: custody directory: %w", err)
+	}
+	if err := c.open(); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// initMarker is written, synced, once a root is initialised. Its presence is what
+// tells reopening an initialised root from initialising a fresh one.
+const initMarker = ".initialized"
+
+// open initialises a fresh root or reopens an initialised one, under the root's
+// lock so that two processes opening a fresh root agree.
+//
+// The tombstones are the revocation state and are the only thing here that
+// cannot be recreated: an empty directory in their place would silently reopen
+// every revoked identity. So an initialised root whose tombstone directory is
+// gone is refused with ErrRevocationState, never repaired, and so is a root
+// without a marker that holds published material but no tombstones. Only a root
+// that never published anything is initialised, and a root from before the marker
+// existed is adopted when its tombstone directory is there.
+func (c *Custody) open() error {
+	unlock, err := c.lock()
+	if err != nil {
+		return fmt.Errorf("secret: lock: %w", err)
+	}
+	defer unlock()
+
+	tombs := filepath.Join(c.root, "tombstones")
+	initialised, err := exists(filepath.Join(c.root, initMarker))
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRevocationState, err)
+	}
+	hasTombs, err := isDir(tombs)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRevocationState, err)
+	}
+	switch {
+	case initialised && !hasTombs:
+		return fmt.Errorf("%w: the tombstone directory of an initialised custody root is missing", ErrRevocationState)
+	case !initialised && !hasTombs:
+		for _, sub := range []string{"material", "index"} {
+			entries, err := os.ReadDir(filepath.Join(c.root, sub))
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("%w: %w", ErrRevocationState, err)
+			}
+			if len(entries) > 0 {
+				return fmt.Errorf("%w: the root holds published material but no tombstones", ErrRevocationState)
+			}
+		}
+	}
+	// The tombstones first: they are what the marker vouches for.
+	for _, sub := range []string{"tombstones", "material", "index", "stage"} {
+		if err := os.MkdirAll(filepath.Join(c.root, sub), 0o700); err != nil {
+			return fmt.Errorf("secret: custody directory: %w", err)
+		}
+	}
+	if initialised {
+		return nil
+	}
+	for _, d := range []string{filepath.Join(c.root, "tombstones"), filepath.Join(c.root, "material"), filepath.Join(c.root, "index"), filepath.Join(c.root, "stage"), c.root} {
+		if err := syncDir(d); err != nil {
+			return fmt.Errorf("secret: custody directory: %w", err)
+		}
+	}
+	if err := writeFileAtomic(filepath.Join(c.root, initMarker), []byte("kodama custody v1\n")); err != nil {
+		return fmt.Errorf("secret: initialise custody: %w", err)
+	}
+	return nil
+}
+
+// exists reports whether name is there; any error but absence is returned.
+func exists(name string) (bool, error) {
+	_, err := os.Lstat(name)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
+// isDir reports whether name is a directory; a non-directory is an error.
+func isDir(name string) (bool, error) {
+	st, err := os.Lstat(name)
+	switch {
+	case err == nil && st.IsDir():
+		return true, nil
+	case err == nil:
+		return false, fmt.Errorf("%s is not a directory", name)
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, err
+	}
 }
 
 var _ runtime.SecretResolver = (*Custody)(nil)

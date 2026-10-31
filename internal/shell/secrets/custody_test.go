@@ -603,6 +603,102 @@ func Test_unit_shell_secret_revocation(t *testing.T) {
 		}
 	})
 
+	t.Run("reopening never recreates a missing revocation state", func(t *testing.T) {
+		h := newHarness(t)
+		c := h.open()
+		ref := ident(t, "build", 1)
+		if _, err := c.Resolve(context.Background(), request(ref, "TOKEN")); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Revoke(context.Background(), ref); err != nil {
+			t.Fatal(err)
+		}
+		tombs := filepath.Join(h.root, "tombstones")
+		if err := os.RemoveAll(tombs); err != nil {
+			t.Fatal(err)
+		}
+		open := func() (*Custody, error) {
+			return NewCustody(CustodyConfig{Root: h.root, Source: h.vault})
+		}
+		// A replacement instance refuses the root instead of creating an empty tombstone directory.
+		if _, err := open(); !errors.Is(err, ErrRevocationState) {
+			t.Fatalf("a replacement opened a root whose tombstones are gone: %v", err)
+		}
+		if _, err := os.Stat(tombs); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("the replacement recreated the tombstone directory: %v", err)
+		}
+		// Neither it nor the running instance can publish the revoked identity.
+		if _, err := c.Resolve(context.Background(), request(ref, "TOKEN")); err == nil {
+			t.Fatal("the revoked identity resolved after its tombstones were removed")
+		}
+		if len(c.Published()) != 0 {
+			t.Fatalf("material was published: %v", c.Published())
+		}
+		// A tombstone directory replaced by a file is as unusable.
+		if err := os.WriteFile(tombs, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := open(); !errors.Is(err, ErrRevocationState) {
+			t.Fatalf("a replacement opened a root whose tombstones are a file: %v", err)
+		}
+	})
+
+	t.Run("a fresh root is initialised once and an initialised one reopens intact", func(t *testing.T) {
+		h := newHarness(t)
+		c := h.open()
+		if _, err := os.Stat(filepath.Join(h.root, initMarker)); err != nil {
+			t.Fatalf("the root is not marked initialised: %v", err)
+		}
+		ref := ident(t, "build", 1)
+		if _, err := c.Resolve(context.Background(), request(ref, "TOKEN")); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Revoke(context.Background(), ref); err != nil {
+			t.Fatal(err)
+		}
+		// Transient directories are recreated; the revocation survives.
+		for _, sub := range []string{"stage", "material", "index"} {
+			if err := os.RemoveAll(filepath.Join(h.root, sub)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		again := h.open()
+		if _, err := again.Resolve(context.Background(), request(ref, "TOKEN")); !errors.Is(err, runtime.ErrMaterializationRevoked) {
+			t.Fatalf("the revocation did not survive reopening: %v", err)
+		}
+		if _, err := again.Resolve(context.Background(), request(ident(t, "build", 2), "TOKEN")); err != nil {
+			t.Fatalf("a fresh attempt on the reopened root: %v", err)
+		}
+		// A root from before the marker existed is adopted when its tombstones are there.
+		if err := os.Remove(filepath.Join(h.root, initMarker)); err != nil {
+			t.Fatal(err)
+		}
+		adopted := h.open()
+		if _, err := adopted.Resolve(context.Background(), request(ref, "TOKEN")); !errors.Is(err, runtime.ErrMaterializationRevoked) {
+			t.Fatalf("an adopted root forgot its revocations: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(h.root, initMarker)); err != nil {
+			t.Fatalf("the adopted root was not marked: %v", err)
+		}
+	})
+
+	t.Run("an unmarked root holding material but no tombstones is refused", func(t *testing.T) {
+		h := newHarness(t)
+		c := h.open()
+		if _, err := c.Resolve(context.Background(), request(ident(t, "build", 1), "TOKEN")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(h.root, initMarker)); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(filepath.Join(h.root, "tombstones")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewCustody(CustodyConfig{Root: h.root, Source: h.vault}); !errors.Is(err, ErrRevocationState) {
+			t.Fatalf("%v", err)
+		}
+	})
+
 	t.Run("the custody root must be absolute and outside /workspace", func(t *testing.T) {
 		for _, root := range []string{"", "relative/dir", "/workspace", "/workspace/secrets"} {
 			if _, err := NewCustody(CustodyConfig{Root: root, Source: newVault()}); err == nil {
