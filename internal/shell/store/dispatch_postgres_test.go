@@ -545,7 +545,8 @@ func (r *recordingSink) count(id string) (n int) {
 // start of its transaction) and holds the transaction open, the publisher's
 // reconciliation reads its first page and moves its cursor past that event's
 // position, and only then the other connection commits. That pass cannot see the
-// event; the next pass, and the drain, deliver it exactly once.
+// event; with one publisher and a working store and broker, the next
+// reconciliation pass (or a drain) publishes it once.
 func TestGitPostgresOutboxCursorCoversConcurrentCommits(t *testing.T) {
 	for _, via := range []string{"reconcile", "drain"} {
 		t.Run(via, func(t *testing.T) {
@@ -553,16 +554,33 @@ func TestGitPostgresOutboxCursorCoversConcurrentCommits(t *testing.T) {
 			late := db.RuntimePool(ctx, 2) // the second connection
 			const lateID = "evt_late_commit"
 
-			inserted, release, committed := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+			// The late transaction runs under its own context: whatever ends the test
+			// early cancels it, WithTenant rolls it back and the connection returns
+			// to the pool before the pool is closed.
+			txCtx, cancelTx := context.WithCancel(ctx)
+			inserted, release, committed, finished := make(chan struct{}), make(chan struct{}), make(chan error, 1), make(chan struct{})
+			t.Cleanup(func() {
+				cancelTx()
+				select {
+				case <-finished:
+				case <-time.After(10 * time.Second):
+					t.Error("the late transaction did not end")
+				}
+			})
 			go func() {
-				committed <- storage.WithTenant(ctx, late, "t_a", func(ctx context.Context, tx pgx.Tx) error {
+				defer close(finished)
+				committed <- storage.WithTenant(txCtx, late, "t_a", func(ctx context.Context, tx pgx.Tx) error {
 					if _, err := tx.Exec(ctx, `INSERT INTO audit_events (tenant_id,id,actor_type,actor_id,event_type,resource_type,resource_id)
 						VALUES ('t_a',$1,'system','test','repository.created','repository','repo_late')`, lateID); err != nil {
 						return err
 					}
 					close(inserted)
-					<-release
-					return nil // commits here
+					select {
+					case <-release:
+						return nil // commits here
+					case <-ctx.Done():
+						return ctx.Err() // rolls back
+					}
 				})
 			}()
 			select {
@@ -584,8 +602,13 @@ func TestGitPostgresOutboxCursorCoversConcurrentCommits(t *testing.T) {
 			sink, src := &recordingSink{}, &pgSource{st: s}
 			src.afterRead = func() {
 				close(release)
-				if err := <-committed; err != nil {
-					t.Error(err)
+				select {
+				case err := <-committed:
+					if err != nil {
+						t.Error(err)
+					}
+				case <-time.After(10 * time.Second):
+					t.Error("the late transaction did not commit")
 				}
 			}
 			future := time.Now().Add(time.Hour) // every event is older than the grace period

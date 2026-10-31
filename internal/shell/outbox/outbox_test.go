@@ -691,9 +691,9 @@ func (s *timeOrderSource) Unpublished(_ context.Context, tn domain.TenantID, cut
 // Test_unit_outbox_cursor_covers_concurrent_commits: a transaction that inserted
 // its row before a page was read but commits after it carries an earlier
 // timestamp than the page's cursor, so that pass cannot see it. The guarantee
-// (the package documentation's "Cursor and commit visibility") is that the
-// late row is delivered exactly once by the next pass, or by the next drain,
-// whichever comes first, and never again after that.
+// (the package documentation's "Cursor and commit visibility") is that, with
+// one publisher and a working store and broker, the next eligible completed
+// pass (or an earlier drain) publishes the late row once and nothing repeats it.
 func Test_unit_outbox_cursor_covers_concurrent_commits(t *testing.T) {
 	ctx := context.Background()
 	c := newClock() // 10:00

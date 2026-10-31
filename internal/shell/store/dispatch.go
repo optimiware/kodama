@@ -58,8 +58,8 @@ type OutboxBackend interface {
 	// created_at is the time of the inserting transaction's start, not of its
 	// commit. An event that commits after a page whose cursor already passed its
 	// position is not listed in that walk; a walk from the zero cursor, which
-	// reads a fresh snapshot, lists it, and the dispatcher's PendingEvents does
-	// not use the cursor at all. The publisher's reconciliation guarantee rests on
+	// reads a fresh snapshot, lists it, and PendingEvents does not use the cursor
+	// at all. The publisher's reconciliation guarantee rests on
 	// this (package outbox, "Cursor and commit visibility"): every walk starts at
 	// the zero cursor.
 	UnpublishedEvents(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after OutboxCursor, limit int) ([]OutboxEvent, error)
@@ -79,8 +79,9 @@ var _ OutboxBackend = (*Store)(nil)
 
 // UnpublishedEvents implements OutboxBackend. Timestamps compare at the
 // column's microsecond precision; the cursor of a row read back is exact. The
-// query is a bounded range read of audit_events_unpublished (tenant_id,
-// created_at, id) WHERE published_at IS NULL: it never scans the backlog.
+// query is a keyset page over audit_events_unpublished (tenant_id, created_at,
+// id) WHERE published_at IS NULL that returns at most limit rows; that bounds the
+// rows returned, not the physical work, which is the planner's choice.
 func (s *Store) UnpublishedEvents(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after OutboxCursor, limit int) ([]OutboxEvent, error) {
 	if limit <= 0 {
 		return nil, nil
