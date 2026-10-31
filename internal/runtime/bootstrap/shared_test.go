@@ -100,3 +100,41 @@ func Test_shared_attempt_admission(t *testing.T) {
 		t.Fatalf("checkout for a run_shared attempt: %v %v called=%v", m, err, called)
 	}
 }
+
+// Test_launch_context_follows_the_spec_version: a runtime decodes the context
+// the spec carries, so it starts exactly the attempts the issuer can admit. An
+// attempt-private spec keeps its v1 decode, a run_shared spec yields the v1
+// projection of its ContextV2, and a spec carrying the other version is refused
+// as unreadable.
+func Test_launch_context_follows_the_spec_version(t *testing.T) {
+	private := spec(t)
+	shared := sharedSpec(t)
+
+	pc, err := LaunchContext(private)
+	if err != nil || pc.AttemptID != private.AttemptID {
+		t.Fatalf("attempt-private: %+v %v", pc, err)
+	}
+	c2, err := shared.DecodeContextV2()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc, err := LaunchContext(shared)
+	if err != nil {
+		t.Fatalf("run_shared: %v", err)
+	}
+	if sc.AttemptID != c2.AttemptID || sc.RunID != c2.RunID || sc.Command.Image != c2.Command.Image || sc.Workspace.Access != runtimev1.AccessNone || sc.Workspace.Source != nil {
+		t.Errorf("projection %+v of %+v", sc, c2)
+	}
+
+	// A v2 document without the shared launch, and a v1 document with it.
+	wrong := shared
+	wrong.Shared = nil
+	if _, err := LaunchContext(wrong); !errors.Is(err, execution.ErrInvalid) {
+		t.Errorf("a v2 context on an attempt-private spec: %v", err)
+	}
+	wrong = private
+	wrong.Shared = shared.Shared
+	if _, err := LaunchContext(wrong); !errors.Is(err, execution.ErrInvalid) {
+		t.Errorf("a v1 context on a run_shared spec: %v", err)
+	}
+}

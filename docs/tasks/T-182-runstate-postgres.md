@@ -1,0 +1,35 @@
+---
+id: T-182
+milestone: kernel
+status: planned
+depends_on: [T-174, T-179, T-185]
+decision_blockers: []
+owns: [internal/shell/runstate/postgres/]
+check: make check-go PKGS='./internal/shell/runstate/postgres/...'
+resources: [go, integration]
+acceptance: [unit_runstate_postgres_contract, unit_runstate_postgres_scope]
+---
+# T-182 — PostgreSQL kernel state adapter
+
+## Goal
+Implement the frozen kernel `StateStore` over PostgreSQL so the engine runs on authoritative durable state, and prove it passes the same contract suite as the memory adapter.
+
+## Contract
+`internal/kernel/runtime` ports, the T-174 contract suite in `test/support/kernelcontracts`, the T-179 schema, and P2.1–P2.3 of the [simplification plan](../implementation/pipeline-runtime-simplification.md).
+
+## Deliverables
+- A PostgreSQL adapter behind the kernel port, in `internal/shell/runstate/postgres`, built on the existing `internal/storage` transaction helpers and the 004 schema.
+- State mutation and outbox intent commit in one transaction; a failed commit leaves neither.
+- Tenant predicates and RLS on every operation; a foreign scope is a not-found.
+- Claim, lease renewal, fence takeover, transition, wait decision and signal lookup use the durable columns and guards added by T-179 — no second source of truth in Go.
+- The T-174 contract suite runs unchanged against the real database; no adapter-specific expectation is added to the suite.
+- A skipped database is not evidence: the acceptance run uses `KODAMA_REQUIRE_POSTGRES=1` and a non-owner role.
+
+## Acceptance
+`make check-go` with `Test_unit_runstate_postgres_contract` and `Test_unit_runstate_postgres_scope` passing, plus recorded real-PostgreSQL evidence in the handoff.
+
+## Parked
+T-182 is parked on [T-185](T-185-durable-run-state-schema.md): the 004 schema cannot round-trip `RunRecord` (claim purpose, commands, workload and resource observations, predicate evidence, step result code/reason, cleanup bounds, pre-open wait identity). Resume once T-185 merges and the adapter can be built without a second source of truth.
+
+## Out of scope
+The engine, NATS publication, task projection, and any change to the schema or the contract suite.

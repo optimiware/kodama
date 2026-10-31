@@ -67,7 +67,7 @@ func (e *kenv) restart() *Kernel {
 
 func (e *kenv) workspaceSpec(run domain.RunID, fence kr.Fence) kr.ResourceSpec {
 	return kr.ResourceSpec{
-		Scope: kScope, RunID: run, Kind: kr.ResourceWorkspace, Name: "workspace-" + string(run), Lifetime: kr.LifetimePipeline,
+		Scope: kScope, Owner: kr.OwnerFor(kr.LifetimePipeline, kScope), RunID: run, Kind: kr.ResourceWorkspace, Name: "workspace-" + string(run), Lifetime: kr.LifetimePipeline,
 		Identity: "ws-" + string(run), SpecDigest: "sha256:ws", Fence: fence,
 		Preparation: &kr.PreparationInputs{Scope: kScope, RunID: run, Digest: "sha256:in"},
 	}
@@ -98,7 +98,7 @@ func (e *kenv) request(b kr.RuntimeBinding, ws kr.ResourceHandle, script string)
 
 func (e *kenv) service(name string, fence kr.Fence, script string, ports ...int) kr.ResourceSpec {
 	return kr.ResourceSpec{
-		Scope: kScope, RunID: e.run, Kind: kr.ResourceService, Name: "svc-" + name, Lifetime: kr.LifetimePipeline,
+		Scope: kScope, Owner: kr.OwnerFor(kr.LifetimePipeline, kScope), RunID: e.run, Kind: kr.ResourceService, Name: "svc-" + name, Lifetime: kr.LifetimePipeline,
 		Identity: "svc-" + name, SpecDigest: "sha256:svc-" + name, Fence: fence,
 		Service: &kr.ServiceSpec{Name: name, Lifetime: kr.LifetimePipeline, Image: "registry.invalid/ignored", Commands: []string{script}, Ports: ports},
 	}
@@ -207,6 +207,7 @@ func Test_unit_process_kernel_runtime_contract(t *testing.T) {
 
 		persistent := e.service("db", 1, "exec sleep 30")
 		persistent.Lifetime, persistent.Service.Lifetime = kr.LifetimeProject, kr.LifetimeProject
+		persistent.Owner = kr.OwnerFor(kr.LifetimeProject, kScope)
 		secret := e.service("secret", 1, "exec sleep 30")
 		secret.Service.Secrets = []kr.SecretRef{{Owner: domain.Owner{TenantID: "tnt_kernel"}, Name: "TOKEN"}}
 		imageOnly := e.service("image", 1, "exec sleep 30")
@@ -226,7 +227,7 @@ func Test_unit_process_kernel_runtime_contract(t *testing.T) {
 			if !errors.Is(err, kr.ErrCapability) {
 				t.Fatalf("%s is not a capability refusal: %v", name, err)
 			}
-			h := kr.ResourceHandle{Scope: spec.Scope, RunID: spec.RunID, Kind: spec.Kind, Name: spec.Name, Identity: spec.Identity, Fence: 1}
+			h := kr.ResourceHandle{Scope: spec.Scope, Owner: spec.Owner, Lifetime: spec.Lifetime, RunID: spec.RunID, Kind: spec.Kind, Name: spec.Name, Identity: spec.Identity, Fence: 1}
 			if obs, err := e.k.Resources.Observe(ctx, h); err != nil || obs.State != kr.ResourceRemoved {
 				t.Fatalf("%s left something behind: %v %v", name, obs.State, err)
 			}
@@ -508,7 +509,7 @@ func Test_unit_process_kernel_runtime_contract(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The workspace and the secrets of another run are not usable.
-		req := e.request(e.binding("cross", 1), kr.ResourceHandle{Scope: kScope, RunID: "run_other", Kind: kr.ResourceWorkspace, Name: "w", Identity: "ws-run_other", Fence: 1}, "true")
+		req := e.request(e.binding("cross", 1), kr.ResourceHandle{Scope: kScope, Owner: kr.OwnerFor(kr.LifetimePipeline, kScope), Lifetime: kr.LifetimePipeline, RunID: "run_other", Kind: kr.ResourceWorkspace, Name: "w", Identity: "ws-run_other", Fence: 1}, "true")
 		if _, err := e.k.Runtime.Start(ctx, req); !errors.Is(err, kr.ErrNotReached) {
 			t.Fatalf("another run's workspace: %v", err)
 		}
@@ -731,7 +732,7 @@ func Test_unit_process_kernel_runtime_contract(t *testing.T) {
 
 		// A stop before a create leaves a tombstone that refuses it.
 		early := e.service("early", 5, "echo x")
-		eh := kr.ResourceHandle{Scope: kScope, RunID: e.run, Kind: kr.ResourceService, Name: early.Name, Identity: early.Identity, Fence: 5}
+		eh := kr.ResourceHandle{Scope: kScope, Owner: kr.OwnerFor(kr.LifetimePipeline, kScope), Lifetime: kr.LifetimePipeline, RunID: e.run, Kind: kr.ResourceService, Name: early.Name, Identity: early.Identity, Fence: 5}
 		if o, err := e.k.Resources.Stop(ctx, eh); err != nil || o.State != kr.ResourceStopped {
 			t.Fatalf("stop of an unknown service: %+v %v", o, err)
 		}

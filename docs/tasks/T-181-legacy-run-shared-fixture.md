@@ -1,13 +1,13 @@
 ---
 id: T-181
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-176]
 decision_blockers: []
-owns: [internal/runtime/process/resources_test.go, internal/runtime/runtimetest/, internal/runtime/bootstrap/]
-check: make check-go PKGS='./internal/runtime/process/... ./internal/runtime/runtimetest/... ./internal/runtime/bootstrap/...'
+owns: [internal/runtime/process/resources_test.go, internal/runtime/process/process.go, internal/runtime/runtimetest/, internal/runtime/bootstrap/, internal/runtime/podman/podman.go, internal/runtime/podman/resources_test.go, internal/runtime/podman/checkout_test.go]
+check: make check-go PKGS='./internal/runtime/process/... ./internal/runtime/runtimetest/... ./internal/runtime/bootstrap/... ./internal/runtime/podman/...'
 resources: [go]
-acceptance: [unit_process_workspace_shared_across_attempts, unit_podman_run_resources_shared_attempt]
+acceptance: [unit_process_workspace_shared_across_attempts, podman_run_resources_shared_attempt]
 ---
 # T-181 — Repair the legacy run_shared fixture
 
