@@ -52,7 +52,7 @@ func (s *MemoryStore) Get(key string) (string, bool) {
 	return v, ok
 }
 
-// Rows lists committed rows with their published flag, in Seq order.
+// Rows lists committed rows with their published flag, in cursor order.
 func (s *MemoryStore) Rows() []Row {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -121,7 +121,7 @@ func (s *MemoryStore) Transact(ctx context.Context, fn func(context.Context, Tx)
 	}
 	for _, r := range tx.rows {
 		s.seq++
-		r.Seq = s.seq
+		r.Cursor = fmt.Sprintf("%020d", s.seq)
 		s.rows = append(s.rows, r)
 	}
 	return nil
@@ -157,7 +157,7 @@ func (s *MemoryStore) Pending(_ context.Context, tenant domain.TenantID, now tim
 		if !due[i].NextAttempt.Equal(due[j].NextAttempt) {
 			return due[i].NextAttempt.Before(due[j].NextAttempt)
 		}
-		return due[i].Seq < due[j].Seq
+		return due[i].Cursor < due[j].Cursor
 	})
 	if len(due) > limit {
 		due = due[:limit]
@@ -166,12 +166,12 @@ func (s *MemoryStore) Pending(_ context.Context, tenant domain.TenantID, now tim
 }
 
 // Unpublished implements Store.
-func (s *MemoryStore) Unpublished(_ context.Context, tenant domain.TenantID, cutoff time.Time, after int64, limit int) ([]Row, error) {
+func (s *MemoryStore) Unpublished(_ context.Context, tenant domain.TenantID, cutoff time.Time, after string, limit int) ([]Row, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []Row
 	for _, r := range s.rows {
-		if r.TenantID == tenant && !r.published && r.Seq > after && !r.CreatedAt.After(cutoff) {
+		if r.TenantID == tenant && !r.published && r.Cursor > after && !r.CreatedAt.After(cutoff) {
 			out = append(out, r.Row)
 			if len(out) == limit {
 				break

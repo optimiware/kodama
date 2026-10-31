@@ -27,14 +27,15 @@ type Source interface {
 	// Tenants lists the tenants that have unpublished rows.
 	Tenants(ctx context.Context) ([]domain.TenantID, error)
 	// Pending lists up to limit unpublished rows of the tenant whose next
-	// attempt is due at now, ordered by next attempt and Seq.
+	// attempt is due at now, ordered by next attempt and Cursor.
 	Pending(ctx context.Context, tenant domain.TenantID, now time.Time, limit int) ([]Row, error)
 	// Unpublished lists up to limit unpublished rows of the tenant created at or
-	// before cutoff with Seq greater than after, ordered by Seq, regardless of
-	// their next attempt. An adapter without a sequence ignores after and leaves
-	// Seq zero; Reconcile never attempts a row twice in one pass, so it still
-	// terminates.
-	Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after int64, limit int) ([]Row, error)
+	// before cutoff whose Cursor is greater than after (empty: from the start),
+	// ordered by Cursor, regardless of their next attempt. The cutoff and the
+	// cursor MUST be applied before the limit, so that younger rows can never
+	// crowd a stale one out of the page. Reconcile also never attempts a row
+	// twice in one pass, so even an adapter that ignores after terminates.
+	Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after string, limit int) ([]Row, error)
 	// MarkPublished records the acknowledged publication of the row.
 	MarkPublished(ctx context.Context, tenant domain.TenantID, id string, at time.Time) error
 	// MarkFailed counts a failed attempt and defers the next one to next; the row

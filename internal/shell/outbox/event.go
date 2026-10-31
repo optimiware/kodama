@@ -60,8 +60,11 @@ type Intent struct {
 type Row struct {
 	bus.Message
 	TenantKey, ProjectKey string
-	// Seq orders rows within the store; it is assigned when the row is enqueued.
-	Seq         int64
+	// Cursor is the stable position of the row in the store's listing of
+	// unpublished rows: opaque, assigned when the row is enqueued, never changed
+	// by a retry, and strictly increasing in the listing order, so comparing two
+	// cursors as strings orders the rows. Reconciliation pages by it.
+	Cursor      string
 	Attempts    int
 	NextAttempt time.Time
 	CreatedAt   time.Time

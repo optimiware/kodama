@@ -314,7 +314,7 @@ func Test_unit_outbox_redelivery(t *testing.T) {
 		c := newClock()
 		store, broker, w := outbox.NewMemoryStore(), newBroker(), newWorld()
 		ledger := &outbox.MemoryLedger{}
-		name := "kodama-shell-run-admission"
+		name := "kodama_shell_run-admission"
 		_, _ = broker.Subscribe(ctx, name, "kodama.v1.*.*.run.created", outbox.Consumer{Name: name, Ledger: ledger, Apply: handler(w)}.Handle)
 		wr := outbox.Writer{Store: store, Now: c.now}
 		if err := wr.Commit(ctx, nil, intent("run.created", "trg_1", "run_1", `{"trigger":"trg_1"}`)); err != nil {
@@ -363,7 +363,7 @@ func Test_unit_outbox_redelivery(t *testing.T) {
 		c := newClock()
 		store, broker, w := outbox.NewMemoryStore(), newBroker(), newWorld()
 		ledger := &outbox.MemoryLedger{}
-		name := "kodama-shell-projection"
+		name := "kodama_shell_projection"
 		_, _ = broker.Subscribe(ctx, name, "kodama.v1.>", outbox.Consumer{Name: name, Ledger: ledger, Apply: handler(w)}.Handle)
 		wr := outbox.Writer{Store: store, Now: c.now}
 		for v, st := range []string{"queued", "running", "succeeded"} {
@@ -394,7 +394,7 @@ func Test_unit_outbox_redelivery(t *testing.T) {
 		}
 		// Full replay (a new durable consumer, or a restored one with a lost
 		// ledger) converges to the same state.
-		replay := "kodama-shell-projection-replay"
+		replay := "kodama_shell_projection-replay"
 		w2 := newWorld()
 		_, _ = broker.Subscribe(ctx, replay, "kodama.v1.>", outbox.Consumer{Name: replay, Ledger: &outbox.MemoryLedger{}, Apply: handler(w2)}.Handle)
 		for _, i := range []int{3, 2, 1, 0, 2} {
@@ -409,7 +409,7 @@ func Test_unit_outbox_redelivery(t *testing.T) {
 		broker, ledger := newBroker(), &outbox.MemoryLedger{}
 		fails := 2
 		applied := 0
-		name := "kodama-shell-flaky"
+		name := "kodama_shell_flaky"
 		_, _ = broker.Subscribe(ctx, name, "kodama.v1.>", outbox.Consumer{Name: name, Ledger: ledger, Apply: func(context.Context, bus.Message) error {
 			if fails > 0 {
 				fails--
@@ -437,8 +437,8 @@ func Test_unit_outbox_redelivery(t *testing.T) {
 	t.Run("two consumers each apply an event once", func(t *testing.T) {
 		ledger := &outbox.MemoryLedger{}
 		var a, b int
-		ca := outbox.Consumer{Name: "kodama-shell-a", Ledger: ledger, Apply: func(context.Context, bus.Message) error { a++; return nil }}
-		cb := outbox.Consumer{Name: "kodama-shell-b", Ledger: ledger, Apply: func(context.Context, bus.Message) error { b++; return nil }}
+		ca := outbox.Consumer{Name: "kodama_shell_a", Ledger: ledger, Apply: func(context.Context, bus.Message) error { a++; return nil }}
+		cb := outbox.Consumer{Name: "kodama_shell_b", Ledger: ledger, Apply: func(context.Context, bus.Message) error { b++; return nil }}
 		m := bus.Message{ID: "evt_1", TenantID: tenant, Type: "x.y"}
 		for range 2 {
 			_ = ca.Handle(ctx, m)
@@ -572,14 +572,14 @@ func TestPublisherRunDrainsOnKick(t *testing.T) {
 	}
 }
 
-// noCursor is a source whose Unpublished ignores the cursor and leaves Seq zero,
+// noCursor is a source whose Unpublished ignores the cursor and leaves Cursor empty,
 // as an adapter over a store without a sequence does.
 type noCursor struct{ *outbox.MemoryStore }
 
-func (n noCursor) Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, _ int64, limit int) ([]outbox.Row, error) {
-	rows, err := n.MemoryStore.Unpublished(ctx, tenant, cutoff, 0, limit)
+func (n noCursor) Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, _ string, limit int) ([]outbox.Row, error) {
+	rows, err := n.MemoryStore.Unpublished(ctx, tenant, cutoff, "", limit)
 	for i := range rows {
-		rows[i].Seq = 0
+		rows[i].Cursor = ""
 	}
 	return rows, err
 }

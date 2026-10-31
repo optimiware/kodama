@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -84,12 +85,77 @@ func TestParseProfile(t *testing.T) {
 
 func TestConsumerName(t *testing.T) {
 	got, err := natsbus.ConsumerName("shell", "run-admission")
-	if err != nil || got != "kodama-shell-run-admission" {
+	if err != nil || got != "kodama_shell_run-admission" {
 		t.Fatalf("= %q, %v", got, err)
 	}
-	for _, bad := range [][2]string{{"", "x"}, {"shell", ""}, {"Shell", "x"}, {"shell", "a.b"}, {"shell", "a*"}, {"shell", "a>"}, {"shell", "a b"}, {"shell", "-x"}, {"shell", "x--y"}} {
+	if s, p, err := natsbus.ParseConsumerName(got); err != nil || s != "shell" || p != "run-admission" {
+		t.Fatalf("parse = %q %q %v", s, p, err)
+	}
+	for _, bad := range [][2]string{{"", "x"}, {"shell", ""}, {"Shell", "x"}, {"shell", "a.b"}, {"shell", "a*"}, {"shell", "a>"}, {"shell", "a b"}, {"shell", "-x"},
+		{"shell", "x--y"}, {"shell", "x-"}, {"shell", "a_b"}, {"sh_ell", "x"}, {"1shell", "x"},
+		{strings.Repeat("a", natsbus.MaxServiceLen+1), "x"}, {"shell", strings.Repeat("a", natsbus.MaxPurposeLen+1)}} {
 		if n, err := natsbus.ConsumerName(bad[0], bad[1]); err == nil {
 			t.Errorf("ConsumerName(%q,%q) = %q", bad[0], bad[1], n)
+		}
+	}
+}
+
+// The name is an injective encoding of the pair: the tuples that a hyphen join
+// would conflate give different names, and every name parses back.
+func TestConsumerNameIsUnambiguous(t *testing.T) {
+	pairs := [][2]string{
+		{"shell", "run-admission"}, {"shell-run", "admission"}, {"shell-run-admission", "x"}, {"shell", "run"}, {"shell-run", "x"},
+		{"a", "b-c"}, {"a-b", "c"}, {"a", "b"}, {"kodama", "shell"}, {"shell", "kodama"},
+	}
+	seen := map[string][2]string{}
+	for _, p := range pairs {
+		n, err := natsbus.ConsumerName(p[0], p[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if prev, dup := seen[n]; dup {
+			t.Fatalf("%v and %v both produce %q", prev, p, n)
+		}
+		seen[n] = p
+		if s, pu, err := natsbus.ParseConsumerName(n); err != nil || s != p[0] || pu != p[1] {
+			t.Fatalf("%q parses to %q %q %v", n, s, pu, err)
+		}
+	}
+	for _, bad := range []string{"", "kodama_shell", "kodama__x", "kodama_a_b_c", "kodama-shell-x", "other_shell_x", "kodama_shell_run--x"} {
+		if _, _, err := natsbus.ParseConsumerName(bad); err == nil {
+			t.Errorf("%q parsed", bad)
+		}
+	}
+}
+
+// Every name ConsumerName can generate is a name Subscribe accepts, up to the
+// maximum lengths; this needs no broker because Subscribe checks the name before
+// it uses the stream.
+func TestEveryGeneratedConsumerNameIsSubscribable(t *testing.T) {
+	longest, err := natsbus.ConsumerName(strings.Repeat("a", natsbus.MaxServiceLen), strings.Repeat("b", natsbus.MaxPurposeLen))
+	if err != nil || len(longest) != natsbus.MaxConsumerNameLen || natsbus.MaxConsumerNameLen != 64 {
+		t.Fatalf("longest = %q (%d), %v", longest, len(longest), err)
+	}
+	words := []string{"a", "a1", "shell", "run-admission", "a-b-c", "x9", strings.Repeat("a", natsbus.MaxServiceLen), strings.Repeat("b", natsbus.MaxPurposeLen),
+		strings.Repeat("a-", natsbus.MaxPurposeLen/2-1) + "a"}
+	for _, s := range words {
+		for _, p := range words {
+			name, err := natsbus.ConsumerName(s, p)
+			if err != nil {
+				continue // beyond a component bound
+			}
+			if err := natsbus.CheckConsumerName(name); err != nil {
+				t.Errorf("ConsumerName(%q,%q) = %q is rejected by Subscribe: %v", s, p, name, err)
+			}
+		}
+	}
+	// Names Subscribe must keep accepting for existing durable consumers.
+	if err := natsbus.CheckConsumerName("kernel-git-dispatch"); err != nil {
+		t.Error(err)
+	}
+	for _, bad := range []string{"bad.name", "Bad", "a*", "x y", "a>", "-a", "a-", strings.Repeat("a", 65), "a"} {
+		if err := natsbus.CheckConsumerName(bad); err == nil {
+			t.Errorf("%q accepted", bad)
 		}
 	}
 }
@@ -138,7 +204,10 @@ func TestJetStreamBus(t *testing.T) {
 		}
 		return nil
 	}
-	const name = "kodama-test-dispatch"
+	name, err := natsbus.ConsumerName("test", "dispatch")
+	if err != nil {
+		t.Fatal(err)
+	}
 	stop, err := b.Subscribe(ctx, name, "kodama.v1.natsbustest.*.git.refs_updated", handler)
 	if err != nil {
 		t.Fatal(err)

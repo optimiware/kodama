@@ -125,7 +125,7 @@ func (p *Publisher) Reconcile(ctx context.Context) (Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	cutoff := p.cfg.Now().Add(-p.cfg.Grace)
-	after := map[domain.TenantID]int64{}
+	after := map[domain.TenantID]string{}
 	attempted := map[string]bool{} // a row is attempted once per pass
 	return p.pass(ctx, func(tenant domain.TenantID) ([]Row, bool, error) {
 		rows, err := p.cfg.Store.Unpublished(ctx, tenant, cutoff, after[tenant], p.cfg.Batch)
@@ -133,7 +133,7 @@ func (p *Publisher) Reconcile(ctx context.Context) (Result, error) {
 			return nil, true, err
 		}
 		if len(rows) > 0 {
-			after[tenant] = rows[len(rows)-1].Seq
+			after[tenant] = rows[len(rows)-1].Cursor
 		}
 		fresh := make([]Row, 0, len(rows))
 		for _, r := range rows {

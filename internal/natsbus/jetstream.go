@@ -36,22 +36,65 @@ type JetStreamConfig struct {
 	Logger   *slog.Logger
 }
 
+// Durable consumer names. A name is "kodama_<service>_<purpose>": the two
+// components are words of lower-case letters, digits and single inner hyphens,
+// so they never contain the underscore separator and the pair is recoverable
+// from the name (ParseConsumerName); two different pairs can therefore never
+// produce one name. The bounds make the longest name exactly MaxConsumerNameLen.
+const (
+	consumerPrefix = "kodama_"
+	// MaxServiceLen and MaxPurposeLen bound the components.
+	MaxServiceLen = 24
+	MaxPurposeLen = 32
+	// MaxConsumerNameLen is the longest durable name the adapter accepts.
+	MaxConsumerNameLen = len(consumerPrefix) + MaxServiceLen + 1 + MaxPurposeLen
+)
+
 var (
-	streamName   = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
-	consumerName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}[a-z0-9]$`)
-	nameToken    = regexp.MustCompile(`^[a-z][a-z0-9]{0,23}(-[a-z0-9]{1,24}){0,2}$`)
+	streamName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	// consumerName is what Subscribe accepts: a durable name with no subject
+	// metacharacter, bounded at MaxConsumerNameLen. Names built by ConsumerName
+	// always match; the kernel's earlier hyphenated names do too.
+	consumerName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}[a-z0-9]$`)
+	nameWord     = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 )
 
 // ConsumerName is the durable consumer name of a purpose inside a service, for
-// example ConsumerName("shell", "run-admission") = "kodama-shell-run-admission".
+// example ConsumerName("shell", "run-admission") = "kodama_shell_run-admission".
 // Every process of a service uses the same name so that deliveries are shared
-// and a restart resumes where it stopped; a different purpose never shares
-// another's cursor. Each part is lower-case letters, digits and single hyphens.
+// and a restart resumes where it stopped; a different (service, purpose) pair
+// never shares another's cursor, filter or deliveries. The service is at most
+// MaxServiceLen and the purpose at most MaxPurposeLen bytes.
 func ConsumerName(service, purpose string) (string, error) {
-	if !nameToken.MatchString(service) || !nameToken.MatchString(purpose) {
-		return "", fmt.Errorf("natsbus: consumer parts %q and %q must be lower-case words", truncate(service), truncate(purpose))
+	if len(service) > MaxServiceLen || !nameWord.MatchString(service) {
+		return "", fmt.Errorf("natsbus: consumer service %q must be a lower-case word of 1..%d bytes", truncate(service), MaxServiceLen)
 	}
-	return "kodama-" + service + "-" + purpose, nil
+	if len(purpose) > MaxPurposeLen || !nameWord.MatchString(purpose) {
+		return "", fmt.Errorf("natsbus: consumer purpose %q must be a lower-case word of 1..%d bytes", truncate(purpose), MaxPurposeLen)
+	}
+	return consumerPrefix + service + "_" + purpose, nil
+}
+
+// checkConsumerName is the check Subscribe makes before it touches the stream.
+func checkConsumerName(name string) error {
+	if !consumerName.MatchString(name) {
+		return fmt.Errorf("natsbus: consumer name %q is not a durable name (use ConsumerName)", truncate(name))
+	}
+	return nil
+}
+
+// ParseConsumerName is the inverse of ConsumerName.
+func ParseConsumerName(name string) (service, purpose string, err error) {
+	rest, ok := strings.CutPrefix(name, consumerPrefix)
+	if ok {
+		service, purpose, ok = strings.Cut(rest, "_")
+	}
+	if ok {
+		if n, perr := ConsumerName(service, purpose); perr == nil && n == name {
+			return service, purpose, nil
+		}
+	}
+	return "", "", fmt.Errorf("natsbus: %q is not a consumer name built by ConsumerName", truncate(name))
 }
 
 func truncate(s string) string {
@@ -151,8 +194,8 @@ func (j *JetStream) Subscribe(ctx context.Context, name, filter string, h bus.Ha
 	if filter == "" || h == nil {
 		return nil, errors.New("natsbus: a consumer needs a name, a filter and a handler")
 	}
-	if !consumerName.MatchString(name) {
-		return nil, fmt.Errorf("natsbus: consumer name %q is not a durable name (use ConsumerName)", truncate(name))
+	if err := checkConsumerName(name); err != nil {
+		return nil, err
 	}
 	cons, err := j.js.CreateOrUpdateConsumer(ctx, j.cfg.Stream, natsjs.ConsumerConfig{
 		Durable: name, FilterSubject: filter, AckPolicy: natsjs.AckExplicitPolicy, AckWait: j.cfg.AckWait,

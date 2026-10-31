@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -23,8 +24,13 @@ import (
 // drains and what the dispatcher indexes and admits with. *store.Store and
 // *store.MemoryGit implement it.
 type EventStore interface {
-	store.OutboxBackend
+	outboxEvents
 	dispatch.Store
+}
+
+// outboxEvents is the part of EventStore the publisher's adapter uses.
+type outboxEvents interface {
+	store.OutboxBackend
 	TenantIDs(ctx context.Context) ([]domain.TenantID, error)
 }
 
@@ -98,7 +104,7 @@ func (e *Events) Close() {
 // A row's id is its audit_events id, stable across every republication; the
 // derivation from event type and deduplication key (outbox.EventID, EC-01) moves
 // to the store's intent writer.
-type storeOutbox struct{ st EventStore }
+type storeOutbox struct{ st outboxEvents }
 
 var _ outbox.Source = storeOutbox{}
 
@@ -114,21 +120,52 @@ func (o storeOutbox) Pending(ctx context.Context, tenant domain.TenantID, now ti
 // farFuture makes every unpublished event due, whatever its backoff.
 var farFuture = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// Unpublished lists unpublished events regardless of their next attempt for the
-// reconciliation pass. The store has no sequence, so the cursor is ignored and
-// Seq stays zero; the publisher attempts a row once per pass.
-func (o storeOutbox) Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, _ int64, limit int) ([]outbox.Row, error) {
-	events, err := o.st.PendingEvents(ctx, tenant, farFuture, limit)
-	if err != nil {
-		return nil, err
-	}
-	old := events[:0:0]
-	for _, e := range events {
-		if !e.CreatedAt.After(cutoff) {
-			old = append(old, e)
+// maxReconcileScan bounds the unpublished rows of one tenant that a
+// reconciliation page reads.
+const maxReconcileScan = 1 << 20
+
+// cursorOf is the stable position of an event in the reconciliation listing:
+// its creation time, then its id. Neither changes when a publication fails, so
+// a retry never moves a row relative to the cursor.
+func cursorOf(e store.OutboxEvent) string {
+	return fmt.Sprintf("%020d/%s", max(e.CreatedAt.UnixNano(), 0), e.ID)
+}
+
+// Unpublished lists the tenant's unpublished events created at or before cutoff
+// and after the cursor, ordered by creation time and id, whatever their next
+// attempt. The store port orders by next attempt and cannot filter by age, so
+// the age and the cursor are applied here, before the limit, over the tenant's
+// whole unpublished set: a young event can never crowd a stale deferred one out
+// of the page. The set is read in growing slices until it is exhausted and is
+// the tenant's outbox backlog, which is small unless the broker has been down
+// for a long time; more than maxReconcileScan rows is reported, not truncated.
+// A store query that filters and pages by (created_at, id) would replace the
+// scan.
+func (o storeOutbox) Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after string, limit int) ([]outbox.Row, error) {
+	var events []store.OutboxEvent
+	for n := max(4*limit, 256); ; n *= 4 {
+		var err error
+		if events, err = o.st.PendingEvents(ctx, tenant, farFuture, n); err != nil {
+			return nil, err
+		}
+		if len(events) < n {
+			break
+		}
+		if n >= maxReconcileScan {
+			return nil, fmt.Errorf("kernel: more than %d unpublished events of %s; reconciliation needs a store query", maxReconcileScan, tenant)
 		}
 	}
-	return rows(old), nil
+	eligible := events[:0:0]
+	for _, e := range events {
+		if !e.CreatedAt.After(cutoff) && cursorOf(e) > after {
+			eligible = append(eligible, e)
+		}
+	}
+	sort.Slice(eligible, func(i, j int) bool { return cursorOf(eligible[i]) < cursorOf(eligible[j]) })
+	if len(eligible) > limit {
+		eligible = eligible[:limit]
+	}
+	return rows(eligible), nil
 }
 
 func rows(events []store.OutboxEvent) []outbox.Row {
@@ -138,7 +175,7 @@ func rows(events []store.OutboxEvent) []outbox.Row {
 			Message: bus.Message{ID: e.ID, TenantID: e.TenantID, ProjectID: e.ProjectID, Type: e.Type, ResourceType: e.ResourceType,
 				ResourceID: e.ResourceID, Actor: bus.Actor{Type: e.ActorType, ID: e.ActorID}, OccurredAt: e.CreatedAt.UTC(),
 				Data: json.RawMessage(e.Payload)},
-			TenantKey: e.TenantKey, ProjectKey: e.ProjectKey, Attempts: e.Attempts, CreatedAt: e.CreatedAt,
+			TenantKey: e.TenantKey, ProjectKey: e.ProjectKey, Attempts: e.Attempts, CreatedAt: e.CreatedAt, Cursor: cursorOf(e),
 		})
 	}
 	return out
@@ -175,16 +212,40 @@ func brokerProfile(env string) natsbus.Profile {
 	return natsbus.Profile(env)
 }
 
+// deployable reports whether an injected bus may serve a test or production
+// process: a JetStream adapter (directly or inside a natsbus.Broker that is not
+// the in-process double). Everything else is refused, including the in-process
+// bus, a development broker wrapper, any adapter that flags itself development
+// only and an unknown implementation, which cannot be verified.
+func deployable(b bus.Bus) bool {
+	if d, ok := b.(interface{ DevelopmentOnly() bool }); ok && d.DevelopmentOnly() {
+		return false
+	}
+	switch v := b.(type) {
+	case *natsbus.JetStream:
+		return true
+	case *natsbus.Broker:
+		return !v.InProcess() && deployable(v.Bus)
+	}
+	return false
+}
+
 // connectBus returns the broker the kernel publishes to, through natsbus.Open.
-// The test and production profiles require NATS: a missing URL, an unreachable
-// server or one without JetStream fails startup, and so does an injected
-// in-process bus; there is no silent fallback. Development without a NATS URL
-// delivers in process, which is logged once. closeFn releases the connection.
+// The profile is validated first, so an unknown environment stops startup
+// whatever else is configured. The test and production profiles require NATS:
+// a missing URL, an unreachable server or one without JetStream fails startup,
+// and an injected bus is accepted only when it is a verified JetStream adapter
+// (deployable); there is no silent in-process fallback. Development accepts an
+// injected bus, and without a NATS URL delivers in process, logged once.
+// closeFn releases the connection.
 func connectBus(ctx context.Context, cfg Config, log *slog.Logger) (b bus.Bus, closeFn func(), err error) {
 	profile := brokerProfile(cfg.Env)
+	if !profile.Valid() {
+		return nil, nil, fmt.Errorf("kernel: event bus: %w: %q", natsbus.ErrProfileUnknown, cfg.Env)
+	}
 	if cfg.Bus != nil {
-		if _, inProcess := cfg.Bus.(*bus.Memory); inProcess && profile.RequiresBroker() {
-			return nil, nil, fmt.Errorf("kernel: %w", natsbus.ErrBrokerRequired)
+		if profile.RequiresBroker() && !deployable(cfg.Bus) {
+			return nil, nil, fmt.Errorf("kernel: event bus: %w: an injected %T is not a verified JetStream adapter (profile %s)", natsbus.ErrBrokerRequired, cfg.Bus, profile)
 		}
 		return cfg.Bus, func() {}, nil
 	}
