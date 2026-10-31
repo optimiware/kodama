@@ -37,6 +37,8 @@
 // # Adapters
 //
 // Memory and Postgres implement Store and run the same service scenarios (the
-// PostgreSQL ones outside the unit layer). Run ownership is runs.task_id, which
-// the kernel's admission does not yet write; see Postgres.
+// PostgreSQL ones outside the unit layer). A run belongs to its task through
+// runtime.Admission.Task, which the kernel store records as runs.task_id; Start
+// and Rerun admit every run with its TaskRef, and the composite current_run_id
+// key refuses a run of another task or of none (Postgres).
 package tasks

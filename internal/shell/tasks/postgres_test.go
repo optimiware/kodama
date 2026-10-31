@@ -71,55 +71,10 @@ func (d *database) count(t *testing.T, sql string, args ...any) int {
 	return n
 }
 
-// linkedRuns is the kernel run-state store plus, after each admission, the one
-// row the kernel's admission cannot write: runs.task_id. runtime.Admission has no
-// task, and the runtime role has no UPDATE grant on runs.task_id, so today nothing
-// in the product records a run as its task's, which tasks.current_run_id's
-// composite key requires. The test records it as the owner so the rest of the path
-// runs on the real store. The integration owner must close this gap (Admission
-// carrying the task and the INSERT writing it) before the composition is wired;
-// see the handoff of T-184.
-type linkedRuns struct {
-	runtime.StateStore
-	d *database
-	t *testing.T
-}
-
-func (l linkedRuns) Admit(ctx context.Context, a runtime.Admission) (runtime.RunRecord, error) {
-	rec, err := l.StateStore.Admit(ctx, a)
-	if err != nil {
-		return rec, err
-	}
-	// The run's identity is derived from its task (runIDFor), so the owning task
-	// is the one of the project whose first or next run it is.
-	rows, err := l.d.owner.Query(ctx, `SELECT id, COALESCE(current_run_id, '') FROM tasks WHERE tenant_id = $1 AND project_id = $2`,
-		string(a.Run.Scope.TenantID), string(a.Run.Scope.ProjectID))
-	if err != nil {
-		return rec, err
-	}
-	var owner domain.TaskID
-	for rows.Next() {
-		var id, current string
-		if err := rows.Scan(&id, &current); err != nil {
-			rows.Close()
-			return rec, err
-		}
-		t := Task{Scope: a.Run.Scope, ID: domain.TaskID(id)}
-		if runIDFor(t, "") == a.Run.ID || (current != "" && runIDFor(t, domain.RunID(current)) == a.Run.ID) {
-			owner = t.ID
-		}
-	}
-	rows.Close()
-	if owner == "" {
-		return rec, fmt.Errorf("test: no task of the project owns run %s", a.Run.ID)
-	}
-	l.d.exec(l.t, `UPDATE runs SET task_id = $4 WHERE tenant_id = $1 AND project_id = $2 AND id = $3`,
-		string(a.Run.Scope.TenantID), string(a.Run.Scope.ProjectID), string(a.Run.ID), string(owner))
-	return rec, nil
-}
-
-// postgresRigIn builds a rig over a fresh database: the pipeline registry, the
-// kernel run-state store and the task store, all on the runtime role.
+// postgresRig builds a rig over a fresh database: the pipeline registry, the
+// kernel run-state store and the task store, all unmodified adapters on the
+// runtime role. Runs are admitted by the kernel store with their task, as in the
+// product; nothing here writes a run or links one to its task.
 func postgresRig(t *testing.T) *rig {
 	t.Helper()
 	d := newDatabase(t)
@@ -128,7 +83,7 @@ func postgresRig(t *testing.T) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return assemble(t, clock, NewPostgres(d.rt), nil, linkedRuns{StateStore: runs, d: d, t: t}, pipelines.New(pipelines.NewPostgres(d.rt)), d.owner)
+	return assemble(t, clock, NewPostgres(d.rt), nil, runs, pipelines.New(pipelines.NewPostgres(d.rt)), d.owner)
 }
 
 // Test_postgres_tasks_scenarios runs every service-level scenario of the unit
@@ -172,11 +127,22 @@ func (d *database) seedPipelines(t *testing.T) map[domain.Scope]domain.PipelineI
 	return out
 }
 
-// recordRun records a run as the task's, the way the kernel's admission will once it carries the task.
-func (d *database) recordRun(t *testing.T, scope domain.Scope, pipeline domain.PipelineID, task domain.TaskID, run domain.RunID) {
+// admitRun admits a run for the task through the kernel's PostgreSQL store, the
+// production path that records the run as the task's.
+func (d *database) admitRun(t *testing.T, scope domain.Scope, pipeline domain.PipelineID, task domain.TaskID, run domain.RunID) {
 	t.Helper()
-	d.exec(t, `INSERT INTO runs (tenant_id, project_id, id, pipeline_id, task_id, definition_snapshot) VALUES ($1, $2, $3, $4, $5, '{}')`,
-		string(scope.TenantID), string(scope.ProjectID), string(run), string(pipeline), string(task))
+	runs, err := runstatepg.New(d.rt, kernelcontracts.NewClock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := solePlan()
+	r, err := runtime.NewRun(scope, run, pipeline, plan, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runs.Admit(context.Background(), runtime.Admission{Run: r, Plan: plan, Task: &runtime.TaskRef{Scope: scope, ID: task}}); err != nil {
+		t.Fatalf("admit run %s: %v", run, err)
+	}
 }
 
 // Test_postgres_tasks_store holds the PostgreSQL task store to the Store port's
@@ -209,7 +175,7 @@ func Test_postgres_tasks_store(t *testing.T) {
 	}
 	selectRun := func(t *testing.T, task Task, expected, run domain.RunID, p Progress) (Task, error) {
 		t.Helper()
-		d.recordRun(t, task.Scope, task.PipelineID, task.ID, run)
+		d.admitRun(t, task.Scope, task.PipelineID, task.ID, run)
 		return store.Select(ctx, RunSelection{Scope: task.Scope, TaskID: task.ID, Expected: expected, Run: run, Progress: p})
 	}
 
@@ -355,13 +321,13 @@ func Test_postgres_tasks_store(t *testing.T) {
 		if _, err := selectRun(t, a, "", "st_run_other", Progress{RunID: "st_run_other", Status: StatusQueued, RunVersion: 1}); !errors.Is(err, ErrStaleRun) {
 			t.Fatalf("a second first-run selection: %v, want stale", err)
 		}
-		// A run recorded for another task cannot become this task's current run.
-		d.recordRun(t, scopeA, pipes[scopeA], b.ID, "st_run_of_b")
+		// A run admitted for another task cannot become this task's current run.
+		d.admitRun(t, scopeA, pipes[scopeA], b.ID, "st_run_of_b")
 		if _, err := store.Select(ctx, RunSelection{Scope: scopeA, TaskID: a.ID, Expected: "st_run_1", Run: "st_run_of_b",
 			Progress: Progress{RunID: "st_run_of_b", Status: StatusQueued, RunVersion: 1}}); !errors.Is(err, domain.ErrInvalidValue) {
 			t.Fatalf("another task's run: %v, want a refusal", err)
 		}
-		// A run that was never recorded at all is refused the same way.
+		// A run that was never admitted at all is refused the same way.
 		if _, err := store.Select(ctx, RunSelection{Scope: scopeA, TaskID: a.ID, Expected: "st_run_1", Run: "st_run_nowhere",
 			Progress: Progress{RunID: "st_run_nowhere", Status: StatusQueued, RunVersion: 1}}); !errors.Is(err, domain.ErrInvalidValue) {
 			t.Fatalf("an unrecorded run: %v, want a refusal", err)

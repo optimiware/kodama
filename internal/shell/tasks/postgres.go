@@ -118,7 +118,7 @@ func translate(err error) error {
 			case pg.ConstraintName == "tasks_tenant_id_project_id_fkey":
 				return ErrNotFound // the project does not exist in this tenant
 			case pg.ConstraintName == "tasks_current_run_fk":
-				return fmt.Errorf("%w: the run is not recorded as this task's run (runs.task_id) in this project", domain.ErrInvalidValue)
+				return fmt.Errorf("%w: the run was not admitted for this task in this project (runs.task_id)", domain.ErrInvalidValue)
 			}
 			return fmt.Errorf("%w: a referenced parent task, repository or pipeline is not in this project", domain.ErrInvalidValue)
 		case "23514":

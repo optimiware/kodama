@@ -137,23 +137,37 @@ func Test_unit_tasks_start_rerun(t *testing.T) {
 		}
 	})
 
-	t.Run("a run under the derived identity that is not a run of the task's pipeline is refused", func(t *testing.T) {
-		r := newRig(t)
-		task := r.task("foreign run")
-		other := r.pipeline(scopeA, "other")
-		plan := solePlan()
-		run, err := runtime.NewRun(scopeA, runIDFor(task, ""), other, plan, 2)
-		if err != nil {
-			t.Fatal(err)
+	t.Run("a run under the derived identity that is not this task's run on its pipeline is refused", func(t *testing.T) {
+		other := func(r *rig, task Task, pipeline domain.PipelineID, owner *runtime.TaskRef) {
+			t.Helper()
+			plan := solePlan()
+			run, err := runtime.NewRun(scopeA, runIDFor(task, ""), pipeline, plan, 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := r.runs.Admit(r.ctx, runtime.Admission{Run: run, Plan: plan, Task: owner}); err != nil {
+				t.Fatal(err)
+			}
 		}
-		if _, err := r.runs.Admit(r.ctx, runtime.Admission{Run: run, Plan: plan}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := r.svc.Start(r.ctx, StartRequest{Caller: r.caller(scopeA, "eng"), TaskID: task.ID}); !errors.Is(err, domain.ErrInvalidValue) {
-			t.Fatalf("start = %v, want a refusal", err)
-		}
-		if got := r.get(task.ID).Progress; got.RunID != "" {
-			t.Fatalf("a foreign run became current: %+v", got)
+		for name, setup := range map[string]func(r *rig, task Task){
+			"another pipeline": func(r *rig, task Task) {
+				other(r, task, r.pipeline(scopeA, "other"), &runtime.TaskRef{Scope: scopeA, ID: task.ID})
+			},
+			"admitted for no task": func(r *rig, task Task) { other(r, task, task.PipelineID, nil) },
+			"admitted for another task": func(r *rig, task Task) {
+				someone := r.task("someone else")
+				other(r, task, task.PipelineID, &runtime.TaskRef{Scope: scopeA, ID: someone.ID})
+			},
+		} {
+			r := newRig(t)
+			task := r.task("foreign run")
+			setup(r, task)
+			if _, err := r.svc.Start(r.ctx, StartRequest{Caller: r.caller(scopeA, "eng"), TaskID: task.ID}); !errors.Is(err, domain.ErrInvalidValue) {
+				t.Errorf("%s: start = %v, want a refusal", name, err)
+			}
+			if got := r.get(task.ID).Progress; got.RunID != "" {
+				t.Errorf("%s: a foreign run became current: %+v", name, got)
+			}
 		}
 	})
 

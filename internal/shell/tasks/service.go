@@ -402,7 +402,8 @@ func (s *Service) launch(ctx context.Context, t Task, after domain.RunID, actor 
 }
 
 // existingRun reports whether the task's derived run is already admitted, and
-// refuses one that cannot be this task's: another scope or another pipeline.
+// refuses one that cannot be this task's: another scope, another pipeline, or one
+// admitted for another task or for none.
 func (s *Service) existingRun(ctx context.Context, t Task, id domain.RunID) (bool, error) {
 	rec, err := s.cfg.Runs.Load(ctx, t.Scope, id)
 	if isNotFound(err) {
@@ -414,8 +415,9 @@ func (s *Service) existingRun(ctx context.Context, t Task, id domain.RunID) (boo
 	if err := rec.Validate(); err != nil {
 		return false, err
 	}
-	if rec.Run.Scope != t.Scope || rec.Run.ID != id || rec.Run.PipelineID != t.PipelineID {
-		return false, invalidf("the run derived for task %s is not a run of its pipeline", t.ID)
+	if rec.Run.Scope != t.Scope || rec.Run.ID != id || rec.Run.PipelineID != t.PipelineID ||
+		rec.Task == nil || *rec.Task != (runtime.TaskRef{Scope: t.Scope, ID: t.ID}) {
+		return false, invalidf("the run derived for task %s is not a run of its pipeline admitted for this task", t.ID)
 	}
 	return true, nil
 }
@@ -425,7 +427,9 @@ func (s *Service) admission(t Task, id domain.RunID, plan runtime.Plan) (runtime
 	if err != nil {
 		return runtime.Admission{}, err
 	}
-	adm := runtime.Admission{Run: run, Plan: plan}
+	// The run is admitted for this task: the kernel records the link, and the
+	// task's composite current_run_id key depends on it.
+	adm := runtime.Admission{Run: run, Plan: plan, Task: &runtime.TaskRef{Scope: t.Scope, ID: t.ID}}
 	for _, p := range plan.Steps {
 		if p.Kind != runtime.StepWait {
 			continue
