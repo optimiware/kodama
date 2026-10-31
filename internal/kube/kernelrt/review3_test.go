@@ -466,3 +466,55 @@ func Test_unit_kube_kernel_runtime_first_create_after_stop_keeps_the_binding_win
 		t.Fatalf("released = %+v %v", o, err)
 	}
 }
+
+// The binding window is measured from the latest evidence event: an earlier
+// recorded absence never shortens the window of a later compensated claim.
+func Test_unit_kube_kernel_runtime_binding_window_runs_from_the_latest_evidence(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t) // quiescence window: one minute
+	spec := h.workspaceSpec(scopeA, "run-1", 1)
+	id := workspaceIdent(h, "run-1")
+	handle := resourceFence(h.workspaceHandle(scopeA, "run-1"), 2)
+	// Remove (not Stop) lands while the first create is outstanding and records
+	// the claim's absence at t=0; the delayed create then lands and is
+	// compensated 45s later.
+	h.cl.onNext("create pvc", func() {
+		if o, err := h.res.Remove(ctx, handle); err != nil || o.ConfirmedRemoved() {
+			t.Errorf("remove during the create = %+v %v", o, err)
+		}
+		h.clock.Advance(45 * time.Second)
+	})
+	if _, err := h.res.Ensure(ctx, spec); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Ensure = %v", err)
+	}
+	rec := h.record(id)
+	if len(rec.compensated) != 1 || rec.claimGone.IsZero() {
+		t.Fatalf("compensated %v claimGone %v", rec.compensated, rec.claimGone)
+	}
+	compensatedAt := h.clock.Now()
+	if !rec.claimGone.Equal(compensatedAt) {
+		t.Fatalf("the window runs from the compensation (%v), not the earlier absence: %v", compensatedAt, rec.claimGone)
+	}
+	// 20s after the compensating deletion, and again just inside the window.
+	for _, d := range []time.Duration{20 * time.Second, 39 * time.Second} {
+		h.clock.Advance(d)
+		if o, err := h.res.Remove(ctx, handle); err != nil || o.ConfirmedRemoved() {
+			t.Fatalf("%v after compensation: confirmed inside the window: %+v %v", h.clock.Now().Sub(compensatedAt), o, err)
+		}
+	}
+	h.clock.Advance(2 * time.Second)
+	if o, err := h.res.Remove(ctx, handle); err != nil || !o.ConfirmedRemoved() {
+		t.Fatalf("after the full window = %+v %v", o, err)
+	}
+}
+
+// A repeated observation of the same absence does not extend the window, and a
+// later event never moves the timestamp backwards.
+func Test_unit_kube_kernel_runtime_binding_window_is_monotonic(t *testing.T) {
+	var r record
+	r.advanceClaimGone(time.Date(2026, 1, 1, 0, 1, 0, 0, time.UTC))
+	r.advanceClaimGone(time.Date(2026, 1, 1, 0, 0, 30, 0, time.UTC)) // an older event
+	if !r.claimGone.Equal(time.Date(2026, 1, 1, 0, 1, 0, 0, time.UTC)) {
+		t.Fatalf("claimGone moved backwards: %v", r.claimGone)
+	}
+}

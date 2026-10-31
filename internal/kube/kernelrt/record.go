@@ -202,6 +202,16 @@ func (r *record) addVolumes(names ...string) {
 	slices.Sort(r.volumes)
 }
 
+// advanceClaimGone moves the binding-window timestamp to t if t is later. The
+// window is measured from the latest evidence event (a compensated claim, a
+// claim deleted here, a first observed absence), so it only ever moves forward:
+// an earlier or concurrent event can never shorten a later claim's window.
+func (r *record) advanceClaimGone(t time.Time) {
+	if t.After(r.claimGone) {
+		r.claimGone = t
+	}
+}
+
 // addCompensated records the UID of a claim that is about to be deleted as
 // unwanted.
 func (r *record) addCompensated(uid string) {

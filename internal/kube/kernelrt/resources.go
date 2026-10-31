@@ -228,9 +228,7 @@ func (c *core) reapClaim(ctx context.Context, ns string, id ident, uid string) e
 	// quiescence window that starts here, not at some later observation.
 	now := c.opts.Clock()
 	_, err = c.mutate(ctx, ns, id, func(r *record) error {
-		if r.claimGone.IsZero() {
-			r.claimGone = now
-		}
+		r.advanceClaimGone(now)
 		return nil
 	})
 	return err
@@ -667,13 +665,14 @@ func (c *core) deleteServiceObjects(ctx context.Context, ns string, id ident) (b
 
 // deleteWorkspace deletes the claim under its UID. Before it does, the claim's
 // UID and the volume it is bound to are written to the record, because the claim
-// is the only pointer to them; the time the claim was first seen gone is
-// written too, which starts the wait that rules out a binding in progress.
+// is the only pointer to them; the time the claim went away is written too,
+// which starts the wait that rules out a binding in progress.
 func (c *core) deleteWorkspace(ctx context.Context, ns string, id ident, rec record) (ReleaseEvidence, record, error) {
 	p, found, err := c.getPVC(ctx, ns, id.base())
 	if err != nil {
 		return ReleaseEvidence{}, rec, err
 	}
+	deletedHere := false
 	if found {
 		if !id.owns(p.Metadata.Labels, p.Metadata.Annotations) {
 			return ReleaseEvidence{}, rec, fmt.Errorf("%w: claim %s", ErrForeign, p.Metadata.Name)
@@ -689,14 +688,16 @@ func (c *core) deleteWorkspace(ctx context.Context, ns string, id ident, rec rec
 		} else if still {
 			return c.evidenceAndPersist(ctx, ns, id, rec)
 		}
+		deletedHere = true
 	}
-	// The claim is gone: remember since when, once.
-	if rec.claimGone.IsZero() && c.issuedClaim(rec) {
+	// The claim is gone. The binding window is measured from the latest evidence
+	// event: a claim deleted here is a new event, and the first observed absence
+	// is one; seeing the same absence again is not, so it never extends the
+	// window, and no event ever moves the timestamp backwards.
+	if (deletedHere || rec.claimGone.IsZero()) && c.issuedClaim(rec) {
 		now := c.opts.Clock()
 		rec, err = c.mutate(ctx, ns, id, func(r *record) error {
-			if r.claimGone.IsZero() {
-				r.claimGone = now
-			}
+			r.advanceClaimGone(now)
 			return nil
 		})
 		if err != nil {
