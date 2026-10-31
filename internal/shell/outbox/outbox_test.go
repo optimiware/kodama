@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -654,4 +655,149 @@ func TestPublisherPagesEveryTenantAndDefersUnpublishableRows(t *testing.T) {
 			t.Errorf("Backoff(%d) = %s, want %s", attempts, got, want)
 		}
 	}
+}
+
+// timeOrderSource lists unpublished rows in (created_at, id) order, the order of
+// the PostgreSQL adapter (audit_events_unpublished), where created_at is fixed
+// when the row is inserted and not when its transaction commits. afterRead runs
+// once the first page has been read and before it is returned, the moment at
+// which another connection can commit a transaction that began earlier.
+type timeOrderSource struct {
+	*outbox.MemoryStore
+	afterRead func()
+}
+
+func timeKey(r outbox.Row) string { return fmt.Sprintf("%020d/%s", r.CreatedAt.UnixNano(), r.ID) }
+
+func (s *timeOrderSource) Unpublished(_ context.Context, tn domain.TenantID, cutoff time.Time, after string, limit int) ([]outbox.Row, error) {
+	var out []outbox.Row
+	for _, r := range s.MemoryStore.Rows() {
+		if r.TenantID == tn && !s.MemoryStore.Published(r.ID) && !r.CreatedAt.After(cutoff) && timeKey(r) > after {
+			r.Cursor = timeKey(r)
+			out = append(out, r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Cursor < out[j].Cursor })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	if fn := s.afterRead; fn != nil {
+		s.afterRead = nil
+		fn()
+	}
+	return out, nil
+}
+
+// Test_unit_outbox_cursor_covers_concurrent_commits: a transaction that inserted
+// its row before a page was read but commits after it carries an earlier
+// timestamp than the page's cursor, so that pass cannot see it. The guarantee
+// (the package documentation's "Cursor and commit visibility") is that the
+// late row is delivered exactly once by the next pass, or by the next drain,
+// whichever comes first, and never again after that.
+func Test_unit_outbox_cursor_covers_concurrent_commits(t *testing.T) {
+	ctx := context.Background()
+	c := newClock() // 10:00
+	early := func(h, m int) time.Time { return time.Date(2026, 10, 31, h, m, 0, 0, time.UTC) }
+	commitAt := func(s outbox.Store, at time.Time, key string) string {
+		t.Helper()
+		in := intent("run.created", key, "run", "")
+		if err := (outbox.Writer{Store: s, Now: func() time.Time { return at }}).Commit(ctx, nil, in); err != nil {
+			t.Fatal(err)
+		}
+		id, _ := outbox.EventID(tenant, in.Type, in.DedupKey)
+		return id
+	}
+	// The late transaction inserted its row at 08:00, long before the others.
+	lateRow := func(t *testing.T) outbox.Row {
+		t.Helper()
+		r, err := intent("run.created", "late", "run", "").Row(early(8, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	commitLate := func(s outbox.Store, r outbox.Row) func() {
+		return func() {
+			if err := s.Transact(ctx, func(ctx context.Context, tx outbox.Tx) error { _, err := tx.Enqueue(ctx, r); return err }); err != nil {
+				t.Error(err)
+			}
+		}
+	}
+	count := func(b *fakeBroker, id string) (n int) {
+		for _, got := range b.ids() {
+			if got == id {
+				n++
+			}
+		}
+		return n
+	}
+	setup := func(t *testing.T) (*timeOrderSource, *fakeBroker, *outbox.Publisher, outbox.Row, string, string) {
+		t.Helper()
+		mem, broker := outbox.NewMemoryStore(), newBroker()
+		a, b := commitAt(mem, early(9, 0), "a"), commitAt(mem, early(9, 30), "b")
+		src := &timeOrderSource{MemoryStore: mem}
+		late := lateRow(t)
+		src.afterRead = commitLate(mem, late)
+		p, err := outbox.NewPublisher(outbox.PublisherConfig{Store: src, Bus: broker, Now: c.now, Batch: 1, Grace: time.Minute})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return src, broker, p, late, a, b
+	}
+
+	t.Run("the next reconciliation delivers it once", func(t *testing.T) {
+		src, broker, p, late, a, b := setup(t)
+		// Pass 1 reads a page of one row (a), then the late transaction commits:
+		// the row lies before the cursor, so this pass does not see it.
+		if res, err := p.Reconcile(ctx); err != nil || res.Published != 2 || count(broker, late.ID) != 0 {
+			t.Fatalf("first pass = %+v, %v; late delivered %d times", res, err, count(broker, late.ID))
+		}
+		if src.Published(late.ID) {
+			t.Fatal("the late row was marked published without a publication")
+		}
+		// Pass 2 starts from the beginning with a fresh cutoff: it finds only the late row.
+		if res, err := p.Reconcile(ctx); err != nil || res.Published != 1 || count(broker, late.ID) != 1 {
+			t.Fatalf("second pass = %+v, %v", res, err)
+		}
+		// Nothing repeats.
+		if res, err := p.Reconcile(ctx); err != nil || res.Published != 0 {
+			t.Fatalf("third pass = %+v, %v", res, err)
+		}
+		if res, err := p.Drain(ctx); err != nil || res.Published != 0 {
+			t.Fatalf("drain = %+v, %v", res, err)
+		}
+		for _, id := range []string{a, b, late.ID} {
+			if n := count(broker, id); n != 1 {
+				t.Fatalf("event %s delivered %d times", id, n)
+			}
+		}
+	})
+
+	t.Run("the next drain delivers it once, whatever the cursor", func(t *testing.T) {
+		src, broker, p, late, _, _ := setup(t)
+		if _, err := p.Reconcile(ctx); err != nil || count(broker, late.ID) != 0 {
+			t.Fatalf("first pass: %v (late delivered %d times)", err, count(broker, late.ID))
+		}
+		if res, err := p.Drain(ctx); err != nil || res.Published != 1 || !src.Published(late.ID) {
+			t.Fatalf("drain = %+v, %v", res, err)
+		}
+		if res, err := p.Reconcile(ctx); err != nil || res.Published != 0 || count(broker, late.ID) != 1 {
+			t.Fatalf("reconcile after the drain = %+v, %v (late delivered %d times)", res, err, count(broker, late.ID))
+		}
+	})
+
+	t.Run("a late row that fails stays covered", func(t *testing.T) {
+		_, broker, p, late, _, _ := setup(t)
+		if _, err := p.Reconcile(ctx); err != nil {
+			t.Fatal(err)
+		}
+		broker.setDown(errors.New("down"))
+		if res, err := p.Reconcile(ctx); err != nil || res.Published != 0 || res.Failed != 1 {
+			t.Fatalf("pass during an outage = %+v, %v", res, err)
+		}
+		broker.setDown(nil)
+		if res, err := p.Reconcile(ctx); err != nil || res.Published != 1 || count(broker, late.ID) != 1 {
+			t.Fatalf("pass after the outage = %+v, %v (%d stream entries)", res, err, count(broker, late.ID))
+		}
+	})
 }

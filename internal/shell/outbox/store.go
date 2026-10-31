@@ -35,6 +35,9 @@ type Source interface {
 	// cursor MUST be applied before the limit, so that younger rows can never
 	// crowd a stale one out of the page. Reconcile also never attempts a row
 	// twice in one pass, so even an adapter that ignores after terminates.
+	// A row that commits after the page that passed its position was read is not
+	// in that pass; the next pass, which starts from an empty cursor, lists it
+	// (see "Cursor and commit visibility" in the package documentation).
 	Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after string, limit int) ([]Row, error)
 	// MarkPublished records the acknowledged publication of the row.
 	MarkPublished(ctx context.Context, tenant domain.TenantID, id string, at time.Time) error
