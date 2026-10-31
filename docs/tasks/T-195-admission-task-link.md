@@ -2,7 +2,7 @@
 id: T-195
 milestone: kernel
 status: planned
-depends_on: [T-184]
+depends_on: [T-182]
 decision_blockers: []
 owns: [internal/kernel/runtime/, internal/kernel/runner/, internal/shell/runstate/, internal/storage/, test/support/kernelcontracts/, docs/implementation/database-schema.md, internal/app/migrate_test.go, internal/app/sdlc_test.go, internal/artifacts/postgres/migrations_test.go, internal/identity/postgres/isolation_test.go, internal/runtimeauth/postgres/resource_test.go]
 check: make check-go PKGS='./internal/kernel/runtime/... ./internal/kernel/runner/... ./internal/shell/runstate/... ./internal/storage/...'
@@ -18,7 +18,7 @@ Make a task's run linkage real in the kernel and the state adapter, so a task's 
 C3 in the [simplification plan](../implementation/pipeline-runtime-simplification.md), [work management](../specs/work-management.md), `internal/kernel/runtime` (`Admission`, `RunRecord`), and the composite `current_run_id` key from migration 004.
 
 ## Background
-T-184 found that nothing in the product records `runs.task_id`: `runtime.Admission` has no task field, the PostgreSQL adapter's run insert omits the column, and the runtime role has no grant to update it. Because `tasks.current_run_id` is constrained to `(tenant, project, task_id, id)`, `Start` and `Rerun` fail against the real stores; T-184's PostgreSQL evidence records the link as the table owner to prove the projection paths.
+T-184's review found that nothing in the product records `runs.task_id`: `runtime.Admission` has no task field, the PostgreSQL adapter's run insert omits the column, and the runtime role has no grant to update it. Because `tasks.current_run_id` is constrained to `(tenant, project, task_id, id)`, `Start` and `Rerun` fail against the real stores; T-184's PostgreSQL evidence records the link as the table owner to prove the projection paths.
 
 ## Deliverables
 - `Admission` carries the optional owning task, validated to be in the same project as the run; a task-free run stays valid.

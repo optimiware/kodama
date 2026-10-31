@@ -2,7 +2,7 @@
 id: T-184
 milestone: kernel
 status: planned
-depends_on: [T-179, T-182, T-188]
+depends_on: [T-179, T-182, T-188, T-195]
 decision_blockers: []
 owns: [internal/shell/tasks/]
 check: make check-go PKGS='./internal/shell/tasks/...'
@@ -28,6 +28,12 @@ C3 in the [simplification plan](../implementation/pipeline-runtime-simplificatio
 
 ## Acceptance
 `make check-go` with `Test_unit_tasks_pipeline_selection` and `Test_unit_tasks_projection_versioning` passing, plus real-PostgreSQL evidence for the projection and inbox queries.
+
+## Review follow-ups
+- Start and Rerun must complete against the production adapters once T-195 records the task on the admitted run; the test-only `linkedRuns` owner update is removed then.
+- Launch recovery must look up and validate the deterministic existing run before invoking `Planner`, so a later planner failure cannot block selecting an already-admitted run.
+- `UpdateContent` must carry the editing actor and record bounded audit/outbox intent atomically with the content version change.
+- The inbox race must be genuinely concurrent: synchronised `Resolve` calls on memory and PostgreSQL, one applied decision, the loser receiving that decision unapplied, one wait-version increment, stable winner-key replay.
 
 ## Out of scope
 HTTP/MCP/CLI handlers, NATS consumers, and the Git authority decision.
