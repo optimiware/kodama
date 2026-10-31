@@ -332,7 +332,7 @@ func testEventReuse(t *testing.T, e *env) {
 
 // testCancellationReplay covers a refusal that lost to a cancellation, for both
 // reasons. The record carries the reason, so the lookup and the replay are
-// unchanged after the wait's step row is removed (as retention may), a changed
+// unchanged after the run and all its steps are removed (as retention may), a changed
 // request under the same key is key reuse, and nothing is rerouted.
 func testCancellationReplay(t *testing.T, e *env) {
 	e.reset()
@@ -391,10 +391,21 @@ func testCancellationReplay(t *testing.T, e *env) {
 		before, err := s.LookupSignal(ctx, req.Identity)
 		must(t, err, "lookup")
 
-		// Retention removes the wait's step row: the record is all a replay needs.
-		e.ownerExec(`DELETE FROM run_steps WHERE tenant_id = 't1' AND run_id = $1 AND step_key = 'review'`, string(id))
+		// Retention removes the run with every step (the wait lives on its step row),
+		// and whatever hangs off it: the record is all a replay needs.
+		for _, table := range []string{"run_commands", "run_workload_observations", "run_resource_observations", "run_materializations"} {
+			e.ownerExec(`DELETE FROM `+table+` WHERE tenant_id = 't1' AND project_id = 'p1' AND run_id = $1`, string(id))
+		}
+		e.ownerExec(`DELETE FROM run_steps WHERE tenant_id = 't1' AND project_id = 'p1' AND run_id = $1`, string(id))
+		e.ownerExec(`DELETE FROM runs WHERE tenant_id = 't1' AND project_id = 'p1' AND id = $1`, string(id))
+		if n := e.count(`SELECT (SELECT count(*) FROM runs WHERE id = $1) + (SELECT count(*) FROM run_steps WHERE run_id = $1)`, string(id)); n != 0 {
+			t.Fatalf("%s: %d run or step rows remain", reason, n)
+		}
+		if _, err := s.Load(ctx, scope1, id); !hasCode(err, domain.CodeNotFound) {
+			t.Fatalf("%s: the removed run is still there: %v", reason, err)
+		}
 		after, err := s.LookupSignal(ctx, req.Identity)
-		must(t, err, "lookup after the wait is gone")
+		must(t, err, "lookup after the run is gone")
 		if before.Record == nil || after.Record == nil || *after.Record != *before.Record || after.Record.Decision.Reason != reason {
 			t.Fatalf("%s: the lookup changed: %+v then %+v", reason, before.Record, after.Record)
 		}
@@ -403,7 +414,7 @@ func testCancellationReplay(t *testing.T, e *env) {
 		}
 		n := e.count(`SELECT count(*) FROM audit_events WHERE tenant_id = 't1'`)
 		again, err := s.DecideSignal(ctx, req, clock.Now())
-		must(t, err, "replay after the wait is gone")
+		must(t, err, "replay after the run is gone")
 		if !again.Replayed || again.Applied || again.Refusal != runtime.RefusalDecided || again.Decision != res.Decision || again.Target != res.Target {
 			t.Fatalf("%s: the replay = %+v, want %+v", reason, again, res)
 		}
