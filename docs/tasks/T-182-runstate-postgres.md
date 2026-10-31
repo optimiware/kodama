@@ -2,7 +2,7 @@
 id: T-182
 milestone: kernel
 status: planned
-depends_on: [T-174, T-179, T-185]
+depends_on: [T-174, T-179, T-185, T-186]
 decision_blockers: []
 owns: [internal/shell/runstate/postgres/]
 check: make check-go PKGS='./internal/shell/runstate/postgres/...'

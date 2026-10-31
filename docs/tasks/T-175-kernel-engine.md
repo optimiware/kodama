@@ -1,7 +1,7 @@
 ---
 id: T-175
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-171, T-172, T-174]
 decision_blockers: []
 owns: [internal/kernel/runner/]
