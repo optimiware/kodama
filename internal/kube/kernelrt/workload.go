@@ -140,8 +140,12 @@ func (r *Runtime) Start(ctx context.Context, req runtime.StartRequest) (runtime.
 	if err != nil {
 		return runtime.WorkloadObservation{}, notReached(err)
 	}
-	if rec.workspace != "" && rec.workspace != ws.base() {
-		return runtime.WorkloadObservation{}, notReached(invalidf("the workload was started against another workspace"))
+	secretsDir := ""
+	if len(req.Secrets.Refs) > 0 {
+		secretsDir = req.Secrets.Directory
+	}
+	if rec.workspace != "" && (rec.workspace != ws.base() || rec.secretsDir != secretsDir) {
+		return runtime.WorkloadObservation{}, notReached(invalidf("the workload was started against another workspace or secret layout"))
 	}
 	job, found, err := r.getJob(ctx, t.Namespace, id.base())
 	if err != nil {
@@ -181,7 +185,7 @@ func (r *Runtime) Start(ctx context.Context, req runtime.StartRequest) (runtime.
 	j := r.stepJob(id, req, t, ws.base(), material, serviceHostEnv(t.Namespace, svcs))
 	err = r.guarded(ctx, t.Namespace, id, guard{
 		op: opJob, fence: b.Fence,
-		mod: func(rc *record) { rc.workspace = ws.base() },
+		mod: func(rc *record) { rc.workspace, rc.secretsDir = ws.base(), secretsDir },
 		create: func() (string, error) {
 			out, err := r.cluster.CreateJob(ctx, t.Namespace, j)
 			return out.Metadata.UID, err
@@ -328,13 +332,19 @@ func (c *core) observe(ctx context.Context, t Target, b runtime.RuntimeBinding) 
 	if err := c.verifyJob(job, id, t, rec); err != nil {
 		return runtime.WorkloadObservation{}, err
 	}
+	// Recovery from an uncertain create: record the verified instance before it
+	// is reported, so a later loss is not answered by running the step again.
+	if found {
+		if err := c.establish(ctx, ns, id, rec, opJob, job.Metadata.UID); err != nil {
+			return runtime.WorkloadObservation{}, err
+		}
+	}
 	pods, err := c.jobPods(ctx, ns, id, job)
 	if err != nil {
 		return runtime.WorkloadObservation{}, err
 	}
-	material := c.materialFor(id, job)
 	for _, p := range pods {
-		if err := c.verifyJobPod(p, id, t, rec, material); err != nil {
+		if err := c.verifyJobPod(p, id, t, rec); err != nil {
 			return runtime.WorkloadObservation{}, err
 		}
 	}

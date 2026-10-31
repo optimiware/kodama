@@ -270,7 +270,52 @@ type podShape struct {
 	container string
 	bounds    Bounds
 	claim     string // workspace claim; empty for a service
-	material  string // the step secrets Secret name; empty without secrets
+	material  string // the step secrets Secret name; empty when none were committed
+	// secretsDir is where the committed secrets are mounted.
+	secretsDir string
+}
+
+// wantEntries are the volumes and mounts the shape requires, each exactly once.
+func (s podShape) wantEntries() []string {
+	want := []string{"tmp"}
+	if s.claim != "" {
+		want = append(want, "workspace")
+	}
+	if s.material != "" {
+		want = append(want, "secrets")
+	}
+	slices.Sort(want)
+	return want
+}
+
+// requireEntries checks that the spec has exactly the intended volumes, and the
+// container exactly the intended mounts, each once: an entry that was removed is
+// as wrong as one that was added.
+func (s podShape) requireEntries(path string, spec any) error {
+	m, _ := spec.(map[string]any)
+	want := s.wantEntries()
+	names := func(v any) []string {
+		l, _ := v.([]any)
+		out := make([]string, 0, len(l))
+		for _, x := range l {
+			n, _ := x.(map[string]any)["name"].(string)
+			out = append(out, n)
+		}
+		slices.Sort(out)
+		return out
+	}
+	if got := names(m["volumes"]); !slices.Equal(got, want) {
+		return unverified("%s.volumes are %v, want exactly %v", path, got, want)
+	}
+	cs, _ := m["containers"].([]any)
+	if len(cs) != 1 {
+		return unverified("%s must hold exactly one container", path)
+	}
+	c, _ := cs[0].(map[string]any)
+	if got := names(c["volumeMounts"]); !slices.Equal(got, want) {
+		return unverified("%s.containers[0].volumeMounts are %v, want exactly %v", path, got, want)
+	}
+	return nil
 }
 
 func (s podShape) verify(path string, spec any) error {
@@ -324,7 +369,10 @@ func (s podShape) verify(path string, spec any) error {
 	if err := walk(path, spec, rules); err != nil {
 		return err
 	}
-	return require(path, spec, "serviceAccountName", "automountServiceAccountToken", "enableServiceLinks", "restartPolicy", "securityContext", "containers")
+	if err := require(path, spec, "serviceAccountName", "automountServiceAccountToken", "enableServiceLinks", "restartPolicy", "securityContext", "containers"); err != nil {
+		return err
+	}
+	return s.requireEntries(path, spec)
 }
 
 // defaultToleration allows the two NoExecute tolerations the API server adds to
@@ -415,7 +463,7 @@ func (s podShape) mountRule(p string, v any) error {
 	switch {
 	case name == "workspace" && s.claim != "" && path == pathWorkspace:
 	case name == "tmp" && path == pathTmp:
-	case name == "secrets" && s.material != "" && validateSecretDir(path) == nil:
+	case name == "secrets" && s.material != "" && path == s.secretsDir:
 		rules["readOnly"] = isBool(true)
 	default:
 		return unverified("%s mounts %q at %q, which is not part of the shape", p, name, path)
@@ -464,12 +512,12 @@ func (s podShape) volumeRule(p string, v any) error {
 }
 
 // jobDoc verifies the Job document and its template.
-func (c *core) verifyJobDoc(raw json.RawMessage, t Target, claim, material string) error {
+func (c *core) verifyJobDoc(raw json.RawMessage, t Target, claim, material, secretsDir string) error {
 	d, err := decodeDoc(raw, "Job")
 	if err != nil {
 		return err
 	}
-	shape := podShape{c: c, t: t, container: containerStep, bounds: c.cfg.Workload, claim: claim, material: material}
+	shape := podShape{c: c, t: t, container: containerStep, bounds: c.cfg.Workload, claim: claim, material: material, secretsDir: secretsDir}
 	err = walk("job", d, map[string]rule{
 		"apiVersion": isStr("batch/v1"), "kind": isStr("Job"), "metadata": anyDoc, "status": anyDoc,
 		"spec": func(p string, v any) error {
@@ -528,22 +576,21 @@ func (c *core) verifyJob(j kubernetes.Job, id ident, t Target, rec record) error
 	if rec.workspace == "" {
 		return unverified("the workload has no recorded workspace")
 	}
-	return c.verifyJobDoc(j.Raw, t, rec.workspace, c.materialFor(id, j))
+	return c.verifyJobDoc(j.Raw, t, rec.workspace, c.materialName(id, rec), rec.secretsDir)
 }
 
-// materialFor names the step secrets Secret the Job mounts, if it mounts one.
-func (c *core) materialFor(id ident, j kubernetes.Job) string {
-	for _, v := range j.Spec.Template.Spec.Volumes {
-		if v.Name == "secrets" {
-			return id.materialName()
-		}
+// materialName is the step secrets Secret the committed record expects, empty
+// when the step declared none. The record, not the adopted document, decides.
+func (c *core) materialName(id ident, rec record) string {
+	if rec.secretsDir == "" {
+		return ""
 	}
-	return ""
+	return id.materialName()
 }
 
 // verifyJobPod verifies one of the Job's Pods against the same shape.
-func (c *core) verifyJobPod(p kubernetes.Pod, id ident, t Target, rec record, material string) error {
-	return c.verifyLivePodDoc(p.Raw, podShape{c: c, t: t, container: containerStep, bounds: c.cfg.Workload, claim: rec.workspace, material: material})
+func (c *core) verifyJobPod(p kubernetes.Pod, id ident, t Target, rec record) error {
+	return c.verifyLivePodDoc(p.Raw, podShape{c: c, t: t, container: containerStep, bounds: c.cfg.Workload, claim: rec.workspace, material: c.materialName(id, rec), secretsDir: rec.secretsDir})
 }
 
 func (c *core) verifyPod(p kubernetes.Pod, id ident, t Target, rec record) error {

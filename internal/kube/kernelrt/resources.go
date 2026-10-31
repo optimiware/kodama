@@ -145,7 +145,7 @@ func (c *core) ensureWorkspace(ctx context.Context, t Target, id ident, rec reco
 		if err := c.verifyPVC(p, id, rec); err != nil {
 			return notReached(err)
 		}
-		if err := c.establish(ctx, ns, id, rec, opPVC, p.Metadata.UID); err != nil {
+		if _, err := c.establishClaim(ctx, ns, id, rec, p); err != nil {
 			return notReached(err)
 		}
 		return nil
@@ -377,6 +377,14 @@ func (c *core) observeWorkspace(ctx context.Context, ns string, id ident, h runt
 	if err := c.verifyPVC(p, id, rec); err != nil {
 		return runtime.ResourceObservation{}, err
 	}
+	// Recovery from an uncertain create: the verified instance is recorded before
+	// it is reported usable, so a later loss is never papered over by an empty
+	// replacement.
+	if found {
+		if _, err := c.establishClaim(ctx, ns, id, rec, p); err != nil {
+			return runtime.ResourceObservation{}, err
+		}
+	}
 	stopped := found && rec.state != recActive
 	switch {
 	case stopped:
@@ -410,6 +418,11 @@ func (c *core) observeService(ctx context.Context, t Target, id ident, h runtime
 	if err := c.verifyPod(pod, id, t, rec); err != nil {
 		return runtime.ResourceObservation{}, err
 	}
+	if found {
+		if err := c.establish(ctx, ns, id, rec, opPod, pod.Metadata.UID); err != nil {
+			return runtime.ResourceObservation{}, err
+		}
+	}
 	if found && rec.state != recActive {
 		return c.robs(h, runtime.ResourceStopped, runtime.ReasonNone), nil
 	}
@@ -442,6 +455,11 @@ func (c *core) observeService(ctx context.Context, t Target, id ident, h runtime
 		case ok:
 			if err := c.verifyServiceObject(svc, id, rec); err != nil {
 				return runtime.ResourceObservation{}, err
+			}
+			if found {
+				if err := c.establish(ctx, ns, id, rec, opService, svc.Metadata.UID); err != nil {
+					return runtime.ResourceObservation{}, err
+				}
 			}
 		case rec.created[opService] != "":
 			return c.robs(h, runtime.ResourceFailed, runtime.ReasonServiceLost), nil
@@ -598,18 +616,8 @@ func (c *core) deleteWorkspace(ctx context.Context, ns string, id ident, rec rec
 		if !id.owns(p.Metadata.Labels, p.Metadata.Annotations) {
 			return ReleaseEvidence{}, rec, fmt.Errorf("%w: claim %s", ErrForeign, p.Metadata.Name)
 		}
-		uid, vol := p.Metadata.UID, p.Spec.VolumeName
-		if rec.created[opPVC] != uid || (vol != "" && rec.volume != vol) {
-			rec, err = c.mutate(ctx, ns, id, func(r *record) error {
-				r.created[opPVC] = uid
-				if vol != "" {
-					r.volume = vol
-				}
-				return nil
-			})
-			if err != nil {
-				return ReleaseEvidence{}, rec, err
-			}
+		if rec, err = c.establishClaim(ctx, ns, id, rec, p); err != nil {
+			return ReleaseEvidence{}, rec, err
 		}
 		if _, err := c.deleteClaim(ctx, ns, id); err != nil {
 			return ReleaseEvidence{}, rec, err
@@ -617,8 +625,7 @@ func (c *core) deleteWorkspace(ctx context.Context, ns string, id ident, rec rec
 		if _, still, err := c.getPVC(ctx, ns, id.base()); err != nil {
 			return ReleaseEvidence{}, rec, err
 		} else if still {
-			ev, err := c.evidence(ctx, ns, id, rec)
-			return ev, rec, err
+			return c.evidenceAndPersist(ctx, ns, id, rec)
 		}
 	}
 	// The claim is gone: remember since when, once.
@@ -634,36 +641,86 @@ func (c *core) deleteWorkspace(ctx context.Context, ns string, id ident, rec rec
 			return ReleaseEvidence{}, rec, err
 		}
 	}
-	ev, err := c.evidence(ctx, ns, id, rec)
+	return c.evidenceAndPersist(ctx, ns, id, rec)
+}
+
+// evidenceAndPersist reads the release evidence and records every volume
+// identity it found, so a later pass still knows them after the claim and then
+// the volume object are gone.
+func (c *core) evidenceAndPersist(ctx context.Context, ns string, id ident, rec record) (ReleaseEvidence, record, error) {
+	ev, known, err := c.evidence(ctx, ns, id, rec)
+	if err != nil {
+		return ev, rec, err
+	}
+	if !containsAll(rec.volumes, known) {
+		rec, err = c.mutate(ctx, ns, id, func(r *record) error { r.addVolumes(known...); return nil })
+	}
 	return ev, rec, err
+}
+
+func containsAll(have, want []string) bool {
+	for _, w := range want {
+		if !slices.Contains(have, w) {
+			return false
+		}
+	}
+	return true
+}
+
+// establishClaim records the claim's UID and the volume it is bound to. A UID
+// that differs from the recorded one is a replaced claim.
+func (c *core) establishClaim(ctx context.Context, ns string, id ident, rec record, p kubernetes.PersistentVolumeClaim) (record, error) {
+	uid, vol := p.Metadata.UID, p.Spec.VolumeName
+	if got := rec.created[opPVC]; got != "" && got != uid {
+		return rec, unverified("the claim was replaced by another instance")
+	}
+	if rec.created[opPVC] == uid && (vol == "" || slices.Contains(rec.volumes, vol)) {
+		return rec, nil
+	}
+	return c.mutate(ctx, ns, id, func(r *record) error {
+		if got := r.created[opPVC]; got != "" && got != uid {
+			return unverified("the claim was replaced by another instance")
+		}
+		r.created[opPVC] = uid
+		r.addVolumes(vol)
+		return nil
+	})
 }
 
 // issuedClaim reports whether a claim create was ever issued for the record.
 func (c *core) issuedClaim(rec record) bool {
-	_, marked := rec.markers[opPVC]
-	return marked || rec.created[opPVC] != ""
+	return rec.marked(opPVC) || rec.created[opPVC] != ""
 }
 
 // evidence reads the release evidence of a workspace. Volumes are discovered by
 // the claimRef that names the claim, not only by the name remembered from the
 // claim: a claim deleted before the adapter saw it bound still leaves its
 // volume behind.
-func (c *core) evidence(ctx context.Context, ns string, id ident, rec record) (ReleaseEvidence, error) {
+//
+// It also returns every volume identity the claim is known to have had: the
+// persisted ones, which outlive the volume object, and those found now. An
+// attachment is judged against all of them, not only against volumes that still
+// exist.
+func (c *core) evidence(ctx context.Context, ns string, id ident, rec record) (ReleaseEvidence, []string, error) {
 	_, found, err := c.getPVC(ctx, ns, id.base())
 	if err != nil {
-		return ReleaseEvidence{}, err
+		return ReleaseEvidence{}, nil, err
 	}
 	ev := ReleaseEvidence{ClaimGone: !found}
 	pvs, err := c.cluster.ListPVs(ctx)
 	if err != nil {
-		return ev, fmt.Errorf("kernelrt: listing volumes: %w", err)
+		return ev, nil, fmt.Errorf("kernelrt: listing volumes: %w", err)
 	}
+	known := slices.Clone(rec.volumes)
 	var names []string
 	for _, pv := range pvs {
 		ref := pv.Spec.ClaimRef
 		byClaim := ref != nil && ref.Namespace == ns && ref.Name == id.base() && (rec.created[opPVC] == "" || ref.UID == "" || ref.UID == rec.created[opPVC])
-		if byClaim || (rec.volume != "" && pv.Metadata.Name == rec.volume) {
+		if byClaim || slices.Contains(rec.volumes, pv.Metadata.Name) {
 			names = append(names, pv.Metadata.Name)
+			if !slices.Contains(known, pv.Metadata.Name) {
+				known = append(known, pv.Metadata.Name)
+			}
 			ev.Volumes = append(ev.Volumes, pv.Metadata.Name)
 			if ev.ReclaimPolicy == "" {
 				ev.ReclaimPolicy = pv.Spec.PersistentVolumeReclaimPolicy
@@ -674,6 +731,7 @@ func (c *core) evidence(ctx context.Context, ns string, id ident, rec record) (R
 		}
 	}
 	slices.Sort(ev.Volumes)
+	slices.Sort(known)
 	ev.VolumeGone = len(names) == 0
 	if ev.ClaimGone && c.issuedClaim(rec) {
 		now := c.opts.Clock()
@@ -681,14 +739,14 @@ func (c *core) evidence(ctx context.Context, ns string, id ident, rec record) (R
 	}
 	attachments, err := c.cluster.ListVolumeAttachments(ctx)
 	if err != nil {
-		return ev, fmt.Errorf("kernelrt: listing volume attachments: %w", err)
+		return ev, known, fmt.Errorf("kernelrt: listing volume attachments: %w", err)
 	}
 	for _, a := range attachments {
-		if v := a.Spec.Source.PersistentVolumeName; v != nil && slices.Contains(names, *v) && a.Status.Attached {
+		if v := a.Spec.Source.PersistentVolumeName; v != nil && slices.Contains(known, *v) && a.Status.Attached {
 			ev.Attached = true
 		}
 	}
-	return ev, nil
+	return ev, known, nil
 }
 
 // ReleaseEvidence reports the storage release evidence of a workspace handle. It
@@ -708,5 +766,6 @@ func (r *Resources) ReleaseEvidence(ctx context.Context, h runtime.ResourceHandl
 	if !found {
 		return ReleaseEvidence{ClaimGone: true, VolumeGone: true}, nil
 	}
-	return r.evidence(ctx, t.Namespace, id, rec)
+	ev, _, err := r.evidence(ctx, t.Namespace, id, rec)
+	return ev, err
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
 
 	"github.com/optimiware/kodama/internal/domain"
@@ -118,7 +119,88 @@ func isAdapterLabel(k string) bool {
 	return false
 }
 
-var privateRanges = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"}
+// protectedRanges are the addresses an egress block may never allow: other
+// tenants and the cluster itself live there. The list is the private, shared,
+// loopback, link-local, multicast and reserved IPv4 space and the IPv6 unique
+// local, link-local, loopback, multicast, IPv4-mapped and NAT64 space (the last
+// two reach IPv4 private addresses through IPv6 spellings).
+var protectedRanges = mustPrefixes(
+	"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+	"172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3",
+	"::/128", "::1/128", "::ffff:0:0/96", "64:ff9b::/96", "100::/64", "fc00::/7", "fe80::/10", "ff00::/8",
+)
+
+func mustPrefixes(ss ...string) []netip.Prefix {
+	out := make([]netip.Prefix, len(ss))
+	for i, s := range ss {
+		out[i] = netip.MustParsePrefix(s)
+	}
+	return out
+}
+
+// covered reports whether every address of p lies inside one of the excepts.
+func covered(p netip.Prefix, excepts []netip.Prefix) bool {
+	overlapping := false
+	for _, e := range excepts {
+		if e.Bits() <= p.Bits() && e.Contains(p.Addr()) {
+			return true
+		}
+		if p.Overlaps(e) {
+			overlapping = true
+		}
+	}
+	if !overlapping || p.Bits() == p.Addr().BitLen() {
+		return false
+	}
+	// Split into halves: the block is covered if both halves are.
+	lo := netip.PrefixFrom(p.Addr(), p.Bits()+1)
+	hi := netip.PrefixFrom(flipBit(p.Addr(), p.Bits()), p.Bits()+1)
+	return covered(lo.Masked(), excepts) && covered(hi.Masked(), excepts)
+}
+
+func flipBit(a netip.Addr, bit int) netip.Addr {
+	b := a.AsSlice()
+	b[bit/8] ^= 0x80 >> (bit % 8)
+	out, _ := netip.AddrFromSlice(b)
+	return out
+}
+
+// allowedBlock judges the addresses an ipBlock actually allows: the block minus
+// its exceptions must contain no protected address, and the rule must name
+// explicit single ports. How the block is spelled does not matter: two halves
+// of the default route are judged as the address space they are.
+func allowedBlock(b *kubernetes.IPBlock, ports map[int]bool) error {
+	block, err := netip.ParsePrefix(b.CIDR)
+	if err != nil {
+		return fmt.Errorf("address block %q is not a CIDR", b.CIDR)
+	}
+	block = block.Masked()
+	var excepts []netip.Prefix
+	for _, e := range b.Except {
+		p, err := netip.ParsePrefix(e)
+		if err != nil {
+			return fmt.Errorf("exception %q is not a CIDR", e)
+		}
+		excepts = append(excepts, p.Masked())
+	}
+	for _, prot := range protectedRanges {
+		if !block.Overlaps(prot) {
+			continue
+		}
+		// The overlap is the smaller of the two when nested.
+		inter := prot
+		if block.Bits() > prot.Bits() {
+			inter = block
+		}
+		if !covered(inter, excepts) {
+			return fmt.Errorf("address block %s allows protected addresses in %s", b.CIDR, inter)
+		}
+	}
+	if len(ports) == 0 || ports[0] {
+		return fmt.Errorf("address block %s must name explicit single ports", b.CIDR)
+	}
+	return nil
+}
 
 func allowedShapes(s kubernetes.NetworkPolicySpec) error {
 	for i, rule := range s.Ingress {
@@ -191,19 +273,7 @@ func onlyPorts(set map[int]bool, allowed ...int) bool {
 func egressPeer(p kubernetes.NetworkPeer, ports map[int]bool) error {
 	switch {
 	case p.IPBlock != nil:
-		b := p.IPBlock
-		if b.CIDR != "0.0.0.0/0" && b.CIDR != "::/0" {
-			return nil // a specific range the operator chose
-		}
-		if b.CIDR == "0.0.0.0/0" && onlyPorts(ports, 80, 443) {
-			for _, r := range privateRanges {
-				if !slices.Contains(b.Except, r) {
-					return fmt.Errorf("public egress does not except %s", r)
-				}
-			}
-			return nil
-		}
-		return errors.New("an unrestricted address block")
+		return allowedBlock(p.IPBlock, ports)
 	case p.NamespaceSelector != nil:
 		if onlyPorts(ports, 53) {
 			return nil // cluster DNS in another namespace

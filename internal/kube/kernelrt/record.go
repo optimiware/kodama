@@ -2,8 +2,11 @@ package kernelrt
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -42,17 +45,24 @@ type record struct {
 	state  recState
 	fence  runtime.Fence
 	// markers are the creates that were issued and may still land, one per
-	// operation. A marker is only cleared by the operation that set it, and only
-	// when its outcome is known, so one operation never erases another's
-	// uncertainty.
+	// reservation, keyed "<operation>.<invocation>". A reservation is cleared
+	// only by the invocation that made it, and only when its outcome is known,
+	// so neither another operation nor an overlapping invocation of the same
+	// operation can erase its uncertainty.
 	markers map[string]time.Time
 	// created holds the UID of the object each operation established. A missing
 	// object with a recorded UID was lost; it is never silently recreated.
 	created map[string]string
 	// workspace is the workspace claim this workload was started against.
 	workspace string
-	// volume is the volume a workspace claim was seen bound to.
-	volume string
+	// secretsDir is where the step's declared secrets are mounted; empty when
+	// the step declared none. It is committed intent: the adopted document is
+	// checked against it, never the other way round.
+	secretsDir string
+	// volumes are the volumes a workspace claim was seen bound to or found
+	// through its claimRef. They are persisted because the claim, and later the
+	// volume object, can disappear while the volume is still attached.
+	volumes []string
 	// claimGone is when the workspace claim was first observed gone.
 	claimGone time.Time
 	createdAt time.Time
@@ -90,7 +100,10 @@ func decodeRecord(s kubernetes.Secret) (record, error) {
 		}
 		r.claimGone = t
 	}
-	r.volume, r.workspace = a[annVolume], a[annWorkspace]
+	r.workspace, r.secretsDir = a[annWorkspace], a[annSecretsDir]
+	if v := a[annVolumes]; v != "" {
+		r.volumes = strings.Split(v, ",")
+	}
 	if t, ok := parseTime(s.Metadata.CreationTimestamp); ok {
 		r.createdAt = t
 	}
@@ -118,8 +131,9 @@ func (r *record) apply(now time.Time) {
 		a[annCreatedPrefix+op] = uid
 	}
 	setOrDelete(a, annClaimGone, r.claimGone)
-	setOrEmpty(a, annVolume, r.volume)
+	setOrEmpty(a, annVolumes, strings.Join(r.volumes, ","))
 	setOrEmpty(a, annWorkspace, r.workspace)
+	setOrEmpty(a, annSecretsDir, r.secretsDir)
 }
 
 func setOrDelete(a map[string]string, k string, t time.Time) {
@@ -146,6 +160,26 @@ func (r record) quiet(now time.Time, quiescence time.Duration) bool {
 		}
 	}
 	return true
+}
+
+// marked reports whether any reservation of op is recorded, current or not.
+func (r record) marked(op string) bool {
+	for k := range r.markers {
+		if strings.HasPrefix(k, op+".") {
+			return true
+		}
+	}
+	return false
+}
+
+// addVolumes records volume names not yet recorded.
+func (r *record) addVolumes(names ...string) {
+	for _, n := range names {
+		if n != "" && !slices.Contains(r.volumes, n) {
+			r.volumes = append(r.volumes, n)
+		}
+	}
+	slices.Sort(r.volumes)
 }
 
 // revoked reports whether a writer holding fence no longer has authority: the
@@ -197,7 +231,15 @@ func (c *core) newRecord(id ident, fence runtime.Fence, state recState) record {
 
 // write conditionally replaces the record under its resourceVersion.
 func (c *core) write(ctx context.Context, ns string, r record) (record, error) {
-	r.apply(c.opts.Clock())
+	now := c.opts.Clock()
+	// A reservation long past its quiescence window no longer says anything the
+	// clock does not; dropping it keeps the record small.
+	for k, t := range r.markers {
+		if !now.Before(t.Add(10 * c.opts.CreateQuiescence)) {
+			delete(r.markers, k)
+		}
+	}
+	r.apply(now)
 	out, err := c.cluster.UpdateSecret(ctx, ns, r.secret)
 	if err != nil {
 		return record{}, err
@@ -329,37 +371,35 @@ func (c *core) mutate(ctx context.Context, ns string, id ident, f func(*record) 
 // succeeds only while the record is active and the writer's fence is current,
 // and it is one version-checked write: a Stop or Remove from a newer writer
 // either lands before it (and the create is refused) or after it (and the
-// create is then revoked and reaped). It returns the marker it replaced, which
-// settleMarker restores when this create's outcome is known.
-func (c *core) reserve(ctx context.Context, ns string, id ident, fence runtime.Fence, op string, mod func(*record)) (time.Time, error) {
-	var prior time.Time
+// create is then revoked). The reservation is unique to this invocation; the
+// returned token settles exactly it.
+func (c *core) reserve(ctx context.Context, ns string, id ident, fence runtime.Fence, op string, mod func(*record)) (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	token := op + "." + hex.EncodeToString(b[:])
 	_, err := c.mutate(ctx, ns, id, func(r *record) error {
 		if err := r.revoked(fence); err != nil {
 			return err
 		}
-		prior = r.markers[op]
-		r.markers[op] = c.opts.Clock()
+		r.markers[token] = c.opts.Clock()
 		r.fence = max(r.fence, fence)
 		if mod != nil {
 			mod(r)
 		}
 		return nil
 	})
-	return prior, err
+	return token, err
 }
 
-// settleMarker records that this operation's create has a known outcome. The
-// marker returns to what it was before the reservation if that earlier,
-// possibly uncertain, create can still land; otherwise it is cleared. uid, when
-// set, records the instance this operation established.
-func (c *core) settleMarker(ctx context.Context, ns string, id ident, op string, prior time.Time, uid string) error {
+// settleMarker records that the reserved create has a known outcome and clears
+// that reservation only. uid, when set, records the instance it established,
+// unless one is already recorded.
+func (c *core) settleMarker(ctx context.Context, ns string, id ident, op, token, uid string) error {
 	_, err := c.mutate(ctx, ns, id, func(r *record) error {
-		if !prior.IsZero() && c.opts.Clock().Before(prior.Add(c.opts.CreateQuiescence)) {
-			r.markers[op] = prior
-		} else {
-			delete(r.markers, op)
-		}
-		if uid != "" {
+		delete(r.markers, token)
+		if uid != "" && r.created[op] == "" {
 			r.created[op] = uid
 		}
 		return nil
@@ -426,23 +466,30 @@ type guard struct {
 
 // guarded runs g: reserve, create, then recheck authority. A refused
 // reservation, or a definite refusal by the cluster, is runtime.ErrNotReached.
-// An unknown outcome leaves the marker and is uncertain. A create that landed
-// after the writer lost authority is deleted and reported as that revocation,
-// never as success.
+// An unknown outcome leaves the reservation and is uncertain.
+//
+// After the create, authority is rechecked. A newer writer that took over while
+// the identity stays active owns whatever now holds the name: this writer
+// reports itself stale and touches nothing. Only when the identity was closed
+// (stopped or removed), and only for an object this very call created, is the
+// object deleted; an object adopted through AlreadyExists was not created here
+// and is left to the Stop or Remove that closed the identity.
 func (c *core) guarded(ctx context.Context, ns string, id ident, g guard) error {
-	prior, err := c.reserve(ctx, ns, id, g.fence, g.op, g.mod)
+	token, err := c.reserve(ctx, ns, id, g.fence, g.op, g.mod)
 	if err != nil {
 		return notReached(err)
 	}
 	uid, err := g.create()
+	createdHere := false
 	switch {
 	case err == nil:
+		createdHere = true
 	case errors.Is(err, kubernetes.ErrAlreadyExists):
 		u, rerr := g.readBack()
 		if rerr != nil {
 			if errors.Is(rerr, runtime.ErrNotReached) {
 				// The name is held by something else: this create is settled.
-				if serr := c.settleMarker(ctx, ns, id, g.op, prior, ""); serr != nil {
+				if serr := c.settleMarker(ctx, ns, id, g.op, token, ""); serr != nil {
 					return uncertain(errors.Join(rerr, serr))
 				}
 			}
@@ -450,7 +497,7 @@ func (c *core) guarded(ctx context.Context, ns string, id ident, g guard) error 
 		}
 		uid = u
 	case kubernetes.Definite(err):
-		if serr := c.settleMarker(ctx, ns, id, g.op, prior, ""); serr != nil {
+		if serr := c.settleMarker(ctx, ns, id, g.op, token, ""); serr != nil {
 			return uncertain(errors.Join(err, serr))
 		}
 		return notReached(fmt.Errorf("the cluster refused the %s: %w", g.op, err))
@@ -462,17 +509,22 @@ func (c *core) guarded(ctx context.Context, ns string, id ident, g guard) error 
 		return uncertain(errors.Join(err, errors.New("the record cannot be read after the create")))
 	}
 	if rerr := rec.revoked(g.fence); rerr != nil {
-		if g.reap != nil {
+		closed := rec.state != recActive
+		established := ""
+		switch {
+		case closed && createdHere && g.reap != nil:
 			if derr := g.reap(); derr != nil {
 				return errors.Join(rerr, uncertain(derr))
 			}
+		case !closed:
+			established = uid // a newer writer's object; recorded, never deleted
 		}
-		if serr := c.settleMarker(ctx, ns, id, g.op, prior, ""); serr != nil {
+		if serr := c.settleMarker(ctx, ns, id, g.op, token, established); serr != nil {
 			return errors.Join(rerr, uncertain(serr))
 		}
 		return rerr
 	}
-	if err := c.settleMarker(ctx, ns, id, g.op, prior, uid); err != nil {
+	if err := c.settleMarker(ctx, ns, id, g.op, token, uid); err != nil {
 		return uncertain(err)
 	}
 	return nil

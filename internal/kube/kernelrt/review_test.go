@@ -543,10 +543,10 @@ func Test_unit_kube_kernel_runtime_every_create_is_tracked(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 		rec := h.record(id)
-		if _, ok := rec.markers[opService]; !ok {
+		if !rec.marked(opService) {
 			t.Fatal("the Service create left no marker")
 		}
-		if _, ok := rec.markers[opPod]; ok || rec.created[opPod] == "" {
+		if rec.marked(opPod) || rec.created[opPod] == "" {
 			t.Fatalf("the Pod's own operation settled: markers %v created %v", rec.markers, rec.created)
 		}
 		o, err := h.res.Remove(ctx, handle)
@@ -582,14 +582,14 @@ func Test_unit_kube_kernel_runtime_every_create_is_tracked(t *testing.T) {
 		if !errors.Is(err, runtime.ErrUncertain) {
 			t.Fatalf("a refusal after the Pod exists is uncertain as a whole: %v", err)
 		}
-		if _, ok := h.record(id).markers[opService]; !ok {
+		if !h.record(id).marked(opService) {
 			t.Fatal("the earlier uncertain create's evidence was erased")
 		}
 		// A successful retry still leaves the evidence of the earlier one.
 		if _, err := h.res.Ensure(ctx, spec); err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := h.record(id).markers[opService]; !ok {
+		if !h.record(id).marked(opService) {
 			t.Fatal("a successful retry erased the earlier create's evidence")
 		}
 		h.clock.Advance(2 * time.Minute)
@@ -672,7 +672,7 @@ func Test_unit_kube_kernel_runtime_workspace_release_evidence(t *testing.T) {
 		retainedPV(h, "pv-ext", uid, "Retain")
 		// Someone deletes the claim; the adapter never saw it bound.
 		h.dropObject(h.cl.pvcs, id)
-		if h.record(id).volume != "" {
+		if len(h.record(id).volumes) != 0 {
 			t.Fatal("the test needs a record that never learned the volume")
 		}
 		rm, err := h.res.Remove(ctx, o.Handle)
@@ -905,7 +905,7 @@ func Test_unit_kube_kernel_runtime_network_isolation_is_the_effective_policy(t *
 	both := []string{"Ingress", "Egress"}
 	all := kubernetes.LabelSelector{}
 	port := func(n float64) []kubernetes.NetworkPort { return []kubernetes.NetworkPort{{Protocol: "TCP", Port: n}} }
-	except := []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"}
+	except := []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3"}
 
 	admitted := func(t *testing.T, extra ...kubernetes.NetworkPolicy) error {
 		h := newHarness(t, func(c *Config) { c.NetworkPolicyEnforced = true })
