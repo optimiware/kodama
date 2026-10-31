@@ -18,6 +18,7 @@ import (
 const (
 	expandMigration  = "004_pipeline_runtime_expand.sql"
 	durableMigration = "005_durable_run_state.sql"
+	waitMigration    = "006_wait_decision_and_materializations.sql"
 )
 
 // seedPipelineRuntime adds pipelines, tasks, runs and two steps to the standard
@@ -105,7 +106,7 @@ func Test_unit_storage_pipeline_runtime_expand(t *testing.T) {
 		for _, m := range ms {
 			ids = append(ids, m.ID)
 		}
-		want := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", expandMigration, durableMigration}
+		want := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", expandMigration, durableMigration, waitMigration}
 		if strings.Join(ids, ",") != strings.Join(want, ",") {
 			t.Fatalf("manifest = %v, want %v", ids, want)
 		}

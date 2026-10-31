@@ -56,7 +56,7 @@ func topLevelCommas(s string) []string {
 	return append(parts, strings.TrimSpace(s[start:]))
 }
 
-// schemaColumns returns every column of every table the five migrations create
+// schemaColumns returns every column of every table the base migrations create
 // or extend, as "table.column".
 func schemaColumns(t testing.TB) map[string]bool {
 	t.Helper()
@@ -110,7 +110,8 @@ func updateGrants(t testing.TB) map[string][]string {
 // gains or drops a field without this table (and the schema) being updated.
 var recordHomes = map[string]map[string][]string{
 	"RunRecord": {"run": {"@Run"}, "plan": {"runs.definition_snapshot"}, "claim": {"@Claim"},
-		"waits": {"@Wait"}, "commands": {"@Command"}, "workloads": {"@WorkloadObservation"}, "resources": {"@ResourceObservation"}},
+		"waits": {"@Wait"}, "commands": {"@Command"}, "workloads": {"@WorkloadObservation"}, "resources": {"@ResourceObservation"},
+		"outputs": {"@StepOutputs"}, "materializations": {"@MaterializationRecord"}},
 	"Run": {"scope": {"runs.tenant_id", "runs.project_id"}, "id": {"runs.id"}, "pipelineId": {"runs.pipeline_id"},
 		"version": {"runs.version"}, "outcome": {"runs.status"}, "reason": {"runs.reason"},
 		"cancelRequested": {"runs.cancel_requested_at"}, "cleanup": {"@Cleanup"}, "steps": {"@Step"}},
@@ -156,6 +157,15 @@ var recordHomes = map[string]map[string][]string{
 		"result": {"@Result"}, "observedAt": {"run_workload_observations.observed_at"}},
 	"ResourceObservation": {"handle": {"@ResourceHandle"}, "state": {"run_resource_observations.state"},
 		"reason": {"run_resource_observations.reason"}, "observedAt": {"run_resource_observations.observed_at"}},
+	// The outputs of a succeeded container step are the step's outputs column, recorded with its
+	// settlement (006 guards it); the attempt is the step's.
+	"StepOutputs": {"stepKey": {"run_steps.step_key"}, "attempt": {"run_steps.attempt"}, "values": {"run_steps.outputs"}},
+	// A materialization has its own row (006): the identity is a pure function of the key.
+	"MaterializationRecord": {"ref": {"@MaterializationRef"}, "state": {"run_materializations.state"},
+		"issuedAt": {"run_materializations.issued_at"}},
+	"MaterializationRef": {"scope": {"run_materializations.tenant_id", "run_materializations.project_id"},
+		"runId": {"run_materializations.run_id"}, "stepKey": {"run_materializations.step_key"},
+		"attempt": {"run_materializations.attempt"}, "id": {"run_materializations.materialization_id"}},
 	"ResourceHandle": {"scope": {"run_resource_observations.tenant_id", "run_resource_observations.project_id"},
 		"owner":    {"run_resource_observations.tenant_id", "run_resource_observations.owner_project_id"},
 		"lifetime": {"run_resource_observations.lifetime"}, "runId": {"run_resource_observations.handle_run_id"},
@@ -187,7 +197,7 @@ func Test_unit_storage_durable_run_state(t *testing.T) {
 		for _, m := range storage.BaseContribution().Migrations {
 			ids = append(ids, m.ID)
 		}
-		want := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", expandMigration, durableMigration}
+		want := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", expandMigration, durableMigration, waitMigration}
 		if !slices.Equal(ids, want) {
 			t.Fatalf("manifest = %v, want %v", ids, want)
 		}
@@ -384,7 +394,8 @@ func Test_unit_storage_durable_run_state(t *testing.T) {
 		types := map[string]reflect.Type{}
 		for _, v := range []any{runtime.RunRecord{}, runtime.Run{}, runtime.Cleanup{}, runtime.Claim{}, runtime.Step{}, runtime.Result{},
 			runtime.PredicateEvaluation{}, runtime.Wait{}, runtime.Decision{}, runtime.Command{}, runtime.RuntimeBinding{},
-			runtime.WorkloadObservation{}, runtime.ResourceObservation{}, runtime.ResourceHandle{}} {
+			runtime.WorkloadObservation{}, runtime.ResourceObservation{}, runtime.ResourceHandle{},
+			runtime.StepOutputs{}, runtime.MaterializationRecord{}, runtime.MaterializationRef{}} {
 			types[reflect.TypeOf(v).Name()] = reflect.TypeOf(v)
 		}
 		if len(types) != len(recordHomes) {

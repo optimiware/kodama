@@ -198,8 +198,8 @@ func TestMigrationReapply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(res.Applied, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql"}) {
-		t.Fatalf("the baseline is five migrations, applied %v", res.Applied)
+	if !slices.Equal(res.Applied, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql", "006_wait_decision_and_materializations.sql"}) {
+		t.Fatalf("the baseline is six migrations, applied %v", res.Applied)
 	}
 	if _, err := owner.Exec(ctx, `INSERT INTO tenants (id, key) VALUES ('t010_up', 'up'); INSERT INTO users (id, issuer, subject) VALUES ('u_up', 'https://i', 's')`); err != nil {
 		t.Fatal(err)
