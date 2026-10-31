@@ -2,7 +2,7 @@
 
 This backlog holds the planned and deferred tasks. Completed work is not listed here: its task records were removed once merged and remain in Git history (last present at commit `354b760`). Keep one Go module and preserve working packages. Production deployment and qualification, external adapters, the chassis and additional wrappers each need explicit scheduling before they start.
 
-**Ready by dependencies** (`planned`, every dependency `done`): [T-195](T-195-admission-task-link.md). **Blocked on a decision:** none. Other planned tasks wait for the dependencies shown in the [dependency index](#dependency-index).
+**Ready by dependencies** (`planned`, every dependency `done`): [T-184](T-184-task-tracking.md). **Blocked on a decision:** none. Other planned tasks wait for the dependencies shown in the [dependency index](#dependency-index).
 
 **Deferred** (needs explicit scheduling): [T-029](T-029-recovery-qualification.md), [T-047](T-047-supabase-blueprint.md), [T-050](T-050-engineer-workbench.md), [T-051](T-051-analyst-interface.md), [T-052](T-052-native-harness.md), [T-053](T-053-claude-harness.md), [T-054](T-054-codex-harness.md), [T-055](T-055-hosted-isolation.md), [T-056](T-056-production-release.md), [T-057](T-057-operator-assessment.md), [T-058](T-058-operator.md), [T-059](T-059-chassis-assessment.md), [T-060](T-060-m4-integration.md), [T-061](T-061-platform-integration.md), [T-069](T-069-qa-profile-qualification.md), [T-085](T-085-live-agent-qualification.md), [T-106](T-106-production-tls-hardening.md), [T-123](T-123-buildkit-builder-service.md).
 
@@ -169,7 +169,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-192 Self-contained signal decision reasons](T-192-signal-decision-reason.md) | T-189 | done |
 | [T-193 Outbox cursor must not skip concurrently committed events](T-193-outbox-cursor-ordering.md) | T-188 | done |
 | [T-194 Post-P2 handoff for P3–P5](T-194-post-p2-handoff.md) | T-184 | done |
-| [T-195 Carry the task through admission and persist it on the run](T-195-admission-task-link.md) | T-182 | planned |
+| [T-195 Carry the task through admission and persist it on the run](T-195-admission-task-link.md) | T-182 | done |
 | [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | deferred (parked until stage access) |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
 | [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | done |

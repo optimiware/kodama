@@ -1,7 +1,7 @@
 ---
 id: T-195
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-182]
 decision_blockers: []
 owns: [internal/kernel/runtime/, internal/kernel/runner/, internal/shell/runstate/, internal/storage/, test/support/kernelcontracts/, docs/implementation/database-schema.md, internal/app/migrate_test.go, internal/app/sdlc_test.go, internal/artifacts/postgres/migrations_test.go, internal/identity/postgres/isolation_test.go, internal/runtimeauth/postgres/resource_test.go]
