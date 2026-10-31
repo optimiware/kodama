@@ -81,6 +81,7 @@ func Test_unit_runstate_postgres_contract(t *testing.T) {
 		}
 	})
 	t.Run("times are normalized to the database's precision", testNormalize)
+	t.Run("a wait timeout that is not a whole microsecond survives normalization", testNormalizeKeepsWaitTimeout)
 	t.Run("an event identity is a scoped digest, not the event's own id", testEventRowID)
 	t.Run("a wait maps to the columns of its lifecycle", testWaitColumns)
 	t.Run("database refusals map to the kernel's vocabulary", testMapErr)
@@ -103,6 +104,7 @@ func Test_unit_runstate_postgres_contract(t *testing.T) {
 		t.Run("a replacement store recovers from the database alone", func(t *testing.T) { testRecovery(t, e) })
 		t.Run("the durable guards refuse what the rules would", func(t *testing.T) { testGuards(t, e) })
 		t.Run("a refusal that lost to a cancellation replays its reason", func(t *testing.T) { testCancellationReplay(t, e) })
+		t.Run("a wait timeout that is not a whole microsecond stays decidable", func(t *testing.T) { testSubMicrosecondTimeout(t, e) })
 		t.Run("a failed commit leaves neither state nor outbox", func(t *testing.T) { testAtomicOutbox(t, e) })
 		t.Run("admission refuses a pipeline that is not in the scope", func(t *testing.T) { testUnknownPipeline(t, e) })
 		t.Run("an event identity is reused only with the same content", func(t *testing.T) { testEventReuse(t, e) })
@@ -396,4 +398,123 @@ func testCancellationReplay(t *testing.T, e *env) {
 			t.Fatalf("%s: a reason that cannot be recovered must be an error: %v", reason, err)
 		}
 	}
+}
+
+// testSubMicrosecondTimeout is the regression for a valid wait timeout that is
+// not a whole number of microseconds (here a minute and a nanosecond). The wait
+// is admitted and opened on a microsecond boundary, so the stored deadline is
+// the truncated open time plus the timeout; the record is reloaded, which derives
+// the open time from the deadline; and the engine's next commit, which carries
+// the wait it read back, must still be a legal decision: the immutable open time
+// has not moved, whichever way the wait is decided.
+func testSubMicrosecondTimeout(t *testing.T, e *env) {
+	e.reset()
+	clock := kernelcontracts.NewClock()
+	s := e.store(clock)
+	ctx := context.Background()
+	timeout := time.Minute + time.Nanosecond
+	plan := builderPlan()
+	spec := *plan.Steps[1].Wait
+	spec.Timeout = timeout
+	plan.Steps[1].Wait = &spec
+
+	open := func(id domain.RunID) (runtime.RunRecord, runtime.Wait) {
+		a := admission(t, scope1, id, plan, clock.Now())
+		if a.Waits[0].Spec.Timeout != timeout {
+			t.Fatalf("the admitted wait's timeout is %s", a.Waits[0].Spec.Timeout)
+		}
+		rec, err := s.Admit(ctx, a)
+		must(t, err, "admit")
+		if got := rec.Waits[0].Spec.Timeout; got != timeout {
+			t.Fatalf("the stored wait's timeout is %s", got)
+		}
+		rec, err = s.Claim(ctx, runtime.ClaimRequest{Scope: scope1, RunID: id, Owner: "engine", Purpose: runtime.ClaimExecute, TTL: 48 * time.Hour}, clock.Now())
+		must(t, err, "claim")
+		commit := func(mutate func(r *runtime.Run) error, waits ...runtime.Wait) {
+			t.Helper()
+			r := rec.Run.Clone()
+			must(t, mutate(&r), "move")
+			sealed, err := r.Sealed(rec.Run)
+			must(t, err, "seal")
+			rec, err = s.Commit(ctx, runtime.Transition{Scope: scope1, RunID: id, Claim: rec.Claim, Now: clock.Now(), ExpectedVersion: rec.Run.Version, Run: sealed, Waits: waits})
+			must(t, err, "commit")
+		}
+		commit(func(r *runtime.Run) error { return r.AdvanceStep("build", runtime.StepRunning, runtime.ReasonNone) })
+		commit(func(r *runtime.Run) error {
+			return r.FinishStep("build", runtime.StepSucceeded, runtime.ReasonNone, runtime.Result{Code: runtime.ResultSucceeded})
+		})
+		w := rec.Waits[0]
+		must(t, w.Open(clock.Now(), map[string]string{"candidate": string(id)}, ""), "open the wait")
+		commit(func(r *runtime.Run) error { return r.AdvanceStep("review", runtime.StepWaiting, runtime.ReasonNone) }, w)
+
+		// Reloaded, the pair is canonical: valid, the timeout untouched, the deadline at database precision.
+		got, err := s.Load(ctx, scope1, id)
+		must(t, err, "reload")
+		lw := got.Waits[0]
+		must(t, lw.Validate(), "the reloaded wait is valid")
+		if lw.Spec.Timeout != timeout || lw.Deadline.Sub(lw.OpenedAt) != timeout || lw.Deadline.Nanosecond()%1000 != 0 {
+			t.Fatalf("the reloaded wait: opened %s deadline %s timeout %s", lw.OpenedAt, lw.Deadline, lw.Spec.Timeout)
+		}
+		if !lw.Deadline.Equal(clock.Now().Add(timeout).Truncate(time.Microsecond)) {
+			t.Fatalf("the deadline is %s, want the truncated open time plus the timeout", lw.Deadline)
+		}
+		// A commit that merely carries the wait back is not a change.
+		commit(func(r *runtime.Run) error { r.Version++; return nil }, lw)
+		again, err := s.Load(ctx, scope1, id)
+		must(t, err, "reload again")
+		if !again.Waits[0].OpenedAt.Equal(lw.OpenedAt) || !again.Waits[0].Deadline.Equal(lw.Deadline) {
+			t.Fatalf("carrying the wait back moved it: %+v then %+v", lw, again.Waits[0])
+		}
+		return again, again.Waits[0]
+	}
+
+	t.Run("the engine records the expiry", func(t *testing.T) {
+		rec, w := open("expire1")
+		clock.Set(w.Deadline)
+		expired := w
+		_, err := expired.Expire(clock.Now())
+		must(t, err, "expire")
+		r := rec.Run.Clone()
+		must(t, r.AdvanceStep("review", runtime.StepFailed, runtime.ReasonWaitExpired), "fail the step")
+		sealed, err := r.Sealed(rec.Run)
+		must(t, err, "seal")
+		got, err := s.Commit(ctx, runtime.Transition{Scope: scope1, RunID: "expire1", Claim: rec.Claim, Now: clock.Now(), ExpectedVersion: rec.Run.Version,
+			Run: sealed, Waits: []runtime.Wait{expired}})
+		must(t, err, "an otherwise legal expiry")
+		if g := got.Waits[0]; g.State != runtime.WaitExpired || !g.OpenedAt.Equal(w.OpenedAt) || !g.Deadline.Equal(w.Deadline) {
+			t.Fatalf("the expired wait: %+v", g)
+		}
+		clock.Set(time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC))
+	})
+	t.Run("the engine records a cancellation", func(t *testing.T) {
+		rec, w := open("cancel1")
+		cancelled := w
+		_, err := cancelled.Cancel(clock.Now(), runtime.ReasonRunFailed)
+		must(t, err, "cancel")
+		r := rec.Run.Clone()
+		r.Version++
+		got, err := s.Commit(ctx, runtime.Transition{Scope: scope1, RunID: "cancel1", Claim: rec.Claim, Now: clock.Now(), ExpectedVersion: rec.Run.Version,
+			Run: r, Waits: []runtime.Wait{cancelled}})
+		must(t, err, "an otherwise legal cancellation")
+		if g := got.Waits[0]; g.State != runtime.WaitCancelled || !g.OpenedAt.Equal(w.OpenedAt) || !g.Deadline.Equal(w.Deadline) {
+			t.Fatalf("the cancelled wait: %+v", g)
+		}
+	})
+	t.Run("a signal and a cancellation request decide it", func(t *testing.T) {
+		_, w := open("signal1")
+		res, err := s.DecideSignal(ctx, runtime.SignalRequest{Identity: runtime.SignalIdentity{Scope: scope1, Caller: "alice", Key: "k1"},
+			WaitID: w.ID, Outcome: "approved", Actor: "user:alice"}, clock.Now())
+		must(t, err, "decide")
+		if !res.Applied {
+			t.Fatalf("the signal was refused: %+v", res)
+		}
+		_, w2 := open("cancel2")
+		_, err = s.RequestCancel(ctx, scope1, "cancel2")
+		must(t, err, "cancel")
+		got, err := s.Load(ctx, scope1, "cancel2")
+		must(t, err, "load")
+		if g := got.Waits[0]; g.State != runtime.WaitCancelled || !g.Deadline.Equal(w2.Deadline) || !g.OpenedAt.Equal(w2.OpenedAt) {
+			t.Fatalf("the cancelled wait: %+v", g)
+		}
+	})
 }

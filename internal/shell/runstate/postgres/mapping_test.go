@@ -23,7 +23,7 @@ func testNormalize(t *testing.T) {
 		t.Fatalf("the zero time must stay the zero time: %v", got)
 	}
 
-	w := runtime.Wait{OpenedAt: odd, Deadline: odd.Add(time.Hour), Decision: runtime.Decision{At: odd}}
+	w := runtime.Wait{Spec: runtime.WaitSpec{Timeout: time.Hour}, OpenedAt: odd, Deadline: odd.Add(time.Hour), Decision: runtime.Decision{At: odd}}
 	tr := normalize(runtime.Transition{Now: odd, Waits: []runtime.Wait{w},
 		Commands:  []runtime.Command{{RecordedAt: odd}},
 		Workloads: []runtime.WorkloadObservation{{ObservedAt: odd}}, Resources: []runtime.ResourceObservation{{ObservedAt: odd}},
@@ -38,8 +38,31 @@ func testNormalize(t *testing.T) {
 	if d := tr.Waits[0].Deadline.Sub(tr.Waits[0].OpenedAt); d != time.Hour {
 		t.Errorf("a deadline stays its open time plus the timeout: %s", d)
 	}
+	if !tr.Waits[0].Deadline.Equal(want.Add(time.Hour)) {
+		t.Errorf("the deadline is the stored fact, truncated: %s", tr.Waits[0].Deadline)
+	}
 	if !w.OpenedAt.Equal(odd) {
 		t.Error("normalize must not change the caller's transition")
+	}
+}
+
+// A timeout that is not a whole number of microseconds must survive being
+// normalized, stored (the deadline is truncated), reloaded (the open time is the
+// deadline minus the timeout) and normalized again, with the timeout untouched.
+func testNormalizeKeepsWaitTimeout(t *testing.T) {
+	timeout := time.Minute + time.Nanosecond
+	opened := time.Date(2026, 10, 30, 12, 0, 0, 123000, time.UTC) // on a microsecond
+	w := runtime.Wait{Spec: runtime.WaitSpec{Timeout: timeout}, OpenedAt: opened, Deadline: opened.Add(timeout)}
+	once := normalize(runtime.Transition{Waits: []runtime.Wait{w}}).Waits[0]
+	twice := normalize(runtime.Transition{Waits: []runtime.Wait{once}}).Waits[0]
+	if !once.OpenedAt.Equal(twice.OpenedAt) || !once.Deadline.Equal(twice.Deadline) {
+		t.Fatalf("normalizing twice changed the pair: %s/%s then %s/%s", once.OpenedAt, once.Deadline, twice.OpenedAt, twice.Deadline)
+	}
+	if got := once.Deadline.Sub(once.OpenedAt); got != timeout || once.Spec.Timeout != timeout {
+		t.Fatalf("the timeout changed: %s, spec %s", got, once.Spec.Timeout)
+	}
+	if once.Deadline.Nanosecond()%1000 != 0 {
+		t.Fatalf("the deadline is not at database precision: %s", once.Deadline)
 	}
 }
 

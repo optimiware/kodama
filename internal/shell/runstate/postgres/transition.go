@@ -238,7 +238,8 @@ func checkCommandUpdate(prev, next runtime.Command) error {
 // micro rounds a time down to the microsecond PostgreSQL stores, in UTC. The
 // adapter normalizes every time it receives to it, so what a writer holds
 // compares equal to what the database returns, and a deadline computed from an
-// open time stays that open time plus the timeout.
+// open time stays that open time plus the timeout (see the wait handling in
+// normalize).
 func micro(t time.Time) time.Time { return t.Truncate(time.Microsecond).UTC() }
 
 // normalize returns t with every time at database precision. It shares nothing
@@ -252,7 +253,16 @@ func normalize(t runtime.Transition) runtime.Transition {
 	t.Waits = slices.Clone(t.Waits)
 	for i := range t.Waits {
 		w := &t.Waits[i]
-		w.OpenedAt, w.Deadline, w.Decision.At = micro(w.OpenedAt), micro(w.Deadline), micro(w.Decision.At)
+		w.Decision.At = micro(w.Decision.At)
+		if !w.OpenedAt.IsZero() {
+			// The deadline is the stored fact and the open time is derived from it,
+			// exactly as loadSteps derives it, so the pair is one canonical value:
+			// normalizing it again, or after a reload, changes nothing, and
+			// Deadline == OpenedAt + Timeout still holds for a timeout that is not
+			// a whole number of microseconds. The timeout itself is never changed.
+			w.Deadline = micro(w.Deadline)
+			w.OpenedAt = w.Deadline.Add(-w.Spec.Timeout)
+		}
 	}
 	t.Commands = slices.Clone(t.Commands)
 	for i := range t.Commands {
