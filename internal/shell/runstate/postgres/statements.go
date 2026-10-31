@@ -15,7 +15,7 @@ package postgres
 
 const stmtGetRun = `SELECT pipeline_id, definition_snapshot, status, reason, cancel_requested_at, version,
   lease_owner, lease_purpose, lease_fence, lease_expires_at, cleanup_state, cleanup_attempts, cleanup_max_attempts,
-  cleanup_reason, retained_resources
+  cleanup_reason, retained_resources, task_id
 FROM runs WHERE tenant_id = $1 AND project_id = $2 AND id = $3`
 
 // stmtLockRun serializes every writer of one run on its row. Claim, renewal,
@@ -47,8 +47,8 @@ FROM run_materializations WHERE tenant_id = $1 AND project_id = $2 AND run_id = 
 // ---------------------------------------------------------------------------
 
 const stmtInsertRun = `INSERT INTO runs (tenant_id, project_id, id, pipeline_id, definition_snapshot, status, version,
-  cleanup_state, cleanup_attempts, cleanup_max_attempts)
-VALUES ($1, $2, $3, $4, $5::jsonb, 'queued', $6, 'none', 0, $7)
+  cleanup_state, cleanup_attempts, cleanup_max_attempts, task_id)
+VALUES ($1, $2, $3, $4, $5::jsonb, 'queued', $6, 'none', 0, $7, $8)
 ON CONFLICT (tenant_id, project_id, id) DO NOTHING`
 
 const stmtInsertStep = `INSERT INTO run_steps (tenant_id, project_id, run_id, id, step_key, ordinal, image, step_kind, status,

@@ -116,7 +116,7 @@ func (c *Clock) Set(at time.Time) {
 func Cases() []Case {
 	var all []Case
 	for _, g := range [][]Case{admissionCases(), claimCases(), commitCases(), cancelCases(), cleanupCases(), waitCases(), scopeCases(), viewCases(),
-		outputsCases(), releaseCases(), materializationCases()} {
+		outputsCases(), releaseCases(), materializationCases(), taskCases()} {
 		all = append(all, g...)
 	}
 	return all

@@ -41,10 +41,17 @@ func (s *Store) Admit(ctx context.Context, a runtime.Admission) (runtime.RunReco
 		events[i] = e
 	}
 
+	// The task is written by the insert that creates the run: the composite key
+	// of tasks.current_run_id needs it, and the runtime role may not update it
+	// afterwards (the task is the project's, the project is the run's).
+	var task any
+	if a.Task != nil {
+		task = string(a.Task.ID)
+	}
 	var out runtime.RunRecord
 	err := s.update(ctx, r.Scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, stmtInsertRun, r.Scope.TenantID, r.Scope.ProjectID, r.ID, r.PipelineID, jsonOf(a.Plan),
-			int64(r.Version), r.Cleanup.MaxAttempts)
+			int64(r.Version), r.Cleanup.MaxAttempts, task)
 		if err != nil {
 			return fmt.Errorf("runstate/postgres: insert run: %w", err)
 		}
@@ -55,6 +62,9 @@ func (s *Store) Admit(ctx context.Context, a runtime.Admission) (runtime.RunReco
 			}
 			if prev.Plan.Digest != a.Plan.Digest {
 				return fmt.Errorf("%w: run %s is admitted with plan %s, not %s", domain.ErrConflict, r.ID, prev.Plan.Digest, a.Plan.Digest)
+			}
+			if (prev.Task == nil) != (a.Task == nil) || (a.Task != nil && *prev.Task != *a.Task) {
+				return fmt.Errorf("%w: run %s is admitted for another task than the one named", domain.ErrConflict, r.ID)
 			}
 			out = prev
 			return nil
@@ -107,7 +117,7 @@ func (s *Store) View(ctx context.Context, scope domain.Scope, id domain.RunID) (
 	if err != nil {
 		return runtime.RunView{}, err
 	}
-	return runtime.RunView{Run: rec.Run, Waits: rec.Waits, Status: rec.Run.Status()}, nil
+	return runtime.RunView{Run: rec.Run, Task: rec.Task, Waits: rec.Waits, Status: rec.Run.Status()}, nil
 }
 
 // Claim grants a lease through runtime.AcquireClaim for a purpose the run

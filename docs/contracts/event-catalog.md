@@ -53,6 +53,7 @@ Each event has a stable identity derived from its type and the deduplication key
 | `service.state_changed` | A run, project, or tenant service changes state | Scope, run, service key, previous/new phase, bounded reason | scope, service ID, version |
 | `task.created` | A task is created with its selected pipeline | Task, pipeline, initial execution | task ID |
 | `task.progress_changed` | A task projection advances | Task, current run, status, current step, waiting assignment, projection version | task ID, projection version |
+| `task.content_changed` | A task's title, body or context is edited | Task, new content version, editing actor | task ID, content version |
 | `repository.created` | A repository is provisioned | Name, default branch, hosting | repository ID |
 | `repository.state_changed` | A repository changes status | Previous/new status, bounded reason | repository ID, version |
 | `membership.changed` | A membership changes | User, changed binding, effective version | membership ID, version |

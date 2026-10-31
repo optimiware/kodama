@@ -158,7 +158,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-181 Repair the legacy run_shared fixture](T-181-legacy-run-shared-fixture.md) | T-176 | done |
 | [T-182 PostgreSQL kernel state adapter](T-182-runstate-postgres.md) | T-174, T-179, T-185, T-186, T-189, T-192 | done |
 | [T-183 Project pipeline registry](T-183-pipeline-registry.md) | T-179 | done |
-| [T-184 Task tracking and execution projection](T-184-task-tracking.md) | T-179, T-182, T-188 | planned |
+| [T-184 Task tracking and execution projection](T-184-task-tracking.md) | T-179, T-182, T-188, T-195 | planned |
 | [T-185 Durable run-state schema for the kernel record](T-185-durable-run-state-schema.md) | T-179 | done |
 | [T-186 Step outputs and claim release in the kernel contract](T-186-kernel-outputs-and-release.md) | T-175 | done |
 | [T-187 Git integration authority from the run, not the task](T-187-git-integration-authority.md) | T-183 | done |
@@ -168,6 +168,8 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-191 Shell source preparation and secret custody adapters](T-191-shell-sources-and-secrets.md) | T-186, T-187 | done |
 | [T-192 Self-contained signal decision reasons](T-192-signal-decision-reason.md) | T-189 | done |
 | [T-193 Outbox cursor must not skip concurrently committed events](T-193-outbox-cursor-ordering.md) | T-188 | done |
+| [T-194 Post-P2 handoff for P3–P5](T-194-post-p2-handoff.md) | T-184 | done |
+| [T-195 Carry the task through admission and persist it on the run](T-195-admission-task-link.md) | T-182 | done |
 | [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | deferred (parked until stage access) |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
 | [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | done |
