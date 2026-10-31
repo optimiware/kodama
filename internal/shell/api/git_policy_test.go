@@ -371,3 +371,134 @@ func integrationRecord(t *testing.T, id domain.RunID, candidate, outcome string)
 	must(rec.Validate())
 	return rec
 }
+
+// Test_unit_kernel_git_integration_commit_intent_rechecks_authority: commit
+// intent is the last moment before the ref transaction commits, with the worker's
+// refs locked. Authority approved at pre-receive is decided again there from
+// fresh durable evidence, for exactly the requested updates, and fails closed.
+func Test_unit_kernel_git_integration_commit_intent_rechecks_authority(t *testing.T) {
+	const main = "refs/heads/main"
+	type world struct {
+		e      *env
+		runs   *runRecords
+		git    *api.GitServer
+		grant  string
+		repoID string
+	}
+	setup := func(t *testing.T) world {
+		t.Helper()
+		e := newEnv(t)
+		_, repoID := e.seeded("closed", map[string]any{"integrationPipeline": "integrate"})
+		runs := &runRecords{}
+		git, err := api.NewGit(api.GitConfig{Store: e.mem, Runs: runs, Auth: tokens, Workers: e.workers, Signer: e.signer,
+			Identities: e.verifier, Now: e.clock})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.git = git
+		e.workers.ancestor = true
+		e.mem.SetRun(runInfo("run_i", "integrate", "tsk_1", repoID))
+		runs.set(integrationRecord(t, "run_i", c2, "approved"))
+		issued, err := git.IssueIntegrationCredential(t.Context(), tenantID, projectID, "run_i", "integrate", repoID, c1, c2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := world{e: e, runs: runs, git: git, grant: issued.GrantID, repoID: repoID}
+		// pre-receive approves.
+		resp, err := e.authorize(w.grant, repoID, []gitv1.RefUpdate{update(main, c1, c2)}, facts(nil, update(main, c1, c2)))
+		if err != nil || reasons(resp)[0] != "allow" {
+			t.Fatalf("pre-receive: %v %v", reasons(resp), err)
+		}
+		return w
+	}
+	intent := func(w world, updates ...gitv1.RefUpdate) error {
+		receive := gitv1.NewReceiveID(w.grant)
+		_, err := w.e.control().CommitIntent(w.e.t.Context(), tenantID, receive, gitv1.CommitIntentRequest{ReceiveID: receive, Updates: updates})
+		return err
+	}
+	exact := update(main, c1, c2)
+
+	t.Run("authority that still holds commits", func(t *testing.T) {
+		w := setup(t)
+		if err := intent(w, exact); err != nil {
+			t.Fatalf("commit intent: %v", err)
+		}
+	})
+
+	for name, c := range map[string]struct {
+		change func(t *testing.T, w world)
+		want   domain.ErrorCode
+	}{
+		"the integration step settled": {func(t *testing.T, w world) {
+			rec := integrationRecord(t, "run_i", c2, "approved")
+			if err := rec.Run.FinishStep("integrate", rt.StepSucceeded, rt.ReasonNone, rt.Result{Code: rt.ResultSucceeded}); err != nil {
+				t.Fatal(err)
+			}
+			w.runs.set(rec)
+		}, gitv1.CodeRunInactive},
+		"the durable run was cancelled": {func(t *testing.T, w world) {
+			rec := integrationRecord(t, "run_i", c2, "approved")
+			rec.Run.RequestCancel()
+			w.runs.set(rec)
+		}, gitv1.CodeRunInactive},
+		"the wait was decided for another commit": {func(t *testing.T, w world) {
+			w.runs.set(integrationRecord(t, "run_i", c3, "approved"))
+		}, gitv1.CodeRunInactive},
+		"the durable record is gone": {func(t *testing.T, w world) {
+			w.runs.mu.Lock()
+			delete(w.runs.recs, "run_i")
+			w.runs.mu.Unlock()
+		}, gitv1.CodeRunInactive},
+		"the authority is removed": {func(t *testing.T, w world) {
+			w.e.control().SetAuthority(nil)
+		}, gitv1.CodeRunInactive},
+		"the evidence cannot be read": {func(t *testing.T, w world) {
+			w.runs.mu.Lock()
+			w.runs.fail = errors.New("state store unavailable")
+			w.runs.mu.Unlock()
+		}, domain.CodeUnavailable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := setup(t)
+			// The legacy run row is still active throughout: it is not the authority.
+			c.change(t, w)
+			err := intent(w, exact)
+			if err == nil {
+				t.Fatal("commit intent was granted")
+			}
+			if got := contractCode(err); got != c.want {
+				t.Fatalf("commit intent error = %v (%s), want %s", err, got, c.want)
+			}
+		})
+	}
+
+	t.Run("only the exact authorized update commits", func(t *testing.T) {
+		w := setup(t)
+		for name, updates := range map[string][]gitv1.RefUpdate{
+			"another candidate": {update(main, c1, c3)},
+			"another old value": {update(main, c3, c2)},
+			"another ref":       {update("refs/heads/feature/x", c1, c2)},
+			"an extra update":   {exact, update("refs/heads/feature/x", z0, c2)},
+		} {
+			if err := intent(w, updates...); contractCode(err) != gitv1.CodeRunInactive {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+		if err := intent(w, exact); err != nil {
+			t.Fatalf("the exact update: %v", err)
+		}
+	})
+
+	t.Run("a control plane without authority commits no integration", func(t *testing.T) {
+		w := setup(t)
+		plain, err := api.NewGit(api.GitConfig{Store: w.e.mem, Auth: tokens, Workers: w.e.workers, Signer: w.e.signer,
+			Identities: w.e.verifier, Now: w.e.clock})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.e.git = plain
+		if err := intent(w, exact); contractCode(err) != gitv1.CodeRunInactive {
+			t.Fatalf("commit intent without an authority: %v", err)
+		}
+	})
+}

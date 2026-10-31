@@ -342,9 +342,14 @@ func integrationUpdate(f pushFacts, repo GitGrantRepoClaim, u gitv1.RefUpdate, f
 	if c.Step == "" || u.Ref != c.Ref || u.Ref != gitv1.HeadsPrefix+f.Repo.DefaultBranch || u.Old != c.From || u.New != c.To {
 		return gitv1.ReasonIntegrationMismatch
 	}
-	auth := gitauth.Authority{Scope: domain.Scope{TenantID: f.Cred.TenantID, ProjectID: f.Cred.ProjectID}, Repository: f.Repo.ID,
-		Run: domain.RunID(f.Run.RunID), Step: domain.StepID(c.Step), Ref: c.Ref, Old: c.From, New: c.To}
-	return f.Authority.reason(auth, u, fact)
+	return f.Authority.reason(integrationAuthority(f, c), u, fact)
+}
+
+// integrationAuthority is the authority an integration credential's record names:
+// the exact run, step, ref and commit pair it was issued for.
+func integrationAuthority(f pushFacts, c *GitIntegration) gitauth.Authority {
+	return gitauth.Authority{Scope: domain.Scope{TenantID: f.Cred.TenantID, ProjectID: f.Cred.ProjectID}, Repository: f.Repo.ID,
+		Run: domain.RunID(f.Cred.RunID), Step: domain.StepID(c.Step), Ref: c.Ref, Old: c.From, New: c.To}
 }
 
 // ---- integration authority adapters -----------------------------------------

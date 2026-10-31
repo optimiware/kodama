@@ -219,6 +219,36 @@ func Test_unit_git_integration_authority(t *testing.T) {
 		}
 	})
 
+	t.Run("it is rechecked at commit intent without asking the worker", func(t *testing.T) {
+		w := approvedWorld(t)
+		az := w.authorizer()
+		az.Refs = nil // commit intent runs with the worker's refs locked: any call would panic
+		auth, err := w.authorizer().Issue(ctx, request())
+		must(t, err)
+		if err := az.RecheckCommit(ctx, auth, want2()); err != nil {
+			t.Fatalf("recheck at commit intent: %v", err)
+		}
+		if err := az.RecheckCommit(ctx, auth, gitv1.RefUpdate{Ref: ref, Old: tip, New: oid("c")}); !hasCode(err, gitauth.CodeOutsideAuthority) {
+			t.Errorf("another candidate at commit intent: %v", err)
+		}
+		cancelled := approvedWorld(t)
+		cancelled.rec.Run.RequestCancel()
+		w.rec = cancelled.rec
+		if err := az.RecheckCommit(ctx, auth, want2()); !hasCode(err, gitauth.CodeRunInactive) {
+			t.Errorf("cancelled run at commit intent: %v", err)
+		}
+		w.rec = run(t, oid("9"), "approved")
+		if err := az.RecheckCommit(ctx, auth, want2()); !hasCode(err, gitauth.CodeCandidateMismatch) {
+			t.Errorf("candidate no longer approved at commit intent: %v", err)
+		}
+		az.Runs = failingRuns{}
+		if err := az.RecheckCommit(ctx, auth, want2()); err == nil {
+			t.Error("an unreadable record was accepted at commit intent")
+		} else if _, ok := gitauth.IsRefusal(err); ok {
+			t.Errorf("a read failure is a refusal: %v", err)
+		}
+	})
+
 	t.Run("a moved branch outdates the granted candidate and a replay is refused", func(t *testing.T) {
 		w := approvedWorld(t)
 		az := w.authorizer()

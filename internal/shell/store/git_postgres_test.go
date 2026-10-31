@@ -426,51 +426,65 @@ func TestGitPostgresRunCredentialsEndWithTheRun(t *testing.T) {
 
 // TestGitPostgresRunEvidenceIgnoresTasks: the Git evidence the store reads of a
 // run is its pipeline name, its state and its sources, scoped by tenant and
-// project. A task row, however it was resolved, changes none of it and gives the
-// store nothing to derive integration authority from (that is decided from the
-// run's durable record by internal/shell/git).
+// project. The run is created for a task, and a promotion request resolved
+// behind that task, approved, rejected, pending or approved again, changes none
+// of it: the store has nothing to derive integration authority from (that is
+// decided from the run's durable record by internal/shell/git).
 func TestGitPostgresRunEvidenceIgnoresTasks(t *testing.T) {
 	s, db, ctx := gitDB(t)
 	newRepo(t, s, ctx, "t_a", "p_a1", "repo_1", "backend")
 	mig := db.MigrationPool(ctx, 1)
-	for _, q := range []string{
-		`INSERT INTO pipelines (tenant_id,project_id,id,name,definition,source) VALUES ('t_a','p_a1','pl_1','integrate','{}','api')`,
-		`INSERT INTO runs (tenant_id,project_id,id,pipeline_id,definition_snapshot,sources)
-		 VALUES ('t_a','p_a1','run_1','pl_1','{}','[{"repositoryId":"repo_1","commit":"` + c1 + `","path":".","access":"write","branch":"refs/heads/kodama/work/tsk_1"}]')`,
-	} {
-		if _, err := mig.Exec(ctx, q); err != nil {
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := mig.Exec(ctx, q, args...); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
 	}
+	// The task exists first and the run belongs to it.
+	exec(`INSERT INTO tasks (tenant_id,project_id,id,kind,title,state) VALUES ('t_a','p_a1','tsk_1','task','t','review')`)
+	exec(`INSERT INTO pipelines (tenant_id,project_id,id,name,definition,source) VALUES ('t_a','p_a1','pl_1','integrate','{}','api')`)
+	exec(`INSERT INTO runs (tenant_id,project_id,id,pipeline_id,task_id,definition_snapshot,sources)
+		VALUES ('t_a','p_a1','run_1','pl_1','tsk_1','{}','[{"repositoryId":"repo_1","commit":"` + c1 + `","path":".","access":"write","branch":"refs/heads/kodama/work/tsk_1"}]')`)
 	before, err := s.RunGitInfo(ctx, "t_a", "p_a1", "run_1")
-	if err != nil || !before.Active() || before.PipelineName != "integrate" {
+	if err != nil || !before.Active() || before.PipelineName != "integrate" || before.TaskID != "tsk_1" {
 		t.Fatalf("run = %+v, %v", before, err)
 	}
-	// An approved promotion request resolved behind the run's task, and an
-	// approved decision: neither is evidence of anything about the run.
-	for _, q := range []string{
-		`INSERT INTO tasks (tenant_id,project_id,id,kind,title,state) VALUES ('t_a','p_a1','tsk_1','task','t','review')`,
-		`INSERT INTO tasks (tenant_id,project_id,id,parent_id,kind,title,state,assigned_role,resolution,resolved_at)
-		 VALUES ('t_a','p_a1','tsk_p1','tsk_1','promotion','t','done','reviewer',
-		 '{"outcome":"approved","actorId":"u1","role":"reviewer","answer":"ok"}'::jsonb,now())`,
-	} {
-		if _, err := mig.Exec(ctx, q); err != nil {
-			t.Fatalf("%s: %v", q, err)
+	same := func(step string) {
+		t.Helper()
+		after, err := s.RunGitInfo(ctx, "t_a", "p_a1", "run_1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(after, before) {
+			t.Fatalf("%s changed the run's Git evidence: %+v, was %+v", step, after, before)
 		}
 	}
-	after, err := s.RunGitInfo(ctx, "t_a", "p_a1", "run_1")
-	if err != nil {
-		t.Fatal(err)
+	// A promotion request is linked to the run's task, then resolved every way.
+	const resolve = `UPDATE tasks SET state='done', resolved_at=now(),
+		resolution=jsonb_build_object('outcome',$2::text,'actorId','u1','role','reviewer','answer','x') WHERE id=$1`
+	exec(`INSERT INTO tasks (tenant_id,project_id,id,parent_id,kind,title,state,assigned_role)
+		VALUES ('t_a','p_a1','tsk_p1','tsk_1','promotion','t','question','reviewer')`)
+	var linked int
+	if err := mig.QueryRow(ctx, `SELECT count(*) FROM tasks p JOIN runs r ON r.task_id=p.parent_id
+		WHERE p.id='tsk_p1' AND r.id='run_1'`).Scan(&linked); err != nil || linked != 1 {
+		t.Fatalf("the promotion request is not linked to the run's task: %d, %v", linked, err)
 	}
-	if string(after.Sources) != string(before.Sources) {
-		t.Fatalf("task rows changed the run's evidence: %+v vs %+v", after, before)
-	}
-	after.Sources, before.Sources = nil, nil
-	if !reflect.DeepEqual(after, before) {
-		t.Fatalf("task rows changed the run's evidence: %+v vs %+v", after, before)
-	}
+	same("a pending promotion request")
+	exec(resolve, "tsk_p1", "approved")
+	same("an approved promotion request")
+	exec(`INSERT INTO tasks (tenant_id,project_id,id,parent_id,kind,title,state,assigned_role)
+		VALUES ('t_a','p_a1','tsk_p2','tsk_1','promotion','t','question','reviewer')`)
+	same("a newer pending promotion request")
+	exec(resolve, "tsk_p2", "rejected")
+	same("a newer rejected promotion request")
+	exec(`INSERT INTO tasks (tenant_id,project_id,id,parent_id,kind,title,state,assigned_role)
+		VALUES ('t_a','p_a1','tsk_p3','tsk_1','promotion','t','question','reviewer')`)
+	exec(resolve, "tsk_p3", "approved")
+	same("a newest approved promotion request")
+	exec(`UPDATE tasks SET state='cancelled' WHERE id='tsk_1'`)
+	same("a changed task state")
 	// The evidence has no approval field to read.
-	typ := reflect.TypeOf(after)
+	typ := reflect.TypeOf(before)
 	for i := 0; i < typ.NumField(); i++ {
 		if strings.Contains(strings.ToLower(typ.Field(i).Name), "approv") {
 			t.Fatalf("RunGitInfo carries %s", typ.Field(i).Name)

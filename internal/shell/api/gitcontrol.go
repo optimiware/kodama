@@ -247,7 +247,39 @@ func (c *GitControl) CommitIntent(ctx context.Context, tenant domain.TenantID, p
 	case (cred.Kind == store.CredRun || cred.Kind == store.CredIntegration) && (f.Run == nil || !f.Run.Active()):
 		return gitv1.CommitIntentResponse{}, ce(gitv1.CodeRunInactive, "the run is no longer live")
 	}
+	if cred.Kind == store.CredIntegration {
+		if err := c.integrationCommit(ctx, f, req.Updates); err != nil {
+			return gitv1.CommitIntentResponse{}, err
+		}
+	}
 	return gitv1.CommitIntentResponse{Committing: true}, nil
+}
+
+// integrationCommit decides integration authority again at commit intent, from
+// fresh durable evidence, for exactly the updates the ref transaction is about to
+// commit. The step may have settled, the run been cancelled or the evidence become
+// unreadable since pre-receive approved: the receive then does not commit. Missing
+// configuration refuses; a read failure fails the call as unavailable. The worker
+// holds its refs locked here, so only the control plane's own records are read
+// (Authorizer.RecheckCommit makes no worker call).
+func (c *GitControl) integrationCommit(ctx context.Context, f pushFacts, updates []gitv1.RefUpdate) error {
+	c.mu.Lock()
+	authorizer := c.authority
+	c.mu.Unlock()
+	repo, ok := f.Claims.repo(f.Repo.ID)
+	if authorizer == nil || !ok || repo.Integration == nil || repo.Integration.Step == "" || len(updates) != 1 {
+		return ce(gitv1.CodeRunInactive, "the integration authority no longer holds")
+	}
+	auth := integrationAuthority(f, repo.Integration)
+	err := authorizer.RecheckCommit(ctx, auth, updates[0])
+	var refusal *gitauth.Refusal
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &refusal):
+		return ce(gitv1.CodeRunInactive, "the integration authority no longer holds: %s", refusal.Code)
+	}
+	return storeErr(err)
 }
 
 // Outcome records a receive's applied updates (possibly none): one

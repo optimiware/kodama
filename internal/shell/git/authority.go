@@ -262,17 +262,34 @@ func (a Authorizer) Issue(ctx context.Context, req Request) (Authority, error) {
 // own current value of the ref is u.Old, so the expected-old check compares the
 // authority's old commit with what the worker is about to replace.
 func (a Authorizer) Recheck(ctx context.Context, auth Authority, u gitv1.RefUpdate, fact gitv1.GitFact) error {
-	if !auth.Permits(u) {
-		return refuse(CodeOutsideAuthority, "the update is not the one the authority names")
-	}
 	if fact.Ref != u.Ref {
 		return refuse(CodeMalformed, "the Git fact is for another ref")
+	}
+	return a.recheck(ctx, auth, u, Observation{Current: u.Old, FastForward: fact.FastForward != nil && *fact.FastForward})
+}
+
+// RecheckCommit is the same decision at commit intent, the last moment before
+// the ref transaction commits. Every fact except one is read again: the run
+// record, the step, the waits, the pipeline, the policy and the exact update.
+// The one carried over is the fast-forward fact. Commit intent runs with the
+// worker's refs locked, so no worker call may be made, and the fact is a
+// property of two immutable commits: pre-receive established it for exactly the
+// pair an Authority permits (Recheck refused the receive otherwise), and
+// RecheckCommit only accepts that pair. The expected-old value is the one Git
+// itself verified for the locked transaction (u.Old).
+func (a Authorizer) RecheckCommit(ctx context.Context, auth Authority, u gitv1.RefUpdate) error {
+	return a.recheck(ctx, auth, u, Observation{Current: u.Old, FastForward: true})
+}
+
+func (a Authorizer) recheck(ctx context.Context, auth Authority, u gitv1.RefUpdate, obs Observation) error {
+	if !auth.Permits(u) {
+		return refuse(CodeOutsideAuthority, "the update is not the one the authority names")
 	}
 	f, err := a.facts(ctx, auth.Scope, auth.Repository, auth.Run)
 	if err != nil {
 		return err
 	}
-	f.Observed = Observation{Current: u.Old, FastForward: fact.FastForward != nil && *fact.FastForward}
+	f.Observed = obs
 	_, err = Decide(f, Request{Scope: auth.Scope, Repository: auth.Repository, Run: auth.Run, Step: auth.Step, Update: u})
 	return err
 }
