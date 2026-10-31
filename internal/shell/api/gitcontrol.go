@@ -10,6 +10,7 @@ import (
 
 	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
+	gitauth "github.com/optimiware/kodama/internal/shell/git"
 	"github.com/optimiware/kodama/internal/shell/store"
 )
 
@@ -46,6 +47,18 @@ type GitControl struct {
 	pageSize  int
 	nextAfter map[domain.TenantID]string
 	onEvent   func()
+
+	// authority decides integration authority from the run's durable record;
+	// nil refuses every integration update.
+	authority *gitauth.Authorizer
+}
+
+// SetAuthority sets the integration authorizer used to recheck an integration
+// credential at every receive.
+func (c *GitControl) SetAuthority(a *gitauth.Authorizer) {
+	c.mu.Lock()
+	c.authority = a
+	c.mu.Unlock()
 }
 
 // SetOnEvent sets the hook called after an outcome committed an event.
@@ -145,14 +158,17 @@ func (c *GitControl) facts(ctx context.Context, tenant domain.TenantID, cred sto
 		case !errors.Is(err, store.ErrNotFound):
 			return pushFacts{}, storeErr(err)
 		}
-		if cred.Kind == store.CredIntegration && f.Run != nil && f.Run.TaskID != "" {
-			// Integration needs the run's task approved now; a task that cannot be
-			// read is an error that fails the receive, never an approval.
-			approved, err := c.store.TaskApproved(ctx, tenant, cred.ProjectID, f.Run.TaskID)
-			if err != nil {
-				return pushFacts{}, storeErr(err)
-			}
-			f.TaskApproved = approved
+		c.mu.Lock()
+		authorizer := c.authority
+		c.mu.Unlock()
+		if cred.Kind == store.CredIntegration && authorizer != nil {
+			// Integration authority is decided again at this receive from the run's
+			// durable record (internal/shell/git); a failure to read it fails the
+			// receive, never approves it.
+			authority := *authorizer
+			f.Authority = &authorityCheck{recheck: func(auth gitauth.Authority, u gitv1.RefUpdate, fact gitv1.GitFact) error {
+				return authority.Recheck(ctx, auth, u, fact)
+			}}
 		}
 	}
 	return f, nil
@@ -181,6 +197,9 @@ func (c *GitControl) Authorize(ctx context.Context, tenant domain.TenantID, req 
 		return gitv1.PushAuthorizeResponse{}, err
 	}
 	verdicts := decidePush(f, req)
+	if f.Authority != nil && f.Authority.err != nil {
+		return gitv1.PushAuthorizeResponse{}, storeErr(f.Authority.err)
+	}
 	allowed := true
 	for _, v := range verdicts {
 		allowed = allowed && v.Verdict == gitv1.VerdictAllow

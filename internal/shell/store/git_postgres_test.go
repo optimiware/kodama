@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -422,80 +424,63 @@ func TestGitPostgresRunCredentialsEndWithTheRun(t *testing.T) {
 	}
 }
 
-func TestGitPostgresTaskApproval(t *testing.T) {
+// TestGitPostgresRunEvidenceIgnoresTasks: the Git evidence the store reads of a
+// run is its pipeline name, its state and its sources, scoped by tenant and
+// project. A task row, however it was resolved, changes none of it and gives the
+// store nothing to derive integration authority from (that is decided from the
+// run's durable record by internal/shell/git).
+func TestGitPostgresRunEvidenceIgnoresTasks(t *testing.T) {
 	s, db, ctx := gitDB(t)
+	newRepo(t, s, ctx, "t_a", "p_a1", "repo_1", "backend")
 	mig := db.MigrationPool(ctx, 1)
-	task := func(id, kind, parent, resolution string, created string) {
-		t.Helper()
-		resolved := "NULL"
-		res := "NULL"
-		state := "'review'"
-		role := "NULL"
-		if kind != "task" {
-			role = "'reviewer'"
-			state = "'question'"
-		}
-		if resolution != "" {
-			res = `'{"outcome":"` + resolution + `","actorId":"u1","role":"reviewer","answer":"ok"}'`
-			resolved = "now()"
-			state = "'done'"
-		}
-		p := "NULL"
-		if parent != "" {
-			p = "'" + parent + "'"
-		}
-		q := `INSERT INTO tasks (tenant_id,project_id,id,parent_id,kind,title,state,assigned_role,resolution,resolved_at,created_at)
-			VALUES ('t_a','p_a1','` + id + `',` + p + `,'` + kind + `','t',` + state + `,` + role + `,` + res + `::jsonb,` + resolved + `,'` + created + `')`
+	for _, q := range []string{
+		`INSERT INTO pipelines (tenant_id,project_id,id,name,definition,source) VALUES ('t_a','p_a1','pl_1','integrate','{}','api')`,
+		`INSERT INTO runs (tenant_id,project_id,id,pipeline_id,definition_snapshot,sources)
+		 VALUES ('t_a','p_a1','run_1','pl_1','{}','[{"repositoryId":"repo_1","commit":"` + c1 + `","path":".","access":"write","branch":"refs/heads/kodama/work/tsk_1"}]')`,
+	} {
 		if _, err := mig.Exec(ctx, q); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
 	}
-	approved := func(id string) bool {
-		t.Helper()
-		ok, err := s.TaskApproved(ctx, "t_a", "p_a1", id)
-		if err != nil {
-			t.Fatal(err)
+	before, err := s.RunGitInfo(ctx, "t_a", "p_a1", "run_1")
+	if err != nil || !before.Active() || before.PipelineName != "integrate" {
+		t.Fatalf("run = %+v, %v", before, err)
+	}
+	// An approved promotion request resolved behind the run's task, and an
+	// approved decision: neither is evidence of anything about the run.
+	for _, q := range []string{
+		`INSERT INTO tasks (tenant_id,project_id,id,kind,title,state) VALUES ('t_a','p_a1','tsk_1','task','t','review')`,
+		`INSERT INTO tasks (tenant_id,project_id,id,parent_id,kind,title,state,assigned_role,resolution,resolved_at)
+		 VALUES ('t_a','p_a1','tsk_p1','tsk_1','promotion','t','done','reviewer',
+		 '{"outcome":"approved","actorId":"u1","role":"reviewer","answer":"ok"}'::jsonb,now())`,
+	} {
+		if _, err := mig.Exec(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
 		}
-		return ok
 	}
-	task("tsk_work", "task", "", "", "2026-10-30T10:00:00Z")
-	task("tsk_lone", "task", "", "", "2026-10-30T10:00:00Z")
-	if approved("tsk_ghost") || approved("tsk_work") {
-		t.Fatal("a missing task, or a task with no promotion request, is approved")
-	}
-	// A pending request is not an approval; an approved one is; a rejected one is not.
-	task("tsk_p1", "promotion", "tsk_work", "", "2026-10-30T10:01:00Z")
-	if approved("tsk_work") || approved("tsk_p1") {
-		t.Fatal("a pending request approves")
-	}
-	if _, err := mig.Exec(ctx, `UPDATE tasks SET state='done', resolution='{"outcome":"approved","actorId":"u1","role":"reviewer","answer":"ok"}', resolved_at=now() WHERE id='tsk_p1'`); err != nil {
+	after, err := s.RunGitInfo(ctx, "t_a", "p_a1", "run_1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !approved("tsk_work") || !approved("tsk_p1") {
-		t.Fatal("an approved promotion request does not approve its task")
+	if string(after.Sources) != string(before.Sources) {
+		t.Fatalf("task rows changed the run's evidence: %+v vs %+v", after, before)
 	}
-	if approved("tsk_lone") {
-		t.Fatal("another task is approved")
+	after.Sources, before.Sources = nil, nil
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("task rows changed the run's evidence: %+v vs %+v", after, before)
 	}
-	// A newer request withdraws the approval until it is itself approved.
-	task("tsk_p2", "promotion", "tsk_work", "", "2026-10-30T10:02:00Z")
-	if approved("tsk_work") {
-		t.Fatal("a newer pending request does not withdraw the approval")
+	// The evidence has no approval field to read.
+	typ := reflect.TypeOf(after)
+	for i := 0; i < typ.NumField(); i++ {
+		if strings.Contains(strings.ToLower(typ.Field(i).Name), "approv") {
+			t.Fatalf("RunGitInfo carries %s", typ.Field(i).Name)
+		}
 	}
-	if _, err := mig.Exec(ctx, `UPDATE tasks SET state='done', resolution='{"outcome":"rejected","actorId":"u1","role":"reviewer","answer":"no"}', resolved_at=now() WHERE id='tsk_p2'`); err != nil {
-		t.Fatal(err)
-	}
-	if approved("tsk_work") {
-		t.Fatal("a rejected newer request leaves the task approved")
-	}
-	// A decision is not a promotion: it never approves the task it blocks.
-	task("tsk_d", "decision", "tsk_lone", "approved", "2026-10-30T10:03:00Z")
-	if approved("tsk_lone") {
-		t.Fatal("a decision approved a task")
-	}
-	// Another tenant sees nothing.
-	if ok, _ := s.TaskApproved(ctx, "t_b", "p_b1", "tsk_p1"); ok {
-		t.Fatal("a task of another tenant is approved")
+	// Another tenant or project sees no run.
+	for _, c := range []struct{ tenant, project string }{{"t_b", "p_b1"}, {"t_a", "p_a2"}} {
+		if _, err := s.RunGitInfo(ctx, domain.TenantID(c.tenant), domain.ProjectID(c.project), "run_1"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("run seen from %v: %v", c, err)
+		}
 	}
 }
 

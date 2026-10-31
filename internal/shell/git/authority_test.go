@@ -69,7 +69,7 @@ func (f fakeRepos) IntegrationPolicy(context.Context, domain.Scope, string) (git
 
 type fakePipelines struct{ w *world }
 
-func (f fakePipelines) PipelineName(context.Context, domain.Scope, domain.PipelineID) (string, error) {
+func (f fakePipelines) PipelineName(context.Context, domain.Scope, domain.RunID, domain.PipelineID) (string, error) {
 	return f.w.pipeline, nil
 }
 

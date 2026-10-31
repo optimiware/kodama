@@ -156,7 +156,7 @@ func Test_unit_kernel_git_run_credential_outage_is_not_revocation(t *testing.T) 
 	_, backendID := e.seeded("backend", nil)
 	e.mem.SetRun(runInfo("run_1", "build", "tsk_1", backendID))
 	flaky := &flakyRepositories{GitBackend: e.mem}
-	git, err := api.NewGit(api.GitConfig{Store: flaky, Auth: tokens, Workers: e.workers, Signer: e.signer, Identities: e.verifier, Now: e.clock})
+	git, err := api.NewGit(api.GitConfig{Store: flaky, Runs: &runRecords{}, Auth: tokens, Workers: e.workers, Signer: e.signer, Identities: e.verifier, Now: e.clock})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func Test_unit_kernel_git_run_credential_outage_is_not_revocation(t *testing.T) 
 			return err
 		},
 		"integration credential": func() error {
-			_, err := git.IssueIntegrationCredential(t.Context(), tenantID, projectID, "run_1", backendID, c1, c2)
+			_, err := git.IssueIntegrationCredential(t.Context(), tenantID, projectID, "run_1", "integrate", backendID, c1, c2)
 			return err
 		},
 	} {

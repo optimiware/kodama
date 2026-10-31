@@ -24,7 +24,6 @@ var (
 	ErrRepositoryNotEmpty = errors.New("store: repository not empty")
 	ErrSeedPending        = errors.New("store: a seed receive is unacknowledged")
 	ErrSeedConsumed       = errors.New("store: seed consumed")
-	ErrTaskNotApproved    = errors.New("store: the run's task is not approved")
 )
 
 // ReasonReconfiguration is the reason of a repository put back into provisioning
@@ -367,41 +366,6 @@ func (s *Store) repositoryPage(ctx context.Context, tenant domain.TenantID, wher
 		return rows.Err()
 	})
 	return out, translate(err)
-}
-
-// TaskApproved reports whether a run's task is currently approved, failing
-// closed: a missing task is not approved. A decision, promotion or incident
-// request is approved when it was resolved approved. A work task is approved
-// when the latest promotion request parked behind it (a request whose parent it
-// is) was resolved approved; a newer request, pending or rejected, withdraws an
-// earlier approval, because a resolved decision is immutable and changing it
-// takes a new request.
-func (s *Store) TaskApproved(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, taskID string) (bool, error) {
-	approved := false
-	err := s.inTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
-		var kind, outcome string
-		err := tx.QueryRow(ctx, `SELECT kind, coalesce(resolution::jsonb->>'outcome','') FROM tasks
-			WHERE tenant_id=$1 AND project_id=$2 AND id=$3`, tenant, project, taskID).Scan(&kind, &outcome)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if kind != "task" {
-			approved = outcome == "approved"
-			return nil
-		}
-		err = tx.QueryRow(ctx, `SELECT coalesce(resolution::jsonb->>'outcome','') FROM tasks
-			WHERE tenant_id=$1 AND project_id=$2 AND parent_id=$3 AND kind='promotion'
-			ORDER BY created_at DESC, id DESC LIMIT 1`, tenant, project, taskID).Scan(&outcome)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		approved = err == nil && outcome == "approved"
-		return err
-	})
-	return approved, translate(err)
 }
 
 // appendEventTx appends one audit/outbox row inside tx with a generated ID.

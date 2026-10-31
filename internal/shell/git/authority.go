@@ -218,9 +218,10 @@ type Repositories interface {
 	IntegrationPolicy(ctx context.Context, scope domain.Scope, repositoryID string) (Policy, error)
 }
 
-// Pipelines names the pipeline a run executes.
+// Pipelines names the pipeline a run executes, given the run and the pipeline
+// identity its record carries.
 type Pipelines interface {
-	PipelineName(ctx context.Context, scope domain.Scope, id domain.PipelineID) (string, error)
+	PipelineName(ctx context.Context, scope domain.Scope, run domain.RunID, id domain.PipelineID) (string, error)
 }
 
 // Refs asks the worker for the ref's current commit and whether the candidate
@@ -285,7 +286,7 @@ func (a Authorizer) facts(ctx context.Context, scope domain.Scope, repositoryID 
 	if err != nil {
 		return Facts{}, readErr("repository", err)
 	}
-	name, err := a.Pipelines.PipelineName(ctx, scope, rec.Run.PipelineID)
+	name, err := a.Pipelines.PipelineName(ctx, scope, run, rec.Run.PipelineID)
 	if err != nil {
 		return Facts{}, readErr("pipeline", err)
 	}
