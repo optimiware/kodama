@@ -1,7 +1,7 @@
 ---
 id: T-187
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-183]
 decision_blockers: []
 owns: [internal/shell/git/, internal/shell/api/gitpolicy.go, internal/shell/api/git.go, internal/shell/api/gitcontrol.go, internal/shell/api/git_policy_test.go, internal/shell/store/git.go, internal/shell/store/gitmemory.go, internal/shell/store/git_postgres_test.go, internal/shell/README.md, docs/contracts/git-service.md, contracts/git/]

@@ -1,7 +1,7 @@
 ---
 id: T-186
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-175]
 decision_blockers: []
 owns: [internal/kernel/runtime/, internal/kernel/runner/, test/support/kernelcontracts/, internal/shell/runstate/memory.go, internal/shell/runstate/commit.go, internal/shell/runstate/clone.go, internal/shell/runstate/doc.go, internal/shell/runstate/memory_test.go]
