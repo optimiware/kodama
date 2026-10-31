@@ -4,7 +4,7 @@ milestone: kernel
 status: planned
 depends_on: [T-175]
 decision_blockers: []
-owns: [internal/kernel/runtime/, test/support/kernelcontracts/, internal/shell/runstate/memory.go, internal/shell/runstate/commit.go, internal/shell/runstate/clone.go, internal/shell/runstate/doc.go, internal/shell/runstate/memory_test.go]
+owns: [internal/kernel/runtime/, internal/kernel/runner/, test/support/kernelcontracts/, internal/shell/runstate/memory.go, internal/shell/runstate/commit.go, internal/shell/runstate/clone.go, internal/shell/runstate/doc.go, internal/shell/runstate/memory_test.go]
 check: make check-go PKGS='./internal/kernel/runtime/... ./internal/shell/runstate/... ./test/support/kernelcontracts/...'
 resources: [go]
 acceptance: [unit_kernel_runtime_outputs, unit_kernel_state_release]
@@ -22,6 +22,7 @@ Close the two gaps the engine found: a run's step outputs are not part of the du
 - **Claim release.** Add a `StateStore` operation that releases a claim held by the caller without ending the run — used when a run parks on an open wait — so the next claim does not wait for lease expiry. It must check scope, owner and fence, keep the fence, and be a no-op for a run that is no longer claimed by the caller.
 - **Recoverable secret revocation.** The engine cannot revoke a secret materialization after a takeover, because `SecretResolver` promises idempotent release of a materialization, not lookup or revocation from a partial value. Add a durable, scoped materialization identity to the record and a contract operation that revokes it without reconstructing a directory, or amend the resolver contract to support exactly that. Qualify it with a resolver that actually creates and removes private material, not one that only records calls.
 - Extend the contract suite with all three behaviours, including a broken-adapter variant for each, and update the memory adapter.
+- Make the engine use the durable record for outputs and revocation evidence instead of its own port, and resume a secret-bearing run after takeover instead of holding. A hold that remains must be a real condition, not a missing field.
 - Keep the memory suite and every existing kernel test passing; no assertion weakened.
 
 ## Acceptance
