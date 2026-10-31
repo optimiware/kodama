@@ -326,3 +326,130 @@ func TestGitPostgresDispatchPush(t *testing.T) {
 		t.Fatalf("another tenant's repository: %v", err)
 	}
 }
+
+// checkUnpublishedEvents is the contract of OutboxBackend.UnpublishedEvents,
+// shared by the memory and PostgreSQL backends. seed creates the repository
+// resource id with its repository.created event created at the given time.
+func checkUnpublishedEvents(t *testing.T, b store.OutboxBackend, seed func(resource string, at time.Time)) {
+	t.Helper()
+	ctx := t.Context()
+	base := time.Date(2026, 10, 31, 8, 0, 0, 0, time.UTC)
+	at := func(h int) time.Time { return base.Add(time.Duration(h) * time.Hour) }
+	seed("r0", at(1))
+	seed("r1", at(2))
+	seed("r2", at(3))
+	seed("tie1", at(4))
+	seed("tie2", at(4)) // the same creation time: the id breaks the tie
+	seed("r5", at(5))
+
+	far := at(1000)
+	all, err := b.PendingEvents(ctx, "t_a", far, 100)
+	if err != nil || len(all) != 6 {
+		t.Fatalf("setup: %+v, %v", all, err)
+	}
+	id := map[string]string{}
+	for _, e := range all {
+		id[e.ResourceID] = e.ID
+	}
+	lo, hi := id["tie1"], id["tie2"]
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	walk := func(cutoff time.Time, limit int) (ids []string) {
+		t.Helper()
+		var after store.OutboxCursor
+		for range 20 {
+			page, err := b.UnpublishedEvents(ctx, "t_a", cutoff, after, limit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page) > limit {
+				t.Fatalf("a page of %d rows for a limit of %d", len(page), limit)
+			}
+			if len(page) == 0 {
+				return ids
+			}
+			for _, e := range page {
+				ids = append(ids, e.ID)
+			}
+			after = page[len(page)-1].CursorOf()
+		}
+		t.Fatal("paging did not terminate")
+		return nil
+	}
+	want := func(parts ...string) string { return strings.Join(parts, ",") }
+	got := func(ids []string) string { return strings.Join(ids, ",") }
+
+	// The cutoff is applied before the limit: r5 is younger than it, and the pages
+	// of two cover the five older events in (created_at, id) order exactly once.
+	if g := got(walk(at(4), 2)); g != want(id["r0"], id["r1"], id["r2"], lo, hi) {
+		t.Fatalf("pages = %s", g)
+	}
+	if g := got(walk(at(10), 100)); g != want(id["r0"], id["r1"], id["r2"], lo, hi, id["r5"]) {
+		t.Fatalf("one page = %s", g)
+	}
+	if g := got(walk(at(0), 3)); g != "" {
+		t.Fatalf("nothing is older than the first event: %s", g)
+	}
+	// A deferred event stays listed whatever its next attempt, a failure never
+	// moves it relative to the cursor, and a published one disappears.
+	if err := b.PublishFailed(ctx, "t_a", id["r0"], at(2000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.PublishFailed(ctx, "t_a", id["r2"], at(2000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.MarkPublished(ctx, "t_a", id["r1"], at(6)); err != nil {
+		t.Fatal(err)
+	}
+	if g := got(walk(at(4), 2)); g != want(id["r0"], id["r2"], lo, hi) {
+		t.Fatalf("after a deferral and a publication: %s", g)
+	}
+	page, err := b.UnpublishedEvents(ctx, "t_a", at(10), store.OutboxCursor{}, 1)
+	if err != nil || len(page) != 1 || page[0].ID != id["r0"] || page[0].Attempts != 1 || page[0].TenantKey != "a" || page[0].ProjectKey != "erp" {
+		t.Fatalf("first deferred page = %+v, %v", page, err)
+	}
+	// Strictly after a cursor, including inside a tie.
+	after, err := b.UnpublishedEvents(ctx, "t_a", at(10), store.OutboxCursor{CreatedAt: at(3), ID: id["r2"]}, 10)
+	if err != nil || len(after) != 3 || after[0].ID != lo || after[1].ID != hi || after[2].ID != id["r5"] {
+		t.Fatalf("after r2 = %+v, %v", after, err)
+	}
+	inTie, err := b.UnpublishedEvents(ctx, "t_a", at(10), store.OutboxCursor{CreatedAt: at(4), ID: lo}, 1)
+	if err != nil || len(inTie) != 1 || inTie[0].ID != hi {
+		t.Fatalf("after the first of a tie = %+v, %v", inTie, err)
+	}
+	if none, err := b.UnpublishedEvents(ctx, "t_a", at(10), store.OutboxCursor{}, 0); err != nil || len(none) != 0 {
+		t.Fatalf("limit 0 = %+v, %v", none, err)
+	}
+	// Another tenant's rows are never listed.
+	if other, err := b.UnpublishedEvents(ctx, "t_b", at(10), store.OutboxCursor{}, 10); err != nil || len(other) != 0 {
+		t.Fatalf("another tenant's outbox = %+v, %v", other, err)
+	}
+}
+
+func TestMemoryGitUnpublishedEvents(t *testing.T) {
+	m := store.NewMemoryGit()
+	m.AddTenant("t_a", "a")
+	m.AddTenant("t_b", "b")
+	m.AddProject("t_a", "p_a1", "erp")
+	checkUnpublishedEvents(t, m, func(resource string, at time.Time) {
+		m.SetClock(func() time.Time { return at })
+		if _, created, err := m.CreateRepository(t.Context(), store.Repository{TenantID: "t_a", ProjectID: "p_a1", ID: resource, Name: resource, DefaultBranch: "main"}); err != nil || !created {
+			t.Fatal(created, err)
+		}
+		if _, err := m.ConfirmInitialized(t.Context(), "t_a", resource, "main", true); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestGitPostgresUnpublishedEvents(t *testing.T) {
+	s, db, ctx := gitDB(t)
+	admin := db.MigrationPool(ctx, 1)
+	checkUnpublishedEvents(t, s, func(resource string, at time.Time) {
+		readyRepo(t, s, "t_a", "p_a1", resource, resource)
+		if _, err := admin.Exec(ctx, `UPDATE audit_events SET created_at = $2 WHERE tenant_id = 't_a' AND resource_id = $1 AND event_type = 'repository.created'`, resource, at); err != nil {
+			t.Fatal(err)
+		}
+	})
+}

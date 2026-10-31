@@ -171,6 +171,20 @@ func NewJetStream(ctx context.Context, nc *nats.Conn, cfg JetStreamConfig) (*Jet
 	return &JetStream{js: js, cfg: cfg}, nil
 }
 
+// Verify checks that the adapter was built by NewJetStream and that the broker
+// answers for its stream right now: a nil or zero-value adapter, a connection
+// that is closed or cut, and a stream that is gone all fail. It is the check a
+// deployed process makes before it accepts an injected adapter.
+func (j *JetStream) Verify(ctx context.Context) error {
+	if j == nil || j.js == nil || j.cfg.Stream == "" {
+		return errors.New("natsbus: the JetStream adapter is not initialized (build it with NewJetStream)")
+	}
+	if _, err := j.js.Stream(ctx, j.cfg.Stream); err != nil {
+		return fmt.Errorf("natsbus: stream %s is unavailable: %w", j.cfg.Stream, err)
+	}
+	return nil
+}
+
 // Publish sends the message and returns nil only after the stream acknowledged it.
 func (j *JetStream) Publish(ctx context.Context, subject string, m bus.Message) error {
 	data, err := m.Encode()

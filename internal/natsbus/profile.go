@@ -77,11 +77,49 @@ type Broker struct {
 func (b *Broker) Profile() Profile { return b.profile }
 
 // InProcess reports that the broker is the development-only in-process double.
-func (b *Broker) InProcess() bool { return b.inProcess }
+func (b *Broker) InProcess() bool { return b == nil || b.inProcess }
 
 // DevelopmentOnly flags the in-process double for the composition root's check
 // that production refuses development adapters.
-func (b *Broker) DevelopmentOnly() bool { return b.inProcess }
+func (b *Broker) DevelopmentOnly() bool { return b == nil || b.inProcess }
+
+// Verify checks a broker built by Open: the in-process double and a nil broker
+// fail with ErrBrokerRequired, and a NATS broker must answer for its stream.
+func (b *Broker) Verify(ctx context.Context) error {
+	if b == nil || b.inProcess {
+		return fmt.Errorf("%w: the broker is the in-process double", ErrBrokerRequired)
+	}
+	js, ok := b.Bus.(*JetStream)
+	if !ok {
+		return fmt.Errorf("%w: the broker does not wrap a JetStream adapter", ErrBrokerRequired)
+	}
+	if err := js.Verify(ctx); err != nil {
+		return fmt.Errorf("%w: %v", ErrBrokerUnavailable, err)
+	}
+	return nil
+}
+
+// VerifyDeployed is the admission check for a bus a test or production process
+// was handed instead of dialling one: it must be a JetStream adapter, directly
+// or inside a Broker built by Open, that is initialized and answers for its
+// stream now. Anything else, including the in-process bus, a development
+// broker, an adapter that flags itself development-only, a nil or typed-nil
+// value, a zero-value adapter and an adapter whose broker is gone, is refused
+// with ErrBrokerRequired or ErrBrokerUnavailable.
+func VerifyDeployed(ctx context.Context, b bus.Bus) error {
+	switch v := b.(type) {
+	case *JetStream:
+		if err := v.Verify(ctx); err != nil {
+			return fmt.Errorf("%w: %v", ErrBrokerUnavailable, err)
+		}
+		return nil
+	case *Broker:
+		return v.Verify(ctx)
+	case nil:
+		return fmt.Errorf("%w: no bus", ErrBrokerRequired)
+	}
+	return fmt.Errorf("%w: %T is not a verified JetStream adapter", ErrBrokerRequired, b)
+}
 
 // Close releases a connection Open dialled; an injected connection is left to
 // its owner.

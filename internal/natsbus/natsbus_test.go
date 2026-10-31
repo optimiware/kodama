@@ -1,8 +1,11 @@
 package natsbus_test
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -275,5 +278,135 @@ func TestStreamSubjectsMustLieUnderTheRoot(t *testing.T) {
 	_, err := natsbus.Open(t.Context(), natsbus.Options{Profile: natsbus.Test, Conn: &nats.Conn{}, JetStream: natsbus.JetStreamConfig{Subjects: "other.>"}})
 	if !errors.Is(err, natsbus.ErrBrokerUnavailable) {
 		t.Fatalf("a stream outside kodama.v1 was accepted: %v", err)
+	}
+}
+
+// noJetStreamServer is a reachable NATS server that does not run JetStream: it
+// answers every request with "no responders".
+func noJetStreamServer(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				_, _ = fmt.Fprint(c, "INFO {\"server_id\":\"x\",\"version\":\"2.10.0\",\"proto\":1,\"headers\":true,\"max_payload\":1048576}\r\n")
+				r := bufio.NewReader(c)
+				var sid string
+				for {
+					line, err := r.ReadString('\n')
+					if err != nil {
+						return
+					}
+					f := strings.Fields(line)
+					switch {
+					case len(f) >= 3 && f[0] == "SUB":
+						sid = f[len(f)-1]
+					case len(f) >= 1 && f[0] == "PING":
+						_, _ = fmt.Fprint(c, "PONG\r\n")
+					case len(f) >= 4 && (f[0] == "PUB" || f[0] == "HPUB"):
+						var n int
+						_, _ = fmt.Sscan(f[len(f)-1], &n)
+						_, _ = r.Discard(n + 2)
+						if (f[0] == "PUB" && len(f) == 4) || (f[0] == "HPUB" && len(f) == 5) {
+							_, _ = fmt.Fprintf(c, "HMSG %s %s 16 16\r\nNATS/1.0 503\r\n\r\n\r\n", f[2], sid)
+						}
+					}
+				}
+			}()
+		}
+	}()
+	return "nats://" + ln.Addr().String()
+}
+
+func TestOpenAgainstAServerWithoutJetStreamFailsAtStartup(t *testing.T) {
+	url := noJetStreamServer(t)
+	for _, p := range []natsbus.Profile{natsbus.Development, natsbus.Test, natsbus.Production} {
+		b, err := natsbus.Open(t.Context(), natsbus.Options{Profile: p, URL: url})
+		if !errors.Is(err, natsbus.ErrBrokerUnavailable) || b != nil {
+			t.Errorf("%s = %v, %v; want ErrBrokerUnavailable", p, b, err)
+		}
+	}
+}
+
+type devFlagged struct{ bus.Bus }
+
+func (devFlagged) DevelopmentOnly() bool { return true }
+
+func TestVerifyDeployedRefusesWhatIsNotAVerifiedAdapter(t *testing.T) {
+	dev, err := natsbus.Open(t.Context(), natsbus.Options{Profile: natsbus.Development})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var typedNilJS *natsbus.JetStream
+	var typedNilBroker *natsbus.Broker
+	for name, b := range map[string]bus.Bus{
+		"nil":              nil,
+		"memory":           bus.NewMemory(),
+		"development":      dev,
+		"flagged":          devFlagged{bus.NewMemory()},
+		"typed nil js":     typedNilJS,
+		"typed nil broker": typedNilBroker,
+		"zero js":          &natsbus.JetStream{},
+		"zero broker":      &natsbus.Broker{},
+		"broker over zero": &natsbus.Broker{Bus: &natsbus.JetStream{}},
+		"broker over mem":  &natsbus.Broker{Bus: bus.NewMemory()},
+	} {
+		err := natsbus.VerifyDeployed(t.Context(), b)
+		if err == nil || (!errors.Is(err, natsbus.ErrBrokerRequired) && !errors.Is(err, natsbus.ErrBrokerUnavailable)) {
+			t.Errorf("%s accepted: %v", name, err)
+		}
+	}
+}
+
+// With a real broker, an adapter built by Open or NewJetStream verifies, and it
+// stops verifying when its stream or its connection is gone.
+func TestVerifyDeployedWithABroker(t *testing.T) {
+	url := os.Getenv("KODAMA_NATS_URL")
+	if url == "" {
+		t.Skip("set KODAMA_NATS_URL to a NATS server with JetStream to run the verification test")
+	}
+	nc, err := nats.Connect(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nc.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	const stream = "KODAMA_NATSBUS_VERIFY"
+	raw, _ := natsjs.New(nc)
+	_ = raw.DeleteStream(ctx, stream)
+	defer func() { _ = raw.DeleteStream(context.Background(), stream) }()
+	cfg := natsbus.JetStreamConfig{Stream: stream, Subjects: "kodama.v1.verifytest.>"}
+	b, err := natsbus.Open(ctx, natsbus.Options{Profile: natsbus.Production, Conn: nc, JetStream: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, err := natsbus.NewJetStream(ctx, nc, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, v := range map[string]bus.Bus{"broker": b, "adapter": js, "adapter inside broker": &natsbus.Broker{Bus: js}} {
+		if err := natsbus.VerifyDeployed(ctx, v); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if err := raw.DeleteStream(ctx, stream); err != nil {
+		t.Fatal(err)
+	}
+	if err := natsbus.VerifyDeployed(ctx, js); !errors.Is(err, natsbus.ErrBrokerUnavailable) {
+		t.Fatalf("an adapter whose stream is gone verified: %v", err)
+	}
+	nc.Close()
+	if err := natsbus.VerifyDeployed(ctx, b); !errors.Is(err, natsbus.ErrBrokerUnavailable) {
+		t.Fatalf("an adapter whose connection is closed verified: %v", err)
 	}
 }

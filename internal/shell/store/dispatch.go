@@ -47,9 +47,61 @@ type OutboxBackend interface {
 	// PublishFailed counts a failed attempt and defers the next one to next. The
 	// event stays in the outbox.
 	PublishFailed(ctx context.Context, tenant domain.TenantID, id string, next time.Time) error
+	// UnpublishedEvents is the reconciliation read: up to limit unpublished
+	// events of one tenant created at or before cutoff, whatever their next
+	// attempt, in (created_at, id) order starting strictly after the cursor (the
+	// zero cursor starts at the beginning). The cutoff and the cursor are applied
+	// before the limit, and neither a failed publication nor a retry moves an
+	// event relative to the cursor, so paging by the last event returned visits
+	// every stale event exactly once. A page is never larger than limit.
+	UnpublishedEvents(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after OutboxCursor, limit int) ([]OutboxEvent, error)
 }
 
+// OutboxCursor is a position in the (created_at, id) order of a tenant's
+// outbox. The zero value precedes every event.
+type OutboxCursor struct {
+	CreatedAt time.Time
+	ID        string
+}
+
+// CursorOf is the position of the event.
+func (e OutboxEvent) CursorOf() OutboxCursor { return OutboxCursor{CreatedAt: e.CreatedAt, ID: e.ID} }
+
 var _ OutboxBackend = (*Store)(nil)
+
+// UnpublishedEvents implements OutboxBackend. Timestamps compare at the
+// column's microsecond precision; the cursor of a row read back is exact.
+func (s *Store) UnpublishedEvents(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after OutboxCursor, limit int) ([]OutboxEvent, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	var out []OutboxEvent
+	err := s.inTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT e.id, coalesce(e.project_id,''), e.actor_type, e.actor_id, e.event_type, e.resource_type,
+			e.resource_id, e.payload::jsonb, e.created_at, e.publish_attempts, t.key, coalesce(p.key,'')
+			FROM audit_events e
+			JOIN tenants t ON t.id = e.tenant_id
+			LEFT JOIN projects p ON p.tenant_id = e.tenant_id AND p.id = e.project_id
+			WHERE e.tenant_id = $1 AND e.published_at IS NULL AND e.created_at <= $2 AND (e.created_at, e.id) > ($3, $4)
+			ORDER BY e.created_at, e.id LIMIT $5`, tenant, cutoff, after.CreatedAt, after.ID, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			e := OutboxEvent{TenantID: tenant}
+			var project string
+			if err := rows.Scan(&e.ID, &project, &e.ActorType, &e.ActorID, &e.Type, &e.ResourceType, &e.ResourceID,
+				&e.Payload, &e.CreatedAt, &e.Attempts, &e.TenantKey, &e.ProjectKey); err != nil {
+				return err
+			}
+			e.ProjectID = domain.ProjectID(project)
+			out = append(out, e)
+		}
+		return rows.Err()
+	})
+	return out, translate(err)
+}
 
 func (s *Store) PendingEvents(ctx context.Context, tenant domain.TenantID, now time.Time, limit int) ([]OutboxEvent, error) {
 	var out []OutboxEvent

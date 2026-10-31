@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -117,55 +118,40 @@ func (o storeOutbox) Pending(ctx context.Context, tenant domain.TenantID, now ti
 	return rows(events), err
 }
 
-// farFuture makes every unpublished event due, whatever its backoff.
-var farFuture = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
-
-// maxReconcileScan bounds the unpublished rows of one tenant that a
-// reconciliation page reads.
-const maxReconcileScan = 1 << 20
-
-// cursorOf is the stable position of an event in the reconciliation listing:
-// its creation time, then its id. Neither changes when a publication fails, so
-// a retry never moves a row relative to the cursor.
+// cursorOf is the opaque outbox.Cursor of an event: its (created_at, id)
+// position, which a failed publication never changes. It sorts as a string in
+// that order.
 func cursorOf(e store.OutboxEvent) string {
 	return fmt.Sprintf("%020d/%s", max(e.CreatedAt.UnixNano(), 0), e.ID)
 }
 
-// Unpublished lists the tenant's unpublished events created at or before cutoff
-// and after the cursor, ordered by creation time and id, whatever their next
-// attempt. The store port orders by next attempt and cannot filter by age, so
-// the age and the cursor are applied here, before the limit, over the tenant's
-// whole unpublished set: a young event can never crowd a stale deferred one out
-// of the page. The set is read in growing slices until it is exhausted and is
-// the tenant's outbox backlog, which is small unless the broker has been down
-// for a long time; more than maxReconcileScan rows is reported, not truncated.
-// A store query that filters and pages by (created_at, id) would replace the
-// scan.
+// parseCursor is the inverse of cursorOf; the empty cursor is the start.
+func parseCursor(c string) (store.OutboxCursor, error) {
+	if c == "" {
+		return store.OutboxCursor{}, nil
+	}
+	n, id, ok := strings.Cut(c, "/")
+	ns, err := strconv.ParseInt(n, 10, 64)
+	if !ok || err != nil {
+		return store.OutboxCursor{}, fmt.Errorf("kernel: malformed outbox cursor %q", c)
+	}
+	return store.OutboxCursor{CreatedAt: time.Unix(0, ns).UTC(), ID: id}, nil
+}
+
+// Unpublished is the reconciliation page: the store applies the age cutoff and
+// the (created_at, id) cursor before the limit, so a page is at most limit rows
+// whatever the backlog, a stale deferred event is never crowded out by younger
+// ones, and a retry never moves a row across the cursor.
 func (o storeOutbox) Unpublished(ctx context.Context, tenant domain.TenantID, cutoff time.Time, after string, limit int) ([]outbox.Row, error) {
-	var events []store.OutboxEvent
-	for n := max(4*limit, 256); ; n *= 4 {
-		var err error
-		if events, err = o.st.PendingEvents(ctx, tenant, farFuture, n); err != nil {
-			return nil, err
-		}
-		if len(events) < n {
-			break
-		}
-		if n >= maxReconcileScan {
-			return nil, fmt.Errorf("kernel: more than %d unpublished events of %s; reconciliation needs a store query", maxReconcileScan, tenant)
-		}
+	cur, err := parseCursor(after)
+	if err != nil {
+		return nil, err
 	}
-	eligible := events[:0:0]
-	for _, e := range events {
-		if !e.CreatedAt.After(cutoff) && cursorOf(e) > after {
-			eligible = append(eligible, e)
-		}
+	events, err := o.st.UnpublishedEvents(ctx, tenant, cutoff, cur, limit)
+	if err != nil {
+		return nil, err
 	}
-	sort.Slice(eligible, func(i, j int) bool { return cursorOf(eligible[i]) < cursorOf(eligible[j]) })
-	if len(eligible) > limit {
-		eligible = eligible[:limit]
-	}
-	return rows(eligible), nil
+	return rows(events), nil
 }
 
 func rows(events []store.OutboxEvent) []outbox.Row {
@@ -212,30 +198,13 @@ func brokerProfile(env string) natsbus.Profile {
 	return natsbus.Profile(env)
 }
 
-// deployable reports whether an injected bus may serve a test or production
-// process: a JetStream adapter (directly or inside a natsbus.Broker that is not
-// the in-process double). Everything else is refused, including the in-process
-// bus, a development broker wrapper, any adapter that flags itself development
-// only and an unknown implementation, which cannot be verified.
-func deployable(b bus.Bus) bool {
-	if d, ok := b.(interface{ DevelopmentOnly() bool }); ok && d.DevelopmentOnly() {
-		return false
-	}
-	switch v := b.(type) {
-	case *natsbus.JetStream:
-		return true
-	case *natsbus.Broker:
-		return !v.InProcess() && deployable(v.Bus)
-	}
-	return false
-}
-
 // connectBus returns the broker the kernel publishes to, through natsbus.Open.
 // The profile is validated first, so an unknown environment stops startup
 // whatever else is configured. The test and production profiles require NATS:
 // a missing URL, an unreachable server or one without JetStream fails startup,
-// and an injected bus is accepted only when it is a verified JetStream adapter
-// (deployable); there is no silent in-process fallback. Development accepts an
+// and an injected bus is accepted only when natsbus.VerifyDeployed finds an
+// initialized JetStream adapter whose broker answers for the stream; there is no
+// silent in-process fallback. Development accepts an
 // injected bus, and without a NATS URL delivers in process, logged once.
 // closeFn releases the connection.
 func connectBus(ctx context.Context, cfg Config, log *slog.Logger) (b bus.Bus, closeFn func(), err error) {
@@ -244,8 +213,12 @@ func connectBus(ctx context.Context, cfg Config, log *slog.Logger) (b bus.Bus, c
 		return nil, nil, fmt.Errorf("kernel: event bus: %w: %q", natsbus.ErrProfileUnknown, cfg.Env)
 	}
 	if cfg.Bus != nil {
-		if profile.RequiresBroker() && !deployable(cfg.Bus) {
-			return nil, nil, fmt.Errorf("kernel: event bus: %w: an injected %T is not a verified JetStream adapter (profile %s)", natsbus.ErrBrokerRequired, cfg.Bus, profile)
+		if profile.RequiresBroker() {
+			verify, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			if err := natsbus.VerifyDeployed(verify, cfg.Bus); err != nil {
+				return nil, nil, fmt.Errorf("kernel: event bus: injected bus refused in the %s profile: %w", profile, err)
+			}
 		}
 		return cfg.Bus, func() {}, nil
 	}
