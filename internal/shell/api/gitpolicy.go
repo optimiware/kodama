@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"strings"
 
 	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
+	gitauth "github.com/optimiware/kodama/internal/shell/git"
 	"github.com/optimiware/kodama/internal/shell/store"
 )
 
@@ -41,8 +44,14 @@ type GitGrantRepoClaim struct {
 	Integration *GitIntegration `json:"integration"`
 }
 
-// GitIntegration is the one update an integration credential permits.
+// GitIntegration is the one update an integration credential permits, and the
+// integration step of the run it was issued to. It is a ceiling: the shell's
+// integration authority (internal/shell/git) decides again at every receive
+// from the run's durable record, and a credential whose step has settled, whose
+// waits do not approve the pushed commit or whose run is cancelled authorizes
+// nothing.
 type GitIntegration struct {
+	Step string `json:"step"`
 	Ref  string `json:"ref"`
 	From string `json:"from"`
 	To   string `json:"to"`
@@ -136,8 +145,37 @@ type pushFacts struct {
 	Claims   GitClaims
 	Engineer bool              // a human or seed credential's user holds engineer now
 	Run      *store.RunGitInfo // the run of a run or integration credential, if it exists
-	// TaskApproved is whether the run's task is approved now (integration only).
-	TaskApproved bool
+	// Authority rechecks integration authority at use (integration only). Nil
+	// refuses every integration update: authority is never assumed.
+	Authority *authorityCheck
+}
+
+// authorityCheck is the use-time recheck of one integration authority. A
+// refusal denies the update with its reason; a failure to read the evidence is
+// kept in err and fails the whole receive, never an approval.
+type authorityCheck struct {
+	recheck func(auth gitauth.Authority, u gitv1.RefUpdate, fact gitv1.GitFact) error
+	err     error
+}
+
+// reason returns "" when the authority holds for u and the refusal reason
+// otherwise.
+func (a *authorityCheck) reason(auth gitauth.Authority, u gitv1.RefUpdate, fact gitv1.GitFact) string {
+	if a == nil || a.recheck == nil {
+		return gitv1.ReasonIntegrationMismatch
+	}
+	err := a.recheck(auth, u, fact)
+	var refusal *gitauth.Refusal
+	switch {
+	case err == nil:
+		return ""
+	case errors.As(err, &refusal):
+		return refusal.PushReason()
+	}
+	if a.err == nil {
+		a.err = err
+	}
+	return gitv1.ReasonIntegrationMismatch
 }
 
 // decidePush returns one verdict per update, in order. Any deny fails the whole
@@ -288,22 +326,90 @@ func directDefault(f pushFacts, u gitv1.RefUpdate, fact gitv1.GitFact) string {
 	return ""
 }
 
-// integrationUpdate is a run's push to the default branch: its pipeline must be
-// the repository's configured integration pipeline and the update exactly the
-// credential's from to to, as a fast-forward, and its task must be approved at
-// this receive (a promotion request resolved approved; see Store.TaskApproved).
-// There is no gate subsystem to consult (O-36).
+// integrationUpdate is a run's push to the default branch. The credential must
+// name exactly this update, the run's pipeline must be the repository's
+// configured integration pipeline, and the shell's integration authority
+// (internal/shell/git) must hold now: the credential's step is running, every
+// wait it requires approved exactly this commit, the ref is the protected
+// default branch, and the update is a fast-forward of the ref. No task field,
+// resolution row or event is read. There is no gate subsystem to consult (O-36).
 func integrationUpdate(f pushFacts, repo GitGrantRepoClaim, u gitv1.RefUpdate, fact gitv1.GitFact) string {
 	pipeline := f.Repo.Policy.IntegrationPipeline
-	if pipeline == "" || f.Run == nil || f.Run.PipelineName != pipeline || repo.Integration == nil || !f.TaskApproved {
+	if pipeline == "" || f.Run == nil || f.Run.PipelineName != pipeline || repo.Integration == nil {
 		return gitv1.ReasonIntegrationMismatch
 	}
 	c := repo.Integration
-	if u.Ref != c.Ref || u.Ref != gitv1.HeadsPrefix+f.Repo.DefaultBranch || u.Old != c.From || u.New != c.To {
+	if c.Step == "" || u.Ref != c.Ref || u.Ref != gitv1.HeadsPrefix+f.Repo.DefaultBranch || u.Old != c.From || u.New != c.To {
 		return gitv1.ReasonIntegrationMismatch
 	}
-	if fact.FastForward == nil || !*fact.FastForward {
-		return gitv1.ReasonNotFastForward
+	return f.Authority.reason(integrationAuthority(f, c), u, fact)
+}
+
+// integrationAuthority is the authority an integration credential's record names:
+// the exact run, step, ref and commit pair it was issued for.
+func integrationAuthority(f pushFacts, c *GitIntegration) gitauth.Authority {
+	return gitauth.Authority{Scope: domain.Scope{TenantID: f.Cred.TenantID, ProjectID: f.Cred.ProjectID}, Repository: f.Repo.ID,
+		Run: domain.RunID(f.Cred.RunID), Step: domain.StepID(c.Step), Ref: c.Ref, Old: c.From, New: c.To}
+}
+
+// ---- integration authority adapters -----------------------------------------
+
+// authorityPolicy reads a repository's integration policy from the store.
+type authorityPolicy struct{ store store.GitBackend }
+
+func (p authorityPolicy) IntegrationPolicy(ctx context.Context, scope domain.Scope, repositoryID string) (gitauth.Policy, error) {
+	repo, err := p.store.GetRepository(ctx, scope.TenantID, repositoryID)
+	if errors.Is(err, store.ErrNotFound) || (err == nil && repo.ProjectID != scope.ProjectID) {
+		return gitauth.Policy{}, &domain.Error{Code: domain.CodeNotFound, Message: "repository"}
 	}
-	return ""
+	if err != nil {
+		return gitauth.Policy{}, err
+	}
+	return gitauth.Policy{DefaultBranch: repo.DefaultBranch, IntegrationPipeline: repo.Policy.IntegrationPipeline}, nil
+}
+
+// authorityPipelines names the pipeline of a run from the run's row.
+type authorityPipelines struct{ store store.GitBackend }
+
+func (p authorityPipelines) PipelineName(ctx context.Context, scope domain.Scope, run domain.RunID, _ domain.PipelineID) (string, error) {
+	info, err := p.store.RunGitInfo(ctx, scope.TenantID, scope.ProjectID, string(run))
+	if errors.Is(err, store.ErrNotFound) {
+		return "", &domain.Error{Code: domain.CodeNotFound, Message: "run"}
+	}
+	return info.PipelineName, err
+}
+
+// authorityRefs asks the tenant's worker for the ref and the fast-forward fact.
+type authorityRefs struct{ workers WorkerRPC }
+
+func (r authorityRefs) Observe(ctx context.Context, scope domain.Scope, repositoryID, ref, candidate string) (gitauth.Observation, error) {
+	var cursor *string
+	current := ""
+	for {
+		page, err := r.workers.ReadRefs(ctx, scope.TenantID, gitv1.ReadRefsRequest{RepositoryID: repositoryID, Prefix: ref, Cursor: cursor, Limit: gitv1.MaxPage})
+		if err != nil {
+			return gitauth.Observation{}, err
+		}
+		for _, tip := range page.Refs {
+			if tip.Ref == ref {
+				current = tip.Commit
+			}
+		}
+		if current != "" || page.NextCursor == nil {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	if current == "" {
+		return gitauth.Observation{}, nil
+	}
+	res, err := r.workers.IsAncestor(ctx, scope.TenantID, gitv1.IsAncestorRequest{RepositoryID: repositoryID, Ancestor: current, Descendant: candidate})
+	if err != nil {
+		var contract *gitv1.ContractError
+		if errors.As(err, &contract) && contract.Code == gitv1.CodeCommitNotFound {
+			return gitauth.Observation{Current: current}, nil // the candidate is unknown: not a fast-forward
+		}
+		return gitauth.Observation{}, err
+	}
+	return gitauth.Observation{Current: current, FastForward: res.IsAncestor}, nil
 }

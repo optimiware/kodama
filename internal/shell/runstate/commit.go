@@ -119,6 +119,17 @@ func applyTransition(stored runtime.RunRecord, t runtime.Transition) (runtime.Ru
 		next.Resources[i] = o
 	}
 
+	outputs, err := runtime.CheckOutputs(stored.Plan, stored.Run, t.Run, next.Outputs, t.Outputs)
+	if err != nil {
+		return runtime.RunRecord{}, err
+	}
+	next.Outputs = outputs
+	mats, err := runtime.CheckMaterializations(t.Run, next.Materializations, t.Materializations)
+	if err != nil {
+		return runtime.RunRecord{}, err
+	}
+	next.Materializations = mats
+
 	// A wait step that moves must agree with its wait as it will be stored.
 	for i, s := range next.Run.Steps {
 		if s.Kind != runtime.StepWait || s.State == stored.Run.Steps[i].State {

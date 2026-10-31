@@ -17,7 +17,21 @@ func cloneRecord(r runtime.RunRecord) runtime.RunRecord {
 	r.Commands = slices.Clone(r.Commands)
 	r.Workloads = slices.Clone(r.Workloads)
 	r.Resources = slices.Clone(r.Resources)
+	r.Outputs = cloneOutputs(r.Outputs)
+	r.Materializations = slices.Clone(r.Materializations)
 	return r
+}
+
+func cloneOutputs(os []runtime.StepOutputs) []runtime.StepOutputs {
+	if os == nil {
+		return nil
+	}
+	out := make([]runtime.StepOutputs, len(os))
+	for i, o := range os {
+		o.Values = maps.Clone(o.Values)
+		out[i] = o
+	}
+	return out
 }
 
 func cloneWaits(ws []runtime.Wait) []runtime.Wait {

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/kernel/runtime"
@@ -225,28 +226,38 @@ func (d *drive) stageRunning() (flow, error) {
 // resolved only now, only for the declared references, and released when the
 // step settles.
 func (d *drive) start(s runtime.Step, cmd runtime.Command, p pendingStart) (flow, error) {
-	delete(d.fresh, cmd.ID)
 	req := runtime.StartRequest{Binding: cmd.Binding, Spec: p.spec, Workspace: d.workspaceHandle(), Services: d.serviceHandles()}
 	if refs := p.spec.Secrets; len(refs) > 0 {
 		if d.e.cfg.Secrets == nil {
+			delete(d.fresh, cmd.ID)
 			return d.rejectLaunch(s, cmd, runtime.ReasonSecretUnavailable)
 		}
-		// A retry resolves again: the earlier attempt's material goes first.
-		if old, ok := d.mats[s.Key]; ok {
-			if err := d.e.cfg.Secrets.Release(d.ctx, old); err != nil {
-				return d.rejectLaunch(s, cmd, runtime.ReasonSecretUnavailable)
-			}
-			delete(d.mats, s.Key)
-		}
-		m, err := d.e.cfg.Secrets.Resolve(d.ctx, runtime.ResolveRequest{Scope: d.rec.Run.Scope, RunID: d.rec.Run.ID, StepKey: s.Key, Refs: refs})
+		ref, err := runtime.NewMaterializationRef(d.rec.Run.Scope, d.rec.Run.ID, s.Key, s.Attempt)
 		if err != nil {
+			return flowPass, err
+		}
+		// The identity is recorded before the resolver is asked to create material
+		// under it, so a crash or takeover at any later point leaves a record a
+		// replacement engine revokes by. The fresh intent is kept until it is
+		// committed: a lost version race reloads and comes back here.
+		if err := d.issue(ref); err != nil {
+			return flowPass, err
+		}
+		delete(d.fresh, cmd.ID)
+		m, err := d.e.cfg.Secrets.Resolve(d.ctx, runtime.ResolveRequest{Ref: ref, Refs: refs})
+		// Resolve can return long after it was called: the lease may have expired
+		// and another engine settled the step and revoked an identity that had no
+		// material yet. Whatever Resolve returned, material may exist now, so the
+		// record and the claim are checked before anything else is done with it.
+		if f, stop, rerr := d.afterResolve(ref); stop {
+			return f, rerr
+		}
+		if err != nil || m.ID != ref.ID || m.Scope != ref.Scope || m.RunID != ref.RunID || m.StepKey != ref.StepKey || m.Attempt != ref.Attempt {
 			return d.rejectLaunch(s, cmd, runtime.ReasonSecretUnavailable)
 		}
-		if d.mats == nil {
-			d.mats = map[domain.StepID]runtime.Materialization{}
-		}
-		d.mats[s.Key] = m
 		req.Secrets = m
+	} else {
+		delete(d.fresh, cmd.ID)
 	}
 	obs, err := d.e.cfg.Runtime.Start(d.ctx, req)
 	state := runtime.ClassifyEffect(err)
@@ -336,4 +347,57 @@ func (d *drive) serviceHandles() []runtime.ResourceHandle {
 		}
 	}
 	return out
+}
+
+// afterResolve is the recheck that closes the window between recording a
+// materialization identity and the resolver finishing: a revocation that ran while
+// Resolve was still in flight found nothing to remove and is recorded for good, so
+// the material Resolve then creates would never be listed as owed. When Resolve
+// returns, the durable record must still show the identity issued and this engine
+// must still hold an unexpired claim at its fence; otherwise the engine revokes
+// the identity at once and does nothing further with it. A claim that moved on
+// ends the drive as lost; a record that shows the identity revoked while the claim
+// is still held (which only a defect can cause) stops it for a later claim. stop
+// reports that the caller must return f and err.
+func (d *drive) afterResolve(ref runtime.MaterializationRef) (f flow, stop bool, err error) {
+	rec, lerr := d.e.cfg.State.Load(d.ctx, ref.Scope, ref.RunID)
+	owned, live := false, false
+	if lerr == nil {
+		owned = rec.Claim.Fence == d.claim.Fence && rec.Claim.Owner == d.claim.Owner && rec.Claim.Active(d.now())
+		live = slices.ContainsFunc(rec.Materializations, func(m runtime.MaterializationRecord) bool {
+			return m.Ref.ID == ref.ID && m.State == runtime.MaterializationIssued
+		})
+		if owned && live {
+			return flowPass, false, nil
+		}
+	}
+	// Idempotent, and valid whatever the record says: it removes what exists now.
+	if rerr := d.revokeNow(ref); rerr != nil {
+		return flowPass, true, fmt.Errorf("runner: material %s could not be revoked after a late resolve: %w", ref.ID, rerr)
+	}
+	switch {
+	case lerr != nil:
+		return flowPass, true, lerr
+	case !owned:
+		return flowPass, true, fmt.Errorf("%w: run %s moved on while material %s was being resolved", runtime.ErrStaleFence, ref.RunID, ref.ID)
+	}
+	f, err = d.stop(DriveRetry)
+	return f, true, err
+}
+
+// revokeNow revokes an identity without recording it: the engine may no longer
+// be allowed to write. It retries a failing resolver a bounded number of times.
+func (d *drive) revokeNow(ref runtime.MaterializationRef) error {
+	var err error
+	for try := 0; try < d.e.cfg.ObserveFailures; try++ {
+		if try > 0 {
+			if serr := d.e.cfg.Sleep(d.ctx, d.e.cfg.PollInterval); serr != nil {
+				return serr
+			}
+		}
+		if err = d.e.cfg.Secrets.Revoke(d.ctx, ref); err == nil {
+			return nil
+		}
+	}
+	return err
 }

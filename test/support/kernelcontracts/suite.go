@@ -3,7 +3,9 @@
 // port's policy as executable cases: claims, fences and takeover, optimistic
 // versions, the outbox committed with state, cancellation, cleanup, wait
 // decisions, signal identity routing, scope enforcement and the rebuilt run
-// view. The memory adapter (internal/shell/runstate) and, later, the
+// view, plus the durable evidence the engine recovers from: a succeeded step's
+// declared outputs, the release of a claim without ending the run, and the
+// scoped identity of secret material that a replacement engine revokes. The memory adapter (internal/shell/runstate) and, later, the
 // PostgreSQL adapter run the same cases; a backend adds its own tests for what
 // the suite cannot show (row security, lock behaviour, restart recovery).
 //
@@ -65,6 +67,11 @@ const (
 	GroupWaits     Group = "waits"
 	GroupScope     Group = "scope"
 	GroupViews     Group = "views"
+	// GroupOutputs: durable step outputs. GroupRelease: giving up a claim without
+	// ending the run. GroupMaterialization: the durable identity of secret material.
+	GroupOutputs         Group = "outputs"
+	GroupRelease         Group = "release"
+	GroupMaterialization Group = "materialization"
 )
 
 // Case is one named behaviour of the port.
@@ -108,7 +115,8 @@ func (c *Clock) Set(at time.Time) {
 // Cases returns every case in a stable order.
 func Cases() []Case {
 	var all []Case
-	for _, g := range [][]Case{admissionCases(), claimCases(), commitCases(), cancelCases(), cleanupCases(), waitCases(), scopeCases(), viewCases()} {
+	for _, g := range [][]Case{admissionCases(), claimCases(), commitCases(), cancelCases(), cleanupCases(), waitCases(), scopeCases(), viewCases(),
+		outputsCases(), releaseCases(), materializationCases()} {
 		all = append(all, g...)
 	}
 	return all

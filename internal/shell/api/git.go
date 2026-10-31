@@ -17,6 +17,7 @@ import (
 	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/gitservice"
+	gitauth "github.com/optimiware/kodama/internal/shell/git"
 	"github.com/optimiware/kodama/internal/shell/store"
 )
 
@@ -41,7 +42,11 @@ type GitWorkers interface {
 
 // GitConfig configures the Git hosting routes.
 type GitConfig struct {
-	Store   store.GitBackend
+	Store store.GitBackend
+	// Runs reads a run's durable record (runtime.StateStore satisfies it); it is
+	// the evidence of integration authority. Nil issues and honors no
+	// integration credential.
+	Runs    gitauth.Runs
 	Auth    Authenticator
 	Workers GitWorkers
 	Signer  ForwardingSigner
@@ -75,8 +80,9 @@ const (
 // GitServer serves the repository resource, the credential exchange, the /git/
 // smart-HTTP forwarding and the worker's internal control routes.
 type GitServer struct {
-	cfg     GitConfig
-	control *GitControl
+	cfg       GitConfig
+	control   *GitControl
+	authority *gitauth.Authorizer
 }
 
 // NewGit validates the configuration.
@@ -102,7 +108,13 @@ func NewGit(cfg GitConfig) (*GitServer, error) {
 	cfg.PublicURL = strings.TrimSuffix(cfg.PublicURL, "/")
 	control := NewGitControl(cfg.Store, cfg.Workers, cfg.Now, cfg.Logger)
 	control.SetOnEvent(cfg.OnEvent)
-	return &GitServer{cfg: cfg, control: control}, nil
+	g := &GitServer{cfg: cfg, control: control}
+	if cfg.Runs != nil {
+		g.authority = &gitauth.Authorizer{Runs: cfg.Runs, Repositories: authorityPolicy{cfg.Store},
+			Pipelines: authorityPipelines{cfg.Store}, Refs: authorityRefs{cfg.Workers}}
+		control.SetAuthority(g.authority)
+	}
+	return g, nil
 }
 
 // Control returns the worker-facing control plane (for in-process workers).
@@ -752,11 +764,22 @@ func (g *GitServer) IssueRunCredential(ctx context.Context, tenant domain.Tenant
 	return g.issueWorkload(ctx, tenant, project, run, repo, store.CredRun, update, nil)
 }
 
-// IssueIntegrationCredential issues the credential that lets a run advance the
-// default branch from from to to, once: only for the repository's configured
-// integration pipeline and only while the run's task is approved (no task, or one
-// that is not approved, is store.ErrTaskNotApproved).
-func (g *GitServer) IssueIntegrationCredential(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, runID, repositoryID, from, to string) (IssuedCredential, error) {
+// ErrIntegrationUnavailable reports that no integration authority is configured:
+// no integration credential is issued or honored without the run's durable
+// record to decide from.
+var ErrIntegrationUnavailable = errors.New("api: integration authority is not configured")
+
+// IssueIntegrationCredential issues the credential that lets a run's integration
+// step advance the default branch from from to to, once. The shell's integration
+// authority decides (internal/shell/git): the run's pipeline is the repository's
+// integration pipeline, step is its running protected step, every wait it
+// requires approved exactly to, and the update fast-forwards the protected
+// default branch. A refusal is a *gitauth.Refusal. The decision is made again
+// at every receive.
+func (g *GitServer) IssueIntegrationCredential(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, runID, step, repositoryID, from, to string) (IssuedCredential, error) {
+	if g.authority == nil {
+		return IssuedCredential{}, ErrIntegrationUnavailable
+	}
 	run, err := g.cfg.Store.RunGitInfo(ctx, tenant, project, runID)
 	if err != nil {
 		return IssuedCredential{}, err
@@ -771,23 +794,19 @@ func (g *GitServer) IssueIntegrationCredential(ctx context.Context, tenant domai
 	if err != nil || repo.ProjectID != project {
 		return IssuedCredential{}, store.ErrNotFound
 	}
-	if repo.Policy.IntegrationPipeline == "" || repo.Policy.IntegrationPipeline != run.PipelineName {
-		return IssuedCredential{}, store.ErrConflict
-	}
-	// The run's task must be approved now; it is read again at every receive.
-	if run.TaskID == "" {
-		return IssuedCredential{}, store.ErrTaskNotApproved
-	}
-	if approved, err := g.cfg.Store.TaskApproved(ctx, tenant, project, run.TaskID); err != nil {
-		return IssuedCredential{}, err
-	} else if !approved {
-		return IssuedCredential{}, store.ErrTaskNotApproved
-	}
-	if err := (gitv1.RefUpdate{Ref: gitv1.HeadsPrefix + repo.DefaultBranch, Old: from, New: to}).Validate(); err != nil {
+	ref := gitv1.HeadsPrefix + repo.DefaultBranch
+	update := gitv1.RefUpdate{Ref: ref, Old: from, New: to}
+	if err := update.Validate(); err != nil {
 		return IssuedCredential{}, domain.ErrInvalidValue
 	}
-	ref := gitv1.HeadsPrefix + repo.DefaultBranch
-	return g.issueWorkload(ctx, tenant, project, run, repo, store.CredIntegration, []string{ref}, &GitIntegration{Ref: ref, From: from, To: to})
+	if err := domain.StepID(step).Validate(); err != nil {
+		return IssuedCredential{}, domain.ErrInvalidValue
+	}
+	if _, err := g.authority.Issue(ctx, gitauth.Request{Scope: domain.Scope{TenantID: tenant, ProjectID: project}, Repository: repo.ID,
+		Run: domain.RunID(runID), Step: domain.StepID(step), Update: update}); err != nil {
+		return IssuedCredential{}, err
+	}
+	return g.issueWorkload(ctx, tenant, project, run, repo, store.CredIntegration, []string{ref}, &GitIntegration{Step: step, Ref: ref, From: from, To: to})
 }
 
 func (g *GitServer) issueWorkload(ctx context.Context, tenant domain.TenantID, project domain.ProjectID, run store.RunGitInfo, repo store.Repository, kind string, update []string, integration *GitIntegration) (IssuedCredential, error) {

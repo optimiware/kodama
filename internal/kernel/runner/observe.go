@@ -1,9 +1,10 @@
 package runner
 
 import (
+	"errors"
 	"time"
+	"unicode/utf8"
 
-	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/kernel/runtime"
 )
 
@@ -34,7 +35,7 @@ func (d *drive) observeRunning(s runtime.Step, cmd runtime.Command) (flow, error
 	case runtime.PhaseAbsent:
 		d.obsFails = 0
 		return d.finishStep(s, runtime.StepFailed, runtime.ReasonWorkloadLost,
-			runtime.Result{Code: runtime.ResultLost, Reason: runtime.ReasonWorkloadLost}, &o)
+			runtime.Result{Code: runtime.ResultLost, Reason: runtime.ReasonWorkloadLost}, &o, nil)
 	case runtime.PhaseRunning:
 		d.obsFails = 0
 		if prev, ok := d.workloadObservation(s.Key, s.Attempt); !ok || prev.Phase != o.Phase {
@@ -59,39 +60,62 @@ func (d *drive) timeout(s runtime.Step, cmd runtime.Command) (flow, error) {
 		return flowPass, err
 	}
 	return d.finishStep(s, runtime.StepFailed, runtime.ReasonStepTimeout,
-		runtime.Result{Code: runtime.ResultTimedOut, Reason: runtime.ReasonStepTimeout}, nil)
+		runtime.Result{Code: runtime.ResultTimedOut, Reason: runtime.ReasonStepTimeout}, nil, nil)
 }
 
 // settleStep records the result of an exited workload on its step. A succeeded
-// step records its declared outputs first, so they are visible exactly when the
-// step is; the outputs of any other outcome are never recorded.
+// step records its declared outputs in the same commit, so they are visible
+// exactly when the step is; the outputs of any other outcome are never recorded.
 func (d *drive) settleStep(s runtime.Step, o runtime.WorkloadObservation) (flow, error) {
 	res := o.Result
 	switch res.Code {
 	case runtime.ResultSucceeded:
-		ps := d.planStep(s.Key)
-		if out := d.e.cfg.Outputs; out != nil && len(ps.Outputs) > 0 {
-			ref := StepRef{Scope: d.rec.Run.Scope, RunID: d.rec.Run.ID, StepKey: s.Key, Attempt: s.Attempt}
-			if _, err := out.Collect(d.ctx, ref, ps.Outputs); err != nil {
-				return d.finishStep(s, runtime.StepFailed, runtime.ReasonCommandFailed,
-					runtime.Result{Code: runtime.ResultFailed, Reason: runtime.ReasonCommandFailed}, &o)
-			}
+		outs, err := d.collectOutputs(s)
+		if err != nil {
+			return d.finishStep(s, runtime.StepFailed, runtime.ReasonCommandFailed,
+				runtime.Result{Code: runtime.ResultFailed, Reason: runtime.ReasonCommandFailed}, &o, nil)
 		}
-		return d.finishStep(s, runtime.StepSucceeded, runtime.ReasonNone, res, &o)
+		return d.finishStep(s, runtime.StepSucceeded, runtime.ReasonNone, res, &o, outs)
 	case runtime.ResultFailed:
-		return d.finishStep(s, runtime.StepFailed, runtime.ReasonCommandFailed, res, &o)
+		return d.finishStep(s, runtime.StepFailed, runtime.ReasonCommandFailed, res, &o, nil)
 	case runtime.ResultTimedOut:
-		return d.finishStep(s, runtime.StepFailed, runtime.ReasonStepTimeout, res, &o)
+		return d.finishStep(s, runtime.StepFailed, runtime.ReasonStepTimeout, res, &o, nil)
 	}
 	// Lost, or cancelled by someone other than this run's own request.
 	return d.finishStep(s, runtime.StepFailed, runtime.ReasonWorkloadLost,
-		runtime.Result{Code: runtime.ResultLost, Reason: runtime.ReasonWorkloadLost}, &o)
+		runtime.Result{Code: runtime.ResultLost, Reason: runtime.ReasonWorkloadLost}, &o, nil)
+}
+
+// collectOutputs reads what a succeeded step produced through the collector and
+// keeps what the record accepts: names the plan declared, with bounded text.
+// Nothing recorded is returned as nil.
+func (d *drive) collectOutputs(s runtime.Step) (*runtime.StepOutputs, error) {
+	ps := d.planStep(s.Key)
+	out := d.e.cfg.Outputs
+	if out == nil || len(ps.Outputs) == 0 {
+		return nil, nil
+	}
+	got, err := out.Collect(d.ctx, StepRef{Scope: d.rec.Run.Scope, RunID: d.rec.Run.ID, StepKey: s.Key, Attempt: s.Attempt}, ps.Outputs)
+	if err != nil {
+		return nil, err
+	}
+	rec := runtime.StepOutputs{StepKey: s.Key, Attempt: s.Attempt, Values: map[string]string{}}
+	for _, name := range ps.Outputs {
+		if v, ok := got[name]; ok && len(v) <= runtime.MaxOutputValueBytes && utf8.ValidString(v) {
+			rec.Values[name] = v
+		}
+	}
+	if len(rec.Values) == 0 {
+		return nil, nil
+	}
+	return &rec, nil
 }
 
 // finishStep commits the settlement of a running container step with the
-// observation it rests on, then revokes the step's secret access: authority ends
-// when its workload settles, not when the run does.
-func (d *drive) finishStep(s runtime.Step, to runtime.StepState, reason runtime.Reason, res runtime.Result, o *runtime.WorkloadObservation) (flow, error) {
+// observation it rests on and the outputs it produced. Its secret access is
+// revoked next, before anything else is evaluated: authority ends when the
+// workload settles, not when the run does.
+func (d *drive) finishStep(s runtime.Step, to runtime.StepState, reason runtime.Reason, res runtime.Result, o *runtime.WorkloadObservation, outs *runtime.StepOutputs) (flow, error) {
 	bt := d.batch()
 	if err := bt.run.FinishStep(s.Key, to, reason, res); err != nil {
 		return flowPass, err
@@ -100,6 +124,9 @@ func (d *drive) finishStep(s runtime.Step, to runtime.StepState, reason runtime.
 	if o != nil {
 		bt.workloads = []runtime.WorkloadObservation{*o}
 	}
+	if outs != nil {
+		bt.outputs = []runtime.StepOutputs{*outs}
+	}
 	if err := d.commit(bt); err != nil {
 		return flowPass, err
 	}
@@ -107,49 +134,44 @@ func (d *drive) finishStep(s runtime.Step, to runtime.StepState, reason runtime.
 }
 
 // Reasons a run is held rather than advanced when the engine cannot revoke a
-// settled step's secrets faithfully. They are stable codes in Report.Reason; the
-// run's own state is not changed, because nothing here is a verdict on the run.
+// settled step's secrets. They are stable codes in Report.Reason; the run's own
+// state is not changed, because nothing here is a verdict on the run.
 const (
-	// ReasonRevocationNoResolver: a settled step's attempt may have materialized
-	// secrets and this engine has no SecretResolver to revoke them with.
+	// ReasonRevocationNoResolver: the record holds secret material of a settled
+	// step that is not yet revoked and this engine has no SecretResolver to revoke
+	// it with. It is a real condition of the engine's configuration, not of the
+	// record: any engine with a resolver revokes the material from its recorded
+	// identity and resumes the run.
 	ReasonRevocationNoResolver runtime.Reason = "secret_revocation_no_resolver"
-	// ReasonRevocationUnrecoverable: a settled step's materialization was created
-	// by an engine that is gone. The frozen SecretResolver contract does not
-	// guarantee that Release works from the step's identity alone, and the record
-	// does not hold the materialization (its directory and revision), so the
-	// engine cannot revoke it faithfully. It holds, never advances and never
-	// skips. The durable materialization identity that lifts this is owned by the
-	// contract amendment (T-186).
-	ReasonRevocationUnrecoverable runtime.Reason = "secret_revocation_unrecoverable"
 )
 
-// needsRevocation reports whether a settled container step may hold secret
-// material: it declares secrets and at least one of its launch attempts got past
-// resolution. An attempt rejected because resolution failed, or because there was
-// no resolver, never materialized anything.
-func (d *drive) needsRevocation(s runtime.Step) bool {
-	ps := d.planStep(s.Key)
-	if s.Kind != runtime.StepContainer || !s.State.Terminal() || s.Attempt < 1 || ps.Workload == nil || len(ps.Workload.Secrets) == 0 {
-		return false
-	}
-	for _, c := range d.rec.Commands {
-		if c.Kind == runtime.CommandLaunch && c.StepKey == s.Key && c.Reason != runtime.ReasonSecretUnavailable {
-			return true
+// revokeError marks a failure of the resolver's Revoke, which the engine retries
+// and then leaves for a later claim, as opposed to a failure of the store.
+type revokeError struct{ err error }
+
+func (e revokeError) Error() string { return e.err.Error() }
+func (e revokeError) Unwrap() error { return e.err }
+
+// issue records the identity of the material of one attempt before the resolver
+// is asked to create it. A repeat of a recorded identity writes nothing.
+func (d *drive) issue(ref runtime.MaterializationRef) error {
+	for _, m := range d.rec.Materializations {
+		if m.Ref.ID == ref.ID {
+			return nil
 		}
 	}
-	return false
+	bt := d.batch()
+	bt.mats = []runtime.MaterializationRecord{{Ref: ref, State: runtime.MaterializationIssued, IssuedAt: d.now()}}
+	return d.commit(bt)
 }
 
-// revoke releases the materialization this drive created for a settled step:
-// authority ends when the workload settles, not when the run does. Only the
-// engine instance that resolved the secrets holds the materialization, so only it
-// can revoke faithfully. A failed release is retried in place, boundedly, and then
-// returned; it is never discarded.
-func (d *drive) revoke(step domain.StepID) error {
-	m, ok := d.mats[step]
-	if !ok {
-		return nil
-	}
+// revoke revokes one recorded materialization by its identity, with no
+// directory and no knowledge of who created it, and records that it is revoked.
+// A failed revocation is retried in place, boundedly, and then returned as a
+// revokeError; it is never discarded. A crash between the resolver's success and
+// the record leaves the identity issued, and the next claim revokes it again,
+// which the resolver contract makes idempotent.
+func (d *drive) revoke(m runtime.MaterializationRecord) error {
 	var err error
 	for try := 0; try < d.e.cfg.ObserveFailures; try++ {
 		if try > 0 {
@@ -157,37 +179,33 @@ func (d *drive) revoke(step domain.StepID) error {
 				return perr
 			}
 		}
-		if err = d.e.cfg.Secrets.Release(d.ctx, m); err == nil {
-			delete(d.mats, step)
-			if d.released == nil {
-				d.released = map[domain.StepID]bool{}
-			}
-			d.released[step] = true
-			return nil
+		if err = d.e.cfg.Secrets.Revoke(d.ctx, m.Ref); err == nil {
+			break
 		}
 	}
-	return err
+	if err != nil {
+		return revokeError{err}
+	}
+	m.State = runtime.MaterializationRevoked
+	bt := d.batch()
+	bt.mats = []runtime.MaterializationRecord{m}
+	return d.commit(bt)
 }
 
-// revokeSettled revokes the secrets of every settled step that needs it, or says
-// why it cannot. A step whose materialization this drive does not hold (it was
-// created before a restart or takeover) or that has no resolver to revoke it with
-// is a hold, not a skip.
+// revokeSettled revokes every recorded materialization whose step settled (or
+// whose attempt was superseded), or says why it cannot: with no resolver it is a
+// hold, not a skip. Everything else is the record's, so an engine that took the
+// run over resumes it.
 func (d *drive) revokeSettled() (hold runtime.Reason, err error) {
-	var steps []domain.StepID
-	for _, s := range d.rec.Run.Steps {
-		if d.needsRevocation(s) && !d.released[s.Key] {
-			steps = append(steps, s.Key)
-		}
+	pending := d.rec.PendingRevocations()
+	switch {
+	case len(pending) == 0:
+		return runtime.ReasonNone, nil
+	case d.e.cfg.Secrets == nil:
+		return ReasonRevocationNoResolver, nil
 	}
-	for _, k := range steps {
-		switch _, held := d.mats[k]; {
-		case d.e.cfg.Secrets == nil:
-			return ReasonRevocationNoResolver, nil
-		case !held:
-			return ReasonRevocationUnrecoverable, nil
-		}
-		if err := d.revoke(k); err != nil {
+	for _, m := range pending {
+		if err := d.revoke(m); err != nil {
 			return runtime.ReasonNone, err
 		}
 	}
@@ -200,16 +218,27 @@ func (d *drive) hold(reason runtime.Reason, status DriveStatus) (flow, error) {
 	return flowStop, nil
 }
 
+// retryRevocation turns a failed revocation into the drive's retry status and
+// passes any other error (a lost version race, a takeover, a cancelled context)
+// to the drive loop, which reloads or stops.
+func (d *drive) retryRevocation(err error, status DriveStatus) (flow, error) {
+	var re revokeError
+	if errors.As(err, &re) {
+		return d.stop(status)
+	}
+	return flowPass, err
+}
+
 // stageRevoke gates every pass after the failure check: no step is evaluated,
 // started or consumed until the secrets of the steps already settled are
-// revoked. It fails closed: a settled step that may hold material this engine
-// cannot revoke holds the run (DriveHeld). A release that keeps failing leaves
-// the run for a later claim.
+// revoked. It fails closed: with material to revoke and no resolver it holds the
+// run (DriveHeld); a revocation that keeps failing leaves the run for a later
+// claim.
 func (d *drive) stageRevoke() (flow, error) {
 	hold, err := d.revokeSettled()
 	switch {
 	case err != nil:
-		return d.stop(DriveRetry)
+		return d.retryRevocation(err, DriveRetry)
 	case hold != runtime.ReasonNone:
 		return d.hold(hold, DriveHeld)
 	}

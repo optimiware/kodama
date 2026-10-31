@@ -59,6 +59,9 @@ var (
 	// ErrSpecMismatch reports a stable identity that already exists with a
 	// different immutable specification.
 	ErrSpecMismatch = errors.New("runtime: specification mismatch")
+	// ErrMaterializationRevoked reports a Resolve for an identity that was
+	// revoked. The resolver publishes nothing for it.
+	ErrMaterializationRevoked = errors.New("runtime: materialization revoked")
 	// ErrCapability reports a backend that cannot satisfy required capabilities.
 	ErrCapability = errors.New("runtime: capability unsatisfied")
 )
@@ -2861,6 +2864,13 @@ type Transition struct {
 	// results recovery and conditions read back.
 	Workloads []WorkloadObservation `json:"workloads,omitempty"`
 	Resources []ResourceObservation `json:"resources,omitempty"`
+	// Outputs are the declared outputs of a step this transition settles as
+	// succeeded (CheckOutputs); they commit with the step and never change.
+	Outputs []StepOutputs `json:"outputs,omitempty"`
+	// Materializations are issued before the engine asks a SecretResolver for
+	// material and revoked after it confirmed removal (CheckMaterializations),
+	// upserted by identity.
+	Materializations []MaterializationRecord `json:"materializations,omitempty"`
 	// Events are the outbox intent committed with the change.
 	Events []Event `json:"events,omitempty"`
 	// RenewTTL, when positive, extends the writer's lease to Now+RenewTTL (never
@@ -2942,6 +2952,14 @@ func (t Transition) Validate() error {
 		if err := h.Reachable(t.Scope); err != nil {
 			return fmt.Errorf("%w: resource %s: %w", domain.ErrInvalidValue, h.Name, err)
 		}
+	}
+	for _, o := range t.Outputs {
+		if err := o.Validate(); err != nil {
+			return err
+		}
+	}
+	if err := checkMaterializationsOf(t.Run, t.Materializations); err != nil {
+		return err
 	}
 	for _, e := range t.Events {
 		if err := e.Validate(); err != nil {
