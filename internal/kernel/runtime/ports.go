@@ -427,6 +427,16 @@ type SecretResolver interface {
 	// It is idempotent on req.Ref.ID: a repeat replaces the material the identity
 	// already names, never adds a second copy, and the returned Materialization
 	// carries Ref's ID and Attempt.
+	//
+	// Resolve is not atomic with the record: it can finish after the identity was
+	// revoked, because a replacement engine that took the run over revoked an
+	// identity that had no material yet and recorded it revoked for good. Whatever
+	// Resolve returned, success or failure, its caller must therefore recheck when
+	// it returns: the durable record must still show the identity issued and the
+	// caller must still hold an unexpired claim at its fence. If not, the caller
+	// revokes the identity at once, does not use the material, and stops. That
+	// recheck, with Revoke's idempotence, is what guarantees that no material
+	// outlives its revocation.
 	Resolve(ctx context.Context, req ResolveRequest) (Materialization, error)
 	// Revoke removes the private material identified by ref and revokes access to
 	// it. It works from the identity alone, as it is called by an engine that

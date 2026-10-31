@@ -32,7 +32,10 @@
 //     after a takeover or a crash at any point, revokes the recorded
 //     materializations of settled steps by that identity alone, before any further
 //     step is evaluated and before cleanup completes, retrying a failed revocation
-//     in place, and then resumes the run. The one hold that remains is a real
+//     in place, and then resumes the run. Resolve is rechecked when it returns: a
+//     claim that moved on, or an identity already recorded revoked, means the
+//     material it just created is revoked at once and the engine stops, so a late
+//     Resolve never leaves material that nothing owes a revocation for. The one hold that remains is a real
 //     condition: with material to revoke and no resolver configured, the engine
 //     holds the run (DriveHeld, ReasonRevocationNoResolver) rather than advance
 //     or skip.
