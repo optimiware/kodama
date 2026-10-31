@@ -13,6 +13,10 @@ import (
 func cloneRecord(r runtime.RunRecord) runtime.RunRecord {
 	r.Run = r.Run.Clone()
 	r.Plan = clonePlan(r.Plan)
+	if r.Task != nil {
+		t := *r.Task
+		r.Task = &t
+	}
 	r.Waits = cloneWaits(r.Waits)
 	r.Commands = slices.Clone(r.Commands)
 	r.Workloads = slices.Clone(r.Workloads)
@@ -110,4 +114,19 @@ func cloneLookup(l runtime.SignalLookup) runtime.SignalLookup {
 		l.Tombstone = &t
 	}
 	return l
+}
+
+// sameTask reports whether two admissions name the same owning task, or both none.
+func sameTask(a, b *runtime.TaskRef) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func taskName(t *runtime.TaskRef) string {
+	if t == nil {
+		return "no task"
+	}
+	return "task " + string(t.ID)
 }

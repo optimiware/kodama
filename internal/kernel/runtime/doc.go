@@ -4,7 +4,9 @@
 // invariants and interfaces only. It contains no engine, no adapter and no
 // scheduler, and it imports nothing but the standard library and
 // internal/domain, so the kernel runs without PostgreSQL, a broker, Git, HTTP,
-// tasks, identity or agents.
+// task logic, identity or agents. A run may be admitted for a task: the
+// kernel carries that opaque [TaskRef] (checked to be in the run's project) and
+// reports it, and never reads or changes the task itself.
 //
 // The process definition stays in internal/kernel/pipeline; this package
 // models one admitted execution of it. A [Plan] is the admission-time snapshot

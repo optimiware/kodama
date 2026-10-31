@@ -195,10 +195,14 @@ func (m *Memory) Admit(ctx context.Context, a runtime.Admission) (runtime.RunRec
 				return fmt.Errorf("%w: run %s is admitted with plan %s, not %s",
 					domain.ErrConflict, r.ID, prev.Rec.Plan.Digest, a.Plan.Digest)
 			}
+			if !sameTask(prev.Rec.Task, a.Task) {
+				return fmt.Errorf("%w: run %s is admitted for %s, not for %s",
+					domain.ErrConflict, r.ID, taskName(prev.Rec.Task), taskName(a.Task))
+			}
 			out = prev.Rec
 			return nil
 		}
-		rec := runtime.RunRecord{Run: r, Plan: a.Plan, Waits: a.Waits}
+		rec := cloneRecord(runtime.RunRecord{Run: r, Plan: a.Plan, Task: a.Task, Waits: a.Waits})
 		if err := put(tx, rec); err != nil {
 			return err
 		}
@@ -545,7 +549,7 @@ func (m *Memory) View(ctx context.Context, scope domain.Scope, id domain.RunID) 
 	if err != nil {
 		return runtime.RunView{}, err
 	}
-	return runtime.RunView{Run: rec.Run, Waits: rec.Waits, Status: rec.Run.Status()}, nil
+	return runtime.RunView{Run: rec.Run, Task: rec.Task, Waits: rec.Waits, Status: rec.Run.Status()}, nil
 }
 
 // Outbox returns the events committed for one run, in commit order. A run in

@@ -67,7 +67,19 @@ func newEnv(t *testing.T) *env {
 		e.ownerExec(`INSERT INTO pipelines (tenant_id, project_id, id, name, definition, source) VALUES ($1, $2, 'pipe1', 'pipe1', '{}', 'api')`,
 			s.tenant, s.project)
 	}
+	e.seedTasks()
 	return e
+}
+
+// seedTasks gives the shared suite the tasks it admits runs for (the runs row
+// references its task). It is idempotent: reset truncates runs with CASCADE,
+// which empties tasks too, because tasks.current_run_id references runs.
+func (e *env) seedTasks() {
+	e.t.Helper()
+	for _, task := range kernelcontracts.SeededTasks() {
+		e.ownerExec(`INSERT INTO tasks (tenant_id, project_id, id, title, state) VALUES ($1, $2, $3::text, $3::text, 'open') ON CONFLICT DO NOTHING`,
+			task.Scope.TenantID, task.Scope.ProjectID, task.ID)
+	}
 }
 
 func (e *env) ownerExec(sql string, args ...any) {
@@ -82,6 +94,7 @@ func (e *env) ownerExec(sql string, args ...any) {
 func (e *env) reset() {
 	e.t.Helper()
 	e.ownerExec(`TRUNCATE runs, signal_records, audit_events CASCADE`)
+	e.seedTasks()
 }
 
 func (e *env) count(sql string, args ...any) int {
