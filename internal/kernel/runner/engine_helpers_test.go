@@ -38,6 +38,12 @@ func (c *testClock) Now() time.Time {
 	return c.now
 }
 
+func (c *testClock) Set(t time.Time) {
+	c.mu.Lock()
+	c.now = t
+	c.mu.Unlock()
+}
+
 func (c *testClock) Advance(d time.Duration) {
 	c.mu.Lock()
 	c.now = c.now.Add(d)

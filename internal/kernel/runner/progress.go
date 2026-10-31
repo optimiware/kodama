@@ -35,18 +35,23 @@ func (d *drive) stageNext() (flow, error) {
 // stageSettle settles the run once every step is terminal, or parks it on the
 // waits that are still open.
 func (d *drive) stageSettle() (flow, error) {
-	waiting := false
+	waiting, live := false, false
 	for _, s := range d.rec.Run.Steps {
 		switch {
 		case s.State == runtime.StepWaiting:
 			waiting = true
 		case !s.State.Terminal():
-			return flowPass, nil
+			live = true
 		}
 	}
-	if waiting {
+	switch {
+	case waiting:
+		// Nothing else is eligible while a wait is open: park until a signal or
+		// the deadline. The lease is left to expire; a later claim resumes the run.
 		d.report = Report{Status: DriveWaiting, Next: d.nextWake}
 		return flowStop, nil
+	case live:
+		return flowPass, nil
 	}
 	bt := d.batch()
 	if err := bt.run.Settle(runtime.OutcomeSucceeded, runtime.ReasonNone); err != nil {
@@ -201,7 +206,7 @@ func (d *drive) workloadSpec(ps runtime.PlanStep) (runtime.WorkloadSpec, error) 
 	env["KODAMA_RUN_ID"] = string(r.ID)
 	env["KODAMA_STEP_KEY"] = string(ps.Key)
 	for name, ref := range ps.Bindings {
-		v, present, err := d.reference(ref)
+		v, present, err := d.reader(ps)(ref)
 		if err != nil {
 			return runtime.WorkloadSpec{}, err
 		}
