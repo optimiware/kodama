@@ -103,10 +103,18 @@ The exchange request names the repository and says whether it is a seed:
 
 `password` is the credential, shown once and stored only as a hash; any username is accepted. `seed: true` requests a seed grant: `kind: "seed"`, `update` exactly `["refs/heads/<defaultBranch>"]` and a lifetime of at most 15 minutes. It is refused with `409 repository_not_empty` when the repository has any ref, `409 seed_pending` while a previous seed receive is unacknowledged, `409 repository_not_ready` or `repository_archived`, `404` for a foreign or unknown repository and `403` without `engineer` on the project. A push with a consumed seed grant is refused with reason `seed_consumed`.
 
-An integration grant names exactly one repository whose `update` is exactly the default branch, and constrains that one update. It is issued, and honored at every `pre-receive`, only while the run's pipeline is the repository's `policy.integrationPipeline` **and** the run's task is approved: the task is a promotion request resolved `approved`, or a work task whose latest promotion request (a request whose parent it is) was resolved `approved`. A newer pending or rejected request withdraws an earlier approval; a run with no task, an unknown task or a task whose approval cannot be read is refused (`integration_mismatch`, or an unavailable error that fails the receive):
+An integration grant names exactly one repository whose `update` is exactly the default branch, and constrains that one update to the integration `step` of one run. Its authority comes from the run, not from the task: it is issued, and decided again at every `pre-receive`, only while all of these hold, read from the run's durable record and the repository's current policy:
+
+- the run's pipeline is the repository's `policy.integrationPipeline`;
+- `step` is that run's eligible integration step (`authority: integrate`) and is running now, so an earlier step, a settled step and a cancelled or settled run have none;
+- every wait the step requires has been resolved with that wait's `approving` outcome (a rejection, any other outcome, expiry, cancellation and an open wait never qualify) and recorded a `candidate` correlation equal to the pushed commit, so a changed or recomputed candidate needs a fresh wait and decision;
+- the ref is the protected default branch;
+- the expected old commit is the ref's current commit in the worker and the new candidate is a fast-forward of it.
+
+The grant is scoped to the exact ref, old commit and new commit and permits no other pair. A task status, a resolution row, a bare event such as `wait.resolved` and a value a container writes (such as `approved=true`) are not authority and are never read. A refusal is reported as `integration_mismatch` (pipeline, step, wait, candidate or pair), `ref_protected` (a ref other than the default branch, or not an update of an existing ref), `not_fast_forward` or `run_inactive`; a run record that cannot be read fails the receive as an unavailable error and is never an approval. The worker keeps its own current-authority and expected-old-value checks; replaying a push that landed fails the expected-old check:
 
 ```json
-{"ref": "refs/heads/main", "from": "2222222222222222222222222222222222222222", "to": "3333333333333333333333333333333333333333"}
+{"step": "integrate", "ref": "refs/heads/main", "from": "2222222222222222222222222222222222222222", "to": "3333333333333333333333333333333333333333"}
 ```
 
 ## Branch namespace
