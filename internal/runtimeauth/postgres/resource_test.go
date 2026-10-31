@@ -108,10 +108,10 @@ func Test_resource_grants_migration(t *testing.T) {
 	for _, m := range manifest.Migrations() {
 		manifestIDs = append(manifestIDs, m.ID)
 	}
-	baseline := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql"}
+	baseline := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql", "006_wait_decision_and_materializations.sql"}
 	at := slices.Index(manifestIDs, rtpg.ResourceGrantsMigrationID)
 	if at != len(baseline) || !slices.Equal(manifestIDs[:at], baseline) {
-		t.Fatalf("the contribution is not appended directly after the five-file baseline: %v", manifestIDs)
+		t.Fatalf("the contribution is not appended directly after the six-file baseline: %v", manifestIDs)
 	}
 	s := rtest.New(t, rtest.Options{})
 	opts := storage.MigrateOptions{RuntimeRole: s.DB.RuntimeRole}
@@ -146,7 +146,7 @@ func Test_resource_grants_migration(t *testing.T) {
 	rows.Close()
 	// The ledger is exactly the manifest, and the contribution is found by its ID.
 	if !slices.Equal(applied, manifestIDs) || !slices.Contains(applied, rtpg.ResourceGrantsMigrationID) ||
-		!slices.Equal(applied[:5], []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql"}) {
+		!slices.Equal(applied[:6], []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql", "006_wait_decision_and_materializations.sql"}) {
 		t.Fatalf("ledger = %v, manifest = %v", applied, manifestIDs)
 	}
 }

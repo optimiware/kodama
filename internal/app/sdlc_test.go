@@ -193,8 +193,8 @@ func Test_unit_container_sdlc_composition(t *testing.T) {
 	for _, mig := range m.Migrations() {
 		ids = append(ids, mig.ID)
 	}
-	if len(ids) != 6 || fmt.Sprint(ids[:5]) != "[001_schema.sql 002_grants.sql 003_git_hosting.sql 004_pipeline_runtime_expand.sql 005_durable_run_state.sql]" {
-		t.Fatalf("SDLCManifest must be the five-file baseline plus the release migration, got %v", ids)
+	if len(ids) != 7 || fmt.Sprint(ids[:6]) != "[001_schema.sql 002_grants.sql 003_git_hosting.sql 004_pipeline_runtime_expand.sql 005_durable_run_state.sql 006_wait_decision_and_materializations.sql]" {
+		t.Fatalf("SDLCManifest must be the six-file baseline plus the release migration, got %v", ids)
 	}
 }
 

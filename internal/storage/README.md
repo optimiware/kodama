@@ -31,6 +31,16 @@ ambiguous task-to-pipeline mappings before any change, never inventing a pipelin
 `tasks.current_run_id` is bound to its own task and project by a composite key. See
 [schema documentation](../../docs/implementation/database-schema.md#pipeline-runtime-expand-and-validate-004).
 
+## Wait decisions and materializations (T-189)
+
+`migrations/006_wait_decision_and_materializations.sql` is expand-only. It lets a complete
+wait decision be stored while its step has not settled (the kernel decides a wait
+independently of its step) and keeps a decided wait immutable and closed; it adds
+`run_materializations`, the tenant-isolated durable identity, issue time and
+revocation of a step attempt's secret material, with `revoked` final; and it guards
+`run_steps.outputs` so recorded outputs cannot change after the settling commit. See
+[schema documentation](../../docs/implementation/database-schema.md#wait-decisions-and-materializations-006).
+
 ## Transactions and migrations
 
 `WithTenant` validates the tenant ID, begins a pgx transaction, sets
