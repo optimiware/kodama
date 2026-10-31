@@ -375,7 +375,7 @@ ALTER TABLE run_steps
 -- wait has a state, and a change to any recorded wait (including its assignment
 -- or its first opening or cancellation) must raise the version. Added: the
 -- attempt never decreases, the retained when evaluation is written once, and a
--- settled step keeps its attempt and result.
+-- settled step keeps its attempt and result (including the exit code).
 CREATE OR REPLACE FUNCTION kodama_run_step_guard() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -440,7 +440,8 @@ BEGIN
     END IF;
     -- A settled step is final: its attempt and result stay as recorded.
     IF OLD.status IN ('succeeded', 'failed', 'skipped', 'cancelled')
-       AND (NEW.attempt, NEW.result_code, NEW.result_reason) IS DISTINCT FROM (OLD.attempt, OLD.result_code, OLD.result_reason) THEN
+       AND (NEW.attempt, NEW.exit_code, NEW.result_code, NEW.result_reason)
+           IS DISTINCT FROM (OLD.attempt, OLD.exit_code, OLD.result_code, OLD.result_reason) THEN
         RAISE EXCEPTION 'a settled step keeps its attempt and result' USING ERRCODE = '23514';
     END IF;
     RETURN NEW;

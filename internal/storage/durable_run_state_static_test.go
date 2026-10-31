@@ -633,7 +633,7 @@ func Test_unit_storage_run_state_guards(t *testing.T) {
 			"IF NEW.attempt < OLD.attempt THEN",
 			"IF OLD.when_evaluated AND (NEW.when_evaluated, NEW.when_result, NEW.when_input_digest, NEW.when_evaluated_at) IS DISTINCT FROM (OLD.when_evaluated, OLD.when_result, OLD.when_input_digest, OLD.when_evaluated_at) THEN",
 			"the when evaluation is recorded once and never changes",
-			"IF OLD.status IN ('succeeded', 'failed', 'skipped', 'cancelled') AND (NEW.attempt, NEW.result_code, NEW.result_reason) IS DISTINCT FROM (OLD.attempt, OLD.result_code, OLD.result_reason) THEN",
+			"IF OLD.status IN ('succeeded', 'failed', 'skipped', 'cancelled') AND (NEW.attempt, NEW.exit_code, NEW.result_code, NEW.result_reason) IS DISTINCT FROM (OLD.attempt, OLD.exit_code, OLD.result_code, OLD.result_reason) THEN",
 			"a settled step keeps its attempt and result")
 		// A decided wait can no longer change a value: the version rule must not be satisfiable by clearing.
 		if strings.Contains(body, "OLD.wait_id IS NOT NULL AND NEW.wait_version") {

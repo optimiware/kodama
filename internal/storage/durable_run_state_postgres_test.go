@@ -497,6 +497,19 @@ func Test_durable_run_state_postgres(t *testing.T) {
 		for _, set := range []string{"attempt = 3", "result_code = 'lost'", "result_reason = 'workload_lost'", "result_code = NULL, result_reason = NULL"} {
 			requireCode(t, rt(`UPDATE run_steps SET `+set+` WHERE id = 's5'`), "23514", "settled step: "+set)
 		}
+		// The exit code is part of the retained result: changing or clearing it is refused for every
+		// writer, while an unchanged result stays writable.
+		for _, set := range []string{"exit_code = 3", "exit_code = NULL", "exit_code = 0"} {
+			requireCode(t, rt(`UPDATE run_steps SET `+set+` WHERE id = 's5'`), "23514", "runtime, settled step: "+set)
+			requireCode(t, owner(`UPDATE run_steps SET `+set+` WHERE id = 's5'`), "23514", "owner, settled step: "+set)
+		}
+		okf(rt(`UPDATE run_steps SET exit_code = 2, result_code = 'failed', result_reason = 'command_failed', attempt = 2 WHERE id = 's5'`), "an unchanged result is writable by the runtime role")
+		okf(owner(`UPDATE run_steps SET exit_code = 2 WHERE id = 's5'`), "an unchanged exit code is writable by the owner")
+		var exit int
+		must(t, e.mig.QueryRow(testCtx(t), `SELECT exit_code FROM run_steps WHERE id = 's5'`).Scan(&exit))
+		if exit != 2 {
+			t.Errorf("exit code = %d after the refused updates, want 2", exit)
+		}
 		requireCode(t, rt(`UPDATE run_steps SET result_code = 'failed' WHERE id = 's2'`), "23514", "a wait with a workload result")
 		// Admitted shape stays outside the runtime grants.
 		requireCode(t, rt(`UPDATE run_steps SET step_kind = 'wait' WHERE id = 's5'`), "42501", "step kind")
