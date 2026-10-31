@@ -390,21 +390,18 @@ func liveMembers(pgid int) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("ps: %w", err)
 	}
-	mounts, err := os.ReadFile("/proc/mounts")
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return 0, fmt.Errorf("reading the mount table: %w", err)
-	}
-	return membersFrom(pgid, string(out), string(mounts))
+	return membersFrom(pgid, string(out), tableVisibility())
 }
 
 // membersFrom counts the live members of a process group (zombies awaiting
 // reaping are not counted) in a `ps -A -o pid=,pgid=,stat=` listing. A member
 // found is positive evidence whatever else is hidden. Zero members is evidence
 // of absence only when the listing is verified complete: it must list pid 1, a
-// process of another user, and the proc filesystem must not hide other users'
-// processes (hidepid), which makes ps succeed while omitting them. Otherwise the
-// answer is errUnverifiable, never zero.
-func membersFrom(pgid int, table, mounts string) (int, error) {
+// process of another user, and visibility (the platform's verification of an
+// unrestricted process table, see tableVisibility) must be nil. A listing can
+// succeed while omitting other users' processes, so anything else is
+// errUnverifiable, never zero.
+func membersFrom(pgid int, table string, visibility error) (int, error) {
 	n, sawInit := 0, false
 	for _, line := range strings.Split(table, "\n") {
 		f := strings.Fields(line)
@@ -426,27 +423,39 @@ func membersFrom(pgid int, table, mounts string) (int, error) {
 		return n, nil
 	case !sawInit:
 		return 0, fmt.Errorf("%w: the process table does not list pid 1, so other users' processes may be hidden", errUnverifiable)
-	case procHidesProcesses(mounts):
-		return 0, fmt.Errorf("%w: the proc filesystem hides other users' processes (hidepid)", errUnverifiable)
+	case visibility != nil:
+		return 0, fmt.Errorf("%w: %w", errUnverifiable, visibility)
 	}
 	return 0, nil
 }
 
-// procHidesProcesses reports whether the /proc mount in a /proc/mounts listing
-// restricts the visibility of other users' processes.
-func procHidesProcesses(mounts string) bool {
+// procfsUnrestricted verifies, from a /proc/mounts listing (readErr is the
+// error reading it), that the proc filesystem shows every user's processes. The
+// evidence must be present and positive: an unreadable table, no /proc mount, or
+// a mount with hidepid restricting visibility all fail. The last /proc mount is
+// the one in effect.
+func procfsUnrestricted(mounts string, readErr error) error {
+	if readErr != nil {
+		return fmt.Errorf("the mount table cannot be read: %w", readErr)
+	}
+	var opts []string
+	found := false
 	for _, line := range strings.Split(mounts, "\n") {
 		f := strings.Fields(line)
 		if len(f) < 4 || f[1] != "/proc" || f[2] != "proc" {
 			continue
 		}
-		for _, opt := range strings.Split(f[3], ",") {
-			if v, ok := strings.CutPrefix(opt, "hidepid="); ok && v != "0" && v != "off" {
-				return true
-			}
+		opts, found = strings.Split(f[3], ","), true
+	}
+	if !found {
+		return errors.New("the mount table shows no proc filesystem at /proc")
+	}
+	for _, opt := range opts {
+		if v, ok := strings.CutPrefix(opt, "hidepid="); ok && v != "0" && v != "off" {
+			return fmt.Errorf("the proc filesystem hides other users' processes (hidepid=%s)", v)
 		}
 	}
-	return false
+	return nil
 }
 
 // alive reports whether a process of the group still exists, with an answer only
