@@ -1,7 +1,7 @@
 ---
 id: T-190
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-188]
 decision_blockers: []
 owns: [internal/shell/dispatch/, internal/shell/serve/events.go, internal/shell/serve/events_internal_test.go]

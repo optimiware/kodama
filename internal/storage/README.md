@@ -42,6 +42,17 @@ revocation of a step attempt's secret material, with `revoked` final; and it gua
 adds the partial index `audit_events_unpublished` for bounded outbox pages. See
 [schema documentation](../../docs/implementation/database-schema.md#wait-decisions-and-materializations-006).
 
+## Signal decision reason (T-192)
+
+`migrations/007_signal_decision_reason.sql` is expand-only. It adds the nullable
+`signal_records.decision_reason` (`run_cancelled` or `run_failed`) so a refused signal
+that lost to a cancellation replays on the record alone, after ordinary wait and run
+retention has removed the wait row. A new cancelled record requires its reason and no
+other record carries one; the constraint is `NOT VALID`, so an existing database
+upgrades without rewriting history. Retention, project-scoped removal, grants and row
+security are unchanged. See
+[schema documentation](../../docs/implementation/database-schema.md#signal-records).
+
 ## Transactions and migrations
 
 `WithTenant` validates the tenant ID, begins a pgx transaction, sets

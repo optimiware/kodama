@@ -308,7 +308,7 @@ func Test_schema_alone_is_fail_closed(t *testing.T) {
 	ctx := testCtx(t)
 	pool := db.MigrationPool(ctx, 4)
 	base := storage.BaseContribution()
-	if len(base.Migrations) != 6 {
+	if len(base.Migrations) != 7 {
 		t.Fatalf("baseline = %+v", base.Migrations)
 	}
 	schemaOnly := contribution("storage", base.Migrations[0])

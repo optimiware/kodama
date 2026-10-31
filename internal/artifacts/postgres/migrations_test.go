@@ -30,8 +30,8 @@ func TestMigrationReapply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(first.Applied, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql", "006_wait_decision_and_materializations.sql"}) {
-		t.Fatalf("the baseline is six migrations, applied %v", first.Applied)
+	if !slices.Equal(first.Applied, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql", "006_wait_decision_and_materializations.sql", "007_signal_decision_reason.sql"}) {
+		t.Fatalf("the baseline is seven migrations, applied %v", first.Applied)
 	}
 	second, err := storage.Migrate(ctx, mig, m, opts)
 	if err != nil {

@@ -150,7 +150,7 @@ INSERT INTO pipelines (tenant_id, project_id, id, repo_id, name, source, source_
 			t.Fatal(err)
 		}
 		res, err := storage.Migrate(ctx, pool, fullManifest(t), opts)
-		if err != nil || len(res.Applied) != 3 || res.Applied[0] != expandMigration || res.Applied[1] != durableMigration || res.Applied[2] != waitMigration {
+		if err != nil || len(res.Applied) != 4 || res.Applied[0] != expandMigration || res.Applied[1] != durableMigration || res.Applied[2] != waitMigration || res.Applied[3] != reasonMigration {
 			t.Fatalf("migrate after resolution: %+v, %v", res, err)
 		}
 		if n := count(t, pool, `SELECT count(*) FROM pg_constraint WHERE conname = 'pipelines_name_unique'`); n != 1 {
