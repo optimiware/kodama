@@ -1,7 +1,7 @@
 ---
 id: T-182
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-174, T-179, T-185, T-186, T-189, T-192]
 decision_blockers: []
 owns: [internal/shell/runstate/postgres/]
@@ -34,6 +34,9 @@ T-182 is parked on [T-189](T-189-wait-and-materialization-schema.md). T-185 clos
 ## Follow-ups from review
 - Read and write the decision reason from `signal_records` once T-192 adds the column, and delete the `wait_reason` fallback so replay is retention-independent.
 - Use one canonical time representation for stored deadlines and derived opening times; independently truncating each rejects a legal later decision for a timeout not divisible by a microsecond.
+
+## Completion evidence
+Candidate `8d7267dce2f6129a1db4e15d70afd77f0acb6c05`, clean tree. `make check-task TASK=T-182` PASS (2 acceptance names, no database). Real PostgreSQL: `KODAMA_TEST_POSTGRES_ADMIN_URL=... KODAMA_REQUIRE_POSTGRES=1 go test -count=1 -race -v ./internal/shell/runstate/postgres/...` on a disposable Podman `postgres:17.11` — 127 PASS, 0 FAIL, 0 SKIP, including all 58 shared suite cases. The runtime role is a non-owner without `BYPASSRLS`; RLS is enabled and forced on all 8 kernel tables.
 
 ## Out of scope
 The engine, NATS publication, task projection, and any change to the schema or the contract suite.
