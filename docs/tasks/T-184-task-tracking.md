@@ -1,7 +1,7 @@
 ---
 id: T-184
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-179, T-182, T-188, T-195]
 decision_blockers: []
 owns: [internal/shell/tasks/]
