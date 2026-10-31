@@ -3,6 +3,7 @@ package tasks
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/optimiware/kodama/internal/domain"
@@ -170,7 +171,7 @@ func Test_unit_tasks_resolution(t *testing.T) {
 		}
 	})
 
-	t.Run("two reviewers racing: the first decides, the other gets the recorded decision unapplied", func(t *testing.T) {
+	t.Run("after the first reviewer decided, a later reviewer gets the recorded decision unapplied (closed wait)", func(t *testing.T) {
 		r := newRig(t)
 		task, _ := r.waiting(r.task("race"))
 		e := r.inbox("alice")[0]
@@ -190,6 +191,86 @@ func Test_unit_tasks_resolution(t *testing.T) {
 		rec, _ := r.runs.Load(r.ctx, scopeA, task.Progress.RunID)
 		if w := rec.Waits[indexWait(rec, "review")]; w.Decision.Outcome != "approved" || w.Version != e.WaitVersion+1 {
 			t.Fatalf("the wait = %+v", w)
+		}
+	})
+
+	t.Run("reviewers resolving concurrently: exactly one decision, the others get it unapplied", func(t *testing.T) {
+		reviewers := []string{"alice", "bob", "rv1", "rv2", "rv3", "rv4"}
+		for round := range 5 {
+			r := newRig(t)
+			task, _ := r.waiting(r.task("race"))
+			for _, p := range reviewers[2:] {
+				r.auth.grant(scopeA, p, RoleReviewer)
+			}
+			e := r.inbox("alice")[0]
+			outcomes := []string{"approved", "rejected"}
+			var (
+				wg      sync.WaitGroup
+				results = make([]runtime.SignalResult, len(reviewers))
+				errs    = make([]error, len(reviewers))
+				ready   sync.WaitGroup
+				start   = make(chan struct{})
+			)
+			for i, p := range reviewers {
+				wg.Add(1)
+				ready.Add(1)
+				go func() {
+					defer wg.Done()
+					ready.Done()
+					<-start // every reviewer calls the service at the same moment
+					results[i], errs[i] = r.resolve(p, "key-"+p, e, outcomes[i%2])
+				}()
+			}
+			ready.Wait()
+			close(start)
+			wg.Wait()
+
+			winner, applied := -1, 0
+			for i := range reviewers {
+				if errs[i] != nil {
+					t.Fatalf("round %d: %s: %v", round, reviewers[i], errs[i])
+				}
+				if results[i].Applied {
+					winner, applied = i, applied+1
+				}
+			}
+			if applied != 1 {
+				t.Fatalf("round %d: %d applied decisions, want exactly one: %+v", round, applied, results)
+			}
+			won := results[winner]
+			if won.Decision.Actor != reviewers[winner] || won.Decision.Outcome != outcomes[winner%2] || won.Replayed {
+				t.Fatalf("round %d: the winner's result = %+v", round, won)
+			}
+			for i, res := range results {
+				if i == winner {
+					continue
+				}
+				if res.Applied || res.Refusal != runtime.RefusalDecided || res.Decision != won.Decision || res.SignalID == won.SignalID {
+					t.Errorf("round %d: %s lost with %+v, want the winner's decision unapplied", round, reviewers[i], res)
+				}
+			}
+			// One wait-version increment, and the recorded decision is the winner's.
+			rec, err := r.runs.Load(r.ctx, scopeA, task.Progress.RunID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := rec.Waits[indexWait(rec, "review")]
+			if w.Version != e.WaitVersion+1 || w.State != runtime.WaitResolved || w.Decision != won.Decision {
+				t.Fatalf("round %d: wait %+v, want one increment from %d", round, w, e.WaitVersion)
+			}
+			// The winner's key replays its result, stable, and a loser's replay stays unapplied.
+			again, err := r.resolve(reviewers[winner], "key-"+reviewers[winner], e, outcomes[winner%2])
+			if err != nil || !again.Applied || !again.Replayed || again.Decision != won.Decision || again.SignalID != won.SignalID {
+				t.Fatalf("round %d: the winner's replay = %+v, %v", round, again, err)
+			}
+			loser := (winner + 1) % len(reviewers)
+			lres, err := r.resolve(reviewers[loser], "key-"+reviewers[loser], e, outcomes[loser%2])
+			if err != nil || lres.Applied || !lres.Replayed || lres.Decision != won.Decision {
+				t.Fatalf("round %d: the loser's replay = %+v, %v", round, lres, err)
+			}
+			if after, _ := r.runs.Load(r.ctx, scopeA, task.Progress.RunID); after.Waits[indexWait(after, "review")].Version != w.Version {
+				t.Fatalf("round %d: a replay advanced the wait", round)
+			}
 		}
 	})
 

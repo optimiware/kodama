@@ -142,7 +142,7 @@ func page(ts []Task, limit int) []Task {
 	return ts
 }
 
-func (m *Memory) UpdateContent(_ context.Context, scope domain.Scope, id domain.TaskID, expected domain.Version, c Content, now time.Time) (Task, error) {
+func (m *Memory) UpdateContent(_ context.Context, scope domain.Scope, id domain.TaskID, expected domain.Version, c Content, now time.Time, actor string) (Task, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	k := taskKey{scope, id}
@@ -158,6 +158,7 @@ func (m *Memory) UpdateContent(_ context.Context, scope domain.Scope, id domain.
 	}
 	t.Content, t.Version, t.Updated = c, t.Version+1, now.UTC()
 	m.tasks[k] = t.clone()
+	m.events = append(m.events, contentEvent(t, actor))
 	return t.clone(), nil
 }
 

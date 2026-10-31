@@ -73,8 +73,11 @@ type Store interface {
 	List(ctx context.Context, q ListQuery) ([]Task, error)
 	// UpdateContent replaces the content of the task at expected: the version
 	// advances by one, and a task at another version is ErrContentConflict. It
-	// never touches the pipeline, the current run or the progress.
-	UpdateContent(ctx context.Context, scope domain.Scope, id domain.TaskID, expected domain.Version, c Content, now time.Time) (Task, error)
+	// never touches the pipeline, the current run or the progress. The editing
+	// actor and a bounded task.content_changed event commit in the same
+	// transaction as the version change: if the event cannot be recorded, the
+	// content and version are not changed either.
+	UpdateContent(ctx context.Context, scope domain.Scope, id domain.TaskID, expected domain.Version, c Content, now time.Time, actor string) (Task, error)
 	// Select makes sel.Run the current run when the current run is still
 	// sel.Expected, projecting sel.Progress. Selecting the run that is already
 	// current is a replay and returns the task unchanged; any other current run is

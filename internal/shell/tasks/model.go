@@ -222,7 +222,16 @@ type Event struct {
 const (
 	EventTaskCreated         = "task.created"
 	EventTaskProgressChanged = "task.progress_changed"
+	// EventTaskContentChanged records an edit of a task's content (title, body,
+	// assignment, branch, context). It carries the new content version only, never
+	// the content. The event catalog lists it with the other task events.
+	EventTaskContentChanged = "task.content_changed"
 )
+
+func contentEvent(t Task, actor string) Event {
+	data, _ := json.Marshal(map[string]any{"taskId": t.ID, "contentVersion": t.Version})
+	return Event{Type: EventTaskContentChanged, DedupKey: fmt.Sprintf("%s:%d", t.ID, t.Version), Actor: actor, Data: data}
+}
 
 func createdEvent(t Task, actor string) Event {
 	data, _ := json.Marshal(map[string]any{"taskId": t.ID, "pipelineId": t.PipelineID, "status": StatusPending})

@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -133,6 +134,92 @@ func Test_unit_tasks_pipeline_selection(t *testing.T) {
 			if _, err := r.svc.Create(r.ctx, CreateRequest{Caller: r.caller(scopeA, "eng"), Pipeline: "sdlc", Content: c}); !errors.Is(err, domain.ErrInvalidValue) {
 				t.Errorf("%s: %v, want invalid", name, err)
 			}
+		}
+	})
+
+	t.Run("a content edit records its actor and a bounded event with the version change", func(t *testing.T) {
+		r := newRig(t)
+		task := r.task("audited")
+		changed := func() (n int, versions []domain.Version) {
+			for _, e := range r.events() {
+				if e.Type != EventTaskContentChanged {
+					continue
+				}
+				var d struct {
+					TaskID  domain.TaskID  `json:"taskId"`
+					Version domain.Version `json:"contentVersion"`
+					Title   string         `json:"title"`
+				}
+				if err := json.Unmarshal(e.Data, &d); err != nil || d.TaskID != task.ID || d.Title != "" {
+					t.Fatalf("event data %s: %v", e.Data, err)
+				}
+				n, versions = n+1, append(versions, d.Version)
+			}
+			return n, versions
+		}
+		edit := func(principal string, expected domain.Version, title string) error {
+			_, err := r.svc.Edit(r.ctx, EditRequest{Caller: r.caller(scopeA, principal), TaskID: task.ID, ExpectedVersion: expected, Content: Content{Title: title}})
+			return err
+		}
+		if err := edit("carol", 1, "second"); err != nil {
+			t.Fatal(err)
+		}
+		if err := edit("eng", 2, "third"); err != nil {
+			t.Fatal(err)
+		}
+		if n, v := changed(); n != 2 || v[0] != 2 || v[1] != 3 {
+			t.Fatalf("%d content events %v, want versions 2 and 3", n, v)
+		}
+		// The actor is recorded with the event.
+		if r.mem != nil {
+			var actors []string
+			for _, e := range r.mem.Events() {
+				if e.Type == EventTaskContentChanged {
+					actors = append(actors, e.Actor)
+				}
+			}
+			if len(actors) != 2 || actors[0] != "carol" || actors[1] != "eng" {
+				t.Fatalf("actors = %v", actors)
+			}
+		} else {
+			var n int
+			if err := r.owner.QueryRow(r.ctx, `SELECT count(*) FROM audit_events WHERE event_type = 'task.content_changed' AND resource_id = $1
+  AND actor_type = 'user' AND actor_id IN ('carol', 'eng')`, string(task.ID)).Scan(&n); err != nil || n != 2 {
+				t.Fatalf("%d audit rows with their actor: %v", n, err)
+			}
+		}
+		// Refusals leave no event: a stale version, a role that may not edit, a bad content.
+		if err := edit("eng", 1, "stale"); !errors.Is(err, ErrContentConflict) {
+			t.Fatalf("stale edit: %v", err)
+		}
+		if err := edit("view", 3, "viewer"); !errors.Is(err, ErrForbidden) {
+			t.Fatalf("viewer edit: %v", err)
+		}
+		if err := edit("eng", 3, ""); !errors.Is(err, domain.ErrInvalidValue) {
+			t.Fatalf("empty title: %v", err)
+		}
+		if n, _ := changed(); n != 2 || r.get(task.ID).Version != 3 {
+			t.Fatalf("a refused edit left %d events, version %d", n, r.get(task.ID).Version)
+		}
+	})
+
+	t.Run("an edit whose event cannot be recorded changes nothing", func(t *testing.T) {
+		r := newRig(t)
+		if !r.memoryOnly() { // the PostgreSQL rollback is proved by Test_postgres_tasks_store
+			return
+		}
+		task := r.task("rollback")
+		boom := errors.New("event store down")
+		r.failNext(boom)
+		before := len(r.events())
+		if _, err := r.svc.Edit(r.ctx, EditRequest{Caller: r.caller(scopeA, "eng"), TaskID: task.ID, ExpectedVersion: 1, Content: Content{Title: "lost"}}); !errors.Is(err, boom) {
+			t.Fatalf("edit = %v", err)
+		}
+		if got := r.get(task.ID); got.Version != 1 || got.Title != "rollback" || len(r.events()) != before {
+			t.Fatalf("the failed edit persisted: version %d title %q, %d events", got.Version, got.Title, len(r.events())-before)
+		}
+		if _, err := r.svc.Edit(r.ctx, EditRequest{Caller: r.caller(scopeA, "eng"), TaskID: task.ID, ExpectedVersion: 1, Content: Content{Title: "retried"}}); err != nil {
+			t.Fatalf("the retry: %v", err)
 		}
 	})
 

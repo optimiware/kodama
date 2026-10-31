@@ -207,7 +207,7 @@ ORDER BY id COLLATE "C" LIMIT $6`, q.Scope.TenantID, q.Scope.ProjectID, string(q
 	return out, err
 }
 
-func (p *Postgres) UpdateContent(ctx context.Context, scope domain.Scope, id domain.TaskID, expected domain.Version, c Content, now time.Time) (Task, error) {
+func (p *Postgres) UpdateContent(ctx context.Context, scope domain.Scope, id domain.TaskID, expected domain.Version, c Content, now time.Time, actor string) (Task, error) {
 	var out Task
 	err := p.tx(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		t, err := scanTask(tx.QueryRow(ctx, `UPDATE tasks SET title = $4, body = $5, assigned_role = NULLIF($6, ''), repo_id = NULLIF($7, ''),
@@ -225,9 +225,12 @@ RETURNING `+taskColumns, scope.TenantID, scope.ProjectID, id, c.Title, c.Body, c
 			return translate(err)
 		}
 		out = t
-		return nil
+		return insertEvent(ctx, tx, scope, id, contentEvent(t, actor))
 	})
-	return out, err
+	if err != nil {
+		return Task{}, err
+	}
+	return out, nil
 }
 
 func (p *Postgres) Select(ctx context.Context, sel RunSelection) (Task, error) {

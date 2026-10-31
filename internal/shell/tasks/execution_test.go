@@ -79,6 +79,84 @@ func Test_unit_tasks_start_rerun(t *testing.T) {
 		}
 	})
 
+	t.Run("a launch whose selection failed is recovered without replanning or a second admission", func(t *testing.T) {
+		r := newRig(t)
+		task := r.task("recover")
+		eng := r.caller(scopeA, "eng")
+		boom := errors.New("selection lost")
+		r.failNextSelect(boom) // the run is admitted, then the selection fails
+		if _, err := r.svc.Start(r.ctx, StartRequest{Caller: eng, TaskID: task.ID}); !errors.Is(err, boom) {
+			t.Fatalf("start = %v, want the selection failure", err)
+		}
+		run := runIDFor(task, "")
+		if r.counted.count() != 1 || r.plan.calls != 1 || r.get(task.ID).Progress.RunID != "" {
+			t.Fatalf("after the failed start: %d admissions, %d plans, progress %+v", r.counted.count(), r.plan.calls, r.get(task.ID).Progress)
+		}
+		original, err := r.runs.Load(r.ctx, scopeA, run)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The pipeline is unavailable now: the retry still selects the admitted run.
+		r.plan.err = errors.New("pipeline unavailable")
+		started, err := r.svc.Start(r.ctx, StartRequest{Caller: eng, TaskID: task.ID})
+		if err != nil || started.Progress.RunID != run || started.Progress.Status != StatusQueued {
+			t.Fatalf("the retry = %+v, %v", started.Progress, err)
+		}
+		if r.counted.count() != 1 || r.plan.calls != 1 {
+			t.Fatalf("the retry replanned or admitted again: %d admissions, %d plans", r.counted.count(), r.plan.calls)
+		}
+		if after, err := r.runs.Load(r.ctx, scopeA, run); err != nil || after.Plan.Digest != original.Plan.Digest || after.Run.Version != original.Run.Version {
+			t.Fatalf("the admitted run changed: %+v, %v", after.Run, err)
+		}
+		// With no run admitted, an unavailable pipeline is still a refusal.
+		other := r.task("never admitted")
+		if _, err := r.svc.Start(r.ctx, StartRequest{Caller: eng, TaskID: other.ID}); err == nil || r.get(other.ID).Progress.RunID != "" {
+			t.Fatalf("a start with no plan and no run: %v", err)
+		}
+	})
+
+	t.Run("a rerun whose selection failed is recovered the same way", func(t *testing.T) {
+		r := newRig(t)
+		r.plan.plan = solePlan()
+		task := r.start(r.task("recover rerun"))
+		first := task.Progress.RunID
+		r.engine(first).succeed()
+		r.apply(first)
+		eng := r.caller(scopeA, "eng")
+		boom := errors.New("selection lost")
+		r.failNextSelect(boom)
+		if _, err := r.svc.Rerun(r.ctx, RerunRequest{Caller: eng, TaskID: task.ID, ExpectedRunID: first}); !errors.Is(err, boom) {
+			t.Fatalf("rerun = %v", err)
+		}
+		admits, plans := r.counted.count(), r.plan.calls
+		r.plan.err = errors.New("pipeline unavailable")
+		got, err := r.svc.Rerun(r.ctx, RerunRequest{Caller: eng, TaskID: task.ID, ExpectedRunID: first})
+		if err != nil || got.Progress.RunID != runIDFor(task, first) || r.counted.count() != admits || r.plan.calls != plans {
+			t.Fatalf("the retry = %+v, %v (%d admissions, %d plans)", got.Progress, err, r.counted.count(), r.plan.calls)
+		}
+	})
+
+	t.Run("a run under the derived identity that is not a run of the task's pipeline is refused", func(t *testing.T) {
+		r := newRig(t)
+		task := r.task("foreign run")
+		other := r.pipeline(scopeA, "other")
+		plan := solePlan()
+		run, err := runtime.NewRun(scopeA, runIDFor(task, ""), other, plan, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.runs.Admit(r.ctx, runtime.Admission{Run: run, Plan: plan}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.svc.Start(r.ctx, StartRequest{Caller: r.caller(scopeA, "eng"), TaskID: task.ID}); !errors.Is(err, domain.ErrInvalidValue) {
+			t.Fatalf("start = %v, want a refusal", err)
+		}
+		if got := r.get(task.ID).Progress; got.RunID != "" {
+			t.Fatalf("a foreign run became current: %+v", got)
+		}
+	})
+
 	t.Run("start and rerun are authorized by role", func(t *testing.T) {
 		r := newRig(t)
 		task := r.task("auth")

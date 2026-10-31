@@ -269,7 +269,7 @@ func (s *Service) Edit(ctx context.Context, req EditRequest) (Task, error) {
 	if err != nil {
 		return Task{}, err
 	}
-	return s.cfg.Store.UpdateContent(ctx, req.Caller.Scope, req.TaskID, req.ExpectedVersion, content, s.cfg.Clock.Now().UTC().Truncate(time.Microsecond))
+	return s.cfg.Store.UpdateContent(ctx, req.Caller.Scope, req.TaskID, req.ExpectedVersion, content, s.cfg.Clock.Now().UTC().Truncate(time.Microsecond), req.Caller.Principal)
 }
 
 // ---------------------------------------------------------------------------
@@ -365,31 +365,59 @@ func runIDFor(t Task, after domain.RunID) domain.RunID {
 }
 
 func (s *Service) launch(ctx context.Context, t Task, after domain.RunID, actor string, inputs map[string]runtime.InputValue) (Task, error) {
-	plan, err := s.cfg.Planner.Plan(ctx, PlanRequest{Scope: t.Scope, TaskID: t.ID, PipelineID: t.PipelineID, Inputs: inputs})
+	id := runIDFor(t, after)
+	// The run's identity is derived from the task, so a run already admitted under
+	// it is the one a lost response left behind. It is immutable: select it as it
+	// is, without asking the pipeline for a plan again. A pipeline that became
+	// unavailable or invalid since must not strand a run that exists.
+	existing, err := s.existingRun(ctx, t, id)
 	if err != nil {
 		return Task{}, err
 	}
-	adm, err := s.admission(t, runIDFor(t, after), plan)
-	if err != nil {
-		return Task{}, err
-	}
-	if _, err := s.cfg.Runs.Admit(ctx, adm); err != nil {
-		// The run's identity is derived from the task, so a run already admitted
-		// under it is the one a lost response left behind, even when the
-		// pipeline's plan has changed since.
-		if !errors.Is(err, domain.ErrConflict) {
+	if !existing {
+		plan, err := s.cfg.Planner.Plan(ctx, PlanRequest{Scope: t.Scope, TaskID: t.ID, PipelineID: t.PipelineID, Inputs: inputs})
+		if err != nil {
 			return Task{}, err
 		}
-		if _, lerr := s.cfg.Runs.Load(ctx, t.Scope, adm.Run.ID); lerr != nil {
+		adm, err := s.admission(t, id, plan)
+		if err != nil {
 			return Task{}, err
 		}
+		if _, err := s.cfg.Runs.Admit(ctx, adm); err != nil {
+			// Two launches can race to admit the same derived run: the loser finds it.
+			if !errors.Is(err, domain.ErrConflict) {
+				return Task{}, err
+			}
+			if found, lerr := s.existingRun(ctx, t, id); lerr != nil || !found {
+				return Task{}, err
+			}
+		}
 	}
-	view, err := s.cfg.Runs.View(ctx, t.Scope, adm.Run.ID)
+	view, err := s.cfg.Runs.View(ctx, t.Scope, id)
 	if err != nil {
 		return Task{}, err
 	}
-	return s.cfg.Store.Select(ctx, RunSelection{Scope: t.Scope, TaskID: t.ID, Expected: after, Run: adm.Run.ID,
+	return s.cfg.Store.Select(ctx, RunSelection{Scope: t.Scope, TaskID: t.ID, Expected: after, Run: id,
 		Progress: Project(view), Actor: actor})
+}
+
+// existingRun reports whether the task's derived run is already admitted, and
+// refuses one that cannot be this task's: another scope or another pipeline.
+func (s *Service) existingRun(ctx context.Context, t Task, id domain.RunID) (bool, error) {
+	rec, err := s.cfg.Runs.Load(ctx, t.Scope, id)
+	if isNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if err := rec.Validate(); err != nil {
+		return false, err
+	}
+	if rec.Run.Scope != t.Scope || rec.Run.ID != id || rec.Run.PipelineID != t.PipelineID {
+		return false, invalidf("the run derived for task %s is not a run of its pipeline", t.ID)
+	}
+	return true, nil
 }
 
 func (s *Service) admission(t Task, id domain.RunID, plan runtime.Plan) (runtime.Admission, error) {

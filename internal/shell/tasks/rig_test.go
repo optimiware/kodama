@@ -53,6 +53,8 @@ type planner struct {
 	calls int
 	plan  runtime.Plan
 	last  PlanRequest
+	// err, when set, is what the planner returns: the pipeline is unavailable.
+	err error
 }
 
 func reviewPlan(assign string) runtime.Plan {
@@ -71,6 +73,9 @@ func (p *planner) Plan(_ context.Context, req PlanRequest) (runtime.Plan, error)
 	defer p.mu.Unlock()
 	p.calls++
 	p.last = req
+	if p.err != nil {
+		return runtime.Plan{}, p.err
+	}
 	return p.plan, nil
 }
 
@@ -90,7 +95,10 @@ type rig struct {
 	// the PostgreSQL database, nil in memory.
 	mem   *Memory
 	owner *pgxpool.Pool
-	ctx   context.Context
+	// counted counts admissions; faults fails a selection on either adapter.
+	counted *countingRuns
+	faults  *faultStore
+	ctx     context.Context
 	// engines holds the one claim per run the test's engine took.
 	engines map[domain.RunID]*engine
 }
@@ -115,10 +123,12 @@ func newMemoryRig(t *testing.T) *rig {
 // assemble wires the service over the adapters and grants the test principals.
 func assemble(t *testing.T, clock *kernelcontracts.Clock, store Store, mem *Memory, runs runtime.StateStore, reg *pipelines.Service, owner *pgxpool.Pool) *rig {
 	t.Helper()
-	r := &rig{t: t, store: store, mem: mem, owner: owner, runs: runs, clock: clock, auth: newDirectory(), reg: reg,
+	counted := &countingRuns{StateStore: runs}
+	faulty := &faultStore{Store: store}
+	r := &rig{t: t, store: store, mem: mem, owner: owner, runs: counted, counted: counted, faults: faulty, clock: clock, auth: newDirectory(), reg: reg,
 		plan: &planner{plan: reviewPlan("reviewer")}, ctx: t.Context(), engines: map[domain.RunID]*engine{}}
 	n := 0
-	svc, err := New(Config{Store: store, Authority: r.auth, Pipelines: r.reg, Planner: r.plan, Runs: runs, Clock: clock,
+	svc, err := New(Config{Store: faulty, Authority: r.auth, Pipelines: r.reg, Planner: r.plan, Runs: counted, Clock: clock,
 		NewID: func() (domain.TaskID, error) { n++; return domain.TaskID(fmt.Sprintf("tsk_%03d", n)), nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -353,4 +363,51 @@ func (r *rig) damage(task Task, p Progress) {
 WHERE tenant_id = $1 AND id = $2`, string(scopeA.TenantID), string(task.ID), string(p.Status), string(p.Step), p.WaitingFor); err != nil {
 		r.t.Fatal(err)
 	}
+}
+
+// countingRuns counts the admissions that reach the kernel store.
+type countingRuns struct {
+	runtime.StateStore
+	mu     sync.Mutex
+	admits int
+}
+
+func (c *countingRuns) Admit(ctx context.Context, a runtime.Admission) (runtime.RunRecord, error) {
+	c.mu.Lock()
+	c.admits++
+	c.mu.Unlock()
+	return c.StateStore.Admit(ctx, a)
+}
+
+func (c *countingRuns) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.admits
+}
+
+// faultStore fails the next run selection before it reaches the store, on either
+// adapter: the response of a launch that admitted its run and then lost the
+// selection.
+type faultStore struct {
+	Store
+	mu         sync.Mutex
+	failSelect error
+}
+
+func (f *faultStore) Select(ctx context.Context, sel RunSelection) (Task, error) {
+	f.mu.Lock()
+	err := f.failSelect
+	f.failSelect = nil
+	f.mu.Unlock()
+	if err != nil {
+		return Task{}, err
+	}
+	return f.Store.Select(ctx, sel)
+}
+
+// failNextSelect makes the next run selection fail with err (both adapters).
+func (r *rig) failNextSelect(err error) {
+	r.faults.mu.Lock()
+	r.faults.failSelect = err
+	r.faults.mu.Unlock()
 }

@@ -267,7 +267,7 @@ func Test_postgres_tasks_store(t *testing.T) {
 			if _, err := store.Get(ctx, s, task.ID); !errors.Is(err, ErrNotFound) {
 				t.Errorf("get from %s: %v", s, err)
 			}
-			if _, err := store.UpdateContent(ctx, s, task.ID, 1, Content{Title: "x", Context: []byte(`{}`)}, now); !errors.Is(err, ErrNotFound) {
+			if _, err := store.UpdateContent(ctx, s, task.ID, 1, Content{Title: "x", Context: []byte(`{}`)}, now, "eng"); !errors.Is(err, ErrNotFound) {
 				t.Errorf("update from %s: %v", s, err)
 			}
 			ts, err := store.List(ctx, ListQuery{Scope: s, Limit: 100})
@@ -296,15 +296,47 @@ func Test_postgres_tasks_store(t *testing.T) {
 	t.Run("content edits use their own version and never touch execution", func(t *testing.T) {
 		task := newTask(t, scopeA, "st_edit", Content{Title: "v1"})
 		c := Content{Title: "v2", Body: "more", Branch: "dev", AssignedRole: RoleEngineer, Context: []byte(`{"k":"v"}`)}
-		got, err := store.UpdateContent(ctx, scopeA, task.ID, 1, c, now.Add(time.Minute))
+		got, err := store.UpdateContent(ctx, scopeA, task.ID, 1, c, now.Add(time.Minute), "editor")
 		if err != nil || got.Version != 2 || got.Title != "v2" || got.Branch != "dev" || got.Progress != task.Progress || got.PipelineID != task.PipelineID {
 			t.Fatalf("update = %+v, %v", got, err)
 		}
-		if _, err := store.UpdateContent(ctx, scopeA, task.ID, 1, c, now); !errors.Is(err, ErrContentConflict) {
+		if _, err := store.UpdateContent(ctx, scopeA, task.ID, 1, c, now, "editor"); !errors.Is(err, ErrContentConflict) {
 			t.Fatalf("a stale update: %v", err)
 		}
-		if _, err := store.UpdateContent(ctx, scopeA, "st_missing", 1, c, now); !errors.Is(err, ErrNotFound) {
+		if _, err := store.UpdateContent(ctx, scopeA, "st_missing", 1, c, now, "editor"); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("a missing task: %v", err)
+		}
+		// The edit committed one event, with its actor, in the same transaction.
+		if n := d.count(t, `SELECT count(*) FROM audit_events WHERE resource_id = $1 AND event_type = 'task.content_changed'
+  AND actor_type = 'user' AND actor_id = 'editor' AND payload->>'contentVersion' = '2' AND NOT payload ? 'title'`, string(task.ID)); n != 1 {
+			t.Fatalf("%d content events with the editor and version, want one", n)
+		}
+		// Refusals wrote none.
+		if n := d.count(t, `SELECT count(*) FROM audit_events WHERE resource_id = $1 AND event_type = 'task.content_changed'`, string(task.ID)); n != 1 {
+			t.Fatalf("%d content events after the refusals, want one", n)
+		}
+	})
+
+	t.Run("an edit whose event cannot be persisted rolls back the content and the version", func(t *testing.T) {
+		task := newTask(t, scopeA, "st_rollback", Content{Title: "before"})
+		d.exec(t, `CREATE FUNCTION t184_refuse_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'event store down' USING ERRCODE = '23514'; END $$`)
+		d.exec(t, `CREATE TRIGGER t184_refuse BEFORE INSERT ON audit_events FOR EACH ROW WHEN (NEW.event_type = 'task.content_changed') EXECUTE FUNCTION t184_refuse_event()`)
+		_, err := store.UpdateContent(ctx, scopeA, task.ID, 1, Content{Title: "after", Context: []byte(`{}`)}, now, "editor")
+		d.exec(t, `DROP TRIGGER t184_refuse ON audit_events`)
+		d.exec(t, `DROP FUNCTION t184_refuse_event()`)
+		if err == nil {
+			t.Fatal("the edit succeeded without its event")
+		}
+		got, gerr := store.Get(ctx, scopeA, task.ID)
+		if gerr != nil || got.Title != "before" || got.Version != 1 {
+			t.Fatalf("the failed edit persisted: %+v, %v", got, gerr)
+		}
+		if n := d.count(t, `SELECT count(*) FROM audit_events WHERE resource_id = $1 AND event_type = 'task.content_changed'`, string(task.ID)); n != 0 {
+			t.Fatalf("%d events of a rolled-back edit", n)
+		}
+		// With the event store back, the same edit commits at the same version.
+		if got, err := store.UpdateContent(ctx, scopeA, task.ID, 1, Content{Title: "after", Context: []byte(`{}`)}, now, "editor"); err != nil || got.Version != 2 {
+			t.Fatalf("the retry: %+v, %v", got, err)
 		}
 	})
 
