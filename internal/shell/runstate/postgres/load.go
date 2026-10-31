@@ -77,6 +77,7 @@ func loadRecord(ctx context.Context, tx pgx.Tx, scope domain.Scope, id domain.Ru
 		planJSON, retainedJSON       []byte
 		pipeline, status, cleanupSt  string
 		reason, cleanupReason, owner *string
+		taskID                       *string
 		purpose                      *string
 		cancelled, expires           *time.Time
 		version, fence               int64
@@ -88,7 +89,7 @@ func loadRecord(ctx context.Context, tx pgx.Tx, scope domain.Scope, id domain.Ru
 	}
 	err := tx.QueryRow(ctx, q, scope.TenantID, scope.ProjectID, id).
 		Scan(&pipeline, &planJSON, &status, &reason, &cancelled, &version, &owner, &purpose, &fence, &expires,
-			&cleanupSt, &attempts, &maxAttempts, &cleanupReason, &retainedJSON)
+			&cleanupSt, &attempts, &maxAttempts, &cleanupReason, &retainedJSON, &taskID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return rec, notFound("run")
 	}
@@ -97,6 +98,9 @@ func loadRecord(ctx context.Context, tx pgx.Tx, scope domain.Scope, id domain.Ru
 	}
 	if err := json.Unmarshal(planJSON, &rec.Plan); err != nil {
 		return rec, fmt.Errorf("runstate/postgres: decode the plan of run %s: %w", id, err)
+	}
+	if taskID != nil {
+		rec.Task = &runtime.TaskRef{Scope: scope, ID: domain.TaskID(*taskID)}
 	}
 	run := runtime.Run{Scope: scope, ID: id, PipelineID: domain.PipelineID(pipeline), Version: domain.Version(version),
 		CancelRequested: cancelled != nil, Reason: str[runtime.Reason](reason)}

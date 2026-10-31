@@ -109,9 +109,11 @@ func updateGrants(t testing.TB) map[string][]string {
 // the admitted run's definition_snapshot. The test below fails when the kernel
 // gains or drops a field without this table (and the schema) being updated.
 var recordHomes = map[string]map[string][]string{
-	"RunRecord": {"run": {"@Run"}, "plan": {"runs.definition_snapshot"}, "claim": {"@Claim"},
+	"RunRecord": {"run": {"@Run"}, "plan": {"runs.definition_snapshot"}, "task": {"@TaskRef"}, "claim": {"@Claim"},
 		"waits": {"@Wait"}, "commands": {"@Command"}, "workloads": {"@WorkloadObservation"}, "resources": {"@ResourceObservation"},
 		"outputs": {"@StepOutputs"}, "materializations": {"@MaterializationRecord"}},
+	// The owning task is written by the run's insert and never updated; its project is the run's.
+	"TaskRef": {"scope": {"runs.tenant_id", "runs.project_id"}, "id": {"runs.task_id"}},
 	"Run": {"scope": {"runs.tenant_id", "runs.project_id"}, "id": {"runs.id"}, "pipelineId": {"runs.pipeline_id"},
 		"version": {"runs.version"}, "outcome": {"runs.status"}, "reason": {"runs.reason"},
 		"cancelRequested": {"runs.cancel_requested_at"}, "cleanup": {"@Cleanup"}, "steps": {"@Step"}},
@@ -395,7 +397,7 @@ func Test_unit_storage_durable_run_state(t *testing.T) {
 		for _, v := range []any{runtime.RunRecord{}, runtime.Run{}, runtime.Cleanup{}, runtime.Claim{}, runtime.Step{}, runtime.Result{},
 			runtime.PredicateEvaluation{}, runtime.Wait{}, runtime.Decision{}, runtime.Command{}, runtime.RuntimeBinding{},
 			runtime.WorkloadObservation{}, runtime.ResourceObservation{}, runtime.ResourceHandle{},
-			runtime.StepOutputs{}, runtime.MaterializationRecord{}, runtime.MaterializationRef{}} {
+			runtime.StepOutputs{}, runtime.MaterializationRecord{}, runtime.MaterializationRef{}, runtime.TaskRef{}} {
 			types[reflect.TypeOf(v).Name()] = reflect.TypeOf(v)
 		}
 		if len(types) != len(recordHomes) {

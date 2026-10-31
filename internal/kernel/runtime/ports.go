@@ -20,6 +20,9 @@ import (
 type RunRecord struct {
 	Run  Run  `json:"run"`
 	Plan Plan `json:"plan"`
+	// Task is the task the run was admitted for; nil for a task-free run. It is
+	// fixed at admission and no transition changes it.
+	Task *TaskRef `json:"task,omitempty"`
 	// Claim is the current lease; the zero claim means the run was never claimed.
 	Claim    Claim     `json:"claim"`
 	Waits    []Wait    `json:"waits,omitempty"`
@@ -46,6 +49,9 @@ func (r RunRecord) Validate() error {
 		return err
 	}
 	if err := r.Plan.Validate(); err != nil {
+		return err
+	}
+	if err := r.Task.CheckRun(r.Run.Scope); err != nil {
 		return err
 	}
 	if len(r.Run.Steps) != len(r.Plan.Steps) {
@@ -232,7 +238,9 @@ func (r RunRecord) Unresolved() []Command {
 // RunView is the read model rebuilt from retained run, step and wait records.
 // The shell derives its task projection from it; it is never authoritative.
 type RunView struct {
-	Run    Run       `json:"run"`
+	Run Run `json:"run"`
+	// Task is the task the run belongs to; nil for a task-free run.
+	Task   *TaskRef  `json:"task,omitempty"`
 	Waits  []Wait    `json:"waits,omitempty"`
 	Status RunStatus `json:"status"`
 }
@@ -251,13 +259,46 @@ type RunnableQuery struct {
 	Limit int       `json:"limit"`
 }
 
+// TaskRef names the task a run belongs to. The run and the task live in one
+// project, so Scope must be the run's scope: a task of another project or
+// tenant can never own the run.
+type TaskRef struct {
+	Scope domain.Scope  `json:"scope"`
+	ID    domain.TaskID `json:"id"`
+}
+
+// Validate checks the reference.
+func (t TaskRef) Validate() error {
+	if err := t.Scope.Validate(); err != nil {
+		return err
+	}
+	return t.ID.Validate()
+}
+
+// CheckRun reports that the task, when there is one, is valid and belongs to
+// the project of a run in scope. A nil task (a task-free run) is valid.
+func (t *TaskRef) CheckRun(scope domain.Scope) error {
+	if t == nil {
+		return nil
+	}
+	if err := t.Validate(); err != nil {
+		return err
+	}
+	if t.Scope != scope {
+		return invalid("task %s belongs to %s, not to the project %s of the run", t.ID, t.Scope, scope)
+	}
+	return nil
+}
+
 // Admission is a run to record: the run, its immutable plan, one pending wait
-// per wait step and the run.created event.
+// per wait step and the run.created event. Task is the optional owning task;
+// it must be in the run's project, and a task-free run leaves it nil.
 type Admission struct {
-	Run    Run     `json:"run"`
-	Plan   Plan    `json:"plan"`
-	Waits  []Wait  `json:"waits,omitempty"`
-	Events []Event `json:"events,omitempty"`
+	Run    Run      `json:"run"`
+	Plan   Plan     `json:"plan"`
+	Task   *TaskRef `json:"task,omitempty"`
+	Waits  []Wait   `json:"waits,omitempty"`
+	Events []Event  `json:"events,omitempty"`
 }
 
 // Validate checks that the run was built from the plan: same steps in the same
@@ -267,6 +308,9 @@ func (a Admission) Validate() error {
 		return err
 	}
 	if err := a.Plan.Validate(); err != nil {
+		return err
+	}
+	if err := a.Task.CheckRun(a.Run.Scope); err != nil {
 		return err
 	}
 	if len(a.Run.Steps) != len(a.Plan.Steps) {
@@ -328,8 +372,8 @@ func (a Admission) Validate() error {
 type StateStore interface {
 	// Admit records a run, its plan, its pending waits and its run.created
 	// event atomically. It is idempotent on (scope, run id): a repeat with the
-	// same plan digest returns the existing record; a different digest is
-	// domain.ErrConflict.
+	// same plan digest and the same task returns the existing record; a different
+	// digest, or a different owning task, is domain.ErrConflict.
 	Admit(ctx context.Context, a Admission) (RunRecord, error)
 	// Load returns the run record, or a *domain.Error with domain.CodeNotFound
 	// for a run that does not exist in that scope.

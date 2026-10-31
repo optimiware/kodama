@@ -579,6 +579,44 @@ func brokenAdapters() []struct {
 					return in.Load(ctx, s, id)
 				}}}
 		}},
+		{"admission drops the owning task", "admit/task_is_recorded_and_reported", "reports its task", wrap(hooks{
+			admit: func(in subject, ctx context.Context, a rt.Admission) (rt.RunRecord, error) {
+				a.Task = nil
+				return in.Admit(ctx, a)
+			}})},
+		{"admission accepts a task of another project", "admit/task_of_another_project_is_refused", "", wrap(hooks{
+			admit: func(in subject, ctx context.Context, a rt.Admission) (rt.RunRecord, error) {
+				if a.Task != nil {
+					a.Task.Scope = a.Run.Scope
+				}
+				return in.Admit(ctx, a)
+			}})},
+		{"a repeat for another task is accepted", "admit/repeat_must_name_the_same_task", "", wrap(hooks{
+			admit: func(in subject, ctx context.Context, a rt.Admission) (rt.RunRecord, error) {
+				rec, err := in.Admit(ctx, a)
+				if err != nil && errors.Is(err, domain.ErrConflict) && a.Task != nil {
+					return in.Load(ctx, a.Run.Scope, a.Run.ID)
+				}
+				return rec, err
+			}})},
+		{"the stored task is shared with callers", "admit/task_reference_is_copied", "", func() func(in subject) subject {
+			var cache *rt.RunRecord
+			return wrap(hooks{
+				admit: func(in subject, ctx context.Context, a rt.Admission) (rt.RunRecord, error) {
+					rec, err := in.Admit(ctx, a)
+					if err == nil {
+						c := rec
+						cache = &c
+					}
+					return rec, err
+				},
+				load: func(in subject, ctx context.Context, s domain.Scope, id domain.RunID) (rt.RunRecord, error) {
+					if cache != nil && cache.Run.ID == id && cache.Run.Scope == s {
+						return *cache, nil
+					}
+					return in.Load(ctx, s, id)
+				}})
+		}()},
 	}
 }
 
