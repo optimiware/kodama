@@ -19,8 +19,11 @@ import (
 	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/kernel/runner"
+	"github.com/optimiware/kodama/internal/kernel/runtime"
 	"github.com/optimiware/kodama/internal/shell/api"
+	secret "github.com/optimiware/kodama/internal/shell/secrets"
 	"github.com/optimiware/kodama/internal/shell/serve"
+	"github.com/optimiware/kodama/internal/shell/sources"
 	"github.com/optimiware/kodama/internal/shell/store"
 )
 
@@ -47,11 +50,7 @@ func (l *liveness) RunActive(ctx context.Context, tenant domain.TenantID, projec
 	if l.unknown.Load() {
 		return false, errors.New("the database is unavailable")
 	}
-	info, err := l.e.mem.RunGitInfo(ctx, tenant, project, runID)
-	if errors.Is(err, store.ErrNotFound) {
-		return false, nil
-	}
-	return err == nil && info.Active(), err
+	return sources.Liveness(l.e.mem).RunActive(ctx, tenant, project, runID)
 }
 
 const (
@@ -151,11 +150,7 @@ func (i *issuer) IssueRunCredential(ctx context.Context, tenant domain.TenantID,
 	if i.server != nil {
 		server = i.server
 	}
-	cred, err := server.IssueRunCredential(ctx, tenant, project, runID, repositoryID)
-	if err != nil {
-		return runner.IssuedCredential{}, err
-	}
-	return runner.IssuedCredential{GrantID: cred.GrantID, Secret: cred.Secret, ExpiresAt: cred.ExpiresAt}, nil
+	return sources.Credentials(server).IssueRunCredential(ctx, tenant, project, runID, repositoryID)
 }
 
 func (e *srcEnv) sources(baseURL string, is runner.CredentialIssuer) *runner.GitSources {
@@ -921,4 +916,125 @@ type brokenDirectory struct{ *store.MemoryGit }
 
 func (brokenDirectory) RepositoryByPath(context.Context, domain.TenantID, string, string) (store.Repository, error) {
 	return store.Repository{}, errors.New("the database is unavailable")
+}
+
+// staticKeys names the test tenant and project in the Git service's URLs.
+type staticKeys struct{}
+
+func (staticKeys) ScopeKeys(context.Context, domain.Scope) (string, string, error) {
+	return "acme", "erp", nil
+}
+
+// tipTable resolves branch tips from what the test pushed.
+type tipTable map[string]string
+
+func (t tipTable) Tip(_ context.Context, _ domain.Scope, repo store.Repository, ref string) (string, error) {
+	if ref != gitv1.HeadsPrefix+repo.DefaultBranch || t[repo.ID] == "" {
+		return "", errors.New("no such branch")
+	}
+	return t[repo.ID], nil
+}
+
+// Test_unit_shell_run_sources_real_git prepares a run's inputs against real Git
+// hosting and uses them as a workspace preparation would: the credentials come out
+// of the custody adapter as private material, the pinned commits are fetched from
+// the locators with them and match exactly, and the material is gone when the run
+// is.
+func Test_unit_shell_run_sources_real_git(t *testing.T) {
+	e := newSrcEnv(t)
+	back, backWork, pinned := e.publish("erp", "backend", map[string]string{"README.md": "backend v1\n"})
+	know, _, knowTip := e.publish("", "context", map[string]string{"README.md": "company knowledge\n"})
+	backID, knowID := back["id"].(string), know["id"].(string)
+	e.advance(back, backWork, "tok-eng", map[string]string{"README.md": "backend v2\n"}) // the branch moved past the pin
+	e.register("run_prep", "running", false, readSource(backID, pinned, "backend"))
+
+	snapshots := sources.FileSnapshots{Dir: filepath.Join(e.dir, "snapshots")}
+	prepare := func() *sources.Preparer {
+		p, err := sources.NewPreparer(sources.PreparerConfig{Runs: e.mem, Repositories: e.mem, Keys: staticKeys{},
+			Tips: tipTable{knowID: knowTip}, Snapshots: snapshots, BaseURL: e.srv.URL})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	req := runtime.PrepareRequest{Scope: domain.Scope{TenantID: tenantID, ProjectID: projectID}, RunID: "run_prep", PlanDigest: "plan-1"}
+	in, err := prepare().Inputs(t.Context(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := prepare().Inputs(t.Context(), req)
+	if err != nil || again.Digest != in.Digest {
+		t.Fatalf("a restarted preparer computed other inputs: %v", err)
+	}
+	if len(in.Sources) != 2 || len(in.Credentials) != 2 {
+		t.Fatalf("inputs: %+v", in)
+	}
+
+	custody, err := secret.NewCustody(secret.CustodyConfig{Root: filepath.Join(e.dir, "custody"), Source: sources.CredentialSource{Issuer: e.server}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := runtime.NewMaterializationRef(req.Scope, "run_prep", "prepare", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := custody.Resolve(t.Context(), runtime.ResolveRequest{Ref: ref, Refs: in.Credentials})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := e.workspace("prep")
+	for _, s := range in.Sources {
+		var repoID string
+		switch s.Path {
+		case "backend":
+			repoID = backID
+		case ".context/tenant":
+			repoID = knowID
+		default:
+			t.Fatalf("unexpected source %+v", s)
+		}
+		name, err := sources.CredentialName(repoID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cred := strings.TrimSpace(read(t, filepath.Join(m.Directory, name)))
+		dest := filepath.Join(ws, s.Path)
+		if err := os.MkdirAll(dest, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		e.mustGit(dest, "init", "-q")
+		url := strings.Replace(s.Locator, "http://", "http://kodama:"+cred+"@", 1)
+		e.mustGit(dest, "fetch", "-q", "--no-tags", url, s.Revision)
+		e.mustGit(dest, "checkout", "-q", "--detach", s.Revision)
+		if got := e.mustGit(dest, "rev-parse", "HEAD"); got != s.Revision {
+			t.Fatalf("%s is at %s, not its pin %s", s.Path, got, s.Revision)
+		}
+	}
+	if got := read(t, filepath.Join(ws, "backend", "README.md")); got != "backend v1\n" {
+		t.Fatalf("the pinned commit was not checked out, got %q", got)
+	}
+	if got := read(t, filepath.Join(ws, ".context", "tenant", "README.md")); got != "company knowledge\n" {
+		t.Fatalf("the knowledge base: %q", got)
+	}
+	secrets := []string{}
+	for _, c := range in.Credentials {
+		secrets = append(secrets, strings.TrimSpace(read(t, filepath.Join(m.Directory, c.Name))))
+	}
+	// The credentials never reached the workspace, only the private material.
+	mustNotContain(t, ws, secrets...)
+
+	// The run ends: its credentials cannot be materialized again, and revoking removes them.
+	e.register("run_prep", "succeeded", false, readSource(backID, pinned, "backend"))
+	if _, err := custody.Resolve(t.Context(), runtime.ResolveRequest{Ref: ref, Refs: in.Credentials}); err == nil {
+		t.Fatal("a finished run's credentials were issued again")
+	}
+	if err := custody.Revoke(t.Context(), ref); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(m.Directory); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the run's credentials outlived it: %v", err)
+	}
+	if len(custody.Published()) != 0 {
+		t.Fatalf("material left: %v", custody.Published())
+	}
 }
