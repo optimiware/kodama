@@ -1,7 +1,7 @@
 ---
 id: T-191
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-186, T-187]
 decision_blockers: []
 owns: [internal/shell/sources/, internal/shell/secrets/, internal/shell/serve/runsources.go, internal/shell/serve/runsources_test.go]
