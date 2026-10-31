@@ -383,24 +383,70 @@ var osProbe = groupProbe{
 	members: liveMembers,
 }
 
-// liveMembers lists the live members of a process group from the process table,
-// which shows processes of every user.
+// liveMembers lists the live members of a process group from the process table.
+// A table that merely lists successfully is not a complete one (see membersFrom).
 func liveMembers(pgid int) (int, error) {
-	out, err := exec.Command("ps", "-A", "-o", "pgid=,stat=").Output()
+	out, err := exec.Command("ps", "-A", "-o", "pid=,pgid=,stat=").Output()
 	if err != nil {
 		return 0, fmt.Errorf("ps: %w", err)
 	}
-	n := 0
-	for _, line := range strings.Split(string(out), "\n") {
+	mounts, err := os.ReadFile("/proc/mounts")
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return 0, fmt.Errorf("reading the mount table: %w", err)
+	}
+	return membersFrom(pgid, string(out), string(mounts))
+}
+
+// membersFrom counts the live members of a process group (zombies awaiting
+// reaping are not counted) in a `ps -A -o pid=,pgid=,stat=` listing. A member
+// found is positive evidence whatever else is hidden. Zero members is evidence
+// of absence only when the listing is verified complete: it must list pid 1, a
+// process of another user, and the proc filesystem must not hide other users'
+// processes (hidepid), which makes ps succeed while omitting them. Otherwise the
+// answer is errUnverifiable, never zero.
+func membersFrom(pgid int, table, mounts string) (int, error) {
+	n, sawInit := 0, false
+	for _, line := range strings.Split(table, "\n") {
 		f := strings.Fields(line)
-		if len(f) < 2 {
+		if len(f) < 3 {
 			continue
 		}
-		if id, err := strconv.Atoi(f[0]); err == nil && id == pgid && !strings.HasPrefix(f[1], "Z") {
+		pid, perr := strconv.Atoi(f[0])
+		id, gerr := strconv.Atoi(f[1])
+		if perr != nil || gerr != nil {
+			continue
+		}
+		sawInit = sawInit || pid == 1
+		if id == pgid && !strings.HasPrefix(f[2], "Z") {
 			n++
 		}
 	}
-	return n, nil
+	switch {
+	case n > 0:
+		return n, nil
+	case !sawInit:
+		return 0, fmt.Errorf("%w: the process table does not list pid 1, so other users' processes may be hidden", errUnverifiable)
+	case procHidesProcesses(mounts):
+		return 0, fmt.Errorf("%w: the proc filesystem hides other users' processes (hidepid)", errUnverifiable)
+	}
+	return 0, nil
+}
+
+// procHidesProcesses reports whether the /proc mount in a /proc/mounts listing
+// restricts the visibility of other users' processes.
+func procHidesProcesses(mounts string) bool {
+	for _, line := range strings.Split(mounts, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 4 || f[1] != "/proc" || f[2] != "proc" {
+			continue
+		}
+		for _, opt := range strings.Split(f[3], ",") {
+			if v, ok := strings.CutPrefix(opt, "hidepid="); ok && v != "0" && v != "off" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // alive reports whether a process of the group still exists, with an answer only
@@ -416,9 +462,10 @@ func liveMembers(pgid int) (int, error) {
 //     (and some systems answer so for a group of zombies). It is gone only on
 //     independent evidence: its leader's pid is held by a process with a
 //     different start time (the id was recycled, which cannot happen while a
-//     member lives), or the process table shows no live member. It is alive when
-//     a live member exists, and unverifiable (an error, never absence) when the
-//     process table cannot be read.
+//     member lives), or a verifiably complete process table shows no live
+//     member. It is alive when a live member exists, and unverifiable (an
+//     error, never absence) when the process table cannot be read or is not
+//     verifiably complete.
 func (p groupProbe) alive(pgid int, startID string, ours bool) (bool, error) {
 	if pgid <= 1 {
 		return false, nil

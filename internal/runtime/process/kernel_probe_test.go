@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -58,6 +59,32 @@ func Test_process_kernel_permission_denied_is_not_termination(t *testing.T) {
 				return func(int) (string, bool, error) { return "", false, errors.New("ps failed") }
 			},
 			func(int) (int, error) { return 1, nil }},
+		{"the listing succeeds but omits other users' processes", false, unknown,
+			func(string) func(int) (string, bool, error) {
+				return func(int) (string, bool, error) { return "", true, nil }
+			},
+			func(pg int) (int, error) { return membersFrom(pg, "  500  500 S\n  500  612 Ss\n", "") }},
+		{"the proc filesystem hides other users' processes", false, unknown,
+			func(string) func(int) (string, bool, error) {
+				return func(int) (string, bool, error) { return "", true, nil }
+			},
+			func(pg int) (int, error) {
+				return membersFrom(pg, "    1    1 Ss\n  500  612 Ss\n", "proc /proc proc rw,nosuid,hidepid=2 0 0\n")
+			}},
+		{"an incomplete listing still shows a live member", false, alive,
+			func(string) func(int) (string, bool, error) {
+				return func(int) (string, bool, error) { return "", true, nil }
+			},
+			func(pg int) (int, error) {
+				return membersFrom(pg, "  500  612 Ss\n  777  "+strconv.Itoa(pg)+" S\n", "")
+			}},
+		{"a complete listing shows only a zombie", true, gone,
+			func(string) func(int) (string, bool, error) {
+				return func(int) (string, bool, error) { return "", true, nil }
+			},
+			func(pg int) (int, error) {
+				return membersFrom(pg, "    1    1 Ss\n  777  "+strconv.Itoa(pg)+" Z\n", "proc /proc proc rw,hidepid=0 0 0\n")
+			}},
 		{"the leader's pid was recycled", true, gone,
 			func(string) func(int) (string, bool, error) {
 				return func(int) (string, bool, error) { return "another start time", false, nil }
@@ -224,5 +251,35 @@ func Test_process_kernel_denied_service_is_not_lost_or_stopped(t *testing.T) {
 	defer cancel2()
 	if o, err := e.k.Resources.Remove(rctx, h); err == nil || o.ConfirmedRemoved() {
 		t.Fatalf("a removal confirmed while the group is not verified gone: %+v %v", o, err)
+	}
+}
+
+// Test_process_kernel_membersFrom: an empty group is proven only by a process
+// table verified complete; a listing that succeeds while hiding processes is
+// unverifiable, and a member that is seen counts whatever else is hidden.
+func Test_process_kernel_membersFrom(t *testing.T) {
+	const visible = "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"
+	for name, c := range map[string]struct {
+		table, mounts string
+		want          int
+		unverifiable  bool
+	}{
+		"live members":                  {"    1    1 Ss\n  9  42 S\n 10  42 R\n 11  43 S\n", visible, 2, false},
+		"zombies are not live":          {"    1    1 Ss\n  9  42 Z\n", visible, 0, false},
+		"no process at all":             {"    1    1 Ss\n", "", 0, false},
+		"a member in a partial listing": {"  9  42 S\n", "", 1, false},
+		"pid 1 not listed":              {"  9  41 S\n", visible, 0, true},
+		"hidepid=1":                     {"    1    1 Ss\n", "proc /proc proc rw,hidepid=1 0 0\n", 0, true},
+		"hidepid=invisible":             {"    1    1 Ss\n", "proc /proc proc rw,hidepid=invisible 0 0\n", 0, true},
+		"hidepid=0":                     {"    1    1 Ss\n", "proc /proc proc rw,hidepid=0 0 0\n", 0, false},
+		"another proc mount":            {"    1    1 Ss\n", "proc /elsewhere proc rw,hidepid=2 0 0\n", 0, false},
+		"an empty listing":              {"", visible, 0, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			n, err := membersFrom(42, c.table, c.mounts)
+			if c.unverifiable != errors.Is(err, errUnverifiable) || (err != nil && !c.unverifiable) || n != c.want {
+				t.Fatalf("membersFrom = %d, %v; want %d, unverifiable=%v", n, err, c.want, c.unverifiable)
+			}
+		})
 	}
 }
