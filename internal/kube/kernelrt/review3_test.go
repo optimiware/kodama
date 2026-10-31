@@ -275,3 +275,82 @@ func Test_unit_kube_kernel_runtime_settlement_respects_a_reaping_claim(t *testin
 		t.Fatalf("observation must not accept the doomed instance: %v", err)
 	}
 }
+
+// A settlement refusal after this call's create was applied is uncertain, never
+// "not reached", and the created object is accounted for.
+func Test_unit_kube_kernel_runtime_applied_create_is_never_reported_not_reached(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("workload", func(t *testing.T) {
+		h := newHarness(t)
+		ws := h.ensureWorkspace(scopeA, "run-1", 1)
+		b := binding(scopeA, "run-1", "build", 1, "d", 1)
+		// A pauses before its create. Meanwhile an overlapping call creates and
+		// establishes an instance, which then disappears.
+		h.cl.onNext("create job", func() {
+			if _, err := h.start(h.startRequest(b, ws)); err != nil {
+				t.Errorf("overlapping start: %v", err)
+			}
+			h.cl.mu.Lock()
+			delete(h.cl.jobs, key(testNS, h.jobName(b)))
+			h.cl.mu.Unlock()
+		})
+		_, err := h.start(h.startRequest(b, ws))
+		if runtime.ClassifyEffect(err) != runtime.CommandUncertain || isNotReached(err) || !errors.Is(err, ErrUnverified) {
+			t.Fatalf("an applied create must be uncertain: %v", err)
+		}
+		if h.cl.count("create job") != 2 {
+			t.Fatalf("creates = %d", h.cl.count("create job"))
+		}
+		// The instance this call created is accounted for: deleted by its UID, not
+		// left as a silent replacement of the lost one.
+		if _, ok := h.cl.job(testNS, h.jobName(b)); ok {
+			t.Fatal("the conflicting instance was left behind")
+		}
+		if h.cl.deleteCount("job") != 1 {
+			t.Fatalf("deletes = %d", h.cl.deleteCount("job"))
+		}
+	})
+
+	t.Run("workspace", func(t *testing.T) {
+		h := newHarness(t)
+		spec := h.workspaceSpec(scopeA, "run-1", 1)
+		id := workspaceIdent(h, "run-1")
+		h.cl.onNext("create pvc", func() {
+			if _, err := h.res.Ensure(ctx, spec); err != nil {
+				t.Errorf("overlapping ensure: %v", err)
+			}
+			h.dropObject(h.cl.pvcs, id)
+		})
+		_, err := h.res.Ensure(ctx, spec)
+		if runtime.ClassifyEffect(err) != runtime.CommandUncertain || isNotReached(err) || !errors.Is(err, ErrUnverified) {
+			t.Fatalf("an applied create must be uncertain: %v", err)
+		}
+		if h.cl.count("create pvc") != 2 || len(h.cl.names(h.cl.pvcs)) != 0 || h.cl.deleteCount("pvc") != 1 {
+			t.Fatalf("creates %d claims %v deletes %d", h.cl.count("create pvc"), h.cl.names(h.cl.pvcs), h.cl.deleteCount("pvc"))
+		}
+	})
+
+	t.Run("an adopted object is still not reached", func(t *testing.T) {
+		// The adopter made no create effect; the refusal stays a not-reached one.
+		h := newHarness(t)
+		ws := h.ensureWorkspace(scopeA, "run-1", 1)
+		b := binding(scopeA, "run-1", "build", 1, "d", 1)
+		id := workloadIdent(b)
+		j := h.ad.stepJob(id, h.startRequest(b, ws), h.target(), workspaceIdent(h, "run-1").base(), "", nil)
+		h.cl.onNext("create job", func() { h.cl.putJob(testNS, j) })
+		h.cl.onNext("update secret", func() {})
+		h.cl.onNext("update secret", func() {
+			job, _ := h.cl.job(testNS, h.jobName(b))
+			if _, err := h.ad.settle(ctx, testNS, id, 2, recStopped); err != nil {
+				t.Errorf("close: %v", err)
+			}
+			if ok, err := h.ad.claimReap(ctx, testNS, id, opJob, job.Metadata.UID); err != nil || !ok {
+				t.Errorf("claimReap = %v %v", ok, err)
+			}
+		})
+		if _, err := h.start(h.startRequest(b, ws)); !isNotReached(err) || !errors.Is(err, ErrUnverified) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}

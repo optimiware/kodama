@@ -608,8 +608,20 @@ func (c *core) guarded(ctx context.Context, ns string, id ident, g guard) error 
 		return rerr
 	}
 	if err := c.settleMarker(ctx, ns, id, g.op, token, uid, ""); err != nil {
+		if createdHere {
+			// This call's create was applied. A refused establishment does not
+			// undo it, so it is never "not reached". The instance conflicts with
+			// the one the record established, which is exclusively this call's to
+			// account for: delete it by its UID (never by identity) so a lost
+			// object is not silently replaced.
+			var derr error
+			if g.reap != nil && uid != "" && errors.Is(err, ErrUnverified) {
+				derr = g.reap(uid)
+			}
+			return uncertain(errors.Join(err, derr))
+		}
 		if errors.Is(err, ErrUnverified) {
-			return notReached(err) // refused, not unknown: nothing new was established
+			return notReached(err) // adopted, not created: no effect of this call
 		}
 		return uncertain(err)
 	}
