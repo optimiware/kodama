@@ -4,7 +4,7 @@ milestone: kernel
 status: planned
 depends_on: [T-174]
 decision_blockers: []
-owns: [internal/natsbus/, internal/shell/outbox/]
+owns: [internal/natsbus/, internal/shell/outbox/, internal/shell/bus/jetstream.go, internal/shell/bus/jetstream_test.go, internal/shell/bus/publisher.go]
 check: make check-go PKGS='./internal/natsbus/... ./internal/shell/outbox/...'
 resources: [go, integration]
 acceptance: [unit_outbox_atomic_publish, unit_outbox_redelivery]
