@@ -15,7 +15,10 @@ import (
 	"github.com/optimiware/kodama/internal/storage"
 )
 
-const expandMigration = "004_pipeline_runtime_expand.sql"
+const (
+	expandMigration  = "004_pipeline_runtime_expand.sql"
+	durableMigration = "005_durable_run_state.sql"
+)
 
 // seedPipelineRuntime adds pipelines, tasks, runs and two steps to the standard
 // environment: a container step (s1) and a wait step (s2) in run r1.
@@ -102,7 +105,7 @@ func Test_unit_storage_pipeline_runtime_expand(t *testing.T) {
 		for _, m := range ms {
 			ids = append(ids, m.ID)
 		}
-		want := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", expandMigration}
+		want := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", expandMigration, durableMigration}
 		if strings.Join(ids, ",") != strings.Join(want, ",") {
 			t.Fatalf("manifest = %v, want %v", ids, want)
 		}
@@ -168,13 +171,13 @@ func Test_pipeline_runtime_expand_postgres(t *testing.T) {
 		// Lease: owner and expiry travel together; the fence only grows, and a new
 		// holder must take a higher one.
 		requireCode(t, tryExec(t, e, `UPDATE runs SET lease_owner = 'w1' WHERE id = 'r1'`), "23514", "owner without expiry")
-		ok(`UPDATE runs SET lease_owner = 'w1', lease_expires_at = now() + interval '1 minute', lease_fence = 1 WHERE id = 'r1'`)
+		ok(`UPDATE runs SET lease_owner = 'w1', lease_purpose = 'execute', lease_expires_at = now() + interval '1 minute', lease_fence = 1 WHERE id = 'r1'`)
 		ok(`UPDATE runs SET lease_expires_at = now() + interval '2 minutes' WHERE id = 'r1'`) // renewal keeps the fence
 		requireCode(t, tryExec(t, e, `UPDATE runs SET lease_fence = 0 WHERE id = 'r1'`), "23514", "fence decrease")
 		requireCode(t, tryExec(t, e, `UPDATE runs SET lease_owner = 'w2' WHERE id = 'r1'`), "23514", "takeover without expiry")
 		requireCode(t, tryExec(t, e, `UPDATE runs SET lease_owner = 'w2', lease_expires_at = now() WHERE id = 'r1'`), "23514", "takeover keeping the fence")
 		ok(`UPDATE runs SET lease_owner = 'w2', lease_expires_at = now() + interval '1 minute', lease_fence = 2 WHERE id = 'r1'`)
-		ok(`UPDATE runs SET lease_owner = NULL, lease_expires_at = NULL WHERE id = 'r1'`) // release keeps the fence
+		ok(`UPDATE runs SET lease_owner = NULL, lease_purpose = NULL, lease_expires_at = NULL WHERE id = 'r1'`) // release keeps the fence
 		requireCode(t, tryExec(t, e, `UPDATE runs SET lease_owner = 'w2', lease_expires_at = now(), lease_fence = 2 WHERE id = 'r1'`), "23514", "reacquire without a higher fence")
 		var fence int64
 		if err := e.mig.QueryRow(testCtx(t), `SELECT lease_fence FROM runs WHERE id = 'r1'`).Scan(&fence); err != nil || fence != 2 {
@@ -192,9 +195,9 @@ func Test_pipeline_runtime_expand_postgres(t *testing.T) {
 		requireCode(t, tryExec(t, e, `UPDATE runs SET cleanup_state = 'done', retained_resources = '["svc-1"]' WHERE id = 'r1'`), "23514", "done with identities")
 		requireCode(t, tryExec(t, e, `UPDATE runs SET cleanup_state = 'sideways' WHERE id = 'r1'`), "23514", "unknown cleanup state")
 		requireCode(t, tryExec(t, e, `UPDATE runs SET cleanup_state = 'done', cleanup_next_at = now() WHERE id = 'r1'`), "23514", "retry time after done")
-		ok(`UPDATE runs SET cleanup_state = 'retained', cleanup_attempts = 5, retained_resources = '["svc-1","ws-r1"]' WHERE id = 'r1'`)
+		ok(`UPDATE runs SET cleanup_state = 'retained', cleanup_max_attempts = 5, cleanup_attempts = 5, cleanup_reason = 'cleanup_exhausted', retained_resources = '["svc-1","ws-r1"]' WHERE id = 'r1'`)
 		ok(`UPDATE runs SET cleanup_state = 'pending', cleanup_next_at = now() + interval '1 minute' WHERE id = 'r1'`)
-		ok(`UPDATE runs SET cleanup_state = 'done', cleanup_next_at = NULL, retained_resources = '[]' WHERE id = 'r1'`)
+		ok(`UPDATE runs SET cleanup_state = 'done', cleanup_next_at = NULL, cleanup_reason = NULL, retained_resources = '[]' WHERE id = 'r1'`)
 
 		// Workload identity, command intent and launch evidence.
 		requireCode(t, tryExec(t, e, `UPDATE run_steps SET command_intent = 'launch' WHERE id = 's1'`), "23514", "intent without fence and time")
@@ -322,7 +325,7 @@ VALUES ('tenant-a', 'pa1', 'user-1', 'key-1', 'sig1', 'decision', repeat('a', 64
 		addWaitStep(t, e, "s8", 5)
 		ok(openWaitSQL("s8", "w8", "fail"))
 		requireCode(t, tryExec(t, e, `UPDATE run_steps SET status = 'cancelled', finished_at = now(), wait_state = 'cancelled', wait_actor_ref = 'user-1', wait_decided_at = now(), wait_version = 2 WHERE id = 's8'`), "23514", "cancellation naming an actor")
-		ok(`UPDATE run_steps SET status = 'cancelled', finished_at = now(), wait_state = 'cancelled', wait_decided_at = now(), wait_version = 2 WHERE id = 's8'`)
+		ok(`UPDATE run_steps SET status = 'cancelled', finished_at = now(), wait_state = 'cancelled', wait_decided_at = now(), wait_reason = 'run_cancelled', wait_version = 2 WHERE id = 's8'`)
 
 		// Indexes for due waits, the role inbox, correlation routing and the task's runs.
 		for _, name := range []string{"run_steps_wait_due", "run_steps_wait_inbox", "run_steps_wait_correlation", "run_steps_workspace_exclusive", "tasks_current_run", "runs_task", "runs_lease_expiry"} {
@@ -549,13 +552,13 @@ VALUES ($1, $2, 'user-1', $3, $4, 'tombstone', repeat('b', 64), false, 'unknown_
 		}
 		// Lifecycle columns are writable and tenant-scoped.
 		err := storage.WithTenant(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
-			if _, err := tx.Exec(ctx, `UPDATE runs SET lease_owner = 'w1', lease_expires_at = now() + interval '1 minute', lease_fence = 1 WHERE id = 'r1'`); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE runs SET lease_owner = 'w1', lease_purpose = 'execute', lease_expires_at = now() + interval '1 minute', lease_fence = 1 WHERE id = 'r1'`); err != nil {
 				return err
 			}
 			if _, err := tx.Exec(ctx, `UPDATE tasks SET pipeline_id = 'pl1' WHERE id = 't1'`); err != nil {
 				return err
 			}
-			tag, err := tx.Exec(ctx, `UPDATE runs SET lease_owner = 'w1', lease_expires_at = now(), lease_fence = 1 WHERE tenant_id = 'tenant-b'`)
+			tag, err := tx.Exec(ctx, `UPDATE runs SET lease_owner = 'w1', lease_purpose = 'execute', lease_expires_at = now(), lease_fence = 1 WHERE tenant_id = 'tenant-b'`)
 			if err != nil {
 				return err
 			}
