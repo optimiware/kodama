@@ -253,6 +253,7 @@ type fakeResources struct {
 
 	ensureHook func(n int, spec runtime.ResourceSpec) (apply bool, err error)
 	removeHook func(n int, h runtime.ResourceHandle) (apply bool, err error)
+	onRemove   func(h runtime.ResourceHandle)
 	// starting is how many observations a new service reports starting.
 	starting map[string]int
 }
@@ -327,6 +328,9 @@ func (f *fakeResources) Stop(_ context.Context, h runtime.ResourceHandle) (runti
 }
 
 func (f *fakeResources) Remove(_ context.Context, h runtime.ResourceHandle) (runtime.ResourceObservation, error) {
+	if f.onRemove != nil {
+		f.onRemove(h)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.removes = append(f.removes, h.Name)

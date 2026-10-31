@@ -169,7 +169,7 @@ func (d *drive) stageRelease() (flow, error) {
 		}
 		for a := 1; a <= s.Attempt; a++ {
 			c, ok := d.launchCommand(s.Key, a)
-			if !ok || c.State == runtime.CommandRejected || d.removed(s.Key, a) {
+			if !ok || !maybeLaunched(c) || d.removed(s.Key, a) {
 				continue
 			}
 			// A removal is idempotent on the workload identity, so one that

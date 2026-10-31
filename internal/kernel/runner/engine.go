@@ -199,12 +199,13 @@ func (e *Engine) Serve(ctx context.Context, interval time.Duration, limit int) e
 
 // Drive claims one run for ref.Purpose and progresses it until it is terminal,
 // parked on a wait, or cannot safely continue. A claim that is held or whose
-// purpose the run no longer admits is reported as skipped, not as an error. A
+// purpose the run does not admit (cancelled, settled or still executing) is
+// reported as skipped, not as an error. A
 // takeover during the drive is reported as lost: the stale engine stops writing.
 func (e *Engine) Drive(ctx context.Context, ref runtime.RunRef) (Report, error) {
 	rec, err := e.cfg.State.Claim(ctx, runtime.ClaimRequest{Scope: ref.Scope, RunID: ref.RunID, Owner: e.cfg.Owner,
 		Purpose: ref.Purpose, TTL: e.cfg.LeaseTTL}, e.cfg.Clock.Now())
-	if errors.Is(err, runtime.ErrClaimHeld) || errors.Is(err, runtime.ErrExecutionClosed) {
+	if errors.Is(err, runtime.ErrClaimHeld) || errors.Is(err, runtime.ErrExecutionClosed) || errors.Is(err, runtime.ErrIllegalTransition) {
 		return Report{Ref: ref, Status: DriveSkipped}, nil
 	}
 	if err != nil {

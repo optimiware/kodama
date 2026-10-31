@@ -36,7 +36,7 @@ func (d *drive) windDown(mode windMode, reason runtime.Reason) (flow, error) {
 		if s.Kind != runtime.StepContainer || s.State != runtime.StepRunning {
 			continue
 		}
-		if c, ok := d.launchCommand(s.Key, s.Attempt); ok && c.State != runtime.CommandRejected {
+		if c, ok := d.launchCommand(s.Key, s.Attempt); ok && maybeLaunched(c) {
 			if _, _, err := d.workloadEffect(runtime.CommandStop, c.Binding); err != nil {
 				return flowPass, err
 			}

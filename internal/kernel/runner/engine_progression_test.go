@@ -169,15 +169,18 @@ func Test_unit_kernel_engine_progression(t *testing.T) {
 		a := stepOf(got, "a")
 		e.expect(a.State == runtime.StepFailed && a.Reason == runtime.ReasonStepTimeout && a.Result.Code == runtime.ResultTimedOut, "step a: %+v", a)
 		e.expect(got.Run.Outcome == runtime.OutcomeFailed && got.Run.Reason == runtime.ReasonStepTimeout, "run: %+v", got.Run)
-		e.expect(e.rt.count(e.rt.stops) == 1, "the workload was stopped")
+		e.expect(e.rt.count(e.rt.stops) == 1 && e.rt.liveCount() == 0, "the workload was stopped and removed")
 		e.expect(stepOf(got, "b").State == runtime.StepSkipped, "b did not start")
 	})
 
 	t.Run("an unconfirmed removal stops the run before the next step starts", func(t *testing.T) {
 		e := newEnv(t)
 		e.admit("run1", plan("release", ctr("a"), ctr("b", "a")), 3)
-		e.rt.removeHook = func(int, runtime.RuntimeBinding) (bool, error) {
-			return false, fmt.Errorf("%w: the backend was unreachable", runtime.ErrNotReached)
+		e.rt.removeHook = func(n int, _ runtime.RuntimeBinding) (bool, error) {
+			if n <= 3 {
+				return false, fmt.Errorf("%w: the backend was unreachable", runtime.ErrNotReached)
+			}
+			return true, nil
 		}
 		e.drive(e.engine("w1"), "run1")
 
@@ -185,7 +188,8 @@ func Test_unit_kernel_engine_progression(t *testing.T) {
 		e.expect(fmt.Sprint(e.rt.startOrder) == "[a]", "b never started while a's workspace was unreleased: %v", e.rt.startOrder)
 		e.expect(got.Run.Outcome == runtime.OutcomeFailed && got.Run.Reason == runtime.ReasonStopUncertain, "run: %+v", got.Run)
 		e.expect(stepOf(got, "a").State == runtime.StepSucceeded && stepOf(got, "b").State == runtime.StepSkipped, "states: %v", states(got))
-		e.expect(e.rt.count(e.rt.removes) == 3, "a removal that provably did not reach the backend is issued again, boundedly: %d", e.rt.count(e.rt.removes))
+		e.expect(e.rt.count(e.rt.removes) == 4, "a removal that provably did not reach the backend is issued again, boundedly, then cleanup finishes it: %d", e.rt.count(e.rt.removes))
+		e.expect(got.Run.Cleanup.State == runtime.CleanupComplete && e.rt.liveCount() == 0, "cleanup removed it: %+v", got.Run.Cleanup)
 	})
 
 	t.Run("a lost workspace fails the run and is never recreated", func(t *testing.T) {

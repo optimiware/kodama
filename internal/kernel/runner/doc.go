@@ -31,6 +31,13 @@
 //     owned workloads and resources are confirmed removed, or after the bounded
 //     cleanup attempts are exhausted with what remains recorded.
 //
+// Two limits of the frozen contract are visible here. The run record has no field
+// for a step's declared outputs, so the engine reads and records them through its
+// own Outputs port (the shell retains them); without one every output is missing.
+// And the state store has no release: an engine that parks a run on a wait leaves
+// its lease to expire, and a later claim resumes the run, so wake-up latency is
+// bounded by LeaseTTL.
+//
 // The package also still holds the earlier blocking executor (Runner, Backend,
 // Process, Podman, Kube and the Git source preparation), which the shell's
 // current composition runs on the host store. It is the transitional owner named
