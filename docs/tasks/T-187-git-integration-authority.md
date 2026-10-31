@@ -4,7 +4,7 @@ milestone: kernel
 status: planned
 depends_on: [T-183]
 decision_blockers: []
-owns: [internal/shell/git/, internal/shell/api/gitpolicy.go, internal/shell/store/git.go, contracts/git/]
+owns: [internal/shell/git/, internal/shell/api/gitpolicy.go, internal/shell/api/git.go, internal/shell/api/gitcontrol.go, internal/shell/api/git_policy_test.go, internal/shell/store/git.go, internal/shell/store/gitmemory.go, internal/shell/store/git_postgres_test.go, internal/shell/README.md, docs/contracts/git-service.md, contracts/git/]
 check: make check-go PKGS='./internal/shell/git/... ./internal/shell/api/... ./internal/shell/store/... ./contracts/git/...'
 resources: [go, integration]
 acceptance: [unit_git_integration_authority, unit_git_authority_refusals]
