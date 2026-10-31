@@ -15,7 +15,7 @@ acceptance: []
 Give the next session a short, accurate entry point for continuing after this branch is published, without re-deriving the phase breakdown or the current state.
 
 ## Contract
-O-39 in the [decision register](../decisions.md), the [simplification plan](pipeline-runtime-simplification.md) (P3–P5, parallel execution model), [status](../status.md) and [assembly status](assembly-status.md).
+O-39 in the [decision register](../decisions.md), the [simplification plan](../implementation/pipeline-runtime-simplification.md) (P3–P5, parallel execution model), [status](../status.md) and [assembly status](../implementation/assembly-status.md).
 
 ## Deliverables
 - `docs/implementation/pipeline-runtime-handoff.md`, kept brief (roughly one to two pages):

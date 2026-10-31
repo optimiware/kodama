@@ -169,6 +169,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-192 Self-contained signal decision reasons](T-192-signal-decision-reason.md) | T-189 | done |
 | [T-193 Outbox cursor must not skip concurrently committed events](T-193-outbox-cursor-ordering.md) | T-188 | done |
 | [T-194 Post-P2 handoff for P3–P5](T-194-post-p2-handoff.md) | T-184 | planned |
+| [T-195 Carry the task through admission and persist it on the run](T-195-admission-task-link.md) | T-184 | planned |
 | [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | deferred (parked until stage access) |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
 | [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | done |
