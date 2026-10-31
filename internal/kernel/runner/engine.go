@@ -151,6 +151,10 @@ const (
 	// DriveRetry: an observation or effect was inconclusive; a later claim
 	// reconciles it from the durable record.
 	DriveRetry DriveStatus = "retry"
+	// DriveHeld: the engine cannot revoke a settled step's secrets faithfully and
+	// holds the run rather than advance or skip; Report.Reason is the stable code
+	// (ReasonRevocationNoResolver, ReasonRevocationUnrecoverable).
+	DriveHeld DriveStatus = "held"
 	// DriveSkipped: the claim was not granted (held, or the purpose closed).
 	DriveSkipped DriveStatus = "skipped"
 	// DriveLost: a takeover superseded this engine's claim; it wrote nothing more.
@@ -161,6 +165,8 @@ const (
 type Report struct {
 	Ref    runtime.RunRef
 	Status DriveStatus
+	// Reason is the stable code of a held drive; empty otherwise.
+	Reason runtime.Reason
 	// Next is when a waiting run next needs attention (the earliest wait deadline).
 	Next time.Time
 	// Run is the last record the engine wrote or read; zero when the claim was refused.
@@ -254,9 +260,9 @@ type drive struct {
 	nextWake time.Time
 	// mats are the secret materializations this drive created, by step.
 	mats map[domain.StepID]runtime.Materialization
-	// released are the steps whose secret access this drive revoked. Revocation is
-	// idempotent and is repeated by every drive for every settled step, so a crash
-	// or a failed release after a settlement is always recovered.
+	// released are the steps whose secret access this drive revoked. Only the
+	// drive that resolved a step's secrets holds the materialization, so only it
+	// can revoke them; a later claim holds the run (DriveHeld) instead.
 	released map[domain.StepID]bool
 	// failing holds commands settled as final by a reconciliation that fails the
 	// run: they commit atomically with the run's failure.

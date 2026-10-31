@@ -266,8 +266,9 @@ func Test_unit_kernel_engine_progression(t *testing.T) {
 		e2.expect(s.State == runtime.StepFailed && s.Reason == runtime.ReasonSecretUnavailable && e2.rt.count(e2.rt.starts) == 0, "step: %+v", s)
 	})
 
-	t.Run("a crash right after a step settles does not skip revoking its secrets", revocationRecoversAfterCrash)
-	t.Run("a failed release holds the run at the settled step", transientReleaseHoldsTheRun)
+	t.Run("an engine revokes the secrets it materialized before the next step starts", revocationIsFaithful)
+	t.Run("a replacement engine holds rather than skip a revocation it cannot perform", revocationHoldsOnTakeover)
+	t.Run("a failed release is retried in place and then holds the run", failedReleaseHoldsTheRun)
 
 	// Real backend evidence, apart from the fault-injecting fakes above.
 	t.Run("process backend", processProgression)

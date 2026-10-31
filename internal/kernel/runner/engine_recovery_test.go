@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -184,79 +187,223 @@ func secretStep(key domain.StepID, deps ...domain.StepID) runtime.PlanStep {
 	return s
 }
 
-// revocationRecoversAfterCrash proves a crash immediately after a step settles
-// does not skip revoking its secrets: the next claim revokes before any further
-// step starts.
-func revocationRecoversAfterCrash(t *testing.T) {
-	e := newEnv(t)
-	e.admit("run1", plan("revoke-crash", secretStep("a"), ctr("b", "a")), 3)
-	first := true
-	e.secrets.releaseFn = func(domain.StepID) error {
-		if first {
-			first = false
-			panic(errCrash) // dies as the release starts, after the settlement committed
-		}
-		return nil
-	}
-	e.crash(e.engine("w1"), "run1")
-	mid := e.load("run1")
-	e.expect(stepOf(mid, "a").State == runtime.StepSucceeded && len(e.secrets.released) == 0, "settled, not yet revoked: %v", states(mid))
+// diskSecrets is a SecretResolver that really creates private material on disk and
+// really removes it, so a fake cannot conceal what a recovering engine is able to
+// revoke. Release removes exactly the directory in the materialization it is given
+// and refuses one without a directory: it does not guess from the step's identity.
+// The fakeSecrets above stay for fault injection only.
+type diskSecrets struct {
+	root string
+	mu   sync.Mutex
+	n    int
+	// failReleases fails that many Release calls before any succeeds.
+	failReleases int
+	// beforeRelease runs at the start of every Release (a panic stands for a crash).
+	beforeRelease func()
+}
 
+func newDiskSecrets(t *testing.T) *diskSecrets { return &diskSecrets{root: t.TempDir()} }
+
+func (d *diskSecrets) Resolve(_ context.Context, req runtime.ResolveRequest) (runtime.Materialization, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.n++
+	dir := filepath.Join(d.root, fmt.Sprintf("%s-%d", req.StepKey, d.n))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return runtime.Materialization{}, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "TOKEN"), []byte("s3cret-"+string(req.StepKey)), 0o400); err != nil {
+		return runtime.Materialization{}, err
+	}
+	return runtime.Materialization{Scope: req.Scope, RunID: req.RunID, StepKey: req.StepKey, Directory: dir, Refs: req.Refs,
+		Revision: fmt.Sprintf("rev-%d", d.n)}, nil
+}
+
+func (d *diskSecrets) Release(_ context.Context, m runtime.Materialization) error {
+	if d.beforeRelease != nil {
+		d.beforeRelease()
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.failReleases > 0 {
+		d.failReleases--
+		return errors.New("vault unavailable")
+	}
+	if m.Directory == "" || m.Revision == "" {
+		return errors.New("cannot revoke a materialization without its directory and revision")
+	}
+	return os.RemoveAll(m.Directory)
+}
+
+// material lists the private material still on disk.
+func (d *diskSecrets) material() []string {
+	entries, _ := os.ReadDir(d.root)
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
+}
+
+func (e *env) withDisk(d *diskSecrets) func(*runner.EngineConfig) {
+	return func(c *runner.EngineConfig) { c.Secrets = d }
+}
+
+func (e *env) driveStatus(eng *runner.Engine, id domain.RunID, purpose runtime.ClaimPurpose) runner.Report {
+	e.t.Helper()
+	rep, err := eng.Drive(context.Background(), e.ref(id, purpose))
+	if err != nil {
+		e.t.Fatalf("drive: %v", err)
+	}
+	return rep
+}
+
+// revocationIsFaithful proves the engine that resolved a step's secrets removes
+// the material before any later step starts.
+func revocationIsFaithful(t *testing.T) {
+	e := newEnv(t)
+	disk := newDiskSecrets(t)
+	e.admit("run1", plan("revoke-disk", secretStep("a"), ctr("b", "a")), 3)
 	e.rt.onStart = func(req runtime.StartRequest) {
-		e.expect(fmt.Sprint(e.secrets.released) == "[a]", "step %s started before the settled step's secrets were revoked: %v", req.Binding.StepKey, e.secrets.released)
-	}
-	e.expire()
-	e.drive(e.engine("w2"), "run1")
-	got := e.load("run1")
-	e.expect(got.Run.Outcome == runtime.OutcomeSucceeded && fmt.Sprint(e.secrets.released) == "[a]", "revoked once the next claim ran: %v", e.secrets.released)
-}
-
-// transientReleaseHoldsTheRun proves a failed release is handled explicitly: the
-// run does not advance past the settled step, and a later claim retries.
-func transientReleaseHoldsTheRun(t *testing.T) {
-	e := newEnv(t)
-	e.admit("run1", plan("revoke-retry", secretStep("a"), ctr("b", "a")), 3)
-	fails := 1
-	e.secrets.releaseFn = func(domain.StepID) error {
-		if fails > 0 {
-			fails--
-			return errors.New("vault unavailable")
+		if req.Binding.StepKey == "a" {
+			_, err := os.Stat(filepath.Join(req.Secrets.Directory, "TOKEN"))
+			e.expect(err == nil, "the workload's private material exists while it runs: %v", err)
+			return
 		}
-		return nil
+		e.expect(len(disk.material()) == 0, "b started with a's material still on disk: %v", disk.material())
 	}
-	rep := e.drive(e.engine("w1"), "run1")
+	e.drive(e.engine("w1", e.withDisk(disk)), "run1")
 	got := e.load("run1")
-	e.expect(rep.Status == runner.DriveRetry && stepOf(got, "a").State == runtime.StepSucceeded && fmt.Sprint(e.rt.startOrder) == "[a]",
-		"the run waits at the settled step: %s %v", rep.Status, e.rt.startOrder)
-	e.expire()
-	rep = e.drive(e.engine("w2"), "run1")
-	got = e.load("run1")
-	e.expect(got.Run.Outcome == runtime.OutcomeSucceeded && fmt.Sprint(e.secrets.released) == "[a]" && fmt.Sprint(e.rt.startOrder) == "[a b]",
-		"the retry revoked and the run went on: %v %v", e.secrets.released, e.rt.startOrder)
+	e.expect(got.Run.Outcome == runtime.OutcomeSucceeded && len(disk.material()) == 0, "run %+v, material %v", got.Run, disk.material())
 }
 
-// cleanupWaitsForRevocation proves a run whose settled step could not be revoked
-// is not terminal: cleanup stays visibly pending until the release succeeds.
-func cleanupWaitsForRevocation(t *testing.T) {
+// revocationHoldsOnTakeover proves a replacement engine never advances, completes
+// or skips over secret material it cannot revoke faithfully: it holds with a
+// stable reason, with no resolver or with one that is not given the
+// materialization (which the durable record does not hold).
+func revocationHoldsOnTakeover(t *testing.T) {
+	crashes := map[string]func(*env, *diskSecrets) *runner.Engine{
+		"mid-step": func(e *env, disk *diskSecrets) *runner.Engine {
+			e.rt.scripts["a"] = script{polls: 6}
+			sleeps := 0
+			e.onSleep = func() error {
+				if sleeps++; sleeps == 2 {
+					return errCrash
+				}
+				return nil
+			}
+			return e.engine("w1", e.withDisk(disk))
+		},
+		"right after settlement": func(e *env, disk *diskSecrets) *runner.Engine {
+			disk.beforeRelease = func() { panic(errCrash) }
+			return e.engine("w1", e.withDisk(disk))
+		},
+	}
+	for name, first := range crashes {
+		t.Run("the first engine dies "+name, func(t *testing.T) {
+			e := newEnv(t)
+			disk := newDiskSecrets(t)
+			e.admit("run1", plan("revoke-takeover", secretStep("a"), ctr("b", "a")), 3)
+			eng := first(e, disk)
+			func() {
+				defer func() {
+					if r := recover(); r != nil && r != errCrash {
+						panic(r)
+					}
+				}()
+				_, _ = eng.Drive(context.Background(), e.ref("run1", runtime.ClaimExecute))
+			}()
+			e.onSleep = nil
+			disk.beforeRelease = nil
+			e.expect(len(disk.material()) == 1, "the first engine left private material: %v", disk.material())
+
+			// A replacement with no resolver cannot revoke at all.
+			e.expire()
+			rep := e.driveStatus(e.engine("w2", func(c *runner.EngineConfig) { c.Secrets = nil }), "run1", runtime.ClaimExecute)
+			e.expect(rep.Status == runner.DriveHeld && rep.Reason == runner.ReasonRevocationNoResolver, "no resolver: %s %q", rep.Status, rep.Reason)
+			e.expect(!stepStarted(e, "b"), "b did not start: %v", e.rt.startOrder)
+
+			// One with a resolver is not handed the materialization either.
+			e.expire()
+			rep = e.driveStatus(e.engine("w3", e.withDisk(disk)), "run1", runtime.ClaimExecute)
+			e.expect(rep.Status == runner.DriveHeld && rep.Reason == runner.ReasonRevocationUnrecoverable, "no durable materialization: %s %q", rep.Status, rep.Reason)
+			got := e.load("run1")
+			e.expect(!stepStarted(e, "b") && !got.Run.Settled() && len(disk.material()) == 1,
+				"nothing advanced, nothing was silently skipped, the material is still there and still reported: %v %v", got.Run.Status(), disk.material())
+		})
+	}
+}
+
+func stepStarted(e *env, key domain.StepID) bool {
+	for _, k := range e.rt.startOrder {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+// failedReleaseHoldsTheRun proves a release that fails is retried in place by the
+// engine that holds the materialization, never discarded, and that when it keeps
+// failing the run does not advance and a later claim holds rather than guesses.
+func failedReleaseHoldsTheRun(t *testing.T) {
+	t.Run("a transient failure is retried in place", func(t *testing.T) {
+		e := newEnv(t)
+		disk := newDiskSecrets(t)
+		disk.failReleases = 2
+		e.admit("run1", plan("revoke-retry", secretStep("a"), ctr("b", "a")), 3)
+		e.rt.onStart = func(req runtime.StartRequest) {
+			if req.Binding.StepKey == "b" {
+				e.expect(len(disk.material()) == 0, "b started before the release succeeded: %v", disk.material())
+			}
+		}
+		e.drive(e.engine("w1", e.withDisk(disk)), "run1")
+		got := e.load("run1")
+		e.expect(got.Run.Outcome == runtime.OutcomeSucceeded && len(disk.material()) == 0, "run %+v material %v", got.Run, disk.material())
+	})
+	t.Run("a persistent failure stops the run at the settled step", func(t *testing.T) {
+		e := newEnv(t)
+		disk := newDiskSecrets(t)
+		disk.failReleases = 1000
+		e.admit("run1", plan("revoke-stuck", secretStep("a"), ctr("b", "a")), 3)
+		rep := e.drive(e.engine("w1", e.withDisk(disk)), "run1")
+		got := e.load("run1")
+		e.expect(rep.Status == runner.DriveRetry && stepOf(got, "a").State == runtime.StepSucceeded && !stepStarted(e, "b") && len(disk.material()) == 1,
+			"%s %v %v", rep.Status, states(got), disk.material())
+		disk.failReleases = 0
+		e.expire()
+		rep = e.drive(e.engine("w2", e.withDisk(disk)), "run1")
+		e.expect(rep.Status == runner.DriveHeld && rep.Reason == runner.ReasonRevocationUnrecoverable && !stepStarted(e, "b") && len(disk.material()) == 1,
+			"a later claim cannot revoke what it did not materialize: %s %q", rep.Status, rep.Reason)
+	})
+}
+
+// cleanupHoldsForRevocation proves a run whose settled step's secrets cannot be
+// revoked is never terminal: cleanup stays visibly pending, and a replacement
+// cleanup claim holds with a stable reason instead of completing.
+func cleanupHoldsForRevocation(t *testing.T) {
 	e := newEnv(t)
+	disk := newDiskSecrets(t)
+	disk.failReleases = 1000
 	e.admit("run1", plan("revoke-clean", secretStep("a"), ctr("b", "a")), 3)
 	e.rt.scripts["a"] = script{result: runtime.Result{Code: runtime.ResultFailed, ExitCode: 2}}
-	broken := true
-	e.secrets.releaseFn = func(domain.StepID) error {
-		if broken {
-			return errors.New("vault unavailable")
-		}
-		return nil
-	}
-	rep := e.drive(e.engine("w1"), "run1")
+	rep := e.drive(e.engine("w1", e.withDisk(disk)), "run1")
 	got := e.load("run1")
-	e.expect(rep.Status != runner.DriveTerminal && got.Run.Outcome == runtime.OutcomeFailed && !got.Run.Terminal() && got.Run.Status() == runtime.StatusCleaning,
-		"the failed run is cleaning, not terminal: %s %v", rep.Status, got.Run.Status())
-	broken = false
-	e.expire()
-	rep = e.cleanupDrive(e.engine("w2"), "run1")
-	got = e.load("run1")
-	e.expect(rep.Status == runner.DriveTerminal && got.Run.Terminal() && fmt.Sprint(e.secrets.released) == "[a]", "revoked, then terminal: %v", e.secrets.released)
+	e.expect(rep.Status != runner.DriveTerminal && got.Run.Outcome == runtime.OutcomeFailed && !got.Run.Terminal() && got.Run.Status() == runtime.StatusCleaning && len(disk.material()) == 1,
+		"the failed run is cleaning, not terminal: %s %v %v", rep.Status, got.Run.Status(), disk.material())
+
+	disk.failReleases = 0
+	for i, tc := range []struct {
+		secrets runtime.SecretResolver
+		reason  runtime.Reason
+	}{{nil, runner.ReasonRevocationNoResolver}, {disk, runner.ReasonRevocationUnrecoverable}} {
+		e.expire()
+		eng := e.engine(fmt.Sprintf("w%d", i+2), func(c *runner.EngineConfig) { c.Secrets = tc.secrets })
+		rep = e.driveStatus(eng, "run1", runtime.ClaimCleanup)
+		got = e.load("run1")
+		e.expect(rep.Status == runner.DriveHeld && rep.Reason == tc.reason && !got.Run.Terminal() && got.Run.Cleanup.State == runtime.CleanupPending && len(disk.material()) == 1,
+			"a replacement cleanup claim holds: %s %q %v", rep.Status, rep.Reason, got.Run.Cleanup.State)
+	}
 }
 
 // ---------------------------------------------------------------------------

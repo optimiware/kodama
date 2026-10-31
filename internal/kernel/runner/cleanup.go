@@ -164,8 +164,10 @@ func (d *drive) sweep(workloads []runtime.RuntimeBinding, resources []runtime.Re
 func (d *drive) cleanupAttempt() (flow, error) {
 	// Revocation first: a run is terminal only once no settled step's secret
 	// access remains. A release that fails leaves cleanup visibly pending.
-	if err := d.revokeSettled(); err != nil {
+	if hold, err := d.revokeSettled(); err != nil {
 		return d.stop(DriveCleaning)
+	} else if hold != runtime.ReasonNone {
+		return d.hold(hold, DriveHeld)
 	}
 	rem, err := d.sweep(d.ownedWorkloads(), d.ownedResources())
 	if err != nil {
@@ -206,8 +208,10 @@ func (d *drive) cleanupAttempt() (flow, error) {
 // retries only what is retained, by the identities recorded, and narrows or
 // clears the record. It never reopens execution.
 func (d *drive) lateCleanup() (flow, error) {
-	if err := d.revokeSettled(); err != nil {
+	if hold, err := d.revokeSettled(); err != nil {
 		return d.stop(DriveCleaning)
+	} else if hold != runtime.ReasonNone {
+		return d.hold(hold, DriveHeld)
 	}
 	c := d.rec.Run.Cleanup
 	rem, err := d.sweep(c.RetainedWorkloads, c.Retained)

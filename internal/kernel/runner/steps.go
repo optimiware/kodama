@@ -231,6 +231,13 @@ func (d *drive) start(s runtime.Step, cmd runtime.Command, p pendingStart) (flow
 		if d.e.cfg.Secrets == nil {
 			return d.rejectLaunch(s, cmd, runtime.ReasonSecretUnavailable)
 		}
+		// A retry resolves again: the earlier attempt's material goes first.
+		if old, ok := d.mats[s.Key]; ok {
+			if err := d.e.cfg.Secrets.Release(d.ctx, old); err != nil {
+				return d.rejectLaunch(s, cmd, runtime.ReasonSecretUnavailable)
+			}
+			delete(d.mats, s.Key)
+		}
 		m, err := d.e.cfg.Secrets.Resolve(d.ctx, runtime.ResolveRequest{Scope: d.rec.Run.Scope, RunID: d.rec.Run.ID, StepKey: s.Key, Refs: refs})
 		if err != nil {
 			return d.rejectLaunch(s, cmd, runtime.ReasonSecretUnavailable)

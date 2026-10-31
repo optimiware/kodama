@@ -25,11 +25,15 @@
 //   - A wait commits before it is announced. Resolution, expiry and cancellation
 //     are one version-checked decision; the engine consumes the recorded decision
 //     in one commit, and the deadline's declared branch is taken through when.
-//   - Authority ends when a step settles: its secrets are revoked before any
-//     further step is evaluated and before cleanup completes, by every drive for
-//     every settled step, so a crash or a failed release is recovered. Release
-//     must be idempotent and work from the step's scope, run, step and declared
-//     references alone.
+//   - Authority ends when a step settles: the engine that resolved a step's
+//     secrets revokes them before any further step is evaluated and before
+//     cleanup completes, retrying a failed release in place. The record does not
+//     hold the materialization, and the SecretResolver contract does not promise
+//     that Release works from the step's identity alone, so a replacement engine
+//     never guesses: with no resolver, or with material it did not create, it
+//     holds the run (DriveHeld, ReasonRevocationNoResolver or
+//     ReasonRevocationUnrecoverable) rather than advance or skip. The durable
+//     materialization identity that lifts the hold is owned by T-186.
 //   - Cancellation blocks new execution but still permits stopping, removal and
 //     reconciliation.
 //   - Execution outcome and cleanup are separate. A run is terminal only once its

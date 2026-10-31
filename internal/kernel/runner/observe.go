@@ -106,54 +106,112 @@ func (d *drive) finishStep(s runtime.Step, to runtime.StepState, reason runtime.
 	return flowAgain, nil
 }
 
-// revoke removes a settled step's secret materialization and revokes its access:
-// authority ends when the workload settles, not when the run does. After a
-// restart the engine no longer holds the materialization it created, so it
-// releases by the step's scope, run, step and declared references; the
-// SecretResolver contract is that Release is idempotent and works from that
-// identity. A failed release is returned, never discarded.
-func (d *drive) revoke(step domain.StepID) error {
-	ps := d.planStep(step)
-	if d.released[step] || d.e.cfg.Secrets == nil || ps.Workload == nil || len(ps.Workload.Secrets) == 0 {
-		return nil
+// Reasons a run is held rather than advanced when the engine cannot revoke a
+// settled step's secrets faithfully. They are stable codes in Report.Reason; the
+// run's own state is not changed, because nothing here is a verdict on the run.
+const (
+	// ReasonRevocationNoResolver: a settled step's attempt may have materialized
+	// secrets and this engine has no SecretResolver to revoke them with.
+	ReasonRevocationNoResolver runtime.Reason = "secret_revocation_no_resolver"
+	// ReasonRevocationUnrecoverable: a settled step's materialization was created
+	// by an engine that is gone. The frozen SecretResolver contract does not
+	// guarantee that Release works from the step's identity alone, and the record
+	// does not hold the materialization (its directory and revision), so the
+	// engine cannot revoke it faithfully. It holds, never advances and never
+	// skips. The durable materialization identity that lifts this is owned by the
+	// contract amendment (T-186).
+	ReasonRevocationUnrecoverable runtime.Reason = "secret_revocation_unrecoverable"
+)
+
+// needsRevocation reports whether a settled container step may hold secret
+// material: it declares secrets and at least one of its launch attempts got past
+// resolution. An attempt rejected because resolution failed, or because there was
+// no resolver, never materialized anything.
+func (d *drive) needsRevocation(s runtime.Step) bool {
+	ps := d.planStep(s.Key)
+	if s.Kind != runtime.StepContainer || !s.State.Terminal() || s.Attempt < 1 || ps.Workload == nil || len(ps.Workload.Secrets) == 0 {
+		return false
 	}
+	for _, c := range d.rec.Commands {
+		if c.Kind == runtime.CommandLaunch && c.StepKey == s.Key && c.Reason != runtime.ReasonSecretUnavailable {
+			return true
+		}
+	}
+	return false
+}
+
+// revoke releases the materialization this drive created for a settled step:
+// authority ends when the workload settles, not when the run does. Only the
+// engine instance that resolved the secrets holds the materialization, so only it
+// can revoke faithfully. A failed release is retried in place, boundedly, and then
+// returned; it is never discarded.
+func (d *drive) revoke(step domain.StepID) error {
 	m, ok := d.mats[step]
 	if !ok {
-		m = runtime.Materialization{Scope: d.rec.Run.Scope, RunID: d.rec.Run.ID, StepKey: step, Refs: ps.Workload.Secrets}
+		return nil
 	}
-	if err := d.e.cfg.Secrets.Release(d.ctx, m); err != nil {
-		return err
+	var err error
+	for try := 0; try < d.e.cfg.ObserveFailures; try++ {
+		if try > 0 {
+			if perr := d.pause(); perr != nil {
+				return perr
+			}
+		}
+		if err = d.e.cfg.Secrets.Release(d.ctx, m); err == nil {
+			delete(d.mats, step)
+			if d.released == nil {
+				d.released = map[domain.StepID]bool{}
+			}
+			d.released[step] = true
+			return nil
+		}
 	}
-	delete(d.mats, step)
-	if d.released == nil {
-		d.released = map[domain.StepID]bool{}
-	}
-	d.released[step] = true
-	return nil
+	return err
 }
 
-// revokeSettled revokes the secrets of every container step that started and is
-// terminal.
-func (d *drive) revokeSettled() error {
+// revokeSettled revokes the secrets of every settled step that needs it, or says
+// why it cannot. A step whose materialization this drive does not hold (it was
+// created before a restart or takeover) or that has no resolver to revoke it with
+// is a hold, not a skip.
+func (d *drive) revokeSettled() (hold runtime.Reason, err error) {
+	var steps []domain.StepID
 	for _, s := range d.rec.Run.Steps {
-		if s.Kind != runtime.StepContainer || !s.State.Terminal() || s.Attempt < 1 {
-			continue
-		}
-		if err := d.revoke(s.Key); err != nil {
-			return err
+		if d.needsRevocation(s) && !d.released[s.Key] {
+			steps = append(steps, s.Key)
 		}
 	}
-	return nil
+	for _, k := range steps {
+		switch _, held := d.mats[k]; {
+		case d.e.cfg.Secrets == nil:
+			return ReasonRevocationNoResolver, nil
+		case !held:
+			return ReasonRevocationUnrecoverable, nil
+		}
+		if err := d.revoke(k); err != nil {
+			return runtime.ReasonNone, err
+		}
+	}
+	return runtime.ReasonNone, nil
 }
 
-// stageRevoke gates every pass after a failure check: no step is evaluated,
-// started or consumed until the secrets of the steps already settled are revoked.
-// Every drive revokes every settled step once, so a crash right after a
-// settlement, or a release that failed, is recovered by the next claim. A release that fails
-// leaves the run for a later claim, which tries again.
+// hold ends the drive without advancing, with a stable reason.
+func (d *drive) hold(reason runtime.Reason, status DriveStatus) (flow, error) {
+	d.report = Report{Status: status, Reason: reason}
+	return flowStop, nil
+}
+
+// stageRevoke gates every pass after the failure check: no step is evaluated,
+// started or consumed until the secrets of the steps already settled are
+// revoked. It fails closed: a settled step that may hold material this engine
+// cannot revoke holds the run (DriveHeld). A release that keeps failing leaves
+// the run for a later claim.
 func (d *drive) stageRevoke() (flow, error) {
-	if err := d.revokeSettled(); err != nil {
+	hold, err := d.revokeSettled()
+	switch {
+	case err != nil:
 		return d.stop(DriveRetry)
+	case hold != runtime.ReasonNone:
+		return d.hold(hold, DriveHeld)
 	}
 	return flowPass, nil
 }
