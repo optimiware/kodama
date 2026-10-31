@@ -417,3 +417,52 @@ func Test_unit_kube_kernel_runtime_applied_create_is_never_reported_not_reached(
 		}
 	})
 }
+
+// A claim that was created and compensated is evidence that a claim was issued,
+// even when no instance was ever established.
+func Test_unit_kube_kernel_runtime_first_create_after_stop_keeps_the_binding_window_open(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	spec := h.workspaceSpec(scopeA, "run-1", 1)
+	id := workspaceIdent(h, "run-1")
+	handle := resourceFence(h.workspaceHandle(scopeA, "run-1"), 2)
+	// The first create lands after a newer writer stopped the workspace.
+	h.cl.onNext("create pvc", func() {
+		if _, err := h.res.Stop(ctx, handle); err != nil {
+			t.Errorf("stop: %v", err)
+		}
+	})
+	if _, err := h.res.Ensure(ctx, spec); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Ensure = %v", err)
+	}
+	rec := h.record(id)
+	if rec.created[opPVC] != "" || len(rec.compensated) != 1 {
+		t.Fatalf("the test needs compensation evidence only: created %v compensated %v", rec.created, rec.compensated)
+	}
+	if len(h.cl.names(h.cl.pvcs)) != 0 {
+		t.Fatal("the compensated claim remains")
+	}
+	// An immediate Remove cannot yet rule out a binding in progress.
+	o, err := h.res.Remove(ctx, handle)
+	if err != nil || o.ConfirmedRemoved() {
+		t.Fatalf("immediate remove confirmed: %+v %v", o, err)
+	}
+	if ev, _ := h.res.ReleaseEvidence(ctx, handle); !ev.Unconfirmed {
+		t.Fatalf("evidence = %+v", ev)
+	}
+	// The volume the claim was being bound to becomes visible.
+	pv := kubernetes.PersistentVolume{}
+	pv.Spec.PersistentVolumeReclaimPolicy = "Delete"
+	pv.Spec.ClaimRef = &kubernetes.ObjectReference{Namespace: testNS, Name: id.base(), UID: rec.compensated[0]}
+	h.cl.pvs["pv-late"] = pv
+	for i := 0; i < 2; i++ {
+		h.clock.Advance(2 * time.Minute)
+		if o, err := h.res.Remove(ctx, handle); err != nil || o.ConfirmedRemoved() {
+			t.Fatalf("remove %d confirmed with a volume for the compensated claim: %+v %v", i, o, err)
+		}
+	}
+	delete(h.cl.pvs, "pv-late")
+	if o, err := h.res.Remove(ctx, handle); err != nil || !o.ConfirmedRemoved() {
+		t.Fatalf("released = %+v %v", o, err)
+	}
+}

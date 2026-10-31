@@ -224,7 +224,16 @@ func (c *core) reapClaim(ctx context.Context, ns string, id ident, uid string) e
 	if err := c.cluster.DeletePVC(ctx, ns, p.Metadata.Name, kubernetes.DeleteOptions{UID: uid}); err != nil && !errors.Is(err, kubernetes.ErrNotFound) {
 		return fmt.Errorf("kernelrt: deleting the workspace claim: %w", err)
 	}
-	return nil
+	// The claim is gone from now: a binding already in progress shows within the
+	// quiescence window that starts here, not at some later observation.
+	now := c.opts.Clock()
+	_, err = c.mutate(ctx, ns, id, func(r *record) error {
+		if r.claimGone.IsZero() {
+			r.claimGone = now
+		}
+		return nil
+	})
+	return err
 }
 
 // reapPod deletes the service Pod with exactly this UID.
@@ -746,7 +755,7 @@ func (c *core) establishClaim(ctx context.Context, ns string, id ident, rec reco
 
 // issuedClaim reports whether a claim create was ever issued for the record.
 func (c *core) issuedClaim(rec record) bool {
-	return rec.marked(opPVC) || rec.created[opPVC] != ""
+	return rec.marked(opPVC) || rec.created[opPVC] != "" || len(rec.compensated) > 0
 }
 
 // evidence reads the release evidence of a workspace. Volumes are discovered by
