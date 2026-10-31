@@ -9,10 +9,10 @@ import (
 )
 
 // TestMigrationBaselineIsThreeFiles: the application manifest is the ADR 0013
-// baseline (schema and grants) plus the appended Git hosting contribution (O-36)
-// and the pipeline-runtime expand contribution (T-179), in that order and
-// nothing else: four files today. The name is kept because the Phase 2 handoff
-// selects the test by it.
+// baseline (schema and grants) plus the appended Git hosting contribution (O-36),
+// the pipeline-runtime expand contribution (T-179) and the durable run-state
+// contribution (T-185), in that order and nothing else: five files today. The
+// name is kept because the Phase 2 handoff selects the test by it.
 func TestMigrationBaselineIsThreeFiles(t *testing.T) {
 	m, err := Manifest()
 	if err != nil {
@@ -26,7 +26,7 @@ func TestMigrationBaselineIsThreeFiles(t *testing.T) {
 	for _, mig := range m.Migrations() {
 		ids = append(ids, mig.ID)
 	}
-	if !slices.Equal(ids, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql"}) {
+	if !slices.Equal(ids, []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", "004_pipeline_runtime_expand.sql", "005_durable_run_state.sql"}) {
 		t.Fatalf("unexpected baseline: %v", ids)
 	}
 }
@@ -35,16 +35,16 @@ func TestSimplifiedManifestMigration(t *testing.T) {
 	db := postgres.New(t)
 	ctx := t.Context()
 	result, err := Migrate(ctx, MigrateConfig{MigrationURL: db.MigrationURL, RuntimeRole: db.RuntimeRole})
-	if err != nil || len(result.Applied) != 4 {
+	if err != nil || len(result.Applied) != 5 {
 		t.Fatalf("migrate: %+v, %v", result, err)
 	}
 	pool := db.MigrationPool(ctx, 1)
 	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename <> 'schema_migrations'`).Scan(&count); err != nil || count != 17 {
-		t.Fatalf("tables=%d, err=%v; want 17 (15 baseline tables plus git_credentials and signal_records)", count, err)
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tablename <> 'schema_migrations'`).Scan(&count); err != nil || count != 20 {
+		t.Fatalf("tables=%d, err=%v; want 20 (15 baseline tables plus git_credentials, signal_records, run_commands, run_workload_observations and run_resource_observations)", count, err)
 	}
 	result, err = Migrate(ctx, MigrateConfig{MigrationURL: db.MigrationURL, RuntimeRole: db.RuntimeRole})
-	if err != nil || result.Skipped != 4 || len(result.Applied) != 0 {
+	if err != nil || result.Skipped != 5 || len(result.Applied) != 0 {
 		t.Fatalf("reapply: %+v, %v", result, err)
 	}
 	if err := requireLegacySchema(ctx, db.RuntimePool(ctx, 1)); err == nil {
