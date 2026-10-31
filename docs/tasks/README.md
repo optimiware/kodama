@@ -152,7 +152,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-175 Durable progression engine](T-175-kernel-engine.md) | T-171, T-172, T-174 | planned |
 | [T-176 Process runtime behind the kernel contract](T-176-process-runtime.md) | T-171 | done |
 | [T-177 Podman runtime behind the kernel contract](T-177-podman-runtime.md) | T-171 | done |
-| [T-178 Kubernetes runtime behind the kernel contract](T-178-kubernetes-runtime.md) | T-171 | planned |
+| [T-178 Kubernetes runtime behind the kernel contract](T-178-kubernetes-runtime.md) | T-171 | done |
 | [T-179 Pipeline runtime schema expansion](T-179-schema-expansion.md) | T-172 | planned |
 | [T-180 Traceability for the frozen pipeline-runtime contract](T-180-traceability.md) | T-172 | planned |
 | [T-181 Repair the legacy run_shared fixture](T-181-legacy-run-shared-fixture.md) | T-176 | planned |
