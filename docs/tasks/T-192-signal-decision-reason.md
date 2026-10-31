@@ -2,12 +2,12 @@
 id: T-192
 milestone: kernel
 status: planned
-depends_on: [T-182]
+depends_on: [T-189]
 decision_blockers: []
-owns: [internal/storage/, internal/shell/runstate/postgres/signal.go, internal/shell/runstate/postgres/contract_test.go, docs/implementation/database-schema.md, internal/app/migrate_test.go, internal/app/sdlc_test.go, internal/artifacts/postgres/migrations_test.go, internal/identity/postgres/migrations_test.go, internal/identity/postgres/isolation_test.go, internal/runtimeauth/postgres/resource_test.go]
-check: make check-go PKGS='./internal/storage/... ./internal/shell/runstate/postgres/...'
+owns: [internal/storage/, docs/implementation/database-schema.md, internal/app/migrate_test.go, internal/app/sdlc_test.go, internal/artifacts/postgres/migrations_test.go, internal/identity/postgres/migrations_test.go, internal/identity/postgres/isolation_test.go, internal/runtimeauth/postgres/resource_test.go]
+check: make check-go PKGS='./internal/storage/...'
 resources: [go, integration]
-acceptance: [unit_storage_signal_decision_reason, unit_runstate_signal_replay_after_retention]
+acceptance: [unit_storage_signal_decision_reason]
 ---
 # T-192 — Self-contained signal decision reasons
 
@@ -22,12 +22,12 @@ Make a signal decision record complete on its own, so a replay after ordinary wa
 
 ## Deliverables
 - An appended migration adding the decision reason to `signal_records`, with the same non-expiring retention and project-scoped removal, plus grants and RLS unchanged in shape.
-- The PostgreSQL adapter reads and writes the reason from the record, and the wait-row fallback is removed.
-- A regression that replays a refused decision after the wait, step and run rows are removed and still returns the original reason.
+- The column is nullable for existing rows and required for new decision records, so an existing database upgrades without rewriting history.
+- A real-PostgreSQL regression records a cancelled decision and reads the reason back from `signal_records` alone, with the wait row removed. The adapter read itself lands in T-182.
 - Migration-count assertions updated to the new exact baseline.
 
 ## Acceptance
-`make check-go` with `Test_unit_storage_signal_decision_reason` and `Test_unit_runstate_signal_replay_after_retention` passing, plus real-PostgreSQL evidence from a non-owner role.
+`make check-go` with `Test_unit_storage_signal_decision_reason` passing, plus real-PostgreSQL evidence from a non-owner role.
 
 ## Out of scope
 The contract shape, other tables, and the engine.

@@ -2,7 +2,7 @@
 id: T-182
 milestone: kernel
 status: planned
-depends_on: [T-174, T-179, T-185, T-186, T-189]
+depends_on: [T-174, T-179, T-185, T-186, T-189, T-192]
 decision_blockers: []
 owns: [internal/shell/runstate/postgres/]
 check: make check-go PKGS='./internal/shell/runstate/postgres/...'
@@ -30,6 +30,10 @@ Implement the frozen kernel `StateStore` over PostgreSQL so the engine runs on a
 
 ## Parked
 T-182 is parked on [T-189](T-189-wait-and-materialization-schema.md). T-185 closed the first round of gaps; implementing the adapter then proved two more against a real database: the wait-decision constraints forbid a decided wait on an unsettled step, and `RunRecord.Materializations` has no table. Resume once T-189 merges.
+
+## Follow-ups from review
+- Read and write the decision reason from `signal_records` once T-192 adds the column, and delete the `wait_reason` fallback so replay is retention-independent.
+- Use one canonical time representation for stored deadlines and derived opening times; independently truncating each rejects a legal later decision for a timeout not divisible by a microsecond.
 
 ## Out of scope
 The engine, NATS publication, task projection, and any change to the schema or the contract suite.
