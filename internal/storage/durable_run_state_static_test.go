@@ -197,7 +197,7 @@ func Test_unit_storage_durable_run_state(t *testing.T) {
 		for _, m := range storage.BaseContribution().Migrations {
 			ids = append(ids, m.ID)
 		}
-		want := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", expandMigration, durableMigration, waitMigration}
+		want := []string{"001_schema.sql", "002_grants.sql", "003_git_hosting.sql", expandMigration, durableMigration, waitMigration, reasonMigration}
 		if !slices.Equal(ids, want) {
 			t.Fatalf("manifest = %v, want %v", ids, want)
 		}

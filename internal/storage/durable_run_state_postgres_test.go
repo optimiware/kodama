@@ -863,7 +863,7 @@ UPDATE run_steps SET status = 'cancelled', finished_at = now(), wait_state = 'ca
 
 		// Applied cleanly, it maps the old rows and drops nothing.
 		res, err := storage.Migrate(ctx, pool, fullManifest(t), opts)
-		if err != nil || len(res.Applied) != 2 || res.Applied[0] != durableMigration || res.Applied[1] != waitMigration {
+		if err != nil || len(res.Applied) != 3 || res.Applied[0] != durableMigration || res.Applied[1] != waitMigration || res.Applied[2] != reasonMigration {
 			t.Fatalf("migrate 005: %+v %v", res, err)
 		}
 		type held struct {
@@ -895,8 +895,8 @@ UPDATE run_steps SET status = 'cancelled', finished_at = now(), wait_state = 'ca
 			t.Errorf("an open wait is untouched: %v %v", open, wid)
 		}
 		// The ledger and the legacy columns are as they were.
-		if n := applied(t, pool); n != 6 {
-			t.Errorf("ledger has %d rows, want 6", n)
+		if n := applied(t, pool); n != 7 {
+			t.Errorf("ledger has %d rows, want 7", n)
 		}
 		for _, c := range [][2]string{{"projects", "task_workflow"}, {"tasks", "state"}, {"tasks", "parked_at"}, {"tasks", "resume_state"}, {"tasks", "blocked_by_id"}, {"runs", "cleanup_pending"}} {
 			if !columnExists(t, pool, c[0], c[1]) {
