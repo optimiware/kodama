@@ -131,6 +131,33 @@ func commitCases() []Case {
 			e.versionConflict(err, "a wait changed without a new version")
 			e.unchanged(opened, n, "the refused wait updates")
 		}},
+		{"commit/wait_opens_only_with_its_step", GroupCommits, func(t TB, e *Env) {
+			e.admit(scopeA, run1, reviewPlan())
+			rec := e.claim(scopeA, run1, "w1", runtime.ClaimExecute, ttl)
+			rec = e.startBuild(rec)
+			rec = e.finishStep(rec, "build")
+			n := len(e.outbox(scopeA, run1))
+			// Open the wait while the run merely advances its version: the step stays pending.
+			w := rec.Waits[e.waitIndex(rec)]
+			e.ok(w.Open(e.Clock.Now(), map[string]string{"candidate": "c1"}, "please review"), "open the wait")
+			tr := e.bump(rec)
+			tr.Waits = []runtime.Wait{w}
+			_, err := e.S.Commit(e.Ctx, tr)
+			e.isErr(err, runtime.ErrIllegalTransition, "a wait opened without its step entering waiting")
+			e.unchanged(rec, n, "the early open")
+			res := e.decide(byWait(scopeA, "alice", "k1", w.ID, "approved"))
+			e.expect(!res.Applied && res.Refusal == runtime.RefusalUnknownWait, "a wait that never opened cannot be resolved: %+v", res)
+
+			// Opened with its step, the wait is decided asynchronously: the decision may precede
+			// the engine's consumption of it in the step.
+			opened := e.openReview(rec)
+			won := e.decide(byWait(scopeA, "alice", "k2", w.ID, "approved"))
+			e.expect(won.Applied, "the wait opened with its step is decidable: %+v", won)
+			after := e.load(scopeA, run1)
+			e.expect(after.Run.Steps[e.stepIndex(after, "review")].State == runtime.StepWaiting && after.Run.Version == opened.Run.Version,
+				"the decision leaves the step for the engine")
+			e.step(after, func(r *runtime.Run) error { return r.AdvanceStep("review", runtime.StepSucceeded, runtime.ReasonNone) })
+		}},
 		{"commit/step_and_wait_must_agree", GroupCommits, func(t TB, e *Env) {
 			e.admit(scopeA, run1, reviewPlan())
 			rec := e.claim(scopeA, run1, "w1", runtime.ClaimExecute, ttl)

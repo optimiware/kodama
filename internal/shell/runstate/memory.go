@@ -379,6 +379,12 @@ func (m *Memory) RequestCancel(ctx context.Context, scope domain.Scope, id domai
 		if err != nil {
 			return err
 		}
+		if rec.Run.Settled() {
+			// Cancelling a settled run changes nothing, including a wait a skipped
+			// step left pending: its decision, if any, was taken when the run settled.
+			out = rec.Run
+			return nil
+		}
 		rec.Run.RequestCancel()
 		var events []runtime.Event
 		for i := range rec.Waits {

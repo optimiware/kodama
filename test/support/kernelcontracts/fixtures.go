@@ -207,6 +207,16 @@ func (e *Env) waitingRun(scope domain.Scope, id domain.RunID) runtime.RunRecord 
 	return e.openReview(rec)
 }
 
+func (e *Env) stepIndex(rec runtime.RunRecord, key domain.StepID) int {
+	for i, s := range rec.Run.Steps {
+		if s.Key == key {
+			return i
+		}
+	}
+	e.T.Fatalf("run %s has no step %s", rec.Run.ID, key)
+	return -1
+}
+
 func (e *Env) review(rec runtime.RunRecord) runtime.Wait { return rec.Waits[e.waitIndex(rec)] }
 
 func handle(scope domain.Scope, run domain.RunID, name string) runtime.ResourceHandle {

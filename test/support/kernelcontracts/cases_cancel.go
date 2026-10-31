@@ -121,6 +121,30 @@ func cancelCases() []Case {
 			e.ok(err, "cancel a settled run")
 			e.expect(!run.CancelRequested && run.Outcome == runtime.OutcomeSucceeded && run.Version == rec.Run.Version, "a settled run is not cancelled: %+v", run)
 			e.unchanged(rec, n, "cancelling a settled run")
+
+			// A settled run may retain a pending wait for a step that was skipped: it stays as it was.
+			e.admit(scopeA, run2, reviewPlan())
+			rec = e.claim(scopeA, run2, "w1", runtime.ClaimExecute, ttl)
+			rec = e.startBuild(rec)
+			rec = e.step(rec, func(r *runtime.Run) error {
+				return r.FinishStep("build", runtime.StepFailed, runtime.ReasonCommandFailed, runtime.Result{Code: runtime.ResultFailed, ExitCode: 1})
+			})
+			rec = e.step(rec, func(r *runtime.Run) error {
+				for _, k := range []domain.StepID{"review", "ship"} {
+					if err := r.AdvanceStep(k, runtime.StepSkipped, runtime.ReasonDependencyFailed); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			rec = e.step(rec, func(r *runtime.Run) error { return r.Settle(runtime.OutcomeFailed, runtime.ReasonCommandFailed) })
+			e.expect(e.review(rec).State == runtime.WaitPending && rec.Run.Settled(), "the settled run retains a pending wait: %+v", e.review(rec))
+			n = len(e.outbox(scopeA, run2))
+			run, err = e.S.RequestCancel(e.Ctx, scopeA, run2)
+			e.ok(err, "cancel a settled run with a pending wait")
+			e.expect(!run.CancelRequested && run.Version == rec.Run.Version, "a settled run is not cancelled: %+v", run)
+			e.unchanged(rec, n, "cancelling a settled run that retains a pending wait")
+			e.expect(countKind(e.outbox(scopeA, run2), runtime.EventWaitCancelled) == 0, "no wait.cancelled event on a settled run")
 		}},
 	}
 }

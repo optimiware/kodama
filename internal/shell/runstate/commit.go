@@ -57,8 +57,19 @@ func applyTransition(stored runtime.RunRecord, t runtime.Transition) (runtime.Ru
 		if i < 0 {
 			return runtime.RunRecord{}, invalid("wait %s is not a wait of run %s", w.ID, t.RunID)
 		}
-		if err := checkWaitUpdate(next.Waits[i], w); err != nil {
+		prev := next.Waits[i]
+		if err := checkWaitUpdate(prev, w); err != nil {
 			return runtime.RunRecord{}, err
+		}
+		// A wait opens only as its step starts waiting, in the same transaction. A
+		// wait open before its step waits would be addressable by a signal while
+		// execution has not reached it. The reverse is not required: a decision
+		// may precede the engine's consumption of it in the step.
+		if prev.State == runtime.WaitPending && w.State == runtime.WaitOpen {
+			si := slices.IndexFunc(next.Run.Steps, func(x runtime.Step) bool { return x.Key == w.StepKey })
+			if si < 0 || next.Run.Steps[si].State != runtime.StepWaiting || stored.Run.Steps[si].State == runtime.StepWaiting {
+				return runtime.RunRecord{}, fmt.Errorf("%w: wait %s opens only with its step entering waiting", runtime.ErrIllegalTransition, w.ID)
+			}
 		}
 		next.Waits[i] = cloneWait(w)
 	}

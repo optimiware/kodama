@@ -6,6 +6,7 @@ import (
 	"fmt"
 	goruntime "runtime"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,24 +167,50 @@ func isCode(err error, code domain.ErrorCode) bool {
 	return errors.As(err, &de) && de.Code == code
 }
 
+// rebaseWaits makes a commit that the store refused with a version conflict
+// succeed by replacing the waits selected by bypass with the stored ones, so
+// only that one wait-version rejection is undone and valid setup is untouched.
+func rebaseWaits(bypass func(w, stored rt.Wait) bool) func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
+	return func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
+		rec, err := in.Commit(ctx, t)
+		if !isCode(err, domain.CodeVersionConflict) || len(t.Waits) == 0 {
+			return rec, err
+		}
+		cur, lerr := in.Load(ctx, t.Scope, t.RunID)
+		if lerr != nil {
+			return rec, err
+		}
+		waits := slices.Clone(t.Waits)
+		for i, w := range waits {
+			if j := slices.IndexFunc(cur.Waits, func(x rt.Wait) bool { return x.ID == w.ID }); j >= 0 && bypass(w, cur.Waits[j]) {
+				waits[i] = cur.Waits[j]
+			}
+		}
+		t.Waits = waits
+		return in.Commit(ctx, t)
+	}
+}
+
 func memory(_ kc.TB, clock rt.Clock) kc.Subject { return runstate.NewMemory(clock) }
 
 // brokenAdapters maps each defect to the case that must catch it.
 func brokenAdapters() []struct {
 	name   string
 	mustBe string
+	msg    string
 	build  func(in subject) subject
 } {
 	type mutation = struct {
 		name   string
 		mustBe string
+		msg    string
 		build  func(in subject) subject
 	}
 	wrap := func(h hooks) func(in subject) subject {
 		return func(in subject) subject { return &broken{subject: in, h: h} }
 	}
 	return []mutation{
-		{"commit ignores the fence", "claim/takeover_rejects_the_stale_writer", wrap(hooks{
+		{"commit ignores the fence", "claim/takeover_rejects_the_stale_writer", "", wrap(hooks{
 			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
 				rec, err := in.Commit(ctx, t)
 				if cur, lerr := in.Load(ctx, t.Scope, t.RunID); err != nil && lerr == nil && cur.Claim.Active(t.Now) {
@@ -192,20 +219,20 @@ func brokenAdapters() []struct {
 				}
 				return rec, err
 			}})},
-		{"commit ignores lease expiry", "claim/expired_lease_cannot_commit_or_renew", wrap(hooks{
+		{"commit ignores lease expiry", "claim/expired_lease_cannot_commit_or_renew", "", wrap(hooks{
 			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
 				if t.Now.After(t.Claim.Expires) || t.Now.Equal(t.Claim.Expires) {
 					t.Now = t.Claim.Expires.Add(-time.Nanosecond)
 				}
 				return in.Commit(ctx, t)
 			}})},
-		{"renewal bumps the fence", "claim/renewal_keeps_the_fence_and_is_persisted", wrap(hooks{
+		{"renewal bumps the fence", "claim/renewal_keeps_the_fence_and_is_persisted", "", wrap(hooks{
 			renew: func(in subject, ctx context.Context, held rt.Claim, ttl time.Duration, now time.Time) (rt.Claim, error) {
 				c, err := in.Renew(ctx, held, ttl, now)
 				c.Fence++
 				return c, err
 			}})},
-		{"an active lease can be claimed again", "claim/unexpired_lease_is_held_even_for_its_owner", wrap(hooks{
+		{"an active lease can be claimed again", "claim/unexpired_lease_is_held_even_for_its_owner", "", wrap(hooks{
 			claim: func(in subject, ctx context.Context, req rt.ClaimRequest, now time.Time) (rt.RunRecord, error) {
 				rec, err := in.Claim(ctx, req, now)
 				if err != nil && errors.Is(err, rt.ErrClaimHeld) {
@@ -213,7 +240,7 @@ func brokenAdapters() []struct {
 				}
 				return rec, err
 			}})},
-		{"version conflicts are rebased away", "commit/optimistic_version_check", wrap(hooks{
+		{"version conflicts are rebased away", "commit/optimistic_version_check", "", wrap(hooks{
 			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
 				rec, err := in.Commit(ctx, t)
 				if isCode(err, domain.CodeVersionConflict) {
@@ -226,7 +253,7 @@ func brokenAdapters() []struct {
 				}
 				return rec, err
 			}})},
-		{"a duplicate transition is applied again", "commit/duplicate_transition_applies_once", wrap(hooks{
+		{"a duplicate transition is applied again", "commit/duplicate_transition_applies_once", "", wrap(hooks{
 			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
 				rec, err := in.Commit(ctx, t)
 				if isCode(err, domain.CodeVersionConflict) {
@@ -234,12 +261,19 @@ func brokenAdapters() []struct {
 				}
 				return rec, err
 			}})},
-		{"wait versions are not checked", "commit/wait_updates_are_version_checked", wrap(hooks{
+		{"stale wait updates are accepted", "commit/wait_updates_are_version_checked", "a stale wait", wrap(hooks{
+			commit: rebaseWaits(func(w, stored rt.Wait) bool { return w.Version < stored.Version })})},
+		{"unversioned wait changes are accepted", "commit/wait_updates_are_version_checked", "a wait changed without a new version", wrap(hooks{
+			commit: rebaseWaits(func(w, stored rt.Wait) bool { return w.Version == stored.Version })})},
+		{"a wait opens without its step", "commit/wait_opens_only_with_its_step", "a wait opened without its step entering waiting", wrap(hooks{
 			commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
-				t.Waits = nil
-				return in.Commit(ctx, t)
+				rec, err := in.Commit(ctx, t)
+				if err != nil && strings.Contains(err.Error(), "opens only with its step") {
+					return in.Load(ctx, t.Scope, t.RunID)
+				}
+				return rec, err
 			}})},
-		{"outbox written outside the transaction", "commit/rollback_discards_state_and_outbox_together", func() func(in subject) subject {
+		{"outbox written outside the transaction", "commit/rollback_discards_state_and_outbox_together", "", func() func(in subject) subject {
 			var leaked []rt.Event
 			return wrap(hooks{
 				commit: func(in subject, ctx context.Context, t rt.Transition) (rt.RunRecord, error) {
@@ -259,7 +293,7 @@ func brokenAdapters() []struct {
 					return base, nil
 				}})
 		}()},
-		{"admission outbox written outside the transaction", "admit/rolls_back_with_its_outbox", func() func(in subject) subject {
+		{"admission outbox written outside the transaction", "admit/rolls_back_with_its_outbox", "", func() func(in subject) subject {
 			var leaked []rt.Event
 			return wrap(hooks{
 				admit: func(in subject, ctx context.Context, a rt.Admission) (rt.RunRecord, error) {
@@ -276,7 +310,7 @@ func brokenAdapters() []struct {
 					return base, err
 				}})
 		}()},
-		{"cancellation does not block execution claims", "cancel/blocks_execution_but_allows_reconcile_and_cleanup", wrap(hooks{
+		{"cancellation does not block execution claims", "cancel/blocks_execution_but_allows_reconcile_and_cleanup", "", wrap(hooks{
 			claim: func(in subject, ctx context.Context, req rt.ClaimRequest, now time.Time) (rt.RunRecord, error) {
 				rec, err := in.Claim(ctx, req, now)
 				if err != nil && req.Purpose == rt.ClaimExecute {
@@ -285,14 +319,14 @@ func brokenAdapters() []struct {
 				}
 				return rec, err
 			}})},
-		{"an exhausted run refuses cleanup claims", "cleanup/exhaustion_then_takeover_confirms_what_remains", wrap(hooks{
+		{"an exhausted run refuses cleanup claims", "cleanup/exhaustion_then_takeover_confirms_what_remains", "", wrap(hooks{
 			claim: func(in subject, ctx context.Context, req rt.ClaimRequest, now time.Time) (rt.RunRecord, error) {
 				if cur, err := in.Load(ctx, req.Scope, req.RunID); err == nil && cur.Run.Cleanup.State == rt.CleanupExhausted {
 					return rt.RunRecord{}, rt.ErrExecutionClosed
 				}
 				return in.Claim(ctx, req, now)
 			}})},
-		{"key reuse replays the recorded result", "wait/duplicate_signal_converges", wrap(hooks{
+		{"key reuse replays the recorded result", "wait/duplicate_signal_converges", "", wrap(hooks{
 			decide: func(in subject, ctx context.Context, req rt.SignalRequest, now time.Time) (rt.SignalResult, error) {
 				res, err := in.DecideSignal(ctx, req, now)
 				if err != nil && errors.Is(err, rt.ErrKeyReuse) {
@@ -304,20 +338,20 @@ func brokenAdapters() []struct {
 				}
 				return res, err
 			}})},
-		{"a replay is reported as a fresh decision", "wait/duplicate_signal_converges", wrap(hooks{
+		{"a replay is reported as a fresh decision", "wait/duplicate_signal_converges", "", wrap(hooks{
 			decide: func(in subject, ctx context.Context, req rt.SignalRequest, now time.Time) (rt.SignalResult, error) {
 				res, err := in.DecideSignal(ctx, req, now)
 				res.Replayed = false
 				return res, err
 			}})},
-		{"a targetless refusal is rerouted on retry", "wait/targetless_refusal_never_reroutes_to_a_later_wait", wrap(hooks{
+		{"a targetless refusal is rerouted on retry", "wait/targetless_refusal_never_reroutes_to_a_later_wait", "", wrap(hooks{
 			decide: func(in subject, ctx context.Context, req rt.SignalRequest, now time.Time) (rt.SignalResult, error) {
 				if l, err := in.LookupSignal(ctx, req.Identity); err == nil && l.Tombstone != nil {
 					req.Identity.Key += "-retry"
 				}
 				return in.DecideSignal(ctx, req, now)
 			}})},
-		{"the signal lookup forgets closed waits", "wait/lookup_returns_the_decision_after_the_wait_closes", wrap(hooks{
+		{"the signal lookup forgets closed waits", "wait/lookup_returns_the_decision_after_the_wait_closes", "", wrap(hooks{
 			lookup: func(in subject, ctx context.Context, id rt.SignalIdentity) (rt.SignalLookup, error) {
 				l, err := in.LookupSignal(ctx, id)
 				if err != nil || l.Record == nil {
@@ -328,11 +362,11 @@ func brokenAdapters() []struct {
 				}
 				return l, nil
 			}})},
-		{"the deadline loses to a late resolution", "wait/expiry_wins_at_the_deadline", wrap(hooks{
+		{"the deadline loses to a late resolution", "wait/expiry_wins_at_the_deadline", "", wrap(hooks{
 			decide: func(in subject, ctx context.Context, req rt.SignalRequest, now time.Time) (rt.SignalResult, error) {
 				return in.DecideSignal(ctx, req, now.Add(-30*time.Minute))
 			}})},
-		{"the run id alone finds a run in any project", "scope/foreign_or_mismatched_scope_is_not_found", wrap(hooks{
+		{"the run id alone finds a run in any project", "scope/foreign_or_mismatched_scope_is_not_found", "", wrap(hooks{
 			load: func(in subject, ctx context.Context, s domain.Scope, id domain.RunID) (rt.RunRecord, error) {
 				rec, err := in.Load(ctx, s, id)
 				if !isCode(err, domain.CodeNotFound) {
@@ -345,7 +379,7 @@ func brokenAdapters() []struct {
 				}
 				return rec, err
 			}})},
-		{"signals reach waits of other scopes", "scope/signal_identity_is_scoped_by_tenant_project_and_caller", func() func(in subject) subject {
+		{"signals reach waits of other scopes", "scope/signal_identity_is_scoped_by_tenant_project_and_caller", "", func() func(in subject) subject {
 			var homes []domain.Scope
 			return wrap(hooks{
 				admit: func(in subject, ctx context.Context, a rt.Admission) (rt.RunRecord, error) {
@@ -370,23 +404,23 @@ func brokenAdapters() []struct {
 					return res, err
 				}})
 		}()},
-		{"the signal key is not bound to its caller", "scope/signal_identity_is_scoped_by_tenant_project_and_caller", wrap(hooks{
+		{"the signal key is not bound to its caller", "scope/signal_identity_is_scoped_by_tenant_project_and_caller", "", wrap(hooks{
 			lookup: func(in subject, ctx context.Context, id rt.SignalIdentity) (rt.SignalLookup, error) {
 				id.Caller = "alice"
 				return in.LookupSignal(ctx, id)
 			}})},
-		{"the view keeps a stale status", "view/is_rebuilt_from_retained_records_at_every_stage", wrap(hooks{
+		{"the view keeps a stale status", "view/is_rebuilt_from_retained_records_at_every_stage", "", wrap(hooks{
 			view: func(in subject, ctx context.Context, s domain.Scope, id domain.RunID) (rt.RunView, error) {
 				v, err := in.View(ctx, s, id)
 				v.Status = rt.StatusQueued
 				return v, err
 			}})},
-		{"claimed runs are listed as runnable", "claim/runnable_lists_unclaimed_and_expired_work", wrap(hooks{
+		{"claimed runs are listed as runnable", "claim/runnable_lists_unclaimed_and_expired_work", "", wrap(hooks{
 			runnable: func(in subject, ctx context.Context, q rt.RunnableQuery) ([]rt.RunRef, error) {
 				q.Now = q.Now.Add(1000 * time.Hour)
 				return in.Runnable(ctx, q)
 			}})},
-		{"a returned record aliases the store", "admit/returns_copies", func(in subject) subject {
+		{"a returned record aliases the store", "admit/returns_copies", "", func(in subject) subject {
 			// An adapter that hands out the one shared record: the first mutation shows in later loads.
 			var cache *rt.RunRecord
 			return &broken{subject: in, h: hooks{
@@ -442,6 +476,12 @@ func Test_unit_kernel_state_contract_rejects_broken_adapters(t *testing.T) {
 			}
 			factory := func(tb kc.TB, clock rt.Clock) kc.Subject { return m.build(memory(tb, clock)) }
 			got := failedCases(factory)
+			if m.msg != "" {
+				// The designated assertion must be the one that caught it, not an earlier setup step.
+				if !slices.ContainsFunc(got[m.mustBe], func(f string) bool { return strings.Contains(f, m.msg) }) {
+					t.Fatalf("%q failed for another reason than %q: %v", m.mustBe, m.msg, got[m.mustBe])
+				}
+			}
 			if _, ok := got[m.mustBe]; !ok {
 				names := make([]string, 0, len(got))
 				for n := range got {
