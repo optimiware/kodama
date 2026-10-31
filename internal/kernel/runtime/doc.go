@@ -76,7 +76,12 @@
 //     run, step and attempt, recorded as issued before [SecretResolver.Resolve] is
 //     called and as revoked after [SecretResolver.Revoke] confirmed
 //     ([CheckMaterializations]); revocation needs the identity alone, never a
-//     directory, so a replacement engine revokes what it never saw.
+//     directory, so a replacement engine revokes what it never saw. The resolver
+//     is the authority for publication: [SecretResolver.Revoke] is durable and
+//     closes the identity, and a [SecretResolver.Resolve] for a revoked identity,
+//     issued later or already in flight, fails with [ErrMaterializationRevoked] and
+//     publishes nothing, so a worker that outlives a takeover cannot leave material
+//     no record owes a revocation for.
 //   - Execution outcome and cleanup are separate. A run is terminal only after
 //     its owned resources are confirmed stopped and removed, or after bounded
 //     cleanup attempts are exhausted with the retained resource identities

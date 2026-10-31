@@ -422,30 +422,45 @@ type ResolveRequest struct {
 // materialization and revokes it by its durable identity. It must not log,
 // return or put a secret value in an event; an unavailable reference fails with
 // ReasonSecretUnavailable.
+//
+// The resolver is the authority for publication, and the guarantee that no
+// material outlives its revocation lives here, not in the engine. Revoke is
+// durable and closes the identity: once Revoke has returned for an identity, every
+// Resolve for that same identity, one issued later and one already in flight
+// whose publication has not happened yet, fails with ErrMaterializationRevoked and
+// publishes nothing. Closing the identity and publishing material are atomic with
+// respect to each other, so a Resolve either publishes before the revocation (and
+// the revocation removes it) or is refused. This is what makes revocation
+// recoverable when a worker that was inside Resolve outlives a takeover, a
+// revocation and a completed cleanup: it can neither leave material behind nor
+// leave it for an engine that can no longer find it. The engine's recheck after
+// Resolve returns is defence in depth, not the guarantee.
 type SecretResolver interface {
 	// Resolve materializes the references for the attempt identified by req.Ref.
 	// It is idempotent on req.Ref.ID: a repeat replaces the material the identity
 	// already names, never adds a second copy, and the returned Materialization
-	// carries Ref's ID and Attempt.
+	// carries Ref's ID and Attempt. It fails with ErrMaterializationRevoked, and
+	// publishes nothing, for an identity that was revoked, whenever the
+	// revocation happened relative to the call.
 	//
-	// Resolve is not atomic with the record: it can finish after the identity was
-	// revoked, because a replacement engine that took the run over revoked an
-	// identity that had no material yet and recorded it revoked for good. Whatever
-	// Resolve returned, success or failure, its caller must therefore recheck when
-	// it returns: the durable record must still show the identity issued and the
-	// caller must still hold an unexpired claim at its fence. If not, the caller
-	// revokes the identity at once, does not use the material, and stops. That
-	// recheck, with Revoke's idempotence, is what guarantees that no material
-	// outlives its revocation.
+	// Resolve is not atomic with the engine's record: it can finish long after
+	// its caller lost the claim. Whatever it returned, success or failure, the
+	// caller must recheck when it returns: the durable record must still show the
+	// identity issued and the caller must still hold an unexpired claim at its
+	// fence; if not, the caller revokes the identity at once, does not use the
+	// material and stops.
 	Resolve(ctx context.Context, req ResolveRequest) (Materialization, error)
-	// Revoke removes the private material identified by ref and revokes access to
-	// it. It works from the identity alone, as it is called by an engine that
-	// never resolved the material, after a takeover or a crash between Resolve and
-	// the engine's next commit: an implementation must be able to find the
-	// material from ref.ID without the directory, and must not need Resolve to
-	// have returned. It is idempotent, succeeds when the identity names nothing
-	// (resolution failed or never started), and runs when the step settles, not
-	// only when the run ends. A failure is returned, never discarded.
+	// Revoke removes the private material identified by ref, revokes access to
+	// it and closes the identity for good (see above). It works from the
+	// identity alone, as it is called by an engine that never resolved the
+	// material, after a takeover or a crash between Resolve and the engine's next
+	// commit: an implementation must be able to find the material from ref.ID
+	// without the directory, and must not need Resolve to have returned. It is
+	// durable (the closed identity survives the resolver's own restart),
+	// idempotent, succeeds when the identity names nothing (resolution failed or
+	// never started), and runs when the step settles, not only when the run ends.
+	// A failure is returned, never discarded; a ref that is not valid is refused
+	// with domain.ErrInvalidValue.
 	Revoke(ctx context.Context, ref MaterializationRef) error
 }
 

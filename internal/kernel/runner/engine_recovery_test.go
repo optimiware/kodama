@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -189,89 +188,6 @@ func secretStep(key domain.StepID, deps ...domain.StepID) runtime.PlanStep {
 	return s
 }
 
-// diskSecrets is a SecretResolver that really creates private material on disk and
-// really removes it, so a fake cannot conceal what a recovering engine is able to
-// revoke. The material lives in a directory named only by the durable identity of
-// the attempt, and Revoke removes exactly that directory from the identity alone:
-// it is given no directory and keeps no memory of what it resolved, so a second
-// instance (a replacement engine's) revokes what the first created. The
-// fakeSecrets above stay for fault injection only.
-type diskSecrets struct {
-	root string
-	// failRevokes fails that many Revoke calls before any succeeds.
-	failRevokes int
-	mu          sync.Mutex
-	// beforeResolve runs at the start of Resolve, before any material exists.
-	beforeResolve func()
-	// resolveErr, when set, makes Resolve create its material and then fail.
-	resolveErr error
-	// afterResolve runs once the material is on disk, before Resolve returns (a
-	// panic stands for a crash between the resolver and the engine's next commit).
-	afterResolve func()
-	// beforeRevoke runs at the start of every Revoke (a panic stands for a crash).
-	beforeRevoke func()
-}
-
-func newDiskSecrets(t *testing.T) *diskSecrets { return &diskSecrets{root: t.TempDir()} }
-
-var idPath = strings.NewReplacer(":", "_", "/", "_")
-
-func (d *diskSecrets) dir(id string) string { return filepath.Join(d.root, idPath.Replace(id)) }
-
-func (d *diskSecrets) Resolve(_ context.Context, req runtime.ResolveRequest) (runtime.Materialization, error) {
-	r := req.Ref
-	if err := r.Validate(); err != nil {
-		return runtime.Materialization{}, err
-	}
-	if d.beforeResolve != nil {
-		d.beforeResolve()
-	}
-	dir := d.dir(r.ID)
-	if err := os.RemoveAll(dir); err != nil { // idempotent on the identity: replace, never add a copy
-		return runtime.Materialization{}, err
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return runtime.Materialization{}, err
-	}
-	if err := os.WriteFile(filepath.Join(dir, "TOKEN"), []byte("s3cret-"+string(r.StepKey)), 0o400); err != nil {
-		return runtime.Materialization{}, err
-	}
-	if d.afterResolve != nil {
-		d.afterResolve()
-	}
-	if d.resolveErr != nil {
-		return runtime.Materialization{}, d.resolveErr
-	}
-	return runtime.Materialization{Scope: r.Scope, RunID: r.RunID, StepKey: r.StepKey, Attempt: r.Attempt, ID: r.ID,
-		Directory: dir, Refs: req.Refs, Revision: "rev-" + r.ID}, nil
-}
-
-func (d *diskSecrets) Revoke(_ context.Context, ref runtime.MaterializationRef) error {
-	if d.beforeRevoke != nil {
-		d.beforeRevoke()
-	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.failRevokes > 0 {
-		d.failRevokes--
-		return errors.New("vault unavailable")
-	}
-	if err := ref.Validate(); err != nil {
-		return err
-	}
-	return os.RemoveAll(d.dir(ref.ID))
-}
-
-// material lists the private material still on disk.
-func (d *diskSecrets) material() []string {
-	entries, _ := os.ReadDir(d.root)
-	var out []string
-	for _, e := range entries {
-		out = append(out, e.Name())
-	}
-	return out
-}
-
 func (e *env) withDisk(d *diskSecrets) func(*runner.EngineConfig) {
 	return func(c *runner.EngineConfig) { c.Secrets = d }
 }
@@ -416,75 +332,175 @@ func revocationResumesAfterTakeover(t *testing.T) {
 	}
 }
 
-// lateResolveLeavesNothingBehind proves a Resolve that completes after its identity
-// was revoked, or after the engine lost the claim, does not leave material behind:
-// the engine rechecks the durable record and its claim when Resolve returns and
-// revokes at once. The first engine is blocked inside Resolve; a replacement takes
-// the run over, finds the workload absent, settles the step and records the
-// identity revoked; only then is the blocked Resolve released.
-func lateResolveLeavesNothingBehind(t *testing.T) {
-	block := func(e *env, disk *diskSecrets) (release func(), done <-chan error) {
-		entered, gate := make(chan struct{}), make(chan struct{})
-		disk.beforeResolve = func() { close(entered); <-gate }
-		errc := make(chan error, 1)
-		go func() {
-			_, err := e.engine("w1", e.withDisk(disk)).Drive(context.Background(), e.ref("run1", runtime.ClaimExecute))
-			errc <- err
+// blockedResolve starts an engine whose Resolve is held after it prepared its
+// material and before it publishes it. It returns once the engine is inside.
+func blockedResolve(e *env, disk *diskSecrets, mutate ...func(*runner.EngineConfig)) (release func(), done <-chan error) {
+	entered, release := disk.HoldNextResolve()
+	errc := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if r != errCrash {
+					panic(r)
+				}
+				errc <- errCrash
+			}
 		}()
-		<-entered
-		return func() { close(gate) }, errc
+		_, err := e.engine("w1", append([]func(*runner.EngineConfig){e.withDisk(disk)}, mutate...)...).Drive(context.Background(), e.ref("run1", runtime.ClaimExecute))
+		errc <- err
+	}()
+	<-entered
+	return release, errc
+}
+
+// lateResolveLeavesNothingBehind proves a Resolve that completes after its identity
+// was revoked, or after the engine lost the claim, does not leave material behind.
+// With a resolver that honours the contract the resolver refuses to publish; the
+// engine's own recheck of the record and claim when Resolve returns is defence in
+// depth, proven against a resolver that does not (lax) and so does publish. The
+// first engine is held inside Resolve; a replacement takes the run over, finds the
+// workload absent, settles the step and records the identity revoked; only then is
+// the held Resolve released.
+func lateResolveLeavesNothingBehind(t *testing.T) {
+	for _, lax := range []bool{false, true} {
+		kind := "a resolver that refuses to publish a revoked identity"
+		if lax {
+			kind = "a resolver that does not (the engine's own recheck)"
+		}
+		t.Run(kind, func(t *testing.T) {
+			newDisk := func(t *testing.T) *diskSecrets {
+				disk := newDiskSecrets(t)
+				disk.lax = lax
+				return disk
+			}
+			t.Run("after a takeover that settled the step and revoked the absent material", func(t *testing.T) {
+				e := newEnv(t)
+				disk := newDisk(t)
+				e.admit("run1", plan("late-resolve", secretStep("a"), ctr("b", "a")), 3)
+				release, done := blockedResolve(e, disk)
+				rec := e.load("run1")
+				e.expect(len(rec.Materializations) == 1 && rec.Materializations[0].State == runtime.MaterializationIssued && len(disk.material()) == 0,
+					"the identity is durable and no material is published yet: %+v %v", rec.Materializations, disk.material())
+
+				e.expire()
+				rep := e.driveStatus(e.engine("w2", e.withDisk(disk.sibling())), "run1", runtime.ClaimExecute)
+				got := e.load("run1")
+				e.expect(rep.Status == runner.DriveTerminal && got.Run.Outcome == runtime.OutcomeFailed && got.Run.Reason == runtime.ReasonLaunchUncertain &&
+					len(got.PendingRevocations()) == 0 && got.Materializations[0].State == runtime.MaterializationRevoked && len(disk.material()) == 0,
+					"the replacement settled the step and recorded the absent material revoked: %s %+v %v", rep.Status, got.Run, got.Materializations)
+				after := e.load("run1")
+
+				release() // the held Resolve now tries to publish
+				err := <-done
+				e.expect(err == nil, "the late engine stops quietly: %v", err)
+				e.expect(len(disk.material()) == 0, "no material remains after the late Resolve: %v", disk.material())
+				e.expect(reflect.DeepEqual(e.load("run1"), after), "the late engine wrote nothing")
+				e.expect(!stepStarted(e, "a") && !stepStarted(e, "b"), "the late engine never launched: %v", e.rt.startOrder)
+			})
+			t.Run("after the lease expired with nobody taking the run over", func(t *testing.T) {
+				e := newEnv(t)
+				disk := newDisk(t)
+				e.admit("run1", plan("late-resolve-expired", secretStep("a")), 3)
+				release, done := blockedResolve(e, disk)
+				e.expire()
+				release()
+				e.expect(<-done == nil, "the late engine stops quietly")
+				e.expect(len(disk.material()) == 0, "no material remains: %v", disk.material())
+				e.expect(!stepStarted(e, "a"), "the late engine did not launch with an unowned run: %v", e.rt.startOrder)
+				// The run is recoverable: the next claim reconciles the uncertain launch.
+				rep := e.driveStatus(e.engine("w2", e.withDisk(disk.sibling())), "run1", runtime.ClaimExecute)
+				got := e.load("run1")
+				e.expect(rep.Status == runner.DriveTerminal && got.Run.Reason == runtime.ReasonLaunchUncertain && len(disk.material()) == 0 && len(got.PendingRevocations()) == 0,
+					"the next claim finished the run: %s %+v %v", rep.Status, got.Run, disk.material())
+			})
+			t.Run("a Resolve that fails after the claim was lost leaves nothing either", func(t *testing.T) {
+				e := newEnv(t)
+				disk := newDisk(t)
+				disk.resolveErr = errors.New("vault unavailable")
+				e.admit("run1", plan("late-resolve-failed", secretStep("a")), 3)
+				release, done := blockedResolve(e, disk)
+				e.expire()
+				e.driveStatus(e.engine("w2", e.withDisk(disk.sibling())), "run1", runtime.ClaimExecute)
+				release()
+				e.expect(<-done == nil, "the late engine stops quietly")
+				e.expect(len(disk.material()) == 0, "partial material of the failed Resolve is removed: %v", disk.material())
+			})
+		})
 	}
-	t.Run("after a takeover that settled the step and revoked the absent material", func(t *testing.T) {
+}
+
+// lateCreationIsRecoverable proves revocation stays recoverable when the worker
+// that was inside Resolve does not survive, or cannot clean up after itself. In
+// every case recovery is done by a replacement engine over a fresh resolver
+// instance that shares only the disk with the original worker's:
+//   - the worker is held inside Resolve while a replacement revokes the absent
+//     material and completes cleanup; the late Resolve is refused at publication by
+//     the tombstone, and the worker's crash right after it leaves nothing;
+//   - the worker publishes and crashes immediately, before any recheck: the
+//     identity is still issued, and the replacement revokes the material from it;
+//   - the worker publishes late, its claim long gone, and its revocation exhausts
+//     the retry bound: it leaves the error, the identity is still issued, and the
+//     replacement revokes the material.
+func lateCreationIsRecoverable(t *testing.T) {
+	t.Run("the held Resolve is refused after a replacement revoked and cleaned up, and the worker then crashes", func(t *testing.T) {
 		e := newEnv(t)
 		disk := newDiskSecrets(t)
-		e.admit("run1", plan("late-resolve", secretStep("a"), ctr("b", "a")), 3)
-		release, done := block(e, disk)
+		disk.onReturn = func() { panic(errCrash) } // a crash right after the late Resolve returns
+		e.admit("run1", plan("late-crash-refused", secretStep("a"), ctr("b", "a")), 3)
+		release, done := blockedResolve(e, disk)
+		e.expire()
+		rep := e.driveStatus(e.engine("w2", e.withDisk(disk.sibling())), "run1", runtime.ClaimExecute)
+		e.expect(rep.Status == runner.DriveTerminal && e.load("run1").Materializations[0].State == runtime.MaterializationRevoked,
+			"the replacement completed cleanup and recorded the revocation: %s", rep.Status)
+		release()
+		e.expect(errors.Is(<-done, errCrash), "the late worker crashed right after Resolve")
+		e.expect(len(disk.material()) == 0, "the late Resolve published nothing: %v", disk.material())
+		// Nothing is left for anyone to find, and nothing to discover later either.
+		e.expire()
+		rep = e.driveStatus(e.engine("w3", e.withDisk(disk.sibling())), "run1", runtime.ClaimCleanup)
+		e.expect(rep.Status == runner.DriveSkipped && len(disk.material()) == 0, "a later claim finds a finished run: %s %v", rep.Status, disk.material())
+	})
+
+	t.Run("the worker publishes and crashes before it rechecks", func(t *testing.T) {
+		e := newEnv(t)
+		disk := newDiskSecrets(t)
+		disk.afterResolve = func() { panic(errCrash) }
+		e.admit("run1", plan("late-crash-published", secretStep("a"), ctr("b", "a")), 3)
+		release, done := blockedResolve(e, disk)
+		release()
+		e.expect(errors.Is(<-done, errCrash), "the worker crashed right after it published")
 		rec := e.load("run1")
-		e.expect(len(rec.Materializations) == 1 && rec.Materializations[0].State == runtime.MaterializationIssued && len(disk.material()) == 0,
-			"the identity is durable and no material exists yet: %+v %v", rec.Materializations, disk.material())
+		e.expect(len(disk.material()) == 1 && len(rec.Materializations) == 1 && rec.Materializations[0].State == runtime.MaterializationIssued,
+			"material exists and the identity is still issued: %v %+v", disk.material(), rec.Materializations)
 
 		e.expire()
-		rep := e.driveStatus(e.engine("w2", e.withDisk(disk)), "run1", runtime.ClaimExecute)
+		rep := e.driveStatus(e.engine("w2", e.withDisk(disk.sibling())), "run1", runtime.ClaimExecute)
 		got := e.load("run1")
-		e.expect(rep.Status == runner.DriveTerminal && got.Run.Outcome == runtime.OutcomeFailed && got.Run.Reason == runtime.ReasonLaunchUncertain &&
-			len(got.PendingRevocations()) == 0 && got.Materializations[0].State == runtime.MaterializationRevoked && len(disk.material()) == 0,
-			"the replacement settled the step and recorded the absent material revoked: %s %+v %v", rep.Status, got.Run, got.Materializations)
-		after := e.load("run1")
+		e.expect(rep.Status == runner.DriveTerminal && len(disk.material()) == 0 && len(got.PendingRevocations()) == 0 &&
+			got.Materializations[0].State == runtime.MaterializationRevoked,
+			"the replacement removed the material from the record: %s %v %+v", rep.Status, disk.material(), got.Materializations)
+	})
 
-		release() // the blocked Resolve now creates the material and returns
+	t.Run("a late revocation that exhausts its retry bound leaves the identity for the next claim", func(t *testing.T) {
+		e := newEnv(t)
+		disk := newDiskSecrets(t)
+		disk.failRevokes = 3
+		e.admit("run1", plan("late-exhausted", secretStep("a"), ctr("b", "a")), 3)
+		release, done := blockedResolve(e, disk, func(c *runner.EngineConfig) { c.ObserveFailures = 3 })
+		e.expire() // the claim is gone, nobody has taken the run over
+		release()  // the worker publishes late, rechecks and cannot revoke
 		err := <-done
-		e.expect(err == nil, "the late engine stops quietly: %v", err)
-		e.expect(len(disk.material()) == 0, "no material remains after the late Resolve: %v", disk.material())
-		e.expect(reflect.DeepEqual(e.load("run1"), after), "the late engine wrote nothing")
-		e.expect(!stepStarted(e, "a") && !stepStarted(e, "b"), "the late engine never launched: %v", e.rt.startOrder)
-	})
-	t.Run("after the lease expired with nobody taking the run over", func(t *testing.T) {
-		e := newEnv(t)
-		disk := newDiskSecrets(t)
-		e.admit("run1", plan("late-resolve-expired", secretStep("a")), 3)
-		release, done := block(e, disk)
+		e.expect(err != nil, "the exhausted revocation is reported, not swallowed")
+		rec := e.load("run1")
+		e.expect(len(disk.material()) == 1 && len(rec.Materializations) == 1 && rec.Materializations[0].State == runtime.MaterializationIssued,
+			"the material is still there and the identity is still owed: %v %+v", disk.material(), rec.Materializations)
+
 		e.expire()
-		release()
-		e.expect(<-done == nil, "the late engine stops quietly")
-		e.expect(len(disk.material()) == 0, "no material remains: %v", disk.material())
-		e.expect(!stepStarted(e, "a"), "the late engine did not launch with an unowned run: %v", e.rt.startOrder)
-		// The run is recoverable: the next claim reconciles the uncertain launch.
-		rep := e.driveStatus(e.engine("w2", e.withDisk(disk)), "run1", runtime.ClaimExecute)
+		rep := e.driveStatus(e.engine("w2", e.withDisk(disk.sibling())), "run1", runtime.ClaimExecute)
 		got := e.load("run1")
-		e.expect(rep.Status == runner.DriveTerminal && got.Run.Reason == runtime.ReasonLaunchUncertain && len(disk.material()) == 0 && len(got.PendingRevocations()) == 0,
-			"the next claim finished the run: %s %+v %v", rep.Status, got.Run, disk.material())
-	})
-	t.Run("a Resolve that fails after the claim was lost leaves nothing either", func(t *testing.T) {
-		e := newEnv(t)
-		disk := newDiskSecrets(t)
-		disk.resolveErr = errors.New("vault unavailable")
-		e.admit("run1", plan("late-resolve-failed", secretStep("a")), 3)
-		release, done := block(e, disk)
-		e.expire()
-		e.driveStatus(e.engine("w2", e.withDisk(disk)), "run1", runtime.ClaimExecute)
-		release()
-		e.expect(<-done == nil, "the late engine stops quietly")
-		e.expect(len(disk.material()) == 0, "partial material of the failed Resolve is removed: %v", disk.material())
+		e.expect(rep.Status == runner.DriveTerminal && got.Run.Reason == runtime.ReasonLaunchUncertain && len(disk.material()) == 0 &&
+			len(got.PendingRevocations()) == 0, "the replacement removed it without the original worker: %s %+v %v", rep.Status, got.Run, disk.material())
+		e.expect(!stepStarted(e, "a"), "the exhausted worker never launched: %v", e.rt.startOrder)
 	})
 }
 

@@ -269,6 +269,7 @@ func Test_unit_kernel_engine_progression(t *testing.T) {
 	t.Run("an engine revokes the secrets it materialized before the next step starts", revocationIsFaithful)
 	t.Run("a replacement engine revokes from the record and resumes; with no resolver it holds", revocationResumesAfterTakeover)
 	t.Run("a Resolve that completes late leaves no material behind", lateResolveLeavesNothingBehind)
+	t.Run("late creation is recoverable by a replacement, whatever happens to the worker", lateCreationIsRecoverable)
 	t.Run("a failed revocation is retried in place and then stops the run for the next claim", failedRevocationStopsTheRun)
 
 	// Real backend evidence, apart from the fault-injecting fakes above.

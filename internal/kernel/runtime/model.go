@@ -59,6 +59,9 @@ var (
 	// ErrSpecMismatch reports a stable identity that already exists with a
 	// different immutable specification.
 	ErrSpecMismatch = errors.New("runtime: specification mismatch")
+	// ErrMaterializationRevoked reports a Resolve for an identity that was
+	// revoked. The resolver publishes nothing for it.
+	ErrMaterializationRevoked = errors.New("runtime: materialization revoked")
 	// ErrCapability reports a backend that cannot satisfy required capabilities.
 	ErrCapability = errors.New("runtime: capability unsatisfied")
 )
