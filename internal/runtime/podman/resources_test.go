@@ -901,7 +901,8 @@ func Test_podman_run_resources_shared_attempt(t *testing.T) {
 	net := e.ensure(res, r.network())
 	ws := e.ensure(res, r.workspace())
 	bin := filepath.Join(t.TempDir(), "kodama")
-	prog := podman.Entrypoint{Binary: bin, ServerURL: serverURL, Issuer: bootstrap.Issuer{Registrar: &registrar{}}, Checkout: issuing(testCA(t))}
+	reg := &registrarV2{}
+	prog := podman.Entrypoint{Binary: bin, ServerURL: serverURL, Issuer: bootstrap.Issuer{Registrar: reg}, Checkout: issuing(testCA(t))}
 	rt := e.runtime(prog)
 
 	if caps := rt.Capabilities(); caps.Guarantees&execution.RunResourcesMarker == 0 || caps.Guarantees&execution.NetworkPolicy != 0 {
@@ -909,15 +910,14 @@ func Test_podman_run_resources_shared_attempt(t *testing.T) {
 	}
 
 	s := runtimetest.SharedSpec(t, ws.Handle, runtimetest.HostImage, "true")
-	// The attempt consumes the workspace: a v1 attempt would need a checkout.
-	c, err := s.DecodeContext()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = c
+	// A run_shared attempt pins a ContextV2: the runtime starts it and the issuer
+	// registers it on the v2 wire, never as a v1 attempt needing a checkout.
 	w, err := rt.Start(ctx, s)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if cmds := reg.v2(); len(cmds) != 1 || cmds[0].AttemptID != s.AttemptID || cmds[0].Context.ContextVersion != 2 || reg.count() != 0 {
+		t.Fatalf("the attempt was not registered once on the v2 wire: v2 %d v1 %d", len(cmds), reg.count())
 	}
 	cs := e.fake.created(t)
 	var got createdContainer
