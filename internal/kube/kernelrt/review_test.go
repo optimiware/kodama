@@ -223,7 +223,7 @@ func Test_unit_kube_kernel_runtime_effects_are_reserved_against_authority(t *tes
 	t.Run("a service Pod create that lands after a newer Stop is deleted", func(t *testing.T) {
 		h := newHarness(t)
 		spec := h.serviceSpec(scopeA, "run-1", "db", 1)
-		handle := runtime.ResourceHandle{Scope: scopeA, RunID: "run-1", Kind: runtime.ResourceService, Name: "db", Identity: spec.Identity, Fence: 2}
+		handle := runtime.ResourceHandle{Scope: scopeA, Owner: runtime.OwnerFor(runtime.LifetimePipeline, scopeA), Lifetime: runtime.LifetimePipeline, RunID: "run-1", Kind: runtime.ResourceService, Name: "db", Identity: spec.Identity, Fence: 2}
 		h.cl.onNext("create pod", func() {
 			if _, err := h.res.Stop(ctx, handle); err != nil {
 				t.Errorf("stop: %v", err)

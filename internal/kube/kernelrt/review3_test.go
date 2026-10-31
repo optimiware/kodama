@@ -129,7 +129,7 @@ func Test_unit_kube_kernel_runtime_compensation_is_bound_to_the_created_instance
 		h := newHarness(t)
 		spec := h.serviceSpec(scopeA, "run-1", "db", 1)
 		id := workspaceIdentFor(h, spec)
-		handle := runtime.ResourceHandle{Scope: scopeA, RunID: "run-1", Kind: runtime.ResourceService, Name: "db", Identity: spec.Identity, Fence: 2}
+		handle := runtime.ResourceHandle{Scope: scopeA, Owner: runtime.OwnerFor(runtime.LifetimePipeline, scopeA), Lifetime: runtime.LifetimePipeline, RunID: "run-1", Kind: runtime.ResourceService, Name: "db", Identity: spec.Identity, Fence: 2}
 		var created string
 		h.cl.onAfter("create pod", func() {
 			p, _ := h.cl.GetPod(ctx, testNS, id.base())

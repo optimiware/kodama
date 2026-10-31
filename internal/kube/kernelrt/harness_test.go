@@ -82,7 +82,7 @@ func newHarness(t *testing.T, mod ...func(*Config)) *harness {
 
 func (h *harness) workspaceSpec(scope domain.Scope, run domain.RunID, fence runtime.Fence) runtime.ResourceSpec {
 	return runtime.ResourceSpec{
-		Scope: scope, RunID: run, Kind: runtime.ResourceWorkspace, Name: "workspace", Lifetime: runtime.LifetimePipeline,
+		Scope: scope, Owner: runtime.OwnerFor(runtime.LifetimePipeline, scope), RunID: run, Kind: runtime.ResourceWorkspace, Name: "workspace", Lifetime: runtime.LifetimePipeline,
 		Identity: "ws-" + string(run), SpecDigest: "ws-digest", Fence: fence,
 		Preparation: &runtime.PreparationInputs{Scope: scope, RunID: run, Digest: "prep"},
 	}
@@ -90,7 +90,7 @@ func (h *harness) workspaceSpec(scope domain.Scope, run domain.RunID, fence runt
 
 func (h *harness) serviceSpec(scope domain.Scope, run domain.RunID, name string, fence runtime.Fence) runtime.ResourceSpec {
 	return runtime.ResourceSpec{
-		Scope: scope, RunID: run, Kind: runtime.ResourceService, Name: name, Lifetime: runtime.LifetimePipeline,
+		Scope: scope, Owner: runtime.OwnerFor(runtime.LifetimePipeline, scope), RunID: run, Kind: runtime.ResourceService, Name: name, Lifetime: runtime.LifetimePipeline,
 		Identity: "svc-" + name + "-" + string(run), SpecDigest: "svc-digest", Fence: fence,
 		Service: &runtime.ServiceSpec{Name: name, Lifetime: runtime.LifetimePipeline, Image: svcImage, Ports: []int{5432}},
 	}

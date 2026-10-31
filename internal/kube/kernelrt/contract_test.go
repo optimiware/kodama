@@ -815,7 +815,7 @@ func Test_unit_kube_kernel_runtime_contract(t *testing.T) {
 
 func (h *harness) workspaceHandle(scope domain.Scope, run domain.RunID) runtime.ResourceHandle {
 	spec := h.workspaceSpec(scope, run, 1)
-	return runtime.ResourceHandle{Scope: scope, RunID: run, Kind: runtime.ResourceWorkspace, Name: spec.Name, Identity: spec.Identity, Fence: 1}
+	return runtime.ResourceHandle{Scope: scope, Owner: spec.Owner, Lifetime: spec.Lifetime, RunID: run, Kind: runtime.ResourceWorkspace, Name: spec.Name, Identity: spec.Identity, Fence: 1}
 }
 
 func workspaceIdent(h *harness, run domain.RunID) ident {

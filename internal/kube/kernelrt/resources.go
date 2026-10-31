@@ -79,7 +79,10 @@ func (c *core) handleOf(id ident, fence runtime.Fence) runtime.ResourceHandle {
 	if id.kind == kindWorkspace {
 		k = runtime.ResourceWorkspace
 	}
-	return runtime.ResourceHandle{Scope: id.scope, RunID: id.run, Kind: k, Name: id.name, Identity: id.id, Fence: fence}
+	// Every resource this adapter supports is run-scoped, so ownership follows
+	// from the requesting scope. Project- and tenant-lifetime services are refused
+	// at admission, not silently represented here.
+	return runtime.ResourceHandle{Scope: id.scope, Owner: runtime.OwnerFor(runtime.LifetimePipeline, id.scope), Lifetime: runtime.LifetimePipeline, RunID: id.run, Kind: k, Name: id.name, Identity: id.id, Fence: fence}
 }
 
 func (c *core) robs(h runtime.ResourceHandle, st runtime.ResourceState, reason runtime.Reason) runtime.ResourceObservation {
