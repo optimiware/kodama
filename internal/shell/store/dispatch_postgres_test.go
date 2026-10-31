@@ -1,16 +1,24 @@
 package store_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/optimiware/kodama/internal/domain"
+	"github.com/optimiware/kodama/internal/shell/bus"
+	"github.com/optimiware/kodama/internal/shell/outbox"
 	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodama/internal/storage"
 )
 
 func readyRepo(t *testing.T, s *store.Store, tenant domain.TenantID, project domain.ProjectID, id, name string) store.Repository {
@@ -452,4 +460,197 @@ func TestGitPostgresUnpublishedEvents(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+// pgSource adapts the store to outbox.Source the way the kernel does: the
+// cursor is the event's (created_at, id) position. afterRead runs once, after
+// the first reconciliation page has been read.
+type pgSource struct {
+	st        *store.Store
+	afterRead func()
+}
+
+func (o *pgSource) Tenants(ctx context.Context) ([]domain.TenantID, error) {
+	return o.st.TenantIDs(ctx)
+}
+
+func (o *pgSource) rows(events []store.OutboxEvent) []outbox.Row {
+	out := make([]outbox.Row, 0, len(events))
+	for _, e := range events {
+		out = append(out, outbox.Row{
+			Message:   bus.Message{ID: e.ID, TenantID: e.TenantID, ProjectID: e.ProjectID, Type: e.Type, ResourceType: e.ResourceType, ResourceID: e.ResourceID, Actor: bus.Actor{Type: e.ActorType, ID: e.ActorID}, OccurredAt: e.CreatedAt.UTC(), Data: json.RawMessage(e.Payload)},
+			TenantKey: e.TenantKey, ProjectKey: e.ProjectKey, Attempts: e.Attempts, CreatedAt: e.CreatedAt,
+			Cursor: fmt.Sprintf("%020d/%s", e.CreatedAt.UnixNano(), e.ID),
+		})
+	}
+	return out
+}
+
+func (o *pgSource) Pending(ctx context.Context, tn domain.TenantID, now time.Time, limit int) ([]outbox.Row, error) {
+	events, err := o.st.PendingEvents(ctx, tn, now, limit)
+	return o.rows(events), err
+}
+
+func (o *pgSource) Unpublished(ctx context.Context, tn domain.TenantID, cutoff time.Time, after string, limit int) ([]outbox.Row, error) {
+	var cur store.OutboxCursor
+	if after != "" {
+		n, id, _ := strings.Cut(after, "/")
+		ns, err := strconv.ParseInt(n, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		cur = store.OutboxCursor{CreatedAt: time.Unix(0, ns).UTC(), ID: id}
+	}
+	events, err := o.st.UnpublishedEvents(ctx, tn, cutoff, cur, limit)
+	if fn := o.afterRead; fn != nil && err == nil {
+		o.afterRead = nil
+		fn()
+	}
+	return o.rows(events), err
+}
+
+func (o *pgSource) MarkPublished(ctx context.Context, tn domain.TenantID, id string, at time.Time) error {
+	return o.st.MarkPublished(ctx, tn, id, at)
+}
+
+func (o *pgSource) MarkFailed(ctx context.Context, tn domain.TenantID, id string, next time.Time) error {
+	return o.st.PublishFailed(ctx, tn, id, next)
+}
+
+type recordingSink struct {
+	mu  sync.Mutex
+	ids []string
+}
+
+func (r *recordingSink) Publish(_ context.Context, _ string, m bus.Message) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ids = append(r.ids, m.ID)
+	return nil
+}
+
+func (r *recordingSink) count(id string) (n int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, got := range r.ids {
+		if got == id {
+			n++
+		}
+	}
+	return n
+}
+
+// TestGitPostgresOutboxCursorCoversConcurrentCommits is the two-connection case
+// on a real database: one connection inserts an event (its created_at is the
+// start of its transaction) and holds the transaction open, the publisher's
+// reconciliation reads its first page and moves its cursor past that event's
+// position, and only then the other connection commits. That pass cannot see the
+// event; with one publisher and a working store and broker, the next
+// reconciliation pass (or a drain) publishes it once.
+func TestGitPostgresOutboxCursorCoversConcurrentCommits(t *testing.T) {
+	for _, via := range []string{"reconcile", "drain"} {
+		t.Run(via, func(t *testing.T) {
+			s, db, ctx := gitDB(t)
+			late := db.RuntimePool(ctx, 2) // the second connection
+			const lateID = "evt_late_commit"
+
+			// The late transaction runs under its own context: whatever ends the test
+			// early cancels it, WithTenant rolls it back and the connection returns
+			// to the pool before the pool is closed.
+			txCtx, cancelTx := context.WithCancel(ctx)
+			inserted, release, committed, finished := make(chan struct{}), make(chan struct{}), make(chan error, 1), make(chan struct{})
+			t.Cleanup(func() {
+				cancelTx()
+				select {
+				case <-finished:
+				case <-time.After(10 * time.Second):
+					t.Error("the late transaction did not end")
+				}
+			})
+			go func() {
+				defer close(finished)
+				committed <- storage.WithTenant(txCtx, late, "t_a", func(ctx context.Context, tx pgx.Tx) error {
+					if _, err := tx.Exec(ctx, `INSERT INTO audit_events (tenant_id,id,actor_type,actor_id,event_type,resource_type,resource_id)
+						VALUES ('t_a',$1,'system','test','repository.created','repository','repo_late')`, lateID); err != nil {
+						return err
+					}
+					close(inserted)
+					select {
+					case <-release:
+						return nil // commits here
+					case <-ctx.Done():
+						return ctx.Err() // rolls back
+					}
+				})
+			}()
+			select {
+			case <-inserted:
+			case err := <-committed:
+				t.Fatal(err)
+			case <-time.After(10 * time.Second):
+				t.Fatal("the late transaction never inserted")
+			}
+			// The late event is invisible until it commits.
+			if got, err := s.PendingEvents(ctx, "t_a", time.Now().Add(time.Hour), 100); err != nil || len(got) != 0 {
+				t.Fatalf("an uncommitted event is visible: %+v, %v", got, err)
+			}
+			// Events created after the late transaction began, committed before it.
+			time.Sleep(5 * time.Millisecond)
+			readyRepo(t, s, "t_a", "p_a1", "repo_1", "backend")
+			readyRepo(t, s, "t_a", "p_a1", "repo_2", "frontend")
+
+			sink, src := &recordingSink{}, &pgSource{st: s}
+			src.afterRead = func() {
+				close(release)
+				select {
+				case err := <-committed:
+					if err != nil {
+						t.Error(err)
+					}
+				case <-time.After(10 * time.Second):
+					t.Error("the late transaction did not commit")
+				}
+			}
+			future := time.Now().Add(time.Hour) // every event is older than the grace period
+			p, err := outbox.NewPublisher(outbox.PublisherConfig{Store: src, Bus: sink, Batch: 1, Grace: time.Minute, Now: func() time.Time { return future }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			first, err := p.Reconcile(ctx)
+			if err != nil || first.Failed != 0 || first.Published < 2 {
+				t.Fatalf("first pass = %+v, %v", first, err)
+			}
+			if sink.count(lateID) != 0 {
+				t.Fatalf("the cursor already passed the late event's position, yet it was delivered: pass 1 must not see it")
+			}
+			if via == "reconcile" {
+				if res, err := p.Reconcile(ctx); err != nil || res.Published != 1 || sink.count(lateID) != 1 {
+					t.Fatalf("second pass = %+v, %v (late delivered %d times)", res, err, sink.count(lateID))
+				}
+			} else if res, err := p.Drain(ctx); err != nil || res.Published != 1 || sink.count(lateID) != 1 {
+				t.Fatalf("drain = %+v, %v (late delivered %d times)", res, err, sink.count(lateID))
+			}
+			// Exactly once: nothing repeats on either path.
+			if res, err := p.Reconcile(ctx); err != nil || res.Published != 0 {
+				t.Fatalf("a later pass = %+v, %v", res, err)
+			}
+			if res, err := p.Drain(ctx); err != nil || res.Published != 0 {
+				t.Fatalf("a later drain = %+v, %v", res, err)
+			}
+			sink.mu.Lock()
+			defer sink.mu.Unlock()
+			seen := map[string]int{}
+			for _, id := range sink.ids {
+				seen[id]++
+			}
+			if len(seen) < 3 {
+				t.Fatalf("delivered %v", seen)
+			}
+			for id, n := range seen {
+				if n != 1 {
+					t.Fatalf("event %s delivered %d times", id, n)
+				}
+			}
+		})
+	}
 }
