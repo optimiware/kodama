@@ -116,8 +116,8 @@ func (c *kernelCore) ensureObject(ctx context.Context, o namedObject, rec *krec)
 			return uncertain("podman %s create failed (%s) and the engine could not be asked: %v", o.kind, strings.TrimSpace(res.stderr), ierr)
 		case found && ours:
 			return nil // a lost response: the object is there and now bound
-		case found && ambiguous(res.stderr):
-			return uncertain("podman %s create: %s", o.kind, strings.TrimSpace(res.stderr))
+		case found && !answered(res):
+			return uncertain("podman %s create (exit %d): %s", o.kind, res.code, strings.TrimSpace(res.stderr))
 		case found:
 			// The engine refused the request (the name is taken): the answer resolves it.
 			rec.Unanswered = false
@@ -125,8 +125,8 @@ func (c *kernelCore) ensureObject(ctx context.Context, o namedObject, rec *krec)
 				return uncertain("recording the rejected create of %s: %v", rec.Identity, err)
 			}
 			return fmt.Errorf("%w: a foreign %s holds the name %s", kr.ErrSpecMismatch, o.kind, rec.Name)
-		case ambiguous(res.stderr):
-			return uncertain("podman %s create: %s", o.kind, strings.TrimSpace(res.stderr))
+		case !answered(res):
+			return uncertain("podman %s create (exit %d): %s", o.kind, res.code, strings.TrimSpace(res.stderr))
 		}
 		rec.Unanswered = false
 		if err := c.save(*rec); err != nil {
@@ -234,11 +234,27 @@ const (
 	netUnresolved
 )
 
+// checkNetworkFence rejects a writer whose fence is older than the one the run's
+// network was advanced to. It is read-only: callers use it to refuse a stale
+// cleanup before any effect; settleNetwork repeats the check under the lock.
+func (c *kernelCore) checkNetworkFence(scope domain.Scope, run domain.RunID, fence kr.Fence) error {
+	rec, found, err := c.load(networkName(scope, run))
+	if err != nil || !found {
+		return err
+	}
+	if fence < rec.Fence {
+		return fmt.Errorf("%w: fence %d is older than the run network's %d", kr.ErrStaleFence, fence, rec.Fence)
+	}
+	return nil
+}
+
 // settleNetwork removes the run's network when nothing is attached and confirms
 // the engine no longer has it. A network the adapter never recorded is not its
-// to remove. A removal that fails for a reason other than containers still
+// to remove. The caller's fence is checked against the network's durable fence
+// and, once accepted, ratcheted into it together with the cleanup intent, before
+// any removal. A removal that fails for a reason other than containers still
 // attached is an error. The caller holds a resource lock, never the network's.
-func (c *kernelCore) settleNetwork(ctx context.Context, scope domain.Scope, run domain.RunID) (netState, error) {
+func (c *kernelCore) settleNetwork(ctx context.Context, scope domain.Scope, run domain.RunID, fence kr.Fence) (netState, error) {
 	name := networkName(scope, run)
 	unlock, err := c.locks.lock(ctx, name)
 	if err != nil {
@@ -248,6 +264,15 @@ func (c *kernelCore) settleNetwork(ctx context.Context, scope domain.Scope, run 
 	rec, found, err := c.load(name)
 	if err != nil || !found || rec.Removed {
 		return netDone, err
+	}
+	if fence < rec.Fence {
+		return netDone, fmt.Errorf("%w: fence %d is older than the run network's %d", kr.ErrStaleFence, fence, rec.Fence)
+	}
+	if fence > rec.Fence || !rec.Cleaning {
+		rec.Fence, rec.Cleaning = fence, true
+		if err := c.save(rec); err != nil {
+			return netDone, err
+		}
 	}
 	o := c.networkObject()
 	_, ours, err := c.bindObject(ctx, o, &rec)
@@ -266,7 +291,9 @@ func (c *kernelCore) settleNetwork(ctx context.Context, scope domain.Scope, run 
 				return netDone, uerr
 			}
 			if strings.TrimSpace(used.stdout) != "" {
-				return netInUse, nil
+				// Another container owns the cleanup now: the last one off finishes it.
+				rec.Cleaning = false
+				return netInUse, c.save(rec)
 			}
 			return netDone, uncertain("podman network rm: %s", strings.TrimSpace(res.stderr))
 		}
@@ -280,11 +307,54 @@ func (c *kernelCore) settleNetwork(ctx context.Context, scope domain.Scope, run 
 		// object at the name does not change that).
 		return netUnresolved, nil
 	}
-	rec.Stopping, rec.Stopped, rec.Removed = true, true, true
+	rec.Stopping, rec.Stopped, rec.Removed, rec.Cleaning = true, true, true, false
 	if err := c.save(rec); err != nil {
 		return netDone, err
 	}
 	return netDone, nil
+}
+
+// settleNetworkFor carries a removed workload's or resource's cleanup
+// obligation: persisted before the attempt and cleared only once the network is
+// confirmed removed or owned by a container that still uses it. A failure or an
+// unresolved create leaves the obligation recorded, so the removal is not
+// confirmed (here, in Observe, or after a restart) until it is met. A writer
+// refused as stale has no obligation.
+func (c *kernelCore) settleNetworkFor(ctx context.Context, rec *krec) (netState, error) {
+	had := rec.NetPending
+	if !had {
+		rec.NetPending = true
+		if err := c.save(*rec); err != nil {
+			rec.NetPending = false
+			return netDone, err
+		}
+	}
+	st, err := c.settleNetwork(ctx, rec.Scope, rec.RunID, rec.Fence)
+	switch {
+	case errors.Is(err, kr.ErrStaleFence):
+		rec.NetPending = had
+		if serr := c.save(*rec); serr != nil {
+			return netDone, serr
+		}
+		return netDone, err
+	case err != nil, st == netUnresolved:
+		return st, err
+	}
+	rec.NetPending = false
+	return st, c.save(*rec)
+}
+
+// networkOwed reports whether the record's cleanup obligation is still unmet:
+// it is recorded and the run's network is neither confirmed removed nor absent.
+func (c *kernelCore) networkOwed(rec krec) (bool, error) {
+	if !rec.NetPending {
+		return false, nil
+	}
+	net, found, err := c.load(networkName(rec.Scope, rec.RunID))
+	if err != nil {
+		return false, err
+	}
+	return found && !net.Removed, nil
 }
 
 // ---------------------------------------------------------------------------

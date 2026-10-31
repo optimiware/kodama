@@ -77,9 +77,15 @@ func newKFix(t *testing.T) *kFix {
 		t.Fatal(err)
 	}
 	f := &kFix{t: t, dir: dir, state: filepath.Join(dir, "state"), run: domain.RunID(fmt.Sprintf("run_k%d", time.Now().UnixNano())), prep: &kPreparer{}}
+	for name, content := range map[string]string{"run": string(f.run), "image": podmantest.Image} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	wrapper := filepath.Join(dir, "podman")
 	script := fmt.Sprintf(`#!/bin/sh
 D=%q
+REAL=%q
 echo "$1 $2" >> "$D/calls.log"
 if [ -e "$D/down" ]; then echo "Error: cannot connect to Podman" >&2; exit 125; fi
 for k in "delay-$1" "delay-$1-$2"; do
@@ -92,14 +98,14 @@ if [ -e "$D/fail-next" ] && [ "$1" != "create" ] && [ "$2" != "create" ]; then
 fi
 if [ -e "$D/lose-create" ] && [ "$1" = create ]; then
   rm -f "$D/lose-create"
-  %q "$@" > /dev/null
+  "$REAL" "$@" > /dev/null
   echo 1 > "$D/fail-next"
   echo "Error: EOF" >&2
   exit 125
 fi
 if [ -e "$D/lose-volume-create" ] && [ "$1" = volume ] && [ "$2" = create ]; then
   rm -f "$D/lose-volume-create"
-  %q "$@" > /dev/null
+  "$REAL" "$@" > /dev/null
   echo 1 > "$D/fail-next"
   echo "Error: EOF" >&2
   exit 125
@@ -111,7 +117,7 @@ if [ -e "$D/swallow-volume-create" ] && [ "$1" = volume ] && [ "$2" = create ]; 
 fi
 if [ -e "$D/lose-network-create" ] && [ "$1" = network ] && [ "$2" = create ]; then
   rm -f "$D/lose-network-create"
-  %q "$@" > /dev/null
+  "$REAL" "$@" > /dev/null
   echo 1 > "$D/fail-next"
   echo "Error: EOF" >&2
   exit 125
@@ -121,13 +127,36 @@ if [ -e "$D/swallow-network-create" ] && [ "$1" = network ] && [ "$2" = create ]
   echo "Error: EOF" >&2
   exit 125
 fi
+# kill-*: a foreign object takes the name, then the CLI is killed with no answer.
+# collide-*: a foreign object takes the name, then the real create is refused.
+plant() {
+  case "$1" in
+    container) "$REAL" run -d --name "$2" --label "kodama.optimi.com/run=$(cat "$D/run")" "$(cat "$D/image")" sleep 60 > /dev/null ;;
+    volume) "$REAL" volume create --label "kodama.optimi.com/run=$(cat "$D/run")" "$2" > /dev/null ;;
+    network) "$REAL" network create --label "kodama.optimi.com/run=$(cat "$D/run")" "$2" > /dev/null ;;
+  esac
+}
+lastarg() { for a in "$@"; do n=$a; done; echo "$n"; }
+kind=""
+if [ "$1" = create ]; then kind=container; name="$3"; fi
+if [ "$1" = volume ] && [ "$2" = create ]; then kind=volume; name=$(lastarg "$@"); fi
+if [ "$1" = network ] && [ "$2" = create ]; then kind=network; name=$(lastarg "$@"); fi
+if [ -n "$kind" ]; then
+  for mode in kill collide; do
+    if [ -e "$D/$mode-$kind-create" ]; then
+      rm -f "$D/$mode-$kind-create"
+      plant "$kind" "$name"
+      if [ "$mode" = kill ]; then kill -9 $$; fi
+    fi
+  done
+fi
 if [ -e "$D/swallow-create" ] && [ "$1" = create ]; then
   rm -f "$D/swallow-create"
   echo "Error: EOF" >&2
   exit 125
 fi
-exec %q "$@"
-`, dir, real, real, real, real)
+exec "$REAL" "$@"
+`, dir, real)
 	if err := os.WriteFile(wrapper, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

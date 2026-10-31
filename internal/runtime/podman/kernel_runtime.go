@@ -254,6 +254,16 @@ func (k *KernelRuntime) observe(ctx context.Context, rec *krec, b kr.RuntimeBind
 	default:
 		obs.Phase, obs.Result = kr.PhaseExited, exitResult(*rec, ct)
 	}
+	if obs.Phase == kr.PhaseAbsent {
+		// An absent workload is not confirmed removed while its network cleanup is owed.
+		owed, err := c.networkOwed(*rec)
+		if err != nil {
+			return kr.WorkloadObservation{}, err
+		}
+		if owed {
+			obs.Phase = kr.PhaseUnknown
+		}
+	}
 	return obs, nil
 }
 
@@ -382,6 +392,17 @@ func (k *KernelRuntime) settle(ctx context.Context, b kr.RuntimeBinding, remove 
 		return kr.WorkloadObservation{}, err
 	}
 	defer unlock()
+	if remove {
+		// A cleanup from a fence older than the run network's is refused before
+		// any effect.
+		if prior, ok, err := c.load(want.Name); err != nil {
+			return kr.WorkloadObservation{}, err
+		} else if ok && prior.Network != "" {
+			if err := c.checkNetworkFence(b.Scope, b.RunID, b.Fence); err != nil {
+				return kr.WorkloadObservation{}, err
+			}
+		}
+	}
 	rec, err := c.fenceStop(want)
 	if err != nil {
 		return kr.WorkloadObservation{}, err
@@ -415,10 +436,12 @@ func (k *KernelRuntime) settle(ctx context.Context, b kr.RuntimeBinding, remove 
 		return kr.WorkloadObservation{}, err
 	}
 	if remove && rec.Removed && rec.Network != "" {
-		// The last container off the run's network finishes its cleanup. Best
-		// effort here: the network belongs to the run's resources, whose own
-		// removal confirms it.
-		_, _ = c.settleNetwork(ctx, rec.Scope, rec.RunID)
+		// The last container off the run's network finishes its cleanup. The
+		// obligation is durable: a failure is returned, never discarded, unless a
+		// container that still uses the network demonstrably owns the cleanup now.
+		if _, err := c.settleNetworkFor(ctx, &rec); err != nil {
+			return kr.WorkloadObservation{}, err
+		}
 	}
 	return k.observe(ctx, &rec, b)
 }

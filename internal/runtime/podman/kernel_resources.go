@@ -321,6 +321,16 @@ func (r *KernelResources) observeLocked(ctx context.Context, h kr.ResourceHandle
 	} else {
 		obs.State, obs.Reason, err = r.serviceState(ctx, rec)
 	}
+	if err == nil && obs.State == kr.ResourceRemoved {
+		// A removal is not confirmed while its network cleanup is still owed.
+		owed, oerr := r.core.networkOwed(*rec)
+		if oerr != nil {
+			return obs, oerr
+		}
+		if owed {
+			obs.State = kr.ResourceUnknown
+		}
+	}
 	return obs, err
 }
 
@@ -542,6 +552,13 @@ func (r *KernelResources) settle(ctx context.Context, h kr.ResourceHandle, remov
 		return kr.ResourceObservation{}, err
 	}
 	defer unlock()
+	if remove {
+		// A cleanup from a fence older than the run network's is refused before
+		// any effect, whichever resource it comes through.
+		if err := c.checkNetworkFence(h.Scope, h.RunID, h.Fence); err != nil {
+			return kr.ResourceObservation{}, err
+		}
+	}
 	rec, err := c.fenceStop(want)
 	if err != nil {
 		return kr.ResourceObservation{}, err
@@ -557,21 +574,17 @@ func (r *KernelResources) settle(ctx context.Context, h kr.ResourceHandle, remov
 	if err := c.save(rec); err != nil {
 		return kr.ResourceObservation{}, err
 	}
-	// Cleanup of the run's network belongs to resource settlement: a removal is
-	// confirmed only when the network is gone, still legitimately in use by
-	// another container of the run, or was never the adapter's. A network whose
-	// create is unresolved, or whose removal fails, is not confirmed.
-	net := netDone
+	// Cleanup of the run's network belongs to resource settlement. The removal
+	// carries a durable obligation (rec.NetPending) that is met only when the
+	// network is confirmed removed or owned by a container that still uses it; a
+	// network whose create is unresolved, or whose removal fails, leaves it
+	// recorded, and Observe honours it too.
 	if remove && rec.Removed {
-		if net, err = c.settleNetwork(ctx, h.Scope, h.RunID); err != nil {
+		if _, err := c.settleNetworkFor(ctx, &rec); err != nil {
 			return kr.ResourceObservation{}, err
 		}
 	}
-	obs, err := r.observeLocked(ctx, h, &rec)
-	if err == nil && net == netUnresolved && obs.State == kr.ResourceRemoved {
-		obs.State = kr.ResourceUnknown
-	}
-	return obs, err
+	return r.observeLocked(ctx, h, &rec)
 }
 
 func (r *KernelResources) settleService(ctx context.Context, rec *krec, remove bool) error {

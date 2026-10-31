@@ -258,6 +258,13 @@ type krec struct {
 	PrepFailed bool `json:"prepFailed,omitempty"`
 	// Network is the run network a service or workload joined.
 	Network string `json:"network,omitempty"`
+	// NetPending is the durable obligation of a removed workload or resource to
+	// see the run's network cleaned up: set before the cleanup is attempted and
+	// cleared only when the network is confirmed removed or handed to a container
+	// that still uses it. While it is set the removal is not confirmed.
+	NetPending bool `json:"netPending,omitempty"`
+	// Cleaning is a network's accepted cleanup intent, persisted before removal.
+	Cleaning bool `json:"cleaning,omitempty"`
 	// Workspace is the record name of the workspace a workload mounts: the
 	// durable holder intent the workspace's release and removal consult.
 	Workspace string `json:"workspace,omitempty"`
@@ -538,6 +545,34 @@ func ambiguous(stderr string) bool {
 	return false
 }
 
+// refusalEvidence are the texts by which the engine, or the CLI before sending
+// anything, positively reports that a create request did not take effect: the
+// name is taken, the image cannot be resolved, the request is invalid, the
+// engine cannot be connected to.
+var refusalEvidence = []string{
+	"already in use", "already exists", "already used", "no such image", "image not known", "unable to find image",
+	"manifest unknown", "invalid reference", "unauthorized", "requested access to the resource is denied",
+	"cannot connect to podman", "connection refused",
+}
+
+// answered reports positive evidence that a failed create request was refused or
+// never sent: a real exit status (a CLI killed by a signal has none, code -1)
+// with an error text that names a known refusal. A signal, an empty or an
+// unrecognized failure is not evidence of anything and leaves the request
+// unresolved, as does a text that a lost connection could also produce.
+func answered(res kres) bool {
+	if res.code <= 0 || ambiguous(res.stderr) {
+		return false
+	}
+	s := strings.ToLower(res.stderr)
+	for _, p := range refusalEvidence {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // labelsOf are the labels every kernel-adapter object carries. Ownership is
 // decided from these together with the record.
 func labelsOf(rec krec) map[string]string {
@@ -695,8 +730,8 @@ func (c *kernelCore) ensureContainer(ctx context.Context, rec *krec, build func(
 		case found:
 			return ct, nil
 		case errors.Is(ierr, errForeign):
-			if ambiguous(res.stderr) {
-				return kctr{}, uncertain("podman create: %s", strings.TrimSpace(res.stderr))
+			if !answered(res) {
+				return kctr{}, uncertain("podman create (exit %d): %s", res.code, strings.TrimSpace(res.stderr))
 			}
 			// The engine answered the request with a refusal (the name is taken):
 			// the answer, not the foreign object, resolves it.
@@ -707,8 +742,8 @@ func (c *kernelCore) ensureContainer(ctx context.Context, rec *krec, build func(
 			return kctr{}, fmt.Errorf("%w: a foreign container holds the name %s", kr.ErrSpecMismatch, rec.Name)
 		case ierr != nil:
 			return kctr{}, uncertain("podman create failed (%s) and the engine could not be asked: %v", strings.TrimSpace(res.stderr), ierr)
-		case ambiguous(res.stderr):
-			return kctr{}, uncertain("podman create: %s", strings.TrimSpace(res.stderr))
+		case !answered(res):
+			return kctr{}, uncertain("podman create (exit %d): %s", res.code, strings.TrimSpace(res.stderr))
 		}
 		rec.Unanswered = false
 		if err := c.save(*rec); err != nil {
