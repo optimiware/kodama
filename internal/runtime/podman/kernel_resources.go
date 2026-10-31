@@ -2,7 +2,6 @@ package podman
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -57,10 +56,6 @@ func resourceName(k kr.ResourceKind, scope domain.Scope, identity string) string
 		return objectName("kv-", scope, identity)
 	}
 	return objectName("ks-", scope, identity)
-}
-
-func networkName(scope domain.Scope, run domain.RunID) string {
-	return objectName("kn-", scope, string(run))
 }
 
 func prepName(scope domain.Scope, identity string) string {
@@ -162,7 +157,7 @@ func (r *KernelResources) ensureWorkspace(ctx context.Context, spec kr.ResourceS
 	if err != nil {
 		return kr.ResourceObservation{}, err
 	}
-	if err := c.ensureVolume(ctx, &rec); err != nil {
+	if err := c.ensureObject(ctx, c.volumeObject(), &rec); err != nil {
 		return kr.ResourceObservation{}, err
 	}
 	if rec.PrepRequired != "" && rec.Prepared != rec.PrepRequired && !rec.PrepFailed {
@@ -171,77 +166,6 @@ func (r *KernelResources) ensureWorkspace(ctx context.Context, spec kr.ResourceS
 		}
 	}
 	return r.observeLocked(ctx, handleOf(spec), &rec)
-}
-
-// ensureVolume finds or creates the record's volume. The creation is announced
-// before the engine is asked, and an unseen outcome is reconciled by name and
-// UID, never replayed.
-func (c *kernelCore) ensureVolume(ctx context.Context, rec *krec) error {
-	vol, found, err := c.pm.inspectVolume(ctx, rec.Name)
-	switch {
-	case err != nil:
-		return err
-	case found:
-		if !owned(vol.Labels, *rec) || (rec.ObjectID != "" && vol.CreatedAt != rec.ObjectID) {
-			return fmt.Errorf("%w: a foreign volume holds the name %s", kr.ErrSpecMismatch, rec.Name)
-		}
-		if rec.ObjectID == "" || rec.Unanswered {
-			rec.ObjectID, rec.Unanswered = vol.CreatedAt, false
-			return c.save(*rec)
-		}
-		return nil
-	case rec.ObjectID != "":
-		return fmt.Errorf("%w: the volume of %s", errLost, rec.Identity)
-	case rec.Unanswered:
-		return uncertain("an earlier create of %s is unresolved; none is replayed", rec.Identity)
-	}
-	rec.Announced++
-	rec.Unanswered = true
-	if err := c.save(*rec); err != nil {
-		rec.Announced--
-		rec.Unanswered = false
-		return refuse("announcing the create of %s: %v", rec.Identity, err)
-	}
-	args := append([]string{"volume", "create"}, labelArgs(labelsOf(*rec))...)
-	res, err := c.pm.run(ctx, append(args, rec.Name)...)
-	switch {
-	case err != nil && errors.Is(err, kr.ErrNotReached):
-		rec.Unanswered = false
-		_ = c.save(*rec)
-		return err
-	case err != nil:
-		return err
-	case res.code != 0:
-		vol, found, ierr := c.pm.inspectVolume(ctx, rec.Name)
-		switch {
-		case ierr != nil:
-			return uncertain("podman volume create failed (%s) and the engine could not be asked: %v", strings.TrimSpace(res.stderr), ierr)
-		case found && owned(vol.Labels, *rec):
-			rec.ObjectID, rec.Unanswered = vol.CreatedAt, false
-			return c.save(*rec)
-		case found:
-			return fmt.Errorf("%w: a foreign volume holds the name %s", kr.ErrSpecMismatch, rec.Name)
-		case ambiguous(res.stderr):
-			return uncertain("podman volume create: %s", strings.TrimSpace(res.stderr))
-		}
-		rec.Unanswered = false
-		if err := c.save(*rec); err != nil {
-			return uncertain("recording the rejected create of %s: %v", rec.Identity, err)
-		}
-		return fmt.Errorf("%w: podman volume create rejected: %s", kr.ErrNotReached, strings.TrimSpace(res.stderr))
-	}
-	vol, found, err = c.pm.inspectVolume(ctx, rec.Name)
-	switch {
-	case err != nil:
-		return uncertain("reading the created volume of %s: %v", rec.Identity, err)
-	case !found || !owned(vol.Labels, *rec):
-		return uncertain("the created volume of %s is not observed", rec.Identity)
-	}
-	rec.ObjectID, rec.Unanswered = vol.CreatedAt, false
-	if err := c.save(*rec); err != nil {
-		return uncertain("recording the volume of %s: %v", rec.Identity, err)
-	}
-	return nil
 }
 
 // startPreparation creates (once) and starts the one-shot preparation container.
@@ -363,7 +287,7 @@ func (r *KernelResources) ensureService(ctx context.Context, spec kr.ResourceSpe
 		return kr.ResourceObservation{}, err
 	}
 	ct, err := c.ensureContainer(ctx, &rec, func() (ctrSpec, error) {
-		if err := r.ensureNetwork(ctx, spec.Scope, spec.RunID); err != nil {
+		if err := c.ensureNetwork(ctx, spec.Scope, spec.RunID, spec.Fence); err != nil {
 			return ctrSpec{}, err
 		}
 		s := ctrSpec{
@@ -387,98 +311,6 @@ func (r *KernelResources) ensureService(ctx context.Context, spec kr.ResourceSpe
 	return r.observeLocked(ctx, handleOf(spec), &rec)
 }
 
-// knet is the part of `podman network inspect` the adapter decides on.
-type knet struct {
-	Name     string            `json:"name"`
-	Labels   map[string]string `json:"labels"`
-	Internal bool              `json:"internal"`
-}
-
-// ensureNetwork makes the run's internal network exist. It is created by
-// name, so a lost answer is found again by the existence check; one that is not
-// this run's is never used.
-func (r *KernelResources) ensureNetwork(ctx context.Context, scope domain.Scope, run domain.RunID) error {
-	c, name := r.core, networkName(scope, run)
-	unlock, err := c.locks.lock(ctx, name)
-	if err != nil {
-		return notReached(err)
-	}
-	defer unlock()
-	nw, found, err := r.inspectNetwork(ctx, name)
-	switch {
-	case err != nil:
-		return err
-	case found:
-		if !ownedNetwork(nw, scope, run) {
-			return fmt.Errorf("%w: a foreign network holds the name %s", kr.ErrSpecMismatch, name)
-		}
-		return nil
-	}
-	labels := map[string]string{
-		LabelManagedBy: ValueKernelManagedBy, LabelTenant: string(scope.TenantID), LabelProject: string(scope.ProjectID),
-		LabelRun: string(run), LabelClass: classNetwork,
-	}
-	args := append([]string{"network", "create", "--internal"}, labelArgs(labels)...)
-	res, err := c.pm.run(ctx, append(args, name)...)
-	if err != nil {
-		return err
-	}
-	if res.code != 0 {
-		nw, found, ierr := r.inspectNetwork(ctx, name)
-		switch {
-		case ierr != nil:
-			return uncertain("podman network create failed (%s) and the engine could not be asked: %v", strings.TrimSpace(res.stderr), ierr)
-		case found && ownedNetwork(nw, scope, run):
-			return nil // a lost response: the network is there
-		case found:
-			return fmt.Errorf("%w: a foreign network holds the name %s", kr.ErrSpecMismatch, name)
-		case ambiguous(res.stderr):
-			return uncertain("podman network create: %s", strings.TrimSpace(res.stderr))
-		}
-		return fmt.Errorf("%w: podman network create: %s", kr.ErrNotReached, strings.TrimSpace(res.stderr))
-	}
-	return nil
-}
-
-func ownedNetwork(n knet, scope domain.Scope, run domain.RunID) bool {
-	l := n.Labels
-	return l[LabelManagedBy] == ValueKernelManagedBy && l[LabelClass] == classNetwork && l[LabelTenant] == string(scope.TenantID) &&
-		l[LabelProject] == string(scope.ProjectID) && l[LabelRun] == string(run)
-}
-
-func (r *KernelResources) inspectNetwork(ctx context.Context, name string) (knet, bool, error) {
-	c := r.core
-	ok, err := c.pm.exists(ctx, "network", name)
-	if err != nil || !ok {
-		return knet{}, false, err
-	}
-	res, err := c.pm.query(ctx, "network", "inspect", "--format", "json", name)
-	if err != nil {
-		return knet{}, false, err
-	}
-	var all []knet
-	if err := json.Unmarshal([]byte(res.stdout), &all); err != nil || len(all) != 1 {
-		return knet{}, false, errors.New("podman: unreadable network inspect output")
-	}
-	return all[0], true, nil
-}
-
-// dropNetwork removes the run's network when nothing uses it. Best effort: the
-// network carries no state, so a failure only leaves an empty bridge for the
-// last resource of the run to remove.
-func (r *KernelResources) dropNetwork(ctx context.Context, scope domain.Scope, run domain.RunID) {
-	c, name := r.core, networkName(scope, run)
-	unlock, err := c.locks.lock(ctx, name)
-	if err != nil {
-		return
-	}
-	defer unlock()
-	if nw, found, err := r.inspectNetwork(ctx, name); err != nil || !found || !ownedNetwork(nw, scope, run) {
-		return
-	}
-	_, _ = c.pm.run(ctx, "network", "rm", name) // refused while a container is attached
-}
-
 // observeLocked reports a resource from the engine and the record. The caller
 // holds the lock of the record.
 func (r *KernelResources) observeLocked(ctx context.Context, h kr.ResourceHandle, rec *krec) (kr.ResourceObservation, error) {
@@ -494,7 +326,9 @@ func (r *KernelResources) observeLocked(ctx context.Context, h kr.ResourceHandle
 
 func (r *KernelResources) workspaceState(ctx context.Context, rec *krec) (kr.ResourceState, kr.Reason, error) {
 	c := r.core
-	vol, found, err := c.pm.inspectVolume(ctx, rec.Name)
+	// An outstanding create whose volume is observed is adopted here: bound and
+	// resolved, so nothing is left unknown once the object is there.
+	found, ours, err := c.bindObject(ctx, c.volumeObject(), rec)
 	switch {
 	case err != nil:
 		return "", "", err
@@ -506,12 +340,13 @@ func (r *KernelResources) workspaceState(ctx context.Context, rec *krec) (kr.Res
 		return kr.ResourceFailed, kr.ReasonWorkspaceLost, nil
 	case !found:
 		return kr.ResourceRemoved, kr.ReasonNone, nil // nothing was ever created
-	case !owned(vol.Labels, *rec) || (rec.ObjectID != "" && vol.CreatedAt != rec.ObjectID):
-		// A replacement under our name: ours is gone.
-		return kr.ResourceFailed, kr.ReasonWorkspaceLost, nil
-	}
-	if rec.ObjectID == "" {
-		return kr.ResourceStarting, kr.ReasonNone, nil
+	case !ours && rec.Removed:
+		return kr.ResourceRemoved, kr.ReasonNone, nil
+	case !ours && rec.Unanswered:
+		// A foreign volume at the name proves nothing about the outstanding create.
+		return kr.ResourceUnknown, kr.ReasonNone, nil
+	case !ours:
+		return kr.ResourceFailed, kr.ReasonWorkspaceLost, nil // a replacement under our name
 	}
 	pending, err := r.advancePreparation(ctx, rec)
 	switch {
@@ -523,6 +358,14 @@ func (r *KernelResources) workspaceState(ctx context.Context, rec *krec) (kr.Res
 		return kr.ResourceFailed, kr.ReasonPreparationFailed, nil
 	case pending:
 		return kr.ResourceStarting, kr.ReasonNone, nil
+	case rec.Stopping:
+		// Fenced but not yet released: a holder may still exist. One whose create
+		// is unresolved cannot be seen from the engine.
+		if un, err := c.unresolvedHolders(rec.Name); err != nil {
+			return "", "", err
+		} else if len(un) > 0 {
+			return kr.ResourceUnknown, kr.ReasonNone, nil
+		}
 	}
 	return kr.ResourceReady, kr.ReasonNone, nil
 }
@@ -641,20 +484,27 @@ func (r *KernelResources) Observe(ctx context.Context, h kr.ResourceHandle) (kr.
 	return r.observeLocked(ctx, h, &rec)
 }
 
-// Logs implements kr.ResourceManager. A workspace has no output.
+// Logs implements kr.ResourceManager. A workspace has no output. The record is
+// loaded and validated under the lock, never before it: findContainer persists
+// what it learns, and a snapshot taken before the lock could roll back a newer
+// fence or stop intent.
 func (r *KernelResources) Logs(ctx context.Context, h kr.ResourceHandle, opts kr.LogOptions) (io.ReadCloser, error) {
 	if h.Kind == kr.ResourceWorkspace {
 		return nil, fmt.Errorf("%w: a workspace has no output", domain.ErrConflict)
 	}
-	rec, found, err := r.bound(h)
+	if err := h.Validate(); err != nil {
+		return nil, err
+	}
+	unlock, err := r.core.locks.lock(ctx, handleRec(h).Name)
 	if err != nil {
 		return nil, err
 	}
-	if !found {
-		return nil, fmt.Errorf("%w: no service %s", domain.ErrConflict, h.Name)
-	}
-	unlock, err := r.core.locks.lock(ctx, rec.Name)
-	if err != nil {
+	rec, found, err := r.bound(h)
+	if err != nil || !found {
+		unlock()
+		if err == nil {
+			err = fmt.Errorf("%w: no service %s", domain.ErrConflict, h.Name)
+		}
 		return nil, err
 	}
 	ct, ok, err := r.core.findContainer(ctx, &rec)
@@ -707,10 +557,21 @@ func (r *KernelResources) settle(ctx context.Context, h kr.ResourceHandle, remov
 	if err := c.save(rec); err != nil {
 		return kr.ResourceObservation{}, err
 	}
+	// Cleanup of the run's network belongs to resource settlement: a removal is
+	// confirmed only when the network is gone, still legitimately in use by
+	// another container of the run, or was never the adapter's. A network whose
+	// create is unresolved, or whose removal fails, is not confirmed.
+	net := netDone
 	if remove && rec.Removed {
-		r.dropNetwork(ctx, h.Scope, h.RunID)
+		if net, err = c.settleNetwork(ctx, h.Scope, h.RunID); err != nil {
+			return kr.ResourceObservation{}, err
+		}
 	}
-	return r.observeLocked(ctx, h, &rec)
+	obs, err := r.observeLocked(ctx, h, &rec)
+	if err == nil && net == netUnresolved && obs.State == kr.ResourceRemoved {
+		obs.State = kr.ResourceUnknown
+	}
+	return obs, err
 }
 
 func (r *KernelResources) settleService(ctx context.Context, rec *krec, remove bool) error {
@@ -743,12 +604,25 @@ func (r *KernelResources) settleService(ctx context.Context, rec *krec, remove b
 }
 
 // settleWorkspace stops (fences) the workspace and, when asked, removes its
-// volume. The volume is released only when no container still runs on it and
-// removed only when none references it: containers are the engine's to remove
-// first, and the engine is never forced to drop a volume in use.
+// volume. The volume is released only when no container still runs on it and no
+// holder is unresolved, and removed only when none references it: containers are
+// the engine's to remove first, and the engine is never forced to drop a volume
+// in use. A holder whose create outcome is unresolved is invisible to the engine,
+// so it is read from the durable holder intents written before every launch; the
+// workspace is neither released nor removed while one exists.
 func (r *KernelResources) settleWorkspace(ctx context.Context, rec *krec, remove bool) error {
 	c := r.core
-	if err := r.retirePreparation(ctx, rec); err != nil {
+	prepUnresolved, err := r.retirePreparation(ctx, rec)
+	if err != nil {
+		return err
+	}
+	// A volume whose create response was lost is adopted before anything else, so
+	// its identity is bound and the outstanding create resolved.
+	found, ours, err := c.bindObject(ctx, c.volumeObject(), rec)
+	if err != nil {
+		return err
+	}
+	if err := c.resolveHolders(ctx, rec.Name); err != nil {
 		return err
 	}
 	holders, err := r.holders(ctx, rec.Name)
@@ -763,17 +637,24 @@ func (r *KernelResources) settleWorkspace(ctx context.Context, rec *krec, remove
 			return fmt.Errorf("%w: container %s still references the workspace of %s", kr.ErrIllegalTransition, id[:12], rec.Identity)
 		}
 	}
+	unresolved, err := c.unresolvedHolders(rec.Name)
+	if err != nil {
+		return err
+	}
+	if prepUnresolved {
+		unresolved = append(unresolved, "preparation")
+	}
+	if len(unresolved) > 0 {
+		if remove {
+			return uncertain("%d create(s) holding the workspace of %s are unresolved; it is not removed", len(unresolved), rec.Identity)
+		}
+		return nil // fenced, not released
+	}
 	rec.Stopped = true
 	if !remove {
 		return nil
 	}
-	vol, found, err := c.pm.inspectVolume(ctx, rec.Name)
-	switch {
-	case err != nil:
-		return err
-	case found && (!owned(vol.Labels, *rec) || (rec.ObjectID != "" && vol.CreatedAt != rec.ObjectID)):
-		return nil // a volume that is not ours is never removed
-	case found:
+	if found && ours {
 		res, err := c.pm.run(ctx, "volume", "rm", rec.Name)
 		if err != nil {
 			return err
@@ -794,54 +675,58 @@ func (r *KernelResources) settleWorkspace(ctx context.Context, rec *krec, remove
 }
 
 // retirePreparation fences the workspace's preparation container and removes it
-// once it no longer runs.
-func (r *KernelResources) retirePreparation(ctx context.Context, ws *krec) error {
+// once it no longer runs. It reports whether the preparation's create is still
+// unresolved.
+func (r *KernelResources) retirePreparation(ctx context.Context, ws *krec) (unresolved bool, err error) {
 	c := r.core
 	name := prepName(ws.Scope, ws.Identity)
 	unlock, err := c.locks.lock(ctx, name)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer unlock()
 	prec, found, err := c.load(name)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !found {
 		// A preparation create that never happened must never land later.
 		want := krec{Name: name, Class: classPreparation, Scope: ws.Scope, RunID: ws.RunID, Identity: ws.Identity, Fence: ws.Fence}
 		_, err := c.fenceStop(want)
-		return err
+		return false, err
 	}
 	if prec.Removed {
-		return nil
+		return false, nil
 	}
 	prec.Stopping = true
 	if err := c.save(prec); err != nil {
-		return err
+		return false, err
 	}
 	ct, ok, err := c.findContainer(ctx, &prec)
 	if err != nil && !errors.Is(err, errForeign) {
-		return err
+		return false, err
 	}
 	if ok {
 		if ct, ok, err = c.stopContainer(ctx, prec, ct); err != nil {
-			return err
+			return false, err
 		}
 		if ok && ct.State.Running {
-			return nil
+			return false, nil
 		}
 		if ok {
 			if _, ok, err = c.removeContainer(ctx, prec); err != nil {
-				return err
+				return false, err
 			} else if ok {
-				return uncertain("the preparation container of %s still exists after removal", ws.Identity)
+				return false, uncertain("the preparation container of %s still exists after removal", ws.Identity)
 			}
 		}
 	}
 	prec.Stopped = true
 	prec.Removed = !ok && !prec.Unanswered
-	return c.save(prec)
+	if err := c.save(prec); err != nil {
+		return false, err
+	}
+	return !ok && prec.Unanswered, nil
 }
 
 // holders lists every container, running or not, that references the volume.

@@ -92,6 +92,21 @@ func (k *KernelRuntime) Start(ctx context.Context, req kr.StartRequest) (kr.Work
 	want := k.workloadRec(b)
 	want.TimeoutNanos = int64(req.Spec.Timeout)
 	c := k.core
+	if len(req.Services) > 0 {
+		want.Network = networkName(b.Scope, b.RunID)
+	}
+	if req.Workspace.Identity != "" {
+		// The workspace's lock is held across the whole launch or adoption: a Stop
+		// or Remove of the workspace cannot settle it between verification and the
+		// create, and a container that already exists is never started after the
+		// workspace was reported stopped. Lock order: workspace, then workload.
+		want.Workspace = resourceName(kr.ResourceWorkspace, b.Scope, req.Workspace.Identity)
+		unlockWS, err := c.locks.lock(ctx, want.Workspace)
+		if err != nil {
+			return kr.WorkloadObservation{}, notReached(err)
+		}
+		defer unlockWS()
+	}
 	unlock, err := c.locks.lock(ctx, want.Name)
 	if err != nil {
 		return kr.WorkloadObservation{}, notReached(err)
@@ -100,6 +115,17 @@ func (k *KernelRuntime) Start(ctx context.Context, req kr.StartRequest) (kr.Work
 	rec, err := c.admit(want)
 	if err != nil {
 		return kr.WorkloadObservation{}, err
+	}
+	if want.Workspace != "" {
+		// Verified on every start, adoption included, then recorded as a durable
+		// holder intent BEFORE any create is issued, so an unresolved create is
+		// visible to the workspace's release and removal.
+		if _, err := c.verifiedWorkspace(ctx, req.Workspace, b.Scope, b.RunID); err != nil {
+			return kr.WorkloadObservation{}, err
+		}
+		if err := c.markHolder(want.Workspace, rec.Name); err != nil {
+			return kr.WorkloadObservation{}, refuse("recording the holder intent of %s: %v", rec.Identity, err)
+		}
 	}
 	ct, err := c.ensureContainer(ctx, &rec, func() (ctrSpec, error) { return k.containerSpec(ctx, req, secretsDir) })
 	if err != nil {
@@ -175,11 +201,8 @@ func (k *KernelRuntime) containerSpec(ctx context.Context, req kr.StartRequest, 
 		s.env = append(s.env, key+"="+req.Spec.Env[key])
 	}
 	if req.Workspace.Identity != "" {
-		vol, err := c.verifiedWorkspace(ctx, req.Workspace, b.Scope, b.RunID)
-		if err != nil {
-			return ctrSpec{}, err
-		}
-		s.volumes = append(s.volumes, vol+":/workspace:U")
+		// Verified by Start under the workspace's lock.
+		s.volumes = append(s.volumes, resourceName(kr.ResourceWorkspace, b.Scope, req.Workspace.Identity)+":/workspace:U")
 	} else {
 		s.tmpfs = append(s.tmpfs, "/workspace")
 	}
@@ -187,13 +210,18 @@ func (k *KernelRuntime) containerSpec(ctx context.Context, req kr.StartRequest, 
 		s.volumes = append(s.volumes, secretsDir+":/kodama/secrets:ro")
 	}
 	if len(req.Services) > 0 {
-		var network string
+		network, err := c.verifiedNetwork(b.Scope, b.RunID)
+		if err != nil {
+			return ctrSpec{}, err
+		}
 		for _, h := range req.Services {
 			rec, err := c.verifiedService(h, b.Scope, b.RunID)
 			if err != nil {
 				return ctrSpec{}, err
 			}
-			network = rec.Network
+			if rec.Network != network {
+				return ctrSpec{}, refuse("service %s is not on the run network", h.Name)
+			}
 		}
 		s.networks = []string{network}
 	} else {
@@ -293,17 +321,23 @@ func (k *KernelRuntime) Observe(ctx context.Context, b kr.RuntimeBinding) (kr.Wo
 	return k.observe(ctx, &rec, b)
 }
 
-// Logs implements kr.Runtime.
+// Logs implements kr.Runtime. The record is loaded and validated under the lock,
+// never before it: findContainer persists what it learns, and a snapshot taken
+// before the lock could roll back a newer fence or stop intent.
 func (k *KernelRuntime) Logs(ctx context.Context, b kr.RuntimeBinding, opts kr.LogOptions) (io.ReadCloser, error) {
-	rec, found, err := k.bound(b)
+	if err := b.Validate(); err != nil {
+		return nil, err
+	}
+	unlock, err := k.core.locks.lock(ctx, k.workloadRec(b).Name)
 	if err != nil {
 		return nil, err
 	}
-	if !found {
-		return nil, fmt.Errorf("%w: no workload %s", domain.ErrConflict, b.WorkloadID)
-	}
-	unlock, err := k.core.locks.lock(ctx, rec.Name)
-	if err != nil {
+	rec, found, err := k.bound(b)
+	if err != nil || !found {
+		unlock()
+		if err == nil {
+			err = fmt.Errorf("%w: no workload %s", domain.ErrConflict, b.WorkloadID)
+		}
 		return nil, err
 	}
 	ct, ok, err := k.core.findContainer(ctx, &rec)
@@ -379,6 +413,12 @@ func (k *KernelRuntime) settle(ctx context.Context, b kr.RuntimeBinding, remove 
 	}
 	if err := c.save(rec); err != nil {
 		return kr.WorkloadObservation{}, err
+	}
+	if remove && rec.Removed && rec.Network != "" {
+		// The last container off the run's network finishes its cleanup. Best
+		// effort here: the network belongs to the run's resources, whose own
+		// removal confirms it.
+		_, _ = c.settleNetwork(ctx, rec.Scope, rec.RunID)
 	}
 	return k.observe(ctx, &rec, b)
 }

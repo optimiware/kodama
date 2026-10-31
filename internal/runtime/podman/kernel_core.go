@@ -258,6 +258,9 @@ type krec struct {
 	PrepFailed bool `json:"prepFailed,omitempty"`
 	// Network is the run network a service or workload joined.
 	Network string `json:"network,omitempty"`
+	// Workspace is the record name of the workspace a workload mounts: the
+	// durable holder intent the workspace's release and removal consult.
+	Workspace string `json:"workspace,omitempty"`
 }
 
 func (r krec) fenced() bool { return r.Stopping || r.Stopped || r.Removed }
@@ -323,6 +326,9 @@ func (c *kernelCore) admit(want krec) (krec, error) {
 	}
 	if rec.SpecDigest != want.SpecDigest {
 		return krec{}, fmt.Errorf("%w: %s is recorded with specification %s, not %s", kr.ErrSpecMismatch, want.Identity, rec.SpecDigest, want.SpecDigest)
+	}
+	if rec.Workspace != want.Workspace {
+		return krec{}, fmt.Errorf("%w: %s is recorded on another workspace", kr.ErrSpecMismatch, want.Identity)
 	}
 	if want.Fence < rec.Fence {
 		return krec{}, fmt.Errorf("%w: fence %d is older than %d", kr.ErrStaleFence, want.Fence, rec.Fence)
@@ -630,9 +636,10 @@ func (c *kernelCore) findContainer(ctx context.Context, rec *krec) (kctr, bool, 
 	case !found:
 		return kctr{}, false, nil
 	case strings.TrimPrefix(ct.Name, "/") != rec.Name || !owned(ct.Config.Labels, *rec):
-		// A foreign object holds the name: our create cannot have landed there.
-		rec.Unanswered = false
-		_ = c.save(*rec)
+		// A foreign object holds the name. It proves nothing about an outstanding
+		// create: that request may still land once the name is free, so the
+		// unresolved evidence is kept. It resolves only through the owned instance
+		// or an answer to the request itself.
 		return kctr{}, false, errForeign
 	}
 	rec.ObjectID, rec.Unanswered = ct.ID, false
@@ -688,6 +695,15 @@ func (c *kernelCore) ensureContainer(ctx context.Context, rec *krec, build func(
 		case found:
 			return ct, nil
 		case errors.Is(ierr, errForeign):
+			if ambiguous(res.stderr) {
+				return kctr{}, uncertain("podman create: %s", strings.TrimSpace(res.stderr))
+			}
+			// The engine answered the request with a refusal (the name is taken):
+			// the answer, not the foreign object, resolves it.
+			rec.Unanswered = false
+			if err := c.save(*rec); err != nil {
+				return kctr{}, uncertain("recording the rejected create of %s: %v", rec.Identity, err)
+			}
 			return kctr{}, fmt.Errorf("%w: a foreign container holds the name %s", kr.ErrSpecMismatch, rec.Name)
 		case ierr != nil:
 			return kctr{}, uncertain("podman create failed (%s) and the engine could not be asked: %v", strings.TrimSpace(res.stderr), ierr)

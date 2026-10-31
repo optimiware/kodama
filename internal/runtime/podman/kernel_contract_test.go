@@ -82,6 +82,10 @@ func newKFix(t *testing.T) *kFix {
 D=%q
 echo "$1 $2" >> "$D/calls.log"
 if [ -e "$D/down" ]; then echo "Error: cannot connect to Podman" >&2; exit 125; fi
+for k in "delay-$1" "delay-$1-$2"; do
+  if [ -e "$D/$k" ]; then s=$(cat "$D/$k"); rm -f "$D/$k"; sleep "$s"; fi
+done
+if [ -e "$D/fail-network-rm" ] && [ "$1" = network ] && [ "$2" = rm ]; then echo "Error: cannot remove network" >&2; exit 125; fi
 if [ -e "$D/fail-next" ] && [ "$1" != "create" ] && [ "$2" != "create" ]; then
   n=$(cat "$D/fail-next")
   if [ "$n" -gt 0 ]; then echo $((n-1)) > "$D/fail-next"; echo "Error: cannot connect to Podman" >&2; exit 125; fi
@@ -100,13 +104,30 @@ if [ -e "$D/lose-volume-create" ] && [ "$1" = volume ] && [ "$2" = create ]; the
   echo "Error: EOF" >&2
   exit 125
 fi
+if [ -e "$D/swallow-volume-create" ] && [ "$1" = volume ] && [ "$2" = create ]; then
+  rm -f "$D/swallow-volume-create"
+  echo "Error: EOF" >&2
+  exit 125
+fi
+if [ -e "$D/lose-network-create" ] && [ "$1" = network ] && [ "$2" = create ]; then
+  rm -f "$D/lose-network-create"
+  %q "$@" > /dev/null
+  echo 1 > "$D/fail-next"
+  echo "Error: EOF" >&2
+  exit 125
+fi
+if [ -e "$D/swallow-network-create" ] && [ "$1" = network ] && [ "$2" = create ]; then
+  rm -f "$D/swallow-network-create"
+  echo "Error: EOF" >&2
+  exit 125
+fi
 if [ -e "$D/swallow-create" ] && [ "$1" = create ]; then
   rm -f "$D/swallow-create"
   echo "Error: EOF" >&2
   exit 125
 fi
 exec %q "$@"
-`, dir, real, real, real)
+`, dir, real, real, real, real)
 	if err := os.WriteFile(wrapper, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
