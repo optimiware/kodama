@@ -1,9 +1,3 @@
-// Package runner executes queued runs on one container backend.
-//
-// The model is deliberately small: one workspace per run, one executable step at
-// a time, one row per step. A rerun is a new run; an uncertain launch is
-// reconciled by observing the same workload identity, never by replaying the
-// command.
 package runner
 
 import (
