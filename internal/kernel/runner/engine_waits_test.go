@@ -13,9 +13,11 @@ import (
 	"github.com/optimiware/kodama/internal/kernel/runtime"
 )
 
-// reviewPlan is build -> review (wait) -> {ship, rework, late, integrate}. ship
-// runs on an approval, rework on a rejection, late after an expiry that continues,
-// and integrate is the protected step that only an approving decision satisfies.
+// reviewPlan is build -> review (wait) -> {ship, rework, integrate}, plus late
+// when the wait continues on expiry. ship runs on an approval, rework on a
+// rejection, late after an expiry, and integrate is the protected step that only
+// an approving decision satisfies. The frozen format allows the literal expired in
+// a when only for a wait with on_expiry: continue, so late exists only then.
 func reviewPlan(onExpiry runtime.ExpiryAction) runtime.Plan {
 	build := ctr("build")
 	build.Outputs = []string{"commit", "question"}
@@ -26,12 +28,17 @@ func reviewPlan(onExpiry runtime.ExpiryAction) runtime.Plan {
 	ship.When = `review.outcome == "approved"`
 	rework := ctr("rework", "review")
 	rework.When = `review.outcome == "rejected"`
-	late := ctr("late", "review")
-	late.When = `review.outcome == "expired"`
 	integrate := ctr("integrate", "review")
 	integrate.Authority = runtime.AuthorityIntegrate
 	integrate.Requires = []runtime.Requirement{{Wait: "review", Outcome: "approved"}}
-	return plan("review-"+string(onExpiry), build, review, ship, rework, late, integrate)
+	steps := []runtime.PlanStep{build, review, ship, rework}
+	if onExpiry == runtime.ExpiryContinue {
+		late := ctr("late", "review")
+		late.When = `review.outcome == "expired"`
+		steps = append(steps, late)
+	}
+	steps = append(steps, integrate)
+	return plan("review-"+string(onExpiry), steps...)
 }
 
 func signal(run domain.RunID, key, outcome string) runtime.SignalRequest {
@@ -97,9 +104,9 @@ func Test_unit_kernel_engine_waits(t *testing.T) {
 
 		got := e.load("run1")
 		e.expect(got.Run.Outcome == runtime.OutcomeSucceeded, "run: %+v", got.Run)
-		e.expect(fmt.Sprint(states(got)) == "map[build:succeeded integrate:succeeded late:skipped review:succeeded rework:skipped ship:succeeded]", "states: %v", states(got))
+		e.expect(fmt.Sprint(states(got)) == "map[build:succeeded integrate:succeeded review:succeeded rework:skipped ship:succeeded]", "states: %v", states(got))
 		e.expect(fmt.Sprint(e.rt.startOrder) == "[build ship integrate]", "the next declared steps ran once, in order: %v", e.rt.startOrder)
-		e.expect(stepOf(got, "rework").Reason == runtime.ReasonConditionFalse && stepOf(got, "late").Reason == runtime.ReasonConditionFalse, "false predicates skip")
+		e.expect(stepOf(got, "rework").Reason == runtime.ReasonConditionFalse, "a false predicate skips")
 		ev := stepOf(got, "ship").Predicate
 		e.expect(ev.Evaluated && ev.Result && ev.InputDigest != "" && !ev.At.IsZero(), "the predicate result is recorded with the step: %+v", ev)
 		e.expect(!stepOf(got, "rework").Predicate.Result && stepOf(got, "rework").Predicate.Evaluated, "so is a false one")
@@ -399,6 +406,11 @@ func Test_unit_kernel_engine_waits(t *testing.T) {
 		rep = e.drive(eng, "run1")
 		e.expect(rep.Status == runner.DriveWaiting, "the next claim opens the wait: %s", rep.Status)
 	})
+
+	t.Run("a decided wait does not report success over lost state", lostStateBlocksResume)
+	t.Run("a failing outputs port is not a verdict on a condition or binding", transientReadsLeaveStepsPending)
+
+	t.Run("process backend", processWaits)
 }
 
 func reviewlessWaits(rec runtime.RunRecord) int {

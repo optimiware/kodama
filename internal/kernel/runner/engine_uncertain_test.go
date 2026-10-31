@@ -221,6 +221,12 @@ func Test_unit_kernel_engine_uncertain_launch(t *testing.T) {
 		}
 		e.expect(stop.State == runtime.CommandConfirmed && stop.Result.Code == runtime.ResultCancelled, "the stop is confirmed with the result it saw: %+v", stop)
 	})
+
+	// Review findings: observation-only reconciliation and the atomic failure of an
+	// ensure that was never found.
+	t.Run("an uncertain stop or removal is observation-only", uncertainEffectsObservationOnly)
+	t.Run("an ensure found absent fails the run atomically", ensureAbsentFailsAtomically)
+	t.Run("a delayed create is cleaned up from the retained identity", delayedEnsureIsCleaned)
 }
 
 func (e *env) launchObservation(rec runtime.RunRecord, step domain.StepID) (runtime.WorkloadObservation, bool) {

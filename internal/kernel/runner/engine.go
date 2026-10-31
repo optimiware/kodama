@@ -254,6 +254,13 @@ type drive struct {
 	nextWake time.Time
 	// mats are the secret materializations this drive created, by step.
 	mats map[domain.StepID]runtime.Materialization
+	// released are the steps whose secret access this drive revoked. Revocation is
+	// idempotent and is repeated by every drive for every settled step, so a crash
+	// or a failed release after a settlement is always recovered.
+	released map[domain.StepID]bool
+	// failing holds commands settled as final by a reconciliation that fails the
+	// run: they commit atomically with the run's failure.
+	failing []runtime.Command
 }
 
 func (d *drive) run() (Report, error) {
@@ -318,7 +325,7 @@ func (d *drive) next() (flow, error) {
 // execute progresses one unit of an unsettled, uncancelled run.
 func (d *drive) execute() (flow, error) {
 	for _, stage := range []func() (flow, error){
-		d.stageFailFast, d.stageReconcile, d.stagePrepare, d.stageRelease,
+		d.stageFailFast, d.stageRevoke, d.stageReconcile, d.stagePrepare, d.stageRelease,
 		d.stageRunning, d.stageWaits, d.stageNext, d.stageSettle,
 	} {
 		f, err := stage()

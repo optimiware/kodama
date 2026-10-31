@@ -265,4 +265,10 @@ func Test_unit_kernel_engine_progression(t *testing.T) {
 		s := stepOf(got, "a")
 		e2.expect(s.State == runtime.StepFailed && s.Reason == runtime.ReasonSecretUnavailable && e2.rt.count(e2.rt.starts) == 0, "step: %+v", s)
 	})
+
+	t.Run("a crash right after a step settles does not skip revoking its secrets", revocationRecoversAfterCrash)
+	t.Run("a failed release holds the run at the settled step", transientReleaseHoldsTheRun)
+
+	// Real backend evidence, apart from the fault-injecting fakes above.
+	t.Run("process backend", processProgression)
 }

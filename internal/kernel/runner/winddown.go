@@ -3,7 +3,6 @@ package runner
 import (
 	"fmt"
 
-	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/kernel/runtime"
 )
 
@@ -49,7 +48,8 @@ func (d *drive) windDown(mode windMode, reason runtime.Reason) (flow, error) {
 		stepReason, waitReason = runtime.ReasonCancelled, runtime.ReasonRunCancelled
 	}
 	bt := d.batch()
-	var released []domain.StepID
+	bt.commands = append(bt.commands, d.failing...)
+	d.failing = nil
 	for _, s := range d.rec.Run.Steps {
 		switch {
 		case s.State.Terminal():
@@ -59,7 +59,6 @@ func (d *drive) windDown(mode windMode, reason runtime.Reason) (flow, error) {
 				return flowPass, err
 			}
 			bt.moved(s.Key)
-			released = append(released, s.Key)
 		case s.Kind == runtime.StepWait && s.State == runtime.StepWaiting:
 			w, ok := d.wait(s.Key)
 			if !ok {
@@ -97,9 +96,6 @@ func (d *drive) windDown(mode windMode, reason runtime.Reason) (flow, error) {
 	bt.runChanged(reason)
 	if err := d.commit(bt); err != nil {
 		return flowPass, err
-	}
-	for _, k := range released {
-		d.releaseSecrets(k)
 	}
 	return flowAgain, nil
 }

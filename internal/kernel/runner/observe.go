@@ -103,22 +103,57 @@ func (d *drive) finishStep(s runtime.Step, to runtime.StepState, reason runtime.
 	if err := d.commit(bt); err != nil {
 		return flowPass, err
 	}
-	d.releaseSecrets(s.Key)
 	return flowAgain, nil
 }
 
-// releaseSecrets removes the step's materialization. After a restart the engine
-// no longer holds the one it created, so it releases by the step's identity and
-// declared references; Release is idempotent.
-func (d *drive) releaseSecrets(step domain.StepID) {
+// revoke removes a settled step's secret materialization and revokes its access:
+// authority ends when the workload settles, not when the run does. After a
+// restart the engine no longer holds the materialization it created, so it
+// releases by the step's scope, run, step and declared references; the
+// SecretResolver contract is that Release is idempotent and works from that
+// identity. A failed release is returned, never discarded.
+func (d *drive) revoke(step domain.StepID) error {
 	ps := d.planStep(step)
-	if d.e.cfg.Secrets == nil || ps.Workload == nil || len(ps.Workload.Secrets) == 0 {
-		return
+	if d.released[step] || d.e.cfg.Secrets == nil || ps.Workload == nil || len(ps.Workload.Secrets) == 0 {
+		return nil
 	}
 	m, ok := d.mats[step]
 	if !ok {
 		m = runtime.Materialization{Scope: d.rec.Run.Scope, RunID: d.rec.Run.ID, StepKey: step, Refs: ps.Workload.Secrets}
 	}
-	_ = d.e.cfg.Secrets.Release(d.ctx, m)
+	if err := d.e.cfg.Secrets.Release(d.ctx, m); err != nil {
+		return err
+	}
 	delete(d.mats, step)
+	if d.released == nil {
+		d.released = map[domain.StepID]bool{}
+	}
+	d.released[step] = true
+	return nil
+}
+
+// revokeSettled revokes the secrets of every container step that started and is
+// terminal.
+func (d *drive) revokeSettled() error {
+	for _, s := range d.rec.Run.Steps {
+		if s.Kind != runtime.StepContainer || !s.State.Terminal() || s.Attempt < 1 {
+			continue
+		}
+		if err := d.revoke(s.Key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// stageRevoke gates every pass after a failure check: no step is evaluated,
+// started or consumed until the secrets of the steps already settled are revoked.
+// Every drive revokes every settled step once, so a crash right after a
+// settlement, or a release that failed, is recovered by the next claim. A release that fails
+// leaves the run for a later claim, which tries again.
+func (d *drive) stageRevoke() (flow, error) {
+	if err := d.revokeSettled(); err != nil {
+		return d.stop(DriveRetry)
+	}
+	return flowPass, nil
 }

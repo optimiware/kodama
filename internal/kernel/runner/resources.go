@@ -32,11 +32,21 @@ func (d *drive) ensureID(h runtime.ResourceHandle) string {
 	id := base
 	for n := 2; ; n++ {
 		c, ok := d.command(id)
-		if !ok || c.State != runtime.CommandRejected {
+		if !ok || !provenNotDelivered(c) {
 			return id
 		}
 		id = fmt.Sprintf("%s.%d", base, n)
 	}
+}
+
+// provenNotDelivered reports whether a rejected command carries affirmative
+// evidence that its effect never reached the backend (ErrNotReached), the only
+// evidence that permits issuing the effect again, and then as a new command. A
+// command rejected because an uncertain effect was later not found proves
+// nothing about a delayed delivery: it is final, never retried, and its identity
+// is still retained for cleanup.
+func provenNotDelivered(c runtime.Command) bool {
+	return c.State == runtime.CommandRejected && c.Reason == runtime.ReasonLaunchNotReached
 }
 
 func digestOf(v any) (string, error) {
@@ -214,7 +224,10 @@ func (d *drive) ensureResource(spec runtime.ResourceSpec) (ensureResult, error) 
 				return ensureFailed, err
 			}
 			cmd = nc
-		} else if cmd.State != runtime.CommandIntent && cmd.State != runtime.CommandUncertain {
+		} else if cmd.State == runtime.CommandRejected {
+			// Not found after an uncertain ensure: final, never issued again.
+			return ensureFailed, nil
+		} else if cmd.State == runtime.CommandConfirmed {
 			return ensured, nil
 		} else {
 			// Left by an earlier claim: observe, never issue it again.
@@ -280,13 +293,16 @@ func (d *drive) reconcileEnsure(cmd runtime.Command, h runtime.ResourceHandle) (
 	case runtime.ResourceUnknown:
 		return ensureInconclusive, nil
 	}
+	// Not found. The command is rejected for good, but that is persisted in the
+	// same commit as the run's failure (see windDown), never on its own: a crash
+	// between the two would leave the run unfailed and the ensure free to be
+	// issued again.
 	c := cmd
 	if err := c.Settle(runtime.CommandRejected, runtime.ReasonLaunchUncertain); err != nil {
 		return ensureFailed, err
 	}
-	bt := d.batch()
-	bt.commands = []runtime.Command{c}
-	return ensureFailed, d.commit(bt)
+	d.failing = append(d.failing, c)
+	return ensureFailed, nil
 }
 
 func (d *drive) acceptResource(obs runtime.ResourceObservation, h runtime.ResourceHandle) (runtime.ResourceObservation, error) {

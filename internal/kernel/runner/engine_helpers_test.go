@@ -52,6 +52,12 @@ func (c *testClock) Advance(d time.Duration) {
 
 // ---------------------------------------------------------------------------
 // Fake runtime
+//
+// The fakes below are fault injectors. They let a test make a backend lose a
+// response, forget an object, refuse a stale fence or take effect late, so the
+// engine's recovery rules can be proven. They are evidence about the engine, not
+// about any backend's guarantees; engine_process_test.go wires the real Process
+// backend for that.
 // ---------------------------------------------------------------------------
 
 // script says how a step's workload behaves: it reports running for polls
@@ -90,8 +96,10 @@ type fakeRuntime struct {
 	stopHook    func(n int, b runtime.RuntimeBinding) (apply bool, err error)
 	removeHook  func(n int, b runtime.RuntimeBinding) (apply bool, err error)
 	observeHook func(n int, b runtime.RuntimeBinding) error
-	onStart     func(req runtime.StartRequest)
-	onEffect    func(kind string, b runtime.RuntimeBinding)
+	// unknown makes Observe report PhaseUnknown, which tells the engine nothing.
+	unknown  bool
+	onStart  func(req runtime.StartRequest)
+	onEffect func(kind string, b runtime.RuntimeBinding)
 }
 
 func newFakeRuntime(c *testClock) *fakeRuntime {
@@ -151,6 +159,9 @@ func (f *fakeRuntime) Observe(_ context.Context, b runtime.RuntimeBinding) (runt
 		if err := f.observeHook(len(f.observes), b); err != nil {
 			return runtime.WorkloadObservation{}, err
 		}
+	}
+	if f.unknown {
+		return runtime.WorkloadObservation{Binding: b, Phase: runtime.PhaseUnknown, ObservedAt: f.clock.Now()}, nil
 	}
 	w, ok := f.workloads[b.WorkloadID]
 	if !ok {
@@ -254,6 +265,9 @@ type fakeResources struct {
 	ensureHook func(n int, spec runtime.ResourceSpec) (apply bool, err error)
 	removeHook func(n int, h runtime.ResourceHandle) (apply bool, err error)
 	onRemove   func(h runtime.ResourceHandle)
+	// observeHook fails or blanks an observation; unknown reports ResourceUnknown.
+	observeHook func(h runtime.ResourceHandle) error
+	unknown     bool
 	// starting is how many observations a new service reports starting.
 	starting map[string]int
 }
@@ -298,6 +312,14 @@ func (f *fakeResources) Ensure(_ context.Context, spec runtime.ResourceSpec) (ru
 func (f *fakeResources) Observe(_ context.Context, h runtime.ResourceHandle) (runtime.ResourceObservation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.observeHook != nil {
+		if err := f.observeHook(h); err != nil {
+			return runtime.ResourceObservation{}, err
+		}
+	}
+	if f.unknown {
+		return f.obs(h, runtime.ResourceUnknown), nil
+	}
 	s, ok := f.state[h.Identity]
 	if !ok {
 		return f.obs(h, runtime.ResourceRemoved), nil
@@ -398,6 +420,9 @@ type fakeSecrets struct {
 	resolved  []domain.StepID
 	released  []domain.StepID
 	resolveFn func(step domain.StepID) error
+	// releaseFn runs at every Release; a returned error is a failed release and a
+	// panic stands for a crash at that point.
+	releaseFn func(step domain.StepID) error
 }
 
 func (f *fakeSecrets) Resolve(_ context.Context, req runtime.ResolveRequest) (runtime.Materialization, error) {
@@ -415,6 +440,11 @@ func (f *fakeSecrets) Resolve(_ context.Context, req runtime.ResolveRequest) (ru
 func (f *fakeSecrets) Release(_ context.Context, m runtime.Materialization) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.releaseFn != nil {
+		if err := f.releaseFn(m.StepKey); err != nil {
+			return err
+		}
+	}
 	f.released = append(f.released, m.StepKey)
 	return nil
 }

@@ -75,7 +75,7 @@ func (d *drive) ownedResources() []runtime.ResourceHandle {
 	}
 	ensureMayExist := func(h runtime.ResourceHandle) bool {
 		for _, c := range d.rec.Commands {
-			if c.Kind == runtime.CommandEnsureResource && c.Target == h.Identity && c.State != runtime.CommandRejected {
+			if c.Kind == runtime.CommandEnsureResource && c.Target == h.Identity && (c.State != runtime.CommandRejected || !provenNotDelivered(c)) {
 				return true
 			}
 		}
@@ -162,6 +162,11 @@ func (d *drive) sweep(workloads []runtime.RuntimeBinding, resources []runtime.Re
 // run is terminal with cleanup exhausted; before it, the engine backs off and
 // tries again.
 func (d *drive) cleanupAttempt() (flow, error) {
+	// Revocation first: a run is terminal only once no settled step's secret
+	// access remains. A release that fails leaves cleanup visibly pending.
+	if err := d.revokeSettled(); err != nil {
+		return d.stop(DriveCleaning)
+	}
 	rem, err := d.sweep(d.ownedWorkloads(), d.ownedResources())
 	if err != nil {
 		return flowPass, err
@@ -201,6 +206,9 @@ func (d *drive) cleanupAttempt() (flow, error) {
 // retries only what is retained, by the identities recorded, and narrows or
 // clears the record. It never reopens execution.
 func (d *drive) lateCleanup() (flow, error) {
+	if err := d.revokeSettled(); err != nil {
+		return d.stop(DriveCleaning)
+	}
 	c := d.rec.Run.Cleanup
 	rem, err := d.sweep(c.RetainedWorkloads, c.Retained)
 	if err != nil {
@@ -256,9 +264,12 @@ func resourceSatisfied(kind runtime.CommandKind, o runtime.ResourceObservation) 
 }
 
 // resourceEffect stops or removes a resource under the current fence with the
-// intent committed first. An intent or uncertain command left by an earlier claim
-// is reconciled by observing the resource before anything is issued. It reports
-// whether the effect is confirmed.
+// intent committed first. Like a workload effect, an intent or uncertain command
+// is observation-only: the resource is observed by its identity and the command
+// confirmed when the observation shows it took hold; nothing is issued again on
+// a failed, inconclusive or unchanged observation. Only a rejected command (the
+// effect provably never reached the backend) is issued again, as a new command.
+// It reports whether the effect is confirmed.
 func (d *drive) resourceEffect(kind runtime.CommandKind, orig runtime.ResourceHandle) (bool, error) {
 	h := orig
 	h.Fence = d.claim.Fence
@@ -267,25 +278,28 @@ func (d *drive) resourceEffect(kind runtime.CommandKind, orig runtime.ResourceHa
 	if exists && cmd.State == runtime.CommandConfirmed {
 		return true, nil
 	}
-	if !exists {
-		nc, err := runtime.NewCommand(id, h.Scope, d.rec.Run.ID, "", kind, h.Identity, "", d.claim.Fence, d.now())
+	if exists {
+		obs, err := d.e.cfg.Resources.Observe(d.ctx, h)
 		if err != nil {
-			return false, err
+			return false, nil
 		}
-		bt := d.batch()
-		bt.commands = []runtime.Command{nc}
-		if err := d.commit(bt); err != nil {
-			return false, err
-		}
-		cmd = nc
-	} else if obs, err := d.e.cfg.Resources.Observe(d.ctx, h); err == nil {
 		if o, aerr := d.acceptResource(obs, h); aerr == nil && resourceSatisfied(kind, o) {
 			return true, d.confirmResource(cmd, o)
 		}
+		return false, nil
 	}
+	nc, err := runtime.NewCommand(id, h.Scope, d.rec.Run.ID, "", kind, h.Identity, "", d.claim.Fence, d.now())
+	if err != nil {
+		return false, err
+	}
+	bt := d.batch()
+	bt.commands = []runtime.Command{nc}
+	if err := d.commit(bt); err != nil {
+		return false, err
+	}
+	cmd = nc
 
 	var obs runtime.ResourceObservation
-	var err error
 	if kind == runtime.CommandRemoveResource {
 		obs, err = d.e.cfg.Resources.Remove(d.ctx, h)
 	} else {

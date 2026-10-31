@@ -169,12 +169,17 @@ func satisfied(kind runtime.CommandKind, o runtime.WorkloadObservation) bool {
 }
 
 // workloadEffect stops or removes the workload orig names, under the current
-// fence and with the intent committed first. An intent or uncertain command left
-// by an earlier claim is reconciled before anything is issued: the workload is
-// observed by its stable identity, and the effect is issued only when the
-// observation shows it has not taken hold. The effect is idempotent on the
-// workload identity. It returns the last observation and whether the effect is
-// confirmed.
+// fence and with the intent committed first. It returns the last observation and
+// whether the effect is confirmed.
+//
+// An intent or uncertain command left by an earlier claim, a lost response or an
+// earlier call of this drive is observation-only: the workload is observed by its
+// stable identity and the command is confirmed when the observation shows the
+// effect took hold. Nothing is issued again, whether the observation fails, is
+// inconclusive or shows the workload still there, because none of those proves
+// the first call never arrived and a delayed delivery could still land. Only an
+// effect that provably did not reach the backend (a rejected command) is issued
+// again, and then as a new command with its own intent.
 func (d *drive) workloadEffect(kind runtime.CommandKind, orig runtime.RuntimeBinding) (runtime.WorkloadObservation, bool, error) {
 	b := d.rebind(orig)
 	id := d.effectID(kind, b)
@@ -183,25 +188,32 @@ func (d *drive) workloadEffect(kind runtime.CommandKind, orig runtime.RuntimeBin
 		o, _ := d.workloadObservation(b.StepKey, b.Attempt)
 		return o, true, nil
 	}
-	if !exists {
-		nc, err := runtime.NewWorkloadCommand(id, b, kind, d.now())
+	if exists {
+		obs, err := d.e.cfg.Runtime.Observe(d.ctx, b)
 		if err != nil {
-			return runtime.WorkloadObservation{}, false, err
+			return runtime.WorkloadObservation{}, false, nil
 		}
-		bt := d.batch()
-		bt.commands = []runtime.Command{nc}
-		if err := d.commit(bt); err != nil {
-			return runtime.WorkloadObservation{}, false, err
+		o, aerr := accept(obs, b)
+		if aerr != nil {
+			return runtime.WorkloadObservation{}, false, nil
 		}
-		cmd = nc
-	} else if obs, err := d.e.cfg.Runtime.Observe(d.ctx, b); err == nil {
-		if o, aerr := accept(obs, b); aerr == nil && satisfied(kind, o) {
+		if satisfied(kind, o) {
 			return o, true, d.confirmWorkload(cmd, o)
 		}
+		return o, false, nil
 	}
+	nc, err := runtime.NewWorkloadCommand(id, b, kind, d.now())
+	if err != nil {
+		return runtime.WorkloadObservation{}, false, err
+	}
+	bt := d.batch()
+	bt.commands = []runtime.Command{nc}
+	if err := d.commit(bt); err != nil {
+		return runtime.WorkloadObservation{}, false, err
+	}
+	cmd = nc
 
 	var obs runtime.WorkloadObservation
-	var err error
 	if kind == runtime.CommandRemove {
 		obs, err = d.e.cfg.Runtime.Remove(d.ctx, b)
 	} else {
@@ -224,11 +236,11 @@ func (d *drive) workloadEffect(kind runtime.CommandKind, orig runtime.RuntimeBin
 		// The backend acknowledged the call but the workload is still there.
 		return obs, false, d.markUncertain(cmd, runtime.ReasonStopUncertain, &obs)
 	case runtime.CommandRejected:
-		bt := d.batch()
 		c := cmd
 		if err := c.Settle(runtime.CommandRejected, runtime.ReasonCleanupFailed); err != nil {
 			return obs, false, err
 		}
+		bt := d.batch()
 		bt.commands = []runtime.Command{c}
 		return obs, false, d.commit(bt)
 	}

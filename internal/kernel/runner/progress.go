@@ -134,7 +134,10 @@ func (d *drive) evaluate(ps runtime.PlanStep) (flow, error) {
 		} else {
 			e, err := d.evaluateWhen(ps)
 			if err != nil {
-				return d.failBeforeStart(ps, nil, runtime.ReasonPreparationFailed)
+				// A port that failed is not a verdict on the condition: the step
+				// stays pending for a later claim. Only a condition the grammar
+				// refuses fails it.
+				return d.readFailed(ps, err)
 			}
 			ev = &e
 		}
@@ -165,7 +168,7 @@ func (d *drive) startStep(ps runtime.PlanStep, ev *runtime.PredicateEvaluation) 
 	}
 	spec, err := d.workloadSpec(ps)
 	if err != nil {
-		return d.stop(DriveRetry)
+		return d.readFailed(ps, err)
 	}
 	digest, err := workloadDigest(spec, d.workspaceHandle().Identity)
 	if err != nil {

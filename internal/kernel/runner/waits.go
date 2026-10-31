@@ -24,9 +24,19 @@ func (d *drive) stageWaits() (flow, error) {
 			return flowPass, fmt.Errorf("runner: wait step %s has no wait", s.Key)
 		}
 		if w.State != runtime.WaitOpen {
+			if continues(w) {
+				if f, stop, err := d.resume(); stop {
+					return f, err
+				}
+			}
 			return d.consume(s, w)
 		}
 		if !d.now().Before(w.Deadline) {
+			if w.Spec.OnExpiry.Effective() == runtime.ExpiryContinue {
+				if f, stop, err := d.resume(); stop {
+					return f, err
+				}
+			}
 			return d.expire(s, w)
 		}
 		if d.nextWake.IsZero() || w.Deadline.Before(d.nextWake) {
@@ -41,6 +51,31 @@ func (d *drive) stageWaits() (flow, error) {
 		}
 	}
 	return flowPass, nil
+}
+
+// continues reports whether a decided wait lets its step succeed and the run go
+// on: a resolution, or an expiry that continues.
+func continues(w runtime.Wait) bool {
+	return w.State == runtime.WaitResolved ||
+		(w.State == runtime.WaitExpired && w.Spec.OnExpiry.Effective() == runtime.ExpiryContinue)
+}
+
+// resume verifies the retained workspace and services before a waiting step is
+// consumed as a success, whether or not another step follows it: a resolution or
+// an expiry that continues must not report success over state that was lost
+// while the run was parked. A loss fails the run; an inconclusive check leaves it
+// for a later claim. stop reports that the caller must return f and err.
+func (d *drive) resume() (f flow, stop bool, err error) {
+	lost, transient := d.verify()
+	switch {
+	case lost != runtime.ReasonNone:
+		f, err = d.windDown(modeFail, lost)
+		return f, true, err
+	case transient:
+		f, err = d.stop(DriveRetry)
+		return f, true, err
+	}
+	return flowPass, false, nil
 }
 
 // openWait opens the wait of a step that became eligible. The correlation values

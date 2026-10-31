@@ -96,26 +96,24 @@ func Test_unit_kernel_engine_cleanup(t *testing.T) {
 			r, err := e.engine("w2").Drive(context.Background(), e.ref("run1", p))
 			e.expect(err == nil && r.Status == runner.DriveSkipped, "a %s claim on a terminal run: %v %v", p, r.Status, err)
 		}
-		// One resource can be removed now: the record narrows.
-		e.res.removeHook = func(_ int, h runtime.ResourceHandle) (bool, error) {
-			if h.Name == "db" {
-				return false, errors.New("still failing")
-			}
-			return true, nil
-		}
+		e.expect(len(e.res.removes) == 2, "an uncertain removal is observed, not issued again, by any attempt or claim: %v", e.res.removes)
+
+		// The backend's own reconciliation removes one resource; the late claim
+		// confirms it by observation and the record narrows.
+		delete(e.res.state, e.res.names["db"])
 		rep = e.cleanupDrive(e.engine("w2"), "run1")
 		got = e.load("run1")
-		e.expect(rep.Status == runner.DriveTerminal && got.Run.Cleanup.State == runtime.CleanupExhausted && len(got.Run.Cleanup.Retained) == 1 && got.Run.Cleanup.Retained[0].Name == "db",
+		e.expect(rep.Status == runner.DriveTerminal && got.Run.Cleanup.State == runtime.CleanupExhausted && len(got.Run.Cleanup.Retained) == 1 && got.Run.Cleanup.Retained[0].Name == "workspace",
 			"a late claim narrows what is retained: %+v", got.Run.Cleanup)
 		e.expect(got.Run.Outcome == runtime.OutcomeSucceeded && got.Claim.Fence == 2, "execution was not reopened: %+v", got.Run)
 
-		e.res.removeHook = nil
+		delete(e.res.state, e.res.names["workspace"])
 		e.expire()
 		rep = e.cleanupDrive(e.engine("w3"), "run1")
 		got = e.load("run1")
 		e.expect(rep.Status == runner.DriveTerminal && got.Run.Cleanup.State == runtime.CleanupComplete && len(got.Run.Cleanup.Retained) == 0 && got.Run.Cleanup.Reason == runtime.ReasonNone,
 			"the late reconciliation completes cleanup: %+v", got.Run.Cleanup)
-		e.expect(len(e.res.state) == 0 && got.Run.Outcome == runtime.OutcomeSucceeded, "nothing is left; the outcome stands")
+		e.expect(len(e.res.state) == 0 && got.Run.Outcome == runtime.OutcomeSucceeded && len(e.res.removes) == 2, "nothing is left; the outcome stands; nothing was issued again")
 		e.expire()
 		e.expect(e.cleanupDrive(e.engine("w4"), "run1").Status == runner.DriveSkipped, "a cleanup claim once cleanup is complete is refused")
 	})
@@ -133,7 +131,7 @@ func Test_unit_kernel_engine_cleanup(t *testing.T) {
 		e.expect(len(e.res.state) == 0 && e.rt.liveCount() == 0, "nothing is left")
 	})
 
-	t.Run("a workload whose stop cannot be confirmed is retained by its binding until a later claim stops it", func(t *testing.T) {
+	t.Run("a workload whose stop cannot be confirmed is retained by its binding and never stopped again", func(t *testing.T) {
 		e := newEnv(t)
 		slow := ctr("a")
 		slow.Workload.Timeout = 2 * poll
@@ -150,15 +148,26 @@ func Test_unit_kernel_engine_cleanup(t *testing.T) {
 		b := c.RetainedWorkloads[0]
 		e.expect(b.StepKey == "a" && b.Attempt == 1 && b.Backend == "fake" && b.WorkloadID != "" && b.Fence == 1, "by its scoped binding: %+v", b)
 		e.expect(e.rt.liveCount() == 1 && len(e.res.state) == 0, "the workload still exists, the resources are gone")
+		stops, removes := e.rt.count(e.rt.stops), e.rt.count(e.rt.removes)
+		e.expect(stops == 1 && removes == 1, "each effect was issued once: %d %d", stops, removes)
 
+		// A later claim only observes, under its own fence, and issues nothing.
 		var fences []runtime.Fence
-		e.rt.onEffect = func(_ string, b runtime.RuntimeBinding) { fences = append(fences, b.Fence) }
+		e.rt.observeHook = func(_ int, b runtime.RuntimeBinding) error { fences = append(fences, b.Fence); return nil }
 		e.rt.stopHook, e.rt.removeHook = nil, nil
 		e.expire()
 		rep = e.cleanupDrive(e.engine("w2"), "run1")
 		got = e.load("run1")
-		e.expect(rep.Status == runner.DriveTerminal && got.Run.Cleanup.State == runtime.CleanupComplete && e.rt.liveCount() == 0, "a later claim finished it: %+v", got.Run.Cleanup)
-		e.expect(len(fences) > 0 && fences[0] == 2 && got.Run.Reason == runtime.ReasonStepTimeout, "its stop and removal carried the new fence: %v", fences)
+		e.expect(rep.Status == runner.DriveTerminal && got.Run.Cleanup.State == runtime.CleanupExhausted && len(got.Run.Cleanup.RetainedWorkloads) == 1, "still retained: %+v", got.Run.Cleanup)
+		e.expect(e.rt.count(e.rt.stops) == stops && e.rt.count(e.rt.removes) == removes && len(fences) > 0 && fences[0] == 2, "observed under the new fence, nothing issued: %v", fences)
+
+		// The backend's own reconciliation ends the workload; the late claim confirms it.
+		e.rt.workloads = map[string]*fakeWorkload{}
+		e.expire()
+		rep = e.cleanupDrive(e.engine("w3"), "run1")
+		got = e.load("run1")
+		e.expect(got.Run.Cleanup.State == runtime.CleanupComplete && got.Run.Reason == runtime.ReasonStepTimeout && e.rt.count(e.rt.stops) == stops && e.rt.count(e.rt.removes) == removes,
+			"confirmed by observation: %+v", got.Run.Cleanup)
 	})
 
 	t.Run("a cancelled run is cleaned up and a run cancelled before it started has nothing to clean", func(t *testing.T) {
@@ -187,9 +196,9 @@ func Test_unit_kernel_engine_cleanup(t *testing.T) {
 		e2.expect(err == nil && r.Status == runner.DriveTerminal && r.Run.Cleanup.State == runtime.CleanupComplete && r.Run.Status() == runtime.StatusCancelled, "run: %v %+v", err, r.Run)
 	})
 
-	t.Run("a takeover during cleanup finishes it without repeating what was confirmed", func(t *testing.T) {
+	t.Run("a crash between the removal intent and the call retains the resource and never repeats the call", func(t *testing.T) {
 		e := newEnv(t)
-		e.admit("run1", withService(plan("takeover-clean", ctr("a"))), 3)
+		e.admit("run1", withService(plan("takeover-clean", ctr("a"))), 2)
 		e.res.onRemove = func(h runtime.ResourceHandle) {
 			if h.Name == "db" {
 				panic(errCrash)
@@ -209,7 +218,17 @@ func Test_unit_kernel_engine_cleanup(t *testing.T) {
 		e.expire()
 		rep := e.cleanupDrive(e.engine("w2"), "run1")
 		got := e.load("run1")
-		e.expect(rep.Status == runner.DriveTerminal && got.Run.Cleanup.State == runtime.CleanupComplete && len(e.res.state) == 0, "run: %+v", got.Run.Cleanup)
-		e.expect(e.rt.count(e.rt.removes) == 1 && len(got.Unresolved()) == 0, "the confirmed workload removal was not repeated: %d", e.rt.count(e.rt.removes))
+		c := got.Run.Cleanup
+		e.expect(rep.Status == runner.DriveTerminal && c.State == runtime.CleanupExhausted && len(c.Retained) == 1 && c.Retained[0].Name == "db", "the unconfirmed resource is retained: %+v", c)
+		e.expect(fmt.Sprint(e.res.removes) == "[workspace]", "its removal was observed, not issued again; the workspace was removed: %v", e.res.removes)
+		e.expect(e.rt.count(e.rt.removes) == 1, "the confirmed workload removal was not repeated")
+		delete(e.res.state, e.res.names["db"])
+		e.expire()
+		e.cleanupDrive(e.engine("w3"), "run1")
+		e.expect(e.load("run1").Run.Cleanup.State == runtime.CleanupComplete, "the backend's reconciliation lets a late claim complete it")
 	})
+
+	t.Run("a run whose secrets could not be revoked is not terminal", cleanupWaitsForRevocation)
+
+	t.Run("process backend", processCleanup)
 }
