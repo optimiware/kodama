@@ -77,7 +77,7 @@ Each event has a stable identity derived from its type and the deduplication key
 
 | ID | Requirement |
 | --- | --- |
-| EC-01 | Every event type MUST define a deduplication key, and the event `id` MUST be derived from the type and that key so republication is idempotent. |
+| EC-01 | Every event type MUST define a deduplication key. The canonical event identity is the durable `audit_events` id assigned once when the intent commits; it is stable across republication and is never re-derived from the payload. Consumers MUST deduplicate on the event type plus its documented key, never on broker delivery. |
 | EC-02 | A wait MUST emit at most one of `wait.resolved`, `wait.expired` and `wait.cancelled`, and a rejection MUST be carried as a declared outcome of `wait.resolved`, not as a failure event. |
 | EC-03 | A replay of a recorded signal, and a changed request under a recorded key, MUST emit no event and MUST NOT alter the original; a losing or invalid authenticated signal MUST emit one `signal.refused` keyed by its `signalId` with a bounded reason and no answer content, including when no target resolved. |
 | EC-04 | An assignment change MUST emit `wait.reassigned` with the new wait version and MUST NOT change the wait identity or correlation carried by other events. |
