@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -13,7 +14,15 @@ import (
 )
 
 // JetStreamConfig describes the kernel's event stream.
+//
+// Superseded by natsbus.JetStreamConfig in internal/natsbus. This copy remains
+// only until internal/shell/serve is repointed (T-188 follow-up); do not add
+// users.
 type JetStreamConfig struct {
+	// Subjects is the subject filter the stream captures (default kodama.v1.>).
+	// A narrower filter under kodama.v1. keeps the streams of parallel suites
+	// that share a broker from overlapping.
+	Subjects string
 	// Stream is the stream name (default KODAMA).
 	Stream string
 	// MaxAge bounds how long a message is kept (default 7 days): the longest a
@@ -37,6 +46,12 @@ func (c *JetStreamConfig) defaults() error {
 	}
 	if !streamName.MatchString(c.Stream) {
 		return fmt.Errorf("bus: stream name %q is invalid", c.Stream)
+	}
+	if c.Subjects == "" {
+		c.Subjects = SubjectRoot + ".>"
+	}
+	if !strings.HasPrefix(c.Subjects, SubjectRoot+".") {
+		return fmt.Errorf("bus: stream subjects %q must lie under %s", c.Subjects, SubjectRoot)
 	}
 	if c.MaxAge <= 0 {
 		c.MaxAge = 7 * 24 * time.Hour
@@ -84,7 +99,7 @@ func NewJetStream(ctx context.Context, nc *nats.Conn, cfg JetStreamConfig) (*Jet
 		return nil, fmt.Errorf("bus: jetstream: %w", err)
 	}
 	if _, err := js.CreateOrUpdateStream(ctx, natsjs.StreamConfig{
-		Name: cfg.Stream, Subjects: []string{SubjectRoot + ".>"}, Storage: natsjs.FileStorage,
+		Name: cfg.Stream, Subjects: []string{cfg.Subjects}, Storage: natsjs.FileStorage,
 		Retention: natsjs.LimitsPolicy, Discard: natsjs.DiscardOld, MaxAge: cfg.MaxAge, Duplicates: cfg.Duplicates,
 	}); err != nil {
 		return nil, fmt.Errorf("bus: stream %s: %w", cfg.Stream, err)

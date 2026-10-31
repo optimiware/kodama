@@ -57,6 +57,10 @@ type PublisherConfig struct {
 // the backoff, and the row is never dropped. A crash between the publication and
 // the mark repeats the publication (at least once): the message ID is the stable
 // event ID, which is what consumers deduplicate on.
+//
+// Superseded by outbox.Publisher in internal/shell/outbox, which owns
+// publication and reconciliation. This copy remains only until
+// internal/shell/serve is repointed (T-188 follow-up); do not add users.
 type Publisher struct {
 	cfg  PublisherConfig
 	kick chan struct{}

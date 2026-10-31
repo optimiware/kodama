@@ -39,14 +39,14 @@ func TestJetStreamBus(t *testing.T) {
 	_ = js.DeleteStream(ctx, stream)
 	defer func() { _ = js.DeleteStream(context.Background(), stream) }()
 
-	b, err := bus.NewJetStream(ctx, nc, bus.JetStreamConfig{Stream: stream, RetryDelay: 100 * time.Millisecond})
+	b, err := bus.NewJetStream(ctx, nc, bus.JetStreamConfig{Stream: stream, Subjects: "kodama.v1.bustest.>", RetryDelay: 100 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var mu sync.Mutex
 	calls := map[string]int{}
 	failFirst := errors.New("not yet")
-	stop, err := b.Subscribe(ctx, "dispatch-test", "kodama.v1.*.*.git.refs_updated", func(_ context.Context, m bus.Message) error {
+	stop, err := b.Subscribe(ctx, "dispatch-test", "kodama.v1.bustest.*.git.refs_updated", func(_ context.Context, m bus.Message) error {
 		mu.Lock()
 		defer mu.Unlock()
 		calls[m.ID]++
@@ -64,14 +64,14 @@ func TestJetStreamBus(t *testing.T) {
 		return bus.Message{ID: id, TenantID: "t_acme", ProjectID: "p_erp", Type: "git.refs_updated", ResourceType: "git_push", ResourceID: "rcv_1",
 			Actor: bus.Actor{Type: "user", ID: "u_1"}, OccurredAt: time.Now().UTC(), Data: []byte(`{"a":1}`)}
 	}
-	subject := "kodama.v1.acme.erp.git.refs_updated"
+	subject := "kodama.v1.bustest.erp.git.refs_updated"
 	for _, id := range []string{"evt_once", "evt_once", "evt_retry"} {
 		if err := b.Publish(ctx, subject, msg(id)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// Another subject of the stream is not delivered to this consumer.
-	if err := b.Publish(ctx, "kodama.v1.acme._.repository.created", msg("evt_other")); err != nil {
+	if err := b.Publish(ctx, "kodama.v1.bustest._.repository.created", msg("evt_other")); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(20 * time.Second)
