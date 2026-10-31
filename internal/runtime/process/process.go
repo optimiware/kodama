@@ -1,4 +1,9 @@
-// Package process is the test runtime that runs attempt workloads as host
+// Package process is the host Process backend. Besides the legacy
+// execution.Runtime below, Kernel (kernel.go) implements the kernel runtime and
+// resource ports of internal/kernel/runtime; see its documentation for what is
+// enforced and refused.
+//
+// The legacy Runtime is the test runtime that runs attempt workloads as host
 // processes. It isolates nothing, runs no image and enforces no limits, so its
 // Capabilities report no guarantee: only runs admitted under an explicit
 // no-requirements policy (runtimetest.NoRequirements) are claimed for it, and
