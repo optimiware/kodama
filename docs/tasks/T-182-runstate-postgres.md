@@ -2,7 +2,7 @@
 id: T-182
 milestone: kernel
 status: planned
-depends_on: [T-174, T-179, T-185, T-186]
+depends_on: [T-174, T-179, T-185, T-186, T-189]
 decision_blockers: []
 owns: [internal/shell/runstate/postgres/]
 check: make check-go PKGS='./internal/shell/runstate/postgres/...'
@@ -29,7 +29,7 @@ Implement the frozen kernel `StateStore` over PostgreSQL so the engine runs on a
 `make check-go` with `Test_unit_runstate_postgres_contract` and `Test_unit_runstate_postgres_scope` passing, plus recorded real-PostgreSQL evidence in the handoff.
 
 ## Parked
-T-182 is parked on [T-185](T-185-durable-run-state-schema.md): the 004 schema cannot round-trip `RunRecord` (claim purpose, commands, workload and resource observations, predicate evidence, step result code/reason, cleanup bounds, pre-open wait identity). Resume once T-185 merges and the adapter can be built without a second source of truth.
+T-182 is parked on [T-189](T-189-wait-and-materialization-schema.md). T-185 closed the first round of gaps; implementing the adapter then proved two more against a real database: the wait-decision constraints forbid a decided wait on an unsettled step, and `RunRecord.Materializations` has no table. Resume once T-189 merges.
 
 ## Out of scope
 The engine, NATS publication, task projection, and any change to the schema or the contract suite.

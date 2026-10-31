@@ -2,7 +2,7 @@
 
 This backlog holds the planned and deferred tasks. Completed work is not listed here: its task records were removed once merged and remain in Git history (last present at commit `354b760`). Keep one Go module and preserve working packages. Production deployment and qualification, external adapters, the chassis and additional wrappers each need explicit scheduling before they start.
 
-**Ready by dependencies** (`planned`, every dependency `done`): [T-134](T-134-local-run-shared-wiring.md), [T-182](T-182-runstate-postgres.md), [T-188](T-188-shell-outbox-nats.md). **Blocked on a decision:** none. Other planned tasks wait for the dependencies shown in the [dependency index](#dependency-index).
+**Ready by dependencies** (`planned`, every dependency `done`): [T-134](T-134-local-run-shared-wiring.md), [T-188](T-188-shell-outbox-nats.md), [T-189](T-189-wait-and-materialization-schema.md). **Blocked on a decision:** none. Other planned tasks wait for the dependencies shown in the [dependency index](#dependency-index).
 
 **Deferred** (needs explicit scheduling): [T-029](T-029-recovery-qualification.md), [T-047](T-047-supabase-blueprint.md), [T-050](T-050-engineer-workbench.md), [T-051](T-051-analyst-interface.md), [T-052](T-052-native-harness.md), [T-053](T-053-claude-harness.md), [T-054](T-054-codex-harness.md), [T-055](T-055-hosted-isolation.md), [T-056](T-056-production-release.md), [T-057](T-057-operator-assessment.md), [T-058](T-058-operator.md), [T-059](T-059-chassis-assessment.md), [T-060](T-060-m4-integration.md), [T-061](T-061-platform-integration.md), [T-069](T-069-qa-profile-qualification.md), [T-085](T-085-live-agent-qualification.md), [T-106](T-106-production-tls-hardening.md), [T-123](T-123-buildkit-builder-service.md).
 
@@ -156,13 +156,14 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-179 Pipeline runtime schema expansion](T-179-schema-expansion.md) | T-172 | planned |
 | [T-180 Traceability for the frozen pipeline-runtime contract](T-180-traceability.md) | T-172 | planned |
 | [T-181 Repair the legacy run_shared fixture](T-181-legacy-run-shared-fixture.md) | T-176 | done |
-| [T-182 PostgreSQL kernel state adapter](T-182-runstate-postgres.md) | T-174, T-179, T-185, T-186 | planned |
+| [T-182 PostgreSQL kernel state adapter](T-182-runstate-postgres.md) | T-174, T-179, T-185, T-186, T-189 | planned |
 | [T-183 Project pipeline registry](T-183-pipeline-registry.md) | T-179 | done |
 | [T-184 Task tracking and execution projection](T-184-task-tracking.md) | T-179, T-182, T-188 | planned |
 | [T-185 Durable run-state schema for the kernel record](T-185-durable-run-state-schema.md) | T-179 | done |
 | [T-186 Step outputs and claim release in the kernel contract](T-186-kernel-outputs-and-release.md) | T-175 | done |
 | [T-187 Git integration authority from the run, not the task](T-187-git-integration-authority.md) | T-183 | done |
 | [T-188 Shell outbox and NATS bus](T-188-shell-outbox-nats.md) | T-174 | planned |
+| [T-189 Wait decision ordering and materialization records](T-189-wait-and-materialization-schema.md) | T-185 | planned |
 | [T-117 Stage acceptance and cutover](T-117-run-resource-acceptance.md) | T-116, T-121, T-125 | deferred (parked until stage access) |
 | [T-120 Kubernetes builder step profile](T-120-kubernetes-builder-profile.md) | T-111, T-122 | done |
 | [T-121 Install and qualify the stage run-resource profile](T-121-run-profile-requalification.md) | T-120, T-124 | done |
