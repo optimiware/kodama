@@ -1,7 +1,7 @@
 ---
 id: T-174
 milestone: kernel
-status: planned
+status: done
 depends_on: [T-171, T-173]
 decision_blockers: []
 owns: [internal/shell/runstate/, test/support/kernelcontracts/]
