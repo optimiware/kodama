@@ -151,7 +151,7 @@ Agent concurrency follows `--workers`; resource capacity separately bounds Go, s
 | [T-174 Memory state adapter and kernel state contract suite](T-174-kernel-state-contract.md) | T-171, T-173 | done |
 | [T-175 Durable progression engine](T-175-kernel-engine.md) | T-171, T-172, T-174 | planned |
 | [T-176 Process runtime behind the kernel contract](T-176-process-runtime.md) | T-171 | done |
-| [T-177 Podman runtime behind the kernel contract](T-177-podman-runtime.md) | T-171 | planned |
+| [T-177 Podman runtime behind the kernel contract](T-177-podman-runtime.md) | T-171 | done |
 | [T-178 Kubernetes runtime behind the kernel contract](T-178-kubernetes-runtime.md) | T-171 | planned |
 | [T-179 Pipeline runtime schema expansion](T-179-schema-expansion.md) | T-172 | planned |
 | [T-180 Traceability for the frozen pipeline-runtime contract](T-180-traceability.md) | T-172 | planned |
