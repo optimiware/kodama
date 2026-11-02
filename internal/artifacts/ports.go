@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -28,7 +29,9 @@ type AttemptGrant struct {
 	Outputs []OutputDecl
 	// Inputs are the verified file artifacts pinned for this attempt.
 	Inputs []InputRef
-	Limits Limits
+	// StateBindings are the declared state aliases of the attempt context.
+	StateBindings []runtimev1.StateBinding
+	Limits        Limits
 }
 
 // InputRef is one verified artifact descriptor the attempt may read.
@@ -62,6 +65,19 @@ type AttemptAuthority interface {
 // from AttemptAuthority so a producer authority cannot silently grant reads.
 type AttemptReadAuthority interface {
 	GrantRead(ctx context.Context, caller Caller, attempt domain.AttemptID) (AttemptGrant, error)
+}
+
+// StateReference is one verified state entry used as artifact-read authority.
+type StateReference struct {
+	ETag      string
+	Artifacts []InputRef
+}
+
+// StateReferences reads a state entry under the attempt's authorized binding.
+// The caller is the verified runtime principal; the adapter enforces the
+// binding namespace/prefix and scope.
+type StateReferences interface {
+	ReadStateReference(ctx context.Context, scope domain.Scope, attempt domain.AttemptID, binding runtimev1.StateBinding, key string) (StateReference, error)
 }
 
 // ReadSubject describes the artifact a reader asks about, so the authority can

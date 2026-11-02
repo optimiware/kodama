@@ -640,3 +640,35 @@ func (p projectSources) VerifyProject(ctx context.Context, scope domain.Scope, c
 	}
 	return execution.SourceInfo{RepositoryURL: repo.URL, Branch: repo.BaseRef, AcceptedTip: string(info.Tip)}, nil
 }
+
+// stateArtifactReader reads one explicitly referenced state entry under the
+// already-authorized binding. It is the state side of the runtime artifact-read
+// operation; the artifact service still verifies content and retention.
+type stateArtifactReader struct {
+	store state.Store
+}
+
+func (r stateArtifactReader) ReadStateReference(ctx context.Context, scope domain.Scope, _ domain.AttemptID, binding runtimev1.StateBinding, key string) (artifacts.StateReference, error) {
+	if r.store == nil {
+		return artifacts.StateReference{}, artifacts.ErrUnavailable
+	}
+	absolute, err := state.AbsoluteKey(state.Binding{Namespace: binding.Namespace, Prefix: binding.Prefix, Read: true}, key)
+	if err != nil {
+		return artifacts.StateReference{}, artifacts.ErrInvalid
+	}
+	entry, err := r.store.Get(ctx, state.Scope{TenantID: scope.TenantID, ProjectID: scope.ProjectID}, binding.Namespace, absolute)
+	if err != nil {
+		switch {
+		case errors.Is(err, state.ErrNotFound):
+			return artifacts.StateReference{}, artifacts.ErrNotFound
+		case errors.Is(err, state.ErrDenied):
+			return artifacts.StateReference{}, artifacts.ErrForbidden
+		}
+		return artifacts.StateReference{}, artifacts.ErrUnavailable
+	}
+	out := artifacts.StateReference{ETag: entry.ETag()}
+	for _, ref := range entry.ArtifactReferences {
+		out.Artifacts = append(out.Artifacts, artifacts.InputRef{ID: domain.ArtifactID(ref.ArtifactID), Digest: artifacts.Digest(ref.Digest)})
+	}
+	return out, nil
+}

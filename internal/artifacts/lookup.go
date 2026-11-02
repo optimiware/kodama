@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -160,6 +161,68 @@ func (s *Service) RuntimeMetadata(ctx context.Context, caller Caller, attempt do
 		return View{}, s.dependency("load artifact", err)
 	}
 	if a.Digest() != want.Digest || a.Kind() != KindFile || a.State() != StateUsable ||
+		a.Disposition() != DispositionActive || a.SealedKey() == "" {
+		return View{}, fmt.Errorf("%w: no verified content to download", ErrIncomplete)
+	}
+	expires := s.clock().Add(s.cfg.DownloadTTL).Truncate(time.Microsecond)
+	t, err := s.cfg.Objects.PresignDownload(ctx, DownloadSpec{Key: a.SealedKey(), MediaType: a.MediaType(), ExpiresAt: expires})
+	if err != nil {
+		return View{}, unavailable("issue download instruction", err)
+	}
+	return View{Artifact: a, Download: &t}, nil
+}
+
+// RuntimeMetadataFromState authorizes a download from a declared state binding
+// and key. The entry must carry the artifact as an explicit reference with the
+// same digest; the ETag, when supplied, must match.
+func (s *Service) RuntimeMetadataFromState(ctx context.Context, caller Caller, attempt domain.AttemptID, id domain.ArtifactID, binding, key, etag string) (View, error) {
+	if err := id.Validate(); err != nil {
+		return View{}, invalidf("%v", err)
+	}
+	g, err := s.grantRead(ctx, caller, attempt)
+	if err != nil {
+		return View{}, err
+	}
+	if s.cfg.StateReferences == nil {
+		return View{}, unavailable("state reference authority is not configured", nil)
+	}
+	var declared *runtimev1.StateBinding
+	for i := range g.StateBindings {
+		if g.StateBindings[i].Name == binding {
+			declared = &g.StateBindings[i]
+			break
+		}
+	}
+	if declared == nil {
+		return View{}, ErrForbidden
+	}
+	ref, err := s.cfg.StateReferences.ReadStateReference(ctx, g.Scope, attempt, *declared, key)
+	if err != nil {
+		return View{}, err
+	}
+	if etag != "" && ref.ETag != etag {
+		return View{}, ErrForbidden
+	}
+	var want InputRef
+	found := false
+	for _, in := range ref.Artifacts {
+		if in.ID == id {
+			want, found = in, true
+			break
+		}
+	}
+	if !found {
+		return View{}, ErrNotFound
+	}
+	return s.runtimeDownload(ctx, g.Scope, id, want.Digest)
+}
+
+func (s *Service) runtimeDownload(ctx context.Context, scope domain.Scope, id domain.ArtifactID, want Digest) (View, error) {
+	a, err := s.cfg.Repository.Get(ctx, scope, id)
+	if err != nil {
+		return View{}, s.dependency("load artifact", err)
+	}
+	if a.Digest() != want || a.Kind() != KindFile || a.State() != StateUsable ||
 		a.Disposition() != DispositionActive || a.SealedKey() == "" {
 		return View{}, fmt.Errorf("%w: no verified content to download", ErrIncomplete)
 	}

@@ -249,8 +249,9 @@ func (a *ArtifactAuthority) attribute(ctx context.Context, out *artifacts.Attemp
 func artifactGrant(g runtimeauth.AdmissionGrant, pinned runtimev1.Context) artifacts.AttemptGrant {
 	out := artifacts.AttemptGrant{
 		Scope: g.Scope, Attempt: g.AttemptID, Run: g.RunID, Step: pinned.StepID,
-		ExpiresAt: g.Consumption.MaxExpiresAt,
-		Writer:    pinned.Workspace.Access == runtimev1.AccessWrite,
+		ExpiresAt:     g.Consumption.MaxExpiresAt,
+		Writer:        pinned.Workspace.Access == runtimev1.AccessWrite,
+		StateBindings: append([]runtimev1.StateBinding(nil), pinned.State...),
 		Limits: artifacts.Limits{
 			OutputBytes: pinned.Limits.MaxOutputBytes, OutputFiles: pinned.Limits.MaxOutputFiles, DiagnosticBytes: pinned.Limits.MaxDiagnosticBytes,
 		},

@@ -23,6 +23,8 @@ type ServiceConfig struct {
 	Objects ObjectStore
 	// Registry verifies OCI registrations.
 	Registry RegistryVerifier
+	// StateReferences reads state entries used as artifact-read authority.
+	StateReferences StateReferences
 
 	IDs   IDs
 	Clock func() time.Time

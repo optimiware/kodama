@@ -3,6 +3,7 @@ package artifactshttp
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
@@ -15,6 +16,7 @@ import (
 // verified context. It does not use the human read authority.
 type RuntimeReadService interface {
 	RuntimeMetadata(ctx context.Context, caller artifacts.Caller, attempt domain.AttemptID, id domain.ArtifactID) (artifacts.View, error)
+	RuntimeMetadataFromState(ctx context.Context, caller artifacts.Caller, attempt domain.AttemptID, id domain.ArtifactID, binding, key, etag string) (artifacts.View, error)
 }
 
 // RuntimeRead serves GET /runtime/v1/attempts/{attemptId}/artifacts/{artifactId}/download.
@@ -45,7 +47,18 @@ func (h *RuntimeRead) download(w http.ResponseWriter, r *http.Request, c *httpap
 		httpapi.WriteError(w, r, httpapi.BadRequestError("an identifier is not valid"))
 		return
 	}
-	v, err := h.svc.RuntimeMetadata(r.Context(), caller(c), attempt, id)
+	binding, key := r.URL.Query().Get("binding"), r.URL.Query().Get("key")
+	var v artifacts.View
+	var err error
+	if binding != "" || key != "" {
+		if binding == "" || key == "" {
+			httpapi.WriteError(w, r, httpapi.BadRequestError("binding and key are required together"))
+			return
+		}
+		v, err = h.svc.RuntimeMetadataFromState(r.Context(), caller(c), attempt, id, binding, key, strings.Trim(r.URL.Query().Get("etag"), `"`))
+	} else {
+		v, err = h.svc.RuntimeMetadata(r.Context(), caller(c), attempt, id)
+	}
 	if err != nil {
 		httpapi.WriteError(w, r, translate(err))
 		return

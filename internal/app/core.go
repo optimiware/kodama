@@ -666,9 +666,14 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	if err != nil {
 		return err
 	}
+	stateReferenceStore, err := statepg.New(statepg.Config{DB: pool})
+	if err != nil {
+		return fmt.Errorf("state reference store: %w", err)
+	}
 	artSvc, err := artifacts.NewService(artifacts.ServiceConfig{
 		Repository: artStore, Authority: artifactAuthority, Reader: artifactReadAuthority{authority: authority}, Objects: objects, Registry: registry,
-		UploadTTL: 10 * time.Minute, DownloadTTL: 5 * time.Minute, ClaimLease: 30 * time.Second, SpoolDir: artifactSpoolDir(cfg),
+		StateReferences: stateArtifactReader{store: stateReferenceStore},
+		UploadTTL:       10 * time.Minute, DownloadTTL: 5 * time.Minute, ClaimLease: 30 * time.Second, SpoolDir: artifactSpoolDir(cfg),
 	})
 	if err != nil {
 		return err
