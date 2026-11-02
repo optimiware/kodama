@@ -1,3 +1,12 @@
+> **Status: pre-ADR-0013 prototype; kernel port required.** This plan was
+> written against the execution schema that `main` replaced in ADR 0013
+> (O-35/O-38). The implementation on branch `container-plugins` is retained as
+> a prototype and is **not mergeable as-is**: current `main` uses
+> `pipelines`/`runs`/`run_steps`, a standalone kernel, and a native shell.
+> Rebase the state, artifact, deployment, project-run and gate work onto that
+> architecture before claiming completion. The decision is recorded as
+> [ADR 0014](../adr/0014-stateful-container-plugins.md) / O-41.
+
 # Stateful container plugins and deployment-core retirement
 
 **Status:** proposed implementation plan, requested by the owner on 2026-10-30.
