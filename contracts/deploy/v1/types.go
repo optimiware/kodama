@@ -41,18 +41,19 @@ type Identity struct {
 }
 
 type Request struct {
-	Protocol       string                     `json:"protocol"`
-	RequestID      string                     `json:"requestId"`
-	Method         string                     `json:"method"`
-	Deadline       time.Time                  `json:"deadline"`
-	Identity       Identity                   `json:"identity"`
-	OperationID    string                     `json:"operationId,omitempty"`
-	DesiredRelease string                     `json:"desiredRelease,omitempty"`
-	Configuration  json.RawMessage            `json:"configuration,omitempty"`
-	Artifacts      []Artifact                 `json:"artifacts,omitempty"`
-	Previous       json.RawMessage            `json:"previous,omitempty"`
-	Expected       string                     `json:"expectedRevision,omitempty"`
-	Checkpoints    map[string]json.RawMessage `json:"checkpoints,omitempty"`
+	Protocol         string                     `json:"protocol"`
+	RequestID        string                     `json:"requestId"`
+	Method           string                     `json:"method"`
+	Deadline         time.Time                  `json:"deadline"`
+	Identity         Identity                   `json:"identity"`
+	OperationID      string                     `json:"operationId,omitempty"`
+	DesiredRelease   string                     `json:"desiredRelease,omitempty"`
+	ProviderRevision string                     `json:"providerRevision,omitempty"`
+	Configuration    json.RawMessage            `json:"configuration,omitempty"`
+	Artifacts        []Artifact                 `json:"artifacts,omitempty"`
+	Previous         json.RawMessage            `json:"previous,omitempty"`
+	Expected         string                     `json:"expectedRevision,omitempty"`
+	Checkpoints      map[string]json.RawMessage `json:"checkpoints,omitempty"`
 }
 
 type Resource struct {

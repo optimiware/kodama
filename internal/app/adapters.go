@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+	statev1 "github.com/optimiware/kodama/contracts/state/v1"
 	"github.com/optimiware/kodama/internal/agents"
 	"github.com/optimiware/kodama/internal/artifacts"
 	"github.com/optimiware/kodama/internal/delivery"
@@ -587,4 +588,28 @@ func (v stateArtifactVerifier) VerifyArtifact(ctx context.Context, scope state.S
 		return state.ErrDenied
 	}
 	return nil
+}
+
+func (v stateArtifactVerifier) pinOwner(scope state.Scope, namespace, key string) artifacts.PinOwner {
+	return artifacts.PinOwner{Kind: "state", ID: state.StatePinOwnerID(scope, namespace, key)}
+}
+
+func (v stateArtifactVerifier) PinStateReference(ctx context.Context, scope state.Scope, namespace, key string, ref statev1.ArtifactReference) error {
+	if v.svc == nil {
+		return state.ErrUnavailable
+	}
+	if err := v.svc.Pin(ctx, domain.Scope{TenantID: scope.TenantID, ProjectID: scope.ProjectID}, domain.ArtifactID(ref.ArtifactID), v.pinOwner(scope, namespace, key)); err != nil {
+		if errors.Is(err, artifacts.ErrNotFound) || errors.Is(err, artifacts.ErrIncomplete) {
+			return state.ErrDenied
+		}
+		return state.ErrUnavailable
+	}
+	return nil
+}
+
+func (v stateArtifactVerifier) UnpinStateReference(ctx context.Context, scope state.Scope, namespace, key string, ref statev1.ArtifactReference) error {
+	if v.svc == nil {
+		return state.ErrUnavailable
+	}
+	return v.svc.Unpin(ctx, domain.Scope{TenantID: scope.TenantID, ProjectID: scope.ProjectID}, domain.ArtifactID(ref.ArtifactID), v.pinOwner(scope, namespace, key))
 }

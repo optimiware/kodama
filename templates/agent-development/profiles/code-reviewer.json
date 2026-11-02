@@ -1,0 +1,21 @@
+{
+  "name": "code-reviewer",
+  "image": "registry.example.invalid/agent-wrapper@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "wrapper": {
+    "id": "opencode",
+    "version": "1.0.0",
+    "command": ["opencode"],
+    "harness": {"id": "opencode", "version": "1.0.0"}
+  },
+  "instructions": "You are the code review agent. Inspect the published candidate and the test report. Return a structured review and conformance report; never approve a human gate.",
+  "designBaseline": {
+    "requirements": ["DQ-01"],
+    "decisions": ["O-34"],
+    "sources": [{"repository": "https://git.example.invalid/project.git", "revision": "1111111111111111111111111111111111111111", "path": "docs/specs"}],
+    "requiredChecks": ["review-present", "conformance-present"]
+  },
+  "model": {"name": "example-review-model", "endpoint": "https://model.example.invalid"},
+  "tools": ["workspace.read"],
+  "limits": {"wallSeconds": 900, "maxRequests": 40, "maxTokens": 80000, "maxToolCalls": 60},
+  "transcript": {"record": true}
+}

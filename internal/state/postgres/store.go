@@ -78,8 +78,8 @@ func (s *Store) List(ctx context.Context, scope state.Scope, namespace, prefix, 
 	err := s.tx(ctx, scope, true, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `SELECT namespace, key, value, artifact_references, generation, revision, updated_at, updated_by
 			FROM state_entries
-			WHERE tenant_id=$1 AND project_id=$2 AND namespace=$3 AND key LIKE $4 AND key >= $5
-			ORDER BY key LIMIT $6`, scope.TenantID, scope.ProjectID, namespace, prefix+"%", cursor, limit+1)
+			WHERE tenant_id=$1 AND project_id=$2 AND namespace=$3 AND starts_with(key, $4) AND key >= $5
+			ORDER BY key LIMIT $6`, scope.TenantID, scope.ProjectID, namespace, prefix, cursor, limit+1)
 		if err != nil {
 			return err
 		}
@@ -275,6 +275,8 @@ func classify(err error) error {
 		case "23505":
 			return state.ErrExists
 		case "23514":
+			return fmt.Errorf("%w: %v", state.ErrInvalid, err)
+		case "P0001":
 			return state.ErrQuota
 		case "40001", "40P01", "55P03", "57014", "53300":
 			return fmt.Errorf("%w: %v", state.ErrUnavailable, err)

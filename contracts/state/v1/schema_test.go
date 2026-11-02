@@ -30,7 +30,7 @@ func TestKeyValidation(t *testing.T) {
 			t.Errorf("%q: %v", key, err)
 		}
 	}
-	for _, key := range []string{"", "/abs", "../x", "a//b", "a/", "a b"} {
+	for _, key := range []string{"", "/abs", "../x", "a//b", "a/", "a b", "a/./b", "a/../b", "./a"} {
 		if err := ValidateKey(key); err == nil {
 			t.Errorf("%q accepted", key)
 		}

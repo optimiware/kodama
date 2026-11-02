@@ -159,15 +159,19 @@ func (d *Driver) Rollback(ctx context.Context, req driver.Request, checkpoint dr
 		return driver.Result{}, err
 	}
 	defer cleanup()
-	if req.DesiredRelease == "" {
+	target := req.ProviderRevision
+	if target == "" {
+		target = req.DesiredRelease
+	}
+	if target == "" {
 		return driver.Result{}, fmt.Errorf("cloudflare driver: a provider version is required for rollback")
 	}
 	if checkpoint != nil {
-		if err := checkpoint(ctx, "rollback-intent", mustJSON(map[string]string{"worker": cfg.Worker, "version": req.DesiredRelease})); err != nil {
+		if err := checkpoint(ctx, "rollback-intent", mustJSON(map[string]string{"worker": cfg.Worker, "version": target})); err != nil {
 			return driver.Result{}, err
 		}
 	}
-	if out, err := d.run(ctx, cfg, "", "rollback", req.DesiredRelease, "--name", cfg.Worker); err != nil {
+	if out, err := d.run(ctx, cfg, "", "rollback", target, "--name", cfg.Worker); err != nil {
 		return driver.Result{Effect: "possible", Detail: mustJSON(map[string]string{"output": string(out)})}, err
 	}
 	obs, err := d.Observe(ctx, req)

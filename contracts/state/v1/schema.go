@@ -103,6 +103,11 @@ func ValidateKey(key string) error {
 	if strings.Contains(key, "//") || strings.Contains(key, "..") || strings.HasPrefix(key, "/") || strings.HasSuffix(key, "/") {
 		return fmt.Errorf("key is not a normalized relative path")
 	}
+	for _, part := range strings.Split(key, "/") {
+		if part == "" || part == "." || part == ".." {
+			return fmt.Errorf("key is not a normalized relative path")
+		}
+	}
 	return nil
 }
 

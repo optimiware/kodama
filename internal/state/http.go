@@ -2,9 +2,12 @@ package state
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +20,14 @@ import (
 // artifact module's current ownership and content metadata.
 type ArtifactVerifier interface {
 	VerifyArtifact(ctx context.Context, scope Scope, id domain.ArtifactID, digest string) error
+}
+
+// ArtifactRetainer is the optional retention owner used for explicit state
+// artifact references. The handler pins new references and unpins removed ones;
+// a failure to establish retention aborts the write.
+type ArtifactRetainer interface {
+	PinStateReference(ctx context.Context, scope Scope, namespace, key string, ref statev1.ArtifactReference) error
+	UnpinStateReference(ctx context.Context, scope Scope, namespace, key string, ref statev1.ArtifactReference) error
 }
 
 // BindingResolver authenticates the attempt and resolves one declared alias.
@@ -39,6 +50,7 @@ type Handler struct {
 	Store     Store
 	Resolver  BindingResolver
 	Artifacts ArtifactVerifier
+	Retention ArtifactRetainer
 }
 
 // NewHandler constructs a handler. Both dependencies are required.
@@ -83,6 +95,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request, scope Scope, binding Binding) {
+	if r.URL.Query().Has("prefix") && r.URL.Query().Has("key") {
+		writeError(w, http.StatusBadRequest, "invalid_key", "key and prefix are exclusive")
+		return
+	}
 	if prefix := r.URL.Query().Get("prefix"); prefix != "" || r.URL.Query().Has("prefix") {
 		absolutePrefix, err := AbsolutePrefix(binding, prefix)
 		if err != nil {
@@ -161,6 +177,10 @@ func (h *Handler) put(w http.ResponseWriter, r *http.Request, scope Scope, bindi
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid state request")
 		return
 	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "invalid state request")
+		return
+	}
 	if err := h.reauthorize(r); err != nil {
 		writeError(w, http.StatusForbidden, "state_binding_denied", "state write denied")
 		return
@@ -170,22 +190,37 @@ func (h *Handler) put(w http.ResponseWriter, r *http.Request, scope Scope, bindi
 		return
 	}
 	actor := attemptActor(r)
-	var (
-		entry statev1.Entry
-		err   error
-	)
-	if r.Header.Get("If-None-Match") == "*" {
-		entry, err = h.Store.Create(r.Context(), scope, binding.Namespace, key, actor, req)
-	} else if expected := strings.Trim(r.Header.Get("If-Match"), `"`); expected != "" {
-		entry, err = h.Store.Update(r.Context(), scope, binding.Namespace, key, actor, expected, req)
-	} else {
-		writeError(w, http.StatusPreconditionRequired, "version_required", "If-Match or If-None-Match is required")
+	oldEntry, oldErr := h.Store.Get(r.Context(), scope, binding.Namespace, key)
+	var oldRefs []statev1.ArtifactReference
+	if oldErr == nil {
+		oldRefs = oldEntry.ArtifactReferences
+	} else if !errors.Is(oldErr, ErrNotFound) {
+		writeStoreError(w, oldErr)
 		return
 	}
+	pinned, err := h.pinReferences(r.Context(), scope, binding.Namespace, key, oldRefs, req.ArtifactReferences)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
+	var (
+		entry statev1.Entry
+		werr  error
+	)
+	if r.Header.Get("If-None-Match") == "*" {
+		entry, werr = h.Store.Create(r.Context(), scope, binding.Namespace, key, actor, req)
+	} else if expected := strings.Trim(r.Header.Get("If-Match"), `"`); expected != "" {
+		entry, werr = h.Store.Update(r.Context(), scope, binding.Namespace, key, actor, expected, req)
+	} else {
+		writeError(w, http.StatusPreconditionRequired, "version_required", "If-Match or If-None-Match is required")
+		return
+	}
+	if werr != nil {
+		h.unpinReferences(r.Context(), scope, binding.Namespace, key, pinned)
+		writeStoreError(w, werr)
+		return
+	}
+	h.unpinReferences(r.Context(), scope, binding.Namespace, key, removedReferences(oldRefs, req.ArtifactReferences))
 	w.Header().Set("ETag", strconv.Quote(entry.ETag()))
 	writeJSON(w, http.StatusOK, entry)
 }
@@ -204,9 +239,17 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request, scope Scope, bi
 		writeError(w, http.StatusForbidden, "state_binding_denied", "state write denied")
 		return
 	}
+	oldEntry, oldErr := h.Store.Get(r.Context(), scope, binding.Namespace, key)
+	if oldErr != nil && !errors.Is(oldErr, ErrNotFound) {
+		writeStoreError(w, oldErr)
+		return
+	}
 	if err := h.Store.Delete(r.Context(), scope, binding.Namespace, key, attemptActor(r), expected); err != nil {
 		writeStoreError(w, err)
 		return
+	}
+	if oldErr == nil {
+		h.unpinReferences(r.Context(), scope, binding.Namespace, key, oldEntry.ArtifactReferences)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -270,6 +313,57 @@ func attemptActor(r *http.Request) string {
 	return attempt
 }
 
+func (h *Handler) pinReferences(ctx context.Context, scope Scope, namespace, key string, old, next []statev1.ArtifactReference) ([]statev1.ArtifactReference, error) {
+	if h.Retention == nil {
+		return nil, nil
+	}
+	existing := map[string]bool{}
+	for _, ref := range old {
+		existing[ref.ArtifactID] = true
+	}
+	var pinned []statev1.ArtifactReference
+	for _, ref := range next {
+		if existing[ref.ArtifactID] {
+			continue
+		}
+		if err := h.Retention.PinStateReference(ctx, scope, namespace, key, ref); err != nil {
+			h.unpinReferences(ctx, scope, namespace, key, pinned)
+			return nil, err
+		}
+		pinned = append(pinned, ref)
+	}
+	return pinned, nil
+}
+
+func (h *Handler) unpinReferences(ctx context.Context, scope Scope, namespace, key string, refs []statev1.ArtifactReference) {
+	if h.Retention == nil {
+		return
+	}
+	for _, ref := range refs {
+		_ = h.Retention.UnpinStateReference(ctx, scope, namespace, key, ref)
+	}
+}
+
+func removedReferences(old, next []statev1.ArtifactReference) []statev1.ArtifactReference {
+	keep := map[string]bool{}
+	for _, ref := range next {
+		keep[ref.ArtifactID] = true
+	}
+	var removed []statev1.ArtifactReference
+	for _, ref := range old {
+		if !keep[ref.ArtifactID] {
+			removed = append(removed, ref)
+		}
+	}
+	return removed
+}
+
+// StatePinOwnerID is a deterministic artifact pin owner for one state entry.
+func StatePinOwnerID(scope Scope, namespace, key string) string {
+	sum := sha256.Sum256([]byte(string(scope.TenantID) + "/" + string(scope.ProjectID) + "/" + namespace + "/" + key))
+	return "state_" + hex.EncodeToString(sum[:16])
+}
+
 func writeStoreError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
@@ -281,6 +375,7 @@ func writeStoreError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrInvalid):
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid state request")
 	case errors.Is(err, ErrQuota):
+		w.Header().Set("Retry-After", "1")
 		writeError(w, http.StatusTooManyRequests, "state_quota_exceeded", "state quota exceeded")
 	case errors.Is(err, ErrDenied):
 		writeError(w, http.StatusForbidden, "state_binding_denied", "state access denied")

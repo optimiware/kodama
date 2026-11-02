@@ -940,7 +940,9 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	if err != nil {
 		return fmt.Errorf("state runtime API: %w", err)
 	}
-	stateHandler.Artifacts = stateArtifactVerifier{svc: artSvc}
+	stateVerifier := stateArtifactVerifier{svc: artSvc}
+	stateHandler.Artifacts = stateVerifier
+	stateHandler.Retention = stateVerifier
 	c.runtimeV3 = stateHandler
 	if rtSet.Shared != nil {
 		// The additive run view and the resource logs of the run_shared model, in

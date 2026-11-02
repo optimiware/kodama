@@ -1,13 +1,12 @@
-apiVersion: kodama/v1alpha2
+apiVersion: kodama/v1alpha3
 kind: Pipeline
-metadata:
-  name: develop-and-review
+metadata: {name: develop-and-review}
 spec:
   timeoutSeconds: 14400
   steps:
     - id: plan
       kind: agent
-      agent: {profile: planner-v1}
+      agent: {profile: planner@1}
       workspace: {access: read}
       timeoutSeconds: 900
       outputs:
@@ -15,8 +14,10 @@ spec:
     - id: implement
       kind: agent
       needs: [plan]
-      agent: {profile: implementer-v1}
+      agent: {profile: implementer@1}
       workspace: {access: write}
+      artifactFiles:
+        plan: "${{ steps.plan.outputs.plan }}"
       timeoutSeconds: 2400
     - id: test
       kind: container
@@ -30,8 +31,10 @@ spec:
     - id: code-review
       kind: agent
       needs: [test]
-      agent: {profile: code-reviewer-v1}
+      agent: {profile: code-reviewer@1}
       workspace: {access: read}
+      artifactFiles:
+        tests: "${{ steps.test.outputs.report }}"
       timeoutSeconds: 900
       outputs:
         report: {type: artifact, path: /kodama/outputs/review.json}
@@ -39,8 +42,10 @@ spec:
     - id: security-review
       kind: agent
       needs: [code-review]
-      agent: {profile: security-reviewer-v1}
+      agent: {profile: security-reviewer@1}
       workspace: {access: read}
+      artifactFiles:
+        review: "${{ steps.code-review.outputs.report }}"
       timeoutSeconds: 900
       outputs:
         report: {type: artifact, path: /kodama/outputs/security.json}

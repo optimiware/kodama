@@ -67,7 +67,7 @@
 | O-09 | Generic outbound webhook is initial ChatOps transport; provider-specific interactive actions remain later | T-041 / later adapters |
 | O-10 | Resolved direction: retain Go 1.27 (current pin 1.27.2); Platform will update independently. Qualify compatible dependency pins without a forced downgrade. Reference workload: 20 tenants, 100 projects, 20 concurrent attempts, declared per-tenant limits and concurrent API/SSE/model/webhook activity. Measurements and supported capacity remain release acceptance | T-056 |
 | O-11 | Resolved policy: owner accepted the [retention/recovery baseline](operations/upgrades-backup-and-recovery.md#approved-retention-and-recovery-baseline). RPO 15 minutes, RTO 4 hours, 30-day PITR and the specified Git/object/image/key/deletion windows; these are objectives to qualify, not proven service guarantees | T-029/T-056 |
-| O-12 | Kubernetes namespace + scoped kubeconfig + ordinary scripts selected | T-035 |
+| O-12 | Kubernetes namespace + scoped kubeconfig + ordinary scripts selected. Superseded for new-format application deployment by O-34/ADR 0012; the historical selection remains the legacy owner until P8 | T-035 |
 | O-13 | Resolved ownership/model: Platform subscription add-on with bounded compute/AI usage. Platform owns billing, commercial metering/access, entitlements and subscription policy. Kodama emits operational usage/correlation evidence and enforces execution limits, without its own pricing/payments/entitlement subsystem. Exact prices/support commitments remain Platform business configuration | Platform commercial launch |
 | O-14 | Resolved: OS keyring via `github.com/zalando/go-keyring`. A `0600` file store is an explicit opt-in; no silent fallback and no nonpersistent plaintext path | T-017 |
 | O-15 | Resolved product direction: optional UI exists in Platform, likely `packages/dashboard`; Kodama is primarily CLI/API/MCP/webhook driven. No local `web/` implementation is scheduled. Exact upstream UI work/ownership remains an explicit deferred handoff for T-050/T-051/T-060 | Deferred Platform UI work |
@@ -88,6 +88,7 @@
 | O-31 | **Resolved direction and scheduled 2026-10-30 (owner).** Kodama embeds its own Git service and issue tracker: projects own one or more internally hosted repositories, Git is native binaries wrapped by Kodama for security and integration, agents coordinate through it, humans mainly submit tasks, and engineers can clone or push (Heroku-style). Tenant isolation is required from the first release. [ADR 0011](adr/0011-internal-tenant-git-service.md) is accepted as the design; delivery and qualification remain pending | T-125–T-133; [details](#internal-git-service--2026-10-30-o-31) |
 | O-32 | **Open.** Whether the first release imports or mirrors external repositories (GitHub, GitLab), and in which direction. Recommendation: one-time import into internal hosting first; outbound mirroring later | T-133 |
 | O-33 | **Open.** Whether repositories allow direct human pushes to the default branch by default. Recommendation: off by default, enabled per repository (`policy.directPushToDefault`), so CI/CD always runs from an integrated, reviewed commit. Until decided, the field has no default: repository creation requires the caller to supply it, so T-130/T-132 implement the setting without choosing its default | T-127/T-130/T-132 (no default until resolved) |
+| O-34 | **Resolved 2026-11-02: stateful container plugins and deployment-core retirement.** Deployment behavior becomes an ordinary digest-pinned container plugin over generic scoped state, one shared engine and provider drivers; Kubernetes is the mandatory first driver. Source-free project runs require no work item or Deployment record. [ADR 0012](adr/0012-stateful-container-plugins.md) records the decision; [the implementation plan](implementation/container-plugins.md) owns the staged P0–P8 cutover and acceptance. The legacy delivery path remains the historical owner until P8 | P0–P8; [details](#container-plugins-and-deployment-core--2026-11-02-o-34) |
 
 T-001 uses the owner-selected [oauthsonas](https://github.com/optimiweb/oauthsonas) development OIDC fixture. Its pinned version and configuration are recorded in the [scaffold contract](../dev/configuration.md). O-18 selects the Optimi OAuth authority; its actual hosted issuer, audience and claim/revocation contract are qualified by T-061, not inferred from the fixture.
 
@@ -135,6 +136,21 @@ This amends ADR 0010 §3–§6 and the frozen "network is unconditional" detail,
 | Coordination | Git joins support services (databases, Valkey) as coordination layers for agents, with project lifetime instead of run lifetime |
 
 This amends O-03, C-12/P-06/P-07 for internally hosted repositories (agents push their own branches with scoped grants; the publisher remains for external repositories) and ADRs 0004/0005. It does not change the run models of ADR 0010, the event bus (C-11) or the human gate and completion rules (C-13). Open follow-ups are O-32 and O-33.
+
+## Container plugins and deployment core — 2026-11-02 (O-34)
+
+The owner selected the plan in [stateful container plugins and deployment-core retirement](implementation/container-plugins.md) and directed implementation to completion. The decision is recorded in [ADR 0012](adr/0012-stateful-container-plugins.md).
+
+| Area | Selection |
+| --- | --- |
+| Plugin form | Ordinary digest-pinned container steps through the existing entrypoint and result protocol |
+| State | Core-owned scoped keys, per-key CAS, bounded values, artifact retention references, quota, audit and safe delete/recreate |
+| Deployment | One shared engine; Kubernetes, Cloudflare Workers and GCP Cloud Run drivers |
+| Admission | Source-free project runs without work items or Deployment records; source-backed CI follows the same project origin |
+| Review | Human gates bind immutable evidence; QA consumes receipts and provenance, not provider rows in core |
+| Cutover | One owner per live resource; legacy delivery is removed only after the plugin path passes its named tests |
+
+This supersedes O-12 for new-format deployment only. Existing legacy records, callbacks and cleanup workers retain their historical semantics until the P8 export/import and retirement checks pass; no destructive migration runs while they remain.
 
 ## Asynchronous decisions
 

@@ -77,11 +77,8 @@ func (d *Driver) Apply(ctx context.Context, req driver.Request, checkpoint drive
 	if err != nil {
 		return driver.Result{Effect: "possible", Detail: mustJSON(map[string]string{"output": string(out)})}, fmt.Errorf("gcp driver: deploy: %w", err)
 	}
-	obs, err := d.Observe(ctx, req)
-	if err != nil || obs.State != driver.Ready {
-		if err == nil {
-			err = fmt.Errorf("gcp driver: service is %s", obs.State)
-		}
+	obs, err := d.waitReady(ctx, cfg, req)
+	if err != nil {
 		return driver.Result{Effect: "possible", Detail: mustJSON(obs)}, err
 	}
 	return driver.Result{Effect: "confirmed", ProviderRelease: obs.ProviderRelease, ProviderVersion: obs.ProviderVersion, Detail: mustJSON(obs)}, nil
@@ -116,15 +113,58 @@ func (d *Driver) Observe(ctx context.Context, req driver.Request) (driver.Observ
 	if err := json.Unmarshal(out, &service); err != nil {
 		return driver.Observation{State: driver.Unknown, ObservedAt: time.Now().UTC()}, nil
 	}
-	version := service.Status.LatestReadyRevisionName
+	latest := service.Status.LatestReadyRevisionName
+	serving := ""
+	servingPercent := 0
+	for _, traffic := range service.Status.Traffic {
+		if traffic.Percent > servingPercent {
+			serving = traffic.RevisionName
+			servingPercent = traffic.Percent
+		}
+	}
+	if serving == "" && len(service.Status.Traffic) == 0 {
+		serving = latest
+		servingPercent = 100
+	}
 	state := driver.Progressing
-	if version != "" {
+	checks := []string{"latest_ready_revision", "traffic_revision"}
+	if latest != "" && serving == latest && servingPercent >= 100 {
 		state = driver.Ready
 	}
 	return driver.Observation{
-		State: state, ObservedAt: time.Now().UTC(), ProviderVersion: version,
-		ObservedRelease: cfg.Service, Checks: []string{"latest_ready_revision"},
+		State: state, ObservedAt: time.Now().UTC(), ProviderVersion: serving,
+		ObservedRelease: serving, Checks: checks,
 	}, nil
+}
+
+func (d *Driver) waitReady(ctx context.Context, cfg Config, req driver.Request) (driver.Observation, error) {
+	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 120 * time.Second
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	var last driver.Observation
+	for {
+		obs, err := d.Observe(waitCtx, req)
+		if err != nil {
+			return obs, err
+		}
+		last = obs
+		switch obs.State {
+		case driver.Ready:
+			return obs, nil
+		case driver.Unhealthy, driver.Conflict:
+			return obs, fmt.Errorf("gcp driver: service is %s", obs.State)
+		}
+		select {
+		case <-waitCtx.Done():
+			return last, fmt.Errorf("gcp driver: readiness deadline exceeded: %s", last.State)
+		case <-ticker.C:
+		}
+	}
 }
 
 func (d *Driver) Destroy(ctx context.Context, req driver.Request, checkpoint driver.Checkpoint) (driver.Result, error) {
@@ -156,22 +196,30 @@ func (d *Driver) Rollback(ctx context.Context, req driver.Request, checkpoint dr
 	if err := cfg.validate(); err != nil {
 		return driver.Result{}, err
 	}
-	if req.DesiredRelease == "" {
+	target := req.ProviderRevision
+	if target == "" {
+		target = req.DesiredRelease
+	}
+	if target == "" {
 		return driver.Result{}, fmt.Errorf("gcp driver: a revision is required for rollback")
 	}
 	if checkpoint != nil {
-		if err := checkpoint(ctx, "rollback-intent", mustJSON(map[string]string{"service": cfg.Service, "revision": req.DesiredRelease})); err != nil {
+		if err := checkpoint(ctx, "rollback-intent", mustJSON(map[string]string{"service": cfg.Service, "revision": target})); err != nil {
 			return driver.Result{}, err
 		}
 	}
 	if out, err := d.run(ctx, "run", "services", "update-traffic", cfg.Service,
 		"--project", cfg.Project, "--region", cfg.Region,
-		"--to-revisions", req.DesiredRelease+"=100", "--quiet"); err != nil {
+		"--to-revisions", target+"=100", "--quiet"); err != nil {
 		return driver.Result{Effect: "possible", Detail: mustJSON(map[string]string{"output": string(out)})}, err
 	}
-	obs, err := d.Observe(ctx, req)
-	if err != nil || obs.State != driver.Ready {
-		return driver.Result{Effect: "possible"}, fmt.Errorf("gcp driver: rollback was not observed ready")
+	obs, err := d.waitReady(ctx, cfg, req)
+	if err != nil {
+		return driver.Result{Effect: "possible", Detail: mustJSON(obs)}, fmt.Errorf("gcp driver: rollback was not observed ready: %w", err)
+	}
+	if obs.ProviderVersion != target {
+		return driver.Result{Effect: "possible", Detail: mustJSON(obs)},
+			fmt.Errorf("gcp driver: serving revision %q is not the rollback target %q", obs.ProviderVersion, target)
 	}
 	return driver.Result{Effect: "confirmed", ProviderVersion: obs.ProviderVersion, Detail: mustJSON(obs)}, nil
 }

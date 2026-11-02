@@ -195,6 +195,7 @@ func (d *Driver) observeStates(ctx context.Context, cfg Config, resources []driv
 	present := 0
 	unhealthy := false
 	progressing := false
+	mainImagePresent := false
 	for _, resource := range resources {
 		state, ok, err := d.getObject(ctx, cfg, resource)
 		if err != nil {
@@ -212,8 +213,12 @@ func (d *Driver) observeStates(ctx context.Context, cfg Config, resources []driv
 			obs.Detail = mustJSON(map[string]string{"reason": "resource owner changed"})
 			return obs, nil
 		}
-		if !imagesAllowed(state, cfg) {
+		images := genericImages(state.Raw)
+		if !imagesAllowed(images, cfg) {
 			unhealthy = true
+		}
+		if cfg.Image != "" && containsImage(images, cfg.Image) {
+			mainImagePresent = true
 		}
 		if state.failed() {
 			unhealthy = true
@@ -230,6 +235,10 @@ func (d *Driver) observeStates(ctx context.Context, cfg Config, resources []driv
 		obs.Checks = append(obs.Checks, "all_absent")
 		return obs, nil
 	}
+	if !cfg.AllowAnyImage && cfg.Image != "" && !mainImagePresent {
+		unhealthy = true
+		obs.Detail = mustJSON(map[string]string{"reason": "the verified primary image is not deployed"})
+	}
 	obs.ProviderVersion = inventoryVersion(seen)
 	switch {
 	case unhealthy:
@@ -242,7 +251,7 @@ func (d *Driver) observeStates(ctx context.Context, cfg Config, resources []driv
 	return obs, nil
 }
 
-func imagesAllowed(state objectState, cfg Config) bool {
+func imagesAllowed(images []string, cfg Config) bool {
 	if cfg.AllowAnyImage {
 		return true
 	}
@@ -250,12 +259,21 @@ func imagesAllowed(state objectState, cfg Config) bool {
 	for _, image := range cfg.AuxiliaryImages {
 		allowed[image] = true
 	}
-	for _, image := range genericImages(state.Raw) {
+	for _, image := range images {
 		if !allowed[image] {
 			return false
 		}
 	}
 	return true
+}
+
+func containsImage(images []string, want string) bool {
+	for _, image := range images {
+		if image == want {
+			return true
+		}
+	}
+	return false
 }
 
 func genericImages(doc map[string]any) []string {

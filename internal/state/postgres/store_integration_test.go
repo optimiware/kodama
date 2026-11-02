@@ -79,3 +79,44 @@ func TestPostgresStateLifecycle(t *testing.T) {
 		t.Fatalf("audits = %d, err=%v", audits, err)
 	}
 }
+
+func TestPostgresStatePrefixAndKeyValidation(t *testing.T) {
+	ctx := context.Background()
+	db := pgtest.New(t)
+	owner, err := storage.Open(ctx, storage.Config{URL: db.MigrationURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	manifest, err := storage.NewManifest(storage.BaseContribution(), statepg.Migrations())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storage.Migrate(ctx, owner, manifest, storage.MigrateOptions{RuntimeRole: db.RuntimeRole}); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := storage.Open(ctx, storage.Config{URL: db.RuntimeURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	store, err := statepg.New(statepg.Config{DB: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := state.Scope{TenantID: "t_prefix", ProjectID: "p_prefix"}
+	value := statev1.WriteRequest{Value: json.RawMessage(`{"v":1}`)}
+	if _, err := store.Create(ctx, scope, "deploy", "a_/one", "att_1", value); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(ctx, scope, "deploy", "ab/two", "att_1", value); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := store.List(ctx, scope, "deploy", "a_/", "", 10)
+	if err != nil || len(items) != 1 || items[0].Key != "a_/one" {
+		t.Fatalf("prefix list = %+v err=%v", items, err)
+	}
+	if _, err := store.Create(ctx, scope, "deploy", "a/./b", "att_1", value); !errors.Is(err, state.ErrInvalid) {
+		t.Fatalf("dot segment = %v, want invalid", err)
+	}
+}

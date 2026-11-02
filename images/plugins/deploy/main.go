@@ -2,15 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	statev1 "github.com/optimiware/kodama/contracts/state/v1"
 	"github.com/optimiware/kodama/images/plugins/deploy/driver"
 	"github.com/optimiware/kodama/images/plugins/deploy/drivers/cloudflare"
 	"github.com/optimiware/kodama/images/plugins/deploy/drivers/gcp"
@@ -38,6 +40,7 @@ type common struct {
 	region            string
 	service           string
 	kubeconfig        string
+	kubeContext       string
 	bundle            string
 	manifest          string
 	image             string
@@ -45,6 +48,12 @@ type common struct {
 	allowMutableImage bool
 	desired           string
 	rollback          string
+	planIn            string
+	planOut           string
+	importFile        string
+	keep              int
+	expired           bool
+	expiresIn         time.Duration
 	timeout           time.Duration
 	resultFile        string
 	outputsDir        string
@@ -77,6 +86,7 @@ func main() {
 	fs.StringVar(&c.region, "region", "", "GCP region")
 	fs.StringVar(&c.service, "service", "", "GCP Cloud Run service")
 	fs.StringVar(&c.kubeconfig, "kubeconfig", os.Getenv("KUBECONFIG"), "target kubeconfig path")
+	fs.StringVar(&c.kubeContext, "kube-context", "", "pinned kubeconfig context")
 	fs.StringVar(&c.bundle, "bundle", "", "verified bundle path")
 	fs.StringVar(&c.manifest, "manifest", "", "local manifest path (development only)")
 	fs.StringVar(&c.image, "image", "", "expected primary image reference")
@@ -84,6 +94,12 @@ func main() {
 	fs.BoolVar(&c.allowMutableImage, "allow-mutable-image", false, "development-only mutable image opt-in")
 	fs.StringVar(&c.desired, "desired-release", "", "desired release ID")
 	fs.StringVar(&c.rollback, "rollback-release", "", "recorded release to roll back to")
+	fs.StringVar(&c.planIn, "plan", "", "approved immutable plan to apply")
+	fs.StringVar(&c.planOut, "plan-out", "", "write the immutable plan here")
+	fs.StringVar(&c.importFile, "import", "", "legacy inventory document to import")
+	fs.IntVar(&c.keep, "keep", 10, "release records retained by prune")
+	fs.BoolVar(&c.expired, "expired", false, "clean up every expired resource in the binding")
+	fs.DurationVar(&c.expiresIn, "expires-in", 0, "record a cleanup expiry this far in the future")
 	fs.DurationVar(&c.timeout, "timeout", 5*time.Minute, "operation timeout")
 	fs.StringVar(&c.resultFile, "result-file", os.Getenv("KODAMA_RESULTS_FILE"), "result manifest path")
 	fs.StringVar(&c.outputsDir, "outputs-dir", envOr("KODAMA_OUTPUTS_DIR", "/kodama/outputs"), "declared outputs root")
@@ -93,9 +109,6 @@ func main() {
 	}
 	if c.actionKey == "" {
 		c.actionKey = "local:" + cmd
-	}
-	if c.desired == "" {
-		c.desired = c.release
 	}
 	if c.binding == "" {
 		fail(fmt.Errorf("state-binding is required"))
@@ -109,30 +122,87 @@ func main() {
 		fail(err)
 	}
 	eng := &engine.Engine{State: client, Driver: drv}
+	ctxOutputs := readContext(c.contextFile)
+	descriptors, err := artifacts(c.bundle, c.manifest, ctxOutputs)
+	if err != nil {
+		fail(err)
+	}
 	cfg := engine.Config{
 		ActionKey: c.actionKey, OperationID: c.operationID, Resource: c.release,
 		Recipe: c.recipe, RecipeVersion: c.recipeVersion,
 		Configuration: mustJSON(map[string]any{
-			"cluster": c.cluster, "namespace": c.namespace, "release": c.release, "kubeconfig": c.kubeconfig,
+			"cluster": c.cluster, "namespace": c.namespace, "release": c.release, "kubeconfig": c.kubeconfig, "kubeContext": c.kubeContext,
 			"bundlePath": c.bundle, "manifestPath": c.manifest, "image": c.image,
 			"auxiliaryImages": splitList(c.auxiliaryImages), "allowMutableImage": c.allowMutableImage,
 			"accountId": c.accountID, "worker": c.worker,
 			"project": c.project, "region": c.region, "service": c.service,
 			"timeoutSeconds": int(c.timeout.Seconds()),
 		}),
-		DesiredRelease: c.desired, Timeout: c.timeout,
-		Artifacts: artifacts(c.bundle, c.manifest, readContext(c.contextFile)),
+		DesiredRelease: c.desired, Timeout: c.timeout, ExpiresIn: c.expiresIn,
+		Artifacts: descriptors,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout+30*time.Second)
 	defer cancel()
 	switch cmd {
+	case "plan":
+		plan, err := eng.Plan(ctx, cfg)
+		if err != nil {
+			fail(err)
+		}
+		if c.planOut != "" {
+			raw, err := json.MarshalIndent(plan, "", "  ")
+			if err != nil {
+				fail(err)
+			}
+			if err := os.WriteFile(c.planOut, append(raw, '\n'), 0o644); err != nil {
+				fail(err)
+			}
+		}
+		write(plan)
 	case "apply":
+		if c.planIn != "" {
+			raw, err := os.ReadFile(c.planIn)
+			if err != nil {
+				fail(err)
+			}
+			var plan engine.PlanDoc
+			if err := json.Unmarshal(raw, &plan); err != nil {
+				fail(err)
+			}
+			cfg.DesiredRelease = plan.Release
+			cfg.Artifacts = plan.Artifacts
+			cfg.Configuration = plan.Configuration
+			cfg.PlanDigest = plan.Fingerprint
+		}
 		out, err := eng.Apply(ctx, cfg)
 		if err != nil {
 			write(out)
 			fail(err)
 		}
 		emitResult(c, out)
+		write(out)
+	case "prune":
+		removed, err := eng.Prune(ctx, cfg, c.keep)
+		write(map[string]any{"removed": removed})
+		if err != nil {
+			fail(err)
+		}
+	case "import-legacy":
+		if c.importFile == "" {
+			fail(fmt.Errorf("--import is required"))
+		}
+		raw, err := os.ReadFile(c.importFile)
+		if err != nil {
+			fail(err)
+		}
+		var doc engine.LegacyImport
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			fail(err)
+		}
+		out, err := eng.ImportLegacy(ctx, cfg, doc)
+		if err != nil {
+			fail(err)
+		}
 		write(out)
 	case "status":
 		resource, obs, err := eng.Status(ctx, cfg)
@@ -163,6 +233,14 @@ func main() {
 			fail(err)
 		}
 	case "cleanup":
+		if c.expired {
+			out, err := eng.CleanupExpired(ctx, cfg)
+			write(out)
+			if err != nil {
+				fail(err)
+			}
+			return
+		}
 		out, err := eng.Cleanup(ctx, cfg)
 		if err == nil {
 			emitResult(c, out)
@@ -206,15 +284,61 @@ func splitList(value string) []string {
 	return out
 }
 
-func artifacts(bundle, manifest string, ctx contextOutputs) []driver.Artifact {
+// artifacts maps local input files to the verified descriptors pinned in the
+// attempt context. The server compares the state reference digest with the
+// artifact module's own digest, so a locally invented value can never be used.
+func artifacts(bundle, manifest string, ctx contextOutputs) ([]driver.Artifact, error) {
 	var out []driver.Artifact
-	if bundle != "" {
-		out = append(out, driver.Artifact{ID: artifactID(ctx, "bundle", "bundle"), Digest: digestFile(bundle), Kind: driver.ArtifactFile, Path: bundle})
+	for _, in := range []struct {
+		alias    string
+		path     string
+		fallback string
+	}{{"bundle", bundle, "bundle"}, {"manifest", manifest, "manifest"}} {
+		if in.path == "" {
+			continue
+		}
+		artifact, err := artifactDescriptor(ctx, in.alias, in.path, in.fallback)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, artifact)
 	}
-	if manifest != "" {
-		out = append(out, driver.Artifact{ID: artifactID(ctx, "manifest", "manifest"), Digest: digestFile(manifest), Kind: driver.ArtifactFile, Path: manifest})
+	return out, nil
+}
+
+func artifactDescriptor(ctx contextOutputs, alias, path, fallback string) (driver.Artifact, error) {
+	sum, err := sha256File(path)
+	if err != nil {
+		return driver.Artifact{}, fmt.Errorf("read %s artifact: %w", alias, err)
 	}
-	return out
+	for _, pinned := range ctx.ArtifactFiles {
+		if pinned.Name != alias {
+			continue
+		}
+		if pinned.ArtifactID == "" || pinned.Digest == "" {
+			return driver.Artifact{}, fmt.Errorf("pinned %s artifact descriptor is incomplete", alias)
+		}
+		if pinned.Digest != sum {
+			return driver.Artifact{}, fmt.Errorf("pinned %s artifact digest does not match the local file", alias)
+		}
+		return driver.Artifact{ID: pinned.ArtifactID, Digest: pinned.Digest, Kind: driver.ArtifactFile, Path: path}, nil
+	}
+	// A development invocation without a runtime context still gets a real
+	// content digest, never a value the server cannot verify.
+	return driver.Artifact{ID: fallback, Digest: sum, Kind: driver.ArtifactFile, Path: path}, nil
+}
+
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func readContext(path string) contextOutputs {
@@ -228,29 +352,6 @@ func readContext(path string) contextOutputs {
 	var ctx contextOutputs
 	_ = json.Unmarshal(raw, &ctx)
 	return ctx
-}
-
-func artifactID(ctx contextOutputs, alias, fallback string) string {
-	for _, a := range ctx.ArtifactFiles {
-		if a.Name == alias && a.ArtifactID != "" {
-			return a.ArtifactID
-		}
-	}
-	return fallback
-}
-
-func digestFile(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return digestValue(string(data))
-}
-
-func digestValue(value string) string {
-	// Kept local to the plugin binary; the server independently verifies the
-	// artifact digest before delivering it to a runtime.
-	return statev1.DigestValue(json.RawMessage(fmt.Sprintf("%q", value)), nil)
 }
 
 func mustJSON(v any) json.RawMessage {
@@ -286,7 +387,7 @@ func envFirst(names ...string) string {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: deploy apply|status|reconcile|rollback|cleanup|identify [flags]")
+	fmt.Fprintln(os.Stderr, "usage: deploy plan|apply|status|reconcile|rollback|cleanup|prune|import-legacy|identify [flags]")
 }
 
 // contextOutputs is the small part of the pinned context the plugin needs to

@@ -2,6 +2,7 @@ package runtimeauth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -52,6 +53,9 @@ func (r Resolver) resolve(ctx context.Context, req *http.Request, attempt, alias
 		ContextVersion: runtimeauth.WireV2,
 	})
 	if err != nil {
+		if errors.Is(err, runtimeauth.ErrUnavailable) {
+			return state.Scope{}, state.Binding{}, state.ErrUnavailable
+		}
 		return state.Scope{}, state.Binding{}, state.ErrDenied
 	}
 	for _, b := range auth.StateBindings {

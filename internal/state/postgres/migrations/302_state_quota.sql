@@ -59,7 +59,7 @@ BEGIN
     END IF;
     IF (SELECT entries FROM state_usage WHERE tenant_id = v_tenant AND project_id = v_project) > 10000
        OR (SELECT value_bytes FROM state_usage WHERE tenant_id = v_tenant AND project_id = v_project) > 67108864 THEN
-        RAISE EXCEPTION 'state quota exceeded for project %', v_project USING ERRCODE = '23514';
+        RAISE EXCEPTION 'state quota exceeded for project %', v_project USING ERRCODE = 'P0001';
     END IF;
     RETURN NULL;
 END;

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -25,6 +24,7 @@ type Config struct {
 	Namespace         string   `json:"namespace"`
 	Release           string   `json:"release"`
 	Kubeconfig        string   `json:"kubeconfig,omitempty"`
+	KubeContext       string   `json:"kubeContext,omitempty"`
 	ManifestPath      string   `json:"manifestPath,omitempty"`
 	BundlePath        string   `json:"bundlePath,omitempty"`
 	Image             string   `json:"image,omitempty"`
@@ -56,12 +56,15 @@ func resourceKey(cfg Config) string {
 	return "kubernetes/" + cfg.Cluster + "/" + cfg.Namespace + "/" + cfg.Release
 }
 
-func (d *Driver) Identify(_ context.Context, req driver.IdentityRequest) (driver.Identity, error) {
+func (d *Driver) Identify(ctx context.Context, req driver.IdentityRequest) (driver.Identity, error) {
 	var cfg Config
 	if err := json.Unmarshal(req.Configuration, &cfg); err != nil {
 		return driver.Identity{}, fmt.Errorf("kubernetes driver: decode configuration: %w", err)
 	}
 	if err := cfg.validate(); err != nil {
+		return driver.Identity{}, err
+	}
+	if err := d.validateKubeconfig(ctx, cfg); err != nil {
 		return driver.Identity{}, err
 	}
 	return driver.Identity{
@@ -103,6 +106,7 @@ func (d *Driver) Apply(ctx context.Context, req driver.Request, checkpoint drive
 	if err := d.ensureOwned(ctx, cfg, refs); err != nil {
 		return driver.Result{}, err
 	}
+	previous := previousResources(req.Previous)
 	rendered, err := render(objects, resourceKey(cfg), cfg.Release, req.OperationID)
 	if err != nil {
 		return driver.Result{}, err
@@ -128,6 +132,11 @@ func (d *Driver) Apply(ctx context.Context, req driver.Request, checkpoint drive
 	if err != nil {
 		return driver.Result{Effect: "possible", Resources: obs.Resources, Detail: mustJSON(obs)},
 			fmt.Errorf("kubernetes driver: apply did not become ready: %w", err)
+	}
+	if err := d.deleteRemoved(ctx, cfg, previous, refs); err != nil {
+		return driver.Result{Effect: "possible", Resources: obs.Resources, Detail: mustJSON(map[string]any{
+			"observation": obs, "cleanupError": err.Error(),
+		})}, err
 	}
 	return driver.Result{
 		Effect: "confirmed", ProviderRelease: cfg.Release, ProviderVersion: obs.ProviderVersion,
@@ -234,6 +243,60 @@ func (d *Driver) Rollback(ctx context.Context, req driver.Request, checkpoint dr
 	return d.Apply(ctx, req, checkpoint)
 }
 
+// deleteRemoved removes only objects from the recorded previous inventory that
+// are absent from the new inventory, using the same ownership and UID guards as
+// cleanup. It is part of applying a new release, not a force takeover.
+func (d *Driver) deleteRemoved(ctx context.Context, cfg Config, previous, current []driver.Resource) error {
+	keep := map[string]bool{}
+	for _, r := range current {
+		keep[r.Kind+"/"+r.Namespace+"/"+r.Name] = true
+	}
+	for i := len(previous) - 1; i >= 0; i-- {
+		resource := previous[i]
+		if keep[resource.Kind+"/"+resource.Namespace+"/"+resource.Name] {
+			continue
+		}
+		state, ok, err := d.getObject(ctx, cfg, resource)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		if state.Annotations["kodama.optimi.com/resource-key"] != resourceKey(cfg) {
+			return fmt.Errorf("kubernetes driver: refusing to delete unowned %s/%s", resource.Kind, resource.Name)
+		}
+		if resource.UID != "" && state.UID != resource.UID {
+			return fmt.Errorf("kubernetes driver: %s/%s was replaced; refusing to delete it", resource.Kind, resource.Name)
+		}
+		if err := d.deleteWithPreconditions(ctx, cfg, state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Driver) validateKubeconfig(ctx context.Context, cfg Config) error {
+	if cfg.Kubeconfig == "" {
+		return nil
+	}
+	if _, err := os.Stat(cfg.Kubeconfig); err != nil {
+		return fmt.Errorf("kubernetes driver: kubeconfig: %w", err)
+	}
+	out, err := d.run(ctx, cfg, "config", "current-context")
+	if err != nil {
+		return fmt.Errorf("kubernetes driver: read kubeconfig context: %w", err)
+	}
+	context := strings.TrimSpace(string(out))
+	if context == "" {
+		return fmt.Errorf("kubernetes driver: kubeconfig has no current context")
+	}
+	if cfg.KubeContext != "" && context != cfg.KubeContext {
+		return fmt.Errorf("kubernetes driver: kubeconfig context %q does not match the pinned context %q", context, cfg.KubeContext)
+	}
+	return nil
+}
+
 func previousResources(raw json.RawMessage) []driver.Resource {
 	if len(raw) == 0 {
 		return nil
@@ -269,5 +332,3 @@ func mustJSON(v any) json.RawMessage {
 	data, _ := json.Marshal(v)
 	return data
 }
-
-var _ = exec.Command

@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -217,4 +218,93 @@ func TestHTTPVerifyArtifactReferencesBeforeWrite(t *testing.T) {
 		t.Fatalf("denied reference: %s", resp.Status)
 	}
 	resp.Body.Close()
+}
+
+type retainingVerifier struct {
+	pinned   []string
+	unpinned []string
+	failPin  bool
+}
+
+func (v *retainingVerifier) VerifyArtifact(context.Context, Scope, domain.ArtifactID, string) error {
+	return nil
+}
+
+func (v *retainingVerifier) PinStateReference(_ context.Context, _ Scope, _, _ string, ref statev1.ArtifactReference) error {
+	if v.failPin {
+		return ErrDenied
+	}
+	v.pinned = append(v.pinned, ref.ArtifactID)
+	return nil
+}
+
+func (v *retainingVerifier) UnpinStateReference(_ context.Context, _ Scope, _, _ string, ref statev1.ArtifactReference) error {
+	v.unpinned = append(v.unpinned, ref.ArtifactID)
+	return nil
+}
+
+func TestHTTPStatePinsAndReleasesArtifactReferences(t *testing.T) {
+	mem := NewMemory(nil)
+	h, _ := NewHandler(mem, testResolver{scope: testScope(), write: true})
+	ret := &retainingVerifier{}
+	h.Artifacts = ret
+	h.Retention = ret
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	digest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	withRef := `{"value":{"release":"v1"},"artifactReferences":[{"artifactId":"art_1","digest":"` + digest + `"}]}`
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/runtime/v3/attempts/att_test/state/release/entries?key=releases/v1", strings.NewReader(withRef))
+	req.Header.Set("If-None-Match", "*")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create: %s", resp.Status)
+	}
+	etag := resp.Header.Get("ETag")
+	resp.Body.Close()
+	if len(ret.pinned) != 1 || ret.pinned[0] != "art_1" {
+		t.Fatalf("pinned = %+v", ret.pinned)
+	}
+
+	withoutRef := `{"value":{"release":"v2"}}`
+	req, _ = http.NewRequest(http.MethodPut, srv.URL+"/runtime/v3/attempts/att_test/state/release/entries?key=releases/v1", strings.NewReader(withoutRef))
+	req.Header.Set("If-Match", etag)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("update: %s", resp.Status)
+	}
+	resp.Body.Close()
+	if len(ret.unpinned) != 1 || ret.unpinned[0] != "art_1" {
+		t.Fatalf("unpinned = %+v", ret.unpinned)
+	}
+}
+
+func TestHTTPStateDoesNotWriteWhenRetentionPinFails(t *testing.T) {
+	mem := NewMemory(nil)
+	h, _ := NewHandler(mem, testResolver{scope: testScope(), write: true})
+	ret := &retainingVerifier{failPin: true}
+	h.Artifacts = ret
+	h.Retention = ret
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	body := `{"value":{"release":"v1"},"artifactReferences":[{"artifactId":"art_1","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/runtime/v3/attempts/att_test/state/release/entries?key=releases/v1", strings.NewReader(body))
+	req.Header.Set("If-None-Match", "*")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("pin failure = %s", resp.Status)
+	}
+	resp.Body.Close()
+	if _, err := mem.Get(context.Background(), testScope(), "deploy", "website/releases/v1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("entry written despite pin failure: %v", err)
+	}
 }

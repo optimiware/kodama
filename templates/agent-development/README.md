@@ -8,7 +8,8 @@ plan agent → implement agent → tests → code review agent → security revi
 ```
 
 The example is a design fixture until the `container-plugins` implementation
-packages and the named agent profiles are installed. It uses the existing
+packages and the named agent profiles are installed; the `profiles/` documents
+are installation templates, not registered profiles. It uses the existing
 `run_shared` serialized execution model: reads cannot publish, and a reviewer's
 report is an artifact outside the source tree.
 
@@ -28,7 +29,7 @@ evidence.
 | Path | Purpose |
 | --- | --- |
 | `pipeline.yaml` | Plan, implement, test, two independent reviews and a human gate |
-| `profiles/` | Installation-owned profile bindings (images, model/tool policy, limits) |
+| `profiles/` | Installation-owned profile drafts (`planner`, `implementer`, `code-reviewer`, `security-reviewer`) with placeholder images, models and digests |
 | `ci/test.sh` | The project test command used by the test step |
 | `spec.md` | Example intent and acceptance criteria for the work item |
 

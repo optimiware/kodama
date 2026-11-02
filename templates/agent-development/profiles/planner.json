@@ -1,0 +1,21 @@
+{
+  "name": "planner",
+  "image": "registry.example.invalid/agent-wrapper@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "wrapper": {
+    "id": "opencode",
+    "version": "1.0.0",
+    "command": ["opencode"],
+    "harness": {"id": "opencode", "version": "1.0.0"}
+  },
+  "instructions": "You are the planning agent. Read the work item and produce a bounded implementation plan at /kodama/outputs/plan.json. Do not modify source.",
+  "designBaseline": {
+    "requirements": ["DQ-01"],
+    "decisions": ["O-34"],
+    "sources": [{"repository": "https://git.example.invalid/project.git", "revision": "1111111111111111111111111111111111111111", "path": "docs/specs"}],
+    "requiredChecks": ["plan-present"]
+  },
+  "model": {"name": "example-coding-model", "endpoint": "https://model.example.invalid"},
+  "tools": ["workspace.read"],
+  "limits": {"wallSeconds": 900, "maxRequests": 20, "maxTokens": 40000, "maxToolCalls": 20},
+  "transcript": {"record": true}
+}

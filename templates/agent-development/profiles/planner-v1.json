@@ -1,0 +1,26 @@
+{
+  "name": "planner",
+  "image": "registry.example.invalid/agent-wrapper@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "wrapper": {
+    "kind": "opencode",
+    "version": "1"
+  },
+  "instructions": "You are the planning agent. Read the work item and produce a bounded implementation plan at the declared output path. Do not modify source.",
+  "designBaseline": {
+    "id": "baseline-example",
+    "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "model": {
+    "endpoint": "https://model.example.invalid",
+    "model": "example-coding-model"
+  },
+  "tools": ["workspace.read"],
+  "limits": {
+    "maxSeconds": 900,
+    "maxOutputBytes": 1048576,
+    "maxToolCalls": 20
+  },
+  "transcript": {
+    "record": true
+  }
+}
