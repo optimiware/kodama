@@ -220,3 +220,37 @@ func TestParseSubjectRejectsNoncanonical(t *testing.T) {
 		t.Fatalf("canonical form not accepted: %v", err)
 	}
 }
+
+func TestExtendedSubjectBindsDefinitionAndSnapshot(t *testing.T) {
+	in := baseInput()
+	in.SubjectVersion = 2
+	in.DefinitionDigest = digA
+	in.SnapshotDigest = digB
+	in.SourceRepository = "https://git.example.invalid/acme/inventory.git"
+	s, err := NewSubject(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Version() != 2 || s.DefinitionDigest() != digA || s.SnapshotDigest() != digB ||
+		s.SourceRepository() != in.SourceRepository {
+		t.Fatalf("subject = %+v", s)
+	}
+	if !strings.Contains(string(s.Canonical()), `"subjectVersion":2`) {
+		t.Fatalf("canonical = %s", s.Canonical())
+	}
+	parsed, err := ParseSubject(s.Canonical())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Digest() != s.Digest() || parsed.DefinitionDigest() != digA || parsed.SnapshotDigest() != digB {
+		t.Fatalf("parsed = %+v", parsed)
+	}
+	// The historical v1 subject bytes are not changed by the extension.
+	v1, err := NewSubject(baseInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(v1.Canonical()), "subjectVersion") {
+		t.Fatalf("v1 canonical gained a version field: %s", v1.Canonical())
+	}
+}

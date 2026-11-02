@@ -450,6 +450,11 @@ const (
 	StepStatusSucceeded StepStatus = "succeeded"
 )
 
+// Defines values for SubjectSubjectVersion.
+const (
+	N2 SubjectSubjectVersion = 2
+)
+
 // Defines values for VariableType.
 const (
 	Boolean VariableType = "boolean"
@@ -2325,7 +2330,8 @@ type Subject struct {
 	CandidateCommit GitCommit `json:"candidateCommit"`
 
 	// ContentRevision Resource version; the ETag is this integer in double quotes.
-	ContentRevision Version `json:"contentRevision"`
+	ContentRevision  Version `json:"contentRevision"`
+	DefinitionDigest *Digest `json:"definitionDigest,omitempty"`
 
 	// DefinitionId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	DefinitionId           ID                 `json:"definitionId"`
@@ -2334,7 +2340,12 @@ type Subject struct {
 	Evidence               []GatesEvidenceRef `json:"evidence"`
 
 	// ProjectId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
-	ProjectId ID `json:"projectId"`
+	ProjectId        ID      `json:"projectId"`
+	SnapshotDigest   *Digest `json:"snapshotDigest,omitempty"`
+	SourceRepository *string `json:"sourceRepository,omitempty"`
+
+	// SubjectVersion Present only for the extended subject that binds definition and execution snapshot digests.
+	SubjectVersion *SubjectSubjectVersion `json:"subjectVersion,omitempty"`
 
 	// TenantId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	TenantId ID `json:"tenantId"`
@@ -2342,6 +2353,9 @@ type Subject struct {
 	// WorkItemId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	WorkItemId ID `json:"workItemId"`
 }
+
+// SubjectSubjectVersion Present only for the extended subject that binds definition and execution snapshot digests.
+type SubjectSubjectVersion int
 
 // Tenant defines model for Tenant.
 type Tenant struct {

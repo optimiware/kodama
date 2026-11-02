@@ -49,6 +49,11 @@ const (
 	Support  RequiredEvidenceRole = "support"
 )
 
+// Defines values for SubjectSubjectVersion.
+const (
+	N2 SubjectSubjectVersion = 2
+)
+
 // Actor defines model for Actor.
 type Actor struct {
 	Id   string    `json:"id"`
@@ -192,7 +197,8 @@ type Subject struct {
 	CandidateCommit GitCommit `json:"candidateCommit"`
 
 	// ContentRevision Resource version; the ETag is this integer in double quotes.
-	ContentRevision externalRef0.Version `json:"contentRevision"`
+	ContentRevision  externalRef0.Version `json:"contentRevision"`
+	DefinitionDigest *Digest              `json:"definitionDigest,omitempty"`
 
 	// DefinitionId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	DefinitionId           externalRef0.ID `json:"definitionId"`
@@ -201,7 +207,12 @@ type Subject struct {
 	Evidence               []EvidenceRef   `json:"evidence"`
 
 	// ProjectId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
-	ProjectId externalRef0.ID `json:"projectId"`
+	ProjectId        externalRef0.ID `json:"projectId"`
+	SnapshotDigest   *Digest         `json:"snapshotDigest,omitempty"`
+	SourceRepository *string         `json:"sourceRepository,omitempty"`
+
+	// SubjectVersion Present only for the extended subject that binds definition and execution snapshot digests.
+	SubjectVersion *SubjectSubjectVersion `json:"subjectVersion,omitempty"`
 
 	// TenantId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	TenantId externalRef0.ID `json:"tenantId"`
@@ -209,6 +220,9 @@ type Subject struct {
 	// WorkItemId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	WorkItemId externalRef0.ID `json:"workItemId"`
 }
+
+// SubjectSubjectVersion Present only for the extended subject that binds definition and execution snapshot digests.
+type SubjectSubjectVersion int
 
 // Timestamp defines model for Timestamp.
 type Timestamp = time.Time

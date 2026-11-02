@@ -7979,6 +7979,8 @@ components:
           $ref: '#/components/schemas/GitCommit'
         contentRevision:
           $ref: '#/components/schemas/Version'
+        definitionDigest:
+          $ref: '#/components/schemas/Digest'
         definitionId:
           $ref: '#/components/schemas/ID'
         deploymentConfigDigest:
@@ -7995,6 +7997,16 @@ components:
           type: array
         projectId:
           $ref: '#/components/schemas/ID'
+        snapshotDigest:
+          $ref: '#/components/schemas/Digest'
+        sourceRepository:
+          pattern: ^https://[^\s@/?#]+(/[^\s@?#]*)?$
+          type: string
+        subjectVersion:
+          description: Present only for the extended subject that binds definition and execution snapshot digests.
+          enum:
+            - 2
+          type: integer
         tenantId:
           $ref: '#/components/schemas/ID'
         workItemId:

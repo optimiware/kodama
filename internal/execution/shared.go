@@ -64,8 +64,9 @@ type EndpointPin struct {
 // resolved limits, endpoints, effective access, execution order and resolved
 // service specs. It holds no secret value and no scratch content.
 type RunShared struct {
-	RunModel       string `json:"runModel"`
-	ContextVersion int64  `json:"contextVersion"`
+	RunModel          string `json:"runModel"`
+	ContextVersion    int64  `json:"contextVersion"`
+	DefinitionVersion string `json:"definitionVersion,omitempty"`
 
 	Policy     PolicyPin       `json:"policy"`
 	PolicyBody ExecutionPolicy `json:"policyBody"`

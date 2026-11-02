@@ -57,14 +57,17 @@ type GateCandidate struct {
 // pure function of the locked or loaded aggregate: the pinned run, the frozen
 // step and the finalized outputs of ancestors.
 type GateInputs struct {
-	Scope           domain.Scope
-	RunID           domain.RunID
-	StepID          string
-	WorkItemID      domain.WorkItemID
-	ContentRevision domain.ContentRevision
-	DefinitionID    domain.DefinitionID
-	Candidate       GateCandidate
-	Evidence        []GateEvidenceInput
+	Scope             domain.Scope
+	RunID             domain.RunID
+	StepID            string
+	WorkItemID        domain.WorkItemID
+	ContentRevision   domain.ContentRevision
+	DefinitionID      domain.DefinitionID
+	DefinitionDigest  string
+	SnapshotDigest    string
+	DefinitionVersion string
+	Candidate         GateCandidate
+	Evidence          []GateEvidenceInput
 	// DeploymentID is the resolved gate.deploymentId reference, or "".
 	DeploymentID string
 }
@@ -213,7 +216,11 @@ func (a *Aggregate) GateInputs(stepID string) (GateInputs, error) {
 	in := GateInputs{
 		Scope: run.Scope, RunID: run.ID, StepID: stepID, WorkItemID: run.WorkItemID,
 		ContentRevision: run.ContentRevision, DefinitionID: run.DefinitionID,
+		DefinitionDigest: run.DefinitionDigest, SnapshotDigest: run.SnapshotDigest,
 		Candidate: GateCandidate{Commit: run.SourceCommit},
+	}
+	if run.Shared != nil {
+		in.DefinitionVersion = run.Shared.DefinitionVersion
 	}
 	w, err := a.lastWriter(anc)
 	if err != nil {

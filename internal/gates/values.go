@@ -146,3 +146,12 @@ func validCommit(kind, v string) error {
 	}
 	return nil
 }
+
+var repositoryPattern = regexp.MustCompile(`^https://[^\s@/?#]+(/[^\s@?#]*)?$`)
+
+func validRepository(kind, v string) error {
+	if !repositoryPattern.MatchString(v) {
+		return invalidf("%s must be a credential-free https URL", kind)
+	}
+	return nil
+}

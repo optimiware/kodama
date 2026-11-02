@@ -292,6 +292,17 @@ components:
       required: [tenantId, projectId, workItemId, contentRevision, candidateCommit, definitionId, evidence, deploymentId, deploymentConfigDigest]
       additionalProperties: false
       properties:
+        subjectVersion:
+          type: integer
+          enum: [2]
+          description: Present only for the extended subject that binds definition and execution snapshot digests.
+        definitionDigest:
+          $ref: '#/components/schemas/Digest'
+        snapshotDigest:
+          $ref: '#/components/schemas/Digest'
+        sourceRepository:
+          type: string
+          pattern: '^https://[^\s@/?#]+(/[^\s@?#]*)?$'
         tenantId:
           $ref: 'common.yaml#/components/schemas/ID'
         projectId:

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
@@ -139,6 +140,12 @@ func (s *Service) RequestForStep(ctx context.Context, scope domain.Scope, run do
 	sin := SubjectInput{
 		Scope: scope, WorkItemID: in.WorkItemID, ContentRevision: in.ContentRevision, CandidateCommit: in.Candidate.Commit,
 		DefinitionID: in.DefinitionID, Evidence: refs,
+	}
+	if in.DefinitionVersion == pipelinev1alpha3.APIVersion {
+		sin.SubjectVersion = 2
+		sin.DefinitionDigest = in.DefinitionDigest
+		sin.SnapshotDigest = in.SnapshotDigest
+		sin.SourceRepository = src.Repository
 	}
 	if deployment != nil {
 		sin.DeploymentID, sin.DeploymentConfigDigest = deployment.ID, deployment.ConfigDigest

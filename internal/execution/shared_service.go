@@ -121,6 +121,7 @@ func (s *Service) planShared(ctx context.Context, scope domain.Scope, runID doma
 	if err != nil {
 		return nil, nil, err
 	}
+	shared.DefinitionVersion = doc.APIVersion
 	if err := shared.Verify(); err != nil {
 		return nil, nil, Refusedf("%s", ReasonPolicyUnavailable)
 	}

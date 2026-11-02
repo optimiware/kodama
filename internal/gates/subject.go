@@ -24,12 +24,18 @@ type EvidenceRef struct {
 // SubjectInput is the server-side material of a subject. Nothing in it comes
 // from a decision request.
 type SubjectInput struct {
-	Scope           domain.Scope
-	WorkItemID      domain.WorkItemID
-	ContentRevision domain.ContentRevision
-	CandidateCommit string
-	DefinitionID    domain.DefinitionID
-	Evidence        []EvidenceRef
+	Scope            domain.Scope
+	WorkItemID       domain.WorkItemID
+	ContentRevision  domain.ContentRevision
+	CandidateCommit  string
+	DefinitionID     domain.DefinitionID
+	DefinitionDigest string
+	SnapshotDigest   string
+	SourceRepository string
+	// SubjectVersion selects the extended v2 subject. Zero is the historical
+	// v1 shape; existing canonical bytes and hashes stay unchanged.
+	SubjectVersion int
+	Evidence       []EvidenceRef
 	// DeploymentID and DeploymentConfigDigest are both empty for a source-only
 	// gate and both set for a gate that reviews a deployment.
 	DeploymentID           string
@@ -41,16 +47,20 @@ type SubjectInput struct {
 // configuration. It is immutable once built; the canonical bytes and digest
 // are what a reviewer's decision is bound to.
 type Subject struct {
-	scope      domain.Scope
-	workItem   domain.WorkItemID
-	revision   domain.ContentRevision
-	candidate  string
-	definition domain.DefinitionID
-	evidence   []EvidenceRef
-	deployment *string
-	config     *string
-	canonical  []byte
-	digest     string
+	scope            domain.Scope
+	workItem         domain.WorkItemID
+	revision         domain.ContentRevision
+	candidate        string
+	definition       domain.DefinitionID
+	evidence         []EvidenceRef
+	deployment       *string
+	config           *string
+	version          int
+	definitionDigest string
+	snapshotDigest   string
+	sourceRepository string
+	canonical        []byte
+	digest           string
 }
 
 // NewSubject validates, normalizes and canonicalizes a subject. Evidence is
@@ -61,22 +71,57 @@ func NewSubject(in SubjectInput) (Subject, error) {
 	if err := in.Scope.Validate(); err != nil {
 		return Subject{}, invalidf("%v", err)
 	}
-	if err := in.WorkItemID.Validate(); err != nil {
-		return Subject{}, invalidf("%v", err)
-	}
-	if err := in.ContentRevision.Validate(); err != nil {
-		return Subject{}, invalidf("%v", err)
-	}
-	if err := validCommit("candidate commit", in.CandidateCommit); err != nil {
-		return Subject{}, err
-	}
-	if err := in.DefinitionID.Validate(); err != nil {
-		return Subject{}, invalidf("%v", err)
+	v2 := in.SubjectVersion == 2 || in.DefinitionDigest != "" || in.SnapshotDigest != "" || in.SourceRepository != ""
+	if v2 {
+		in.SubjectVersion = 2
+		if in.WorkItemID != "" {
+			if err := in.WorkItemID.Validate(); err != nil {
+				return Subject{}, invalidf("%v", err)
+			}
+		}
+		if in.ContentRevision != 0 {
+			if err := in.ContentRevision.Validate(); err != nil {
+				return Subject{}, invalidf("%v", err)
+			}
+		}
+		if in.CandidateCommit != "" {
+			if err := validCommit("candidate commit", in.CandidateCommit); err != nil {
+				return Subject{}, err
+			}
+		}
+		if err := in.DefinitionID.Validate(); err != nil {
+			return Subject{}, invalidf("%v", err)
+		}
+		if err := validDigest("definition digest", in.DefinitionDigest); err != nil {
+			return Subject{}, err
+		}
+		if err := validDigest("execution snapshot digest", in.SnapshotDigest); err != nil {
+			return Subject{}, err
+		}
+		if in.SourceRepository != "" {
+			if err := validRepository("source repository", in.SourceRepository); err != nil {
+				return Subject{}, err
+			}
+		}
+	} else {
+		if err := in.WorkItemID.Validate(); err != nil {
+			return Subject{}, invalidf("%v", err)
+		}
+		if err := in.ContentRevision.Validate(); err != nil {
+			return Subject{}, invalidf("%v", err)
+		}
+		if err := validCommit("candidate commit", in.CandidateCommit); err != nil {
+			return Subject{}, err
+		}
+		if err := in.DefinitionID.Validate(); err != nil {
+			return Subject{}, invalidf("%v", err)
+		}
 	}
 	if (in.DeploymentID == "") != (in.DeploymentConfigDigest == "") {
 		return Subject{}, invalidf("a deployment and its configuration digest are set together")
 	}
-	s := Subject{scope: in.Scope, workItem: in.WorkItemID, revision: in.ContentRevision, candidate: in.CandidateCommit, definition: in.DefinitionID}
+	s := Subject{scope: in.Scope, workItem: in.WorkItemID, revision: in.ContentRevision, candidate: in.CandidateCommit, definition: in.DefinitionID,
+		version: in.SubjectVersion, definitionDigest: in.DefinitionDigest, snapshotDigest: in.SnapshotDigest, sourceRepository: in.SourceRepository}
 	if in.DeploymentID != "" {
 		if err := validID("deployment id", in.DeploymentID); err != nil {
 			return Subject{}, err
@@ -148,10 +193,44 @@ type subjectWire struct {
 	DeploymentConfigDigest *string       `json:"deploymentConfigDigest"`
 }
 
-func (s Subject) wire() subjectWire {
+type subjectWireV2 struct {
+	SubjectVersion   int           `json:"subjectVersion"`
+	TenantID         string        `json:"tenantId"`
+	ProjectID        string        `json:"projectId"`
+	WorkItemID       *string       `json:"workItemId"`
+	ContentRevision  *int64        `json:"contentRevision"`
+	CandidateCommit  string        `json:"candidateCommit"`
+	DefinitionID     string        `json:"definitionId"`
+	DefinitionDigest string        `json:"definitionDigest"`
+	SnapshotDigest   string        `json:"snapshotDigest"`
+	SourceRepository *string       `json:"sourceRepository"`
+	Evidence         []EvidenceRef `json:"evidence"`
+}
+
+func (s Subject) wire() any {
 	ev := s.evidence
 	if ev == nil {
 		ev = []EvidenceRef{}
+	}
+	if s.version == 2 {
+		w := subjectWireV2{
+			SubjectVersion: 2, TenantID: string(s.scope.TenantID), ProjectID: string(s.scope.ProjectID),
+			CandidateCommit: s.candidate, DefinitionID: string(s.definition), DefinitionDigest: s.definitionDigest,
+			SnapshotDigest: s.snapshotDigest, Evidence: ev,
+		}
+		if s.workItem != "" {
+			v := string(s.workItem)
+			w.WorkItemID = &v
+		}
+		if s.revision != 0 {
+			v := int64(s.revision)
+			w.ContentRevision = &v
+		}
+		if s.sourceRepository != "" {
+			v := s.sourceRepository
+			w.SourceRepository = &v
+		}
+		return w
 	}
 	return subjectWire{
 		TenantID: string(s.scope.TenantID), ProjectID: string(s.scope.ProjectID), WorkItemID: string(s.workItem),
@@ -165,22 +244,56 @@ func (s Subject) wire() subjectWire {
 // and noncanonical encodings are rejected, so a stored subject can never
 // disagree with its digest.
 func ParseSubject(canonical []byte) (Subject, error) {
-	dec := json.NewDecoder(bytes.NewReader(canonical))
-	dec.DisallowUnknownFields()
-	var w subjectWire
-	if err := dec.Decode(&w); err != nil {
+	var probe struct {
+		SubjectVersion int `json:"subjectVersion"`
+	}
+	if err := json.Unmarshal(canonical, &probe); err != nil {
 		return Subject{}, invalidf("subject: %v", err)
 	}
-	in := SubjectInput{
-		Scope:      domain.Scope{TenantID: domain.TenantID(w.TenantID), ProjectID: domain.ProjectID(w.ProjectID)},
-		WorkItemID: domain.WorkItemID(w.WorkItemID), ContentRevision: domain.ContentRevision(w.ContentRevision),
-		CandidateCommit: w.CandidateCommit, DefinitionID: domain.DefinitionID(w.DefinitionID), Evidence: w.Evidence,
-	}
-	if w.DeploymentID != nil {
-		in.DeploymentID = *w.DeploymentID
-	}
-	if w.DeploymentConfigDigest != nil {
-		in.DeploymentConfigDigest = *w.DeploymentConfigDigest
+	var in SubjectInput
+	if probe.SubjectVersion == 2 {
+		dec := json.NewDecoder(bytes.NewReader(canonical))
+		dec.DisallowUnknownFields()
+		var w subjectWireV2
+		if err := dec.Decode(&w); err != nil {
+			return Subject{}, invalidf("subject: %v", err)
+		}
+		in = SubjectInput{
+			Scope:            domain.Scope{TenantID: domain.TenantID(w.TenantID), ProjectID: domain.ProjectID(w.ProjectID)},
+			CandidateCommit:  w.CandidateCommit,
+			DefinitionID:     domain.DefinitionID(w.DefinitionID),
+			DefinitionDigest: w.DefinitionDigest,
+			SnapshotDigest:   w.SnapshotDigest,
+			SubjectVersion:   2,
+			Evidence:         w.Evidence,
+		}
+		if w.WorkItemID != nil {
+			in.WorkItemID = domain.WorkItemID(*w.WorkItemID)
+		}
+		if w.ContentRevision != nil {
+			in.ContentRevision = domain.ContentRevision(*w.ContentRevision)
+		}
+		if w.SourceRepository != nil {
+			in.SourceRepository = *w.SourceRepository
+		}
+	} else {
+		dec := json.NewDecoder(bytes.NewReader(canonical))
+		dec.DisallowUnknownFields()
+		var w subjectWire
+		if err := dec.Decode(&w); err != nil {
+			return Subject{}, invalidf("subject: %v", err)
+		}
+		in = SubjectInput{
+			Scope:      domain.Scope{TenantID: domain.TenantID(w.TenantID), ProjectID: domain.ProjectID(w.ProjectID)},
+			WorkItemID: domain.WorkItemID(w.WorkItemID), ContentRevision: domain.ContentRevision(w.ContentRevision),
+			CandidateCommit: w.CandidateCommit, DefinitionID: domain.DefinitionID(w.DefinitionID), Evidence: w.Evidence,
+		}
+		if w.DeploymentID != nil {
+			in.DeploymentID = *w.DeploymentID
+		}
+		if w.DeploymentConfigDigest != nil {
+			in.DeploymentConfigDigest = *w.DeploymentConfigDigest
+		}
 	}
 	s, err := NewSubject(in)
 	if err != nil {
@@ -204,6 +317,16 @@ func (s Subject) WorkItemID() domain.WorkItemID           { return s.workItem }
 func (s Subject) ContentRevision() domain.ContentRevision { return s.revision }
 func (s Subject) CandidateCommit() string                 { return s.candidate }
 func (s Subject) DefinitionID() domain.DefinitionID       { return s.definition }
+
+// Version reports the subject version (0/1 historical, 2 extended).
+func (s Subject) Version() int { return s.version }
+
+// DefinitionDigest and SnapshotDigest are set for an extended v2 subject.
+func (s Subject) DefinitionDigest() string { return s.definitionDigest }
+func (s Subject) SnapshotDigest() string   { return s.snapshotDigest }
+
+// SourceRepository is the verified repository identity, or empty.
+func (s Subject) SourceRepository() string { return s.sourceRepository }
 
 // Evidence returns a copy of the sorted evidence references.
 func (s Subject) Evidence() []EvidenceRef { return append([]EvidenceRef{}, s.evidence...) }

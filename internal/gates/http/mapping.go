@@ -28,13 +28,21 @@ func gateDTO(g *gates.Gate, now time.Time) Gate {
 	for _, r := range g.Required.Evidence {
 		req = append(req, RequiredEvidence{Role: RequiredEvidenceRole(r.Role), Id: string(r.ID), Digest: r.Digest, Expression: strp(r.Expression), Producer: strp(r.Producer)})
 	}
+	subject := Subject{
+		TenantId: string(s.Scope().TenantID), ProjectId: string(s.Scope().ProjectID), WorkItemId: string(s.WorkItemID()),
+		ContentRevision: int64(s.ContentRevision()), CandidateCommit: s.CandidateCommit(), DefinitionId: string(s.DefinitionID()),
+		Evidence: evidence, DeploymentId: strp(depID), DeploymentConfigDigest: strp(depCfg),
+	}
+	if s.Version() == 2 {
+		version := SubjectSubjectVersion(2)
+		subject.SubjectVersion = &version
+		subject.DefinitionDigest = strp(s.DefinitionDigest())
+		subject.SnapshotDigest = strp(s.SnapshotDigest())
+		subject.SourceRepository = strp(s.SourceRepository())
+	}
 	out := Gate{
 		Id: string(g.ID), RunId: string(g.RunID), StepId: g.StepID, Status: GateStatus(g.Status), SubjectDigest: g.SubjectDigest(),
-		Subject: Subject{
-			TenantId: string(s.Scope().TenantID), ProjectId: string(s.Scope().ProjectID), WorkItemId: string(s.WorkItemID()),
-			ContentRevision: int64(s.ContentRevision()), CandidateCommit: s.CandidateCommit(), DefinitionId: string(s.DefinitionID()),
-			Evidence: evidence, DeploymentId: strp(depID), DeploymentConfigDigest: strp(depCfg),
-		},
+		Subject:     subject,
 		Required:    Required{Evidence: req},
 		RequestedAt: g.RequestedAt.UTC(), Deadline: g.Deadline.UTC(), Version: int64(g.Version),
 		CreatedAt: g.CreatedAt.UTC(), UpdatedAt: g.UpdatedAt.UTC(),
