@@ -36,6 +36,9 @@ type common struct {
 	release           string
 	accountID         string
 	worker            string
+	workerURL         string
+	verificationURL   string
+	buildMarker       string
 	project           string
 	region            string
 	service           string
@@ -82,6 +85,9 @@ func main() {
 	fs.StringVar(&c.release, "release", "", "release name")
 	fs.StringVar(&c.accountID, "account-id", "", "Cloudflare account ID")
 	fs.StringVar(&c.worker, "worker", "", "Cloudflare Worker name")
+	fs.StringVar(&c.workerURL, "url", "", "public application URL for the receipt")
+	fs.StringVar(&c.verificationURL, "verification-url", "", "served URL checked for readiness")
+	fs.StringVar(&c.buildMarker, "build-marker", "", "string that must appear at the verification URL")
 	fs.StringVar(&c.project, "project", "", "GCP project")
 	fs.StringVar(&c.region, "region", "", "GCP region")
 	fs.StringVar(&c.service, "service", "", "GCP Cloud Run service")
@@ -134,7 +140,8 @@ func main() {
 			"cluster": c.cluster, "namespace": c.namespace, "release": c.release, "kubeconfig": c.kubeconfig, "kubeContext": c.kubeContext,
 			"bundlePath": c.bundle, "manifestPath": c.manifest, "image": c.image,
 			"auxiliaryImages": splitList(c.auxiliaryImages), "allowMutableImage": c.allowMutableImage,
-			"accountId": c.accountID, "worker": c.worker,
+			"accountId": c.accountID, "worker": c.worker, "url": c.workerURL,
+			"verificationUrl": c.verificationURL, "buildMarker": c.buildMarker,
 			"project": c.project, "region": c.region, "service": c.service,
 			"timeoutSeconds": int(c.timeout.Seconds()),
 		}),
@@ -419,6 +426,7 @@ func emitResult(c common, outcome any) {
 		return
 	}
 	resource := map[string]any{}
+	url := ""
 	if doc, ok := outcome.(map[string]any); ok {
 		if r, ok := doc["resource"].(map[string]any); ok {
 			resource = r
@@ -428,7 +436,11 @@ func emitResult(c common, outcome any) {
 			"desiredRelease": doc.Resource.DesiredRelease, "providerVersion": doc.Resource.ProviderVersion,
 			"providerRelease": doc.Resource.ProviderRelease,
 		}
+		if doc.Operation.Result != nil {
+			url = doc.Operation.Result.URL
+		}
 	}
+	receipt := receiptFor(outcome, url)
 	outputs := map[string]any{}
 	for _, decl := range ctx.Outputs {
 		switch decl.Type {
@@ -439,7 +451,12 @@ func emitResult(c common, outcome any) {
 			if err := os.MkdirAll(filepath.Dir(*decl.Path), 0o755); err != nil {
 				fail(err)
 			}
-			data, _ := json.MarshalIndent(outcome, "", "  ")
+			var data []byte
+			if decl.Name == "receipt" || decl.Name == "deployment" {
+				data, _ = json.MarshalIndent(receipt, "", "  ")
+			} else {
+				data, _ = json.MarshalIndent(outcome, "", "  ")
+			}
 			if err := os.WriteFile(*decl.Path, append(data, '\n'), 0o644); err != nil {
 				fail(err)
 			}
@@ -452,6 +469,8 @@ func emitResult(c common, outcome any) {
 				value = stringValue(resource["providerVersion"])
 			case "provider_release":
 				value = stringValue(resource["providerRelease"])
+			case "url":
+				value = url
 			}
 			outputs[decl.Name] = value
 		case "boolean":
@@ -475,4 +494,32 @@ func emitResult(c common, outcome any) {
 func stringValue(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+// receiptFor is a versioned, provider-neutral summary of one invocation. It
+// carries identifiers and the observed provider version, never credentials or
+// expiring download URLs.
+func receiptFor(outcome any, url string) map[string]any {
+	receipt := map[string]any{
+		"schemaVersion": 1,
+		"outcome":       "completed",
+		"url":           url,
+		"observedAt":    time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if doc, ok := outcome.(engine.Outcome); ok {
+		receipt["operationId"] = doc.Operation.ID
+		receipt["operationKind"] = doc.Operation.Kind
+		receipt["operationStatus"] = doc.Operation.Status
+		receipt["release"] = doc.Resource.DesiredRelease
+		receipt["providerRelease"] = doc.Resource.ProviderRelease
+		receipt["providerVersion"] = doc.Resource.ProviderVersion
+		receipt["effect"] = doc.Operation.Effect
+		if doc.Operation.Result != nil {
+			receipt["result"] = doc.Operation.Result
+		}
+		if doc.Operation.Observation != nil {
+			receipt["observation"] = doc.Operation.Observation
+		}
+	}
+	return receipt
 }

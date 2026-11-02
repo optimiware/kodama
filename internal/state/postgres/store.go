@@ -51,7 +51,7 @@ func (s *Store) Get(ctx context.Context, scope state.Scope, namespace, key strin
 	}
 	var entry statev1.Entry
 	err := s.tx(ctx, scope, true, func(ctx context.Context, tx pgx.Tx) error {
-		return scanEntry(tx.QueryRow(ctx, `SELECT namespace, key, value, artifact_references, generation, revision, updated_at, updated_by
+		return scanEntry(tx.QueryRow(ctx, `SELECT namespace, key, value, artifact_references, generation, revision, created_at, updated_at, updated_by
 			FROM state_entries WHERE tenant_id=$1 AND project_id=$2 AND namespace=$3 AND key=$4`,
 			scope.TenantID, scope.ProjectID, namespace, key), &entry)
 	})
@@ -76,7 +76,7 @@ func (s *Store) List(ctx context.Context, scope state.Scope, namespace, prefix, 
 	var items []statev1.Entry
 	next := ""
 	err := s.tx(ctx, scope, true, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT namespace, key, value, artifact_references, generation, revision, updated_at, updated_by
+		rows, err := tx.Query(ctx, `SELECT namespace, key, value, artifact_references, generation, revision, created_at, updated_at, updated_by
 			FROM state_entries
 			WHERE tenant_id=$1 AND project_id=$2 AND namespace=$3 AND starts_with(key, $4) AND key >= $5
 			ORDER BY key LIMIT $6`, scope.TenantID, scope.ProjectID, namespace, prefix, cursor, limit+1)
@@ -116,10 +116,10 @@ func (s *Store) Create(ctx context.Context, scope state.Scope, namespace, key, a
 	var entry statev1.Entry
 	err := s.tx(ctx, scope, false, func(ctx context.Context, tx pgx.Tx) error {
 		row := tx.QueryRow(ctx, `INSERT INTO state_entries
-			(tenant_id, project_id, namespace, key, value, artifact_references, generation, revision, updated_at, updated_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9)
-			RETURNING namespace, key, value, artifact_references, generation, revision, updated_at, updated_by`,
-			scope.TenantID, scope.ProjectID, namespace, key, []byte(req.Value), refs, generation, now, actor)
+			(tenant_id, project_id, namespace, key, value, artifact_references, generation, revision, created_at, updated_at, updated_by)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10)
+			RETURNING namespace, key, value, artifact_references, generation, revision, created_at, updated_at, updated_by`,
+			scope.TenantID, scope.ProjectID, namespace, key, []byte(req.Value), refs, generation, now, now, actor)
 		if err := scanEntry(row, &entry); err != nil {
 			return err
 		}
@@ -146,7 +146,7 @@ func (s *Store) Update(ctx context.Context, scope state.Scope, namespace, key, a
 			value=$5, artifact_references=$6, revision=revision+1, updated_at=$7, updated_by=$8
 			WHERE tenant_id=$1 AND project_id=$2 AND namespace=$3 AND key=$4
 			  AND generation=$9 AND revision=$10
-			RETURNING namespace, key, value, artifact_references, generation, revision, updated_at, updated_by`,
+			RETURNING namespace, key, value, artifact_references, generation, revision, created_at, updated_at, updated_by`,
 			scope.TenantID, scope.ProjectID, namespace, key, []byte(req.Value), refs, s.now().UTC(), actor, generation, revision)
 		if err := scanEntry(row, &entry); errors.Is(err, pgx.ErrNoRows) {
 			return state.ErrConflict
@@ -226,12 +226,12 @@ func referencesJSON(refs []statev1.ArtifactReference) []byte {
 
 func scanEntry(row pgx.Row, e *statev1.Entry) error {
 	var value, refs []byte
-	var updated time.Time
-	if err := row.Scan(&e.Namespace, &e.Key, &value, &refs, &e.Generation, &e.Revision, &updated, &e.UpdatedBy); err != nil {
+	var created, updated time.Time
+	if err := row.Scan(&e.Namespace, &e.Key, &value, &refs, &e.Generation, &e.Revision, &created, &updated, &e.UpdatedBy); err != nil {
 		return err
 	}
 	e.Value = value
-	e.UpdatedAt = updated
+	e.CreatedAt, e.UpdatedAt = created, updated
 	if err := json.Unmarshal(refs, &e.ArtifactReferences); err != nil {
 		return err
 	}

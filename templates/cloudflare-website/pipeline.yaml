@@ -39,6 +39,12 @@ spec:
         - "${{ inputs.account_id }}"
         - --worker
         - website-stage
+        - --url
+        - https://website-stage.example.workers.dev
+        - --verification-url
+        - https://website-stage.example.workers.dev/healthz
+        - --build-marker
+        - website-stage-v1
         - --state-binding
         - release
         - --bundle

@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -94,4 +96,35 @@ func writeBundle(t *testing.T, dir string) string {
 		t.Fatal(err)
 	}
 	return p
+}
+
+func TestObserveChecksBuildMarker(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "wrangler")
+	script := `#!/bin/sh
+case "$1 $2" in
+  "deployments list") echo '[{"id":"dep-1","versions":[{"version_id":"ver-1"}]}]' ;;
+  *) echo '{}' ;;
+esac
+`
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("build: marker-1"))
+	}))
+	defer srv.Close()
+	cfg := Config{AccountID: "acct", Worker: "worker", BundlePath: writeBundle(t, dir),
+		VerificationURL: srv.URL, BuildMarker: "marker-1"}
+	raw, _ := json.Marshal(cfg)
+	obs, err := (&Driver{Wrangler: bin}).Observe(context.Background(), driver.Request{Configuration: raw})
+	if err != nil || obs.State != driver.Ready {
+		t.Fatalf("observe = %+v %v", obs, err)
+	}
+	cfg.BuildMarker = "marker-2"
+	raw, _ = json.Marshal(cfg)
+	obs, err = (&Driver{Wrangler: bin}).Observe(context.Background(), driver.Request{Configuration: raw})
+	if err != nil || obs.State != driver.Unhealthy {
+		t.Fatalf("stale marker = %+v %v", obs, err)
+	}
 }

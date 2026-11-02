@@ -48,6 +48,7 @@ type Entry struct {
 	ArtifactReferences []ArtifactReference `json:"artifactReferences,omitempty"`
 	Generation         int64               `json:"generation"`
 	Revision           int64               `json:"revision"`
+	CreatedAt          time.Time           `json:"createdAt"`
 	UpdatedAt          time.Time           `json:"updatedAt"`
 	UpdatedBy          string              `json:"updatedBy,omitempty"`
 }

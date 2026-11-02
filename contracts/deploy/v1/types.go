@@ -69,6 +69,7 @@ type Result struct {
 	Effect          string          `json:"effect"`
 	ProviderRelease string          `json:"providerRelease,omitempty"`
 	ProviderVersion string          `json:"providerVersion,omitempty"`
+	URL             string          `json:"url,omitempty"`
 	Resources       []Resource      `json:"resources,omitempty"`
 	Detail          json.RawMessage `json:"detail,omitempty"`
 }

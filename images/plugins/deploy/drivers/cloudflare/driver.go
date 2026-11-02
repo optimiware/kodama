@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,11 +24,14 @@ const (
 // Config is the Cloudflare Workers recipe configuration. The API token is
 // delivered through the existing secret mechanism and is never read here.
 type Config struct {
-	AccountID      string `json:"accountId"`
-	Worker         string `json:"worker"`
-	BundlePath     string `json:"bundlePath,omitempty"`
-	Wrangler       string `json:"wrangler,omitempty"`
-	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
+	AccountID       string `json:"accountId"`
+	Worker          string `json:"worker"`
+	URL             string `json:"url,omitempty"`
+	VerificationURL string `json:"verificationUrl,omitempty"`
+	BuildMarker     string `json:"buildMarker,omitempty"`
+	BundlePath      string `json:"bundlePath,omitempty"`
+	Wrangler        string `json:"wrangler,omitempty"`
+	TimeoutSeconds  int    `json:"timeoutSeconds,omitempty"`
 }
 
 func (c Config) validate() error {
@@ -89,7 +94,7 @@ func (d *Driver) Apply(ctx context.Context, req driver.Request, checkpoint drive
 	if obs.State != driver.Ready {
 		return driver.Result{Effect: "possible", Detail: mustJSON(obs)}, fmt.Errorf("cloudflare driver: worker is %s", obs.State)
 	}
-	return driver.Result{Effect: "confirmed", ProviderRelease: obs.ProviderRelease, ProviderVersion: obs.ProviderVersion, Detail: mustJSON(obs)}, nil
+	return driver.Result{Effect: "confirmed", ProviderRelease: obs.ProviderRelease, ProviderVersion: obs.ProviderVersion, URL: cfg.URL, Detail: mustJSON(obs)}, nil
 }
 
 func (d *Driver) Observe(ctx context.Context, req driver.Request) (driver.Observation, error) {
@@ -127,6 +132,13 @@ func (d *Driver) Observe(ctx context.Context, req driver.Request) (driver.Observ
 	state := driver.Ready
 	if latest.ID == "" || version == "" {
 		state = driver.Progressing
+	}
+	if state == driver.Ready && cfg.VerificationURL != "" {
+		if err := verifyMarker(ctx, cfg); err != nil {
+			return driver.Observation{State: driver.Unhealthy, ObservedAt: time.Now().UTC(),
+				ProviderRelease: latest.ID, ProviderVersion: version, ObservedRelease: cfg.Worker,
+				Detail: mustJSON(map[string]string{"verificationError": err.Error()})}, nil
+		}
 	}
 	return driver.Observation{
 		State: state, ObservedAt: time.Now().UTC(), ProviderRelease: latest.ID,
@@ -178,7 +190,31 @@ func (d *Driver) Rollback(ctx context.Context, req driver.Request, checkpoint dr
 	if err != nil || obs.State != driver.Ready {
 		return driver.Result{Effect: "possible"}, fmt.Errorf("cloudflare driver: rollback was not observed ready")
 	}
-	return driver.Result{Effect: "confirmed", ProviderRelease: obs.ProviderRelease, ProviderVersion: obs.ProviderVersion, Detail: mustJSON(obs)}, nil
+	return driver.Result{Effect: "confirmed", ProviderRelease: obs.ProviderRelease, ProviderVersion: obs.ProviderVersion, URL: cfg.URL, Detail: mustJSON(obs)}, nil
+}
+
+func verifyMarker(ctx context.Context, cfg Config) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.VerificationURL, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("verification returned HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	if cfg.BuildMarker != "" && !strings.Contains(string(body), cfg.BuildMarker) {
+		return fmt.Errorf("build marker is not served")
+	}
+	return nil
 }
 
 func (d *Driver) run(ctx context.Context, cfg Config, dir string, args ...string) ([]byte, error) {
