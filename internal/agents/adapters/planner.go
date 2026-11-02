@@ -23,21 +23,48 @@ var _ execution.Planner = Planner{}
 
 // Plan implements execution.Planner.
 func (p Planner) Plan(tenant domain.TenantID, c runtimev1.Context) (execution.WorkloadPlan, error) {
-	cfg, present, err := agents.DecodeArgs(c.Command.Args)
+	pin, present, err := pinCommand(c.Command)
 	if err != nil {
-		return execution.WorkloadPlan{}, execution.Invalidf("the frozen agent payload is invalid")
+		return execution.WorkloadPlan{}, err
 	}
 	if present {
-		if err := cfg.Verify(c.Command.Image, c.Command.Command); err != nil {
-			return execution.WorkloadPlan{}, execution.Invalidf("the frozen agent payload does not match its command")
-		}
-		profile, baseline := cfg.Pins()
-		c.Profile = &profile
-		c.DesignBaseline = &baseline
+		c.Profile, c.DesignBaseline = &pin.Profile, &pin.DesignBaseline
 	}
 	plan, err := p.inner.Plan(tenant, c)
 	if err != nil {
 		return execution.WorkloadPlan{}, fmt.Errorf("agents planner: %w", err)
 	}
 	return plan, nil
+}
+
+// Pinner implements execution.AgentPins: it derives the profile and design
+// baseline pins of a shared (v2) or source-set (v3) attempt from the frozen
+// payload of the step's command, with exactly the checks the Planner applies to a
+// v1 attempt (it shares their code). It performs no I/O and never queries a
+// profile, so rebuilding a context for the same step yields the same pins. A
+// command without the payload marker reports no pin.
+type Pinner struct{}
+
+var _ execution.AgentPins = Pinner{}
+
+// PinAgent implements execution.AgentPins.
+func (Pinner) PinAgent(_ domain.TenantID, c runtimev1.Command) (execution.AgentPin, bool, error) {
+	return pinCommand(c)
+}
+
+// pinCommand is the one place a frozen command becomes pins, for every context
+// version.
+func pinCommand(c runtimev1.Command) (execution.AgentPin, bool, error) {
+	cfg, present, err := agents.DecodeArgs(c.Args)
+	if err != nil {
+		return execution.AgentPin{}, false, execution.Invalidf("the frozen agent payload is invalid")
+	}
+	if !present {
+		return execution.AgentPin{}, false, nil
+	}
+	if err := cfg.Verify(c.Image, c.Command); err != nil {
+		return execution.AgentPin{}, false, execution.Invalidf("the frozen agent payload does not match its command")
+	}
+	profile, baseline := cfg.Pins()
+	return execution.AgentPin{Profile: profile, DesignBaseline: baseline}, true, nil
 }

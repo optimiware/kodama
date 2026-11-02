@@ -153,9 +153,12 @@ func Test_delivery_migration_reapply(t *testing.T) {
 
 	t.Run("a modified applied migration is refused", func(t *testing.T) {
 		led := ledger(t, s)
-		altered := storage.BaseContribution()
+		// The ledger lists every applied migration in order: the manifest is the
+		// fixture's whole manifest with the baseline altered.
+		contribs := deliverytest.Contributions()
+		altered := storage.Contribution{Module: contribs[0].Module, Migrations: append([]storage.Migration(nil), contribs[0].Migrations...)}
 		altered.Migrations[0].SQL += "\nALTER TABLE deployments ADD COLUMN t035_tamper int;\n"
-		tampered, err := storage.NewManifest(altered)
+		tampered, err := storage.NewManifest(append([]storage.Contribution{altered}, contribs[1:]...)...)
 		if err != nil {
 			t.Fatal(err)
 		}

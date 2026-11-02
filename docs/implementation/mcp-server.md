@@ -80,7 +80,7 @@ mount. It mounts only the exchange Secret and optional CA Secrets. The external
 profile exposes `mcp.ingress.host` on its own origin. A shared host is accepted
 only with `mcp.ingress.path: /mcp`, which routes `/mcp` and the path-specific
 metadata to MCP while `/` remains with Kodama. See the
-[chart README](../../deploy/helm/kodama/README.md#mcp-server).
+[chart README](../../deploy/charts/kodama/README.md#mcp-server).
 
 ## Command
 

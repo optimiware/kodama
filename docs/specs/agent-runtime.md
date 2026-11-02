@@ -1,55 +1,64 @@
 # Agent runtime
 
-**Scope:** M2 OpenCode headless image and profile defaults. Native, Claude Code, and Codex harnesses are later tasks.
+**Scope:** Layer 3 agentic services operating through Layer 1 container steps and Layer 2 shell operations ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
 
-## Model
+## Two ways of running agentic tasks
 
-An agent step is a container step resolved from an immutable profile: image digest, command wrapper, instruction template, model endpoint, allowed tools, and limits. It uses the same attempt, entrypoint, source publication, result, and cancellation machinery as any command. With internally hosted repositories ([ADR 0011](../adr/0011-internal-tenant-git-service.md), designed) agents coordinate through ordinary Git: parallel agents run as separate runs, each pushing its run's agent branches with its attempt grant, and merging them into the task branch is ordinary work for a later run's writer. Transcript and usage references live on the attempt; there is no independent agent-session state machine.
+Layer 3 agentic services execute through Layer 1 container steps and Layer 2 shell operations without changing the kernel's execution model. Every agentic task executes inside a standard Layer 1 container step mounting the shared `/workspace` and project-space credentials:
 
-The wrapper obtains the run's pinned specification/acceptance context, runs a pinned supported OpenCode version, and emits a result. Exact headless flags and provider compatibility must be verified by the adapter task against that version's primary documentation and a smoke test.
+### Mode A: External harnesses in primitive container steps
+Popular coding harnesses (`opencode`, `claude-code`, `pi`, Codex, Aider) run directly as standard container steps configured in `.kodama/<processname>.yaml`:
+- Mount project `secrets` (or point the harness at Kodama's internal OpenAI-compatible AI Gateway and external MCP proxy).
+- Operate on the shared `/workspace` (which contains the checked-out repository plus `<tenant>/context` and `<tenant>/<project>/context`).
+- Commit and push changes to the native Git service or leave files in `/workspace` for subsequent test/review steps.
 
-Instruction context also identifies the applicable specification/decision/blueprint references at immutable revisions, following [design conformance](../implementation/design-conformance.md). For hosted integrations it names the reviewed core contract baseline. The wrapper produces a declared conformance artifact for the candidate; it reports material conflicts as unresolved rather than inventing architecture to make the task pass. Repository instructions and this context describe intent, never tool authority.
+```yaml
+steps:
+  - name: implement
+    image: ghcr.io/sst/opencode:latest
+    secrets: [ANTHROPIC_API_KEY]
+    commands:
+      - opencode run "Implement task ${KODAMA_TASK_ID} following /workspace/.context"
+```
 
-O-17 defines application chassis as Markdown guidance held in a tenant/project-scoped Git repository, normally one repository per selected scope. Pin repository identity, immutable commit and selected Markdown paths in the instruction baseline; any tenant/project composition is explicit. Guidance may describe microservices, approved stacks/libraries and cloud deployment methods, but cannot grant runtime permissions or become a shared application SDK. T-059 supplies conventions/examples; missing repository-consumption seams return to the profile/wrapper owner.
+### Mode B: Native Kodama Agent runtime (`kodama agent`)
+For fine-grained software factory steps, the step container includes the `kodama` binary runtime (`kodama agent`), which has native access to Layer 2 shell operations and project-space permissions:
+- **Specialized responsibilities:**
+  - **Planning & decomposition:** Read `<tenant>/context` and `<tenant>/<project>/context`, inspect repository structure, and create subtasks or implementation plans.
+  - **Decision-making, filtering & guardrails:** Inspect diffs, test outputs, and security rules; decide whether to advance a task or loop it back for rework.
+  - **Validation steps:** Act as autonomous quality checks between pipeline stages.
+  - **Embedded skills:** Run reusable Markdown skills loaded from the Git Knowledge Base (`<tenant>/context/skills/*`, `<tenant>/<project>/context/skills/*`).
+  - **Native shell API / Git / task operations:** Perform Git operations (branch, merge, tag), read the task's selected pipeline and projected execution progress, and request a durable pipeline wait when human judgment is needed. The pipeline defines the next branch; the agent does not mutate a separate task workflow.
+- **Session persistence:** Records execution state, messages, tool calls, token usage, and structured results in `agent_sessions`.
+
+```yaml
+steps:
+  - name: review-guardrail
+    image: ghcr.io/optimiware/kodama:latest
+    commands:
+      - kodama agent run --skill review --on-pass test --on-fail implement
+```
+
+## Permissions
+
+Both Mode A and Mode B steps inherit the **project-space permission model**: they can access everything provisioned and configured in their project space (repositories, mounted secrets, scoped services, tasks, knowledge base, AI Gateway, and external MCP proxy) using the step's `KODAMA_TOKEN`.
 
 ## Requirements
 
 | ID | Requirement |
 | --- | --- |
-| AR-01 | Profile image/version, instruction context, tools, and limits MUST be pinned for the run. |
-| AR-02 | The supported wrapper/version combination MUST be integration-tested; unsupported profiles fail registration. |
-| AR-03 | Agent execution MUST reuse normal attempt identities and workspace publication authority. |
-| AR-04 | Wall time, request/token allowance, and tool-call limits MUST be enforced where the declared profile claims them. |
-| AR-05 | Tool/proxy/runtime authorization MUST come from the workload identity, not repository or model instructions. |
-| AR-06 | Completion MUST produce a valid structured result; a prose success claim is insufficient. |
-| AR-09 | Cancellation MUST stop the process tree and revoke new provider/tool/publication access. |
-| AR-10 | Attempts MUST retain attributable result/usage metadata and authorized transcript references. |
-| AR-11 | Source changes MUST become a validated commit published through the workspace protocol. |
-| AR-12 | Agent identity MUST NOT satisfy a human review/completion permission. |
-| AR-13 | `needs_input` MUST fail the attempt with a recorded question; a human revises intent and starts a new run. |
-| AR-14 | Agent instructions MUST use the pinned design baseline and return candidate-bound conformance evidence identifying affected requirements, checks, and unresolved deviations; design references MUST NOT silently advance during execution. |
-| AR-15 | `[internal hosting]` Agents MUST reach internal repositories only through their attempt-bound Git grant; repository content, Git configuration and model instructions MUST NOT widen the repositories or refs it covers. |
+| AR-01 | Layer 3 agent work (Mode A external harnesses and Mode B `kodama agent`) MUST execute as standard Layer 1 container steps sharing `/workspace` and project-space permissions. |
+| AR-02 | Mode B `kodama agent` MUST support OpenAI-compatible AI Gateway calls, external MCP proxy tools, embedded skills from Git `context` repos, Git operations, and reading the selected pipeline's projected task progress. |
+| AR-03 | Native `kodama agent` runs MUST persist session state, token usage, and structured outcomes in `agent_sessions`. |
+| AR-18 | When agent work requires human input or approval, it MUST request a durable pipeline wait with an explicit expected input and assignment; it MUST NOT mutate a separate task workflow or create a blocking task solely to resume one. |
+| AR-19 | The external MCP proxy and agent tool policy MUST remain in Layer 3 and MUST NOT add execution semantics or private shell state access to the kernel. |
 
-AR-07 and AR-08 (handoff/continuation contracts) are retired from the initial scope. There is no capability-negotiation framework or continuation token in M2.
-
-## Result and recovery
-
-Wrapper outcomes are `completed`, `needs_input`, or `failed`. Runtime cancellation/timeout is supplied by the entrypoint. `needs_input` preserves its question and diagnostic artifacts but does not publish incomplete source as a successful candidate. A completed profile must return declared evidence and any proposed commit.
-
-An interrupted attempt can lose uncommitted scratch work; in the designed `run_shared` model agent steps share the run's scratch with other steps, and a lost scratch fails the run rather than being reconstructed. Resume means a fresh run from the last accepted Git commit. Harness-native resumability may be added through a separately verified later contract.
-
-The approved profile routes provider traffic through the AI gateway and tool traffic through authorized tools, keeping provider credentials server-side. Ordinary build/script steps can explicitly bind a declared pinned secret to their child environment under [secrets delivery](variables-and-secrets.md#runtime-delivery); agents do not inherit those values by default. Transcripts are sensitive artifacts; content recording is independently configurable. Shell/network access follows the M1 trust model in [identity](identity-tenancy-and-rbac.md).
+AR-04 is retired by the [ADR 0013 amendment](../adr/0013-two-layer-architecture-and-domain-simplification.md). The former park-and-blocking-task model is replaced by AR-18.
 
 ## Acceptance
 
 | ID | Scenario | Requirements |
 | --- | --- | --- |
-| AR-A01 | Pinned wrapper/profile passes compatibility smoke tests; unknown version fails | AR-01, AR-02 |
-| AR-A02 | Repository instructions cannot grant another tenant's tool/source access | AR-03, AR-05 |
-| AR-A03 | Budget exhaustion stops new admission and preserves result/usage | AR-04, AR-10 |
-| AR-A04 | Exit zero without structured outputs fails finalization | AR-06 |
-| AR-A05 | Missing business input records a question and fails; revised intent starts a new run | AR-13 |
-| AR-A06 | Cancellation revokes actions and stops the wrapper/process tree | AR-09 |
-| AR-A07 | Valid commit/evidence are published; agent identity cannot approve | AR-11, AR-12 |
-| AR-A08 | Moving an upstream/blueprint branch during execution does not change instruction context; an architectural conflict is reported in the candidate's conformance evidence and cannot become a prose-only success claim | AR-01, AR-06, AR-14 |
-| AR-A09 | `[internal hosting]` Agents in two concurrent runs push their own runs' agent branches and a third run's writer merges them into the task branch; an agent instructed to push the default branch, the task branch without the writer reservation, or another run's or work item's branch is refused | AR-03, AR-15, GR-07 |
+| AR-A01 | A Mode A step runs an external harness in `/workspace` with mounted secrets and subsequent steps verify the changes | AR-01 |
+| AR-A02 | A Mode B `kodama agent` loads a skill from `<tenant>/<project>/context`, calls the AI and external MCP proxy, records an `agent_sessions` row, and reads the task's projected progress | AR-01, AR-02, AR-03, AR-19 |
+| AR-A03 | A Mode B `kodama agent` encountering an ambiguity requests a pipeline wait; an authorized result resumes the same run and the pipeline selects the next branch | AR-18 |

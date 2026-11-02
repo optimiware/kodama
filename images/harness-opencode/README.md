@@ -21,6 +21,7 @@ It does not edit production wiring (T-027/T-039) or populate `agents.Catalogue`.
 | `wrapper/` | `kodama-opencode-wrapper`: payload decoding, config, loopback credential proxy, process containment, structured completion, conformance report |
 | `wrapper/spec/` | constants shared with the image build and the acceptance composition (versions, paths, reason codes, managed configuration) |
 | `evidence/build.json` | what the last documented build produced (digests, checksums, package versions) |
+| `test.sh` | the wrapper's Linux-only Go tests (T-153): natively on Linux, otherwise in the digest-pinned Linux Go image through Podman (`DEV_PROVIDER=docker` for Docker); exit 75 when neither exists; fails unless `Test_unit_wrapper_pushes_with_attempt_grant` and `Test_unit_wrapper_old_context_unchanged` passed |
 
 ## Build
 
@@ -69,10 +70,13 @@ arguments are the `kodama.agent-config/v1` payload decoded with `agents.DecodeAr
    a step (U-10). Verdicts and reason codes (`wrapper/spec`): `payload_invalid`, `config_invalid`,
    `harness_version_mismatch`, `harness_start_failed`, `harness_exit_nonzero`, `harness_error`, `harness_idle`,
    `result_missing`, `result_invalid`, `context_mismatch`, `output_undeclared`, `commit_failed`,
-   `agent_reported_failure`.
+   `agent_reported_failure`, and (runtime context v3, below) `source_invalid`.
 2. **Pins are checked, not trusted.** Wrapper and harness versions must equal the pins in the image, the payload's
    baseline digest and profile pin must equal the runtime context's (`GET /context`), and the step must declare the
-   `conformance` artifact output (and `transcript` when the profile records).
+   `conformance` artifact output (and `transcript` when the profile records). The context is read from the route of the
+   version the attempt is pinned to: `/runtime/v1/...` first (an original attempt costs the one request it always did),
+   then `/runtime/v3/...` and `/runtime/v2/...` when the earlier routes answer `409 context_version_mismatch`; every
+   check above is the same on every version.
 3. **Structured completion.** The agent must write `.kodama-result.json` (strict JSON, no duplicate or unknown
    members, regular file only). `completed` needs a summary, `needs_input` a question (→ AR-13), `failed` an optional
    reason code. A prose reply, a clean event stream or exit 0 without it is `result_missing`. The file is removed
@@ -101,6 +105,56 @@ arguments are the `kodama.agent-config/v1` payload decoded with `agents.DecodeAr
 Inputs the wrapper reads: `KODAMA_PLATFORM_URL` (else the parent `kodama step`'s `--server-url`), `KODAMA_TOKEN_FILE`
 (default `/kodama/identity/token`), `KODAMA_CA_FILE` (default `/kodama/bootstrap/ca.crt`), and the entrypoint's
 `KODAMA_ATTEMPT_ID`, `KODAMA_WORKSPACE`, `KODAMA_OUTPUTS_DIR`, `KODAMA_RESULTS_FILE`.
+
+## Source sets and direct pushes (runtime context v3, T-153)
+
+A run that pins a source set of internally hosted repositories ([ADR 0011](../../docs/adr/0011-internal-tenant-git-service.md),
+[runtime v3](../../docs/contracts/runtime-v3.md)) has one checkout per source at `/workspace/<path>` (`.` is the workspace
+itself). The wrapper stays credential-free and **never pushes**: the step entrypoint publishes what the attempt's own Git
+grant selects (`internal/entrypoint`, AR-15). What changes here is where the wrapper leaves its commits.
+
+| Step | Behavior |
+| --- | --- |
+| Plan | `agents.PlanCheckouts(contextV3)`, before anything runs: the attempt that **holds the writer reservation** commits its write sources on `HEAD` (the entrypoint pushes them to the source's task branch with a lease on the expected tip); every other source of that attempt, and every source of a **reader**, is committed on the run's agent branch `refs/heads/kodama/agents/<workItemId>/<runId>/<label>` (`refs/heads/kodama/runs/<runId>/<label>` for a run without a work item), `label` derived from the step ID. A plan whose branch the attempt's own grant (`git.repositories[].update`) does not select is `source_invalid` and nothing runs. |
+| Start | the commit each checkout is on is read from the checkout; "changed" is measured against it, never from the harness's account. A checkout that is not a repository at a commit is `source_invalid`. |
+| On `completed` | per source in path order: a source on an agent branch whose tree is dirty or whose `HEAD` moved is put on its branch (`checkout -B`, keeping any commit the agent made) and committed; a changed writer source is committed on `HEAD`; an unchanged source is left exactly as it was (no branch, nothing to publish). Identity `Kodama <step@kodama.invalid>`, hooks off, no remote, no credential. `failed` and `needs_input` commit nothing and create no branch (the entrypoint pushes only after a completed manifest). |
+| Candidate | `agents.CandidateSet`: one entry per source (commit, and the branch for a changed one), with a digest that identifies the whole multi-checkout change. The conformance report names the **primary** source's commit (the first changed source in path order, else the first source), bound to the pinned baseline as before. |
+| Checkout trust | the checkouts are directories the agent controlled, so before the harness starts and before **every** Git invocation the wrapper walks the path from the workspace with `Lstat` (no symlink, the same walk as the entrypoint's `checkSourceDir`), requires `.git` to be a real directory (not a `gitdir:` file or symlink) with a regular `config` and a plain `objects`, and **refuses** (`source_invalid`, Git never runs) a repository that redirects what Git reads or names a program: `.git/commondir` (Git reads config, hooks and refs from the common directory even with `GIT_DIR` set), `config.worktree`, `modules/`, `info/grafts`, `info/alternates`, `objects/info/alternates`, and a configuration with `filter`, `include`/`includeIf`, `core.worktree`/`hooksPath`/`fsmonitor`/`sshCommand`/`pager`/`editor`/`askpass`/`attributesFile`/`excludesFile`/`alternateRefsCommand`, `extensions.worktreeConfig`, `sequence.editor`, `commit.template`, and the `credential`, `url`, `alias`, `diff`, `merge`, `gpg`, `pager`, `remote`, `submodule`, `trace2`, `interactive`, `maintenance`, `http`, `protocol` (and similar) sections. The header parser reads a quoted subsection as Git does (`[core "a]"] worktree = x` is `core.worktree`) and refuses anything it cannot parse. A `filter.*.clean` cannot be disabled generically and runs from `git add -A`, hence the refusal. **Nested repositories:** measured with the pinned image's Git (2.47; `Test_unit_git_nested_repository_experiment`), `git add -A` runs the clean filter of a repository the index records as a gitlink, and `git status` asks it too unless submodules are ignored; nothing on the command line stops `add`, so a checkout containing any `.git` below its own is refused (the preparation skips submodules, so a legitimate checkout has none; an untracked nested repository was measured as not descended into but is refused as well). Git itself is pointed at everything explicitly (`GIT_DIR`, `GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY`, `GIT_WORK_TREE`, `GIT_CEILING_DIRECTORIES`; no alternates variable), `git rev-parse --show-toplevel` must equal the checkout, hooks, fsmonitor, attributes and excludes files, `gc.auto`, `maintenance.auto`, protocols, credential helpers and submodule recursion/status are overridden, and each invocation has its own 30 s timeout that kills its process group. The preparation's checkouts carry none of the refused entries. (The harness has been swept before the commit step, so there is no concurrent writer between the check and the call.) The refusal list is a deny-list: a new Git setting that runs a program would have to be added to it; `.git/shallow` and replace refs are not refused (they change history, not what runs). |
+| Harness environment | unchanged and explicit: no `KODAMA_*` credential, token, Git credential, helper or askpass variable (`Test_unit_wrapper_pushes_with_attempt_grant` allow-lists the names). The prompt gains a *Repositories* section for a v3 context only (paths, access, where each is published, and that the agent holds no Git credential and must not push or switch branches); the prompt of v1/v2 contexts is byte-identical to the original (`testdata/prompt_v1.golden`). |
+
+`Test_unit_wrapper_pushes_with_attempt_grant` runs the real wrapper against real Git, a TLS stand-in for the context routes
+and a scripted stand-in for the OpenCode binary, then plays the entrypoint's selection rule against local bare repositories:
+what the wrapper leaves is exactly what the grant lets be pushed, a reader never reaches the task branch, an unchanged source
+publishes nothing and no credential or remote exists. `Test_unit_wrapper_refuses_hostile_checkouts` plants a filter, a hooks path, a file-system monitor, a work tree, an include, a
+per-worktree configuration, a `commondir`, alternates, grafts, a modules directory, tracked and untracked nested repositories
+carrying a filter and a monitor, a quoted-subsection header, symlinks and `gitdir:` files, at the start and (for the programs) while the harness runs, and requires
+`source_invalid` with the planted program never run; `Test_unit_wrapper_branch_states` and `Test_unit_wrapper_two_sources_one_repository`
+cover detached, switched and shared-repository states. `Test_unit_wrapper_old_context_unchanged` proves v1/v2: same request
+sequence, same single commit on the detached `HEAD`, no branch, same conformance binding. The name of the first test is the
+task's; the push itself is the entrypoint's, and the selection rule played in the test is **replayed** from `internal/entrypoint/stepv3push.go`
+(it exports none to call): `Test_unit_entrypoint_pushes_agent_branch` and `Test_unit_entrypoint_writer_pushes_task_branch` prove the
+entrypoint's own behavior, and the replay must change with `planSource`.
+
+**Limits and open items, stated.**
+
+1. **The conformance contract binds one commit.** `candidateCommit` is the primary source's commit only. A consumer that judges
+   or merges a source-set candidate (the gate subject of T-149, which is the source set, and the result finalization of T-150,
+   which records the result's `commits[]`) must bind the **whole** set (the candidate digest and the result's `commits`, checked
+   with `agents.CandidateSet.CheckPublished`), never `candidateCommit` alone. The wrapper cannot call `CheckPublished` on its own
+   result: the commits are pushed by the entrypoint after the wrapper has exited, so the digest is only logged here. Binding
+   the set in the report itself needs a conformance revision in the runtime contract (not this task's paths).
+2. **Shared-workspace leak to the task branch (known, open; owner T-162).** In a `run_shared` run the workspace outlives the
+   attempt. A reader leaves its checkout on the agent branch with commits beyond `headCommit`, and the entrypoint (T-151) does not
+   reset a source's HEAD after publishing, so a later writer step starts on the reader's commits, commits on top and the
+   entrypoint's `planSource` pushes the reader's work to the task branch. The wrapper cannot prevent this: it never
+   publishes and never resets another attempt's state. T-162 (the entrypoint restores each source's HEAD after publishing) closes it.
+3. **Agent pins.** Shared v2 and source-set v3 contexts of agent steps now carry the profile and design-baseline pins (T-163: `execution.AgentPins`, implemented by `agents/adapters.Pinner`; the composition root must wire `Chain.Pins`, T-132), so the wrapper's pin check accepts them.
+4. Under the existing M1 trust model the harness runs as the same user as the entrypoint, so a shell tool could read a credential
+   **file** the runtime adapter delivers (`/kodama/git/credential`); the wrapper keeps it out of the environment, the
+   configuration and the checkouts, and the grant it would reveal is bounded to the run's agent branches (and the writer's task
+   branch) and re-decided by the push authorizer, but file-level isolation of the harness is not claimed.
+5. A later attempt starts on whatever `HEAD` the previous one left; reusing an agent branch label after another commit already
+   published it is a non-fast-forward the entrypoint reports as a publication failure (the same state as 2).
 
 ## Mismatches found, and who owns the next step
 

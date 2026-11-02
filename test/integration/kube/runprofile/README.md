@@ -42,13 +42,16 @@ Buildah image's `build` user) and `runAsNonRoot`, `hostUsers: false`, all
 capabilities dropped then **`SETUID` and `SETGID`** added, `allowPrivilegeEscalation: true`
 (the setuid/file-capability `newuidmap`/`newgidmap` helpers), `seccompProfile`
 Localhost `kodama/kodama-rootless-build-v1.json` and `appArmorProfile` Localhost
-`kodama-rootless-build-v1` (installed by T-120, never `Unconfined`). One optional
+`kodama-rootless-build-v2` (installed by T-120; the profile is `flags=(unconfined)` plus
+`userns,` per the 2026-10-30 owner amendment of O-30, but only that named, installed,
+versioned profile is allowed: the generic `Unconfined` type is still refused). One optional
 variant adds `procMount: Unmasked`; it runs only if the default role fails inside
 the build, and a pass there leaves `build.buildah_vfs` **blocked** with a policy
 handoff, because the frozen role does not set it. There is no `SYS_ADMIN`, root or
 `SYS_CHROOT` variant. Before building, the driver runs the role in an inspection
 Pod and verifies the process really sees it (exact bounding set `0xc0`, escalation
-permitted, an enforced seccomp filter and the AppArmor profile, a 65,536-ID mapping) and that
+permitted, an enforced seccomp filter and `apparmor=kodama-rootless-build-v2 (unconfined)`,
+a 65,536-ID mapping) and that
 the image's `/etc/subuid` and `/etc/subgid` entries for `build` (stock
 `build:1:999`, `build:1001:64535`) lie inside the Pod range. Only if they do not,
 a Secret file is mounted over both files with that layout; the report records

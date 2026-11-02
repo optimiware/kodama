@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -65,10 +66,22 @@ func (d *Deployments) Snapshot(ctx context.Context, scope domain.Scope, id strin
 		return gates.DeploymentSnapshot{}, gates.Unavailablef(err, "the deployment record is unavailable")
 	}
 	r := rec.Record()
-	return snapshotOf(scope, id, deploymentFacts{
+	f := deploymentFacts{
 		Scope: r.Scope, ID: string(r.ID), ConfigDigest: string(r.ConfigDigest), Candidate: r.Source.Commit,
 		Cleanup: r.CleanupRequestedAt != nil || r.CleanupState != delivery.CleanupNone, Deleted: r.DeletedAt != nil,
-	})
+	}
+	if set := r.Source.SourceSet; !set.IsZero() {
+		commits := make([]gates.SourceCommit, 0, len(set.Commits()))
+		for _, c := range set.Commits() {
+			commits = append(commits, gates.SourceCommit{RepositoryID: c.RepositoryID, Commit: c.Commit})
+		}
+		ref, err := gates.NewSourceSetRef(set.Digest, commits)
+		if err != nil {
+			return gates.DeploymentSnapshot{}, gates.Unavailablef(err, "the deployment record is invalid")
+		}
+		f.SourceSet = ref
+	}
+	return snapshotOf(scope, id, f)
 }
 
 // RowQuerier is the single-row read of an open transaction. pgx.Tx satisfies
@@ -87,7 +100,11 @@ type RowQuerier interface {
 // digest, scope and candidate of a deployment never change after registration,
 // and cleanup only moves forward, so a cleanup requested after the read is the
 // ordinary race of any decision and is seen by the next check.
-type TxDeployments struct{ q RowQuerier }
+type TxDeployments struct {
+	q RowQuerier
+	// sets reads the source-set columns of migration 011.
+	sets bool
+}
 
 var _ gates.Deployments = TxDeployments{}
 
@@ -97,6 +114,23 @@ func NewTxDeployments(q RowQuerier) (TxDeployments, error) {
 		return TxDeployments{}, errors.New("gates/adapters: a transaction row reader is required")
 	}
 	return TxDeployments{q: q}, nil
+}
+
+// WithSourceSets returns the reader that also reads the source-set columns of
+// migration 013_source_provenance.sql (a deployment of a source-set run records
+// them instead of a source commit). Use it, and BindDeploymentsWithSourceSets,
+// only in a composition whose schema has that migration: the plain reader
+// selects exactly the earlier columns.
+func (t TxDeployments) WithSourceSets() TxDeployments { t.sets = true; return t }
+
+// BindDeploymentsWithSourceSets is BindDeployments for a schema with migration
+// 013 (gatespg.Config.SourceProvenance).
+func BindDeploymentsWithSourceSets(tx pgx.Tx) gates.Deployments {
+	d, err := NewTxDeployments(tx)
+	if err != nil {
+		return closedDeployments{err: err}
+	}
+	return d.WithSourceSets()
 }
 
 // BindDeployments is the binder the PostgreSQL gate store takes as
@@ -127,10 +161,20 @@ func (t TxDeployments) Snapshot(ctx context.Context, scope domain.Scope, id stri
 	var tenant, project string
 	var requested, deleted *time.Time
 	var cleanup string
-	err := t.q.QueryRow(ctx, `SELECT tenant_id, project_id, id, config_digest, source_commit, cleanup_requested_at, cleanup_state, deleted_at
+	var candidate, setDigest *string
+	var setCommits []byte
+	// The plain reader selects exactly the columns of the earlier schema; only a
+	// schema with migration 013 has the source-set pair.
+	dest := []any{&tenant, &project, &f.ID, &f.ConfigDigest, &f.Candidate, &requested, &cleanup, &deleted}
+	setCols := ``
+	if t.sets {
+		// The source commit is NULL for a deployment of a source set.
+		setCols = `, source_set_digest, source_commits`
+		dest = []any{&tenant, &project, &f.ID, &f.ConfigDigest, &candidate, &requested, &cleanup, &deleted, &setDigest, &setCommits}
+	}
+	err := t.q.QueryRow(ctx, `SELECT tenant_id, project_id, id, config_digest, source_commit, cleanup_requested_at, cleanup_state, deleted_at`+setCols+`
 FROM deployments WHERE tenant_id = $1 AND project_id = $2 AND id = $3`,
-		string(scope.TenantID), string(scope.ProjectID), id).
-		Scan(&tenant, &project, &f.ID, &f.ConfigDigest, &f.Candidate, &requested, &cleanup, &deleted)
+		string(scope.TenantID), string(scope.ProjectID), id).Scan(dest...)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return gates.DeploymentSnapshot{}, gates.ErrNotFound
@@ -138,6 +182,27 @@ FROM deployments WHERE tenant_id = $1 AND project_id = $2 AND id = $3`,
 		return gates.DeploymentSnapshot{}, gates.Unavailablef(err, "the deployment record is unavailable")
 	}
 	f.Scope = domain.Scope{TenantID: domain.TenantID(tenant), ProjectID: domain.ProjectID(project)}
+	if t.sets && candidate != nil {
+		f.Candidate = *candidate
+	}
+	if setDigest != nil {
+		var stored []struct {
+			RepositoryID string `json:"repositoryId"`
+			Commit       string `json:"commit"`
+		}
+		if err := json.Unmarshal(setCommits, &stored); err != nil {
+			return gates.DeploymentSnapshot{}, gates.Unavailablef(err, "the deployment record is unreadable")
+		}
+		commits := make([]gates.SourceCommit, 0, len(stored))
+		for _, c := range stored {
+			commits = append(commits, gates.SourceCommit{RepositoryID: c.RepositoryID, Commit: c.Commit})
+		}
+		ref, err := gates.NewSourceSetRef(*setDigest, commits)
+		if err != nil {
+			return gates.DeploymentSnapshot{}, gates.Unavailablef(err, "the deployment record is invalid")
+		}
+		f.SourceSet = ref
+	}
 	f.Cleanup, f.Deleted = requested != nil || delivery.CleanupState(cleanup) != delivery.CleanupNone, deleted != nil
 	return snapshotOf(scope, id, f)
 }
@@ -148,6 +213,9 @@ type deploymentFacts struct {
 	ID           string
 	ConfigDigest string
 	Candidate    string
+	// SourceSet is the source set a deployment of a source-set run records
+	// instead of a candidate commit.
+	SourceSet gates.SourceSetRef
 	// Cleanup is true once cleanup was requested, whatever became of it.
 	Cleanup bool
 	Deleted bool
@@ -164,5 +232,5 @@ func snapshotOf(scope domain.Scope, id string, f deploymentFacts) (gates.Deploym
 	case f.ConfigDigest == "" || f.Candidate == "":
 		return gates.DeploymentSnapshot{}, gates.Unavailablef(nil, "the deployment record is incomplete")
 	}
-	return gates.DeploymentSnapshot{ID: f.ID, ConfigDigest: f.ConfigDigest, Scope: f.Scope, Candidate: f.Candidate}, nil
+	return gates.DeploymentSnapshot{ID: f.ID, ConfigDigest: f.ConfigDigest, Scope: f.Scope, Candidate: f.Candidate, SourceSet: f.SourceSet}, nil
 }

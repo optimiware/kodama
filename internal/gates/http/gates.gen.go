@@ -123,7 +123,7 @@ type Gate struct {
 	Status GateStatus `json:"status"`
 	StepId string     `json:"stepId"`
 
-	// Subject The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate.
+	// Subject The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate. For a run of several repositories the subject also carries sourceSet (DQ-17), which defines it; candidateCommit then presents the primary source.
 	Subject       Subject   `json:"subject"`
 	SubjectDigest Digest    `json:"subjectDigest"`
 	UpdatedAt     Timestamp `json:"updatedAt"`
@@ -153,6 +153,12 @@ type GateStatus string
 
 // GitCommit defines model for GitCommit.
 type GitCommit = string
+
+// IntegrationBase The default branch of a writable repository and the tip the approval is given over.
+type IntegrationBase struct {
+	Commit GitCommit `json:"commit"`
+	Ref    string    `json:"ref"`
+}
 
 // Invalidation defines model for Invalidation.
 type Invalidation struct {
@@ -187,7 +193,7 @@ type RequiredEvidence struct {
 // RequiredEvidenceRole evidence: named by the gate step; report: the candidate's design conformance report; support: an artifact the report cites for a check.
 type RequiredEvidenceRole string
 
-// Subject The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate.
+// Subject The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both null for a source-only gate. For a run of several repositories the subject also carries sourceSet (DQ-17), which defines it; candidateCommit then presents the primary source.
 type Subject struct {
 	CandidateCommit GitCommit `json:"candidateCommit"`
 
@@ -203,11 +209,29 @@ type Subject struct {
 	// ProjectId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	ProjectId externalRef0.ID `json:"projectId"`
 
+	// SourceSet Present only for a candidate that spans repositories: the digest of the run's pinned source set and, for every repository (ordered by repositoryId), the commit under review and, for a repository the run may write, the integration base (the default branch and the tip the approval is given over). A moved base makes the subject not applicable (base_moved).
+	SourceSet *SubjectSourceSet `json:"sourceSet,omitempty"`
+
 	// TenantId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	TenantId externalRef0.ID `json:"tenantId"`
 
 	// WorkItemId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	WorkItemId externalRef0.ID `json:"workItemId"`
+}
+
+// SubjectSource defines model for SubjectSource.
+type SubjectSource struct {
+	Base   *IntegrationBase `json:"base"`
+	Commit GitCommit        `json:"commit"`
+
+	// RepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RepositoryId externalRef0.ID `json:"repositoryId"`
+}
+
+// SubjectSourceSet defines model for SubjectSourceSet.
+type SubjectSourceSet struct {
+	Digest  Digest          `json:"digest"`
+	Sources []SubjectSource `json:"sources"`
 }
 
 // Timestamp defines model for Timestamp.

@@ -51,8 +51,15 @@ type AttemptFacts struct {
 	Run     domain.RunID
 	Step    string
 	Attempt domain.AttemptID
-	// Context is the immutable pinned context the attempt ran with.
+	// Context is the immutable pinned context the attempt ran with, projected to
+	// the version-independent members the mapping reads.
 	Context runtimev1.Context
+	// ContextVersion is the runtime context version the attempt was pinned to: 1
+	// (also the zero value), 2 or 3. Only version 3 carries a source set.
+	ContextVersion int64
+	// Sources is the pinned source set of a context v3 (empty for other versions
+	// and for a source-free run).
+	Sources SourceSet
 	// Completed is true only for a succeeded attempt whose accepted result is
 	// the completed outcome.
 	Completed bool

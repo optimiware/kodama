@@ -173,7 +173,7 @@ func Test_unit_chart_run_shared_render(t *testing.T) {
 	case cur.Network.Isolation != execution.IsolationTenant || !cur.Network.PublicEgress:
 		t.Errorf("network: %+v", cur.Network)
 	case step.User != "nonroot" || step.UserNamespace != "pod" || strings.Join(step.CapabilitiesAdd, ",") != "SETUID,SETGID" ||
-		step.Seccomp != "kodama-rootless-build-v1" || step.LSM != "kodama-rootless-build-v1" || step.ProcMount != "" || len(step.Devices) != 0:
+		step.Seccomp != "kodama-rootless-build-v1" || step.LSM != "kodama-rootless-build-v2" || step.ProcMount != "" || len(step.Devices) != 0:
 		t.Errorf("step role: %+v", step)
 	case cur.Roles[execution.RolePreparation].Image != releaseImage:
 		t.Errorf("the preparation image is %q, not the digest-pinned release image", cur.Roles[execution.RolePreparation].Image)

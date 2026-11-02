@@ -27,6 +27,29 @@ const (
 // DefaultStack is used when neither the record nor the request names one.
 const DefaultStack = StackCluster
 
+// Git hosting of a scope (DEV_GIT). The external git-http-backend fixture is the
+// compatibility profile and stays the default: it exercises HTTPS and tokens
+// against a plain Git server and needs no kernel. native hosts the kernel's own
+// Git service: one `kodama git serve` container per tenant on the scoped network
+// (O-36, docs/implementation/internal-git-service.md). It is selected explicitly,
+// and only on the services stack, which is the `test` environment.
+const (
+	GitFixture = "fixture"
+	GitNative  = "native"
+)
+
+// DefaultGitHosting is used when neither the record nor the request names one.
+const DefaultGitHosting = GitFixture
+
+// Compose profiles of the two hostings.
+const (
+	profileGitFixture = "git-fixture"
+	profileGitNative  = "git-native"
+)
+
+// GitWorkerPort is the port a tenant's worker listens on inside its container.
+const GitWorkerPort = 8443
+
 // Resources a stack owns. "cluster" is "services" plus the Kubernetes
 // resources; teardown removes exactly the resources the recorded stack lists.
 var (
@@ -79,6 +102,46 @@ func ValidateProvider(provider string) error {
 func ValidateStack(stack string) error {
 	if stack != StackServices && stack != StackCluster {
 		return fmt.Errorf("DEV_STACK must be one of %s or %s, not %q", StackServices, StackCluster, stack)
+	}
+	return nil
+}
+
+// ValidateGitHosting accepts only the documented hostings.
+func ValidateGitHosting(hosting string) error {
+	if hosting != GitFixture && hosting != GitNative {
+		return fmt.Errorf("DEV_GIT must be %s or %s, not %q", GitFixture, GitNative, hosting)
+	}
+	return nil
+}
+
+// RequestedGitHosting returns the explicit selection, else $DEV_GIT, or "" when
+// neither is set. An explicit empty value is invalid.
+func RequestedGitHosting(argument string, environ []string) (string, error) {
+	value, set := argument, argument != ""
+	if !set {
+		for _, entry := range environ {
+			if strings.HasPrefix(entry, "DEV_GIT=") {
+				value, set = strings.TrimPrefix(entry, "DEV_GIT="), true
+			}
+		}
+	}
+	if !set {
+		return "", nil
+	}
+	if err := ValidateGitHosting(value); err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+var gitTenantPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,39}$`)
+
+// ValidateGitTenant accepts the tenant identifiers a native worker can be named
+// for: lowercase, because the container, its Compose project and the server's
+// {tenantId} URL template must all spell the identifier the same way.
+func ValidateGitTenant(tenant string) error {
+	if !gitTenantPattern.MatchString(tenant) {
+		return fmt.Errorf("the tenant ID must be 1-40 lowercase letters, digits, underscores and hyphens, starting with a letter, not %q", tenant)
 	}
 	return nil
 }

@@ -246,3 +246,26 @@ The merged event catalog has `deployment.state_changed` but no environment event
 (`configuration.changed.kind` accepts only variable/secret). Environment changes
 are therefore audited and versioned (`ETag`) without being published as another
 aggregate's event. A catalog extension belongs to its owner.
+
+## Source-set provenance (T-149, DQ-17)
+
+A deployment's `Source` is a repository URL and commit or, for a run of the internal Git service, a `SourceSet`
+(`NewSourceSet`: the digest of the run's pinned set and one commit per repository, canonical and comparable). For a set the
+record keeps the repository URL and commit of the set's **primary** source (the first writable source in repository order,
+else the first; supplied by the attempt's pinned context, never by the request) beside the set, so every reader of one
+repository and commit still sees a valid one and the public response keeps a required, non-null `source` (AC-A08), with the
+additive `sourceSet` defining the candidate. A registration body names exactly one of `source` and `sourceSet`. An existing
+single-source deployment keeps its source, fingerprint and identity (`Test_unit_single_source_subjects_unchanged`, values
+captured from the commit before this task).
+
+Registration needs the attempt, the image's provenance and the request to name the same set: `Config.SourceSets`
+(`PinnedSourceSets`, implemented by `adapters.Execution` from the attempt's immutable runtime v3 context: its source set
+digest, each source's head commit and the primary) supplies the attempt's set, `adapters.Artifacts` the image's. An attempt
+of a source-set run is recognized by its context (a source-backed workspace, access read or write, without a single source:
+the v3 projection) and then **fails closed**: with no reader the registration is `ErrNotConfigured`; a single repository and
+commit is always `ErrProvenance` (a v3 run deploys its set; a one-source set is still a set); a set that is not the attempt's,
+another digest, another commit of any repository, a set for an attempt that is not a source-set attempt and an unknown
+attempt are `ErrProvenance`, all before anything is written or pinned (`Test_unit_deployment_mismatch_rejected`). The
+`deployment.state_changed` event carries the primary source's commit, as before. Storage is migration 013
+(`artifacts/postgres.SourceProvenanceMigrations`); `postgres.Config.SourceProvenance` enables it and a store without it
+refuses a set.

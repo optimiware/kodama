@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
 )
 
 // This file holds the kodama/v1alpha2 (run_shared) additions to the typed
@@ -123,8 +124,41 @@ func (s RunService) HasSecrets() bool {
 	return false
 }
 
-// IsV1Alpha2 reports whether the document is a run_shared format document.
+// IsV1Alpha2 reports whether the document is a kodama/v1alpha2 document.
 func (d Document) IsV1Alpha2() bool { return d.APIVersion == pipelinev1alpha2.APIVersion }
+
+// IsV1Alpha3 reports whether the document is a kodama/v1alpha3 document: the
+// run_shared format plus a declared source set.
+func (d Document) IsV1Alpha3() bool { return d.APIVersion == pipelinev1alpha3.APIVersion }
+
+// IsRunShared reports whether the document describes the run_shared model, in
+// either of its versions. The kodama/v1alpha1 document is attempt_private.
+func (d Document) IsRunShared() bool { return d.IsV1Alpha2() || d.IsV1Alpha3() }
+
+// SourceAccess is the access a declared source gives its run: read, or write
+// as a ceiling for the step that holds the writer reservation.
+type SourceAccess string
+
+// Source accesses.
+const (
+	SourceRead  SourceAccess = "read"
+	SourceWrite SourceAccess = "write"
+)
+
+// Source declares one repository of a kodama/v1alpha3 run's source set.
+// Repository is the repository's logical name within the project, resolved and
+// pinned to one commit at admission; Path is relative to /workspace. A document
+// never selects a commit.
+type Source struct {
+	Repository string       `json:"repository"`
+	Path       string       `json:"path"`
+	Access     SourceAccess `json:"access"`
+}
+
+// RootSourcePath is the only path that checks a repository out at /workspace
+// itself. It is the implicit path of a document without sources, and when
+// declared it is the only source.
+const RootSourcePath = "."
 
 // hasV2Fields reports whether a document carries a field only kodama/v1alpha2
 // defines. A v1alpha1 document that does is refused instead of silently losing
@@ -139,6 +173,8 @@ func (d Document) hasV2Fields() (path string, ok bool) {
 		return "$.spec.services", true
 	case d.Spec.Network != nil:
 		return "$.spec.network", true
+	case d.Spec.Sources != nil:
+		return "$.spec.sources", true
 	}
 	for i, s := range d.Spec.Steps {
 		if s.Egress != nil {
@@ -195,6 +231,9 @@ func normalizeV2(d Document) Document {
 	if d.Spec.RunWorkspace != nil {
 		w := *d.Spec.RunWorkspace
 		out.Spec.RunWorkspace = &w
+	}
+	if d.Spec.Sources != nil {
+		out.Spec.Sources = append([]Source{}, d.Spec.Sources...)
 	}
 	out.Spec.Inputs = make(map[string]Input, len(d.Spec.Inputs))
 	for name, in := range d.Spec.Inputs {
@@ -328,6 +367,13 @@ func (d Document) treeV2() map[string]any {
 	spec := map[string]any{"timeoutSeconds": d.Spec.TimeoutSeconds, "inputs": inputs}
 	if d.Spec.RunWorkspace != nil {
 		spec["runWorkspace"] = map[string]any{"sizeMiB": d.Spec.RunWorkspace.SizeMiB}
+	}
+	if d.Spec.Sources != nil {
+		sources := make([]any, len(d.Spec.Sources))
+		for i, src := range d.Spec.Sources {
+			sources[i] = map[string]any{"repository": src.Repository, "path": src.Path, "access": string(src.Access)}
+		}
+		spec["sources"] = sources
 	}
 	if d.Spec.Services != nil {
 		services := map[string]any{}

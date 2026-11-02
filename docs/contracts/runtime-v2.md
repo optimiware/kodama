@@ -4,6 +4,8 @@
 
 ## Version selection and compatibility
 
+ADR 0012's [artifact/release and generic delivery extension](artifacts-and-releases.md) is a later contract checkpoint (T-140). Preserve this document's begin fence, lineage values, strict messages and hashes for admitted runs; new input grants/provenance/gate semantics require explicit compatibility handling, not an undocumented change to v2 fixtures.
+
 | Property | v1 (`attempt_private`) | v2 (`run_shared`) |
 | --- | --- | --- |
 | Pipeline format | `kodama/v1alpha1` | [`kodama/v1alpha2`](pipeline-format-v1alpha2.md) |

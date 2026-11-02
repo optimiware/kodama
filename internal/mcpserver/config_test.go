@@ -114,19 +114,28 @@ func TestFilterOperations(t *testing.T) {
 	if _, err := filterOperations(all, Config{Toolsets: []string{"unknown"}}); err == nil {
 		t.Fatal("unknown toolset accepted")
 	}
+	sensitive, credential := 0, 0
+	for _, op := range all {
+		if op.Sensitive {
+			sensitive++
+		}
+		if op.Credential {
+			credential++
+		}
+	}
 	withSecrets, err := filterOperations(all, Config{EnableSecretWrites: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(withSecrets) != len(all) {
-		t.Fatalf("secret-write mode = %d, want %d", len(withSecrets), len(all))
+	if want := len(all) - credential; len(withSecrets) != want {
+		t.Fatalf("secret-write mode = %d, want %d (credential tools still opt-in)", len(withSecrets), want)
 	}
 	withoutSecrets, err := filterOperations(all, Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(withoutSecrets) != len(all)-2 {
-		t.Fatalf("default mode = %d, want %d", len(withoutSecrets), len(all)-2)
+	if want := len(all) - sensitive - credential; len(withoutSecrets) != want {
+		t.Fatalf("default mode = %d, want %d (sensitive and credential tools opt-in)", len(withoutSecrets), want)
 	}
 }
 

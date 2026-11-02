@@ -22,6 +22,11 @@ type State struct {
 	Port       int               `json:"port,omitempty"`
 	LocalImage string            `json:"local_image,omitempty"`
 	Image      string            `json:"image,omitempty"`
+	// GitHosting is the Git hosting the scope was created with (fixture when
+	// empty, as before the native hosting existed); GitTenants are the tenants
+	// whose native worker containers this scope runs.
+	GitHosting string   `json:"git_hosting,omitempty"`
+	GitTenants []string `json:"git_tenants,omitempty"`
 }
 
 var ownerPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -40,6 +45,16 @@ func ValidateState(state *State, scope, provider string) error {
 	}
 	if state.Cluster != "kodama-"+scope+"-"+state.Owner[:8] {
 		return fmt.Errorf("state resource names do not match ownership token")
+	}
+	if state.GitHosting != "" {
+		if err := ValidateGitHosting(state.GitHosting); err != nil {
+			return err
+		}
+	}
+	for _, tenant := range state.GitTenants {
+		if err := ValidateGitTenant(tenant); err != nil {
+			return err
+		}
 	}
 	if state.Stack == StackServices && state.Network != state.Cluster+"-net" {
 		return fmt.Errorf("state network name does not match ownership token")

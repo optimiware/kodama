@@ -1,9 +1,10 @@
 terraform {
   required_version = ">= 1.8.0"
 
-  # Partial configuration: qualify.sh passes -backend-config=path=$STAGE_STATE_DIR/qualification/<session>.tfstate so
-  # state (database passwords, generated keys) lives outside the checkout, one state per session.
-  backend "local" {}
+  # Partial configuration: the scripts pass the bucket, key and endpoint (-backend-config). State lives in the Scaleway
+  # Object Storage bucket created once by scripts/state-bucket.sh, one object per cluster name, with native locking.
+  # It holds database and API-key secrets: protect the bucket like a credential store.
+  backend "s3" {}
 
   required_providers {
     scaleway = {

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -40,8 +41,23 @@ type ResourceState struct {
 	WorkloadUID  string
 	// DeadlineAt is the resource's deadline.
 	DeadlineAt time.Time
-	// Context is the immutable assignment of the workload.
+	// Context is the immutable assignment of the workload on the run_shared wire
+	// (runtime v2). It is the zero value for a resource of a source-set run, whose
+	// assignment is ContextV3.
 	Context runtimev2.ResourceContext
+	// ContextV3 is the immutable assignment of the workload on the source-set wire
+	// (runtime v3). It is non-nil exactly for a resource of a source-set run, which
+	// is served only on /runtime/v3 (a v2 route answers context_version_mismatch).
+	ContextV3 *runtimev3.ResourceContextV3
+}
+
+// Wire is the runtime wire the resource belongs to: WireV3 when it carries a
+// ContextV3, WireV2 otherwise.
+func (s ResourceState) Wire() int64 {
+	if s.ContextV3 != nil {
+		return WireV3
+	}
+	return WireV2
 }
 
 // Validate checks the structure and that the context belongs to the resource.
@@ -61,16 +77,36 @@ func (s ResourceState) Validate() error {
 		s.DeadlineAt.IsZero():
 		return bad
 	}
-	c := s.Context
-	if c.Validate() != nil || c.ResourceKind != kind || c.ResourceKey != s.Key || c.RunID != s.RunID ||
-		(domain.Scope{TenantID: c.TenantID, ProjectID: c.ProjectID}) != s.Scope {
-		return bad
+	var deadline time.Time
+	var err error
+	if c3 := s.ContextV3; c3 != nil {
+		if c3.Validate() != nil || c3.ResourceKind != kind || c3.ResourceKey != s.Key || c3.RunID != s.RunID ||
+			(domain.Scope{TenantID: c3.TenantID, ProjectID: c3.ProjectID}) != s.Scope {
+			return bad
+		}
+		deadline, err = contextDeadlineV3(*c3)
+	} else {
+		c := s.Context
+		if c.Validate() != nil || c.ResourceKind != kind || c.ResourceKey != s.Key || c.RunID != s.RunID ||
+			(domain.Scope{TenantID: c.TenantID, ProjectID: c.ProjectID}) != s.Scope {
+			return bad
+		}
+		deadline, err = contextDeadline(c)
 	}
-	deadline, err := contextDeadline(c)
 	if err != nil || !micros(deadline).Equal(micros(s.DeadlineAt)) {
 		return bad
 	}
 	return nil
+}
+
+func contextDeadlineV3(c runtimev3.ResourceContextV3) (time.Time, error) {
+	switch {
+	case c.Preparation != nil:
+		return c.Preparation.DeadlineAt.Time()
+	case c.Service != nil:
+		return c.Service.DeadlineAt.Time()
+	}
+	return time.Time{}, fail(ErrUnavailable, "the context has no deadline")
 }
 
 func contextDeadline(c runtimev2.ResourceContext) (time.Time, error) {

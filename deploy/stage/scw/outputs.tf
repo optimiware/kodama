@@ -84,3 +84,9 @@ output "stage_bootstrap_secrets" {
     scw_kms_secret_key      = scaleway_iam_api_key.kodama_kms.secret_key
   }
 }
+
+output "kubeconfig" {
+  description = "Operator kubeconfig of this cluster; deploy.sh writes it to the cluster's own directory and checks it against stage_contract.cluster.endpoint."
+  sensitive   = true
+  value       = scaleway_k8s_cluster.main.kubeconfig[0].config_file
+}

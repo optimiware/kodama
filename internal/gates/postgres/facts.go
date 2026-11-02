@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/gates"
@@ -58,6 +59,11 @@ func (s *Store) loadRunView(ctx context.Context, tx pgx.Tx, scope domain.Scope, 
 		run.FailureIntentAt = &t
 	}
 	agg := &execution.Aggregate{Run: run}
+	if s.sets {
+		if err := s.loadSourceView(ctx, tx, agg); err != nil {
+			return nil, err
+		}
+	}
 	rows, err := tx.Query(ctx, `SELECT step_id, ordinal, spec, status, gate_ref, attempts_started, output_commit, outputs FROM step_runs
 		WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3 ORDER BY ordinal`, string(scope.TenantID), string(scope.ProjectID), string(id))
 	if err != nil {
@@ -95,6 +101,82 @@ func (s *Store) loadRunView(ctx context.Context, tx pgx.Tx, scope domain.Scope, 
 	return agg, rows.Err()
 }
 
+// loadSourceView adds what a source-set subject is resolved from to an unlocked
+// view of the run: the pinned set (digest and entries), and for every attempt its
+// step, status and the commits it reported. A run without a source set is left
+// unchanged, so its gates resolve exactly as before.
+func (s *Store) loadSourceView(ctx context.Context, tx pgx.Tx, agg *execution.Aggregate) error {
+	run := agg.Run
+	scope := run.Scope
+	var kind, digest *string
+	if err := tx.QueryRow(ctx, `SELECT origin_kind, source_set_digest FROM runs WHERE tenant_id = $1 AND project_id = $2 AND id = $3`,
+		string(scope.TenantID), string(scope.ProjectID), string(run.ID)).Scan(&kind, &digest); err != nil {
+		return err
+	}
+	if kind == nil || digest == nil {
+		return nil
+	}
+	run.Origin = execution.Origin{Kind: execution.OriginKind(*kind), WorkItemID: run.WorkItemID}
+	run.Sources = &execution.RunSources{Digest: *digest, Entries: []execution.RunSource{}}
+	rows, err := tx.Query(ctx, `SELECT repository_id, repository_name, repository_url, commit, path, access, branch
+		FROM run_sources WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3 ORDER BY ordinal`,
+		string(scope.TenantID), string(scope.ProjectID), string(run.ID))
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var e execution.RunSource
+		var access string
+		if err := rows.Scan(&e.RepositoryID, &e.Repository, &e.URL, &e.Commit, &e.Path, &access, &e.Branch); err != nil {
+			rows.Close()
+			return err
+		}
+		e.Access = gitv1.SourceAccess(access)
+		run.Sources.Entries = append(run.Sources.Entries, e)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows, err = tx.Query(ctx, `SELECT id, step_id, ordinal, status FROM step_attempts
+		WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3 ORDER BY step_id, ordinal`,
+		string(scope.TenantID), string(scope.ProjectID), string(run.ID))
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id, step, status string
+		var ordinal int
+		if err := rows.Scan(&id, &step, &ordinal, &status); err != nil {
+			rows.Close()
+			return err
+		}
+		agg.Attempts = append(agg.Attempts, &execution.Attempt{Scope: scope, ID: domain.AttemptID(id), RunID: run.ID, StepID: step, Ordinal: ordinal, Status: execution.AttemptStatus(status)})
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows, err = tx.Query(ctx, `SELECT attempt_id, repository_id, ref, commit, push_id FROM attempt_commits
+		WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3 ORDER BY attempt_id, ordinal`,
+		string(scope.TenantID), string(scope.ProjectID), string(run.ID))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var attempt string
+		var c execution.CommitOutput
+		if err := rows.Scan(&attempt, &c.RepositoryID, &c.Ref, &c.Commit, &c.PushID); err != nil {
+			return err
+		}
+		if at := agg.Attempt(domain.AttemptID(attempt)); at != nil {
+			at.Commits = append(at.Commits, c)
+		}
+	}
+	return rows.Err()
+}
+
 // loadFacts reads the current facts a gate's subject is compared with: the
 // execution inputs recomputed from agg, the work item's current content
 // revision, the current digest of every artifact the subject binds and the
@@ -106,13 +188,13 @@ func (s *Store) loadFacts(ctx context.Context, tx pgx.Tx, g *gates.Gate, agg *ex
 	if step == nil {
 		return f, gates.ErrNotFound
 	}
-	in, err := agg.GateInputs(g.StepID)
+	in, set, err := gates.ResolveInputs(agg, g.StepID)
 	if err != nil {
 		// A bound gate whose inputs cannot be resolved is not applicable; the
 		// reason is not a definitive change of the subject.
 		return f, fmt.Errorf("%w: the gate inputs cannot be resolved: %v", gates.ErrStaleSubject, err)
 	}
-	f.Inputs = in
+	f.Inputs, f.SourceSet = in, set
 	f.StepWaiting = forceWaiting || (step.Status == execution.StepPending && agg.Run.AcceptsDispatch())
 	var state string
 	var rev int64

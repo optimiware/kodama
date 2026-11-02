@@ -168,7 +168,12 @@ func (h *Runtime) register(w http.ResponseWriter, r *http.Request, _ *httpapi.Ca
 		fail(w, r, err)
 		return
 	}
-	rc, err := h.svc.RegisterRuntime(r.Context(), attempt, tok, registrationRequest(req.Source, req.Image))
+	regReq, err := registrationRequest(req.Source, req.SourceSet, req.Image)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	rc, err := h.svc.RegisterRuntime(r.Context(), attempt, tok, regReq)
 	if err != nil {
 		fail(w, r, err)
 		return

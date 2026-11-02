@@ -1,32 +1,42 @@
 # 1. Vision and scope
 
-Kodama helps organizations build focused software around ERP, CRM, and legacy gaps. It connects business intent, engineer/agent work, and reviewed delivery while retaining on-premises ownership and a hosted path.
+Kodama is an API-first software factory built by combining simple, powerful primitives ([ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md)).
 
-Optimi Platform is the company core; Kodama is its agent layer and autonomous SDLC for platform tenants. The [platform integration contract](../specs/platform-integration.md) separates core authority from SDLC ownership and keeps standalone adapters explicit. Autonomous implementation stays within granted permissions and produces evidence for human acceptance.
+Optimi Platform is the company core; Kodama is its tenant agent and SDLC layer. The [platform integration contract](../specs/platform-integration.md) separates core authority from SDLC ownership while keeping standalone installations self-contained.
 
-## Product model
+## Four functional layers
 
-Kodama is a full-cycle SDLC in a dedicated Kubernetes installation, aiming for the simplicity of a small CI server. Tasks, issues and change requests go in; deployed code comes out. It embeds its own task tracker and its own Git service ([ADR 0011](../adr/0011-internal-tenant-git-service.md), designed and not yet delivered). A project owns one or more repositories and its pipelines. A pipeline is a set of container steps sharing a workspace disk: each step is an image with environment, secrets and a command, and deployment is one more such step (Terraform, Wrangler, kubectl or Helm with mounted credentials).
+### Layer 1: The Pipeline Runtime kernel
+Inspired by Drone CI, Layer 1 provides deterministic execution:
+1. **YAML pipelines (`.kodama/<processname>.yaml`):** Define container steps, waits, conditions, and support services. The whole YAML definition is persisted once in PostgreSQL.
+2. **Runs and steps:** A run executes one pipeline snapshot against pinned inputs. Steps share a disposable `/workspace`; a durable wait pauses the same run without holding a worker.
+3. **Container services:** Support containers (databases, caches, mocks, preview servers) run at **tenant**, **project**, or **pipeline (run)** scope.
+4. **Declared secrets:** Steps request named secret references; the shell resolves and delivers them outside `/workspace`.
+5. **Recovery and cancellation:** Stable workload identity, confirmed cleanup, deadlines, and conservative handling of unknown outcomes.
 
-Agents do most of the work and coordinate through Git, so Git is mostly automated rather than exposed. People feed tasks, review evidence and decide. An engineer can still clone a project or branch to debug, review or fix it, or bring an existing project in with an ordinary `git push`.
+The kernel has no dependency on Git hosting, tasks, SQL/NATS/HTTP clients, identity, or agents.
+
+### Layer 2: The native shell
+The shell owns native services around the kernel:
+1. **Native Git service:** Internal hosting with a Gerrit-style path hierarchy (`<tenant>/context`, `<tenant>/<project>/<repo>`) for checkouts, branches, merges, releases, and Markdown knowledge bases.
+2. **Project pipeline registry:** Project-unique pipelines, Git indexing, triggers, and admission.
+3. **Task tracker and wait-based Role Inbox:** A task selects its pipeline and records execution progress. When human input is required, the pipeline waits; the inbox lists tasks whose current wait expects the caller's role.
+4. **Metadata-only artifacts:** Production artifacts are published to external registries or services; Kodama records only their metadata, digest, and provenance.
+5. **NATS system bus:** Carries committed events, Git triggers, wait signals, execution observations, and monitoring subscriptions.
+6. **Unified access and RBAC:** Users and operators access Kodama via the HTTP API, Kodama MCP server, or `kodactl` CLI, authenticated with external OAuth/OIDC and governed by per-tenant/project RBAC.
+
+### Layer 3: Agentic services
+Agentic work runs through the same container-step primitive:
+- **External harnesses:** `opencode`, `claude-code`, `pi`, and other harnesses run in container steps with declared secrets and the shared workspace.
+- **Native Kodama Agent runtime:** A container step containing the `kodama` runtime (`kodama agent`), backed by an OpenAI-compatible AI Gateway, external MCP proxy, session persistence (`agent_sessions`), and access to shell operations (Git, task progress, knowledge base, filtering, guardrails, and embedded skills).
+
+### Layer 4: External behavior
+Pipeline YAML, scripts, container images, hooks, and delivery/QA/notification recipes implement specialized behavior without changing the kernel or shell.
 
 ## Principles
 
-- **API-first:** every product operation is accessible to the CLI and authorized integrations.
-- **Small core:** one server process, one step entrypoint, a few durable records, ordinary Git and container commands.
-- **Explicit ownership:** tenant/project scope travels through data, execution, events, and artifacts.
-- **Recoverable progress:** published source and committed results survive container/server failure.
-- **Human acceptance:** agents produce evidence; people accept business outcomes.
-- **Useful conventions:** blueprints begin with guidance/templates; shared libraries follow repeated real needs.
-
-## User value
-
-Analysts provide specifications and acceptance criteria. Engineers refine intent, supervise agents, and edit through ordinary Git. Reviewers inspect identified source and deployments. Operators can install a supported profile without maintaining a new custom orchestration platform alongside Kodama.
-
-The first users work through API/CLI. A graphical workbench and analyst interface are later tasks. The initial Kubernetes profile assumes mutually trusting engineers; untrusted hosted execution has a separate qualification gate.
-
-## Measure outcomes
-
-Observe lead/cycle/review/blocked time, rework, failure recovery, and usage per work item. Start with SQL summaries and explicit definitions. Advertise latency/scale only after measuring a named reference workload.
-
-The [roadmap](07-delivery-roadmap.md) defines useful increments. [Decisions](../decisions.md) distinguish confirmed direction, implementation defaults, and release blockers.
+- **One process definition:** A project owns project-unique pipelines; a task selects one. Business phases are pipeline steps, not a second workflow engine.
+- **Simple primitives, powerful composition:** Pipelines, services, tasks, and Git compose through explicit contracts. The current database inventory is in the [schema](../implementation/database-schema.md).
+- **Maximum autonomy, minimal human waits:** Agents drive the SDLC autonomously; humans intervene through explicit pipeline waits for architectural clarifications, production promotions, or incident repair.
+- **Simple permission model:** User RBAC governs what users can configure (pipelines, secrets, tasks RW); agents and steps automatically have access to what is provisioned and configured in their project space.
+- **Git-native knowledge base:** Context, skills, blueprints, and deployment guidelines live as Markdown in Git (`<tenant>/context`, `<tenant>/<project>/context`, `<tenant>/<project>/<component>`, `<tenant>/<project>/deploy`).

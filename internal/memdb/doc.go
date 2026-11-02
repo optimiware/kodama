@@ -22,6 +22,8 @@
 // order (SD-14); those obligations stay with PostgreSQL. State lives only in
 // the Store; there is no persistence file and no restart persistence.
 //
-// Values are stored as given and returned as stored. Use value types, or treat
-// values as immutable, because the kernel does not deep-copy them.
+// NewTable stores values as given; use value types or immutable values with it.
+// NewClonedTable applies a module-supplied deep copy on Put/Get/Scan, protecting
+// mutable documents in the ADR 0013 model. There is no central entity registry:
+// capability adapters declare their tables and share this transaction kernel.
 package memdb

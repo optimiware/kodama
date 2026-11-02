@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   annotations:
-    kodama.io/profile-version: kodama-rootless-build-v1
+    kodama.io/profile-version: kodama-rootless-build-v2
   labels:
     app.kubernetes.io/component: node-profiles-uninstall
     app.kubernetes.io/name: kodama-node-profiles
@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       annotations:
-        kodama.io/profiles-sha256: 88e8e041dc42a61f2c64360348b6f21d54852a9304ab4751f0feb4d8d7f5bbdb
+        kodama.io/profiles-sha256: bf904a3b85845ab6f0bd733d90b6150ca9fcd3e7dc4d31fd47a8337728bd0715
       labels:
         app.kubernetes.io/name: kodama-node-profiles-uninstall
         app.kubernetes.io/part-of: kodama
@@ -70,8 +70,8 @@ spec:
             items:
               - key: kodama-rootless-build-v1.json
                 path: kodama-rootless-build-v1.json
-              - key: kodama-rootless-build-v1
-                path: kodama-rootless-build-v1
+              - key: kodama-rootless-build-v2
+                path: kodama-rootless-build-v2
             name: kodama-node-profiles
           name: profiles
         - configMap:

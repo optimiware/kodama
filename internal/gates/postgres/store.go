@@ -82,8 +82,17 @@ type Config struct {
 	// Deployments is optional. Without it a deployment-bearing gate cannot be
 	// decided or consumed.
 	Deployments DeploymentBinder
-	Clock       func() time.Time
-	NewID       func(prefix string) string
+	// SourceProvenance enables the source-set subject of migration
+	// 013_source_provenance.sql (artifacts/postgres.SourceProvenanceMigrations,
+	// which follows the run sources of migration 011): a gate whose subject names
+	// a source set is written, and the decision's read of the run includes its
+	// pinned sources and the commits its attempts reported. Without it the store
+	// reads and writes only the single-commit subject, so a composition whose
+	// schema lacks the migrations is unaffected, and a source-set subject is
+	// refused instead of being recorded as another candidate.
+	SourceProvenance bool
+	Clock            func() time.Time
+	NewID            func(prefix string) string
 }
 
 // Store implements gates.Store.
@@ -93,6 +102,7 @@ type Store struct {
 	exec ExecutionTx
 	auth AuthorityBinder
 	dep  DeploymentBinder
+	sets bool
 	now  func() time.Time
 	id   func(prefix string) string
 }
@@ -104,7 +114,7 @@ func NewStore(c Config) (*Store, error) {
 	if c.DB == nil || c.Events == nil || c.Execution == nil || c.Authority == nil {
 		return nil, fmt.Errorf("%w: database, event appender, execution binding and authority are required", gates.ErrNotConfigured)
 	}
-	s := &Store{db: c.DB, ev: c.Events, exec: c.Execution, auth: c.Authority, dep: c.Deployments, now: c.Clock, id: c.NewID}
+	s := &Store{db: c.DB, ev: c.Events, exec: c.Execution, auth: c.Authority, dep: c.Deployments, sets: c.SourceProvenance, now: c.Clock, id: c.NewID}
 	if s.now == nil {
 		s.now = func() time.Time { return time.Now().UTC() }
 	}

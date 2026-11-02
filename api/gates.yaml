@@ -288,7 +288,8 @@ components:
       type: object
       description: >-
         The single subject shape. Evidence is sorted by (id, digest). Deployment fields are both
-        null for a source-only gate.
+        null for a source-only gate. For a run of several repositories the subject also carries
+        sourceSet (DQ-17), which defines it; candidateCommit then presents the primary source.
       required: [tenantId, projectId, workItemId, contentRevision, candidateCommit, definitionId, evidence, deploymentId, deploymentConfigDigest]
       additionalProperties: false
       properties:
@@ -302,6 +303,20 @@ components:
           $ref: 'common.yaml#/components/schemas/Version'
         candidateCommit:
           $ref: '#/components/schemas/GitCommit'
+          description: >-
+            The candidate commit. For a candidate that spans repositories it is the commit of the
+            primary source (the first writable source ordered by repositoryId, else the first source)
+            so that clients which do not read source sets keep working; clients that understand
+            source sets read sourceSet, which defines the subject.
+        sourceSet:
+          description: >-
+            Present only for a candidate that spans repositories: the digest of the run's pinned
+            source set and, for every repository (ordered by repositoryId), the commit under
+            review and, for a repository the run may write, the integration base (the default
+            branch and the tip the approval is given over). A moved base makes the subject not
+            applicable (base_moved).
+          allOf:
+            - $ref: '#/components/schemas/SubjectSourceSet'
         definitionId:
           $ref: 'common.yaml#/components/schemas/ID'
         evidence:
@@ -316,6 +331,44 @@ components:
           type: string
           nullable: true
           pattern: '^sha256:[0-9a-f]{64}$'
+    SubjectSourceSet:
+      type: object
+      required: [digest, sources]
+      additionalProperties: false
+      properties:
+        digest:
+          $ref: '#/components/schemas/Digest'
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/SubjectSource'
+    SubjectSource:
+      type: object
+      required: [repositoryId, commit, base]
+      additionalProperties: false
+      properties:
+        repositoryId:
+          $ref: 'common.yaml#/components/schemas/ID'
+        commit:
+          $ref: '#/components/schemas/GitCommit'
+        base:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/IntegrationBase'
+    IntegrationBase:
+      type: object
+      required: [ref, commit]
+      additionalProperties: false
+      description: The default branch of a writable repository and the tip the approval is given over.
+      properties:
+        ref:
+          type: string
+          pattern: '^refs/heads/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$'
+          maxLength: 255
+        commit:
+          $ref: '#/components/schemas/GitCommit'
     RequiredEvidence:
       type: object
       required: [role, id, digest, expression, producer]

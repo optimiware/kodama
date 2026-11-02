@@ -70,7 +70,11 @@ type Dependencies struct {
 	// Optional.
 	Deployments Deployments
 	Conformance Conformance
-	Clock       func() time.Time
+	// Bases reads the default-branch tips a source-set subject names as its
+	// integration bases. Without it a gate of a run with a writable source set
+	// is not created, decided or answered for integration.
+	Bases Bases
+	Clock func() time.Time
 }
 
 // Service implements the gate use cases.
@@ -195,6 +199,12 @@ func (s *Service) PrepareDecision(ctx context.Context, c Caller, scope domain.Sc
 	if err := cmd.Validate(); err != nil {
 		return nil, err
 	}
+	// A source-set subject names the default-branch tips the approval is given
+	// over: they are observed here, outside any transaction, and a gate whose
+	// base moved takes no decision (GR-12).
+	if err := s.checkBeforeDecision(ctx, c.RequestID, scope, id); err != nil {
+		return nil, err
+	}
 	return &DecisionPlan{Scope: scope, GateID: id, Command: cmd, RequestID: c.RequestID}, nil
 }
 
@@ -245,7 +255,7 @@ func errClass(err error) string {
 		n string
 	}{{ErrStaleSubject, "stale"}, {ErrDenied, "denied"}, {ErrHidden, "hidden"}, {ErrNotFound, "not_found"}, {ErrVersionConflict, "version_conflict"},
 		{ErrConformance, "conformance"}, {ErrEvidence, "evidence"}, {ErrUnavailable, "unavailable"}, {ErrNotConfigured, "not_configured"},
-		{ErrReviewerAuthority, "reviewer_authority"}} {
+		{ErrReviewerAuthority, "reviewer_authority"}, {ErrNoApproval, "no_approval"}, {ErrAlreadyIntegrated, "already_integrated"}} {
 		if errors.Is(err, c.e) {
 			return c.n
 		}

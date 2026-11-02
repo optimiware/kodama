@@ -430,5 +430,89 @@
    "uidBound": true
   },
   "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_repository_created",
+  "schemaVersion": 1,
+  "type": "repository.created",
+  "occurredAt": "2026-10-30T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "repository",
+   "id": "repo_01",
+   "version": 3
+  },
+  "actor": {
+   "type": "service",
+   "id": "svc_repository"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "name": "backend",
+   "defaultBranch": "main",
+   "hosting": "internal"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_repository_state_changed",
+  "schemaVersion": 1,
+  "type": "repository.state_changed",
+  "occurredAt": "2026-10-30T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "repository",
+   "id": "repo_01",
+   "version": 3
+  },
+  "actor": {
+   "type": "service",
+   "id": "svc_repository"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "from": "provisioning",
+   "to": "ready",
+   "reason": "initialized"
+  },
+  "projectId": "p_inventory"
+ },
+ {
+  "id": "evt_git_refs_updated",
+  "schemaVersion": 1,
+  "type": "git.refs_updated",
+  "occurredAt": "2026-10-30T10:05:00Z",
+  "tenantId": "t_acme",
+  "resource": {
+   "type": "git_push",
+   "id": "rcv_01",
+   "version": 3
+  },
+  "actor": {
+   "type": "service",
+   "id": "svc_repository"
+  },
+  "correlationId": "req_01",
+  "causationId": null,
+  "data": {
+   "receiveId": "rcv_01",
+   "repositoryId": "repo_01",
+   "actor": {
+    "type": "workload",
+    "id": "att_01"
+   },
+   "originRunId": "run_01",
+   "updates": [
+    {
+     "ref": "refs/heads/kodama/agents/run_01/impl",
+     "old": "0000000000000000000000000000000000000000",
+     "new": "1111111111111111111111111111111111111111",
+     "kind": "create"
+    }
+   ]
+  },
+  "projectId": "p_inventory"
  }
 ]

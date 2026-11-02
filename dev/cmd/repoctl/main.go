@@ -1,6 +1,6 @@
 // Command repoctl runs the repository checks that do not need a container:
-// formatting, pinned configuration, documentation links and the scoped Go
-// gate that writes FORGE_RESULTS.
+// formatting, pinned configuration, documentation links, the task graph, a
+// task's declared check and the scoped Go gate that writes FORGE_RESULTS.
 package main
 
 import (
@@ -13,7 +13,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: repoctl <fmt|config|docs|go> [arguments]")
+		fmt.Fprintln(os.Stderr, "usage: repoctl <fmt|config|docs|tasks|check-task|go> [arguments]")
 		os.Exit(2)
 	}
 	root := devenv.Root()
@@ -25,6 +25,10 @@ func main() {
 		err = repochk.Config(root)
 	case "docs":
 		err = repochk.Docs(root)
+	case "tasks":
+		err = repochk.Tasks(root)
+	case "check-task":
+		os.Exit(repochk.CheckTask(os.Args[2:]))
 	case "go":
 		os.Exit(repochk.GoCheck(os.Args[2:]))
 	default:

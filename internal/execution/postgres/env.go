@@ -153,6 +153,30 @@ func (e *txEnv) ReserveWriter(ctx context.Context, at *execution.Attempt) error 
 	return err
 }
 
+var _ execution.InternalWriterEnv = (*txEnv)(nil)
+
+// ReserveInternalWriter joins the reservation of a work item's internally hosted
+// workspace writer to this transaction: the same single slot, reserved only while
+// the workspace still has the version the writer gate was checked at, so the
+// reservation never commits against a gate answer that predates another writer's
+// unknown push (ErrStale: the claim is repeated from the gate).
+func (e *txEnv) ReserveInternalWriter(ctx context.Context, at *execution.Attempt, observed domain.Version) error {
+	in := workspace.ReserveWriterInput{Scope: at.Scope, WorkspaceID: workspace.ID(at.WorkspaceID), AttemptID: at.ID, Actor: system}
+	_, err := e.s.peers.Workspaces.UpdateInTx(ctx, e.tx, at.Scope, in.WorkspaceID, workspace.Load{Associations: true},
+		workspace.ReserveInternalWriterMutation(in, observed, e.s.now))
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, workspace.ErrWriterBusy), errors.Is(err, workspace.ErrFenced), errors.Is(err, workspace.ErrAdmissionClosed):
+		return fmt.Errorf("%w: the workspace writer slot is not available", execution.ErrBusy)
+	case errors.Is(err, workspace.ErrStale):
+		return fmt.Errorf("%w: the workspace changed since the writer gate was checked", execution.ErrStale)
+	case errors.Is(err, workspace.ErrNotFound):
+		return execution.ErrNotFound
+	}
+	return err
+}
+
 // SettleWriter ends the writer reservation with the attempt's outcome. An
 // unsettled publication blocks it; a slot already released is success.
 func (e *txEnv) SettleWriter(ctx context.Context, at *execution.Attempt, outcome execution.WriterOutcome, source string) error {

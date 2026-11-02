@@ -16,7 +16,9 @@ import (
 	"github.com/optimiware/kodama/internal/execution/executiontest"
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
+	repositorypg "github.com/optimiware/kodama/internal/repository/postgres"
 	"github.com/optimiware/kodama/internal/storage"
+	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 func fakePeers(e *executiontest.Env) execpg.Peers {
@@ -68,7 +70,7 @@ func Test_runtime_store_revocation(t *testing.T) {
 	ctx := context.Background()
 	e := executiontest.New(t)
 	e.GrantAll()
-	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations())
+	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations(), repositorypg.Migrations(), workspacepg.Migrations(), execpg.RunSourceMigrations())
 	if err != nil {
 		t.Fatal(err)
 	}

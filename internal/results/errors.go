@@ -38,6 +38,9 @@ var (
 	// ErrPublicationConflict is a lost expected-tip race or a changed proposal.
 	// The concrete error is a *PublicationConflict.
 	ErrPublicationConflict = errors.New("results: publication conflict")
+	// ErrContextVersionMismatch is an attempt of another runtime wire reaching the
+	// source-set result route: nothing was read or changed.
+	ErrContextVersionMismatch = errors.New("results: context version mismatch")
 	// ErrUnavailable is a dependency that could not give a conclusive answer, a
 	// publication or writer settlement that is still unsettled, or an unknown
 	// commit outcome. Nothing was acknowledged; the caller repeats the request.
@@ -45,7 +48,7 @@ var (
 )
 
 var kinds = []error{ErrInvalidRequest, ErrUnauthenticated, ErrForbidden, ErrAttemptRevoked, ErrNotFound, ErrArtifactIncomplete,
-	ErrOutputInvalid, ErrResultHashMismatch, ErrResultConflict, ErrPublicationConflict, ErrUnavailable}
+	ErrOutputInvalid, ErrResultHashMismatch, ErrResultConflict, ErrPublicationConflict, ErrContextVersionMismatch, ErrUnavailable}
 
 type classified struct {
 	kind  error

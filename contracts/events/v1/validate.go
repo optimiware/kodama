@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -38,6 +39,12 @@ var Patterns = map[string]string{
 	// RunResourceKey: the fixed run-resource keys or service.NAME, NAME being
 	// the pipeline service-name syntax (pipeline-format-v1alpha2).
 	"RunResourceKey": `^(network|workspace|preparation|service\.[a-z][a-z0-9-]{0,29})$`,
+	// The Git service names, shared with contracts/git/v1 (internal Git service
+	// events): the repository name, a default branch and a full ref name. The
+	// schema additionally forbids the ref sequences gitv1.Forbidden.
+	"RepositoryName": gitv1.Patterns["RepositoryName"],
+	"BranchName":     gitv1.Patterns["BranchName"],
+	"RefName":        gitv1.Patterns["RefName"],
 }
 
 var compiled = func() map[string]*regexp.Regexp {

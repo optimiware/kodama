@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -42,18 +43,67 @@ func (s *Store) insertRun(ctx context.Context, tx pgx.Tx, r *execution.Run) erro
 		}
 		shared = b
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO runs
-		(tenant_id, project_id, id, purpose, work_item_id, workspace_id, deployment_id, definition_id, definition_digest, content_revision,
+	cols := `tenant_id, project_id, id, purpose, work_item_id, workspace_id, deployment_id, definition_id, definition_digest, content_revision,
 		 specification, source_commit, inputs, snapshot_digest, source_retention, retained_ref_id, requested_by_type, requested_by_id,
 		 status, status_reason, cancel_requested_at, cancel_reason, failure_intent_at, failure_reason, version, created_at, updated_at, started_at, finished_at,
-		 run_shared, deadline_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,
-		string(r.Scope.TenantID), string(r.Scope.ProjectID), string(r.ID), string(r.Purpose), nstr(string(r.WorkItemID)), nstr(r.WorkspaceID),
+		 run_shared, deadline_at`
+	args := []any{string(r.Scope.TenantID), string(r.Scope.ProjectID), string(r.ID), string(r.Purpose), nstr(string(r.WorkItemID)), nstr(r.WorkspaceID),
 		nstr(r.DeploymentID), string(r.DefinitionID), r.DefinitionDigest, rev, spec, nstr(r.SourceCommit), inputs, r.SnapshotDigest,
 		string(r.SourceRetention), nstr(r.RetainedRefID), string(r.RequestedBy.Type), r.RequestedBy.ID, string(r.Status), string(r.Reason),
 		ntm(r.CancelRequestedAt), nstr(string(r.CancelReason)), ntm(r.FailureIntentAt), nstr(string(r.FailureReason)), int64(r.Version),
-		micros(r.CreatedAt), micros(r.UpdatedAt), ntm(r.StartedAt), ntm(r.FinishedAt), shared, ntm(r.DeadlineAt))
-	return err
+		micros(r.CreatedAt), micros(r.UpdatedAt), ntm(r.StartedAt), ntm(r.FinishedAt), shared, ntm(r.DeadlineAt)}
+	if s.opts.RunSources {
+		cols += `, origin_kind, origin_push_id, origin_repository_id, origin_ref, source_base_url, source_ca_file, source_declaration, source_set_digest`
+		args = append(args, nstr(string(r.Origin.Kind)), nstr(r.Origin.PushID), nstr(r.Origin.RepositoryID), nstr(r.Origin.Ref), sourceBase(r), sourceCA(r),
+			sourceDeclaration(r), sourceDigest(r))
+	} else if r.SourceRun() {
+		return fmt.Errorf("%w: the run origins and source sets migration is not applied", execution.ErrNotConfigured)
+	}
+	marks := make([]string, len(args))
+	for i := range marks {
+		marks[i] = fmt.Sprintf("$%d", i+1)
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO runs (`+cols+`) VALUES (`+strings.Join(marks, ",")+`)`, args...); err != nil || r.Sources == nil {
+		return err
+	}
+	for i, e := range r.Sources.Entries {
+		if _, err := tx.Exec(ctx, `INSERT INTO run_sources
+			(tenant_id, project_id, run_id, ordinal, path, repository_id, repository_name, repository_url, commit, access, branch)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			string(r.Scope.TenantID), string(r.Scope.ProjectID), string(r.ID), i, e.Path, e.RepositoryID, e.Repository, e.URL, e.Commit,
+			string(e.Access), e.Branch); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func sourceBase(r *execution.Run) *string {
+	if r.Sources == nil {
+		return nil
+	}
+	return nstr(r.Sources.BaseURL)
+}
+
+func sourceCA(r *execution.Run) *string {
+	if r.Sources == nil {
+		return nil
+	}
+	return r.Sources.CAFile
+}
+
+func sourceDeclaration(r *execution.Run) *string {
+	if r.Sources == nil {
+		return nil
+	}
+	return nstr(r.Sources.Declaration)
+}
+
+func sourceDigest(r *execution.Run) *string {
+	if r.Sources == nil {
+		return nil
+	}
+	return nstr(r.Sources.Digest)
 }
 
 func (s *Store) insertStep(ctx context.Context, tx pgx.Tx, scope domain.Scope, st *execution.StepRun) error {
@@ -127,6 +177,9 @@ func (s *Store) updateAttempt(ctx context.Context, tx pgx.Tx, a *execution.Attem
 		}
 		result = b
 	}
+	if err := s.insertCommits(ctx, tx, a); err != nil {
+		return err
+	}
 	tag, err := tx.Exec(ctx, `UPDATE step_attempts SET status=$4, reason=$5, failure_class=$6, observed_job_uid=$7, execution_deadline_at=$8,
 		started_at=$9, finished_at=$10, result_hash=$11, result=$12, authority_revision=$13, version=$14, updated_at=$15
 		WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND version=$14-1`,
@@ -138,6 +191,19 @@ func (s *Store) updateAttempt(ctx context.Context, tx pgx.Tx, a *execution.Attem
 	}
 	if tag.RowsAffected() != 1 {
 		return execution.ErrStale
+	}
+	return nil
+}
+
+// insertCommits records, once, the refs a successful attempt of a source-set run
+// reported (append-only; a repeat of the same update finds them recorded).
+func (s *Store) insertCommits(ctx context.Context, tx pgx.Tx, a *execution.Attempt) error {
+	for i, c := range a.Commits {
+		if _, err := tx.Exec(ctx, `INSERT INTO attempt_commits (tenant_id, project_id, attempt_id, run_id, ordinal, repository_id, ref, commit, push_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
+			string(a.Scope.TenantID), string(a.Scope.ProjectID), string(a.ID), string(a.RunID), i, c.RepositoryID, c.Ref, c.Commit, c.PushID); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -364,7 +430,7 @@ func (s *Store) writeEvent(ctx context.Context, tx pgx.Tx, agg *execution.Aggreg
 	}
 	switch t.Subject {
 	case execution.SubjectRun:
-		if t.From == "" && agg.Run.Purpose == execution.PurposeWork {
+		if t.From == "" && agg.Run.Purpose == execution.PurposeWork && agg.Run.WorkItemID != "" {
 			// Creation: the catalog's run.created with the pinned snapshot digest.
 			typ = eventsv1.TypeRunCreated
 			res = eventsv1.Resource{Type: "run", ID: string(agg.Run.ID), Version: int64(t.Version)}

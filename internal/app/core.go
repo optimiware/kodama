@@ -92,10 +92,9 @@ const gateDecisionDurable = "kodama-gates-decision"
 // sentinelTables must exist for the process to report ready: they prove the
 // declared migrations were applied to the database the runtime role sees.
 var sentinelTables = []string{
-	"tenants", "projects", "memberships", "audit", "outbox", "event_inbox", "idempotency", "work_items",
-	"secrets", "pipeline_definitions", "workspaces", "artifacts", "runs", "step_attempts", "runtime_grants", "log_records",
-	"agent_profiles", "gates", "environments", "deployments", "model_settings", "model_requests", "mcp_servers", "mcp_invocations",
-	"work_item_dependencies", "chatops_destinations", "chatops_deliveries", "git_triggers", "git_trigger_deliveries", "git_trigger_admissions",
+	"tenants", "users", "memberships", "projects", "repositories", "pipelines",
+	"tasks", "runs", "run_steps", "services", "secrets", "artifacts",
+	"agent_sessions", "mcp_servers", "audit_events",
 }
 
 // Core is the constructed core assembly: every dependency is built and checked,
@@ -201,6 +200,9 @@ func NewCore(ctx context.Context, cfg CoreConfig, log *slog.Logger) (*Core, erro
 	}
 	c.pool = pool
 	if err := verifyRuntimeRole(ctx, pool); err != nil {
+		return nil, err
+	}
+	if err := requireLegacySchema(ctx, pool); err != nil {
 		return nil, err
 	}
 

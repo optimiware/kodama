@@ -6,7 +6,8 @@ filesystem. Implements the [workspace protocol](../../docs/specs/workspaces.md)
 
 Status: implemented and tested against real PostgreSQL and real Git over HTTPS.
 Nothing registers these routes or adapters yet; that is T-027's job
-(see *Integration owner* below).
+(see *Integration owner* below). T-147 adds the [internally hosted model](#internally-hosted-repositories-task-t-147)
+beside it; external repositories keep everything described up to that section.
 
 ## Layout
 
@@ -15,16 +16,17 @@ Nothing registers these routes or adapters yet; that is T-027's job
 | `workspace.go`, `publication.go`, `retention.go` | Entities: `Workspace`, `Publication` receipt, `RetainedRef`; explicit transitions, no I/O |
 | `ports.go`, `errors.go` | Consumer-owned ports (store, authorization, peer modules, Git) and sentinel errors |
 | `service.go`, `provision.go`, `sync.go`, `writer.go`, `publish.go`, `reconcile.go`, `archive.go`, `fence.go`, `retained_refs.go` | Use cases coordinating entities through ports |
-| `postgres/` | PostgreSQL adapter, transaction-bound entry points; the workspace tables and their deferred cross-module constraints are in the baseline schema (`internal/storage/migrations/001_schema.sql`) |
-| `git/` | Hardened Git adapter: `Reader` (read credential), `Publisher` (write credential), bundle verification, bounds |
+| `repositories.go`, `internal_*.go` | The internally hosted model (T-147): `RepositoryAssociation`, `InternalCheckpoint`, `ProvisionInternal`, `ReserveInternalWriter`, `HoldsWriter`, `AcceptCheckpoint`, internal synchronization and reconciliation, and their consumer-owned ports (`Hosts`, `InternalRepositories`, `PushRecords`, `WriterGate`, `PushInspector`) |
+| `postgres/` | PostgreSQL adapter, transaction-bound entry points; the workspace tables and their deferred cross-module constraints are in the baseline schema (`internal/storage/migrations/001_schema.sql`); `migrations/010_workspace_repositories.sql` (exported by `Migrations()`) adds `workspaces.hosting`, `workspace_repositories` and `workspace_checkpoints` |
+| `git/` | Hardened Git adapter: `Reader` (read credential; also the `PushInspector` of internal pushes), `Publisher` (write credential), bundle verification, bounds |
 | `http/` | The five human routes, error mapping, DTOs generated from `api/workspace.yaml` |
 | `runtime/` | Translation of the frozen `runtimev1` source proposal; registers no route |
 | `workspacetest/` | Shared test fixtures (real PostgreSQL + Git, explicit peer-port fakes, fault injection) |
 | `../../api/workspace.yaml` | OpenAPI 3.0 fragment referencing `api/common.yaml` |
 | `../../test/support/git/` | HTTPS `git-http-backend` fixture: distinct read/write tokens, hold/drop/delay faults |
 
-`internal/workspace` itself imports only the standard library and
-`internal/domain`: no pgx, HTTP or process dependency. Dependencies point
+`internal/workspace` itself imports only the standard library, `internal/domain` and the
+Git contract (`contracts/git/v1`, for the shapes of the ports below): no pgx, HTTP or process dependency. Dependencies point
 inward; adapters import the domain package, never the reverse.
 
 ## Model
@@ -160,9 +162,139 @@ go svc.RunReconciler(ctx, interval)
   T-020's `writer_attempt_id` / `publish_artifact_id` / `work_item_id` foreign
   keys are part of the baseline schema, added after the work, execution and
   artifact tables they reference.
-* Migration order: handled by the baseline; this module contributes no migration.
+* Migration order: the baseline holds the original tables; `010_workspace_repositories.sql`
+  (`workspace/postgres.Migrations()`) is registered by T-132 after `009` (see below).
 * No new event catalog entries, CLI commands, environment variables or runtime
   context fields.
+
+## Internally hosted repositories (task T-147)
+
+[ADR 0011](../../docs/adr/0011-internal-tenant-git-service.md), WS-17 to WS-19, WS-A13 to WS-A15. A
+workspace is either **external** (one repository, the publisher model above, unchanged) or
+**internal** (`Workspace.Hosting`; immutable; the column `workspaces.hosting`, default `external`, so
+every existing row stays external). One workspace per work item and one writer reservation per work
+item hold for both.
+
+* **Associations.** `RepositoryAssociation` (table `workspace_repositories`): for each repository the
+  work item touches, the task branch `refs/heads/kodama/work/<work-item-id>`, the `BaseCommit` the
+  branch is created at (the repository's default-branch tip, recorded before creation, first write
+  wins), the `AcceptedCommit` last accepted there and a state `intent → created`. The workspace's own
+  repository fields describe its **primary** repository (the first one it was provisioned for), and
+  `Workspace.AcceptedCommit` mirrors that repository's accepted commit, so the one writer reservation
+  keeps its shape; the secret references of an internal workspace are a checkout reference the
+  composition's read-credential resolver understands and the placeholder `NoPublisherRef`, never a
+  publisher secret.
+* **Provisioning.** `ProvisionInternal(item, repositories)` resolves each repository through
+  `InternalRepositories` (foreign or unknown: not found; external: `ErrWrongHosting`; not ready or empty:
+  `ErrRepositoryNotReady`), commits the workspace and every intent, then creates each task branch with
+  `Hosts.CreateBranch` under `BranchOperationID` (a hash of tenant, project, workspace and repository:
+  stable across retries, restarts and concurrent callers), outside SQL. Any failure is reconciled by
+  observing the ref (`Hosts.ReadRefValues`): at the base commit is created; elsewhere, the ref's journal
+  (`Hosts.ReadJournal`) shows whether a committed entry of this operation put it there (ours, moved on by
+  later work) or not (an independent branch: reason `branch_exists`, never overwritten or adopted).
+  Repeating the call, concurrently or after a crash, creates nothing more; the reconciler
+  (`ReconcileWorkspace`) finishes intents the same way.
+* **Writer.** `ReserveInternalWriter` is the same single slot (`ErrWriterBusy`), pinned at the primary's
+  accepted commit. Before assigning, the gate asks, for the task branch of **every** created repository,
+  `gitpush`'s `UnknownBlocksWriter` (an unknown outcome: `ErrWriterBlocked`) and `RefPushes.UnsettledOnRef`
+  (a push still authorized, committing or unknown: `ErrWriterBlocked` and `ErrPushPending`); a missing
+  gate or push-record reader fails closed (`ErrNotConfigured`) and an outage of either refuses as
+  `ErrUnavailable` (retryable, 503; never reported as a block). Gitpush asks `HoldsWriter` when it
+  authorizes a push, so a push the previous writer authorized can still land after it was released: the
+  unsettled check is what keeps a new writer off that tip. Each task branch is then synchronized (see
+  **Synchronization**). The gate answers and the synchronization are observed outside SQL *after* the
+  workspace version is read and applied together with the reservation in **one** mutation that requires that
+  version unchanged: another reservation, release or synchronization in between makes the observation stale
+  and it is repeated (bounded by `admissionRetries`), so a reservation never commits against a gate answer
+  that predates another writer's unknown push. `ReserveInternalWriterMutation(in, observed, now)` is the
+  pure mutation a caller joins to its own transaction (`UpdateInTx`); it requires the version
+  `CheckWriterGateAt` returned (zero is refused) and cannot itself run the gate or the synchronization.
+  `HoldsWriter(scope, workItemID, attemptID)` is the `gitpush.Reservations` adapter: a plain committed read,
+  called by gitpush outside its own transaction, so it needs no transaction (gitpush must also call it again
+  after the `authorized` record is durably committed, see "What gitpush must provide"); it is true only for the holder
+  of an internal workspace whose admission is open (available, no archive requested, not fenced).
+* **Synchronization.** A task branch that moved beyond the accepted commit is adopted as human work (a
+  `workspace.checkpoint_created` event marked human) only when durable push evidence explains it:
+  `RefPushes.UnsettledOnRef` is false for the ref and the chain of `RefPushes.AppliedOnRef` entries from the
+  observed tip back to the accepted commit consists only of pushes by an engineer (a user actor) or by a
+  workload whose commit was accepted as a checkpoint. Anything else is never adopted: a workload push that
+  was refused (a secret in its objects) or never reported, a human push stacked on top of one, a movement
+  no applied record explains (`ErrCheckpointRequired`, reason `unaccepted_push` on the association; an
+  engineer resets the branch to clear it) and a push still in flight (`ErrPushPending`, nothing recorded).
+  A rewritten or missing branch is `ErrDiverged`. A refused or unaccepted push therefore never becomes
+  "contained history" that later checkpoints skip scanning. `Sync` and admission observe outside SQL and
+  apply every association in one mutation that checks `If-Match`, that the workspace is available and that
+  each accepted commit still equals the one observed (`ErrStale` repeats the observation).
+* **Archive.** An internal archive completes only once no push of any created task branch is unsettled
+  (`RefPushes.UnsettledOnRef`), checked after the workspace version and completed only at that version;
+  otherwise the request stays pending (`ErrArchiveUncertain`) and the reconciler finishes it later. From the
+  moment archive is requested `HoldsWriter` is false for every attempt.
+* **Checkpoints.** `AcceptCheckpoint(attempt, repository, ref, commit, pushId)` accepts a commit output
+  only from records: the attempt holds the reservation and declared write access; the repository is
+  associated and created and the ref is its task branch; the push record reloaded through `PushRecords`
+  is applied, its entry applied and neither delete nor rewrite, its new value is the commit
+  (`gitv1.PinnedCommit`), it belongs to the repository and to this attempt (a record still authorized,
+  committing or unknown is `ErrPushPending`, a refused one `ErrPushNotApplied`). Then `PushInspector`
+  reads the commit server-side with a read-only credential (`git.Reader.Inspect`: the task branch is
+  fetched into bounded scratch, the commit is related to the accepted one, and everything reachable from
+  the commit and not from the accepted commit is scanned) for the attempt's injected values and, through
+  `WithPriorDisclosures`, the values the run disclosed to its other steps: `ErrSecretInSource`, audit
+  `workspace.checkpoint_refused`, nothing accepted. A fast-forward moves the association's accepted
+  commit (and the workspace's, for the primary) and emits `workspace.checkpoint_created` in one
+  transaction with the checkpoint record (`workspace_checkpoints`, keyed by repository, push and ref, so
+  a replay returns the same checkpoint and repeats nothing); an earlier push of the same history arriving
+  late is recorded without moving the accepted commit back.
+  The execution module accepts a writer's checkpoints before it settles the writer
+  (`SettleWriter` releases the reservation, after which `AcceptCheckpoint` refuses with `ErrNotWriter`),
+  and settles an internal writer without a `SourceCommit` (each commit was verified when accepted).
+* **Retained pins.** In that transaction the checkpoint records the retained ref
+  `refs/kodama/runs/<run>/<n>` (numbered per run and repository); afterwards `Hosts.SetRetainedRef`
+  creates it under a stable operation. `retained_ref_exists` for another commit (another module pinned the
+  run) moves the checkpoint to the next number; an unknown outcome is settled by reading the ref; a pin
+  that could not be confirmed leaves the checkpoint accepted, the call `ErrUnavailable` and the workspace
+  reconcilable. The external `workspace_retained_refs` namespace is not used.
+* **Unchanged for external hosting.** The publisher path, the writer reservation with its expected tip,
+  bundle proposals, retained branch pins and the single recovery point refuse an internal workspace
+  (`ErrWrongHosting`), and every internal operation refuses an external one; nothing in an external
+  workspace's flow calls `Hosts`, the gate or the inspector (`Test_unit_workspace_external_publisher_unchanged`).
+* **Ports.** All six are optional in `Dependencies`; a use case that needs a missing one fails closed
+  with `ErrNotConfigured`. `repository.Hosts` satisfies `Hosts`, `*gitpush.Service` satisfies
+  `PushRecords` (`Reload`), `WriterGate` and `gitpush.Reservations` is satisfied by `*workspace.Service`
+  (compile-time proofs in the tests). `RefPushes` is satisfied by T-138's gitpush additions (below); the
+  tests use the peer fake `workspacetest.FakePushes`, shaped like gitpush's records.
+* **What gitpush must provide (`RefPushes`, T-138).** On `*gitpush.Service`, with the scope-checked,
+  tenant-isolated semantics of `UnknownBlocksWriter` and a contract `not_found` for an unknown repository:
+  `UnsettledOnRef(ctx context.Context, scope domain.Scope, repositoryID, ref string) (bool, error)` is
+  true when any push record of the repository has an entry for `ref` that is `authorized`, `committing` or
+  `unknown`; `AppliedOnRef(ctx context.Context, scope domain.Scope, repositoryID, ref string, limit int)
+  ([]gitv1.PushRecord, error)` returns up to `limit` whole records with an `applied` entry for `ref`, newest
+  first by the order their entries applied, each with `Actor` (`user` or `workload`), `PushID` and the entry's
+  `Old`/`New`/`Kind`. Also required of gitpush (the workspace can only see records that already exist):
+  after the `authorized` record is **durably committed** and before it answers the worker, gitpush must call
+  `HoldsWriter` again and, when it is false, refuse the push and settle the record so nothing applies. A
+  check before the transaction or inside it is not sufficient: the writer can be released or an archive
+  requested after the question, and the uncommitted record is invisible to `UnsettledOnRef`. With the
+  recheck either `UnsettledOnRef` sees the record or the recheck sees the closed or released admission. A
+  recheck in `CommitIntent` is an extra guard, not the only one.
+* **Fail-closed dead ends.** These are deliberate; each needs an engineer or an operator, never a workaround:
+  a task branch more than 256 applied records (`maxMovementRecords`) ahead of the accepted commit is never
+  adopted; only an exact reset of the branch to the accepted commit clears `unaccepted_push`, and a
+  force-push over an unaccepted workload push is still walked through the old tip (its record's `Old`) and
+  refused; a crashed or cancelled attempt's applied push that was never reported through `AcceptCheckpoint`
+  blocks later admission (`ErrCheckpointRequired`) until an engineer resets the branch; an unknown actor
+  type, a recreated branch (all-zero `Old`) and an `Old` no record explains are refused. While the attempt
+  that made the push still holds the writer slot the same push is `ErrPushPending` (its output may still be
+  reported), nothing is recorded, and `Sync` answers 409 `workspace_state_conflict`.
+* **Archive and checkpoints.** While an archive is pending, `AcceptCheckpoint` still accepts the commits of
+  the attempt that holds the reserved slot; every other attempt, and everyone once the archive completed, gets
+  `ErrAdmissionClosed`. The grace is best effort: the archive waits only while a push is unsettled, so a push
+  that applies and is not accepted before the next reconciler pass can still be archived without its
+  checkpoint. If the writer's slot is still held, Restore reopens admission and the acceptance works again;
+  once the writer was settled the push is `ErrCheckpointRequired` and needs an engineer reset.
+* **Not here.** Execution admission and source sets (T-148, which calls `ProvisionInternal`,
+  `CheckWriterGate`/`ReserveInternalWriter` and `AcceptCheckpoint` and writes the entrypoint's `commits`
+  outputs), attempt grants and cancellation (T-150), the composition of the ports, the migration
+  registration and the routes (T-132), operator resolution of unknown entries (T-138).
 
 ## Tests
 
@@ -185,3 +317,16 @@ test; names carry the `t013` prefix.
 | `Test_tenant_isolation_and_atomic_events` | IT-02–IT-05 |
 | `Test_retention_pin_delete_race`, `Test_publisher_restore_fence` | WS-11, WS-12 |
 | `Test_workspace_http_contract`, `Test_source_runtime_compatibility`, `Test_migration_reapply` | WS-09; contract compatibility |
+| `Test_unit_workspace_repository_associations` | WS-17; WS-A13 |
+| `Test_unit_workspace_task_branch_provisioned_idempotent` | WS-17; WS-A13 |
+| `Test_unit_workspace_single_writer_per_item` | WS-03, WS-18; WS-A02, WS-A14 |
+| `Test_unit_workspace_internal_checkpoint_requires_applied_push` | WS-19; WS-A15 |
+| `Test_unit_workspace_unknown_push_blocks_reassignment` | WS-11, WS-18, GR-09; WS-A15 |
+| `Test_unit_workspace_retained_pins_internal` | WS-02, WS-19, GR-13 |
+| `Test_unit_workspace_prior_disclosure_scan_on_push` | WS-16, WS-19 |
+| `Test_unit_workspace_external_publisher_unchanged` | WS-19; WS-A15 |
+| `TestInspectRelatesAndScansPushedCommits` (real Git over HTTPS), `Test_workspace_http_repositories`, `Test_migration_workspace_repositories` (PostgreSQL), the internal-hosting case of the shared `StoreContract` (memory; PostgreSQL) | the adapters of the above |
+
+The internal tests run on the memory store with explicit peer fakes (`workspacetest.NewInternalEnv`: the
+worker, repository module, push records, writer gate, inspector and run disclosures) and need no database.
+Real SQL: `make check-go-integration DEV_SCOPE=t147 DEV_STACK=services PKGS='./internal/workspace/...'`.

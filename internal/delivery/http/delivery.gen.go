@@ -125,22 +125,28 @@ type Deployment struct {
 	Reason string `json:"reason"`
 
 	// RunId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
-	RunId     externalRef0.ID  `json:"runId"`
-	Source    Source           `json:"source"`
-	Status    DeploymentStatus `json:"status"`
-	StepId    string           `json:"stepId"`
-	UpdatedAt time.Time        `json:"updatedAt"`
+	RunId  externalRef0.ID `json:"runId"`
+	Source Source          `json:"source"`
+
+	// SourceSet Present only for a deployment of a run with a source set.
+	SourceSet *DeploymentSourceSet `json:"sourceSet,omitempty"`
+	Status    DeploymentStatus     `json:"status"`
+	StepId    string               `json:"stepId"`
+	UpdatedAt time.Time            `json:"updatedAt"`
 
 	// Version Resource version; the ETag is this integer in double quotes.
 	Version externalRef0.Version `json:"version"`
 }
 
-// DeploymentCreate defines model for DeploymentCreate.
+// DeploymentCreate Exactly one of source and sourceSet names the candidate.
 type DeploymentCreate struct {
 	// AttemptId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
 	AttemptId externalRef0.ID `json:"attemptId"`
 	Image     Image           `json:"image"`
-	Source    Source          `json:"source"`
+	Source    *Source         `json:"source,omitempty"`
+
+	// SourceSet The candidate of a multi-repository run: the canonical digest of the run's pinned source set and one commit for every repository of it, ordered by repositoryId. A request names it instead of source and it must equal the source set of the originating attempt and of the image's provenance (DQ-17).
+	SourceSet *DeploymentSourceSet `json:"sourceSet,omitempty"`
 }
 
 // DeploymentID Derived from the tenant, project and action key, so every retry names the same record.
@@ -160,6 +166,20 @@ type DeploymentReceipt struct {
 	// Created True only for the call that created the record.
 	Created    bool       `json:"created"`
 	Deployment Deployment `json:"deployment"`
+}
+
+// DeploymentSourceCommit defines model for DeploymentSourceCommit.
+type DeploymentSourceCommit struct {
+	Commit string `json:"commit"`
+
+	// RepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RepositoryId externalRef0.ID `json:"repositoryId"`
+}
+
+// DeploymentSourceSet The candidate of a multi-repository run: the canonical digest of the run's pinned source set and one commit for every repository of it, ordered by repositoryId. A request names it instead of source and it must equal the source set of the originating attempt and of the image's provenance (DQ-17).
+type DeploymentSourceSet struct {
+	Commits []DeploymentSourceCommit `json:"commits"`
+	Digest  Digest                   `json:"digest"`
 }
 
 // DeploymentStatus defines model for DeploymentStatus.
@@ -269,10 +289,13 @@ type Producer struct {
 	ToolImage string          `json:"toolImage"`
 }
 
-// RuntimeDeploymentRegister defines model for RuntimeDeploymentRegister.
+// RuntimeDeploymentRegister Exactly one of source and sourceSet names the candidate.
 type RuntimeDeploymentRegister struct {
-	Image  Image  `json:"image"`
-	Source Source `json:"source"`
+	Image  Image   `json:"image"`
+	Source *Source `json:"source,omitempty"`
+
+	// SourceSet The candidate of a multi-repository run: the canonical digest of the run's pinned source set and one commit for every repository of it, ordered by repositoryId. A request names it instead of source and it must equal the source set of the originating attempt and of the image's provenance (DQ-17).
+	SourceSet *DeploymentSourceSet `json:"sourceSet,omitempty"`
 }
 
 // SecretDelivery defines model for SecretDelivery.

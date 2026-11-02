@@ -257,3 +257,25 @@ make test-task TASK=T-015
 PostgreSQL, S3 and registry tests skip without their fixtures
 (`KODAMA_REQUIRE_*=1` turns a missing fixture into a failure). The acceptance
 tests are not satisfied by skips: run them with the fixtures present.
+
+## Source-set provenance (T-149, ADR 0011, DQ-17)
+
+`Provenance` is nothing, a single source (`RepositoryURL`, `Commit`: every earlier artifact, unchanged) or a
+`SourceSet`: the canonical digest of the run's pinned set and, for every repository, the commit the producing
+attempt worked from, ordered by repository ID (`NewSourceSet`; 1 to 32 commits, each repository once; comparable;
+never beside a single source; an artifact's public `source` stays the nullable member it was, and `sourceSet` is additive). The execution adapter sets `AttemptGrant.Source` from the run's pinned set; an OCI
+registration binds what the registry verification resolved (`oci.ProvenanceResolver` returns a `Provenance`, so
+T-132's resolver for a source-set run returns the set). The public representation adds `sourceSet`
+(`ArtifactSourceSet`) only for such an artifact and leaves `source` null; every other artifact is represented as
+before.
+
+**Storage.** Migration `postgres/migrations/013_source_provenance.sql` (`postgres.SourceProvenanceMigrations()`,
+slot 013 of the [plan](../../docs/implementation/internal-git-service.md#migration-numbering)) adds
+`artifacts.source_set_digest` and `source_commits` (a canonical JSON list the database validates: ordered, unique,
+non-zero commits, each repository one of the artifact's own project) and the matching columns of `deployments` (whose
+repository URL and commit stay NOT NULL: a set deployment's are its primary source's) and `gates` (whose set must be its
+run's pinned set). They are additive and depend on 007 (repositories) and 011 (`run_sources`): T-132 registers the
+contribution after both and before 012. `postgres.Config.SourceProvenance` turns the columns on; without it the store reads and
+writes exactly the earlier columns (a composition whose schema lacks the migration is unaffected) and refuses a
+source set. The artifact owns the file because gates and deployments reference artifacts; delivery and gates take
+their columns from the same migration.

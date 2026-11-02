@@ -4,7 +4,7 @@ This is the T-001 scaffold (a Go process, real dependency fixtures, and named ac
 
 ## Prerequisites
 
-- Go **1.27.2 or later**, GNU Make **3.81 or later**, and Git. Bun **1.4.2** is only needed for OpenForge commands; the development tooling is Go.
+- Go **1.27.2 or later**, GNU Make **3.81 or later**, and Git. The development tooling is Go; no Bun, OpenForge checkout or sibling directory is needed.
 - macOS ARM64: a running Podman machine. The initial acceptance environment uses Podman **6.1.4**, an AppleHV VM with 8 CPUs / 8 GiB, and its existing rootful connection.
 - Linux AMD64: Podman locally by default; explicitly select `DEV_PROVIDER=docker` for Docker/CI. Local Podman results do not qualify Docker.
 - Compose: `podman compose` (Podman's compose provider, such as podman-compose 1.6) locally, or the Docker Compose v2 plugin (`docker compose`) in CI. Compose runs the dependency containers; kind provides the cluster whose Pods reach them.
@@ -35,7 +35,7 @@ make dev-down DEV_STACK=services DEV_SCOPE=t026
 
 ## Tooling
 
-The environment is Go, not Python. `make dev-up`, `dev-down`, `dev-preflight`, `dev-diagnostics`, `dev-integration`, `dev-runtime` and `dev-smoke` run `go run ./dev/cmd/devctl`; `make fmt-check`, `docs-check`, `config-check` and `check-go` run `go run ./dev/cmd/repoctl`. Both commands use the standard library only and follow `DEV_STACK`. `make test-podman` runs the real runtime contract against the engine without a scope; `make test-integration` runs the assembled product suites under `DEV_STACK=services`. `make check-devtools` formats, vets and tests the tooling itself.
+The environment is Go, not Python. `make dev-up`, `dev-down`, `dev-preflight`, `dev-diagnostics`, `dev-integration`, `dev-runtime` and `dev-smoke` run `go run ./dev/cmd/devctl`; `make fmt-check`, `docs-check`, `config-check`, `validate-tasks`, `check-task` and `check-go` run `go run ./dev/cmd/repoctl`. `devctl` uses the standard library only; `repoctl` additionally uses the `go.yaml.in/yaml/v3` module that the product already requires, to read task frontmatter strictly. Neither adds a dependency, and both follow `DEV_STACK`. `make test-podman` runs the real runtime contract against the engine without a scope; `make test-integration` runs the assembled product suites under `DEV_STACK=services`. `make check-devtools` formats, vets and tests the tooling itself.
 
 ### Endpoint files by stack
 
@@ -83,7 +83,6 @@ make dev-runtime DEV_SCOPE=t026 DEV_PROVIDER=podman DEV_STACK=services
 Run from the assigned task worktree:
 
 ```sh
-make openforge-install
 make tools
 make lint test build
 make dev-up DEV_PROVIDER=podman DEV_SCOPE=t-001-local DEV_STACK=services
@@ -102,6 +101,93 @@ dev/.state/bin/kodama server --http-addr=127.0.0.1:8080
 ```
 
 The in-cluster server runs one replica in kind. Its [OpenAPI probe contract](contracts/health.openapi.json) describes `/healthz` and `/readyz`; readiness currently reflects only process startup/draining. Use `make dev-integration` for the dependency probe and `make test-integration` for the assembled product suites.
+
+## Kernel Git hosting
+
+The kernel (`kodama server --assembly kernel`) hosts repositories itself: a tenant's repositories live on that tenant's own Git worker, and every clone and push enters through the server's authenticated `/git/` route (O-36, the [plan](../docs/implementation/internal-git-service.md)). How the workers are hosted follows `KODAMA_ENV`:
+
+| Environment | Workers | Needs |
+| --- | --- | --- |
+| `development` | One in-process worker per tenant, started on that tenant's first Git request, with its data root at `$KODAMA_STATE_DIR/git/<tenantId>` (default `dev/.state/kernel`). The state directory is ignored by Git and is the only thing to delete to reset the repositories (`dev-down` does not touch it); set `KODAMA_STATE_DIR` to a temporary directory for a throwaway data root | The `git` binary and PostgreSQL. No Git credential, worker address, control token or signing key file: the signing keys and the control token are generated for the process |
+| `test` | One `kodama git serve` container per tenant on the scoped Podman network, selected explicitly with `DEV_GIT=native` ([below](#test-environment-one-worker-container-per-tenant)). The external `git-http-backend` fixture remains the default, as the compatibility profile | A services scope with `DEV_GIT=native`, and a server the workers can reach |
+| `production` | One Deployment and volume per tenant on Kubernetes, with `KODAMA_GIT_WORKER_URL`, `KODAMA_GIT_CONTROL_TOKEN` and the two signing key files. Not installable yet (T-156/T-157) | The in-process worker is refused |
+
+`make test-m1` and the unit loop never start a container: the development hosting is exercised in process (`Test_unit_kernel_git_development_hosting`), and the bootstrap below is automated in memory, with the real Git client, by `Test_unit_kernel_git_bootstrap_roundtrip`.
+
+### Bootstrap example: project, repository, seed, push, pipeline, run
+
+This is the single-tenant developer flow under `KODAMA_ENV=development`. It needs PostgreSQL with two distinct roles, an owner (`kodama_migration`) and a non-owner runtime role (`kodama_runtime`); `make dev-up DEV_STACK=services` provides them (passwords in the scope's `fixtures/`, host port in `host-env.json`), or use any PostgreSQL you control. Use `jq` for the identifiers, or read them from the JSON. Values in angle brackets are placeholders.
+
+```sh
+make build
+export KODAMA=dev/.state/bin/kodama
+export KODAMA_ENV=development
+export KODAMA_DATABASE_MIGRATION_URL='postgres://kodama_migration:<password>@127.0.0.1:<port>/<database>'
+export KODAMA_DATABASE_URL='postgres://kodama_runtime:<password>@127.0.0.1:<port>/<database>'
+export KODAMA_DEV_TOKEN=dev-token KODAMA_DEV_USER_ID=u_dev   # an explicit development credential
+export KODAMA_EXECUTOR=process                               # run steps on this host; podman runs containers
+
+$KODAMA migrate
+$KODAMA seed --tenant acme --user-id u_dev --role admin --role engineer
+$KODAMA server --assembly kernel --http-addr 127.0.0.1:8080 &
+```
+
+`admin` gives no push authority, so the seeded person is also an `engineer`: only an engineer may request a seed credential or push. The server renders clone URLs from `KODAMA_PUBLIC_URL` (default `http://127.0.0.1:8080`).
+
+```sh
+API=http://127.0.0.1:8080/api/v1
+AUTH="Authorization: Bearer dev-token"
+
+# 1. A project and 2. a repository in it. The repository is ready once the tenant's worker initialized it.
+PROJECT=$(curl -fsS -X POST $API/tenants/acme/projects -H "$AUTH" -d '{"key":"demo","displayName":"Demo"}' | jq -r .id)
+REPO=$(curl -fsS -X POST $API/tenants/acme/projects/demo/repositories -H "$AUTH" -d '{"name":"hello"}')
+REPO_ID=$(echo "$REPO" | jq -r .id); echo "$REPO" | jq '{path, status, empty, cloneUrl}'
+
+# 3. A seed credential: single use, creates the default branch of the empty repository.
+SEED=$(curl -fsS -X POST $API/tenants/acme/git-credentials -H "$AUTH" \
+  -d "{\"projectId\":\"$PROJECT\",\"repositoryId\":\"$REPO_ID\",\"seed\":true}" | jq -r .password)
+
+# 4. A pipeline that starts on pushes to main, pushed with the seed credential.
+mkdir hello && cd hello && git init -q -b main && mkdir .kodama
+cat > .kodama/build.yaml <<'EOF'
+name: build
+triggers:
+  git:
+    branches: [main]
+steps:
+  - name: hello
+    image: alpine:3.20
+    commands: ["echo hello from the pushed commit"]
+EOF
+git add . && git commit -q -m "first commit"
+git push "http://kodama:$SEED@127.0.0.1:8080/git/acme/demo/hello.git" main:refs/heads/main
+
+# 5. The push is recorded, the pipeline is indexed from the pushed commit (a second or two) and its run is admitted.
+sleep 3
+curl -fsS $API/tenants/acme/projects/$PROJECT/pipelines -H "$AUTH" | jq '.items[] | {name, source, sourceCommit}'
+curl -fsS $API/tenants/acme/projects/$PROJECT/runs -H "$AUTH" | jq '.items[] | {id, status}'
+```
+
+The run is pinned to the pushed commit. After the seed the default branch advances only by integration, or by an engineer's push where the repository opted in with `"policy":{"directPushToDefault":true}` at creation; request an ordinary credential with `"seed":false` (bound to this person's current role, at most an hour) for other pushes and clones. An ordinary credential cannot create the first branch, a second use of the seed credential is refused, and a refused push changes and records nothing. A real-PostgreSQL run of this example is the acceptance recorded on `main`; under `development` it needs no container.
+
+### Test environment: one worker container per tenant
+
+`DEV_GIT=native` is selected explicitly, once per scope, on the services stack. The scope then does not start the `git-http-backend` fixture, which is the compatibility profile (`DEV_GIT=fixture`) and the default for every scope. Compose profiles carry the choice: `git` is `git-fixture`, `git-worker` is `git-native`.
+
+```sh
+make dev-up DEV_STACK=services DEV_SCOPE=t170 DEV_GIT=native
+# One container per tenant, each with its own data volume and its own Compose project.
+# <tenant-id> is the tenant's identifier as the kernel knows it (lowercase, for example t_0f3a...).
+make dev-git-worker DEV_SCOPE=t170 GIT_TENANT=<tenant-id> \
+  [GIT_CONTROL_URL=http://host.containers.internal:8080]   # or: go run ./dev/cmd/devctl git-worker --scope t170 --tenant <tenant-id>
+make dev-down DEV_STACK=services DEV_SCOPE=t170   # removes every worker, its volume and the scope
+```
+
+Starting a worker again renews its identity (valid for under an hour; the worker re-reads it at every call) and leaves a running container and its data alone. The worker holds no database or broker credential: only its volume, the forwarding **public** key, its tenant-bound identity token and the control token, from `git-workers/<tenant-id>/` in the scope directory. The scope's signing keys and control token (`git-forwarding-key.pem`, `git-identity-key.pem`, `git-control-token`) are for the server under test and never reach a worker. They live in `git-server/` in the scope directory (mode 0700, files 0600), not in `fixtures/`, which PostgreSQL, NATS and oauthsonas mount.
+
+The server under test takes `KODAMA_GIT_FORWARDING_KEY_FILE`, `KODAMA_GIT_IDENTITY_KEY_FILE` and `KODAMA_GIT_CONTROL_TOKEN` from `host-env.json`, and its worker address from `endpoints.json`: `KODAMA_GIT_WORKER_URL`, the template `http://<project>-git-{tenantId}:8443` that the server resolves per tenant. Inside the scope network the worker speaks plain HTTP; forwarding assertions and identity tokens are real and tenant-bound, but TLS on the worker (`--tls-cert`, `--tls-key`) is not enabled by this scope. `devctl` records each worker in `git-workers.json` (container, workload URL, loopback host URL). A worker calls the control plane at `--control-url` (default: the provider's name for the host, port 8080), so the server must listen on a non-loopback address (`--http-addr 0.0.0.0:8080`); Docker on Linux also needs `host.docker.internal` mapped to the host.
+
+Two limits, stated plainly. The `{tenantId}` template resolves container names on the scope network, so it serves a server that runs there (for example the product image started on `KODAMA_TEST_PODMAN_NETWORK`); a server on the host cannot resolve those names, and the loopback ports in `git-workers.json` cannot be written as one template, so a host-run server uses the `development` in-process workers. And the dependency probe's HTTPS Git check belongs to the fixture, so a native scope runs the probe without `https_git`. Real Podman and Docker acceptance of this profile, like the other container suites, runs on `main`; `make check-devtools` covers it against a fake engine.
 
 ## Environment layout
 

@@ -13,6 +13,18 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for Hosting.
+const (
+	External Hosting = "external"
+	Internal Hosting = "internal"
+)
+
+// Defines values for RepositoryAssociationState.
+const (
+	Created RepositoryAssociationState = "created"
+	Intent  RepositoryAssociationState = "intent"
+)
+
 // Defines values for WorkspaceState.
 const (
 	Archived     WorkspaceState = "archived"
@@ -26,6 +38,9 @@ type Commit = string
 // EmptyRequest No body is needed; an empty object is accepted.
 type EmptyRequest = map[string]interface{}
 
+// Hosting How the workspace's source is hosted. An external workspace has one repository and the publisher model; an internal workspace (ADR 0011) has a task branch in each repository its work item touches, and its commits are pushed by attempts and accepted from applied push records. A workspace never changes hosting.
+type Hosting string
+
 // Publication The one in-flight source publication, recorded before Git is invoked and kept until its outcome is known and durably recorded.
 type Publication struct {
 	AttemptId string `json:"attemptId"`
@@ -38,9 +53,31 @@ type Publication struct {
 	StartedAt      time.Time `json:"startedAt"`
 }
 
+// RepositoryAssociation One repository of an internally hosted workspace: its task branch and the commit last accepted there. Safe reason codes in lastError are repository_unavailable, provision_unavailable, branch_exists, branch_missing and branch_diverged.
+type RepositoryAssociation struct {
+	// AcceptedCommit The commit last accepted on the task branch; null until the branch is created.
+	AcceptedCommit *string `json:"acceptedCommit"`
+
+	// BaseCommit Full Git object name.
+	BaseCommit   Commit    `json:"baseCommit"`
+	CreatedAt    time.Time `json:"createdAt"`
+	LastError    *string   `json:"lastError"`
+	RepositoryId string    `json:"repositoryId"`
+
+	// State intent: the base commit is recorded and the task branch is not yet confirmed created; created: the task branch exists and acceptedCommit is recorded. Independent of the workspace state.
+	State RepositoryAssociationState `json:"state"`
+
+	// TaskBranch Task branch refs/heads/kodama/work/<work-item-id> in this repository.
+	TaskBranch string    `json:"taskBranch"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// RepositoryAssociationState intent: the base commit is recorded and the task branch is not yet confirmed created; created: the task branch exists and acceptedCommit is recorded. Independent of the workspace state.
+type RepositoryAssociationState string
+
 // Workspace defines model for Workspace.
 type Workspace struct {
-	// AcceptedCommit The last published or synchronized commit; null while provisioning.
+	// AcceptedCommit The last published or synchronized commit; null while provisioning. For an internal workspace, the primary repository's accepted commit.
 	AcceptedCommit *string `json:"acceptedCommit"`
 
 	// ArchiveRequestedAt Set once admission is closed by an archive request.
@@ -49,14 +86,22 @@ type Workspace struct {
 	// Branch Portable ordinary work branch, refs/heads/kodama/work/<work-item-id>.
 	Branch    string    `json:"branch"`
 	CreatedAt time.Time `json:"createdAt"`
-	Id        string    `json:"id"`
+
+	// Hosting How the workspace's source is hosted. An external workspace has one repository and the publisher model; an internal workspace (ADR 0011) has a task branch in each repository its work item touches, and its commits are pushed by attempts and accepted from applied push records. A workspace never changes hosting.
+	Hosting Hosting `json:"hosting"`
+	Id      string  `json:"id"`
 
 	// LastError Safe reason code (provision_unavailable, repository_unavailable, branch_exists, branch_diverged); never free text, a credential or repository content.
 	LastError *string `json:"lastError"`
 
 	// Publication The one in-flight source publication, recorded before Git is invoked and kept until its outcome is known and durably recorded.
-	Publication  *Publication `json:"publication"`
-	RepositoryId string       `json:"repositoryId"`
+	Publication *Publication `json:"publication"`
+
+	// Repositories The repository associations of an internal workspace, ordered by repositoryId; empty for an external workspace.
+	Repositories []RepositoryAssociation `json:"repositories"`
+
+	// RepositoryId The workspace's repository; for an internal workspace its primary repository (the first one it was provisioned for).
+	RepositoryId string `json:"repositoryId"`
 
 	// State Availability only. Errors are reasons on the resource (lastError), never states.
 	State     WorkspaceState `json:"state"`

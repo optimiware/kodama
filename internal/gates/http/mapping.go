@@ -28,13 +28,25 @@ func gateDTO(g *gates.Gate, now time.Time) Gate {
 	for _, r := range g.Required.Evidence {
 		req = append(req, RequiredEvidence{Role: RequiredEvidenceRole(r.Role), Id: string(r.ID), Digest: r.Digest, Expression: strp(r.Expression), Producer: strp(r.Producer)})
 	}
+	subject := Subject{
+		TenantId: string(s.Scope().TenantID), ProjectId: string(s.Scope().ProjectID), WorkItemId: string(s.WorkItemID()),
+		ContentRevision: int64(s.ContentRevision()), CandidateCommit: s.PresentedCandidate(), DefinitionId: string(s.DefinitionID()),
+		Evidence: evidence, DeploymentId: strp(depID), DeploymentConfigDigest: strp(depCfg),
+	}
+	if set, ok := s.SourceSet(); ok {
+		dto := &SubjectSourceSet{Digest: set.Digest, Sources: make([]SubjectSource, 0, len(set.Sources))}
+		for _, x := range set.Sources {
+			src := SubjectSource{RepositoryId: x.RepositoryID, Commit: x.Commit}
+			if x.Base != nil {
+				src.Base = &IntegrationBase{Ref: x.Base.Ref, Commit: x.Base.Commit}
+			}
+			dto.Sources = append(dto.Sources, src)
+		}
+		subject.SourceSet = dto
+	}
 	out := Gate{
 		Id: string(g.ID), RunId: string(g.RunID), StepId: g.StepID, Status: GateStatus(g.Status), SubjectDigest: g.SubjectDigest(),
-		Subject: Subject{
-			TenantId: string(s.Scope().TenantID), ProjectId: string(s.Scope().ProjectID), WorkItemId: string(s.WorkItemID()),
-			ContentRevision: int64(s.ContentRevision()), CandidateCommit: s.CandidateCommit(), DefinitionId: string(s.DefinitionID()),
-			Evidence: evidence, DeploymentId: strp(depID), DeploymentConfigDigest: strp(depCfg),
-		},
+		Subject:     subject,
 		Required:    Required{Evidence: req},
 		RequestedAt: g.RequestedAt.UTC(), Deadline: g.Deadline.UTC(), Version: int64(g.Version),
 		CreatedAt: g.CreatedAt.UTC(), UpdatedAt: g.UpdatedAt.UTC(),

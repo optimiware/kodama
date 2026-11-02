@@ -141,8 +141,8 @@ func TestEventContractFixtures(t *testing.T) {
 			t.Errorf("no valid fixture for %s", typ)
 		}
 	}
-	if len(Types()) != 17 {
-		t.Errorf("catalog lists 17 types, contract has %d", len(Types()))
+	if len(Types()) != 20 {
+		t.Errorf("catalog and Git service events list 20 types, contract has %d", len(Types()))
 	}
 }
 

@@ -1,0 +1,859 @@
+[
+  {
+    "name": "credential_request_human",
+    "type": "CredentialRequest",
+    "payload": {
+      "projectId": "p_inventory",
+      "repositoryId": "repo_01",
+      "seed": false
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "credential_request_seed",
+    "type": "CredentialRequest",
+    "payload": {
+      "projectId": "p_inventory",
+      "repositoryId": "repo_01",
+      "seed": true
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "credential_response",
+    "type": "CredentialResponse",
+    "payload": {
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "password": "kgc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "username": "kodama"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "seed_grant_user",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "seed_grant_provisioning_attempt",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "seed_grant_custom_default_branch",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/trunk"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "seed_grant_full_lifetime",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_repository_not_empty",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "repository_not_empty",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_seed_pending",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "seed_pending",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "credential_request_unknown_field",
+    "type": "CredentialRequest",
+    "payload": {
+      "projectId": "p_inventory",
+      "repositoryId": "repo_01",
+      "seed": false,
+      "ttl": 3600
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_request_seed_omitted",
+    "type": "CredentialRequest",
+    "payload": {
+      "projectId": "p_inventory",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_request_seed_null",
+    "type": "CredentialRequest",
+    "payload": {
+      "projectId": "p_inventory",
+      "repositoryId": "repo_01",
+      "seed": null
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_request_seed_string",
+    "type": "CredentialRequest",
+    "payload": {
+      "projectId": "p_inventory",
+      "repositoryId": "repo_01",
+      "seed": "true"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_request_project_omitted",
+    "type": "CredentialRequest",
+    "payload": {
+      "repositoryId": "repo_01",
+      "seed": false
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_request_repository_omitted",
+    "type": "CredentialRequest",
+    "payload": {
+      "projectId": "p_inventory",
+      "seed": false
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_request_tenant_wide",
+    "type": "CredentialRequest",
+    "payload": {
+      "seed": false
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_request_old_nested_seed_shape",
+    "type": "CredentialRequest",
+    "payload": {
+      "seed": {
+        "repositoryId": "repo_01"
+      }
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_request_repository_with_slash",
+    "type": "CredentialRequest",
+    "payload": {
+      "projectId": "p_inventory",
+      "repositoryId": "repo/01",
+      "seed": false
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_request_repository_path_not_id",
+    "type": "CredentialRequest",
+    "payload": {
+      "projectId": "p_inventory",
+      "repositoryId": "git/acme/inventory/backend.git",
+      "seed": true
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_response_short_password",
+    "type": "CredentialResponse",
+    "payload": {
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "password": "short",
+      "username": "kodama"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_response_password_with_space",
+    "type": "CredentialResponse",
+    "payload": {
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "password": "kgc aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "username": "kodama"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "credential_response_grant_omitted",
+    "type": "CredentialResponse",
+    "payload": {
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "password": "kgc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "username": "kodama"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_extra_ref",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main",
+            "refs/heads/dev"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_extra_tag",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main",
+            "refs/tags/v1"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_no_ref",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": []
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_wildcard",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main/*"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_tag",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/tags/v1"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_refs_kodama",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/kodama/runs/run_01/1"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_kodama_branch_namespace_pattern",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/kodama/*"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_reserved_branch",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/kodama/work/wi_1"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "seed_grant_two_repositories",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main"
+          ]
+        },
+        {
+          "id": "repo_02",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_seed_flag_false",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": false,
+          "update": [
+            "refs/heads/main"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_with_integration",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": {
+            "from": "2222222222222222222222222222222222222222",
+            "gateId": "gate_07",
+            "ref": "refs/heads/main",
+            "to": "3333333333333333333333333333333333333333"
+          },
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_without_project",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": null,
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "seed_grant_lifetime_over_15_minutes",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:01Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "seed_grant_workload_without_attempt",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "rr_prep_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "seed",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/main"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "non_seed_grant_with_seed_flag",
+    "type": "GrantClaims",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:15:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "kind": "attempt",
+      "projectId": "p_inventory",
+      "repositories": [
+        {
+          "id": "repo_01",
+          "integration": null,
+          "read": true,
+          "seed": true,
+          "update": [
+            "refs/heads/kodama/agents/wi_1042/run_01/*",
+            "refs/heads/kodama/work/wi_1042"
+          ]
+        }
+      ],
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  }
+]

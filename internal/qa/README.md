@@ -140,6 +140,34 @@ between pin and create leaves only a pin the retry reuses.
 * The report is a claim, never authority: tenant, project, attempt and environment come from the
   attempt's records; the report cannot select them.
 
+## Context versions and source sets (T-153)
+
+The execution adapter reads the attempt's frozen context by version (`adapters.DecodePinned`): no version member is the original
+context, `3` is a run that pinned a source set; another version is an error and is never read as v1. A v3 context is projected
+onto the members the mapping reads (identity, work item, environment, inputs, outputs) and its workspace sources onto
+`AttemptFacts.Sources` (`qa.SourceSet`: the run's source-set digest and, per source in path order, repository, path, pinned and
+head commit, access). Nothing else of the v3 context (origin, Git delivery, preparation) reaches the mapping. With a source set:
+
+* a set is accepted only from a version-3 context and only when well formed, otherwise `ErrContext` before any read;
+* the candidate the report says it inspected must be a commit the set pins or has advanced to (any source's pinned or head
+  commit, or a commit an earlier attempt of the run published to one of the set's repositories, from the context's lineage):
+  a deployment built from another commit is not what the attempt's sources describe (`ErrContext`, no write). **This rule is
+  a T-153 decision, stricter than DQ-10** (which asks only that the defect state what was inspected); it is the cheap way to
+  keep a source-set attempt's defects from being filed against a deployment of unrelated code. Its remaining limitation: a
+  commit that exists only elsewhere (an integration merged into the default branch after the context was pinned, another run's
+  commit) is not in the context and is refused even when the deployment is legitimate; relaxing it needs the deployment's own
+  source-set evidence (T-149), not a looser match here;
+* the defect's provenance lists the source-set digest and every checkout, so a multi-repository run is identified by its set
+  (DQ-10). The deduplication key, the report format and every v1 specification are unchanged (a v1 context renders exactly as
+  before). The deployment module's own record must still agree with the report (`checkDeployment`).
+
+**Binding a source-set candidate.** QA, like the gates, identifies a multi-repository candidate by the whole set: the candidate
+digest (`agents.CandidateSet.Digest`) and the result's `commits[]`, not the single `candidateCommit` of the conformance report or of
+a deployment record. T-149 (the gate subject is the source set) and T-150 (result finalization records the commits) are the
+consumers of that binding; this module only names the inspected source set in the defect's provenance.
+
+`Test_unit_qa_context_source_set` (root) covers these; `Test_unit_qa_context_projection` (`adapters/`) the version reading.
+
 ## Tests
 
 | Test | Covers |

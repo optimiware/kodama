@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"slices"
 	"time"
 
 	eventsv1 "github.com/optimiware/kodama/contracts/events/v1"
@@ -113,16 +114,18 @@ func (s *Store) insertAttempt(tx memdb.Tx, a *execution.Attempt) error {
 // attemptShape is the Go counterpart of step_attempts_workspace_shape: the
 // workspace binding of an attempt is all-or-nothing. No access carries no
 // workspace, input commit or expected tip; read carries a workspace and an
-// input commit; write also carries the expected tip.
+// input commit; write also carries the expected tip. An attempt of a source-set
+// run (runtime context v3) whose run has no workspace binds none of the three:
+// its sources are in its pinned context.
 func attemptShape(a *execution.Attempt) error {
 	ok := false
 	switch a.Access {
 	case execution.AccessNone:
 		ok = a.WorkspaceID == "" && a.InputCommit == "" && a.ExpectedTip == ""
 	case execution.AccessRead:
-		ok = a.WorkspaceID != "" && a.InputCommit != "" && a.ExpectedTip == ""
+		ok = (a.WorkspaceID != "" && a.InputCommit != "" && a.ExpectedTip == "") || (a.WorkspaceID == "" && a.InputCommit == "" && a.ExpectedTip == "")
 	case execution.AccessWrite:
-		ok = a.WorkspaceID != "" && a.InputCommit != "" && a.ExpectedTip != ""
+		ok = (a.WorkspaceID != "" && a.InputCommit != "" && a.ExpectedTip != "") || (a.WorkspaceID == "" && a.InputCommit == "" && a.ExpectedTip == "")
 	}
 	if !ok {
 		return fmt.Errorf("%w: the attempt's workspace binding does not match its access %q", execution.ErrInvalid, a.Access)
@@ -150,6 +153,7 @@ func (s *Store) updateAttempt(tx memdb.Tx, a *execution.Attempt) error {
 	cur.Status, cur.Reason, cur.Class, cur.WorkloadUID = a.Status, a.Reason, a.Class, a.WorkloadUID
 	cur.ExecutionDeadline, cur.StartedAt, cur.FinishedAt = cloneTime(a.ExecutionDeadline), cloneTime(a.StartedAt), cloneTime(a.FinishedAt)
 	cur.ResultHash, cur.Result, cur.AuthorityRevision = a.ResultHash, cloneResult(a.Result), a.AuthorityRevision
+	cur.Commits = slices.Clone(a.Commits)
 	cur.Version, cur.UpdatedAt = a.Version, a.UpdatedAt
 	return attemptsT.Put(tx, cur)
 }
@@ -351,7 +355,7 @@ func (s *Store) writeEvent(tx memdb.Tx, agg *execution.Aggregate, index int, t e
 	}
 	switch t.Subject {
 	case execution.SubjectRun:
-		if t.From == "" && agg.Run.Purpose == execution.PurposeWork {
+		if t.From == "" && agg.Run.Purpose == execution.PurposeWork && agg.Run.WorkItemID != "" {
 			typ = eventsv1.TypeRunCreated
 			res = eventsv1.Resource{Type: "run", ID: string(agg.Run.ID), Version: int64(t.Version)}
 			data = eventsv1.RunCreated{WorkItemID: string(agg.Run.WorkItemID), DefinitionID: string(agg.Run.DefinitionID), InputSnapshotDigest: agg.Run.SnapshotDigest}

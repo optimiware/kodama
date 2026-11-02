@@ -17,6 +17,7 @@ import (
 
 	pipelinev1 "github.com/optimiware/kodama/contracts/pipeline/v1"
 	pipelinev1alpha2 "github.com/optimiware/kodama/contracts/pipeline/v1alpha2"
+	pipelinev1alpha3 "github.com/optimiware/kodama/contracts/pipeline/v1alpha3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -493,10 +494,13 @@ func fromTree(tree any) (Document, error) {
 	// kodama/v1alpha2 document is independent of whether an installation
 	// enabled the format: stored definitions stay readable, and enabling is a
 	// registration decision of the Validator.
-	v2 := isV1Alpha2Tree(tree)
+	v2 := isRunSharedTree(tree)
 	schema := pipelinev1.Schema
-	if v2 {
+	switch runSharedVersion(tree) {
+	case pipelinev1alpha2.APIVersion:
 		schema = pipelinev1alpha2.Schema
+	case pipelinev1alpha3.APIVersion:
+		schema = pipelinev1alpha3.Schema
 	}
 	sch, err := schema()
 	if err != nil {
@@ -554,7 +558,7 @@ var gateForbidden = map[string]bool{
 // stable codes. Messages are fixed text; the offending values are never echoed.
 func mapSchemaError(d *diagnostics, ve *jsonschema.ValidationError, tree any) {
 	type finding struct{ code, path, msg string }
-	v2 := isV1Alpha2Tree(tree)
+	v2 := isRunSharedTree(tree)
 	var found []finding
 	seen := map[string]bool{}
 	add := func(code, path, msg string) {
@@ -602,6 +606,8 @@ func mapSchemaError(d *diagnostics, ve *jsonschema.ValidationError, tree any) {
 		}
 		if _, isNot := e.ErrorKind.(*kind.Not); isNot {
 			switch {
+			case v2 && reSourcePath.MatchString(path):
+				add(CodeInvalidSourcePath, path, v2Message(CodeInvalidSourcePath))
 			case strings.HasSuffix(path, ".workspace"):
 				add(CodeInvalidSource, path, "workspace access none cannot name a source")
 			case strings.Contains(path, ".outputs"):

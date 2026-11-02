@@ -6,6 +6,7 @@ import (
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -24,8 +25,8 @@ type Authorization struct {
 	Action    Action
 	// Actions is the effective action set at the time of the decision.
 	Actions ActionSet
-	// ContextVersion is the runtime wire the attempt belongs to (WireV1 or
-	// WireV2), fixed by its pinned context.
+	// ContextVersion is the runtime wire the attempt belongs to (WireV1, WireV2
+	// or WireV3), fixed by its pinned context.
 	ContextVersion int64
 	// TokenGeneration is the signing generation of the verified token. Together
 	// with Session, Action and the route it is everything a mutation needs to
@@ -157,7 +158,7 @@ type AuthorizeRequest struct {
 	Bearer    string
 	Action    Action
 	// ContextVersion is the runtime wire of the route being served: WireV1 (the
-	// zero value) or WireV2. An attempt of the other wire is
+	// zero value), WireV2 or WireV3. An attempt of another wire is
 	// ErrContextVersionMismatch before anything is done.
 	ContextVersion int64
 }
@@ -175,7 +176,7 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (a Author
 	if wire == 0 {
 		wire = WireV1
 	}
-	if wire != WireV1 && wire != WireV2 {
+	if wire != WireV1 && wire != WireV2 && wire != WireV3 {
 		return Authorization{}, fail(ErrInvalidRequest, "unknown runtime wire")
 	}
 	return s.withSession(ctx, req.AttemptID, req.Bearer, req.Action, wire, nil)
@@ -226,6 +227,32 @@ func (s *Service) renew(ctx context.Context, route domain.AttemptID, bearer stri
 		return runtimev1.TokenResponse{}, failWith(ErrUnavailable, err, "the response is not a valid token")
 	}
 	return resp, nil
+}
+
+// RenewV3 is Renew on the source-set wire (the same attempt token, audience
+// kodama-runtime). It renews the attempt token only: the attempt's Git credential
+// is a separate secret with its own lifetime (see the Git grants of
+// runtimeauth/gitgrants).
+func (s *Service) RenewV3(ctx context.Context, route domain.AttemptID, bearer string) (resp runtimev2.TokenResponse, err error) {
+	defer func() { err = Classify(err); s.logOp(ctx, "renew", route, err) }()
+	return s.renew(ctx, route, bearer, WireV3)
+}
+
+// ContextV3 returns the pinned ContextV3 of a source-set attempt, unchanged.
+func (s *Service) ContextV3(ctx context.Context, route domain.AttemptID, bearer string) (c runtimev3.ContextV3, err error) {
+	defer func() { err = Classify(err); s.logOp(ctx, "context", route, err) }()
+	if err := route.Validate(); err != nil {
+		return c, fail(ErrInvalidCredential, "the token is not valid for this attempt")
+	}
+	_, err = s.withSession(ctx, route, bearer, ActionContextRead, WireV3, func(g AdmissionGrant, _ time.Time) error {
+		var derr error
+		c, derr = decodeContextV3(g.Context)
+		return derr
+	})
+	if err != nil {
+		return runtimev3.ContextV3{}, err
+	}
+	return c, nil
 }
 
 // Context returns the pinned context of the attempt, unchanged.

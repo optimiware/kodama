@@ -134,3 +134,54 @@ the run, which is the event that fails after the step and run mutations were wri
 7. **Keyed decisions.** `gatespg.NewKeyed(httpIdempotency, gateStore)` joins decisions to the HTTP idempotency transaction.
 
 See `review.md` for assumptions to confirm.
+
+## Source sets, bases and integration approval (T-149, DQ-17, GR-12)
+
+A gate over a work-item run with a source set (`execution.Run.Sources`) has a **source-set subject**. Its canonical
+form carries `sourceSet: {digest, sources: [{repositoryId, commit, base}]}` instead of `candidateCommit`: the digest
+of the run's pinned set, the commit under review of each repository (the pinned commit advanced by what the
+successful steps before the gate published to that source's own branch), ordered by repository ID, and, for a
+repository the run may write, the **integration base** `{ref, commit}`, the default branch and its tip observed when
+the gate was requested. A subject of a single-repository run is built, stored and compared exactly as before
+(`Test_unit_single_source_subjects_unchanged` pins the fixture's checksum and canonical bytes).
+
+* **Inputs.** `ResolveInputs` is `Aggregate.GateInputs` for a run without a set, and, for a run with one, the same
+  step-local material plus the `SetInputs` (execution's `GateInputs` needs one source commit, which a source-set run does
+  not have; this module does not change execution). The store recomputes both under the run lock.
+* **Evidence** must carry the set's digest and exactly the candidate's commits (`EvidenceMeta.SourceSet`), or be the
+  candidate writer's own artifact that worked from the commits the writer began with; a single-source or absent provenance
+  never connects. A deployment bound to the gate must record the same digest and commits (`DeploymentSnapshot.SourceSet`).
+* **Applicability.** `CheckCurrent` compares the set and every repository's commit (`candidate_changed`).
+  `CheckBases` compares the bases with the default-branch tips observed through the `Bases` port (outside any
+  transaction: Git is never called in SQL): a moved or replaced default branch is the definitive `base_moved`. The use
+  cases observe the tips before a decision (`PrepareDecision`) and in reconciliation, so a pending gate whose base moved
+  takes no decision and an approval whose base moved never progresses its step; both are invalidated once, the historical
+  decision untouched, and moving the base back does not revive them. A missing port is `ErrNotConfigured`, an outage
+  `ErrUnavailable` (no gate, no invalidation). A read-only source set has no base and needs no reader. A set with
+  several writable repositories and an agent producer is blocked at approval (`conformance_source_set_unsupported`):
+  a conformance report names one candidate commit.
+* **Integration approval.** `Service.IntegrationApproval(scope, run, gate, repository)` is the one query a grant
+  issuer (T-150: `gitauth.Service.IssueIntegration`, runtime v3 `IntegrationApproval`) consumes. It returns
+  `{GateID, RunID, RepositoryID, Ref, Base, Candidate, CurrentTip}` derived from the stored gate and a fresh read of the
+  tip, and only for a gate that a human approved and who still holds the reviewer authority now (the check step completion
+  makes: a revoked reviewer's approval yields none), that is not expired or invalidated, whose step passed, whose subject
+  still describes the run, for a repository that is a writable source with a candidate different from its base, while the
+  default branch is at the base. The tip decides the rest: at the approved **candidate** the update is already applied and
+  the answer is `*AlreadyIntegratedError` (`ErrAlreadyIntegrated`, carrying the facts; a replay after a lost push result, also
+  after the gate expired), with no invalidation; at any other commit or branch the approval is invalidated once (`base_moved`)
+  and the answer is a `*StaleError` whose `SupersedingCommit` is the current tip (runtime v3 maps it to
+  `publication_conflict`: the pipeline recomputes the candidate). Every error comes with the zero value, so nothing partial
+  can be mistaken for an approval. Any other state is `ErrNoApproval` (an absent or foreign gate `ErrNotFound`). No grant is
+  minted and no credential exists in this module. The candidate's ancestry from the base is not checked here: Git's
+  fast-forward rule and expected-old check at the push are the protection.
+* **Storage.** Migration 013 (see the artifacts README) makes `gates.candidate_commit` nullable exactly for a set subject
+  (`source_set_digest` is its copy), checks that the subject's set is the pinned set of the gate's own run (its digest is the
+  run's `source_set_digest`, every repository one of its `run_sources`) and keeps both columns immutable. `postgres.Config.SourceProvenance` turns the set on; `adapters.BindDeploymentsWithSourceSets`
+  is the deployment binder for a schema with the migration.
+* **After the gate step passed.** The approval is consumed: reconciliation no longer compares the bases (the default branch
+  moving to the candidate is the integration's success, not a moved base), so no `gate.invalidated` follows a successful
+  push. A base that moves to anything else is refused by `IntegrationApproval`, never issued over.
+* **Presentation.** The public subject keeps `candidateCommit` required and non-null (AC-A08); for a source-set subject it is
+  the commit of the primary source (the first writable source in repository order, else the first;
+  `Subject.PresentedCandidate`), and the additive `sourceSet` defines the subject. The digest never depends on it.
+* **Limits.** A gate for a run without a work item is out of scope (the subject names a work item).

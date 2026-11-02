@@ -51,6 +51,10 @@ func StateOf(a *execution.Aggregate, key string, now time.Time) (runtimeauth.Res
 		(a.Run.DeadlineAt != nil && !now.Before(*a.Run.DeadlineAt)) || !now.Before(deadline) {
 		phase = runtimeauth.ResourceEnded
 	}
+	if a.Run.SourceRun() {
+		// A source-set run is served on the v3 wire only (ContextV3).
+		return stateOfV3(a, r, kind, key, phase, deadline)
+	}
 	pin := runtimev2.PolicyPin{ID: r.Spec.Policy.ID, Digest: runtimev2.Digest(r.Spec.Policy.Digest)}
 	ctx := runtimev2.ResourceContext{
 		ContextVersion: runtimev2.ContextVersion, ResourceKind: kind,
@@ -102,6 +106,8 @@ func Classify(err error) error {
 	switch {
 	case err == nil:
 		return nil
+	case errors.Is(err, execution.ErrContextVersionMismatch):
+		return fmt.Errorf("%w: %w", runtimeauth.ErrContextVersionMismatch, err)
 	case errors.Is(err, execution.ErrBeginConflict):
 		return fmt.Errorf("%w: %w", runtimeauth.ErrIdempotencyConflict, err)
 	case errors.Is(err, execution.ErrReceiptConflict):

@@ -254,7 +254,13 @@ func (a *Aggregate) RecordBegin(in BeginInput, now time.Time) (*BeginRecord, boo
 	if err != nil {
 		return nil, false, invalidf("%v", err)
 	}
-	raw, err := json.Marshal(in.Request)
+	return a.recordBegin(at, in.Request, state, ignored, now)
+}
+
+// recordBegin is the begin record of either context version: the derived state
+// and the canonical request body of the attempt, linearized against cancellation.
+func (a *Aggregate) recordBegin(at *Attempt, request any, state runtimev2.WorkspaceState, ignored bool, now time.Time) (*BeginRecord, bool, error) {
+	raw, err := json.Marshal(request)
 	if err != nil {
 		return nil, false, err
 	}
@@ -358,60 +364,16 @@ func (a *Aggregate) HeadCommit() string {
 // the run's pins, durable resource state, recorded begins and the selected
 // source. Nothing in it comes from a workload or a client claim: the
 // preparation pin is the recorded server receipt bound to the workspace UID.
-func BuildContextV2(a *Aggregate, step *StepRun, attempt domain.AttemptID, rs ResolvedStep, src SourceInfo, lim Limit) (runtimev2.ContextV2, error) {
+// pins (may be nil) pins an agent step's profile and design baseline from its
+// frozen payload; see AgentPins.
+func BuildContextV2(a *Aggregate, step *StepRun, attempt domain.AttemptID, rs ResolvedStep, src SourceInfo, lim Limit, pins AgentPins) (runtimev2.ContextV2, error) {
 	run := a.Run
 	sh := run.Shared
-	if sh == nil || run.StartedAt == nil || run.DeadlineAt == nil {
-		return runtimev2.ContextV2{}, invalidf("the run has not started holding resources")
-	}
-	environment, err := run.Snapshot.environmentOf(step)
+	c, access, err := sharedContextCore(a, step, attempt, rs, lim, pins)
 	if err != nil {
 		return runtimev2.ContextV2{}, err
 	}
-	timeout := time.Duration(step.Spec.TimeoutSeconds) * time.Second
-	if timeout == 0 {
-		timeout = lim.DefaultTimeout
-	}
-	if timeout > lim.MaxTimeout {
-		return runtimev2.ContextV2{}, Refusedf("the step timeout exceeds the configured limit")
-	}
-	access := sh.Access[step.ID]
-	c := runtimev2.ContextV2{
-		ContextVersion: SharedContextVersion, RunModel: RunModelShared,
-		TenantID: run.Scope.TenantID, ProjectID: run.Scope.ProjectID, RunID: run.ID, StepID: step.ID, AttemptID: attempt, ActionKey: step.ActionKey,
-		Definition:  runtimev1.Definition{ID: run.DefinitionID, Digest: runtimev1.Digest(run.DefinitionDigest)},
-		Command:     runtimev1.Command{Image: rs.Image, Command: rs.Command, Args: rs.Args, Env: rs.Env},
-		Endpoints:   map[string]runtimev2.Endpoint{},
-		Egress:      append([]string{}, sh.Egress[step.ID]...),
-		Run:         runtimev2.RunWindow{StartedAt: stamp(*run.StartedAt), DeadlineAt: stamp(*run.DeadlineAt)},
-		Policy:      runtimev2.PolicyPin{ID: sh.Policy.ID, Digest: runtimev1.Digest(sh.Policy.Digest)},
-		Inputs:      run.Snapshot.Values(),
-		Outputs:     rs.Outputs,
-		Secrets:     run.Snapshot.SecretsOf(step.ID),
-		Environment: environment,
-		Limits: runtimev1.Limits{
-			TimeoutSeconds: int64(timeout / time.Second), MaxOutputBytes: lim.MaxOutputBytes,
-			MaxOutputFiles: lim.MaxOutputFiles, MaxDiagnosticBytes: lim.MaxDiagnosticBytes,
-		},
-		Workspace: runtimev2.WorkspaceV2{Access: runtimev1.WorkspaceAccess(access), MountPath: runtimev2.MountPath, Lineage: []runtimev2.LineageEntry{}},
-	}
-	if c.Secrets == nil {
-		c.Secrets = []runtimev1.SecretBinding{}
-	}
-	for name, ep := range sh.Endpoints {
-		ports := map[string]int64{}
-		for k, v := range ep.Ports {
-			ports[k] = v
-		}
-		c.Endpoints[name] = runtimev2.Endpoint{Host: ep.Host, Ports: ports}
-	}
-	if run.Specification != nil {
-		crit := run.Specification.AcceptanceCriteria
-		if crit == nil {
-			crit = []runtimev1.AcceptanceCriterion{}
-		}
-		c.WorkItem = &runtimev1.WorkItem{ID: run.WorkItemID, ContentRevision: run.ContentRevision, Spec: run.Specification.Spec, AcceptanceCriteria: crit}
-	}
+	c.Workspace = runtimev2.WorkspaceV2{Access: runtimev1.WorkspaceAccess(access), MountPath: runtimev2.MountPath, Lineage: []runtimev2.LineageEntry{}}
 	if sh.SourceBacked {
 		prep := a.Resource(KeyPreparation)
 		if prep == nil || prep.Receipt == nil || !a.ReceiptBound() {
@@ -450,6 +412,75 @@ func BuildContextV2(a *Aggregate, step *StepRun, attempt domain.AttemptID, rs Re
 		c.Workspace.Lineage = append(c.Workspace.Lineage, e)
 	}
 	return c, nil
+}
+
+// sharedContextCore is everything a run_shared attempt's context carries that
+// does not depend on the source: identity, command, endpoints, egress, the run
+// window and policy pin, inputs, outputs, secrets, environment, limits and the
+// pinned work item. Both runtime context versions start from it, so what they
+// share cannot drift. The returned context's Workspace is zero and the access
+// is the step's pinned effective access.
+func sharedContextCore(a *Aggregate, step *StepRun, attempt domain.AttemptID, rs ResolvedStep, lim Limit, pins AgentPins) (runtimev2.ContextV2, Access, error) {
+	run := a.Run
+	sh := run.Shared
+	if sh == nil || run.StartedAt == nil || run.DeadlineAt == nil {
+		return runtimev2.ContextV2{}, "", invalidf("the run has not started holding resources")
+	}
+	environment, err := run.Snapshot.environmentOf(step)
+	if err != nil {
+		return runtimev2.ContextV2{}, "", err
+	}
+	timeout := time.Duration(step.Spec.TimeoutSeconds) * time.Second
+	if timeout == 0 {
+		timeout = lim.DefaultTimeout
+	}
+	if timeout > lim.MaxTimeout {
+		return runtimev2.ContextV2{}, "", Refusedf("the step timeout exceeds the configured limit")
+	}
+	access := sh.Access[step.ID]
+	c := runtimev2.ContextV2{
+		ContextVersion: SharedContextVersion, RunModel: RunModelShared,
+		TenantID: run.Scope.TenantID, ProjectID: run.Scope.ProjectID, RunID: run.ID, StepID: step.ID, AttemptID: attempt, ActionKey: step.ActionKey,
+		Definition:  runtimev1.Definition{ID: run.DefinitionID, Digest: runtimev1.Digest(run.DefinitionDigest)},
+		Command:     runtimev1.Command{Image: rs.Image, Command: rs.Command, Args: rs.Args, Env: rs.Env},
+		Endpoints:   map[string]runtimev2.Endpoint{},
+		Egress:      append([]string{}, sh.Egress[step.ID]...),
+		Run:         runtimev2.RunWindow{StartedAt: stamp(*run.StartedAt), DeadlineAt: stamp(*run.DeadlineAt)},
+		Policy:      runtimev2.PolicyPin{ID: sh.Policy.ID, Digest: runtimev1.Digest(sh.Policy.Digest)},
+		Inputs:      run.Snapshot.Values(),
+		Outputs:     rs.Outputs,
+		Secrets:     run.Snapshot.SecretsOf(step.ID),
+		Environment: environment,
+		Limits: runtimev1.Limits{
+			TimeoutSeconds: int64(timeout / time.Second), MaxOutputBytes: lim.MaxOutputBytes,
+			MaxOutputFiles: lim.MaxOutputFiles, MaxDiagnosticBytes: lim.MaxDiagnosticBytes,
+		},
+	}
+	if c.Secrets == nil {
+		c.Secrets = []runtimev1.SecretBinding{}
+	}
+	pin, err := pinAgent(pins, run.Scope.TenantID, step, c.Command)
+	if err != nil {
+		return runtimev2.ContextV2{}, "", err
+	}
+	if pin != nil {
+		c.Profile, c.DesignBaseline = &pin.Profile, &pin.DesignBaseline
+	}
+	for name, ep := range sh.Endpoints {
+		ports := map[string]int64{}
+		for k, v := range ep.Ports {
+			ports[k] = v
+		}
+		c.Endpoints[name] = runtimev2.Endpoint{Host: ep.Host, Ports: ports}
+	}
+	if run.Specification != nil {
+		crit := run.Specification.AcceptanceCriteria
+		if crit == nil {
+			crit = []runtimev1.AcceptanceCriterion{}
+		}
+		c.WorkItem = &runtimev1.WorkItem{ID: run.WorkItemID, ContentRevision: run.ContentRevision, Spec: run.Specification.Spec, AcceptanceCriteria: crit}
+	}
+	return c, access, nil
 }
 
 func stamp(t time.Time) runtimev1.Timestamp {

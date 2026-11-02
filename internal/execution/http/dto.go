@@ -7,6 +7,7 @@ import (
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
+	"github.com/optimiware/kodama/internal/httpapi"
 )
 
 // ScalarValue is the wire form of a string, boolean or integer: the runtime
@@ -59,6 +60,22 @@ func runDTO(r *execution.Run) Run {
 	if r.FailureIntentAt != nil {
 		reason := string(r.FailureReason)
 		out.FailureReason = &reason
+	}
+	if !r.Origin.IsZero() {
+		out.Origin = &RunOrigin{
+			Kind: RunOriginKind(r.Origin.Kind), WorkItemId: sp(string(r.Origin.WorkItemID)), PushId: sp(r.Origin.PushID),
+			RepositoryId: sp(r.Origin.RepositoryID), Ref: sp(r.Origin.Ref),
+		}
+	}
+	if r.Sources != nil {
+		set := &RunSourceSet{Digest: sp(r.Sources.Digest), Sources: make([]RunSource, 0, len(r.Sources.Entries))}
+		for _, e := range r.Sources.Entries {
+			set.Sources = append(set.Sources, RunSource{
+				RepositoryId: httpapi.ID(e.RepositoryID), Repository: e.Repository, Path: e.Path, Commit: e.Commit,
+				Access: RunSourceAccess(e.Access), Branch: e.Branch,
+			})
+		}
+		out.SourceSet = set
 	}
 	return out
 }

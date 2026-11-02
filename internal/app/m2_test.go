@@ -877,6 +877,8 @@ func TestM2ContractCompatibility(t *testing.T) {
 		// The business-loop composition (T-075) adds its own operations after M2; they
 		// are checked by TestBusinessLoopContract.
 		added = slices.DeleteFunc(added, isBusinessLoopOperation)
+		// The kernel assembly's Git routes (T-170) are served by the kernel, not by this composition.
+		added = slices.DeleteFunc(added, isKernelGitOperation)
 		slices.Sort(added)
 		want := []string{
 			"DELETE /tenants/{tenantId}/projects/{projectId}/mcp-servers/{id}", "GET /tenants/{tenantId}/projects/{projectId}/mcp-servers",

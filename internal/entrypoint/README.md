@@ -333,6 +333,191 @@ mirrored (128+n for a signal). Exit 15: delivery or start failed.
 Tests: `Test_unit_entrypoint_v2_*`, `Test_unit_prepare_*`, `Test_unit_service_run_*`,
 `Test_unit_publication_git_hardening` and a round trip against the real runtime authority.
 
+## `run_shared` with a source set (v3), `kodama prepare`, `kodama step-git` (task T-151)
+
+Not wired by `internal/app`: the composition root registers `GitCredentialHelperCommand()`
+and `StepGitCommand()` beside `StepCommand()` and `PrepareCommand()` (T-152 owns the runtime
+adapters that write the files below). Contract:
+[runtime v3](../../docs/contracts/runtime-v3.md), [Git service](../../docs/contracts/git-service.md),
+[ADR 0011](../../docs/adr/0011-internal-tenant-git-service.md).
+
+**Selection.** `KODAMA_RUNTIME_API=v3` (flag `--runtime-api`) for `kodama step` and `kodama
+prepare` (and `service-run`, whose message is the unchanged v2 service on the v3 routes). The
+wire is explicit and strict: a context of another version is refused before any command (a v3
+context on `/runtime/v1|v2` fails validation, a v1/v2 context on `/runtime/v3` fails
+`ContextV3.Validate`). Unset and `v1`/`v2` keep every earlier byte (`Test_unit_entrypoint_old_contexts_unchanged`).
+New settings: `--git-dir`/`KODAMA_GIT_DIR` (default `/kodama/git`, where the context's
+`/kodama/git/<file>` credential, CA and runtime-grant paths are mapped).
+
+**`kodama prepare` (v3).** One workload checks out **every** source at `/workspace/<path>` at
+its pinned commit (one admission, one timeout, up to `maxAttempts` tries over the whole set,
+each try from an empty workspace) with the v2 hardening applied to every source: sanitized Git
+configuration, no hooks, attributes, filters, helpers or submodule recursion, `fsckObjects`,
+no redirects, no remote or credential stored. The read-only preparation credential file is
+offered to Git by the scoped credential helper for that one repository URL only. Afterwards no
+repository configuration or file under any `.git` may hold the credential; the one receipt lists
+`{path, commit, treeId}` per source.
+
+**`kodama step` (v3).**
+
+1. Admit and context on `/runtime/v3/attempts/{id}`; the two contexts must be identical.
+2. **No checkout.** Every source is verified in place: the path is a real directory chain, the
+   repository is read with sealed Git (`sealedgit.go`: repository configuration, hooks, filters
+   and helpers are never read or run), the pinned and head commits are present and HEAD is the
+   source's `headCommit` (see [Source HEADs between attempts](#source-heads-between-attempts)).
+   Failure is `workspace_unverified` before begin and before any command, with nothing changed.
+3. `POST /begin` observes every source in context order (head, tracked-clean, untracked,
+   ignored); the command starts only after an acknowledgment that is the derivation of the
+   request.
+4. After a **successful** command and output collection, explicit pushes (`stepv3push.go`),
+   one `git push --atomic --porcelain` (one receive, one push record) per source:
+   * the **writer** (workspace access `write`) commits the whole non-ignored tree of each
+     write source on top of HEAD as `Kodama <step@kodama.invalid>` and pushes it to the
+     source's task branch with `--force-with-lease=<branch>:<expectedTip>`; the commit must
+     descend from the expected tip, a moved branch is `publication_conflict`, and the shared
+     workspace HEAD follows the pushed commit;
+   * **every** attempt pushes the branch its command left checked out in a source when, and only
+     when, a pattern of the attempt's own grant selects it (the run's agent-branch namespace, or
+     the writer's task branch) and it holds a commit beyond the pinned/head one. A detached HEAD,
+     another branch, the default branch, another run's namespace, an uncommitted tree or a
+     reader's view of the task branch publishes nothing (a command that wants its commits
+     published checks out a `refs/heads/kodama/agents/<workItemId>/<runId>/<label>` or
+     `refs/heads/kodama/runs/<runId>/<label>` branch);
+   * every pushed commit is first scanned (`scanObjects`, over what is not already on the
+     server) for every injected secret value, the admission/runtime tokens and every Git
+     credential; one hit publishes **nothing** (`secret_in_source`). The **destination ref names** are
+     part of the same check, before any push: a branch named after a secret would put it in the Git
+     arguments, on the server and in `commits[].ref`. A hit refuses every push of the attempt with a
+     note that repeats neither the name nor the value. The server re-checks.
+5. Result `ResultV3 {commits: [{repositoryId, ref, commit, pushId}]}`, ordered by
+   `(repositoryId, ref)`, checked with `runtimev3.CheckResult` (own grant plus the runtime-issued
+   claims). A failed or `needs_input` result reports none; pushes already applied settle
+   independently. There is no source proposal, bundle or bundle artifact.
+
+### Source HEADs between attempts
+
+The scratch is shared by every attempt of a run, so what one attempt leaves as HEAD is the
+next attempt's base. The invariant (task T-162; AR-A09, GR-07):
+
+* **Handover.** When an attempt that started its command ends, for any reason (published,
+  declined to publish, failed, timed out, cancelled, authority lost), and before its result is
+  submitted, every source checkout is left **detached at the commit the next attempt's context
+  states as that source's `headCommit`**: the `headCommit` the attempt itself started from, or,
+  for a write source the attempt successfully pushed, the commit it pushed to the source's write
+  branch (`restoreHeads`, `sealedGit.detach`). It is never the commit a command (or the agent
+  wrapper) published on a run-scoped agent branch: an agent-branch push never moves a head
+  ([runtime v3](../../docs/contracts/runtime-v3.md)), so a later writer would otherwise commit on top
+  of it and publish an agent branch's commits to the task branch. The next
+  context states a source's new head only after a **succeeded** attempt. A write source whose push
+  applied in an attempt that then ends failed (a later source's push rejected, the result refused)
+  is therefore left at the pushed commit while the next context still states the old
+  `headCommit`: the successor's verification refuses it (`workspace_unverified`, which the
+  controller treats as a lost workspace), by design: fail closed, no rewind, no second publish.
+* **What moves.** Only the checkout's own index (`read-tree` of that commit, so `git status`
+  shows the tree against the handed-over HEAD; a symlinked or irregular `.git/index` or a leftover
+  `index.lock` fails the restore) and then, last, `.git/HEAD` (a plain detached commit), so a failed
+  restore leaves the old HEAD, which the next verification refuses. The work tree is never reset or cleaned (the scratch is cumulative; a later writer may
+  commit what an earlier step left, and the begin fence reports it as `modified`), and branches
+  the command created are left as they are. No workspace configuration, hook, filter or helper is
+  read or run: the same sealed Git, no checkout, atomic file renames.
+* **Verification.** `verifySources` requires each source's HEAD to equal its context
+  `headCommit`. Anything else (a leaked reader commit, a killed entrypoint's leftover, tampering
+  between steps) is `workspace_unverified` before begin and before the command, and the
+  checkout is left exactly as found: a leaked HEAD is never silently a base. A step that could
+  not restore (noted in its result's notes and logged) therefore leaves a workspace its successor
+  refuses rather than builds on. Recovery from such a workspace (a crash mid-step) is a new
+  preparation, not a rewrite here: nothing in the entrypoint resets a shared scratch.
+* **Nothing before the command.** An attempt that ends before its command started (refused
+  verification, secret delivery, begin) restores nothing: it changed nothing.
+
+**Credential helper (`kodama git-credential-helper`).** Git runs it as
+`credential.<url>.helper=!<kodama> git-credential-helper --base-url B --file F
+[--repository-url R]` with `credential.useHttpPath=true`, set with `-c` after the base
+configuration reset every inherited helper. It answers `get` only for an `https` request whose host
+equals the base URL's and whose path is beneath its path (and, for a runtime grant, equals
+that one repository); anything else (other host, port, scheme, sibling path, traversal, missing
+path) gets no output. `store`/`erase` do nothing. The file must hold one opaque credential (the
+Git contract's alphabet); it is never echoed, logged or placed on a command line, and the user is
+`kodama`. The command never needs the credential: only the entrypoint's own Git processes carry
+the helper.
+
+**Runtime-issued grants (`kodama step-git`, the grant broker).** A command asks for the seed or
+integration grant the context advertised:
+
+    kodama step-git seed --repository ID --url CLONE_URL --dir DIR_IN_WORKSPACE
+    kodama step-git integration --repository ID --gate GATE_ID
+
+`step-git` never calls the control plane and never holds the attempt's token. The supervising
+entrypoint serves a **grant broker** (`gitbroker.go`) on a Unix socket in a private directory,
+advertised to the command only when the context advertises a runtime grant
+(`KODAMA_STEP_GIT_SOCKET`, `KODAMA_STEP_GIT_KEY`, a per-attempt random key that every request must
+present). The entrypoint makes the route call itself and, **before** it writes the credential to the
+advertised file (0600, atomic) or the command can read it, registers the credential and its header
+forms in the attempt's disclosure set (`registerGitCredential` through the step's issued-value
+registry, which also bumps the generation the live container-log mirror follows, so redaction
+changes before the next byte). The answer to the command is `kind grantId refs`, never a credential.
+The broker has its own lifetime, derived from the command's: it is cancelled, its listener and every
+accepted connection are closed and its private socket directory removed when the command ends for
+any reason (exit, timeout, cancellation, loss of authority), by an idempotent stop that also runs
+on every exit path with a short bounded wait. A control-plane call in flight is cancelled with it, and
+a request queued behind another is refused after the wait if the lifetime has ended, so no grant is
+issued after the command and finalization is never delayed by the broker.
+Every credential ever issued stays registered for the whole attempt, so a repeated request that
+replaces the file does not let an earlier value escape log redaction or the pre-push scan. After the
+command succeeds the entrypoint pushes exactly the one update the latest grant of each kind allows
+with the repository-scoped helper: the seed is the commit at HEAD of `--dir` (at least one commit)
+as the receive's only update to the default branch; the integration is the approved candidate `to`
+(which must be in the write source's object store) to the integration ref with a lease on `from`.
+Each is scanned like any push and reported as a commit output covered by the recorded claim (all
+claims issued are retained for the result check).
+
+**Already-integrated approvals.** When the integration route answers `409 publication_conflict` with
+`details.reason: already_integrated` and a well-formed `details.observedTip` (a commit ID), no grant
+exists and none is needed: the control plane answers this only when the default branch is at the
+gate's approved candidate, so its answer is the authority and the command's workspace is not
+consulted. `step-git integration` exits 0 printing `integration already-integrated <tip>: ... nothing
+to push`, no credential file is written, the attempt plans no push and the result carries no commit
+output for that repository (there is no push record to cite); the missing push is not a failure.
+Only those two fields are read and nothing of the response is written to disk. Replays are
+idempotent, and an already-integrated answer supersedes a grant an earlier request of the same
+attempt obtained (nothing is pushed for it; its credential stays registered). Any other `409`
+(`reason: base_moved` whatever its tip, an `already_integrated` without a well-formed tip, another
+reason) stays a refusal: `step-git` exits 1 and the step fails as `publication_conflict` (whether the
+command exits non-zero or goes on), so the pipeline recomputes the candidate. The refusal is sticky:
+a later transient failure does not clear it, only a grant or the already-integrated answer of a later
+request does. Tests: `integration_already_integrated_test.go`.
+
+**Push record discovery (requirement on T-128/T-130).** Git does not return the push record.
+The result must carry `pushId`, and the runtime contract has no route to look one up, so the
+entrypoint reads it from the push itself: the Git worker's `post-receive` hook (which already
+receives the push's `pushId` and status from the control plane) MUST print exactly one line to its
+standard error for every receive that applied at least one update:
+
+    kodama-push-id: <pushId>
+
+which `git push` relays as `remote: kodama-push-id: <pushId>`. One receive is one push record,
+so one line covers every ref of an atomic push. A push that updated a ref without that line, with
+several different IDs or with a malformed ID is `publication_unsettled`, never a result without
+the record. A lost acknowledgment is handled conservatively: the identical push is repeated (and
+Git may repeat the request itself); if the service then shows the ref already at the pushed commit
+the update was applied by a response that was lost, its record is unknown, and the result fails
+`publication_unsettled` rather than invent a record. A lease or fast-forward refusal is
+`publication_conflict`; any other refusal `publication_failed` (the service's `remote:` lines go
+into the entrypoint's notes, redacted).
+
+**Not covered here.** Runtime-adapter delivery of the files (`internal/runtime/bootstrap.WriteGit`
+is the helper T-152 uses), grant issuance and revocation (T-150), the push authorizer (T-130),
+the Git worker hook (T-128) and server-side re-scanning (T-147).
+
+Tests: `Test_unit_prepare_checks_out_source_set_once`, `Test_unit_entrypoint_verifies_all_sources`,
+`Test_unit_entrypoint_git_credential_helper_scoped`, `Test_unit_entrypoint_pushes_agent_branch`,
+`Test_unit_entrypoint_writer_pushes_task_branch`, `Test_unit_entrypoint_no_publisher_for_internal`,
+`Test_unit_entrypoint_old_contexts_unchanged`, `Test_unit_step_git_*`,
+`Test_unit_entrypoint_restores_head_after_non_writer_publish` and
+`Test_unit_entrypoint_reader_commit_never_reaches_task_branch` (T-162), against real `git` and the
+smart-HTTPS fixture of `test/support/git` (whose bare repositories get a `post-receive` hook that
+prints the push line).
+
 ## Unit qualification (task T-082)
 
 Requirements: **PX-05**, **PX-07**, **VS-03**, **VS-07** (with PX-08/PX-10/VS-11 above).

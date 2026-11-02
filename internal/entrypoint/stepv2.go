@@ -8,6 +8,7 @@ import (
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 )
 
 // The run_shared (v2) attempt (docs/implementation/step-entrypoint.md, "run_shared
@@ -49,9 +50,15 @@ type admission struct {
 type fetched struct {
 	c  runtimev1.Context
 	c2 *runtimev2.ContextV2
+	c3 *runtimev3.ContextV3
 }
 
 func (f fetched) validate() error {
+	if f.c3 != nil {
+		// The v1 projection of a source-set context has no source and is not a valid
+		// v1 context; the v3 contract's validator covers every shared field.
+		return f.c3.Validate()
+	}
 	if f.c2 == nil {
 		return f.c.Validate()
 	}
@@ -62,6 +69,14 @@ func (f fetched) validate() error {
 }
 
 func (s *Step) admit(ctx context.Context, req runtimev1.AdmitRequest) (admission, error) {
+	if s.v3 != nil {
+		r, err := s.v3.AdmitV3(ctx, req)
+		if err != nil {
+			return admission{}, err
+		}
+		c3 := r.Context
+		return admission{token: r.Token, fetched: fetched{c: projectV3(c3), c3: &c3}}, nil
+	}
 	if s.v2 == nil {
 		r, err := s.rt.Admit(ctx, req)
 		if err != nil {
@@ -81,6 +96,13 @@ func (s *Step) admit(ctx context.Context, req runtimev1.AdmitRequest) (admission
 }
 
 func (s *Step) fetch(ctx context.Context) (fetched, error) {
+	if s.v3 != nil {
+		c3, err := s.v3.ContextV3(ctx)
+		if err != nil {
+			return fetched{}, err
+		}
+		return fetched{c: projectV3(c3), c3: &c3}, nil
+	}
 	if s.v2 == nil {
 		c, err := s.rt.Context(ctx)
 		return fetched{c: c}, err

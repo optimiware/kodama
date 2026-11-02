@@ -1,0 +1,1008 @@
+[
+  {
+    "name": "repository_ready",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "repository_provisioning_with_reason",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": true,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": "worker_unavailable",
+      "status": "provisioning",
+      "version": 3
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "repository_archived_with_reason",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": "archived_by_request",
+      "status": "archived",
+      "version": 3
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "repository_external",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/acme/inventory.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "external",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "repository_direct_push_enabled",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": true
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "repository_empty_seedable",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": true,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_minimal",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "backend"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_empty_policy_defaults_to_false",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "backend",
+      "policy": {}
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_full",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "trunk",
+      "name": "web-ui",
+      "policy": {
+        "directPushToDefault": true
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_branch_with_slash",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "release/1.x",
+      "name": "x"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "patch_default_branch",
+    "type": "PatchRepositoryRequest",
+    "payload": {
+      "defaultBranch": "develop"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "patch_policy",
+    "type": "PatchRepositoryRequest",
+    "payload": {
+      "policy": {
+        "directPushToDefault": true
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "list_page",
+    "type": "RepositoryList",
+    "payload": {
+      "items": [
+        {
+          "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+          "createdAt": "2026-10-30T10:00:00Z",
+          "defaultBranch": "main",
+          "empty": false,
+          "hosting": "internal",
+          "id": "repo_01",
+          "name": "backend",
+          "policy": {
+            "directPushToDefault": false
+          },
+          "reason": null,
+          "status": "ready",
+          "version": 3
+        }
+      ],
+      "nextCursor": null
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "list_empty_with_cursor",
+    "type": "RepositoryList",
+    "payload": {
+      "items": [],
+      "nextCursor": "page_2"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "refs_page",
+    "type": "RefsResponse",
+    "payload": {
+      "empty": false,
+      "nextCursor": null,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        },
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/tags/v1"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "refs_empty_repository",
+    "type": "RefsResponse",
+    "payload": {
+      "empty": true,
+      "nextCursor": null,
+      "refs": []
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "refs_sha256_commit",
+    "type": "RefsResponse",
+    "payload": {
+      "empty": false,
+      "nextCursor": null,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "response_tolerates_added_member",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3,
+      "visibility": "private"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_repository_name_taken",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "repository_name_taken",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_hosting_mismatch",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "hosting_mismatch",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_repository_not_ready",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "repository_not_ready",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_repository_archived",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "repository_archived",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_unknown_field",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "hosting": "external",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_misspelled_field",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultbranch": "main",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_miscased_name",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "Name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_name_uppercase",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "Backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_name_leading_digit",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "1backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_name_too_long",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_name_underscore",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "my_repo"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_name_path_traversal",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "../etc"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_name_missing",
+    "type": "CreateRepositoryRequest",
+    "payload": {},
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_ref_path",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "refs/heads/main",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_head",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "HEAD",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_reserved_namespace",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "kodama/work/x",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_kodama",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "kodama",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_dotdot",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "a..b",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_lock",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "main.lock",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_trailing_slash",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "main/",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_leading_dash",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "-main",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_space",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": "my branch",
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_default_branch_null",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "defaultBranch": null,
+      "name": "backend"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_policy_null",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "backend",
+      "policy": null
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_policy_flag_null",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": null
+      }
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_policy_flag_string",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": "yes"
+      }
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_policy_unknown_field",
+    "type": "CreateRepositoryRequest",
+    "payload": {
+      "name": "backend",
+      "policy": {
+        "forcePush": true
+      }
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "patch_empty",
+    "type": "PatchRepositoryRequest",
+    "payload": {},
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "patch_policy_without_flag",
+    "type": "PatchRepositoryRequest",
+    "payload": {
+      "policy": {}
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "patch_unknown_field",
+    "type": "PatchRepositoryRequest",
+    "payload": {
+      "name": "renamed"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "patch_default_branch_ref_path",
+    "type": "PatchRepositoryRequest",
+    "payload": {
+      "defaultBranch": "refs/heads/dev"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_ready_with_reason",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": "worker_unavailable",
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_reason_not_a_code",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": "Worker Unavailable",
+      "status": "provisioning",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_reason_omitted",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_unknown_status",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "deleted",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_unknown_hosting",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "mirror",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_clone_url_with_credentials",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://user:secret@git.example.invalid/x.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_clone_url_http",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "http://git.example.invalid/x.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_version_zero",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 0
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_timestamp_offset",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00+01:00",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_policy_omitted_flag",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {},
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_empty_omitted",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "hosting": "internal",
+      "id": "repo_01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_id_with_slash",
+    "type": "Repository",
+    "payload": {
+      "cloneUrl": "https://git.example.invalid/git/acme/inventory/backend.git",
+      "createdAt": "2026-10-30T10:00:00Z",
+      "defaultBranch": "main",
+      "empty": false,
+      "hosting": "internal",
+      "id": "repo/01",
+      "name": "backend",
+      "policy": {
+        "directPushToDefault": false
+      },
+      "reason": null,
+      "status": "ready",
+      "version": 3
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "refs_empty_with_refs",
+    "type": "RefsResponse",
+    "payload": {
+      "empty": true,
+      "nextCursor": null,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "refs_unordered",
+    "type": "RefsResponse",
+    "payload": {
+      "empty": false,
+      "nextCursor": null,
+      "refs": [
+        {
+          "commit": "2222222222222222222222222222222222222222",
+          "ref": "refs/tags/v1"
+        },
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/main"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "refs_zero_tip",
+    "type": "RefsResponse",
+    "payload": {
+      "empty": false,
+      "nextCursor": null,
+      "refs": [
+        {
+          "commit": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/main"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "refs_malformed_ref",
+    "type": "RefsResponse",
+    "payload": {
+      "empty": false,
+      "nextCursor": null,
+      "refs": [
+        {
+          "commit": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/a..b"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "error_unknown_code",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "no_such_code",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "repository_version_fraction",
+    "type": "Repository",
+    "raw": "{\"id\":\"repo_01\",\"name\":\"backend\",\"defaultBranch\":\"main\",\"hosting\":\"internal\",\"status\":\"ready\",\"reason\":null,\"cloneUrl\":\"https://git.example.invalid/x.git\",\"policy\":{\"directPushToDefault\":false},\"empty\":false,\"version\":3.5,\"createdAt\":\"2026-10-30T10:00:00Z\"}",
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_duplicate_name_member",
+    "type": "CreateRepositoryRequest",
+    "raw": "{\"name\":\"a\",\"name\":\"b\"}",
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_trailing_data",
+    "type": "CreateRepositoryRequest",
+    "raw": "{\"name\":\"a\"} {\"name\":\"b\"}",
+    "valid": false,
+    "code": "invalid_request"
+  }
+]

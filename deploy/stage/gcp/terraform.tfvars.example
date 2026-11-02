@@ -1,4 +1,6 @@
+# Copy to <state dir>/clusters/<name>/gcp.tfvars (default ~/kodama-stage/state) and edit; never next to the root.
 project_id             = "example-kodama-stage"
+# installation_id is set by deploy.sh to kodama-<name> (--name); this value is overridden.
 installation_id        = "kodama-stage-gcp"
 region                 = "europe-west1"
 environment_tier       = "staging"

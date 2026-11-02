@@ -81,19 +81,23 @@ const (
 // Reason codes the wrapper reports in a failed manifest. They match the
 // contract's ReasonCode pattern; the entrypoint passes them through.
 const (
-	ReasonIncomplete        = "wrapper_incomplete"
-	ReasonPayloadInvalid    = "payload_invalid"
-	ReasonConfigInvalid     = "config_invalid"
-	ReasonVersionMismatch   = "harness_version_mismatch"
-	ReasonStartFailed       = "harness_start_failed"
-	ReasonExitNonzero       = "harness_exit_nonzero"
-	ReasonHarnessError      = "harness_error"
-	ReasonIdle              = "harness_idle"
-	ReasonResultMissing     = "result_missing"
-	ReasonResultInvalid     = "result_invalid"
-	ReasonContextMismatch   = "context_mismatch"
-	ReasonOutputUndeclared  = "output_undeclared"
-	ReasonCommitFailed      = "commit_failed"
+	ReasonIncomplete       = "wrapper_incomplete"
+	ReasonPayloadInvalid   = "payload_invalid"
+	ReasonConfigInvalid    = "config_invalid"
+	ReasonVersionMismatch  = "harness_version_mismatch"
+	ReasonStartFailed      = "harness_start_failed"
+	ReasonExitNonzero      = "harness_exit_nonzero"
+	ReasonHarnessError     = "harness_error"
+	ReasonIdle             = "harness_idle"
+	ReasonResultMissing    = "result_missing"
+	ReasonResultInvalid    = "result_invalid"
+	ReasonContextMismatch  = "context_mismatch"
+	ReasonOutputUndeclared = "output_undeclared"
+	ReasonCommitFailed     = "commit_failed"
+	// ReasonSourceInvalid: the source set of a v3 attempt cannot be worked in (the
+	// attempt's Git grant could not publish the checkouts, or a checkout is not a
+	// repository at a commit). Nothing was run.
+	ReasonSourceInvalid     = "source_invalid"
 	ReasonAgentReportedFail = "agent_reported_failure"
 )
 

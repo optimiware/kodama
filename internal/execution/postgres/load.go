@@ -9,18 +9,30 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/execution"
 	"github.com/optimiware/kodama/internal/pipeline"
 )
 
-const runColumns = `id, purpose, work_item_id, workspace_id, deployment_id, definition_id, definition_digest, content_revision,
+const runColumnsBase = `id, purpose, work_item_id, workspace_id, deployment_id, definition_id, definition_digest, content_revision,
 	specification, source_commit, inputs, snapshot_digest, source_retention, retained_ref_id, requested_by_type, requested_by_id,
 	status, status_reason, cancel_requested_at, cancel_reason, failure_intent_at, failure_reason, version, created_at, updated_at,
 	started_at, finished_at, run_shared, deadline_at`
 
-func scanRun(row pgx.Row, scope domain.Scope) (*execution.Run, error) {
+// runColumnsSources are the columns of migration 011, read only by a store whose
+// composition applied it (Options.RunSources).
+const runColumnsSources = `, origin_kind, origin_push_id, origin_repository_id, origin_ref, source_base_url, source_ca_file, source_declaration, source_set_digest`
+
+func (s *Store) runColumns() string {
+	if s.opts.RunSources {
+		return runColumnsBase + runColumnsSources
+	}
+	return runColumnsBase
+}
+
+func scanRun(row pgx.Row, scope domain.Scope, withSources bool) (*execution.Run, error) {
 	var (
 		id, purpose, definition, digest, retention, byType, byID, status, reason string
 		workItem, workspaceID, deployment, commit, retained                      *string
@@ -33,10 +45,16 @@ func scanRun(row pgx.Row, scope domain.Scope) (*execution.Run, error) {
 		created, updated                                                         time.Time
 		shared                                                                   []byte
 		deadline                                                                 *time.Time
+		originKind, originPush, originRepo, originRef                            *string
+		baseURL, caFile, declaration, setDigest                                  *string
 	)
-	if err := row.Scan(&id, &purpose, &workItem, &workspaceID, &deployment, &definition, &digest, &revision, &spec, &commit, &inputs,
+	dest := []any{&id, &purpose, &workItem, &workspaceID, &deployment, &definition, &digest, &revision, &spec, &commit, &inputs,
 		&snapDigest, &retention, &retained, &byType, &byID, &status, &reason, &cancelAt, &cancelReason, &failAt, &failReason,
-		&version, &created, &updated, &started, &finished, &shared, &deadline); err != nil {
+		&version, &created, &updated, &started, &finished, &shared, &deadline}
+	if withSources {
+		dest = append(dest, &originKind, &originPush, &originRepo, &originRef, &baseURL, &caFile, &declaration, &setDigest)
+	}
+	if err := row.Scan(dest...); err != nil {
 		return nil, err
 	}
 	r := &execution.Run{
@@ -50,6 +68,16 @@ func scanRun(row pgx.Row, scope domain.Scope) (*execution.Run, error) {
 		Version: domain.Version(version), CreatedAt: created.UTC(), UpdatedAt: updated.UTC(), StartedAt: tmp(started), FinishedAt: tmp(finished),
 	}
 	r.DeadlineAt = tmp(deadline)
+	if originKind != nil {
+		r.Origin = execution.Origin{Kind: execution.OriginKind(*originKind), WorkItemID: domain.WorkItemID(str(workItem)),
+			PushID: str(originPush), RepositoryID: str(originRepo), Ref: str(originRef)}
+		// The entries are attached by attachSources; the rest of the pin is here.
+		r.Sources = &execution.RunSources{BaseURL: str(baseURL), Declaration: str(declaration), Digest: str(setDigest)}
+		if caFile != nil {
+			c := *caFile
+			r.Sources.CAFile = &c
+		}
+	}
 	if shared != nil {
 		var sh execution.RunShared
 		if err := json.Unmarshal(shared, &sh); err != nil {
@@ -189,9 +217,12 @@ func (m lockMode) sql() string {
 // loadRun reads the run, locking its row as requested. With lockSkip a locked
 // row is ErrBusy and a missing row ErrNotFound.
 func (s *Store) loadRun(ctx context.Context, tx pgx.Tx, scope domain.Scope, id domain.RunID, mode lockMode) (*execution.Run, error) {
-	row := tx.QueryRow(ctx, `SELECT `+runColumns+` FROM runs WHERE tenant_id = $1 AND project_id = $2 AND id = $3`+mode.sql(),
+	row := tx.QueryRow(ctx, `SELECT `+s.runColumns()+` FROM runs WHERE tenant_id = $1 AND project_id = $2 AND id = $3`+mode.sql(),
 		string(scope.TenantID), string(scope.ProjectID), string(id))
-	r, err := scanRun(row, scope)
+	r, err := scanRun(row, scope, s.opts.RunSources)
+	if err == nil {
+		err = s.attachSources(ctx, tx, scope, []*execution.Run{r})
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		if mode == lockSkip {
 			var one int
@@ -270,6 +301,11 @@ func (s *Store) loadAggregate(ctx context.Context, tx pgx.Tx, scope domain.Scope
 			return nil, err
 		}
 	}
+	if run.Sources != nil {
+		if err := s.loadCommits(ctx, tx, agg); err != nil {
+			return nil, err
+		}
+	}
 	return agg, nil
 }
 
@@ -287,7 +323,7 @@ func (s *Store) Get(ctx context.Context, scope domain.Scope, id domain.RunID) (*
 func (s *Store) List(ctx context.Context, scope domain.Scope, q execution.ListQuery) ([]*execution.Run, error) {
 	var out []*execution.Run
 	err := s.inTenantRead(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		sql := `SELECT ` + runColumns + ` FROM runs WHERE tenant_id = $1 AND project_id = $2`
+		sql := `SELECT ` + s.runColumns() + ` FROM runs WHERE tenant_id = $1 AND project_id = $2`
 		args := []any{string(scope.TenantID), string(scope.ProjectID)}
 		if len(q.Statuses) > 0 {
 			var st []string
@@ -311,15 +347,19 @@ func (s *Store) List(ctx context.Context, scope domain.Scope, q execution.ListQu
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
 		for rows.Next() {
-			r, err := scanRun(rows, scope)
+			r, err := scanRun(rows, scope, s.opts.RunSources)
 			if err != nil {
+				rows.Close()
 				return err
 			}
 			out = append(out, r)
 		}
-		return rows.Err()
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		return s.attachSources(ctx, tx, scope, out)
 	})
 	return out, err
 }
@@ -410,4 +450,84 @@ func (s *Store) Active(ctx context.Context, tenant domain.TenantID, after execut
 		return err
 	})
 	return out, err
+}
+
+// attachSources fills the entries of the source-set pin of every run that has
+// one, in one batched read. A run whose stored pin does not validate is an error,
+// never a run without its sources.
+func (s *Store) attachSources(ctx context.Context, tx pgx.Tx, scope domain.Scope, runs []*execution.Run) error {
+	if !s.opts.RunSources {
+		return nil
+	}
+	byID := map[string]*execution.Run{}
+	var ids []string
+	for _, r := range runs {
+		if r.Sources != nil && r.Sources.Digest != "" {
+			byID[string(r.ID)] = r
+			ids = append(ids, string(r.ID))
+		}
+	}
+	if len(ids) == 0 {
+		for _, r := range runs {
+			if r.Sources != nil {
+				r.Sources.Entries = []execution.RunSource{}
+			}
+		}
+		return nil
+	}
+	rows, err := tx.Query(ctx, `SELECT run_id, repository_id, repository_name, repository_url, commit, path, access, branch
+		FROM run_sources WHERE tenant_id = $1 AND project_id = $2 AND run_id = ANY($3) ORDER BY run_id, ordinal`,
+		string(scope.TenantID), string(scope.ProjectID), ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var run string
+		var e execution.RunSource
+		var access string
+		if err := rows.Scan(&run, &e.RepositoryID, &e.Repository, &e.URL, &e.Commit, &e.Path, &access, &e.Branch); err != nil {
+			return err
+		}
+		e.Access = gitv1.SourceAccess(access)
+		r := byID[run]
+		r.Sources.Entries = append(r.Sources.Entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, r := range runs {
+		if r.Sources == nil {
+			continue
+		}
+		if r.Sources.Entries == nil {
+			r.Sources.Entries = []execution.RunSource{}
+		}
+		if err := r.Sources.Validate(r.Origin, r.ID); err != nil {
+			return fmt.Errorf("execution: stored source set: %w", err)
+		}
+	}
+	return nil
+}
+
+// loadCommits attaches the refs each successful attempt reported.
+func (s *Store) loadCommits(ctx context.Context, tx pgx.Tx, agg *execution.Aggregate) error {
+	rows, err := tx.Query(ctx, `SELECT attempt_id, repository_id, ref, commit, push_id FROM attempt_commits
+		WHERE tenant_id = $1 AND project_id = $2 AND run_id = $3 ORDER BY attempt_id, ordinal`,
+		string(agg.Run.Scope.TenantID), string(agg.Run.Scope.ProjectID), string(agg.Run.ID))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var attempt string
+		var c execution.CommitOutput
+		if err := rows.Scan(&attempt, &c.RepositoryID, &c.Ref, &c.Commit, &c.PushID); err != nil {
+			return err
+		}
+		if at := agg.Attempt(domain.AttemptID(attempt)); at != nil {
+			at.Commits = append(at.Commits, c)
+		}
+	}
+	return rows.Err()
 }

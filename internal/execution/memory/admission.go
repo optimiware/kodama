@@ -45,6 +45,9 @@ func (s *Store) AdmitInTx(ctx context.Context, tx memdb.Tx, p *execution.Admissi
 		return nil, false, execution.ErrNotFound
 	}
 	if existing, err := s.loadRun(tx, scope, run.ID); err == nil {
+		if err := execution.CheckReplay(existing, run); err != nil {
+			return nil, false, err
+		}
 		return existing, false, nil
 	} else if !errors.Is(err, execution.ErrNotFound) {
 		return nil, false, err
@@ -56,13 +59,15 @@ func (s *Store) AdmitInTx(ctx context.Context, tx memdb.Tx, p *execution.Admissi
 	}
 	var pinID string
 	if run.Purpose == execution.PurposeWork {
-		env.takeWork(run.WorkItemID)
-		adm, err := env.Work()
-		if err != nil {
-			return nil, false, err
-		}
-		if adm.ContentRevision != p.WorkRevision {
-			return nil, false, fmt.Errorf("%w: the work item's specification changed during admission", execution.ErrConflict)
+		if run.WorkItemID != "" {
+			env.takeWork(run.WorkItemID)
+			adm, err := env.Work()
+			if err != nil {
+				return nil, false, err
+			}
+			if adm.ContentRevision != p.WorkRevision {
+				return nil, false, fmt.Errorf("%w: the work item's specification changed during admission", execution.ErrConflict)
+			}
 		}
 		if err := env.Authorize(ctx, p.Actor, scope, execution.PermRunManage); err != nil {
 			switch {
@@ -71,8 +76,10 @@ func (s *Store) AdmitInTx(ctx context.Context, tx memdb.Tx, p *execution.Admissi
 			}
 			return nil, false, execution.Unavailablef(err, "the authority is unavailable")
 		}
-		pinID = s.opts.NewID("pin")
-		run.RetainedRefID = pinID
+		if !run.SourceRun() {
+			pinID = s.opts.NewID("pin")
+			run.RetainedRefID = pinID
+		}
 	}
 	if err := s.insertRun(tx, run); err != nil {
 		return nil, false, err
@@ -88,8 +95,10 @@ func (s *Store) AdmitInTx(ctx context.Context, tx memdb.Tx, p *execution.Admissi
 				return nil, false, err
 			}
 		}
-		if err := s.peers.Workspaces.RetainSource(tx, run, pinID); err != nil {
-			return nil, false, err
+		if !run.SourceRun() {
+			if err := s.peers.Workspaces.RetainSource(tx, run, pinID); err != nil {
+				return nil, false, err
+			}
 		}
 	}
 	first := []execution.Transition{{Subject: execution.SubjectRun, ID: string(run.ID), To: string(run.Status), Reason: execution.ReasonCreated, At: run.CreatedAt}}

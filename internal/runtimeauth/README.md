@@ -296,3 +296,141 @@ workspace -> events): the revocation locks only the grant row, so it cannot
 deadlock with a record, which takes the run first. A store without the fence (a
 component store, or a composition that forgot it) refuses these two records with
 `ErrNotConfigured`; nothing skips the check.
+
+## Source-set wire and Git authority (task T-150, runtime v3)
+
+The runtime wire of a run that pins a source set of internally hosted repositories ([runtime v3](../../docs/contracts/runtime-v3.md),
+[ADR 0011](../../docs/adr/0011-internal-tenant-git-service.md), GR-06, WS-19, PX-23–PX-25). **Not wired by `internal/app`
+(T-132).** The v1 and v2 behavior, tokens, tables and routes are unchanged (the earlier tests pass untouched); a run pins its
+context version at admission and is served only on the matching wire, in both directions (`context_version_mismatch`, nothing
+consumed, issued or changed).
+
+| Piece | Where |
+| --- | --- |
+| `WireV3`, `WireOf` (`contextVersion` 3), `PinContextV3`, `RegisterV3`, `AdmitV3`, `RenewV3`, `ContextV3` (same attempt token, audience and grant rules as v2) | `admission.go`, `authorization.go` |
+| Resource subjects on the v3 wire: `ResourceState.ContextV3`, `AdmitResourceV3`, `RenewResourceV3`, `ResourceContextV3`, `ResourceAuthorizeRequest.ContextVersion` (a resource of the other wire is a mismatch before anything is done) | `resource_ports.go`, `resource_service.go` |
+| Runtime-issued Git grants: `Service.SeedGitGrant`, `Service.IntegrationGitGrant`, `Service.IssuedGitGrants`; consumer ports `GitIssuer`, `GitRepositories`, `IntegrationApprovals`, `IssuedGrants`; `Config.Git` | `git_ports.go`, `git_service.go` |
+| Records of the grants issued to an attempt: migration `014_attempt_git.sql` (`postgres.AttemptGitMigrations()`), `postgres.IssuedGrants`, shared `rtest.IssuedGrantsContract` (memory and PostgreSQL) | `postgres/` |
+| `/runtime/v3/...` routes: `http.NewV3Handler` (`V3Config`), `WireGuard` for WireV3, the v3 error envelope with `publication_conflict` details | `http/v3.go`, `http/v2.go`, `http/errors.go` |
+| Bridge to execution: the v3 resource state (`StateOf` serves a source-set run on the v3 wire only), `BeginsV3`, `ReceiptsV3`, `LeaseOf`, `PreparationGrantRef` | `execbridge/v3.go` |
+| Adapters over the Git authority, execution and the gates module (no business rule): `Grants` (`execution.GitGrants`, renewal, preparation), `Leases` (`gitauth.Attempts` and `gitpush.Attempts`), `Issuer` (`GitIssuer`), `Approvals` (`IntegrationApprovals` over `gates.Service.IntegrationApproval`), `GateDecisions` (`gitauth.Gates`) | `gitgrants/` |
+
+### Two different secrets
+
+The route authority of every v3 attempt route is the **runtime token** (the unchanged `kodama-runtime` token and its grant). The
+**Git credential** is a different secret: a gitauth grant (`gitc_…`, audience `kodama-git`) whose authority is re-read at every
+Git use. The first never buys the second except through the routes below, and the second never reaches anything the runtime
+authority stores or logs: `GitCredential` (here) and `execution.GitSecret` print `[redacted]` in every formatter and encoder, the
+context carries file names and a deterministic grant *reference* only, the records of issued grants hold claims (no digest, no
+credential), and a credential appears in exactly two places: the body of the response that issues it (`Cache-Control: no-store`)
+and, for the attempt's own, `AttemptSpec.Git` once. A repeat of an issuance returns the same grant with a **fresh** credential
+that replaces the earlier one (gitauth stores digests only); that, and `Grants.RenewAttempt`, are the only times a credential is
+returned twice.
+
+### The attempt's own credential
+
+`execution` requests it after the attempt is committed and before its workload starts (`GitGrants.IssueAttempt` with
+`AttemptGrantFor`: the pinned context's repositories and ref patterns, expiry at most the run's deadline and 24 h) and revokes it
+in the transaction that ends the attempt's authority (the stores' `GitGrants` peer; `gitauth/{postgres,memory}.RevokeAttempt`).
+`gitgrants.Grants` is that port over `*gitauth.Service`. **The issuance/cancellation race is closed here, not merely narrowed:**
+the Git authority reads the attempt's lease outside its own transaction, so a cancellation can land between its read and its
+insert; `Grants.IssueAttempt` therefore, after the grant is committed, reads the attempt's liveness under the run's row lock
+(`execution.Store.Update` with a mutation that only reads: the lock the cancelling transaction takes before it revokes) and
+revokes the grant of an attempt that ended (`execution.ErrAttemptRevoked`, nothing delivered). A live answer under the lock means
+any later cancellation finds the committed grant and revokes it. The runtime Git grants do the same under `CheckSession`'s lock
+(`closeIssuanceRace`). Execution's own re-read after issuing stays and is now redundant.
+
+`Leases` answers what the Git services ask of an attempt: `gitauth.Attempts.Lease` (live, deadline) and `gitpush.Attempts.Live`.
+**Live** is the committed record's: the attempt is running, its control is not revoked (cancellation, failure drain, timeout,
+supersession and an accepted result all end it), its run is neither draining, terminal nor past its deadline. The **deadline** is
+the run's pinned deadline, which is what `AttemptGrantFor` caps a grant at, so the lease lasts as long as the grant (execution's
+`GitGrants` contract). Each Git service re-reads it at every credential use and every commit intent, so a cancelled attempt is
+refused at its next push *before* its grants are revoked; revocation is the cleanup, not the authority.
+
+**Renewal.** The v3 contract has no route for renewing the Git credential and the workload never needs one inside the
+24-hour cap, so renewal is a controller-side use case, `Grants.RenewAttempt(scope, attempt)`, for the runtime adapter that wrote the
+credential file (T-152). It rebuilds the request from the attempt's committed context (never from the caller), reads the lease
+before and after and refuses an attempt that is not running, was revoked, whose run is draining, terminal or past its deadline
+(`execution.ErrAttemptRevoked`); a revoked, consumed or expired grant is refused by gitauth. It returns the same grant with a fresh
+credential and **never extends the grant**: a replay keeps the first issuance's expiry, so it cannot reach past the run's deadline
+or the contract's workload lifetime. An attempt that ends while its credential is rotated has its grants revoked and gets nothing.
+
+### The runtime-issued grants
+
+`POST /runtime/v3/attempts/{attemptId}/git/seed` and `…/git/integration` (the routes of `runtimev3.Operations`). Their action is
+`context.read`: the action ceiling is a closed list in the database (a migration would be needed to extend it, and execution's
+`AttemptState.Actions` must follow) and the begin fence rides it for the same reason. What makes the routes safe is not the action:
+the use case reads the capability from the attempt's **own pinned context in the durable grant** (never the request), re-verifies the
+session in one tenant transaction (the module-wide lock order: attempt, then grant) and refuses on the first failure, and the
+grant's claims are built by the control plane from its records:
+
+- **Seed** (PX-25). The context must advertise `runtimeGrants.seed` (only a provisioning run) otherwise 403; the repository must be
+  one **this run created** in its project (`GitRepositories.CreatedByRun`, otherwise 404 `not_found`, indistinguishable from an
+  unknown one, and nothing else is asked); the Git contract's seed eligibility with its 409/422 codes; then `GitIssuer.IssueSeed`
+  (kind `seed`, exactly `refs/heads/<defaultBranch>`, one repository, `seed: true`, at most 15 minutes and the run's deadline, issued
+  to this attempt), `runtimev3.CheckSeedGrant` on the answer and the record. Idempotent until consumed (a repeat is the same grant
+  with a fresh credential). gitauth keys a seed by its attempt, so a second repository by the same attempt is 403 (a limit of the Git
+  authority, recorded below).
+- **Integration.** The context must advertise `runtimeGrants.integration` and the repository must be a write source. The approval is
+  `gates.Service.IntegrationApproval` (mapped by `gitgrants.Approvals`), never the request: no approval, an absent or foreign gate is
+  403 (no grant exists); a default branch that moved is **409 `publication_conflict`** with `details {reason: base_moved,
+  observedTip}`; a branch **already at the candidate** is the same 409 with `reason: already_integrated` and the candidate as
+  `observedTip` and **no grant** (the integration was applied). The runtime v3 contract has no success shape without a grant, so the
+  wire cannot carry "success"; Go callers read `errors.Is(err, ErrAlreadyIntegrated)`. Then `GitIssuer.IssueIntegration` (kind
+  `integration`, one repository, update exactly the integration ref, constraint `{ref, from, to, gateId}` taken from the approval),
+  `runtimev3.CheckIntegrationGrant` and the record. gitauth reads the gate's decision again when it issues (`GateDecisions`), so a
+  reviewer who loses the authority between the route's check and the issuance gets no grant.
+- **Recorded, then reported.** Every issued grant is recorded (`runtime_git_grants`: claims only) before the credential is returned,
+  idempotently by grant ID. That record is how the result module recognizes a commit output on the default branch (the
+  `Issued` claims of `execution.ResultCommitV3`): from the control plane's own records, never the caller's word. A crash between
+  issuing and recording leaves a grant nobody received; the repeat returns it and records it.
+- **Errors.** Business refusals are `ErrRefused` carrying the contract code (`not_found`, `forbidden`, `hosting_mismatch`,
+  `repository_archived`, `repository_not_ready`, `repository_not_empty`, `seed_pending`); the HTTP layer renders only a code the
+  operation's v3 inventory lists, otherwise `unavailable`. An attempt that is no longer live is `attempt_revoked`, whichever side saw it.
+
+### What T-132 (and T-152) must wire
+
+1. Migrations: register `postgres.AttemptGitMigrations()` at slot `014` (after `011` run sources and `013` source provenance, before
+   `015`); nothing else changes in this package's earlier contributions (`ResourceMigrations()` still loads exactly `004`).
+2. `runtimeauth.Config.Git = &GitConfig{Issuer: gitgrants.NewIssuer(gitauthSvc, clock), Repositories: <adapter>, Approvals: gitgrants.NewApprovals(gatesSvc), Issued: postgres.NewIssuedGrants(db, clock)}`.
+   `Repositories` is the repository module's read plus **the record of which run created which repository**, which the repository
+   module does not keep today (`repository.Repository.CreatedBy` is an actor; productmcp's `Repositories.Create` must record the
+   creating run and attempt and the adapter's `CreatedByRun` must read it). Without it no seed is ever issued (fail closed).
+3. `gitauth.Config{Attempts: gitgrants.NewLeases(executionStore, clock), Gates: gitgrants.NewGateDecisions(approvals)}`;
+   `gitpush.Dependencies.Attempts` is the same `Leases`; `execution.Dependencies.GitGrants = gitgrants.NewGrants(gitauthSvc,
+   executionStore, clock)` over a store that revokes through the `Peers.GitGrants` peer (`gitauth` `RevokeAttemptIn`).
+4. Mount `runtimehttp.NewV3Handler` (`Begins: execbridge.BeginsV3{Exec, Recheck}`, `Receipts: execbridge.ReceiptsV3`, `ResourceSecrets`,
+   `Shared`: the v1 handlers of secrets and artifacts, `Direct{"submitResult"}`: `resultshttp.NewV3Handler`) next to the v1 and v2
+   handlers; wrap the v1 and v2 handlers with the matching `WireGuard`. The resource states of the v3 wire come from `execbridge.StateOf`
+   (it serves a source-set run on the v3 wire only). Register attempts of context version 3 with `RegisterV3`.
+5. T-152: write the attempt credential file from `AttemptSpec.Git` before the entrypoint starts, rotate it with
+   `Grants.RenewAttempt` when needed, issue the preparation grant with `Grants.IssuePreparation` and write the files the context names.
+
+### Decisions and limits recorded here
+
+- The two runtime Git routes ride `context.read` (above); the pinned context's capability, the creating-run record and the gate
+  approval are the authority.
+- `already_integrated` is a 409 with a reason, not a success: the frozen contract has no success without a grant.
+- A provisioning attempt can seed **one** repository: gitauth keys a seed grant by `(kind, attempt)`. Seeding several repositories
+  needs per-repository keys in gitauth (not this task's paths).
+- A renewal rotates the secret and never extends the expiry (gitauth's replay keeps it): a run longer than the 24-hour workload
+  grant lifetime cannot be served by one attempt grant. Extending needs a gitauth change.
+- A preparation grant is read-only and bounded by the preparation's deadline, but gitauth cannot revoke a grant by workload (its
+  revocation is by attempt), so it ends at its expiry, not with the preparation.
+- Commit outputs are verified by the result module (`internal/results`), not here.
+
+### Source-set tests
+
+| Test | File |
+| --- | --- |
+| `Test_unit_runtime_routes_new_version`, `Test_unit_runtime_routes_git_grants`, `Test_unit_runtime_routes_integration_conflict`, `Test_unit_runtime_routes_resources` | `http/v3_contract_test.go` |
+| `Test_unit_attempt_git_credential_delivered_and_renewed`, `…_renewal_refusals`, `Test_unit_attempt_git_credential_revoked_on_cancel`, `Test_unit_attempt_preparation_grant_is_read_only` (real gitauth) | `gitgrants/gitgrants_test.go` |
+| `Test_unit_runtime_seed_grant_over_gitauth`, `…_integration_grant_over_gitauth`, `…_grant_issuance_race_over_gitauth` | `gitgrants/runtime_grants_test.go` |
+| `Test_unit_runtimeauth_v3_wire_admission_and_fence`, `…_v3_resources`, `…_git_seed_grant`, `…_git_seed_needs_the_capability`, `…_git_integration_grant`, `…_git_grant_issuance_race`, `…_git_grants_refused_after_authority_ended`, `…_git_not_configured_fails_closed` | `rtest/v3_unit_test.go` |
+| `TestStateOfServesASourceSetRunOnTheV3WireOnly`, `TestLeaseOfIsTheAttemptsOwnState`, `TestV3RecordersServeExecutionsAnswers` | `execbridge/v3_test.go` |
+| `Test_unit_runtimeauth_issued_grants_memory_contract`, `TestPostgresIssuedGrantsContract`, `Test_attempt_git_migration_reapply`, `Test_attempt_git_isolation_and_guards` (real SQL) | `rtest/`, `postgres/` |
+
+```sh
+make check-go PKGS='./internal/runtimeauth/... ./internal/results/...'
+make check-go-integration DEV_SCOPE=t150 DEV_STACK=services PKGS='./internal/runtimeauth/... ./internal/results/...'
+```

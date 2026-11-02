@@ -279,7 +279,8 @@ func Test_unit_entrypoint_v2_wire_selection(t *testing.T) {
 			{"v2", with("KODAMA_RUNTIME_API", "v2"), nil, RuntimeAPIv2, false},
 			{"step-scoped v2", with("KODAMA_STEP_RUNTIME_API", "v2"), nil, RuntimeAPIv2, false},
 			{"flag overrides the environment", with("KODAMA_RUNTIME_API", "v1"), []string{"--runtime-api", "v2"}, RuntimeAPIv2, false},
-			{"v3 is refused", with("KODAMA_RUNTIME_API", "v3"), nil, "", true},
+			{"v3 selects the source-set wire", with("KODAMA_RUNTIME_API", "v3"), nil, RuntimeAPIv3, false},
+			{"v4 is refused", with("KODAMA_RUNTIME_API", "v4"), nil, "", true},
 			{"case matters", with("KODAMA_RUNTIME_API", "V2"), nil, "", true},
 		} {
 			cfg, err := ParseConfig(tc.args, env(tc.env), nil)
@@ -289,7 +290,7 @@ func Test_unit_entrypoint_v2_wire_selection(t *testing.T) {
 				}
 				continue
 			}
-			if err != nil || cfg.RuntimeAPI != tc.want || cfg.SharedRun() != (tc.want == RuntimeAPIv2) {
+			if err != nil || cfg.RuntimeAPI != tc.want || cfg.SharedRun() != (tc.want == RuntimeAPIv2) || cfg.SourceSetRun() != (tc.want == RuntimeAPIv3) {
 				t.Errorf("%s: %q %v", tc.name, cfg.RuntimeAPI, err)
 			}
 		}

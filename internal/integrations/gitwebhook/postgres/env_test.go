@@ -21,7 +21,9 @@ import (
 	gwpg "github.com/optimiware/kodama/internal/integrations/gitwebhook/postgres"
 	"github.com/optimiware/kodama/internal/pipeline"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
+	repositorypg "github.com/optimiware/kodama/internal/repository/postgres"
 	"github.com/optimiware/kodama/internal/storage"
+	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 )
 
 func TestMain(m *testing.M) {
@@ -33,9 +35,14 @@ func TestMain(m *testing.M) {
 }
 
 // Contributions is the manifest the environment migrates: the execution
-// environment's own, then this module after everything it references.
+// environment's own (executiontest.New applies the repositories, the workspace
+// repository associations and the run sources beside run_shared since T-147 and
+// T-148, and the ledger refuses a narrower manifest), then this module after
+// everything it references.
 func contributions() []storage.Contribution {
-	return []storage.Contribution{storage.BaseContribution(), execpg.RunResourceMigrations()}
+	return []storage.Contribution{
+		storage.BaseContribution(), execpg.RunResourceMigrations(), repositorypg.Migrations(), workspacepg.Migrations(), execpg.RunSourceMigrations(),
+	}
 }
 
 // env is the real execution module over PostgreSQL with this module's schema

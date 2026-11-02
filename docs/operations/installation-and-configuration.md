@@ -43,7 +43,7 @@ T-116 composes this model in the server and renders it in the chart, **off by de
 - **Uninstall and offboarding.** Run scratch, services, policies and PVC/PV allocations are disposable per-run resources: tenant offboarding and uninstall stop admission, cancel runs, wait for verified stop and remove them; stuck cleanup is reported, not hidden. Scratch contents are deleted with the volume and are never restored. Git refs, artifacts and registry content follow their own retention.
 
 ## Integrations
-O-26 updates the original T-029 startup handoff: T-105 supplies `secrets.adapter: keyfile | kms` and cloud `aws | gcp | scw` startup wiring. T-104 performs live-provider validation in Kubernetes before T-090 staging. T-029 retains full disaster recovery. See [configuration and credentials](../../deploy/helm/kodama/README.md#kms-selection) for version-2 settings, stable key mappings and rollout behavior.
+O-26 updates the original T-029 startup handoff: T-105 supplies `secrets.adapter: keyfile | kms` and cloud `aws | gcp | scw` startup wiring. T-104 performs live-provider validation in Kubernetes before T-090 staging. T-029 retains full disaster recovery. See [configuration and credentials](../../deploy/charts/kodama/README.md#kms-selection) for version-2 settings, stable key mappings and rollout behavior.
 
 
 | Dependency | Configuration and preflight |

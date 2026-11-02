@@ -147,6 +147,9 @@ func (s *Service) Record(ctx context.Context, cmd RecordCommand) (Result, error)
 	if err != nil {
 		return Result{}, err
 	}
+	if err := checkSources(facts); err != nil {
+		return Result{}, err
+	}
 
 	rep, reportMeta, err := s.readReport(ctx, facts)
 	if err != nil {
@@ -160,6 +163,9 @@ func (s *Service) Record(ctx context.Context, cmd RecordCommand) (Result, error)
 	out := Result{Attempt: cmd.Attempt, Report: ref}
 
 	if err := s.bindContext(facts, rep); err != nil {
+		return out, err
+	}
+	if err := bindCandidate(facts.Sources, rep.Deployment.CandidateCommit); err != nil {
 		return out, err
 	}
 	trusted, err := s.trustedDeployment(facts)
@@ -401,4 +407,34 @@ func (s *Service) verifyEvidence(ctx context.Context, f AttemptFacts, r Report) 
 		}
 	}
 	return nil
+}
+
+// checkSources requires the projection of the pinned source set to be coherent
+// with the context version: a set is read only from a context v3 and must be a
+// valid one, and an older context never carries one.
+func checkSources(f AttemptFacts) error {
+	if f.Sources.Empty() {
+		return nil
+	}
+	if f.ContextVersion != 3 {
+		return failf(ErrContext, "only a context of version 3 carries a source set")
+	}
+	if err := f.Sources.Validate(); err != nil {
+		return failf(ErrContext, "the pinned source set is invalid")
+	}
+	return nil
+}
+
+// bindCandidate applies the pinned source set to the report: when the attempt
+// was pinned to a source set, the candidate the report says it inspected must be
+// a commit that set pins or has advanced to. A deployment built from any other
+// commit is not what this attempt's sources describe, so its findings are not
+// filed under them. The deployment module's own record still has to agree
+// (checkDeployment); this refusal comes first and needs no I/O. Without a
+// source set there is nothing to bind and the rule does not apply.
+func bindCandidate(set SourceSet, candidate runtimev1.GitCommit) error {
+	if set.Empty() || set.Holds(candidate) {
+		return nil
+	}
+	return failf(ErrContext, "the reported candidate is not a commit of the attempt's pinned source set")
 }

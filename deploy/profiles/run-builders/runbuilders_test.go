@@ -75,11 +75,11 @@ func Test_unit_builder_profile_render(t *testing.T) {
 	// The ConfigMap carries the exact profile bytes and the script.
 	data := child(docs[2], "data")
 	p := Embedded()
-	if text(data, SeccompFile) != string(p.Seccomp) || text(data, ProfileVersion) != string(p.AppArmor) || text(data, "install.sh") != string(InstallScript()) {
+	if text(data, SeccompFile) != string(p.Seccomp) || text(data, AppArmorProfile) != string(p.AppArmor) || text(data, "install.sh") != string(InstallScript()) {
 		t.Fatal("ConfigMap content differs from the shipped files")
 	}
 	// The embedded files are also the files on disk.
-	for file, want := range map[string][]byte{"seccomp/" + SeccompFile: p.Seccomp, "apparmor/" + ProfileVersion: p.AppArmor} {
+	for file, want := range map[string][]byte{"seccomp/" + SeccompFile: p.Seccomp, "apparmor/" + AppArmorProfile: p.AppArmor} {
 		onDisk, err := os.ReadFile(file)
 		if err != nil || !bytes.Equal(onDisk, want) {
 			t.Fatalf("%s: %v", file, err)
@@ -261,14 +261,6 @@ func Test_unit_builder_profile_denials(t *testing.T) {
 		}
 	}
 
-	// The AppArmor profile keeps every default denial and does not allow host writes back.
-	rules := Embedded().AppArmor
-	for _, denial := range AppArmorDenials {
-		if !strings.Contains(string(rules), "  "+denial) {
-			t.Errorf("missing denial %q", denial)
-		}
-	}
-
 	// Manifest validation failures.
 	cases := map[string]func(docs []object){
 		"tenant namespace": func(docs []object) { child(docs[3], "metadata")["namespace"] = "kodama-tenant-acme" },
@@ -412,50 +404,55 @@ func Test_unit_builder_profile_apparmor_rules(t *testing.T) {
 	if err := ValidateAppArmor(data); err != nil {
 		t.Fatal(err)
 	}
-	rules := appArmorRules(data)
-	has := func(rule string) bool {
-		for _, r := range rules {
-			if r == rule {
-				return true
-			}
-		}
-		return false
+	// The decided profile and nothing else: abi 4.0, tunables, the unconfined-flag profile named
+	// kodama-rootless-build-v2, and exactly the userns rule.
+	want := []string{
+		"abi <abi/4.0>,", "include <tunables/global>",
+		"profile kodama-rootless-build-v2 flags=(unconfined) {", "userns,", "}",
 	}
-	for _, rule := range []string{
-		"abi <abi/4.0>,", "userns,", "mount,", "remount,", "umount,", "pivot_root,", "capability,", "network,", "file,",
-		"signal (send,receive) peer=" + AppArmorProfile + ",",
-	} {
-		if !has(rule) {
-			t.Errorf("missing rule %q", rule)
-		}
+	if got := appArmorRules(data); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("profile rules = %q, want %q", got, want)
 	}
-	for _, denial := range AppArmorDenials {
-		if !has(denial) {
-			t.Errorf("missing denial %q", denial)
-		}
+	if AppArmorProfile != "kodama-rootless-build-v2" || SeccompVersion != "kodama-rootless-build-v1" ||
+		SeccompLocalhostProfile != "kodama/kodama-rootless-build-v1.json" || AppArmorKernelState != "kodama-rootless-build-v2 (unconfined)" {
+		t.Fatalf("profile names changed: %s %s %s", AppArmorProfile, SeccompLocalhostProfile, AppArmorKernelState)
 	}
-	if has("deny mount,") || has("flags=(unconfined)") {
-		t.Fatal("profile must not deny mounts or run unconfined")
-	}
-	for _, rule := range rules {
-		if strings.Contains(rule, "unconfined") && !strings.HasPrefix(rule, "signal (receive)") {
-			t.Errorf("unexpected unconfined reference %q", rule)
-		}
+	// The v1 AppArmor profile is not shipped.
+	if _, err := os.Stat("apparmor/kodama-rootless-build-v1"); err == nil {
+		t.Fatal("the v1 AppArmor profile must not be shipped")
 	}
 
 	// Each mutation the validator must refuse.
+	add := func(rule string) func(string) string {
+		return func(s string) string { return strings.Replace(s, "  userns,\n", "  userns,\n  "+rule+"\n", 1) }
+	}
 	for name, edit := range map[string]func(string) string{
-		"no userns":        func(s string) string { return strings.Replace(s, "  userns,\n", "", 1) },
-		"deny mount":       func(s string) string { return strings.Replace(s, "  mount,\n", "  deny mount,\n", 1) },
-		"no pivot_root":    func(s string) string { return strings.Replace(s, "  pivot_root,\n", "", 1) },
-		"abi 3.0":          func(s string) string { return strings.Replace(s, "abi <abi/4.0>,\n", "abi <abi/3.0>,\n", 1) },
-		"proc/sys allowed": func(s string) string { return strings.Replace(s, "  deny @{PROC}/sys/[^k]** w,", "  # removed", 1) },
-		"kcore allowed":    func(s string) string { return strings.Replace(s, "  deny @{PROC}/kcore rwklx,\n", "", 1) },
-		"firmware":         func(s string) string { return strings.Replace(s, "  deny /sys/firmware/** rwklx,\n", "", 1) },
-		"wrong name":       func(s string) string { return strings.Replace(s, "profile "+AppArmorProfile, "profile other", 1) },
-		"allow rule": func(s string) string {
-			return strings.Replace(s, "  userns,\n", "  userns,\n  allow /proc/sys/** w,\n", 1)
+		"no userns": func(s string) string { return strings.Replace(s, "  userns,\n", "", 1) },
+		"no flags":  func(s string) string { return strings.Replace(s, " flags=(unconfined) {", " {", 1) },
+		"other flags": func(s string) string {
+			return strings.Replace(s, "flags=(unconfined) {", "flags=(attach_disconnected,mediate_deleted) {", 1)
 		},
+		"extra flag": func(s string) string {
+			return strings.Replace(s, "flags=(unconfined) {", "flags=(unconfined,complain) {", 1)
+		},
+		"abi 3.0":     func(s string) string { return strings.Replace(s, "abi <abi/4.0>,\n", "abi <abi/3.0>,\n", 1) },
+		"no abi":      func(s string) string { return strings.Replace(s, "abi <abi/4.0>,\n", "", 1) },
+		"no tunables": func(s string) string { return strings.Replace(s, "include <tunables/global>\n", "", 1) },
+		"wrong name":  func(s string) string { return strings.Replace(s, "profile "+AppArmorProfile, "profile other", 1) },
+		"v1 name": func(s string) string {
+			return strings.Replace(s, "profile "+AppArmorProfile, "profile kodama-rootless-build-v1", 1)
+		},
+		"added mount":      add("mount,"),
+		"added file":       add("file,"),
+		"added deny":       add("deny @{PROC}/kcore rwklx,"),
+		"added capability": add("capability sys_admin,"),
+		"added include":    add("#include <abstractions/base>"),
+		"added signal":     add("signal (receive) peer=unconfined,"),
+		"second profile":   func(s string) string { return s + "\nprofile other flags=(unconfined) {\n  userns,\n}\n" },
+		"rule before profile": func(s string) string {
+			return strings.Replace(s, "profile "+AppArmorProfile, "network,\nprofile "+AppArmorProfile, 1)
+		},
+		"unclosed": func(s string) string { return strings.Replace(s, "\n}\n", "\n", 1) },
 	} {
 		changed := edit(string(data))
 		if changed == string(data) {
@@ -465,10 +462,15 @@ func Test_unit_builder_profile_apparmor_rules(t *testing.T) {
 			t.Errorf("%s: validation passed", name)
 		}
 	}
+	// Comments and trailing comments do not count as rules.
+	commented := strings.Replace(string(data), "  userns,\n", "  userns,  # needed\n  # mount,\n", 1)
+	if err := ValidateAppArmor([]byte(commented)); err != nil {
+		t.Fatalf("comments rejected: %v", err)
+	}
 
 	// When the parser is installed (Ubuntu 24.04 apparmor 4.x), compile without loading.
 	if parser, err := exec.LookPath("apparmor_parser"); err == nil {
-		out, err := exec.Command(parser, "-QK", "-S", filepath.Join("apparmor", ProfileVersion)).CombinedOutput()
+		out, err := exec.Command(parser, "-QK", "-S", filepath.Join("apparmor", AppArmorProfile)).CombinedOutput()
 		if err != nil {
 			t.Fatalf("apparmor_parser: %v\n%s", err, out)
 		}

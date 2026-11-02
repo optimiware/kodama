@@ -1,0 +1,471 @@
+[
+  {
+    "name": "commit_intent_request",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "commit_intent_request_multi_ref_transaction",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        },
+        {
+          "new": "5555555555555555555555555555555555555555",
+          "old": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/kodama/work/wi_1042"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "commit_intent_response",
+    "type": "CommitIntentResponse",
+    "payload": {
+      "committing": true
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "commit_intent_response_tolerates_added_member",
+    "type": "CommitIntentResponse",
+    "payload": {
+      "committing": true,
+      "deadline": "2026-10-30T10:10:00Z"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_push_settled",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "push_settled",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_attempt_inactive",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "attempt_inactive",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_receive_expired",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "receive_expired",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "outcome_request_applied",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ],
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "outcome_request_nothing_applied",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [],
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "outcome_request_journal_position",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ],
+      "journalPosition": 7,
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "outcome_request_position_and_sequence",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ],
+      "journalPosition": 7,
+      "journalSequence": 12,
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "outcome_request_journal_sequence",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ],
+      "journalSequence": 12,
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "outcome_response",
+    "type": "OutcomeResponse",
+    "payload": {
+      "pushId": "push_01",
+      "status": "applied"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "commit_intent_unknown_field",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "commit_intent_receive_omitted",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "commit_intent_no_updates",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "updates": []
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "commit_intent_updates_null",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "updates": null
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "commit_intent_duplicate_ref",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        },
+        {
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "commit_intent_malformed_ref",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/a..b"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "commit_intent_malformed_commit",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "updates": [
+        {
+          "new": "xyz",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "commit_intent_no_change",
+    "type": "CommitIntentRequest",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "updates": [
+        {
+          "new": "0000000000000000000000000000000000000000",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "commit_intent_response_not_committing",
+    "type": "CommitIntentResponse",
+    "payload": {
+      "committing": false
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "commit_intent_response_omitted",
+    "type": "CommitIntentResponse",
+    "payload": {},
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "outcome_journal_sequence_zero",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [],
+      "journalSequence": 0,
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "outcome_journal_position_zero",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [],
+      "journalPosition": 0,
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "outcome_journal_position_null",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [],
+      "journalPosition": null,
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "outcome_journal_position_string",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [],
+      "journalPosition": "7",
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "outcome_journal_sequence_null",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [],
+      "journalSequence": null,
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "outcome_unknown_field",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [],
+      "receiveId": "rcv_8f2c",
+      "status": "ok"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "outcome_applied_null",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": null,
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "outcome_applied_duplicate",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        },
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ],
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "outcome_malformed_ref",
+    "type": "OutcomeRequest",
+    "payload": {
+      "applied": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "agnt"
+        }
+      ],
+      "receiveId": "rcv_8f2c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "outcome_response_unknown_status",
+    "type": "OutcomeResponse",
+    "payload": {
+      "pushId": "push_01",
+      "status": "done"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  }
+]

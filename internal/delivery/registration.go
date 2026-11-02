@@ -139,9 +139,10 @@ func (s *Service) plan(ctx context.Context, m Mutation, pinned runtimev1.Context
 	}
 	scope := pinned.Scope()
 	// The deployment's source is the candidate the attempt works on. A pinned
-	// workspace source must be exactly the requested one.
-	if src := pinned.Workspace.Source; src != nil && (src.RepositoryURL != req.Source.RepositoryURL || string(src.Commit) != req.Source.Commit) {
-		return RegistrationPlan{}, Fail(ErrProvenance, nil, "the deployment source is not the attempt's source")
+	// workspace source (or source set) must be exactly the requested one.
+	source, err := s.checkSource(ctx, scope, pinned, req.Source)
+	if err != nil {
+		return RegistrationPlan{}, err
 	}
 	// The retained snapshot of the pin: never the environment's current state.
 	snap, err := s.retainedPin(ctx, pinned)
@@ -161,7 +162,7 @@ func (s *Service) plan(ctx context.Context, m Mutation, pinned runtimev1.Context
 		expires = &t
 	}
 	d, err := NewDeployment(Registration{
-		Scope: scope, Environment: snap.Environment, ConfigDigest: snap.Digest, Namespace: snap.Namespace, Source: req.Source, Image: req.Image,
+		Scope: scope, Environment: snap.Environment, ConfigDigest: snap.Digest, Namespace: snap.Namespace, Source: source, Image: req.Image,
 		Producer: producer, Run: pinned.RunID, Step: pinned.StepID, ActionKey: pinned.ActionKey, Attempt: pinned.AttemptID, ExpiresAt: expires,
 	}, m.Now)
 	if err != nil {
@@ -181,6 +182,54 @@ func (s *Service) plan(ctx context.Context, m Mutation, pinned runtimev1.Context
 		return RegistrationPlan{}, Fail(ErrUnavailable, err, "the image could not be protected")
 	}
 	return RegistrationPlan{Command: RegisterCommand{Mutation: m, Deployment: d, Attempt: pinned.AttemptID}, scope: scope, artifact: req.Image.ArtifactID}, nil
+}
+
+// checkSource applies the pinned-source rule of a registration and returns the
+// source the record keeps.
+//
+// An attempt of a run with a source set is recognized by its context: a source-
+// backed workspace (access read or write) whose single source is absent, which
+// no earlier context has (v1 contexts carry the source exactly when access is
+// not none; the v3 projection of adapters.Execution carries none). Such an
+// attempt deploys exactly its set: the source set reader must be configured (a
+// missing one refuses, never falls back to a single source), the request must
+// name a set equal to the attempt's, and a single repository and commit is always
+// refused, whatever it names. The record keeps the set and the primary source
+// the reader supplied. Every other attempt keeps the single-source rule: a pinned
+// workspace source must be exactly the requested one, and a source set is refused.
+func (s *Service) checkSource(ctx context.Context, scope domain.Scope, pinned runtimev1.Context, src Source) (Source, error) {
+	refuse := func() (Source, error) {
+		return Source{}, Fail(ErrProvenance, nil, "the deployment source is not the attempt's source")
+	}
+	if pinned.Workspace.Source == nil && (pinned.Workspace.Access == runtimev1.AccessRead || pinned.Workspace.Access == runtimev1.AccessWrite) {
+		if s.cfg.SourceSets == nil {
+			return Source{}, Fail(ErrNotConfigured, nil, "a deployment of a source-set run needs the source set reader")
+		}
+		pin, found, err := s.cfg.SourceSets.PinnedSourceSet(ctx, scope, pinned.AttemptID)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			return refuse()
+		case err != nil:
+			return Source{}, Fail(ErrUnavailable, err, "the attempt's source set could not be read")
+		case !found || pin.Set.IsZero() || pin.Set.Validate() != nil:
+			return refuse()
+		}
+		if src.SourceSet != pin.Set || src.RepositoryURL != "" || src.Commit != "" {
+			return refuse()
+		}
+		out := Source{RepositoryURL: pin.PrimaryURL, Commit: pin.PrimaryCommit, SourceSet: pin.Set}
+		if out.Validate() != nil || out.RepositoryURL == "" {
+			return refuse()
+		}
+		return out, nil
+	}
+	if !src.SourceSet.IsZero() {
+		return refuse()
+	}
+	if w := pinned.Workspace.Source; w != nil && (w.RepositoryURL != src.RepositoryURL || string(w.Commit) != src.Commit) {
+		return refuse()
+	}
+	return src, nil
 }
 
 // verifyImage reads the artifact owner's and the execution owner's evidence and

@@ -23,11 +23,15 @@ type Config struct {
 	Access      Access
 	Credentials Credentials
 
-	Contexts  PinnedContexts
-	Producers Producers
-	Artifacts Artifacts
-	Authority Authority
-	Cleanups  CleanupBindings
+	Contexts PinnedContexts
+	// SourceSets is optional: it supplies the source set of an attempt of a
+	// run of the internal Git service. Without it a deployment whose source is
+	// a source set is refused.
+	SourceSets PinnedSourceSets
+	Producers  Producers
+	Artifacts  Artifacts
+	Authority  Authority
+	Cleanups   CleanupBindings
 
 	IDs   IDs
 	Clock func() time.Time

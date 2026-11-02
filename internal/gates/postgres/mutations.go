@@ -48,11 +48,11 @@ func (s *Store) Request(ctx context.Context, p *gates.RequestPlan) (*gates.Gate,
 			} else if !errors.Is(err, gates.ErrNotFound) {
 				return err
 			}
-			in, err := agg.GateInputs(g.StepID)
+			in, set, err := gates.ResolveInputs(agg, g.StepID)
 			if err != nil {
 				return err
 			}
-			if !reflect.DeepEqual(in, p.Inputs) {
+			if !reflect.DeepEqual(in, p.Inputs) || !reflect.DeepEqual(set, p.SourceSet) {
 				return fmt.Errorf("%w: the gate inputs changed while it was prepared", execution.ErrStale)
 			}
 			return nil
@@ -90,13 +90,34 @@ func (s *Store) insertGate(ctx context.Context, tx pgx.Tx, g *gates.Gate) error 
 		return err
 	}
 	depID, depCfg := g.Subject.Deployment()
-	if _, err := tx.Exec(ctx, `INSERT INTO gates (tenant_id, project_id, id, run_id, step_id, work_item_id, content_revision, candidate_commit, definition_id,
-		deployment_id, deployment_config_digest, subject, subject_digest, required, status, version, requested_at, deadline, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+	// A single-repository subject stores its commit; a source-set subject stores
+	// the digest of its set instead (the commits and bases are in the canonical
+	// subject), which is only possible with the source provenance columns.
+	set, isSet := g.Subject.SourceSet()
+	var candidate, setDigest *string
+	if isSet {
+		if !s.sets {
+			return gates.Unavailablef(nil, "a source-set subject needs the source provenance migration")
+		}
+		setDigest = &set.Digest
+	} else {
+		c := g.Subject.CandidateCommit()
+		candidate = &c
+	}
+	cols, vals := ``, ``
+	args := []any{
 		string(g.Scope.TenantID), string(g.Scope.ProjectID), string(g.ID), string(g.RunID), g.StepID, string(g.Subject.WorkItemID()),
-		int64(g.Subject.ContentRevision()), g.Subject.CandidateCommit(), string(g.Subject.DefinitionID()), nstr(depID), nstr(depCfg),
+		int64(g.Subject.ContentRevision()), candidate, string(g.Subject.DefinitionID()), nstr(depID), nstr(depCfg),
 		string(g.Subject.Canonical()), g.SubjectDigest(), required, string(g.Status), int64(g.Version), micros(g.RequestedAt), micros(g.Deadline),
-		micros(g.CreatedAt), micros(g.UpdatedAt)); err != nil {
+		micros(g.CreatedAt), micros(g.UpdatedAt),
+	}
+	if s.sets {
+		cols, vals = `, source_set_digest`, `,$21`
+		args = append(args, setDigest)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO gates (tenant_id, project_id, id, run_id, step_id, work_item_id, content_revision, candidate_commit, definition_id,
+		deployment_id, deployment_config_digest, subject, subject_digest, required, status, version, requested_at, deadline, created_at, updated_at`+cols+`)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20`+vals+`)`, args...); err != nil {
 		return err
 	}
 	for _, r := range g.Required.Evidence {

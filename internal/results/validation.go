@@ -81,6 +81,24 @@ func ReferencedArtifacts(res runtimev1.Result, pinned runtimev1.Context) []domai
 // independently of outputs: an early output violation never lets an
 // unverified diagnostic reference reach execution.
 func Validate(res runtimev1.Result, pinned runtimev1.Context, evidence map[domain.ArtifactID]ArtifactEvidence) (Verdict, error) {
+	source := pinnedSource(pinned)
+	return validate(res, pinned, evidence, validator{
+		trusted: func(ev ArtifactEvidence) bool { return trustedOutput(ev, source) },
+		check: func(artifacts map[domain.ArtifactID]runtimev1.ArtifactRef) error {
+			return runtimev1.CheckResult(res, pinned, artifacts)
+		},
+	})
+}
+
+// validator is what differs between the wires: which producer provenance makes
+// an output artifact trusted, and which contract check applies the declared
+// outputs (and, on the source-set wire, the commit outputs' grants).
+type validator struct {
+	trusted func(ArtifactEvidence) bool
+	check   func(map[domain.ArtifactID]runtimev1.ArtifactRef) error
+}
+
+func validate(res runtimev1.Result, pinned runtimev1.Context, evidence map[domain.ArtifactID]ArtifactEvidence, vd validator) (Verdict, error) {
 	if err := res.Validate(); err != nil {
 		return Verdict{}, contractError(err)
 	}
@@ -116,11 +134,10 @@ func Validate(res runtimev1.Result, pinned runtimev1.Context, evidence map[domai
 		}
 	}
 	isOutput := outputArtifacts(res, pinned)
-	source := pinnedSource(pinned)
 	for _, id := range ids {
 		ev, _ := own(id)
 		ref := runtimev1.ArtifactRef{ID: id, Scope: ev.Scope, Attempt: ev.Attempt, Kind: ev.Kind, Usable: ev.Usable}
-		if isOutput[id] && !trustedOutput(ev, source) {
+		if isOutput[id] && !vd.trusted(ev) {
 			// Not a trusted output, even when it is also a valid diagnostic:
 			// execution's own kind check then rejects the output while the
 			// diagnostic (which has no kind requirement) stays valid.
@@ -132,7 +149,7 @@ func Validate(res runtimev1.Result, pinned runtimev1.Context, evidence map[domai
 		v.Artifacts[id] = ref
 	}
 
-	if err := runtimev1.CheckResult(res, pinned, v.Artifacts); err != nil {
+	if err := vd.check(v.Artifacts); err != nil {
 		var ce *runtimev1.ContractError
 		if errors.As(err, &ce) && ce.Code == runtimev1.CodeOutputInvalid && res.Outcome == runtimev1.OutcomeCompleted {
 			if v.OutputViolation == nil {

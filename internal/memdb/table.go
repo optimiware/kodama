@@ -19,6 +19,7 @@ type Table[V any] struct {
 	id      *tableID
 	key     func(V) string
 	uniques []func(V) string
+	clone   func(V) V
 }
 
 // NewTable declares a table. key returns a row's primary key, which must be
@@ -37,13 +38,31 @@ func NewTable[V any](name string, key func(V) string, uniques ...func(V) string)
 	return &Table[V]{id: &tableID{name: name, uniques: len(uniques)}, key: key, uniques: uniques}
 }
 
+// NewClonedTable isolates mutable fields (JSON documents, slices and pointers)
+// at the transaction boundary. clone must return a deep independent value.
+func NewClonedTable[V any](name string, clone func(V) V, key func(V) string, uniques ...func(V) string) *Table[V] {
+	if clone == nil {
+		panic("memdb: NewClonedTable " + name + ": nil clone function")
+	}
+	t := NewTable(name, key, uniques...)
+	t.clone = clone
+	return t
+}
+
+func (t *Table[V]) copy(v V) V {
+	if t.clone != nil {
+		return t.clone(v)
+	}
+	return v
+}
+
 // Get returns the tenant's row with the given key, including this Tx's own
 // uncommitted writes.
 func (t *Table[V]) Get(tx Tx, key string) (V, bool) {
 	r := txOf(tx, t.id.name).read(t.id)
 	if r != nil {
 		if v, ok := r.byKey[key]; ok {
-			return v.(V), true
+			return t.copy(v.(V)), true
 		}
 	}
 	var zero V
@@ -80,7 +99,7 @@ func (t *Table[V]) Put(tx Tx, v V) error {
 			w.unique[i][val] = key
 		}
 	}
-	w.byKey[key] = v
+	w.byKey[key] = t.copy(v)
 	return nil
 }
 
@@ -116,7 +135,7 @@ func (t *Table[V]) Scan(tx Tx, yield func(V) bool) {
 	sort.Strings(keys)
 	vals := make([]V, len(keys))
 	for i, k := range keys {
-		vals[i] = r.byKey[k].(V)
+		vals[i] = t.copy(r.byKey[k].(V))
 	}
 	for _, v := range vals {
 		if !yield(v) {

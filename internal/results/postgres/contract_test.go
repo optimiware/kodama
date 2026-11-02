@@ -27,6 +27,7 @@ import (
 	execpg "github.com/optimiware/kodama/internal/execution/postgres"
 	"github.com/optimiware/kodama/internal/identity"
 	"github.com/optimiware/kodama/internal/pipeline/pipelinetest"
+	repositorypg "github.com/optimiware/kodama/internal/repository/postgres"
 	"github.com/optimiware/kodama/internal/results"
 	"github.com/optimiware/kodama/internal/results/adapters"
 	rpg "github.com/optimiware/kodama/internal/results/postgres"
@@ -38,6 +39,7 @@ import (
 	"github.com/optimiware/kodama/internal/storage"
 	"github.com/optimiware/kodama/internal/workspace"
 	gitad "github.com/optimiware/kodama/internal/workspace/git"
+	workspacepg "github.com/optimiware/kodama/internal/workspace/postgres"
 	wsruntime "github.com/optimiware/kodama/internal/workspace/runtime"
 	wst "github.com/optimiware/kodama/internal/workspace/workspacetest"
 	gitfx "github.com/optimiware/kodama/test/support/git"
@@ -152,7 +154,10 @@ func newPGWorld(t testing.TB) *pgWorld {
 		x.Grant(s, executiontest.Engineer, identity.RoleEngineer)
 	}
 
-	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations())
+	// Exactly what executiontest.New already applied (the ledger refuses a manifest
+	// that omits an applied migration): the baseline, the run_shared resources, the
+	// repositories (007), the workspace repositories (010) and the run sources (011).
+	manifest, err := storage.NewManifest(storage.BaseContribution(), execpg.RunResourceMigrations(), repositorypg.Migrations(), workspacepg.Migrations(), execpg.RunSourceMigrations())
 	must(t, err)
 	mctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()

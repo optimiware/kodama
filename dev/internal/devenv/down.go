@@ -29,6 +29,7 @@ func (e *Environment) Down() error {
 	} else if _, err := e.NetworkItem(); err != nil {
 		return err
 	}
+	e.removeGitWorkers()
 	_ = e.Compose("down", "-v")
 	containers, err := e.OwnedContainers()
 	if err != nil {
@@ -80,6 +81,15 @@ func (e *Environment) Diagnostics() error {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(directory, service+".log"), []byte(result.Stdout+result.Stderr), 0o644); err != nil {
+			return err
+		}
+	}
+	for _, tenant := range e.State.GitTenants {
+		result, err := runCmd(Cmd{Args: []string{e.Provider, "logs", e.GitWorkerContainer(tenant)}, Capture: true, Timeout: 30 * time.Second})
+		if err != nil && result.Stdout == "" && result.Stderr == "" {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(directory, "git-"+tenant+".log"), []byte(result.Stdout+result.Stderr), 0o644); err != nil {
 			return err
 		}
 	}

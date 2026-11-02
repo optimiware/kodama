@@ -245,7 +245,7 @@ func (q *Qualifier) verifyBuilt(ctx context.Context, repo, pushedDigest string) 
 		fmt.Sprintf("owners %v", owners), fmt.Sprintf("dependency marker %t", dep)}
 }
 
-const buildahHandoff = "T-120/T-121 installation prerequisite: the O-30 step role needs the installed node profiles. Install the seccomp profile kodama/kodama-rootless-build-v1.json under the kubelet seccomp root and load the AppArmor profile kodama-rootless-build-v1 on every worker that runs tenant steps (T-120 installer), then re-run this qualification. Do not use Unconfined profiles, SYS_ADMIN or privileged Pods."
+const buildahHandoff = "T-120/T-121 installation prerequisite: the O-30 step role needs the installed node profiles. Install the seccomp profile kodama/kodama-rootless-build-v1.json under the kubelet seccomp root and load the AppArmor profile kodama-rootless-build-v2 (flags=(unconfined) plus userns, listed as \"kodama-rootless-build-v2 (unconfined)\") on every worker that runs tenant steps (T-120 installer), then re-run this qualification. Do not use the generic Unconfined profile type, SYS_ADMIN or privileged Pods."
 
 // buildahScript builds the fixture with Buildah's documented rootless storage
 // (VFS under HOME, chroot isolation), pushes with the run credential and
@@ -368,7 +368,7 @@ func (q *Qualifier) phaseBuildah(ctx context.Context) error {
 		q.add("step.role_shape", "step role applied exactly", true, st, "the step-role build Pod never started, so its live object could not be compared: "+tail(results[0].StartErr, 300), ev, h)
 	} else {
 		q.add("step.role_shape", "step role applied exactly", true, Pass,
-			"non-root 1000, hostUsers false, capabilities [ALL] dropped and exactly SETGID/SETUID in the bounding set, allowPrivilegeEscalation true, Localhost seccomp and AppArmor profiles enforced, a 65,536-ID user-namespace mapping; the live Pod object matches", ev, "")
+			"non-root 1000, hostUsers false, capabilities [ALL] dropped and exactly SETGID/SETUID in the bounding set, allowPrivilegeEscalation true, Localhost seccomp profile enforced, the Localhost AppArmor profile kodama-rootless-build-v2 loaded unconfined with userns, a 65,536-ID user-namespace mapping; the live Pod object matches", ev, "")
 	}
 
 	last := results[len(results)-1]

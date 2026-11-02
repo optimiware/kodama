@@ -47,6 +47,13 @@ type Run struct {
 	// Shared is the immutable run_shared pin set; nil for every
 	// attempt_private run, which keeps its stored shape unchanged.
 	Shared *RunShared
+	// Origin and Sources are the immutable origin and source-set pins of a run
+	// admitted by the internal Git service (PX-23-PX-25, runtime context v3). Both
+	// are zero for every earlier run, which keeps its stored shape and contexts;
+	// Sources is non-nil exactly for a run that executes under context v3, empty
+	// for a source-free manual or provisioning run.
+	Origin  Origin
+	Sources *RunSources
 	// DeadlineAt is the pinned total run deadline (covering preparation, service
 	// startup, attempts, backoff and gate waits), set once when resource holding
 	// starts. Nil until then and for attempt_private runs.
@@ -117,6 +124,24 @@ func (r *Run) ConfirmRetention(refID string, now time.Time) (bool, error) {
 	r.SourceRetention, r.RetainedRefID = RetentionConfirmed, refID
 	r.touch(now)
 	return true, nil
+}
+
+// ConfirmSourceSetRetention records that every pinned commit of the run's source
+// set is retained and its run branches exist (SourceSets.Retain). It is
+// idempotent. A run without a source set has nothing to retain here.
+func (r *Run) ConfirmSourceSetRetention(now time.Time) (bool, error) {
+	if r.Sources == nil || r.Sources.Empty() {
+		return false, transitionf("the run has no source set to retain")
+	}
+	switch r.SourceRetention {
+	case RetentionConfirmed:
+		return false, nil
+	case RetentionPending:
+		r.SourceRetention = RetentionConfirmed
+		r.touch(now)
+		return true, nil
+	}
+	return false, transitionf("the run requires no retained source")
 }
 
 // markRunning moves a queued run to running when its first attempt is created.

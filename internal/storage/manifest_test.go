@@ -102,11 +102,38 @@ func TestBaseContributionIsValid(t *testing.T) {
 	if _, err := NewManifest(c); err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Migrations) != 2 || c.Migrations[0].ID != "001_schema.sql" || c.Migrations[1].ID != "002_grants.sql" {
+	if len(c.Migrations) != 7 || c.Migrations[0].ID != "001_schema.sql" || c.Migrations[1].ID != "002_grants.sql" ||
+		c.Migrations[2].ID != "003_git_hosting.sql" || c.Migrations[3].ID != "004_pipeline_runtime_expand.sql" ||
+		c.Migrations[4].ID != "005_durable_run_state.sql" || c.Migrations[5].ID != "006_wait_decision_and_materializations.sql" ||
+		c.Migrations[6].ID != "007_signal_decision_reason.sql" {
 		t.Fatalf("baseline = %+v", c.Migrations)
 	}
 	if !strings.Contains(c.Migrations[1].SQL, RuntimeRolePlaceholder) {
 		t.Error("the grants migration must use the runtime role placeholder")
+	}
+}
+
+// The Git hosting contribution appends to the baseline without a push-record
+// table: credentials hold only a digest, and the receive outcome rides on the
+// repository row and audit_events.
+func TestGitHostingMigrationShape(t *testing.T) {
+	sql := BaseContribution().Migrations[2].SQL
+	for _, want := range []string{
+		"ALTER TABLE repositories", "policy kodama_object NOT NULL DEFAULT '{}'", "empty boolean NOT NULL DEFAULT true",
+		"journal_ack bigint NOT NULL DEFAULT 0", "CREATE TABLE git_credentials", "secret_digest",
+		"FORCE ROW LEVEL SECURITY", "kodama_tenant_id()", RuntimeRolePlaceholder,
+	} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("003_git_hosting.sql lacks %q", want)
+		}
+	}
+	for _, forbidden := range []string{"CREATE TABLE git_push", "CREATE TABLE git_grants", "DROP ", "ALTER TABLE projects", "secret text", "secret bytea"} {
+		if strings.Contains(sql, forbidden) {
+			t.Errorf("003_git_hosting.sql must not contain %q", forbidden)
+		}
+	}
+	if strings.Count(sql, "CREATE TABLE") != 1 {
+		t.Error("the Git hosting contribution creates exactly one table")
 	}
 }
 

@@ -1,4 +1,6 @@
+# Copy to <state dir>/clusters/<name>/scw.tfvars (default ~/kodama-stage/state) and edit; never next to the root.
 project_id                = "11111111-1111-4111-8111-111111111111"
+# installation_id is set by deploy.sh to kodama-<name> (--name); this value is overridden.
 installation_id           = "kodama-stage-scw"
 region                    = "fr-par"
 environment_tier          = "staging"

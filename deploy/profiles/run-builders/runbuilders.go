@@ -1,8 +1,10 @@
 // Package runbuilders ships the installation-owned node profiles that let ordinary run_shared
 // step Pods run rootless Buildah within the O-30 ceiling (non-root, hostUsers false, only
-// SETUID/SETGID, no SYS_ADMIN, never privileged): a seccomp profile and an AppArmor profile
-// that, unlike the container runtime defaults, permit user-namespace creation and the nested
-// mounts a user-namespaced builder needs (T-111 evidence).
+// SETUID/SETGID, no SYS_ADMIN, never privileged): a seccomp profile that, unlike the container
+// runtime default, permits user-namespace creation and the nested mounts a user-namespaced
+// builder needs (T-111 evidence), and an AppArmor profile that is unconfined but permitted to
+// create user namespaces (the 2026-10-30 owner amendment of O-30: no confined AppArmor rule can
+// allow the propagation-flag remount of Buildah's chroot isolation).
 //
 // The package embeds the profile files, validates them and renders the installer manifests
 // (a privileged DaemonSet in an installation-owned namespace; installation management, never
@@ -27,16 +29,25 @@ import (
 )
 
 // Names the step-role policy (seam S3) and the Pod templates must use. Changing a profile's
-// behavior requires a new version suffix and a new file name; the v1 names are never reused.
+// behavior requires a new version suffix and a new file name; a published name is never
+// reinterpreted. The two profiles are versioned independently: the seccomp profile is still v1,
+// the AppArmor profile is v2 (v1 AppArmor was never used by a delivered run and is not shipped).
 const (
-	// ProfileVersion identifies both profiles.
-	ProfileVersion = "kodama-rootless-build-v1"
+	// SeccompVersion names the seccomp profile.
+	SeccompVersion = "kodama-rootless-build-v1"
 	// SeccompFile is the file name under the kubelet seccomp root's kodama/ directory.
-	SeccompFile = ProfileVersion + ".json"
+	SeccompFile = SeccompVersion + ".json"
 	// SeccompLocalhostProfile is the securityContext.seccompProfile.localhostProfile value.
 	SeccompLocalhostProfile = "kodama/" + SeccompFile
-	// AppArmorProfile is the securityContext.appArmorProfile.localhostProfile value.
-	AppArmorProfile = ProfileVersion
+	// AppArmorProfile is the securityContext.appArmorProfile.localhostProfile value and the
+	// name the kernel lists the loaded profile under.
+	AppArmorProfile = "kodama-rootless-build-v2"
+	// AppArmorKernelState is the exact kernel profile-list entry of a healthy node: a profile
+	// with flags=(unconfined) is listed in unconfined mode, never as enforce.
+	AppArmorKernelState = AppArmorProfile + " (unconfined)"
+	// ProfileVersion identifies the installed profile set: the newest profile version it
+	// contains. It names the AppArmor file, the status line and the manifest annotation.
+	ProfileVersion = AppArmorProfile
 	// HostSeccompDir is the only host path the installer writes.
 	HostSeccompDir = "/var/lib/kubelet/seccomp/kodama"
 	// Namespace is the installation-owned installer namespace; it is never a tenant namespace.
@@ -55,7 +66,7 @@ const (
 //go:embed seccomp/kodama-rootless-build-v1.json
 var seccompProfile []byte
 
-//go:embed apparmor/kodama-rootless-build-v1
+//go:embed apparmor/kodama-rootless-build-v2
 var apparmorProfile []byte
 
 //go:embed installer/install.sh
@@ -205,9 +216,9 @@ func configMap(p Profiles) map[string]any {
 			"annotations": map[string]any{"kodama.io/profile-version": ProfileVersion},
 		},
 		"data": map[string]any{
-			SeccompFile:    string(p.Seccomp),
-			ProfileVersion: string(p.AppArmor),
-			"install.sh":   string(installScript),
+			SeccompFile:     string(p.Seccomp),
+			AppArmorProfile: string(p.AppArmor),
+			"install.sh":    string(installScript),
 		},
 	}
 }
@@ -269,7 +280,7 @@ func daemonSet(image string, p Profiles, uninstall bool) map[string]any {
 							"name": Name,
 							"items": []any{
 								map[string]any{"key": SeccompFile, "path": SeccompFile},
-								map[string]any{"key": ProfileVersion, "path": ProfileVersion},
+								map[string]any{"key": AppArmorProfile, "path": AppArmorProfile},
 							},
 						}},
 						map[string]any{"name": "scripts", "configMap": map[string]any{
@@ -377,40 +388,16 @@ func ValidateSeccomp(data []byte) error {
 	return nil
 }
 
-// AppArmorDenials are the runtime default's denials of host /proc, /sys and kcore access that
-// the Kodama profile keeps verbatim.
-var AppArmorDenials = []string{
-	"deny @{PROC}/* w,",
-	"deny @{PROC}/{[^1-9/],[^1-9/][^0-9/],[^1-9s/][^0-9y/][^0-9s/],[^1-9/][^0-9/][^0-9/][^0-9/]*}/** w,",
-	"deny @{PROC}/sys/[^k]** w,",
-	"deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,",
-	"deny @{PROC}/sysrq-trigger rwklx,",
-	"deny @{PROC}/kcore rwklx,",
-	"deny /sys/[^f]*/** wklx,",
-	"deny /sys/f[^s]*/** wklx,",
-	"deny /sys/fs/[^c]*/** wklx,",
-	"deny /sys/fs/c[^g]*/** wklx,",
-	"deny /sys/fs/cg[^r]*/** wklx,",
-	"deny /sys/firmware/** rwklx,",
-	"deny /sys/devices/virtual/powercap/** rwklx,",
-	"deny /sys/kernel/security/** rwklx,",
-}
-
-// AppArmorRequiredRules are the rules a user-namespaced builder needs.
-var AppArmorRequiredRules = []string{"userns,", "mount,", "remount,", "umount,", "pivot_root,"}
-
 // appArmorRules returns the profile's non-comment lines, trimmed and with trailing comments cut.
+// An `#include` line is an include directive in AppArmor, not a comment, so it is kept as a rule.
 func appArmorRules(data []byte) []string {
 	var rules []string
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#include") {
-			if line != "" {
-				rules = append(rules, line)
-			}
+		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "#") {
+		if strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "#include") {
 			continue
 		}
 		if i := strings.Index(line, "  #"); i >= 0 {
@@ -421,40 +408,47 @@ func appArmorRules(data []byte) []string {
 	return rules
 }
 
-// ValidateAppArmor checks the AppArmor profile's invariants.
+// ValidateAppArmor checks the AppArmor profile: abi 4.0 (the userns class), the profile named
+// AppArmorProfile with flags=(unconfined), the userns rule, and nothing else in the body. Any
+// added rule, including an include directive, is refused: the profile confines nothing and a
+// profile that quietly gained rules would no longer be the decided one.
 func ValidateAppArmor(data []byte) error {
 	rules := appArmorRules(data)
-	has := map[string]bool{}
-	for _, rule := range rules {
-		has[rule] = true
-	}
-	if !has["abi <abi/4.0>,"] {
-		return errors.New("apparmor profile: abi <abi/4.0>, is required for the userns rule")
-	}
-	if !has["profile "+AppArmorProfile+" flags=(attach_disconnected,mediate_deleted) {"] {
-		return fmt.Errorf("apparmor profile: profile %s with attach_disconnected,mediate_deleted is required", AppArmorProfile)
-	}
-	for _, rule := range AppArmorRequiredRules {
-		if !has[rule] {
-			return fmt.Errorf("apparmor profile: missing rule %q", rule)
-		}
-	}
-	for _, rule := range AppArmorDenials {
-		if !has[rule] {
-			return fmt.Errorf("apparmor profile: missing default denial %q", rule)
-		}
-	}
+	header := "profile " + AppArmorProfile + " flags=(unconfined) {"
+	var seenABI, seenGlobal, seenHeader, seenUserns, seenClose bool
 	for _, rule := range rules {
 		switch {
-		case rule == "deny mount,":
-			return errors.New("apparmor profile: the default `deny mount,` must be replaced by explicit mount rules")
-		case strings.Contains(rule, "unconfined") && !strings.HasPrefix(rule, "signal"):
-			return fmt.Errorf("apparmor profile: %q must not grant unconfined behavior", rule)
-		case strings.HasPrefix(rule, "allow ") || strings.HasPrefix(rule, "audit allow "):
-			return fmt.Errorf("apparmor profile: explicit allow rule %q is not part of the default shape", rule)
-		case strings.HasPrefix(rule, "capability ") || strings.HasPrefix(rule, "deny capability"):
-			return fmt.Errorf("apparmor profile: capability rule %q changes the default shape", rule)
+		case seenClose:
+			return fmt.Errorf("apparmor profile: %q follows the profile body; only one profile is allowed", rule)
+		case !seenHeader && rule == "abi <abi/4.0>,":
+			seenABI = true
+		case !seenHeader && rule == "include <tunables/global>":
+			seenGlobal = true
+		case !seenHeader && rule == header:
+			seenHeader = true
+		case !seenHeader && strings.HasPrefix(rule, "profile "):
+			return fmt.Errorf("apparmor profile: the profile must be exactly %q", header)
+		case !seenHeader:
+			return fmt.Errorf("apparmor profile: %q is not allowed before the profile", rule)
+		case rule == "userns,":
+			seenUserns = true
+		case rule == "}":
+			seenClose = true
+		default:
+			return fmt.Errorf("apparmor profile: rule %q is not allowed; the body is exactly `userns,`", rule)
 		}
+	}
+	switch {
+	case !seenABI:
+		return errors.New("apparmor profile: abi <abi/4.0>, is required for the userns rule")
+	case !seenGlobal:
+		return errors.New("apparmor profile: include <tunables/global> is required")
+	case !seenHeader:
+		return fmt.Errorf("apparmor profile: %q is required (unconfined by AppArmor, named %s)", header, AppArmorProfile)
+	case !seenUserns:
+		return errors.New("apparmor profile: userns, is required (user namespaces are restricted on Ubuntu 24.04)")
+	case !seenClose:
+		return errors.New("apparmor profile: the profile is not closed")
 	}
 	return nil
 }

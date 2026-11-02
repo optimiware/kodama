@@ -462,7 +462,12 @@ func (h *Handler) createDeployment(w http.ResponseWriter, r *http.Request, c *ht
 		return
 	}
 	ctx := r.Context()
-	plan, err := h.svc.PlanRegistrationForAttempt(ctx, h.caller(c), scope, attempt, registrationRequest(req.Source, req.Image))
+	regReq, err := registrationRequest(req.Source, req.SourceSet, req.Image)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	plan, err := h.svc.PlanRegistrationForAttempt(ctx, h.caller(c), scope, attempt, regReq)
 	if err != nil {
 		h.fail(w, r, err)
 		return

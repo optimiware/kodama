@@ -1,0 +1,594 @@
+openapi: 3.0.3
+info:
+  title: Kodama repository HTTP fragment
+  version: 1.0.0
+  description: >-
+    Project-owned Git repositories of the internal Git service (docs/specs/git-repositories.md,
+    docs/contracts/git-service.md, contracts/git/v1): create, read, list, change the default
+    branch or policy, archive, restore and read refs. Push records, Git credentials and the
+    Git endpoint are other fragments' (T-130, T-136, T-132). This fragment references the
+    shared conventions in common.yaml; the integration task assembles the published
+    document. The wire shapes are the Go contract's (contracts/git/v1); the generated types in
+    internal/repository/http/types.gen.go must stay identical to them and a test proves it.
+
+    `P` is `/tenants/{tenantId}/projects/{projectId}`. Authorization is the caller's current
+    project role at every call: `engineer` manages repositories; `viewer`, `analyst` and
+    `reviewer` may read; `admin` may change the policy but gains no implicit push. A foreign or
+    unknown repository is the same 404 as an absent one.
+servers:
+  - url: https://factory.example.invalid/api/v1
+security:
+  - bearerAuth: []
+paths:
+  /tenants/{tenantId}/projects/{projectId}/repositories:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listRepositories
+      summary: List the project's repositories
+      description: >-
+        Ordered by (created_at, id); the identifier is the unique tie-breaker. A cursor is
+        bound to the tenant, project, endpoint and ordering that issued it, and every page is
+        authorized again. External records (`hosting: external`) are listed beside internal
+        repositories.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of repositories.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepositoryList'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    post:
+      operationId: createRepository
+      summary: Reserve and provision a repository
+      description: >-
+        Idempotent on `name` and keyed by `Idempotency-Key`. The reservation commits first and
+        is returned as `provisioning` with `201` (`200` when an equivalent repository of that
+        name already exists: same default branch and policy); the tenant's Git worker then
+        initializes the bare repository, outside any transaction, and a reconciler finishes an
+        interrupted provisioning. Poll `GET P/repositories/{id}` until `status` is `ready`;
+        `repository.created` is emitted at that moment, not at reservation. A provisioning
+        failure is a `reason` on a `provisioning` repository, never another status. The same
+        name with another default branch or policy is `409 repository_name_taken`. An omitted
+        `policy` or `directPushToDefault` is `false`; an omitted `defaultBranch` is `main`.
+        Replaying a key returns the stored response (the status it had at reservation).
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRepositoryRequest'
+            examples:
+              minimal:
+                value:
+                  name: backend
+              explicit:
+                value:
+                  name: backend
+                  defaultBranch: main
+                  policy:
+                    directPushToDefault: false
+      responses:
+        '200':
+          $ref: '#/components/responses/Repository'
+        '201':
+          description: The reservation, with its `Location` and ETag.
+          headers:
+            ETag:
+              $ref: 'common.yaml#/components/headers/ETag'
+            Location:
+              description: The repository resource.
+              schema:
+                type: string
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+              examples:
+                reserved:
+                  value:
+                    id: repo_01
+                    name: backend
+                    defaultBranch: main
+                    hosting: internal
+                    status: provisioning
+                    reason: provisioning_pending
+                    cloneUrl: https://git.example.invalid/git/acme/inventory/backend.git
+                    policy:
+                      directPushToDefault: false
+                    empty: false
+                    version: 1
+                    createdAt: '2026-10-30T10:00:00Z'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RepositoryId'
+    get:
+      operationId: getRepository
+      summary: Read a repository
+      responses:
+        '200':
+          $ref: '#/components/responses/Repository'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+    patch:
+      operationId: updateRepository
+      summary: Change the default branch or the policy
+      description: >-
+        Under `If-Match`. Changing `defaultBranch` changes which branch is protected and applies
+        to the next push; it renames nothing in Git. A patch that names a policy states
+        `directPushToDefault`. Changing the branch needs the engineer role and changing the
+        policy the engineer or admin role; a patch naming both needs both. Enabling
+        `directPushToDefault` grants no one a push: authority is checked at every push. Only a
+        `ready` internal repository is patched: `409 repository_not_ready` while provisioning,
+        `409 repository_archived` while archived and `422 hosting_mismatch` for an external
+        record. A patch that changes nothing keeps the version.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchRepositoryRequest'
+            examples:
+              policy:
+                value:
+                  policy:
+                    directPushToDefault: true
+              branch:
+                value:
+                  defaultBranch: trunk
+      responses:
+        '200':
+          $ref: '#/components/responses/Repository'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '415':
+          $ref: 'common.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/HostingMismatch'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}/archive:
+    post:
+      operationId: archiveRepository
+      summary: Refuse new pushes and runs; keep history
+      description: >-
+        Under `If-Match`. `ready` becomes `archived` with reason `archived` and
+        `repository.state_changed` is emitted. History is never deleted and refs stay
+        readable. Archiving an archived repository changes nothing. `409 repository_not_ready`
+        while provisioning; `422 hosting_mismatch` for an external record.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/RepositoryId'
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Repository'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/HostingMismatch'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}/restore:
+    post:
+      operationId: restoreRepository
+      summary: Reopen an archived repository
+      description: >-
+        Under `If-Match`. `archived` becomes `ready`. Restore never makes a non-empty
+        repository seedable again. Restoring a ready repository changes nothing.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/RepositoryId'
+        - $ref: 'common.yaml#/components/parameters/IfMatch'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Repository'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: 'common.yaml#/components/responses/PreconditionFailed'
+        '422':
+          $ref: '#/components/responses/HostingMismatch'
+        '428':
+          $ref: 'common.yaml#/components/responses/PreconditionRequired'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}/refs:
+    get:
+      operationId: listRepositoryRefs
+      summary: Current branch or tag tips
+      description: >-
+        Read through the tenant's Git worker, one namespace per call (`prefix` is
+        `refs/heads/`, the default, or `refs/tags/`; the server namespace `refs/kodama/` is
+        never public), bounded and cursor-paginated. `empty` is true when the repository has
+        no refs at all and refreshes the stored `empty` flag. An archived repository's refs
+        stay readable. `409 repository_not_ready` while provisioning; `422 hosting_mismatch`
+        for an external record; `503` while the worker is unavailable.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/RepositoryId'
+        - name: prefix
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['refs/heads/', 'refs/tags/']
+            default: 'refs/heads/'
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of ref tips.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefsPage'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/HostingMismatch'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    RepositoryId:
+      name: id
+      in: path
+      required: true
+      description: Repository identifier.
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  schemas:
+    EmptyRequest:
+      type: object
+      additionalProperties: false
+      description: No body is needed; an empty object is accepted.
+    Hosting:
+      type: string
+      enum: [internal, external]
+      description: >-
+        `internal` is Kodama's tenant Git service. `external` is the read-only mapping of the
+        project's existing configured repository; it is never provisioned, patched, archived
+        or listed for refs.
+    RepositoryStatus:
+      type: string
+      enum: [provisioning, ready, archived]
+      description: >-
+        Transitions: provisioning to ready, ready to archived, archived to ready. A
+        provisioning failure is a `reason`, never another status.
+    RepositoryPolicy:
+      type: object
+      additionalProperties: false
+      required: [directPushToDefault]
+      properties:
+        directPushToDefault:
+          type: boolean
+          description: >-
+            Whether a current engineer may fast-forward the default branch directly. Defaults
+            to false (O-33).
+    RepositoryPolicyInput:
+      type: object
+      additionalProperties: false
+      properties:
+        directPushToDefault:
+          type: boolean
+          description: Omitted means false on creation; a patch that names a policy states it.
+    Repository:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - defaultBranch
+        - hosting
+        - status
+        - reason
+        - cloneUrl
+        - policy
+        - empty
+        - version
+        - createdAt
+      properties:
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        name:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{0,62}$'
+        defaultBranch:
+          type: string
+          maxLength: 200
+          description: A branch name, not a ref path, outside the reserved kodama namespace.
+        hosting:
+          $ref: '#/components/schemas/Hosting'
+        status:
+          $ref: '#/components/schemas/RepositoryStatus'
+        reason:
+          type: string
+          nullable: true
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+          description: >-
+            Stable code; null for a ready repository. While provisioning: provisioning_pending,
+            worker_unavailable, initialization_unknown, initialization_refused or
+            initialization_mismatch. After an archive: archived.
+        cloneUrl:
+          type: string
+          pattern: '^https://[^\s@/?#]+(/[^\s@?#]*)?$'
+          description: Never carries credentials.
+        policy:
+          $ref: '#/components/schemas/RepositoryPolicy'
+        empty:
+          type: boolean
+          description: >-
+            Reported by the tenant's worker (the repository has no refs); decides whether a
+            seed can be issued.
+        version:
+          $ref: 'common.yaml#/components/schemas/Version'
+        createdAt:
+          type: string
+          format: date-time
+    CreateRepositoryRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{0,62}$'
+        defaultBranch:
+          type: string
+          maxLength: 200
+          description: Optional, never null; main when omitted.
+        policy:
+          $ref: '#/components/schemas/RepositoryPolicyInput'
+    PatchRepositoryRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        defaultBranch:
+          type: string
+          maxLength: 200
+        policy:
+          $ref: '#/components/schemas/RepositoryPolicyInput'
+    RepositoryList:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Repository'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9._~+/=-]{1,512}$'
+    RefTip:
+      type: object
+      additionalProperties: false
+      required: [ref, commit]
+      properties:
+        ref:
+          type: string
+          maxLength: 255
+          pattern: '^refs/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)+$'
+        commit:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+    RefsPage:
+      type: object
+      additionalProperties: false
+      required: [refs, nextCursor, empty]
+      properties:
+        refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefTip'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9._~+/=-]{1,512}$'
+        empty:
+          type: boolean
+          description: True when the repository has no refs at all.
+  responses:
+    Repository:
+      description: The repository resource.
+      headers:
+        ETag:
+          $ref: 'common.yaml#/components/headers/ETag'
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Repository'
+          examples:
+            ready:
+              value:
+                id: repo_01
+                name: backend
+                defaultBranch: main
+                hosting: internal
+                status: ready
+                reason: null
+                cloneUrl: https://git.example.invalid/git/acme/inventory/backend.git
+                policy:
+                  directPushToDefault: false
+                empty: true
+                version: 2
+                createdAt: '2026-10-30T10:00:00Z'
+    Conflict:
+      description: >-
+        Conflict. Codes: repository_name_taken (the name belongs to another configuration),
+        repository_not_ready, repository_archived, idempotency_conflict.
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+          examples:
+            nameTaken:
+              value:
+                error:
+                  code: repository_name_taken
+                  message: the name is already used by another repository of the project
+                  requestId: req_00000000000000000000000000000001
+                  details: {}
+    HostingMismatch:
+      description: >-
+        The operation applies to an internally hosted repository only; an external record is
+        a read-only mapping (hosting_mismatch).
+      headers:
+        X-Request-ID:
+          $ref: 'common.yaml#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorEnvelope'
+          examples:
+            external:
+              value:
+                error:
+                  code: hosting_mismatch
+                  message: this repository is hosted externally and is read-only here
+                  requestId: req_00000000000000000000000000000002
+                  details: {}

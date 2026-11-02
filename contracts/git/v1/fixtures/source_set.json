@@ -1,0 +1,1455 @@
+[
+  {
+    "name": "source_set_two_repositories",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_single_root",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": ".",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_single_root_read",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": ".",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_single_named",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_nested_paths",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "libs/core",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "2222222222222222222222222222222222222222",
+          "path": "libs/web",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_prefix_names_do_not_overlap",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "a",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "2222222222222222222222222222222222222222",
+          "path": "a-b",
+          "repositoryId": "repo_02"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "3333333333333333333333333333333333333333",
+          "path": "ab",
+          "repositoryId": "repo_03"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_same_repository_twice",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "2222222222222222222222222222222222222222",
+          "path": "new",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "old",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_sha256_commit",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_dotted_names",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "my.app/v1.2",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_run_branch_writer",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/runs/run_01/impl",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "source_set_unknown_field",
+    "type": "SourceSet",
+    "payload": {
+      "mode": "shallow",
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_unknown_field",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "depth": 1,
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_set_empty",
+    "type": "SourceSet",
+    "payload": {
+      "sources": null
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_set_null",
+    "type": "SourceSet",
+    "payload": {
+      "sources": null
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_set_too_many",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1000",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1001",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1002",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1003",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1004",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1005",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1006",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1007",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1008",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1009",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1010",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1011",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1012",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1013",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1014",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1015",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1016",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1017",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1018",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1019",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1020",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1021",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1022",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1023",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1024",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1025",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1026",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1027",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1028",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1029",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1030",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1031",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "p1032",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_commit_short",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "abc123",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_commit_uppercase",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_commit_branch_name",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "main",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_commit_zero",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "0000000000000000000000000000000000000000",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_commit_omitted",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_absolute",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "/backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_traversal",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "../backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_inner_traversal",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "a/../b",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_only_dotdot",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "..",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_dot_prefix",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "./backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_inner_dot",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "a/./b",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_double_slash",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "a//b",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_trailing_slash",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend/",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_backslash",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "a\\b",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_dot_git",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": ".git",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_inside_dot_git",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend/.git/hooks",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_hidden",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": ".hidden",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_empty",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_space",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "my app",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_control_character",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "a\u0000b",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_dotdot_in_name",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "a..b",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_path_too_long",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_paths_duplicate",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "app",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "2222222222222222222222222222222222222222",
+          "path": "app",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "source_paths_overlap_prefix_directory",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "app",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "2222222222222222222222222222222222222222",
+          "path": "app/web",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "source_paths_overlap_deep",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "a",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "2222222222222222222222222222222222222222",
+          "path": "a-b",
+          "repositoryId": "repo_02"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "3333333333333333333333333333333333333333",
+          "path": "a/b/c",
+          "repositoryId": "repo_03"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "source_root_with_other_path",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": ".",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "2222222222222222222222222222222222222222",
+          "path": "web",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_root_twice",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": ".",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "2222222222222222222222222222222222222222",
+          "path": ".",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_paths_unordered",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        },
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "source_write_without_branch",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": null,
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_read_with_branch",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_branch_omitted",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_write_branch_is_tag",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/tags/v1",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_write_branch_not_a_ref",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "main",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_write_branch_traversal",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/../x",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_write_branch_server_ref",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/kodama/runs/run_01/1",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_unknown_access",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "admin",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo_01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "source_repository_not_an_id",
+    "type": "SourceSet",
+    "payload": {
+      "sources": [
+        {
+          "access": "write",
+          "branch": "refs/heads/kodama/work/wi_1042",
+          "commit": "1111111111111111111111111111111111111111",
+          "path": "backend",
+          "repositoryId": "repo/01"
+        },
+        {
+          "access": "read",
+          "branch": null,
+          "commit": "5555555555555555555555555555555555555555",
+          "path": "frontend",
+          "repositoryId": "repo_02"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  }
+]

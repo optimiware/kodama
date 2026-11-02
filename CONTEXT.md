@@ -1,145 +1,77 @@
 # Kodama domain language
 
-Kodama connects business intent, human and agent work, and reviewed software delivery.
+Kodama is a four-layer software factory ([ADR 0013](docs/adr/0013-two-layer-architecture-and-domain-simplification.md)):
+- **Layer 1 (Pipeline Runtime kernel):** pipelines, runs, steps, containers, shared workspaces, support services, declared secrets, durable waits, cancellation, and recovery.
+- **Layer 2 (Native Shell):** identity, projects, the project pipeline registry, tasks, native Git, secret custody, metadata artifacts, long-lived services, HTTP API, Kodama MCP server, CLI, persistence/runtime adapters, and the central NATS bus.
+- **Layer 3 (Agentic services):** sessions, harnesses, tools, AI gateway, and external MCP proxy.
+- **Layer 4 (External behavior):** pipeline YAML, scripts, container images, hooks, and delivery/QA/notification recipes.
 
-## Ownership
+## Tenancy and permissions
 
-**Platform core**: Optimi's company-wide authority for tenant identity/membership, entitlements, core credentials, and core domain operations.
+**Platform core**: Optimi's company-wide authority for tenant identity, entitlements, and core operations ([platform integration](docs/specs/platform-integration.md)).
 
-**Agent layer**: Kodama's bounded agent execution and software-delivery capabilities operating within granted tenant authority.
-
-**Factory**: An installation coordinating software work for one or more organizations.
-
-**Tenant**: An organization owning projects, memberships, and work within a factory.
+**Tenant**: An isolated organization owning projects, memberships, tenant-level services, and a tenant-level knowledge base (`<tenant>/context`).
 _Avoid_: Account, customer workspace.
 
-In Optimi-hosted operation, the verified Optimi OAuth principal carries the authoritative UUID `tenant_id` and role claims. That tenant UUID owns tenant-scoped PostgreSQL resources and their RLS context; local project bindings do not create core membership. Standalone installations use an explicitly selected local authority. See [platform integration](docs/specs/platform-integration.md).
+**Project**: A tenant-owned space grouping repositories (`<tenant>/<project>/*`), project-unique pipelines, tasks, services, secrets, and artifacts.
 
-**Project**: A tenant-owned grouping of related work, repositories, and delivery environments.
+**Membership**: A user's role binding (`admin`, `engineer`, `reviewer`, `operator`, `viewer`) at tenant or project scope, authenticated via external OAuth/OIDC.
 
-**Repository**: A project-owned Git repository with an immutable ID, a project-unique name, a default branch and a hosting mode (`internal` or `external`). A project may own several; a repository exists independently of any work item. See [Git repositories](docs/specs/git-repositories.md).
-_Avoid_: Using a clone URL as repository identity.
+**Project-space permission model**: User RBAC controls what a person can configure on Kodama (projects, pipelines, secrets, tasks RW, inbox resolution). Agents and pipeline steps executing inside a project automatically have access to what has been provisioned and configured in that project space.
 
-**Tenant Git service**: The Git worker and durable volume that store and serve one tenant's internally hosted repositories with native Git, behind Kodama's authenticated Git endpoint. It outlives every run.
+## Layer 1: Pipeline runtime
 
-**Git grant**: A short-lived credential scoped to repositories and the refs it may update, issued to a person through the Kodama login or to one attempt. The Git service checks it against current authority on every push.
+**Pipeline**: The sole process definition for a task or trigger. A pipeline is defined in `.kodama/<processname>.yaml` in a repository or registered through the API, and is persisted as one complete document. Pipeline names are unique within a project.
 
-**Push record**: The journaled intent and outcome of one Git receive operation; an applied record produces one `git.refs_updated` event.
+**Run**: One execution of a pipeline against pinned inputs and optional source commits. A run snapshots its pipeline definition and inputs at admission. A task may accumulate several runs through reruns or rework.
 
-**Membership**: A person's association with a tenant or project and their granted roles.
+**Step (`run_step`)**: One position in a run's execution order. A container step executes an image and commands; a wait step pauses the run without a workload. A step may declare a bounded `when` predicate; there is no separate condition step. Steps share the run workspace.
 
-**Application tenant**: A customer or organization inside an application produced by the factory, separate from factory tenancy.
+**Wait**: A durable, non-container step that pauses a run until an authorized correlated signal or deadline arrives. It records its identity, expected input, accepted result, and continuation position. A signal is not itself approval.
 
-**Workload identity**: The scoped identity under which an automated activity accesses factory capabilities.
+**Workspace**: The disposable filesystem shared by the steps of one run. It is removed when the run finishes and is never the durable source authority.
 
-## Intent and work
+**Service**: A support container with a tenant, project, or run lifetime. Run-scoped services start and stop with the run; their state is never silently recreated after loss.
 
-**Work item**: A tracked unit of intent with a specification, acceptance criteria, owner, and business state.
-_Avoid_: Ticket as a separate entity.
+**Secret reference**: A named credential a step may request. The kernel delivers only declared references; encryption, custody, scope authorization, and rotation belong to the shell.
 
-**Card**: A board representation of a work item.
+## Layer 2: Native shell
 
-**Actionable work item**: A story, task, or defect that can acquire a workspace and produce deliverables.
+**Task**: A tracked unit of work or request. A task selects one project pipeline and records execution progress: current run, status, current step, waiting assignment, and result. Its progress is derived from run and step records, not a separate project workflow.
+_Avoid_: Ticket, card, workflow state machine, parked blocker.
 
-**Epic**: A grouping of work items toward a larger outcome.
+**Role inbox**: A query of tasks whose current pipeline wait is assigned to the caller's role. Resolution records an authorized input against the exact run, step, and wait; the pipeline decides whether the outcome approves, rejects, or requests rework.
 
-**Specification**: The current description of required behavior, including the plan as a section where useful.
+**Repository**: A Git repository hosted in Kodama's native tenant Git service using a Gerrit-style hierarchical path (`<tenant>/context` or `<tenant>/<project>/<name>`). Repositories under `<tenant>/<project>/*` are automatically associated with `<project>`.
 
-**Acceptance criterion**: An observable condition used by a reviewer to judge the business outcome.
+**Knowledge base**: Markdown repositories in the native Git service storing skills, context, blueprints, and engineering guidelines (`<tenant>/context`, `<tenant>/<project>/context`, `<tenant>/<project>/<component>`, `<tenant>/<project>/deploy`).
 
-**WIP limit**: A limit on work items admitted to active work.
+**Artifact**: Metadata recorded in PostgreSQL (`name`, `kind`, `uri`, `digest`, `metadata`) pointing to build or release outputs published to external registries or services.
 
-**Workspace**: The durable source-working context paired with an actionable work item: its task branch in each repository the work touches.
+**NATS system bus**: The central JetStream bus carrying native system events, execution observations, external signals, pipeline triggers, and monitoring subscriptions. PostgreSQL remains the authoritative state; the outbox publishes to NATS.
 
-**Task branch**: The branch `kodama/work/<work-item-id>` collecting a work item's changes in one repository; only the reserved writer attempt or an engineer updates it. **Agent branches** `kodama/agents/<work-item-id>/<run-id>/<label>` hold one run's work in progress; any executable attempt of that run may push them, so agents in separate runs can work in parallel and a later writer merges their branches.
+**Kodama MCP server**: The shell's native MCP surface exposing Kodama operations. It is distinct from the Layer 3 proxy to external MCP servers.
 
-**Checkpoint**: A committed source revision preserved for subsequent work or recovery.
+**`kodactl`**: The unified CLI for users, operators, and in-container scripts to interact with the Kodama HTTP API, MCP endpoint, and bus signals.
 
-**Candidate**: The source commit proposed for review and delivery; across several repositories, the set of commits pinned together.
+## Layer 3: Agentic services
 
-**Integration**: Advancing a repository's protected default branch to an approved candidate from an expected base, performed by an ordinary pipeline step.
+**Container harness step**: An ordinary Layer 1 container step running an external coding harness (`opencode`, `claude-code`, `pi`) with mounted secrets and the shared workspace, configured through pipeline YAML.
 
-**Business analyst**: A person expressing business needs and reviewing delivered outcomes.
+**Kodama Agent runtime**: A container step running the native `kodama` runtime (`kodama agent`) with access to shell operations, tools, skills, and gateways. It may request a wait when human input is required.
 
-**Engineer**: A person shaping software and supervising its implementation.
+**Agent session**: The persisted record (`agent_sessions`) of a native `kodama agent` execution, including model usage, messages or transcript reference, and structured outcome.
 
-**Reviewer**: A person authorized to approve or reject identified work and evidence.
+**AI gateway**: Kodama's OpenAI-compatible HTTP proxy that mediates model calls, injects server-side provider credentials, and tracks token usage per run and session.
 
-**Workbench**: The optional, deferred Platform-hosted interface for work, execution, and delivery review; CLI/API/MCP/webhooks remain the primary Kodama surfaces.
+**External MCP proxy**: Kodama's proxy to registered external MCP servers, with tool visibility and policy specific to agent work.
 
 **MCP proxy**: Kodama's workload-facing gateway that exposes approved external MCP tools to an agent attempt under the attempt's runtime authority.
 
 **MCP server**: The external OAuth-protected endpoint that exposes the Kodama public API as MCP tools to a human-authorized MCP client. It validates an MCP-bound token and exchanges it for a separate delegated API token; it holds no database, broker, object-store or KMS credential and is distinct from the MCP proxy.
 
-## Execution and delivery
+## Layer 4: External behavior
 
-**Pipeline definition**: An immutable version of a dependency graph of executable steps and human gates.
+**Recipe**: Pipeline YAML, scripts, container images, and conventions that implement delivery, rollback, QA, notification, or organizational policy outside the kernel and shell code.
 
-**Pipeline run**: One execution of a definition with pinned inputs and recorded outcomes.
-
-**Source set**: The repositories, exact commits and checkout paths a run pins at admission.
-
-**Run origin**: What started a run: a work item, an accepted push, a manual request or repository provisioning.
-
-**Step run**: The run-local progression of a step.
-
-**Step attempt**: One attempt to execute a step, including its result and failure reason.
-
-**Step entrypoint**: The wrapper coordinating workspace verification (or, in the `attempt_private` model, source checkout), command execution, and result collection for an attempt.
-
-**Runtime**: The backend that runs attempt workloads (Kubernetes, Podman, or Process in tests) behind one execution port.
-_Avoid_: Executor.
-
-**Workload**: The runtime's instance running one attempt, identified by the attempt's deterministic name and the instance UID bound at dispatch.
-_Avoid_: Job, container or process in backend-neutral contexts.
-
-**Environment**: The adapter set a process composes, chosen by the required `KODAMA_ENV`: `development` (in memory, ephemeral), `test` (real services and Podman) or `production` (Kubernetes). `production` refuses development and test adapters.
-_Avoid_: Profile, mode.
-
-**Memory adapter**: An in-memory implementation of a port over the `memdb` transaction kernel, qualified by the same contract suite as its PostgreSQL adapter. It proves policy, never SQL semantics.
-
-**Runtime guarantee**: A property a runtime enforces for every workload, such as image, isolation or network policy. Admission pins the guarantees a run requires.
-
-**Run model**: The execution semantics a run pins at admission. `attempt_private` (format `kodama/v1alpha1`, runtime context v1) is the current executable model with a private checkout per attempt. `run_shared` (format `kodama/v1alpha2`, runtime context v2) is the versioned design with one run workspace, support services and a total deadline; it is not delivered or qualified until its cutover and acceptance. Old runs keep their model; a controller refuses a model it does not implement.
-
-**Run workspace**: The disposable scratch filesystem of one `run_shared` run, mounted at `/workspace` by one attempt at a time. It is prepared once from the run's pinned commit (or empty for a source-free run), never a checkpoint or recovery authority, and distinct from the durable **Workspace**. _Avoid_: workspace without qualification when scratch is meant.
-
-**Preparation**: The controller-owned, one-shot checkout of a run workspace with read-only repository access and no user code; its control-plane receipt is the only evidence the checkout completed.
-
-**Workspace holder**: The single executable attempt currently entitled to mount a run workspace. Handoff requires the previous holder's workload to be verified stopped and the volume released; an expired claim or deleted Pod is not a fence.
-
-**Run resource**: Execution-owned state a `run_shared` run needs beyond its attempts: the run workspace, preparation, support services and the run's network boundary. It has deterministic identity, a spec fingerprint, a bound instance UID and ready/stopped/removed evidence, but no business status.
-
-**Support service**: A declared, digest-pinned workload (for example a database) that starts with a run, must be ready before any user command, has a run-unique endpoint reachable as the pinned network model allows (the tenant's workloads under the tenant model, the run's under the run model), and is stopped when the run ends. It is neither a step nor a sidecar.
-
-**Execution policy**: The versioned, operator-installed definition of workload security shapes, storage, limits, network model, egress profiles and builder modes that a `run_shared` run pins at admission. Pipeline documents cannot supply raw security, mount or network settings.
-
-**Builder**: Tooling that builds and pushes OCI images, such as ko or Buildah, running as an ordinary step under the execution policy's `step` role. A run-exclusive builder service (BuildKit) is deferred (T-123). A mode is supported only with real qualification evidence.
-
-**Command-begin fence**: The durable server record taken just before an attempt's command starts. Its absence, with the workload verified stopped, is the proof that no user code ran and an automatic retry is safe.
-
-**Harness**: The environment managing an agent's model interaction and tools.
-
-**Agent profile**: Versioned defaults selecting a harness image, instructions, model access, tools, and limits.
-
-**Artifact**: An identified retained output, such as a report, log, image, or screenshot.
-
-**Evidence**: Artifacts and observations used to review a candidate or deployment.
-
-**Gate**: A recorded request for one authorized human decision about an identified subject.
-
-**Gate decision**: An immutable approval or rejection with its reviewer and reason.
-
-**Environment**: A named application delivery target with scoped credentials and configuration.
-
-**Deployment**: A record connecting an environment, source, image, configuration, and execution outcome.
-
-**Preview**: A temporary deployment for reviewing a candidate.
-
-**AI exploratory QA**: Agent-led application exploration producing evidence and defects.
-
-**Blueprint**: Versioned application guidance, templates, and skills for a particular stack.
-
-**Application chassis**: Markdown-only engineering guidance for a tenant or project, covering architecture/microservices, approved stacks/libraries and cloud deployment methods; not a shared application runtime library.
-
-**Guidance repository**: A Git repository containing tenant/project-scoped chassis Markdown. Agent context identifies its immutable commit and selected paths; a moving branch is not an admitted run's instruction baseline.
+**Hook**: A bounded command in a declared workload image, invoked at a pipeline or container lifecycle point with normal execution results. A hook is not a dynamically loaded controller plugin.

@@ -117,7 +117,7 @@ chart then routes `/mcp` and `/.well-known/oauth-protected-resource/mcp` to MCP
 while `/` remains with Kodama. A dedicated host is the recommended default. The
 MCP Pod has no runtime Secret mount and no Kubernetes API token; it mounts only
 the exchange Secret and optional CA Secrets. See the
-[chart values reference](../../deploy/helm/kodama/README.md#mcp-server) for all
+[chart values reference](../../deploy/charts/kodama/README.md#mcp-server) for all
 `mcp.*` fields.
 
 ## Kubernetes shape (fallback)

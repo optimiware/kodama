@@ -42,6 +42,14 @@ const jcSubprocess = "KODAMA_T079_ENTRYPOINT"
 // a test: the process under test then has its own argv, environment, working
 // directory, signals and exit status, exactly like the container command.
 func TestMain(m *testing.M) {
+	// The default Git credential helper of a v3 push is this very executable run as
+	// `<exe> git-credential-helper ...`; in a test that executable is this binary.
+	if len(os.Args) > 1 && os.Args[1] == GitCredentialHelperCommandName {
+		os.Exit(RunGitCredentialHelper(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	}
+	if len(os.Args) > 1 && os.Args[1] == StepGitCommandName {
+		os.Exit(RunStepGit(context.Background(), os.Args[2:], os.Getenv, os.Stdout, os.Stderr))
+	}
 	if os.Getenv(jcSubprocess) == "1" {
 		os.Exit(Run(context.Background(), os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
 	}

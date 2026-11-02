@@ -62,6 +62,15 @@ func (s *Service) Provision(ctx context.Context, actor Actor, scope domain.Scope
 // completeProvisioning drives a provisioning workspace toward available. Remote
 // failures are recorded as safe reasons and leave it provisioning.
 func (s *Service) completeProvisioning(ctx context.Context, actor Actor, w *Workspace) (*Workspace, error) {
+	if w.Internal() {
+		// An internally hosted workspace is provisioned by its associations,
+		// never through the external publisher.
+		if err := s.needHosting(); err != nil {
+			return nil, err
+		}
+		cur, _, err := s.driveInternal(ctx, actor, w.Scope, w.ID)
+		return cur, err
+	}
 	cfg, err := s.d.Repositories.Repository(ctx, w.Scope)
 	if err != nil {
 		return s.provisionFailed(ctx, actor, w, ReasonRepositoryUnready)

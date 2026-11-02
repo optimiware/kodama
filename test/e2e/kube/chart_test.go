@@ -312,7 +312,7 @@ func mustRun(t *testing.T, name string, args ...string) string {
 }
 
 func (r *release) install(extra ...string) (string, error) {
-	args := []string{"upgrade", "--install", r.name, filepath.Join(repoRoot(), "deploy", "helm", "kodama"), "--namespace", r.namespace,
+	args := []string{"upgrade", "--install", r.name, filepath.Join(repoRoot(), "deploy", "charts", "kodama"), "--namespace", r.namespace,
 		"-f", r.values, "--timeout", "5m"}
 	return r.helmRun(append(args, extra...)...)
 }
@@ -371,7 +371,7 @@ func (r *release) lintAndRender(t *testing.T) {
 	if out, err := r.helmRun("version", "--short"); err != nil || !strings.Contains(out, "v"+helmVersion) {
 		t.Fatalf("helm version: %v %s", err, out)
 	}
-	chart := filepath.Join(repoRoot(), "deploy", "helm", "kodama")
+	chart := filepath.Join(repoRoot(), "deploy", "charts", "kodama")
 	if out, err := r.helmRun("lint", "--strict", chart, "-f", r.values); err != nil {
 		t.Fatalf("helm lint: %v\n%s", err, out)
 	}

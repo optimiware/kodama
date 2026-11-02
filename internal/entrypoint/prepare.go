@@ -86,6 +86,16 @@ func ExecutePrepare(ctx context.Context, cfg ResourceConfig) int {
 		}
 		return ExitUsage
 	}
+	if cfg.RuntimeAPI == RuntimeAPIv3 {
+		client, err := NewResourceClientV3(cfg.ServerURL, domain.RunID(cfg.RunID), cfg.Key, cfg.CAFile, cfg.Retry, cfg.Logger)
+		if err != nil {
+			if cfg.Logger != nil {
+				cfg.Logger.Error("cannot create runtime client", "error", err.Error())
+			}
+			return ExitUsage
+		}
+		return newPreparationV3(cfg, client).run(ctx)
+	}
 	client, err := NewResourceClient(cfg.ServerURL, domain.RunID(cfg.RunID), cfg.Key, cfg.CAFile, cfg.Retry, cfg.Logger)
 	if err != nil {
 		if cfg.Logger != nil {

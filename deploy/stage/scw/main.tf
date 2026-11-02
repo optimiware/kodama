@@ -28,7 +28,7 @@ resource "scaleway_k8s_cluster" "main" {
   version                     = var.kubernetes_version
   cni                         = "cilium"
   private_network_id          = scaleway_vpc_private_network.main.id
-  delete_additional_resources = false
+  delete_additional_resources = true
 }
 
 resource "scaleway_k8s_pool" "workers" {

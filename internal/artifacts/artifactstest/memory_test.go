@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -155,4 +157,68 @@ func downloadVia(t *testing.T, tr artifacts.Transfer) (int, []byte) {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, b
+}
+
+// The provenance an attempt of a source-set run grants its artifacts is the set,
+// never a single repository and commit (DQ-17): a file inherits it from the
+// attempt's trusted grant, an OCI registration binds exactly what the registry
+// verification resolved (a set, another set or, for an earlier run, a single
+// source), and a grant whose set is not canonical is an unusable authority.
+func TestUnitMemorySourceSetProvenance(t *testing.T) {
+	ctx := context.Background()
+	e := artifactstest.NewMemEnv(t)
+	n := 0
+	attempt := func(src artifacts.Provenance) (artifacts.Caller, domain.AttemptID) {
+		n++
+		id := domain.AttemptID(fmt.Sprintf("att_set%d", n))
+		caller := artifactstest.Caller(id)
+		e.Authority.Set(caller.Subject, artifacts.AttemptGrant{Scope: artifactstest.ScopeA, Attempt: id, Run: "run_1", Step: "build",
+			ExpiresAt: e.Clock.Now().Add(time.Hour), Writer: true, Source: src,
+			Outputs: []artifacts.OutputDecl{{Name: "report", Kind: artifacts.KindFile}, {Name: "image", Kind: artifacts.KindOCI}},
+			Limits:  artifacts.Limits{OutputBytes: 1 << 20, OutputFiles: 8, DiagnosticBytes: 1 << 20}})
+		return caller, id
+	}
+
+	t.Run("a file inherits the set from the attempt's grant", func(t *testing.T) {
+		caller, id := attempt(artifactstest.SourceSet)
+		out, err := e.Service.Reserve(ctx, caller, id, artifactstest.FileInput("report", artifacts.RoleOutput, []byte("report")), "req_1")
+		if err != nil {
+			t.Fatalf("reserve: %v", err)
+		}
+		a, err := e.Store.Get(ctx, artifactstest.ScopeA, out.ID)
+		if err != nil || a.Provenance() != artifactstest.SourceSet || a.Provenance().RepositoryURL != "" || a.Provenance().Commit != "" {
+			t.Fatalf("a file of a source-set attempt carries the set: %+v %v", a.Provenance(), err)
+		}
+	})
+
+	t.Run("a registration binds what the registry verification resolved", func(t *testing.T) {
+		other, err := artifacts.NewSourceSet(artifactstest.SourceSet.SourceSet.Digest, []artifacts.SourceCommit{
+			{RepositoryID: "repo_api", Commit: strings.Repeat("9", 40)}, {RepositoryID: "repo_web", Commit: strings.Repeat("2", 40)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reg := "registry.example.test/team/set-app"
+		for name, prov := range map[string]artifacts.Provenance{
+			"the grant's set": artifactstest.SourceSet, "another set": {SourceSet: other}, "a single source of an earlier run": artifactstest.Source,
+		} {
+			caller, id := attempt(artifactstest.SourceSet)
+			in := artifacts.ReserveInput{Name: "image", Kind: artifacts.KindOCI, Role: artifacts.RoleOutput, Digest: artifacts.DigestOf([]byte("manifest " + name)), Registry: &reg}
+			e.Registry.Add(reg, in.Digest, prov)
+			out, err := e.Service.Reserve(ctx, caller, id, in, "req_img")
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			stored, err := e.Store.Get(ctx, artifactstest.ScopeA, out.ID)
+			if err != nil || stored.Provenance() != prov || !stored.Usable() {
+				t.Fatalf("%s: stored %+v %v", name, stored.Provenance(), err)
+			}
+		}
+	})
+
+	t.Run("a grant whose source set is not canonical is an unusable authority", func(t *testing.T) {
+		caller, id := attempt(artifacts.Provenance{SourceSet: artifacts.SourceSet{Digest: artifactstest.SourceSet.SourceSet.Digest}})
+		if _, err := e.Service.Reserve(ctx, caller, id, artifactstest.FileInput("report", artifacts.RoleOutput, []byte("x")), "req_bad"); !errors.Is(err, artifacts.ErrUnavailable) {
+			t.Fatalf("a malformed set: %v", err)
+		}
+	})
 }

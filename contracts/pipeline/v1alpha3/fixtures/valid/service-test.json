@@ -1,0 +1,58 @@
+{
+  "apiVersion": "kodama/v1alpha3",
+  "kind": "Pipeline",
+  "metadata": {
+    "name": "service-test"
+  },
+  "spec": {
+    "timeoutSeconds": 1800,
+    "services": {
+      "db": {
+        "image": "registry.example.invalid/postgres-rootless@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "env": {
+          "POSTGRES_USER": "kodama",
+          "POSTGRES_DB": "app"
+        },
+        "ports": {
+          "sql": {
+            "port": 5432
+          }
+        },
+        "resources": {
+          "cpuMillis": 500,
+          "memoryMiB": 512,
+          "ephemeralMiB": 256
+        },
+        "storage": [
+          {
+            "path": "/var/lib/postgresql/data",
+            "sizeMiB": 1024
+          }
+        ],
+        "readiness": {
+          "tcp": "sql",
+          "timeoutSeconds": 60
+        }
+      }
+    },
+    "steps": [
+      {
+        "id": "test",
+        "kind": "container",
+        "image": "registry.example.invalid/go-tools@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "command": [
+          "/bin/sh",
+          "-ec"
+        ],
+        "args": [
+          "cd /workspace && go test ./..."
+        ],
+        "env": {
+          "PGHOST": "${{ services.db.host }}",
+          "PGPORT": "${{ services.db.ports.sql }}"
+        },
+        "timeoutSeconds": 600
+      }
+    ]
+  }
+}

@@ -1,108 +1,104 @@
-# Event catalog
+# Event catalog (NATS JetStream)
 
-**Status:** proposed domain-event contract. PostgreSQL state/outbox is authoritative; NATS JetStream provides at-least-once transport.
+**Status:** Internal system-bus contract under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md) and [O-38](../decisions.md#pipeline-runtime-and-four-layer-refinement--2026-10-30-o-38).
+
+NATS JetStream is the native shell's central bus. It carries committed system events, execution observations, external signals, Git triggers, and monitoring subscriptions. PostgreSQL remains authoritative; the outbox publishes to NATS. The pipeline-runtime kernel emits execution events through its ports and does not depend on NATS types.
+
+## Subject hierarchy
+
+```text
+kodama.v1.<tenant-key>.<project-key>.<domain>.<action>
+```
+
+Tenant-wide events use `_` for `<project-key>`.
 
 ## Envelope
 
 ```json
 {
-  "id": "evt_01",
-  "schemaVersion": 1,
-  "type": "work_item.transitioned",
-  "occurredAt": "2026-10-19T10:05:00Z",
-  "tenantId": "t_acme",
-  "projectId": "p_inventory",
-  "resource": {"type": "work_item", "id": "wi_1042", "version": 7},
-  "actor": {"type": "user", "id": "usr_engineer"},
-  "correlationId": "req_01",
-  "causationId": null,
-  "data": {"from": "ready", "to": "active", "transitionId": "tr_01"}
+  "id": "evt_01J8Z9X2",
+  "occurredAt": "2026-10-30T12:00:00Z",
+  "tenant": "acme",
+  "project": "erp",
+  "type": "wait.resolved",
+  "actor": {"type": "user", "id": "usr_17"},
+  "resource": {"type": "run_step", "id": "run_01/review"},
+  "data": {
+    "runId": "run_01",
+    "stepKey": "review",
+    "waitId": "wait_01",
+    "signalId": "sig_01",
+    "outcome": "approved"
+  }
 }
 ```
 
-`id` is globally unique and stable across publish retries. `occurredAt` is the committed domain transition time. `projectId` is omitted for tenant-wide events. Actor types are `user`, `service`, `workload`, and `operator`; automated actors retain the initiating/cause reference where applicable.
-
-`resource.version` identifies the committed aggregate observation. `correlationId` connects one user/integration operation; `causationId` identifies the preceding event when an event caused the operation. Payloads use references to content rather than embedding secret values, source files, or transcripts.
-
-## Subject and access model
-
-Proposed NATS subject shape:
-
-```text
-factory.v1.tenant.<tenant-subject-token>.<event-type>
-```
-
-For example: `factory.v1.tenant.t_acme.work_item.transitioned`. Tenant subject tokens are server-assigned, restricted to safe non-wildcard token characters, and mapped to canonical tenant IDs. Untrusted strings cannot construct subjects.
-
-Only authorized platform roles publish/consume domain events. Tenant workloads use scoped result and product interfaces; they cannot publish trusted events directly. Tenant-facing observation streams are authorized projections through the API.
-
 ## Initial event types
 
-| Type | Aggregate | Required data references/fields |
-| --- | --- | --- |
-| `work_item.created` | Work item | Kind, initial state |
-| `work_item.updated` | Work item | Changed field names, content revision where applicable |
-| `work_item.transitioned` | Work item | Previous/new state, transition ID |
-| `workspace.state_changed` | Workspace | Previous/new state, reason code |
-| `workspace.checkpoint_created` | Workspace | Repository, previous/new commit, publishing attempt or human synchronization |
-| `run.created` | Run | Work item, definition ID, input-snapshot digest |
-| `run.state_changed` | Run | Previous/new state, classified reason |
-| `step_attempt.state_changed` | Attempt | Run/step IDs, previous/new state, classified reason |
-| `run_resource.state_changed` | Run resource (`run_shared` runs; envelope resource type `run_resource`; resource ID [`rr-…`](#run-resource-events); project required) | Run ID, kind (`network`, `workspace`, `preparation`, `service`), key, previous/new phase, safe reason code ([catalog](run-resources.md#reasons)), spec fingerprint, whether a runtime UID is bound |
-| `repository.created` | Repository (designed internal hosting) | Name, default branch, hosting |
-| `repository.state_changed` | Repository | Previous/new status, reason code |
-| `git.refs_updated` | Repository; one per applied push record | Push ID, actor, origin run, each `(ref, old, new, kind)` ([Git service](git-service.md#push-records-and-events)) |
-| `gate.requested` | Gate | Subject digest, content revision, reviewer scope, deadline |
-| `gate.decided` | Gate | Actor, decision, resulting state, subject digest |
-| `gate.invalidated` | Gate | Subject digest, reason, superseding commit/revision when present |
-| `deployment.state_changed` | Deployment | Environment, previous/new state, source/artifact references |
-| `membership.changed` | Membership | User ID, changed binding references, effective version |
-| `project.settings_changed` | Project | Changed setting names, version |
-| `configuration.changed` | Variable/secret | Resource kind, value/wrapping version, change kind, scope |
-| `usage.recorded` | Usage record | Run/attempt, model, observed or estimated usage, uncertainty |
+Each event has a stable identity derived from its type and the deduplication key below, so republishing an outbox row yields the same event `id`. Consumers deduplicate on that key.
 
-`run_resource.state_changed` carries references only: no endpoints beyond the logical key, logs, credentials, secret values or scratch contents, and scratch changes never produce `workspace.checkpoint_created`. Gate expiry is an applicability check against its deadline, not a status transition; a run deadline that expires while a gate is pending invalidates it with reason `run_deadline_exceeded`. Agent results and defects use attempt/work-item events. No separate session, candidate, finding, or policy subsystem is introduced.
+| Event type | Emitted when | Key payload fields and coordination role | Deduplication key |
+| --- | --- | --- | --- |
+| `git.refs_updated` | An accepted receive applied an update | `receiveId`, repository, actor, origin run, and applied `(ref, old, new, kind)` updates inline; indexing and trigger admission consume it | `receiveId` |
+| `pipeline.indexed` | A definition at an exact commit was accepted, refused, or removed | Pipeline name, repository, commit, source, version, refusal code | pipeline name, repository, commit |
+| `run.created` | A run is admitted | Pipeline, optional task, optional continued run, definition/input snapshot digest, trigger identity | trigger key `(pipeline, push event, ref)` for triggered runs, otherwise run ID |
+| `run.state_changed` | A run changes state | Previous/new state, bounded reason, version | run ID, run version |
+| `run_step.state_changed` | A step changes state | Run, step key, previous/new state, bounded reason code, version. A skipped or failed step carries the bounded reason code and, where evaluated, the recorded `when` result defined by [pipeline execution](../specs/pipeline-execution.md#eligibility-skipping-and-joins) | run ID, step key, step version |
+| `wait.opened` | A wait step commits its durable state | Run, step key, wait identity, assignment, correlation keys and digest, request reference, expected input kind, outcomes, deadline, wait version | wait ID |
+| `wait.resolved` | An authorized result decides a wait | Run, step key, wait identity, deciding `signalId`, actor, declared outcome (a rejection is an ordinary outcome), answer reference | wait ID |
+| `wait.expired` | The deadline decides a wait | Run, step key, wait identity, deadline, `onExpiry` (`fail` or `continue`) | wait ID |
+| `wait.cancelled` | Cancellation or failure of the run decides a wait | Run, step key, wait identity, reason (`run_cancelled` or `run_failed`) | wait ID |
+| `wait.reassigned` | A wait's assignment changes | Wait identity, previous and new assignment, actor, new wait version | wait ID, wait version |
+| `signal.refused` | An authenticated signal was not applied | `signalId`, bounded reason (`decided`, `version_conflict`, `invalid_outcome`, `unknown_wait`, `ambiguous_correlation`), and only when the target resolved inside the caller's scope: run, step, wait and the recorded decision it lost to. A zero-match or multiple-match refusal carries no target and only a digest of the address | `signalId` |
+| `service.state_changed` | A run, project, or tenant service changes state | Scope, run, service key, previous/new phase, bounded reason | scope, service ID, version |
+| `task.created` | A task is created with its selected pipeline | Task, pipeline, initial execution | task ID |
+| `task.progress_changed` | A task projection advances | Task, current run, status, current step, waiting assignment, projection version | task ID, projection version |
+| `task.content_changed` | A task's title, body or context is edited | Task, new content version, editing actor | task ID, content version |
+| `repository.created` | A repository is provisioned | Name, default branch, hosting | repository ID |
+| `repository.state_changed` | A repository changes status | Previous/new status, bounded reason | repository ID, version |
+| `membership.changed` | A membership changes | User, changed binding, effective version | membership ID, version |
+| `project.settings_changed` | Project settings change | Changed setting names, version | project ID, version |
+| `configuration.changed` | A variable or secret changes | Resource kind, scope, wrapping version, change kind | resource, version |
+| `artifact.registered` | A step registers external artifact metadata | Artifact, run, step, task, kind, URI, digest | artifact ID |
+| `usage.recorded` | Agent or gateway usage is observed | Run/session, model, observed or estimated usage, uncertainty | usage record ID |
+
+## Delivery rules
+
+- Delivery is at least once. Consumers deduplicate on a stable event identity or on the resource identity they own.
+- A state change and its outbox row commit in one transaction. Publication runs outside that transaction.
+- A consumer that cannot safely apply an event leaves it for redelivery; a malformed or permanently irrelevant event is recorded and settled.
+- Consumers tolerate reordering. A projection compares the run version and never lets an older event overwrite a newer view.
+- Reconciliation repairs a missed wakeup from authoritative state.
+- A `wait.resolved` event is a notification of a committed result, not the authority to approve anything. Authorization is checked when the result is recorded and again when a protected effect is issued.
+- A wait has at most one of `wait.resolved`, `wait.expired` and `wait.cancelled`; the decision rules are owned by [pipeline execution](../specs/pipeline-execution.md#wait-decisions). A rejection is a `wait.resolved` with the declared outcome and is never a failure event; its effect on later steps appears as `run_step.state_changed` with the skip or failure reason.
+- `signalId` is derived by the shell from the tuple (tenant, project, caller principal, caller key), as defined by [pipeline execution](../specs/pipeline-execution.md#signal-identity-and-routing); the raw key is never carried. A replay of a recorded signal emits nothing, and so does reuse of a recorded key with a changed request: that refusal (`key_reuse`) is a response to its caller, creates no record, and neither emits an event nor alters the original signal's event, record or `signalId`. A losing or invalid authenticated signal emits one `signal.refused` under its own `signalId`, with references and a bounded reason, never the answer text. A foreign, unknown or unauthorized wait is refused as `unknown_wait` in the caller's own scope without naming it, so the event is indistinguishable and never discloses another tenant's resource.
+- Payloads carry references and bounded metadata only: no secret values, credentials, workspace contents, or full logs.
+
+## Requirements
+
+| ID | Requirement |
+| --- | --- |
+| EC-01 | Every event type MUST define a deduplication key. The canonical event identity is the durable `audit_events` id assigned once when the intent commits; it is stable across republication and is never re-derived from the payload. Consumers MUST deduplicate on the event type plus its documented key, never on broker delivery. |
+| EC-02 | A wait MUST emit at most one of `wait.resolved`, `wait.expired` and `wait.cancelled`, and a rejection MUST be carried as a declared outcome of `wait.resolved`, not as a failure event. |
+| EC-03 | A replay of a recorded signal, and a changed request under a recorded key, MUST emit no event and MUST NOT alter the original; a losing or invalid authenticated signal MUST emit one `signal.refused` keyed by its `signalId` with a bounded reason and no answer content, including when no target resolved. |
+| EC-04 | An assignment change MUST emit `wait.reassigned` with the new wait version and MUST NOT change the wait identity or correlation carried by other events. |
+| EC-05 | `signalId` MUST derive from (tenant, project, caller principal, caller key) so keys never collide across tenants, projects or callers; a refusal for a foreign, unknown or unauthorized wait MUST be indistinguishable from `unknown_wait` and MUST NOT carry another scope's data. |
+
+## Acceptance
+
+| ID | Scenario | Requirements |
+| --- | --- | --- |
+| EC-A01 | Republishing an outbox row after a lost acknowledgment delivers the same event `id`, and a consumer applies it once | EC-01 |
+| EC-A02 | Concurrent resolution, expiry and cancellation of one wait yield exactly one decision event; a rejection yields `wait.resolved` with the rejected outcome and a skipped successor, and no failure event | EC-02 |
+| EC-A03 | A replay of the winning signal emits nothing, including after the wait closed; a late new signal and an undeclared outcome each emit one `signal.refused` without the answer text, while a changed request under a recorded key, once or repeatedly, emits nothing and leaves the original `signal.refused` or `wait.resolved` and its `signalId` unchanged; after an initial refusal, reuse of its key with a changed payload emits no second event | EC-03 |
+| EC-A04 | Reassigning a wait emits `wait.reassigned` and later events carry the unchanged identity and correlation digest | EC-04 |
+| EC-A05 | A correlation signal matching no open wait and one matching two each emit one `signal.refused` (`unknown_wait`, `ambiguous_correlation`) under their own `signalId` with no target; replaying either emits nothing more | EC-03 |
+| EC-A06 | The same key from another tenant, project or caller yields a different `signalId` and an unrelated record; a signal naming another tenant's wait produces the same `unknown_wait` refusal as a nonexistent one, with no foreign identifier in any payload | EC-05 |
+
+## Retired event names
+
+`work_item.*`, `workspace.*`, `gate.*`, `deployment.state_changed`, `step_attempt.state_changed`, and `run_resource.state_changed` described the superseded workflow, workspace, gate, deployment, and dual-runtime models. They are retained here only as historical names; current implementations must not emit them as product contracts.
 
 ## Run resource events
 
-`run_resource.state_changed` is an additive v1 type (`contracts/events/v1`): earlier envelopes, types, fixtures and digests are unchanged and the schema version stays 1. It is an observation of execution-owned state; it never authorizes a workload action, and consumers rely on current policy and the execution record, not the payload.
-
-| Member | Rule |
-| --- | --- |
-| Envelope | `resource.type` is `run_resource`; `projectId` is required and `tenantId`/`projectId` are the run's scope. `resource.version` is the committed run-resource record version (at least 1) |
-| `resource.id` | `rr-` plus the first 40 lowercase hex characters of SHA-256 over the length-prefixed UTF-8 tuple `(tenantId, projectId, runId, key)`: each element is preceded by its byte length as an unsigned 4-byte big-endian integer. The result is 43 characters and satisfies the ID domain; a raw `RUN_ID/KEY` does not, and an underscore join is ambiguous across tuple boundaries (tenant `t_a` with project `p` aliases tenant `t` with project `a_p`; run `run_x` with key `service.network` aliases run `run_x_service` with key `network` once the key's dot becomes `_`), so neither is accepted. The Go contract derives and checks it from the envelope scope and payload; `eventsv1.RunResourceID` is the single implementation. Golden vector: `(t_acme, p_inventory, run_01, network)` → `rr-b6db60ce0677ae6f334067ebe0214c4795279151` |
-| `runId` | Run ID domain |
-| `kind`, `key` | `network`/`network`, `workspace`/`workspace`, `preparation`/`preparation`, `service`/`service.NAME` with `NAME` as in the pipeline service-name syntax (`^[a-z][a-z0-9-]{0,29}$`); any other pairing is invalid |
-| `from`, `to` | A [phase](run-resources.md#phases-and-evidence): `pending`, `ready`, `failed`, `stopped`, `absent` or `unknown`. `from` may also be `none` for the creation edge; `to` never is. The phase may be unchanged (`from` equal to `to`): an observation also records a changed reason, UID binding, intent or evidence; whether an unchanged observation is emitted at all is execution's decision, not this contract's |
-| `reason` | A stable safe code (`^[a-z][a-z0-9_]{0,63}$`), normally from the [reason catalog](run-resources.md#reasons); never prose, a message or a log line |
-| `specFingerprint` | `sha256:` and 64 lowercase hex characters |
-| `uidBound` | Required boolean (an explicit `false` is meaningful; omitted or null is invalid): whether a provider identity is bound. `to: ready` requires `true` because readiness is verified against the bound identity |
-
-All eight members are required. The payload carries no provider UID, endpoint, log, credential or scratch content: a producer serializes only these members, and the typed projection (`RunResourceStateChanged`) exposes nothing else. Additional unknown members follow the general rule below (tolerated on decode, never part of the typed projection) and are not a place for such data. The envelope's tenant/project validity is checked here; whether a producer may publish for that scope is established by the execution transaction that commits the event with its state, not by envelope validation.
-
-## Publication and consumption
-
-1. Commit state, audit, and outbox rows in one PostgreSQL transaction.
-2. Publish the row with its stable event ID and wait for durable broker acknowledgment.
-3. Mark publication complete. A crash before this mark may cause redelivery.
-4. A consumer validates schema and scope, then claims `(consumer, eventId)` in its inbox.
-5. Commit its database effect and inbox result atomically where the effect is local. External effects use a durable intent and their own idempotency/reconciliation contract.
-6. Acknowledge only after the durable local outcome. Retry classified transient failures; quarantine poison events with operator-visible reason and replay history.
-
-Broker duplicate suppression is an optimization, not the correctness boundary. Inbox retention and replay policy must be aligned; replaying beyond the deduplication window requires an explicit safe replay procedure.
-
-## Ordering and reconciliation
-
-Global ordering is not promised. Current-state consumers reload the aggregate and use versions to avoid applying stale observations. Historical consumers such as audit/export or notifications process unique events even when older than the current resource state. Multiple event types may legitimately describe the same aggregate version.
-
-Missing notifications do not prevent progress because periodic reconciliation scans durable desired state. Business commands never trust an event payload as authorization to perform an action without current policy checks.
-
-## Retention and recovery
-
-Define independent retention for outbox publication history, broker streams, consumer inboxes, audit, and API observation cursors. Events are not the complete backup of the product database. After restore, rotate workload signing keys, fence old controllers, and reconcile active external effects before replaying side-effecting consumers.
-
-Manual replay requires scope, event range, consumer identity, and an audit record. Dry-run classification should identify potential external effects before replay is enabled for a consumer.
-
-## Compatibility and validation
-
-Payload additions are optional within a schema version. Breaking meaning/type changes require a new supported version and documented migration. Schemas validate envelopes and per-type payloads; acceptance tests cover duplicate delivery, reordering, unknown versions, poison events, and restore/replay behavior.
+This anchor is retained for historical contracts. `run_resource.state_changed` and the companion run-resource lifecycle described the superseded dual-runtime model. Current execution observations use `run.state_changed`, `run_step.state_changed`, `wait.*`, and `service.state_changed`; the [pipeline-runtime simplification plan](../implementation/pipeline-runtime-simplification.md) removes the legacy contracts.

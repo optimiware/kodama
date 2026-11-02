@@ -1,0 +1,375 @@
+[
+  {
+    "name": "forwarding_assertion_receive_pack",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "forwarding_assertion_read_only",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": false,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "forwarding_assertion_max_lifetime",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "worker_identity",
+    "type": "WorkerIdentity",
+    "payload": {
+      "audience": "kodama-git-control",
+      "expiresAt": "2026-10-30T10:30:00Z",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "tenantId": "t_acme",
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "assertion_unknown_field",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "credential": "kgc_aaaaaaaaaaaaaaaa",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_forwards_authorization_header",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "authorization": "Basic abc",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_audience_of_another_tenant",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_other",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "assertion_audience_without_tenant",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_audience_git_grant",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_audience_runtime",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-runtime",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_audience_control",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-control",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_lifetime_over_5_minutes",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:05:01Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "assertion_expires_at_issued",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:00:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "assertion_request_id_omitted",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_receive_pack_omitted",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_receive_pack_string",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": "true",
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_repository_path_traversal",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "../repo",
+      "requestId": "req_01",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assertion_tenant_not_an_id",
+    "type": "ForwardingAssertion",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:05:00Z",
+      "grantId": "gg_01",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "receivePack": true,
+      "repositoryId": "repo_01",
+      "requestId": "req_01",
+      "tenantId": "t acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "identity_unknown_field",
+    "type": "WorkerIdentity",
+    "payload": {
+      "audience": "kodama-git-control",
+      "expiresAt": "2026-10-30T10:30:00Z",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "role": "admin",
+      "tenantId": "t_acme",
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "identity_assertion_audience",
+    "type": "WorkerIdentity",
+    "payload": {
+      "audience": "kodama-git-worker:t_acme",
+      "expiresAt": "2026-10-30T10:30:00Z",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "tenantId": "t_acme",
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "identity_git_grant_audience",
+    "type": "WorkerIdentity",
+    "payload": {
+      "audience": "kodama-git",
+      "expiresAt": "2026-10-30T10:30:00Z",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "tenantId": "t_acme",
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "identity_instance_omitted",
+    "type": "WorkerIdentity",
+    "payload": {
+      "audience": "kodama-git-control",
+      "expiresAt": "2026-10-30T10:30:00Z",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "tenantId": "t_acme"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "identity_lifetime_over_1_hour",
+    "type": "WorkerIdentity",
+    "payload": {
+      "audience": "kodama-git-control",
+      "expiresAt": "2026-10-30T11:00:01Z",
+      "issuedAt": "2026-10-30T10:00:00Z",
+      "tenantId": "t_acme",
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  }
+]

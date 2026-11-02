@@ -1,0 +1,2692 @@
+[
+  {
+    "name": "authorize_create_agent_branch",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_multi_ref_with_options",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": true,
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "repositoryEmpty": false
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/heads/feature/x",
+          "repositoryEmpty": false
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/tags/v1",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [
+        "ci.skip",
+        "topic=demo"
+      ],
+      "receiveId": "rcv_8f2d",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/kodama/work/wi_1042"
+        },
+        {
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/feature/x"
+        },
+        {
+          "new": "0000000000000000000000000000000000000000",
+          "old": "2222222222222222222222222222222222222222",
+          "ref": "refs/tags/v1"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_seed_into_empty_repository",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/main",
+          "repositoryEmpty": true
+        }
+      ],
+      "grantId": "gg_02",
+      "pushOptions": [],
+      "receiveId": "rcv_seed",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "1111111111111111111111111111111111111111",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/main"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_sha256_objects",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "1111111111111111111111111111111111111111111111111111111111111111",
+          "old": "0000000000000000000000000000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_delete_branch",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "0000000000000000000000000000000000000000",
+          "old": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_rewrite_task_branch",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": false,
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "repositoryEmpty": false
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/heads/feature/x",
+          "repositoryEmpty": false
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/tags/v1",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [
+        "ci.skip",
+        "topic=demo"
+      ],
+      "receiveId": "rcv_8f2d",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/kodama/work/wi_1042"
+        },
+        {
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/feature/x"
+        },
+        {
+          "new": "0000000000000000000000000000000000000000",
+          "old": "2222222222222222222222222222222222222222",
+          "ref": "refs/tags/v1"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_server_ref_is_requestable",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/kodama/runs/run_01/1",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/kodama/runs/run_01/1"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_too_many_updates",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "too_many_updates",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_allow",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_01",
+      "updates": [
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_deny_ref_protected",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "ref_protected",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_deny_not_fast_forward",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "not_fast_forward",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_deny_grant_scope",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "grant_scope",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_deny_attempt_inactive",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "attempt_inactive",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_deny_repository_archived",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "repository_archived",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_deny_seed_only",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "seed_only",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_deny_seed_consumed",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "seed_consumed",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_deny_integration_mismatch",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "integration_mismatch",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_response_tolerates_added_member",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "hint": "x",
+      "pushId": "push_01",
+      "updates": [
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_authorized",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_committing_is_authorized",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "committing"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_applied",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/feature/x",
+          "state": "applied"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "applied"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_partial_push_applied",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "applied"
+        },
+        {
+          "kind": "fast_forward",
+          "new": "5555555555555555555555555555555555555555",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": "grant_scope",
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "state": "refused"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "applied"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_refused",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "fast_forward",
+          "new": "2222222222222222222222222222222222222222",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": "ref_protected",
+          "ref": "refs/heads/main",
+          "state": "refused"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "refused"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_refused_by_settlement",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": "no_commit_intent",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "refused"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "refused"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_unknown",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": "journal_regressed",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "unknown"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "unknown"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_unknown_blocks_applied",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "applied"
+        },
+        {
+          "kind": "fast_forward",
+          "new": "5555555555555555555555555555555555555555",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": "conflicting_evidence",
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "state": "unknown"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "unknown"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_tolerates_added_member",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "note": "x",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_reload_preserves_each_kind",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "fast_forward",
+          "new": "2222222222222222222222222222222222222222",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": null,
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "state": "applied"
+        },
+        {
+          "kind": "rewrite",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "3333333333333333333333333333333333333333",
+          "reason": null,
+          "ref": "refs/heads/feature/x",
+          "state": "applied"
+        },
+        {
+          "kind": "create",
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/feature/new",
+          "state": "applied"
+        },
+        {
+          "kind": "delete",
+          "new": "0000000000000000000000000000000000000000",
+          "old": "2222222222222222222222222222222222222222",
+          "reason": null,
+          "ref": "refs/tags/old",
+          "state": "applied"
+        },
+        {
+          "kind": "rewrite",
+          "new": "3333333333333333333333333333333333333333",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": "ref_protected",
+          "ref": "refs/heads/feature/y",
+          "state": "refused"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "applied"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "record_list",
+    "type": "PushRecordList",
+    "payload": {
+      "items": [
+        {
+          "actor": {
+            "attemptId": null,
+            "id": "usr_engineer",
+            "runId": null,
+            "type": "user"
+          },
+          "createdAt": "2026-10-30T10:05:00Z",
+          "entries": [
+            {
+              "kind": "create",
+              "new": "4444444444444444444444444444444444444444",
+              "old": "0000000000000000000000000000000000000000",
+              "reason": null,
+              "ref": "refs/heads/x",
+              "state": "applied"
+            }
+          ],
+          "grantId": "gg_01",
+          "originRunId": null,
+          "pushId": "push_01",
+          "receiveId": "rcv_8f2c",
+          "repositoryId": "repo_01",
+          "status": "applied"
+        }
+      ],
+      "nextCursor": null
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "authorize_unknown_field",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "force": true,
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_no_updates",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": []
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_duplicate_ref",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        },
+        {
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "authorize_old_equals_new",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "4444444444444444444444444444444444444444",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "authorize_ref_not_a_ref",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "heads/main"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_ref_traversal",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/../kodama/x",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/../kodama/x"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_ref_with_space",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/a b",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/a b"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_ref_double_slash",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads//x",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads//x"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_ref_trailing_slash",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/x/",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/x/"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_ref_lock_suffix",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/x.lock",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/x.lock"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_ref_control_character",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/a\u0001b",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/a\u0001b"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_ref_wildcard",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/*",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/*"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_ref_head",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "HEAD",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "HEAD"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_commit_uppercase",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_commit_short",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "abc123",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_commit_39_characters",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_commit_not_hex",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "gggggggggggggggggggggggggggggggggggggggg",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_commit_symbolic",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "HEAD",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_mixed_object_id_lengths",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "1111111111111111111111111111111111111111111111111111111111111111",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "authorize_facts_omitted",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_options_null",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": null,
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_fact_count_differs",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": true,
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "repositoryEmpty": false
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/heads/feature/x",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [
+        "ci.skip",
+        "topic=demo"
+      ],
+      "receiveId": "rcv_8f2d",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/kodama/work/wi_1042"
+        },
+        {
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/feature/x"
+        },
+        {
+          "new": "0000000000000000000000000000000000000000",
+          "old": "2222222222222222222222222222222222222222",
+          "ref": "refs/tags/v1"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "authorize_fact_ref_differs",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/other",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "authorize_fast_forward_on_create",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": true,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "authorize_fast_forward_unknown_for_update",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "repositoryEmpty": false
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/heads/feature/x",
+          "repositoryEmpty": false
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/tags/v1",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [
+        "ci.skip",
+        "topic=demo"
+      ],
+      "receiveId": "rcv_8f2d",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/kodama/work/wi_1042"
+        },
+        {
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/feature/x"
+        },
+        {
+          "new": "0000000000000000000000000000000000000000",
+          "old": "2222222222222222222222222222222222222222",
+          "ref": "refs/tags/v1"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "authorize_empty_repository_with_update_of_existing_ref",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": true,
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "repositoryEmpty": true
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/heads/feature/x",
+          "repositoryEmpty": true
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/tags/v1",
+          "repositoryEmpty": true
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [
+        "ci.skip",
+        "topic=demo"
+      ],
+      "receiveId": "rcv_8f2d",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/kodama/work/wi_1042"
+        },
+        {
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/feature/x"
+        },
+        {
+          "new": "0000000000000000000000000000000000000000",
+          "old": "2222222222222222222222222222222222222222",
+          "ref": "refs/tags/v1"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "authorize_empty_repository_inconsistent",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": true,
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "repositoryEmpty": false
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/heads/feature/x",
+          "repositoryEmpty": true
+        },
+        {
+          "fastForward": null,
+          "ref": "refs/tags/v1",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [
+        "ci.skip",
+        "topic=demo"
+      ],
+      "receiveId": "rcv_8f2d",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "1111111111111111111111111111111111111111",
+          "ref": "refs/heads/kodama/work/wi_1042"
+        },
+        {
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/feature/x"
+        },
+        {
+          "new": "0000000000000000000000000000000000000000",
+          "old": "2222222222222222222222222222222222222222",
+          "ref": "refs/tags/v1"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "authorize_fact_unknown_field",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "force": true,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_option_with_newline",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [
+        "a\nb"
+      ],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_too_many_options",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o",
+        "o"
+      ],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_option_too_long",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_receive_id_omitted",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg_01",
+      "pushOptions": [],
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "authorize_grant_not_an_id",
+    "type": "PushAuthorizeRequest",
+    "payload": {
+      "gitFacts": [
+        {
+          "fastForward": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "repositoryEmpty": false
+        }
+      ],
+      "grantId": "gg 01",
+      "pushOptions": [],
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "updates": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "response_deny_without_reason",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": null,
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "response_deny_unknown_reason",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "because",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "response_deny_settlement_reason",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_02",
+      "updates": [
+        {
+          "reason": "no_commit_intent",
+          "ref": "refs/heads/main",
+          "verdict": "deny"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "response_allow_with_reason",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_01",
+      "updates": [
+        {
+          "reason": "grant_scope",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "response_unknown_verdict",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_01",
+      "updates": [
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "maybe"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "response_no_verdicts",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_01",
+      "updates": []
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "response_deadline_omitted",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "pushId": "push_01",
+      "updates": [
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "response_duplicate_ref",
+    "type": "PushAuthorizeResponse",
+    "payload": {
+      "deadline": "2026-10-30T10:10:00Z",
+      "pushId": "push_01",
+      "updates": [
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        },
+        {
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "verdict": "allow"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "record_status_not_derived_applied",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "committing"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "applied"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "record_status_not_derived_unknown_blocks",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "applied"
+        },
+        {
+          "kind": "fast_forward",
+          "new": "5555555555555555555555555555555555555555",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": "conflicting_evidence",
+          "ref": "refs/heads/kodama/work/wi_1042",
+          "state": "unknown"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "applied"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "record_status_refused_with_applied_entry",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "applied"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "refused"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "record_refused_entry_without_reason",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "refused"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "refused"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_refused_entry_unknown_reason",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": "nope",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "refused"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "refused"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_refused_entry_unknown_reason_code",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": "ref_protected",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "unknown"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "unknown"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_applied_entry_with_reason",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": "grant_scope",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "applied"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "applied"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_entry_kind_omitted",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_entry_kind_null",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": null,
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_entry_kind_unknown",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "force",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_entry_create_with_old_value",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_entry_delete_with_new_value",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "delete",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_entry_fast_forward_from_nothing",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "fast_forward",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_entry_rewrite_to_nothing",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "rewrite",
+          "new": "0000000000000000000000000000000000000000",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_entry_update_classified_create",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "1111111111111111111111111111111111111111",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_unknown_entry_state",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "done"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "applied"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_workload_without_origin",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_origin_differs_from_actor_run",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": "att_01",
+        "id": "att_01",
+        "runId": "run_01",
+        "type": "workload"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_99",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "record_user_with_origin",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": "run_01",
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_no_entries",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": null,
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "record_duplicate_entry_ref",
+    "type": "PushRecord",
+    "payload": {
+      "actor": {
+        "attemptId": null,
+        "id": "usr_engineer",
+        "runId": null,
+        "type": "user"
+      },
+      "createdAt": "2026-10-30T10:05:00Z",
+      "entries": [
+        {
+          "kind": "create",
+          "new": "4444444444444444444444444444444444444444",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        },
+        {
+          "kind": "create",
+          "new": "5555555555555555555555555555555555555555",
+          "old": "0000000000000000000000000000000000000000",
+          "reason": null,
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "state": "authorized"
+        }
+      ],
+      "grantId": "gg_01",
+      "originRunId": null,
+      "pushId": "push_01",
+      "receiveId": "rcv_8f2c",
+      "repositoryId": "repo_01",
+      "status": "authorized"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  }
+]

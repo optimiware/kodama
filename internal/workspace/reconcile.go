@@ -77,6 +77,9 @@ func (s *Service) ReconcileWorkspace(ctx context.Context, scope domain.Scope, id
 		return err
 	}
 	w := agg.Workspace
+	if w.Internal() {
+		return s.reconcileInternal(ctx, scope, id)
+	}
 	var errs []error
 	if w.State == StateProvisioning {
 		if w, err = s.completeProvisioning(ctx, system, w); err != nil {

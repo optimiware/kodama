@@ -1,10 +1,10 @@
 ---
 id: T-121
 milestone: production
-status: planned
+status: done
 depends_on: [T-120, T-124]
 decision_blockers: []
-owns: [docs/acceptance/run-resource-profile.md]
+owns: [docs/acceptance/run-resource-profile.md, deploy/profiles/run-builders/, test/integration/kube/runprofile/pins.json]
 check: test/integration/kube/runprofile/verify.sh
 resources: [go, integration]
 acceptance: [run_resource_profile_qualification]
@@ -27,3 +27,6 @@ The declared check reports `Test_run_resource_profile_qualification` passed with
 
 ## Out of scope
 Assembled-product acceptance (T-117), BuildKit (T-123), browser.
+
+## Completion evidence
+Installed the T-120 node profiles on all four stage workers and ran `verify.sh` against the Scaleway stage. Verdict `qualified` (run `fbaeac`, exact candidate `cfcc0e3b`, cleanup verified); see the [report](../acceptance/run-resource-profile.md). Getting there needed two owner-visible changes: Buildah re-pinned twice (quay.io collects rebuilt digests), and, because AppArmor 4.0 cannot express the propagation flags Buildah's chroot isolation uses on its `/dev` remount, the owner selected (O-30 amendment, 2026-10-30) the versioned step profile `kodama-rootless-build-v2` (`flags=(unconfined)` + `userns,`), implemented under a bounded coordinator exception across the profiles, driver guard, chart policy and docs. Independent review (`ses_e74b90e49ffeePQofqu3D3gQLh`) approved that change; its minor documentation finding is fixed. Coordinator checks: `make check-go` over profiles, driver, kube, app and chart, `make test-chart`, `make docs-check` all pass. Nodes still carry the unreferenced confined v1 AppArmor profile until reboot. Squashed to one commit; nothing pushed.

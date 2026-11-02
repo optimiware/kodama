@@ -150,6 +150,8 @@ type Env struct {
 	Deployments *Deployments
 	Evidence    *Evidence
 	Candidates  *Candidates
+	// Bases is the fake default-branch tip reader (source-set subjects).
+	Bases *Bases
 	// Runs is the in-memory execution peer's run reader.
 	Runs *Runs
 
@@ -190,6 +192,7 @@ func New(o ...Options) *Env {
 	e.Deployments = &Deployments{db: e.DB}
 	e.Evidence = &Evidence{db: e.DB}
 	e.Candidates = &Candidates{commits: map[string]bool{}}
+	e.Bases = NewBases()
 	e.Runs = &Runs{db: e.DB}
 	e.Store = NewStore(StoreConfig{
 		DB: e.DB, Authority: e.Authority.Bind, Deployments: e.Deployments.Bind, Clock: e.Clock.Now, Env: e,
@@ -203,7 +206,7 @@ func New(o ...Options) *Env {
 func (e *Env) Dependencies() gates.Dependencies {
 	return gates.Dependencies{
 		Store: e.Store, Authority: e.Authority, Runs: e.Runs, Evidence: e.Evidence, Pins: &Pins{db: e.DB},
-		Candidates: e.Candidates, Tenants: tenantList{}, Deployments: e.Deployments, Clock: e.Clock.Now,
+		Candidates: e.Candidates, Tenants: tenantList{}, Deployments: e.Deployments, Bases: e.Bases, Clock: e.Clock.Now,
 		// The real mapping over the immutable run data: baseline and required
 		// checks come from the producing attempt's pinned context.
 		Conformance: adapters.ConformanceMapping{ReportOutput: ReportOutput},
@@ -423,6 +426,15 @@ var _ gates.Deployments = (*Deployments)(nil)
 func (d *Deployments) Set(ctx context.Context, scope domain.Scope, id, candidate, configDigest string) error {
 	return d.db.Update(ctx, scope.TenantID, func(tx memdb.Tx) error {
 		return depTable.Put(tx, deploymentRow{Snap: gates.DeploymentSnapshot{ID: id, ConfigDigest: configDigest, Scope: scope, Candidate: candidate}})
+	})
+}
+
+// SetSourceSet records a deployment of scope that records a source set (the
+// digest and one commit per repository) instead of a candidate commit.
+func (d *Deployments) SetSourceSet(ctx context.Context, scope domain.Scope, id string, set gates.SourceSetRef, configDigest string) error {
+	return d.db.Update(ctx, scope.TenantID, func(tx memdb.Tx) error {
+		// The record's own commit is its primary source's (the first commit here).
+		return depTable.Put(tx, deploymentRow{Snap: gates.DeploymentSnapshot{ID: id, ConfigDigest: configDigest, Scope: scope, Candidate: set.Commits()[0].Commit, SourceSet: set}})
 	})
 }
 

@@ -51,7 +51,7 @@ and maps the response. It never forwards the client token to Kodama.
 
 The server is an OAuth 2.0 protected resource (RFC 9728) and an OAuth client to
 the exchange endpoint. It is not an authorization server. The rationale and
-consequences are recorded in [ADR 0012](../adr/0012-mcp-delegated-authentication.md).
+consequences are recorded in [ADR 0014](../adr/0014-mcp-delegated-authentication.md).
 
 - It serves protected-resource metadata at the path-specific and root
   `/.well-known/oauth-protected-resource` locations.

@@ -1,0 +1,291 @@
+openapi: 3.0.3
+info:
+  title: Kodama Git push records HTTP fragment
+  version: 1.0.0
+  description: >-
+    Read access to the push records of the internal Git service (docs/specs/git-repositories.md,
+    "Push journal and events"; docs/contracts/git-service.md; contracts/git/v1). Owned by T-130.
+    Shared conventions (error envelope, request identifier, pagination) come from api/common.yaml.
+    The wire shapes are the Go contract's (contracts/git/v1 PushRecord, PushEntry, PushRecordList);
+    the types are generated into internal/gitpush/http/types.gen.go (see
+    internal/gitpush/http/generate.go) and a test proves they stay identical to the contract's.
+    This fragment is not part of the published aggregate until the Git API task (T-158) lists it, and
+    it describes the push-record store of the earlier design (internal/gitpush), which the kernel
+    assembly does not serve: the kernel records a receive as one `git.refs_updated` audit row with
+    its updates inline and keeps no push record or route. The event shape below is the contract's
+    either way.
+
+
+    `P` is `/tenants/{tenantId}/projects/{projectId}`. A push record is the durable intent and
+    outcome of one receive operation: the actor, the grant and one entry per `(ref, old, new)`
+    with its own state (`authorized`, `committing`, `applied`, `refused`, `unknown`) and a
+    persisted `kind` (`create`, `fast_forward`, `rewrite`, `delete`). The record's `status` is
+    derived from its entries: `unknown` while any entry is unknown, `authorized` while any entry
+    is in flight, otherwise `applied` if any entry applied, else `refused`. The
+    `git.refs_updated` event carries the applied updates inline (`receiveId`, `repositoryId`, `actor`,
+    `originRunId` and `updates`, each `{ref, old, new, kind}`), so a consumer needs no reload to match
+    a ref or pin a commit; the record adds what the event never lists (refused and unknown entries,
+    the grant) and is the same receive (`receiveId`, which is also the event's `resource.id`).
+    `originRunId` is the run that made the
+    push and `null` for a person. Reading push records needs the caller's current read role in the
+    project; a foreign or unknown repository or push is the same 404. Records are never written
+    through this API: the worker's authorization, commit-intent and outcome calls are internal
+    routes (`/internal/git/v1/tenants/{tenantId}/pushes`) under a tenant-bound worker identity and
+    are not part of the public API.
+servers:
+  - url: https://factory.example.invalid/api/v1
+security:
+  - bearerAuth: []
+paths:
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}/pushes:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RepositoryId'
+    get:
+      operationId: listPushes
+      summary: List the push records of a repository
+      description: >-
+        Newest first, ordered by (created_at, id) descending; the identifier is the unique
+        tie-breaker. A cursor is bound to the tenant, project, repository, endpoint and ordering
+        that issued it, and every page is authorized again. Refused receives (a denied update
+        fails the whole receive) are listed with their reasons; they emit no event.
+      parameters:
+        - $ref: 'common.yaml#/components/parameters/Limit'
+        - $ref: 'common.yaml#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of push records.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushRecordList'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+  /tenants/{tenantId}/projects/{projectId}/repositories/{id}/pushes/{pushId}:
+    parameters:
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RepositoryId'
+      - $ref: '#/components/parameters/PushId'
+    get:
+      operationId: getPush
+      summary: Read one push record
+      description: >-
+        The record of one receive, for a reader that needs more than the `git.refs_updated` event's
+        applied updates: the entries carry each ref, its old and new value, its persisted kind and
+        its state, including the refused and unknown ones the event omits. A record
+        of another repository, project or tenant is `404 not_found`.
+      responses:
+        '200':
+          description: The push record.
+          headers:
+            X-Request-ID:
+              $ref: 'common.yaml#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushRecord'
+              examples:
+                applied:
+                  value:
+                    pushId: push_01
+                    repositoryId: repo_01
+                    receiveId: rcv_01
+                    actor:
+                      type: user
+                      id: usr_01
+                      runId: null
+                      attemptId: null
+                    grantId: grant_01
+                    originRunId: null
+                    status: applied
+                    entries:
+                      - ref: refs/heads/feature
+                        old: '1111111111111111111111111111111111111111'
+                        new: '2222222222222222222222222222222222222222'
+                        kind: fast_forward
+                        state: applied
+                        reason: null
+                    createdAt: '2026-10-30T10:00:00Z'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '429':
+          $ref: 'common.yaml#/components/responses/TooManyRequests'
+        '503':
+          $ref: 'common.yaml#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    RepositoryId:
+      name: id
+      in: path
+      required: true
+      description: Repository identifier.
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+    PushId:
+      name: pushId
+      in: path
+      required: true
+      description: Push record identifier.
+      schema:
+        $ref: 'common.yaml#/components/schemas/ID'
+  schemas:
+    ActorType:
+      type: string
+      enum: [user, workload]
+    PushActor:
+      type: object
+      additionalProperties: false
+      required: [type, id, runId, attemptId]
+      description: >-
+        A person (`runId` and `attemptId` null) or a workload: the attempt, with its run. The
+        attempt is null for a preparation workload.
+      properties:
+        type:
+          $ref: '#/components/schemas/ActorType'
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        runId:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        attemptId:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+    PushStatus:
+      type: string
+      enum: [authorized, applied, refused, unknown]
+      description: >-
+        Derived from the entries: `unknown` while any entry is unknown, `authorized` while any
+        entry is `authorized` or `committing`, otherwise `applied` if any entry applied, else
+        `refused`.
+    EntryState:
+      type: string
+      enum: [authorized, committing, applied, refused, unknown]
+      description: >-
+        `authorized` and `committing` are in flight; `applied` and `refused` are final; `unknown`
+        waits for an operator and blocks reassignment of the affected writer attempt.
+    UpdateKind:
+      type: string
+      enum: [create, fast_forward, rewrite, delete]
+      description: >-
+        Persisted at authorization from the worker's Git facts and never changed: `create` exactly
+        when `old` is all zero, `delete` exactly when `new` is all zero, otherwise `fast_forward`
+        or `rewrite`. A rewrite is audited.
+    PushEntry:
+      type: object
+      additionalProperties: false
+      required: [ref, old, new, kind, state, reason]
+      properties:
+        ref:
+          type: string
+          maxLength: 255
+          pattern: '^refs/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)+$'
+        old:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+          description: The all-zero ID for a create.
+        new:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+          description: The all-zero ID for a delete.
+        kind:
+          $ref: '#/components/schemas/UpdateKind'
+        state:
+          $ref: '#/components/schemas/EntryState'
+        reason:
+          type: string
+          nullable: true
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+          description: >-
+            Null unless the entry is refused or unknown. A refused entry carries a push refusal
+            reason (ref_protected, not_fast_forward, grant_scope, attempt_inactive,
+            repository_archived, seed_only, seed_consumed, integration_mismatch) or a settlement
+            reason (no_commit_intent, receive_aborted, ref_unchanged); an unknown entry one of
+            journal_unreadable, journal_regressed, evidence_missing, conflicting_evidence,
+            ref_diverged, operator_required.
+    PushRecord:
+      type: object
+      additionalProperties: false
+      required: [pushId, repositoryId, receiveId, actor, grantId, originRunId, status, entries, createdAt]
+      properties:
+        pushId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        repositoryId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        receiveId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        actor:
+          $ref: '#/components/schemas/PushActor'
+        grantId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+        originRunId:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
+          description: The run that made the push; null for a person.
+        status:
+          $ref: '#/components/schemas/PushStatus'
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 1024
+          items:
+            $ref: '#/components/schemas/PushEntry'
+        createdAt:
+          type: string
+          format: date-time
+    PushRecordList:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/PushRecord'
+        nextCursor:
+          type: string
+          nullable: true
+          pattern: '^[A-Za-z0-9._~+/=-]{1,512}$'

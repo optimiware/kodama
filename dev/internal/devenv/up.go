@@ -13,6 +13,9 @@ func (e *Environment) Up() error {
 	if err := e.SelectStack(); err != nil {
 		return err
 	}
+	if err := e.SelectGitHosting(); err != nil {
+		return err
+	}
 	if err := e.Prepare(); err != nil {
 		return err
 	}
@@ -25,9 +28,13 @@ func (e *Environment) Up() error {
 			return err
 		}
 		cluster := "kodama-" + e.Scope + "-" + owner[:8]
+		hosting := e.GitMode()
 		e.State = &State{
 			Root: Root(), Scope: e.Scope, Provider: e.Provider, Owner: owner,
 			Stack: e.Stack, Cluster: cluster, Nodes: map[string]string{},
+		}
+		if hosting != DefaultGitHosting {
+			e.State.GitHosting = hosting
 		}
 		if e.Stack == StackServices {
 			e.State.Network = cluster + "-net"
@@ -104,6 +111,9 @@ func (e *Environment) Up() error {
 	}
 	if err := WriteJSON(filepath.Join(e.Dir, "endpoints.json"), e.WorkloadEnv()); err != nil {
 		return err
+	}
+	if e.GitMode() == GitNative {
+		fmt.Printf("Git hosting: native. Start a tenant's worker with: make dev-git-worker DEV_SCOPE=%s GIT_TENANT=<tenant-id>\n", e.Scope)
 	}
 	if e.Stack == StackServices {
 		fmt.Printf("Ready: %s (%s), network: %s\n", e.Scope, e.State.Cluster, e.State.Network)

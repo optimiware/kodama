@@ -305,3 +305,15 @@ cluster-scoped reads of PersistentVolumes, VolumeAttachments and StorageClasses 
 `persistentvolumes`, `list` on `volumeattachments`, `get` on `storageclasses`; volumes are found by their claimRef).
 A preparation checkout request is `CheckoutRequest{Scope, RunID, StepID: "preparation", Access: read,
 RepositoryURL, Commit}` with no attempt and no workspace binding.
+
+## Kernel runtime adapter (`kernelrt/`, T-178)
+
+`kernelrt/` implements the `internal/kernel/runtime` `Runtime` and `ResourceManager` ports for Kubernetes
+(Job per step attempt, run workspace claim, run services) without importing the legacy execution,
+runtime-admission, gate or workspace packages or this package's executor. It is the replacement path for
+the retained behavior above (stable identity and adoption, fence records, UID-preconditioned deletes,
+restricted workload shape, orphan reconciliation, workspace release evidence); this package stays in
+place until the P3 cutover. Its package documentation lists what it enforces, what it refuses (source
+preparation, service secrets, non-run service lifetimes) and the limits of its fake-cluster evidence: the unit
+tests prove the mapping to API objects, not CSI, CNI, quota or kubelet behavior. Composition wiring and
+the kind-backed conformance profile belong to later tasks.

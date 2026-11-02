@@ -82,6 +82,9 @@ type Stack struct {
 	// ResourceConfig, when set before NewService, enables the run_shared resource
 	// subjects of every service built by this stack.
 	ResourceConfig *runtimeauth.ResourceConfig
+	// GitConfig, when set before NewService, enables the runtime Git grants of the
+	// source-set wire of every service built by this stack.
+	GitConfig *runtimeauth.GitConfig
 	// Resources is the committed-resource fixture and ResourceStore the grant
 	// store over it (PostgreSQL stacks only).
 	Resources     *ResourceAuthority
@@ -92,6 +95,9 @@ type Stack struct {
 type Options struct {
 	Conns  int32
 	Policy *runtimeauth.Policy
+	// AttemptGit also applies migration 014_attempt_git.sql (the runtime-issued Git
+	// grant records of the source-set wire).
+	AttemptGit bool
 }
 
 // New provisions the database, migrations, services and HTTP handler.
@@ -105,7 +111,11 @@ func New(t testing.TB, o Options) *Stack {
 		conns = 16
 	}
 	s := &Stack{T: t, DB: db, Owner: db.MigrationPool(ctx, 4), Runtime: db.RuntimePool(ctx, conns), Clock: NewClock(), Faults: &Faults{}, Logs: &SafeBuffer{}}
-	manifest, err := storage.NewManifest(storage.BaseContribution(), rtpg.ResourceMigrations())
+	contributions := []storage.Contribution{storage.BaseContribution(), rtpg.ResourceMigrations()}
+	if o.AttemptGit {
+		contributions = append(contributions, rtpg.AttemptGitMigrations())
+	}
+	manifest, err := storage.NewManifest(contributions...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +163,7 @@ func (s *Stack) NewService(pol runtimeauth.Policy, store runtimeauth.Store, atte
 		Store: &faultStore{inner: store, f: s.Faults}, Attempts: &faultAttempts{inner: attempts, f: s.Faults}, Jobs: &faultJobs{inner: jobs, f: s.Faults},
 		Tokens: &faultIssuer{inner: issuer, f: s.Faults}, Verifier: s.Verifier,
 		Wrapper: runtimeauth.ExactWrapperPolicy{Supported: []string{"1.4.0"}},
-		Policy:  pol, Clock: s.Clock.Now, Logger: newLogger(s.Logs), Resources: s.ResourceConfig,
+		Policy:  pol, Clock: s.Clock.Now, Logger: newLogger(s.Logs), Resources: s.ResourceConfig, Git: s.GitConfig,
 	})
 	if err != nil {
 		s.T.Fatal(err)

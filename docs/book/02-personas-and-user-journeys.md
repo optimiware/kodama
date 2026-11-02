@@ -2,40 +2,29 @@
 
 | Persona | Work |
 | --- | --- |
-| Analyst | Describe a business gap and acceptance; review outcomes |
-| Engineer | Refine specifications, edit/push source, supervise automation |
-| Reviewer | Inspect evidence and record a human decision |
-| Administrator | Manage memberships, project settings, credentials, capacity |
-| Operator | Install, observe, upgrade, restore |
-| Agent | Execute a bounded objective under workload identity |
+| Engineer | Configure projects, `.kodama/<processname>.yaml` pipelines, and knowledge base repos; clone/push code; supervise autonomous runs |
+| Reviewer / Approver | Resolve role-inbox decision and production promotion tasks (`kodactl` / MCP / API) |
+| Operator / Admin | Manage tenant/project RBAC memberships, secrets, scoped services, and cluster installation |
+| Agent (Mode A or B) | Execute coding, review, testing, guardrail, and release steps inside a project space |
 
-Roles compose. Analysts who accept work also receive reviewer authority. Automation never inherits human review permission.
+## Journey J-01: Autonomous task to preview and promotion
 
-## Journey J-01: an ERP inventory exception application
+1. **Task creation:** A user or upstream integration creates a task in project `erp`, selecting its project-unique `sdlc` pipeline.
+2. **Planning:** The task's run starts `sdlc`; a Mode B `kodama agent` reads `<tenant>/context` and `<tenant>/erp/context`, inspects the target repository, writes the implementation plan into the task context, and continues to the next step.
+3. **Implementation:** A Mode A step (`opencode` or `claude-code`) implements the feature in `/workspace`, runs tests against a project- or pipeline-scoped PostgreSQL service, commits and pushes the branch to the native Git service, and continues.
+4. **Agentic review and testing:** A Mode B `kodama agent` runs guardrails and validation skills against the diff and test outputs. The pipeline selects the rework or test branch from the recorded result.
+5. **Preview and promotion wait:** The pipeline builds and publishes the artifact to an external registry, records artifact metadata in Kodama, deploys the preview, and enters a durable wait assigned to the `reviewer` role.
+6. **Human promotion decision:** A reviewer checks the role inbox via `kodactl` or MCP, inspects the preview and artifact metadata, and records an approval or rejection against the exact run, step, and wait. NATS relays the committed signal, the same run resumes, and the pipeline selects the promotion or rework branch.
 
-1. Analyst creates a story with `spec` and acceptance criteria.
-2. Engineer adds the plan within the spec and selects blueprint guidance.
-3. Human pulls ready work into active WIP capacity.
-4. Factory provisions a Git work branch; humans clone/push using existing editors.
-5. An optional prototype clarifies interaction; feedback updates the content revision.
-6. Agent or engineer creates a committed candidate and tests.
-7. A pipeline gathers evidence and waits for a human gate without compute.
-8. Ordinary build/deploy steps publish a verified image and preview.
-9. Stage promotion reuses the image with explicit runtime configuration.
-10. E2E and exploratory QA produce deployment-bound evidence and defect work items.
-11. Human accepts or rejects the outcome; rejection returns the work item to active work.
-12. Explicit human completion closes the item. ChatOps reports meaningful events throughout.
+## Journey J-02: Ambiguity and wait resolution
 
-See the [worked example](../examples/workflows/erp-gap-to-preview.md) and [staging continuation](../examples/workflows/staging-and-acceptance.md).
+When an agent encounters a missing requirement or policy conflict during `plan` or `implement`:
 
-## Journey J-02: failure and rework
+1. The pipeline enters a durable wait assigned to the appropriate role inbox (for example `engineer` or `reviewer`) with the specific question and expected input.
+2. No container compute or worker is held while the run waits; retained workspace and service lifetimes are bounded and explicit.
+3. A human records an answer through `kodactl` or MCP against that exact wait.
+4. NATS emits the committed wait signal, the same run resumes, and the pipeline selects its answered or rework branch with the recorded decision in the run context.
 
-An attempt fails or asks for missing input. Its result/question and available diagnostics remain visible. The human revises intent or source and starts a new run from an accepted commit. A node loss can lose uncommitted scratch files; Git retains confirmed source. Unknown external effects are reconciled before repeat.
+## Journey J-03: Multi-tenant isolation
 
-## Journey J-03: second tenant
-
-Administrator grants memberships and creates a project with isolated data access, execution namespace, quotas, and credentials. Copied artifact/log/source/run identifiers cannot disclose the other tenant's resources. The declared execution trust profile governs what tenant code may run.
-
-## Journey J-04: install and recover
-
-Operator configures supported PostgreSQL, NATS, Git, S3, registry, OIDC, and KMS integrations. Helm installs one server. A recovery drill verifies source retention, secret decryptability, old-controller fencing, and a new safe execution after restore.
+An admin creates a tenant and projects. Tenant and project knowledge bases (`<tenant>/context`, `<tenant>/<project>/context`), repositories (`<tenant>/<project>/*`), secrets, services, and database rows (enforced via PostgreSQL RLS) are isolated per tenant. Steps and agents running in `<project>` can access only what is configured in that project space and tenant context.

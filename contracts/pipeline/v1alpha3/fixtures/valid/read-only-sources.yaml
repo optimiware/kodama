@@ -1,0 +1,16 @@
+apiVersion: kodama/v1alpha3
+kind: Pipeline
+metadata: {name: read-only-sources}
+spec:
+  timeoutSeconds: 1800
+  sources:
+    - {repository: service-api, path: api, access: read}
+    - {repository: service-web, path: web/app, access: read}
+    - {repository: tooling, path: tools, access: read}
+  steps:
+    - id: verify
+      kind: container
+      image: registry.example.invalid/tools@sha256:4444444444444444444444444444444444444444444444444444444444444444
+      command: [/bin/sh, -ec]
+      args: ["./tools/verify.sh api web/app"]
+      timeoutSeconds: 600

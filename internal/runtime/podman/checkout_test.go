@@ -105,6 +105,25 @@ func (r *registrar) count() int {
 	return len(r.cmds)
 }
 
+// registrarV2 is a registrar that also serves the run_shared wire.
+type registrarV2 struct {
+	registrar
+	cmds2 []runtimeauth.RegisterCommandV2
+}
+
+func (r *registrarV2) RegisterV2(_ context.Context, cmd runtimeauth.RegisterCommandV2) (runtimeauth.Registration, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cmds2 = append(r.cmds2, cmd)
+	return runtimeauth.Registration{}, nil
+}
+
+func (r *registrarV2) v2() []runtimeauth.RegisterCommandV2 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.cmds2)
+}
+
 type checkoutEnv struct {
 	fake  fakeEnv
 	state string

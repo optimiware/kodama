@@ -148,6 +148,12 @@ func Test_unit_runprofile_guard(t *testing.T) {
 		"unknown localhost seccomp": func(p map[string]any) {
 			p["spec"].(map[string]any)["securityContext"] = map[string]any{"seccompProfile": map[string]any{"type": "Localhost", "localhostProfile": "other.json"}, "runAsNonRoot": true, "runAsUser": 1000}
 		},
+		"v1 localhost apparmor": func(p map[string]any) {
+			setContainerSC(p, "appArmorProfile", map[string]any{"type": "Localhost", "localhostProfile": "kodama-rootless-build-v1"})
+		},
+		"v1 apparmor annotation": func(p map[string]any) {
+			p["metadata"].(map[string]any)["annotations"] = map[string]any{"container.apparmor.security.beta.kubernetes.io/main": "localhost/kodama-rootless-build-v1"}
+		},
 		"unknown localhost apparmor": func(p map[string]any) {
 			setContainerSC(p, "appArmorProfile", map[string]any{"type": "Localhost", "localhostProfile": "my-profile"})
 		},
@@ -194,6 +200,10 @@ func Test_unit_runprofile_guard(t *testing.T) {
 	if err := runprofile.Guard(p, "abc"); err != nil {
 		t.Errorf("step role shape refused: %v", err)
 	}
+	if runprofile.StepAppArmorProfile != "kodama-rootless-build-v2" || runprofile.StepAppArmorKernelState != "kodama-rootless-build-v2 (unconfined)" ||
+		runprofile.StepSeccompProfile != "kodama/kodama-rootless-build-v1.json" {
+		t.Errorf("step profile names changed: %s %s %s", runprofile.StepAppArmorProfile, runprofile.StepAppArmorKernelState, runprofile.StepSeccompProfile)
+	}
 	// procMount: Unmasked is allowed only inside that exact shape.
 	setContainerSC(p, "procMount", "Unmasked")
 	if err := runprofile.Guard(p, "abc"); err != nil {
@@ -208,6 +218,12 @@ func Test_unit_runprofile_guard(t *testing.T) {
 		"host users": func(p map[string]any) { p["spec"].(map[string]any)["hostUsers"] = true },
 		"unconfined apparmor": func(p map[string]any) {
 			setContainerSC(p, "appArmorProfile", map[string]any{"type": "Unconfined"})
+		},
+		"unconfined apparmor at pod level": func(p map[string]any) {
+			p["spec"].(map[string]any)["securityContext"].(map[string]any)["appArmorProfile"] = map[string]any{"type": "Unconfined"}
+		},
+		"v1 apparmor": func(p map[string]any) {
+			p["spec"].(map[string]any)["securityContext"].(map[string]any)["appArmorProfile"] = map[string]any{"type": "Localhost", "localhostProfile": "kodama-rootless-build-v1"}
 		},
 		"hostPath": func(p map[string]any) {
 			p["spec"].(map[string]any)["volumes"] = []any{map[string]any{"name": "h", "hostPath": map[string]any{"path": "/"}}}

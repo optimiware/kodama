@@ -115,7 +115,7 @@ func (r RunShared) Digest() (string, error) {
 // context version. A controller that does not must never start, adopt, stop or
 // remove the run.
 func (r RunShared) Supported() error {
-	if r.RunModel != RunModelShared || r.ContextVersion != SharedContextVersion {
+	if r.RunModel != RunModelShared || (r.ContextVersion != SharedContextVersion && r.ContextVersion != SourceContextVersion) {
 		return invalidf("the run model is not supported by this controller")
 	}
 	return nil
@@ -240,6 +240,9 @@ type sharedInput struct {
 	SourceBacked  bool
 	RepositoryURL string
 	Snapshot      Snapshot
+	// Sources is the source-set pin of a run executing under context v3; nil for
+	// every run of the earlier models.
+	Sources *RunSources
 }
 
 // planSharedPins derives and validates every pin of a run_shared run. Any
@@ -249,7 +252,7 @@ func planSharedPins(in sharedInput) (*RunShared, error) {
 	if err := pol.Validate(); err != nil {
 		return nil, Refusedf("%s", ReasonPolicyUnavailable)
 	}
-	if in.SourceBacked {
+	if in.SourceBacked && in.Sources == nil {
 		// The checkout identity is persisted in the preparation spec: it must be a
 		// plain HTTPS repository URL that carries no credential.
 		u, err := url.Parse(in.RepositoryURL)
@@ -292,6 +295,12 @@ func planSharedPins(in sharedInput) (*RunShared, error) {
 			out = append(out, n)
 		}
 		return out, nil
+	}
+	if in.Sources != nil {
+		// A source-set run executes under runtime context v3; its checkout is the
+		// pinned set (every URL was validated with the set), not one repository URL.
+		shared.ContextVersion = SourceContextVersion
+		shared.RepositoryURL = ""
 	}
 	for _, st := range doc.Spec.Steps {
 		if !st.Executable() {
@@ -550,6 +559,14 @@ func BuildResourceSpecs(run *Run, deadline time.Time) ([]ResourceSpec, error) {
 		p.Preparation = &PreparationSpec{
 			Image: sh.PolicyBody.Roles[RolePreparation].Image, RepositoryURL: sh.RepositoryURL, Commit: run.SourceCommit,
 			TimeoutSecs: pl.PreparationTimeoutSeconds, MaxBytes: pl.PreparationMaxBytes, MaxAttempts: pl.PreparationAttempts,
+		}
+		if run.Sources != nil {
+			// One preparation checks out the whole pinned set, in path order.
+			p.Preparation.RepositoryURL, p.Preparation.Commit = "", ""
+			for _, e := range run.Sources.Entries {
+				p.Preparation.Sources = append(p.Preparation.Sources, PreparationSourceSpec{
+					RepositoryID: e.RepositoryID, RepositoryURL: e.URL, Commit: e.Commit, Path: e.Path})
+			}
 		}
 		out = append(out, p)
 	}

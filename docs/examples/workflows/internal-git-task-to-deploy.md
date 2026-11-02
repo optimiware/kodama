@@ -1,6 +1,6 @@
 # Example: internal Git, from task to deployment
 
-**Target:** the designed internal Git service ([ADR 0011](../../adr/0011-internal-tenant-git-service.md), T-125–T-133). Nothing here is served yet. CLI commands marked *planned* are the intended interface of T-132; hosts, IDs, commits and images are placeholders (`example.invalid`, repeated-character commits). Normative rules: [Git repositories](../../specs/git-repositories.md), [Git service contract](../../contracts/git-service.md).
+**Target:** the designed internal Git service ([ADR 0011](../../adr/0011-internal-tenant-git-service.md), T-125–T-157). Nothing here is served yet. CLI commands marked *planned* are the intended interface of T-132; hosts, IDs, commits and images are placeholders (`example.invalid`, repeated-character commits). Normative rules: [Git repositories](../../specs/git-repositories.md), [Git service contract](../../contracts/git-service.md).
 
 ## 1. A new project, provisioned by an agent
 
@@ -16,7 +16,7 @@ kodama work transition wi_1042 --to ready
 A provisioning pipeline starts for the ready item (`origin: provision`, no repository yet). Its agent calls the `repository.create` MCP tool:
 
 ```json
-{"tool": "repository.create", "arguments": {"name": "backend", "defaultBranch": "main", "policy": {"directPushToDefault": false}}}
+{"tool": "repository.create", "arguments": {"name": "backend", "defaultBranch": "main"}}
 ```
 
 Kodama reserves `repo_01`, the tenant's Git worker initializes the bare repository, and `repository.created` is emitted. The provisioning attempt holds a seed grant, so its first push to `main` is accepted; any other ref or repository is refused.
@@ -46,19 +46,26 @@ When both runs succeed, a merge run starts. Its writer step holds the work item'
 
 A revert is another task: a pipeline creates a revert commit and goes through the same path, or redeploys a previously built image by digest. Nobody resets `main`.
 
-## 4. An existing project, pushed by a developer
+## 4. An existing project, bootstrapped by a developer push
+
+Kodama does not import from GitHub or other hosts (O-32). The engineer pushes the existing history instead:
 
 ```sh
-# planned CLI: create the repository and configure Git credentials
-kodama repo create --project billing --direct-push-to-default=true billing-api
+# planned CLI: create an empty repository (default branch protected by default, O-33)
+kodama repo create --project billing billing-api
 git config --global credential.https://git.example.invalid.helper "kodama git credential"
 
-# ordinary Git from here on
+# request a single-use seed grant for the empty repository, then push the local history
+kodama repo seed --project billing billing-api
 git remote add kodama https://git.example.invalid/git/acme/billing/billing-api.git
-git push kodama main
+git push kodama main            # the seed: creates main only
+git push kodama --all           # ordinary engineer pushes of the other branches
+git push kodama --tags          # and of the tags
 ```
 
-Because the repository is empty, the developer's first push to `main` counts as the seed. Kodama records the push and the CI/CD trigger starts one run for exactly the pushed commit. The repository was created with `--direct-push-to-default=true`, so later pushes to `main` by an engineer also start CI/CD directly. Created with `false` (the recommended default under O-33), only the seed push may target `main`: the developer pushes a task branch and the integration pipeline advances `main`.
+The seed grant allows exactly one receive, whose only update creates `main`; other branches and tags follow as ordinary pushes. Commit IDs are preserved. Kodama records the push, and the project's CI/CD trigger starts one run for exactly the pushed commit. A second `git push kodama main` with the same credential is refused (`seed_consumed`).
+
+From then on `main` is protected: the developer pushes a task branch and the integration pipeline advances `main`. A repository created with `--direct-push-to-default=true` would also accept an engineer's direct fast-forward to `main`.
 
 ## What to check
 

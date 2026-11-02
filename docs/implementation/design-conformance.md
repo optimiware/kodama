@@ -1,6 +1,6 @@
 # Design conformance and drift control
 
-**Status:** contribution/review procedure now; agent-produced evidence is a proposed M2 contract implemented by T-031/T-034. This procedure uses existing source revisions, run context, artifacts, and gate evidence rather than introducing a design-policy service.
+**Status:** contribution/review procedure now; managed agent-produced evidence is a proposed M2 contract implemented by T-031/T-034. [ADR 0012](../adr/0012-container-sdlc-and-artifact-releases.md) scopes the product requirement to pinned profiles/projects that require it; a generic container is not required to implement a conformance protocol merely because it invokes an agent. This repository's own contribution/review requirements still apply. The procedure uses existing source revisions, run context, artifacts, and gate evidence rather than introducing a design-policy service.
 
 ## One owner per fact
 
@@ -33,7 +33,7 @@ Before implementation, record the smallest relevant baseline in the task handoff
 
 Use paths at the pinned source revision for local design documents and immutable upstream references for external ones. Prompts must not resolve `main`, `latest`, or an unversioned blueprint again midway through a run. A new baseline starts a new run or reviewed task revision; historical evidence keeps its original baseline. The baseline contains references and safe metadata, not credentials or copied tenant responses.
 
-For agent runs, deliver this baseline through the existing pinned specification/instruction context. T-003/T-030/T-031 freeze and test its serialization with the runtime context; no independently invented API fields are implied by this review template. Evidence is an ordinary declared artifact, included by ID and digest in the existing gate subject.
+For managed agent runs requiring conformance, deliver this baseline through the existing pinned specification/instruction context. T-003/T-030/T-031 freeze and test its serialization with the runtime context; no independently invented API fields are implied by this review template. Evidence is an ordinary declared artifact, included by ID and digest in the existing gate subject.
 
 ### Agent report contract
 

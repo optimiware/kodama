@@ -441,7 +441,7 @@ func (s *Service) provision(ctx context.Context, ref RunRef, res RunResources, v
 			view = step(s.ensureResource(ctx, ref, res, key))
 			return
 		}
-		if r.Kind == KindPreparation && r.Receipt != nil {
+		if r.Kind == KindPreparation && r.HasReceipt() {
 			return // handled below: stopped, never observed as running again
 		}
 		view = step(s.observeResource(ctx, ref, res, key, nil))
@@ -456,7 +456,7 @@ func (s *Service) provision(ctx context.Context, ref RunRef, res RunResources, v
 	}
 	if view.Run.Shared.SourceBacked {
 		drive(KeyPreparation)
-		if p := view.Resource(KeyPreparation); p != nil && p.Receipt != nil && !p.Stopped() && !view.Run.Draining() {
+		if p := view.Resource(KeyPreparation); p != nil && p.HasReceipt() && !p.Stopped() && !view.Run.Draining() {
 			// The receipt is recorded: the preparation workload must be verified
 			// stopped (its credentials gone) before the workspace is ready.
 			view = step(s.stopResource(ctx, ref, res, KeyPreparation, ResourceReasonCompleted))

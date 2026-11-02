@@ -406,11 +406,11 @@ func (s *Store) Request(ctx context.Context, p *gates.RequestPlan) (*gates.Gate,
 			return nil
 		}
 		verify := func(agg *execution.Aggregate) error {
-			in, err := agg.GateInputs(g.StepID)
+			in, set, err := gates.ResolveInputs(agg, g.StepID)
 			if err != nil {
 				return err
 			}
-			if !reflect.DeepEqual(in, p.Inputs) {
+			if !reflect.DeepEqual(in, p.Inputs) || !reflect.DeepEqual(set, p.SourceSet) {
 				return fmt.Errorf("%w: the gate inputs changed while it was prepared", execution.ErrStale)
 			}
 			return nil
@@ -456,11 +456,11 @@ func (s *Store) loadFacts(ctx context.Context, tx memdb.Tx, g *gates.Gate, agg *
 	if step == nil {
 		return f, gates.ErrNotFound
 	}
-	in, err := agg.GateInputs(g.StepID)
+	in, set, err := gates.ResolveInputs(agg, g.StepID)
 	if err != nil {
 		return f, fmt.Errorf("%w: the gate inputs cannot be resolved: %v", gates.ErrStaleSubject, err)
 	}
-	f.Inputs = in
+	f.Inputs, f.SourceSet = in, set
 	f.StepWaiting = forceWaiting || (step.Status == execution.StepPending && agg.Run.AcceptsDispatch())
 	w, ok := workTable.Get(tx, projectKey(g.Scope, string(in.WorkItemID)))
 	if !ok {

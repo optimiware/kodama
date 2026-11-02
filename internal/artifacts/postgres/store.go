@@ -11,6 +11,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -31,11 +32,19 @@ import (
 type Config struct {
 	// DB begins transactions; use the non-owner runtime pool (*storage.Pool).
 	DB storage.TxBeginner
+	// SourceProvenance enables the source-set columns of migration
+	// 013_source_provenance.sql (SourceProvenanceMigrations): provenance by
+	// source set is read and written. Without it the store reads and writes only
+	// the single repository and commit, so a composition whose schema does not
+	// have the migration yet is unaffected, and a source-set provenance is
+	// refused instead of being recorded as a different source.
+	SourceProvenance bool
 }
 
 // Store implements artifacts.Repository and artifacts.CleanupStore.
 type Store struct {
-	db storage.TxBeginner
+	db         storage.TxBeginner
+	sourceSets bool
 }
 
 // NewStore validates cfg.
@@ -43,7 +52,7 @@ func NewStore(cfg Config) (*Store, error) {
 	if cfg.DB == nil {
 		return nil, errors.New("artifacts/postgres: DB is required")
 	}
-	return &Store{db: cfg.DB}, nil
+	return &Store{db: cfg.DB, sourceSets: cfg.SourceProvenance}, nil
 }
 
 var (
@@ -105,9 +114,18 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, 'artifact', $8, $9, $10, $11)`,
 
 // ---- row mapping ----------------------------------------------------------
 
-const artifactColumns = `tenant_id, project_id, id, run_id, attempt_id, step_id, name, kind, role, digest, media_type, size_bytes, registry,
+const artifactColumnsBase = `tenant_id, project_id, id, run_id, attempt_id, step_id, name, kind, role, digest, media_type, size_bytes, registry,
 source_repository_url, source_commit, state, disposition, staging_key, sealed_key, transfer_expires_at, verified_at, verified_size_bytes,
 claim_token, claim_generation, claim_until, created_at, updated_at, version`
+
+// columns lists the artifact columns scanArtifact reads: the source-set pair is
+// selected only when the schema has it, NULL otherwise.
+func (s *Store) columns() string {
+	if s.sourceSets {
+		return artifactColumnsBase + `, source_set_digest, source_commits`
+	}
+	return artifactColumnsBase + `, NULL::text, NULL::jsonb`
+}
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -138,21 +156,27 @@ func scanRecord(r rowScanner) (artifacts.Record, error) {
 		tenant, project, id, run, attempt, step, name, kind, role, digest, state, disp string
 		mediaType, registry, srcURL, srcCommit, staging, sealed, claimToken            *string
 		size, verifiedSize                                                             *int64
+		setDigest                                                                      *string
+		setCommits                                                                     []byte
 		transferExp, verifiedAt, claimUntil                                            *time.Time
 		claimGen, version                                                              int64
 		created, updated                                                               time.Time
 	)
 	if err := r.Scan(&tenant, &project, &id, &run, &attempt, &step, &name, &kind, &role, &digest, &mediaType, &size, &registry,
 		&srcURL, &srcCommit, &state, &disp, &staging, &sealed, &transferExp, &verifiedAt, &verifiedSize,
-		&claimToken, &claimGen, &claimUntil, &created, &updated, &version); err != nil {
+		&claimToken, &claimGen, &claimUntil, &created, &updated, &version, &setDigest, &setCommits); err != nil {
 		return artifacts.Record{}, err
+	}
+	prov, err := scanProvenance(str(srcURL), str(srcCommit), setDigest, setCommits)
+	if err != nil {
+		return artifacts.Record{}, fmt.Errorf("%w: %v", artifacts.ErrInconsistent, err)
 	}
 	res := artifacts.Reservation{
 		Scope:   domain.Scope{TenantID: domain.TenantID(tenant), ProjectID: domain.ProjectID(project)},
 		Attempt: domain.AttemptID(attempt), Run: domain.RunID(run), Step: step, Name: name,
 		Kind: artifacts.Kind(kind), Role: artifacts.Role(role), Digest: artifacts.Digest(digest),
 		MediaType: str(mediaType), Size: size, Registry: str(registry),
-		Provenance: artifacts.Provenance{RepositoryURL: str(srcURL), Commit: str(srcCommit)},
+		Provenance: prov,
 	}
 	rec := artifacts.Record{
 		ID: domain.ArtifactID(id), Reservation: res, State: artifacts.State(state), Disposition: artifacts.Disposition(disp),
@@ -171,7 +195,7 @@ func scanRecord(r rowScanner) (artifacts.Record, error) {
 // table, absent from a database that never applied the migration) and restores
 // the artifact.
 func restore(ctx context.Context, tx pgx.Tx, rec artifacts.Record) (artifacts.Artifact, error) {
-	if rec.Reservation.Provenance.IsZero() {
+	if p := rec.Reservation.Provenance; p.IsZero() || !p.SourceSet.IsZero() {
 		return artifacts.Restore(rec)
 	}
 	ok, err := hasProvenanceTable(ctx, tx)
@@ -204,8 +228,59 @@ func hasProvenanceTable(ctx context.Context, tx pgx.Tx) (bool, error) {
 	return present, err
 }
 
-func getArtifact(ctx context.Context, tx pgx.Tx, scope domain.Scope, id domain.ArtifactID, lock string) (artifacts.Artifact, error) {
-	q := `SELECT ` + artifactColumns + ` FROM artifacts WHERE tenant_id = $1 AND project_id = $2 AND id = $3`
+// sourceCommitJSON is the stored form of one source commit.
+type sourceCommitJSON struct {
+	RepositoryID string `json:"repositoryId"`
+	Commit       string `json:"commit"`
+}
+
+// encodeSourceSet returns the digest and the stored per-repository commits of a
+// provenance's source set, both nil for a provenance without one.
+func encodeSourceSet(set artifacts.SourceSet) (*string, []byte, error) {
+	if set.IsZero() {
+		return nil, nil, nil
+	}
+	commits := set.Commits()
+	out := make([]sourceCommitJSON, len(commits))
+	for i, c := range commits {
+		out[i] = sourceCommitJSON{RepositoryID: c.RepositoryID, Commit: c.Commit}
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return nil, nil, err
+	}
+	digest := set.Digest
+	return &digest, raw, nil
+}
+
+// scanProvenance rebuilds the provenance of a row: a single source, a source
+// set or none. A row that violates the shape is inconsistent, never usable.
+func scanProvenance(url, commit string, digest *string, commits []byte) (artifacts.Provenance, error) {
+	if digest == nil && commits == nil {
+		return artifacts.Provenance{RepositoryURL: url, Commit: commit}, nil
+	}
+	if digest == nil || commits == nil || url != "" || commit != "" {
+		return artifacts.Provenance{}, errors.New("a source set and a single source are alternatives")
+	}
+	var stored []sourceCommitJSON
+	dec := json.NewDecoder(bytes.NewReader(commits))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&stored); err != nil {
+		return artifacts.Provenance{}, err
+	}
+	list := make([]artifacts.SourceCommit, len(stored))
+	for i, c := range stored {
+		list[i] = artifacts.SourceCommit{RepositoryID: c.RepositoryID, Commit: c.Commit}
+	}
+	set, err := artifacts.NewSourceSet(*digest, list)
+	if err != nil {
+		return artifacts.Provenance{}, err
+	}
+	return artifacts.Provenance{SourceSet: set}, nil
+}
+
+func (s *Store) getArtifact(ctx context.Context, tx pgx.Tx, scope domain.Scope, id domain.ArtifactID, lock string) (artifacts.Artifact, error) {
+	q := `SELECT ` + s.columns() + ` FROM artifacts WHERE tenant_id = $1 AND project_id = $2 AND id = $3`
 	if lock != "" {
 		q += ` ` + lock
 	}
@@ -225,7 +300,7 @@ func getArtifact(ctx context.Context, tx pgx.Tx, scope domain.Scope, id domain.A
 func (s *Store) Get(ctx context.Context, scope domain.Scope, id domain.ArtifactID) (artifacts.Artifact, error) {
 	var a artifacts.Artifact
 	err := s.read(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) (err error) {
-		a, err = getArtifact(ctx, tx, scope, id, "")
+		a, err = s.getArtifact(ctx, tx, scope, id, "")
 		return err
 	})
 	return a, err
@@ -248,14 +323,14 @@ func (s *Store) GetForAttempt(ctx context.Context, scope domain.Scope, attempt d
 func (s *Store) FindByName(ctx context.Context, scope domain.Scope, attempt domain.AttemptID, name string) (artifacts.Artifact, error) {
 	var a artifacts.Artifact
 	err := s.read(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) (err error) {
-		a, err = findByName(ctx, tx, scope, attempt, name)
+		a, err = s.findByName(ctx, tx, scope, attempt, name)
 		return err
 	})
 	return a, err
 }
 
-func findByName(ctx context.Context, tx pgx.Tx, scope domain.Scope, attempt domain.AttemptID, name string) (artifacts.Artifact, error) {
-	rec, err := scanRecord(tx.QueryRow(ctx, `SELECT `+artifactColumns+` FROM artifacts
+func (s *Store) findByName(ctx context.Context, tx pgx.Tx, scope domain.Scope, attempt domain.AttemptID, name string) (artifacts.Artifact, error) {
+	rec, err := scanRecord(tx.QueryRow(ctx, `SELECT `+s.columns()+` FROM artifacts
 WHERE tenant_id = $1 AND project_id = $2 AND attempt_id = $3 AND name = $4`, string(scope.TenantID), string(scope.ProjectID), string(attempt), name))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return artifacts.Artifact{}, artifacts.ErrNotFound
@@ -277,7 +352,7 @@ func (s *Store) ReferencesForAttempt(ctx context.Context, scope domain.Scope, at
 		list[i] = string(id)
 	}
 	err := s.read(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT `+artifactColumns+` FROM artifacts
+		rows, err := tx.Query(ctx, `SELECT `+s.columns()+` FROM artifacts
 WHERE tenant_id = $1 AND project_id = $2 AND attempt_id = $3 AND id = ANY($4)`, string(scope.TenantID), string(scope.ProjectID), string(attempt), list)
 		if err != nil {
 			return err
@@ -326,7 +401,7 @@ func (s *Store) Reserve(ctx context.Context, cmd artifacts.ReserveCommand) (arti
 		if err := lockAttempt(ctx, tx, res.Scope, res.Attempt); err != nil {
 			return err
 		}
-		existing, err := findByName(ctx, tx, res.Scope, res.Attempt, res.Name)
+		existing, err := s.findByName(ctx, tx, res.Scope, res.Attempt, res.Name)
 		if err == nil {
 			out = artifacts.ReserveResult{Artifact: existing}
 			return nil
@@ -339,7 +414,7 @@ func (s *Store) Reserve(ctx context.Context, cmd artifacts.ReserveCommand) (arti
 				return err
 			}
 		}
-		if err := insertArtifact(ctx, tx, a); err != nil {
+		if err := s.insertArtifact(ctx, tx, a); err != nil {
 			return err
 		}
 		if a.Kind() == artifacts.KindFile {
@@ -361,8 +436,8 @@ VALUES ($1, $2, $3, $4, 'staging', 0, 'live', $5, $6)`, string(res.Scope.TenantI
 	return out, err
 }
 
-func insertArtifact(ctx context.Context, tx pgx.Tx, a artifacts.Artifact) error {
-	if err := insertArtifactRow(ctx, tx, a); err != nil {
+func (s *Store) insertArtifact(ctx context.Context, tx pgx.Tx, a artifacts.Artifact) error {
+	if err := s.insertArtifactRow(ctx, tx, a); err != nil {
 		return err
 	}
 	p := a.Reservation().Provenance
@@ -384,7 +459,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)`, string(r.Scope.TenantID), string(r.Scope.P
 	return err
 }
 
-func insertArtifactRow(ctx context.Context, tx pgx.Tx, a artifacts.Artifact) error {
+func (s *Store) insertArtifactRow(ctx context.Context, tx pgx.Tx, a artifacts.Artifact) error {
 	r := a.Reservation()
 	var size *int64
 	if r.Size != nil {
@@ -400,14 +475,28 @@ func insertArtifactRow(ctx context.Context, tx pgx.Tx, a artifacts.Artifact) err
 			verifiedSize = &vs
 		}
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO artifacts (tenant_id, project_id, id, run_id, attempt_id, step_id, name, kind, role, digest, media_type, size_bytes, registry,
- source_repository_url, source_commit, state, disposition, staging_key, sealed_key, transfer_expires_at, verified_at, verified_size_bytes,
- claim_generation, created_at, updated_at, version)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,0,$23,$24,$25)`,
+	setDigest, setCommits, err := encodeSourceSet(r.Provenance.SourceSet)
+	if err != nil {
+		return err
+	}
+	cols, params := ``, ``
+	args := []any{
 		string(r.Scope.TenantID), string(r.Scope.ProjectID), string(a.ID()), string(r.Run), string(r.Attempt), r.Step, r.Name, string(r.Kind), string(r.Role), string(r.Digest),
 		nullable(r.MediaType), size, nullable(r.Registry), nullable(r.Provenance.RepositoryURL), nullable(r.Provenance.Commit),
 		string(a.State()), string(a.Disposition()), nullable(a.StagingKey()), nullable(a.SealedKey()), a.TransferExpiresAt(), verifiedAt, verifiedSize,
-		a.CreatedAt(), a.UpdatedAt(), int64(a.Version()))
+		a.CreatedAt(), a.UpdatedAt(), int64(a.Version()),
+	}
+	switch {
+	case s.sourceSets:
+		cols, params = `, source_set_digest, source_commits`, `,$26,$27`
+		args = append(args, setDigest, setCommits)
+	case setDigest != nil:
+		return fmt.Errorf("%w: source set provenance needs the source provenance migration", artifacts.ErrUnavailable)
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO artifacts (tenant_id, project_id, id, run_id, attempt_id, step_id, name, kind, role, digest, media_type, size_bytes, registry,
+ source_repository_url, source_commit, state, disposition, staging_key, sealed_key, transfer_expires_at, verified_at, verified_size_bytes,
+ claim_generation, created_at, updated_at, version`+cols+`)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,0,$23,$24,$25`+params+`)`, args...)
 	return err
 }
 
@@ -480,7 +569,7 @@ WHERE tenant_id = $1 AND project_id = $2 AND artifact_id = $3 AND purpose = 'sta
 func (s *Store) BeginCompletion(ctx context.Context, cmd artifacts.BeginCompletion) (artifacts.ClaimResult, error) {
 	var out artifacts.ClaimResult
 	err := s.write(ctx, cmd.Scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		a, err := getArtifact(ctx, tx, cmd.Scope, cmd.ID, "FOR UPDATE")
+		a, err := s.getArtifact(ctx, tx, cmd.Scope, cmd.ID, "FOR UPDATE")
 		if err != nil {
 			return err
 		}
@@ -507,7 +596,7 @@ WHERE tenant_id = $1 AND project_id = $2 AND id = $3`, string(cmd.Scope.TenantID
 VALUES ($1, $2, $3, $4, 'candidate', $5, 'live', $6, $7)`, string(cmd.Scope.TenantID), string(cmd.Scope.ProjectID), string(cmd.ID), cmd.Destination, gen, until, cmd.Now); err != nil {
 			return err
 		}
-		a, err = getArtifact(ctx, tx, cmd.Scope, cmd.ID, "")
+		a, err = s.getArtifact(ctx, tx, cmd.Scope, cmd.ID, "")
 		if err != nil {
 			return err
 		}
@@ -535,7 +624,7 @@ WHERE tenant_id = $1 AND project_id = $2 AND id = $3 AND claim_token = $4 AND st
 func (s *Store) CommitUsable(ctx context.Context, cmd artifacts.CommitCommand) (artifacts.Artifact, error) {
 	var out artifacts.Artifact
 	err := s.write(ctx, cmd.Scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		a, err := getArtifact(ctx, tx, cmd.Scope, cmd.ID, "FOR UPDATE")
+		a, err := s.getArtifact(ctx, tx, cmd.Scope, cmd.ID, "FOR UPDATE")
 		if err != nil {
 			return err
 		}
@@ -575,7 +664,7 @@ WHERE tenant_id = $1 AND project_id = $2 AND id = $3`, string(cmd.Scope.TenantID
 		if err := auditEntry(ctx, tx, n, cmd.Actor, "artifact.completed", cmd.RequestID, cmd.Now); err != nil {
 			return err
 		}
-		out, err = getArtifact(ctx, tx, cmd.Scope, cmd.ID, "")
+		out, err = s.getArtifact(ctx, tx, cmd.Scope, cmd.ID, "")
 		return err
 	})
 	return out, err
@@ -587,7 +676,7 @@ WHERE tenant_id = $1 AND project_id = $2 AND id = $3`, string(cmd.Scope.TenantID
 // UPDATE, so a pin and a deletion decision are totally ordered.
 func (s *Store) Pin(ctx context.Context, scope domain.Scope, id domain.ArtifactID, owner artifacts.PinOwner, now time.Time) error {
 	return s.write(ctx, scope.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		a, err := getArtifact(ctx, tx, scope, id, "FOR SHARE")
+		a, err := s.getArtifact(ctx, tx, scope, id, "FOR SHARE")
 		if err != nil {
 			return err
 		}

@@ -37,3 +37,23 @@ func RunResourceMigrations() storage.Contribution {
 	}
 	return storage.Contribution{Module: "execution-run-resources", Migrations: out}
 }
+
+// RunSourcesMigrationID is the migration of run origins and source sets (T-148).
+const RunSourcesMigrationID = "011_run_sources.sql"
+
+// RunSourceMigrations returns the additive origin and source-set tables and
+// columns of the internal Git service as their own contribution. It references
+// the repositories table (migration 007, contribution "repository"), so a
+// composition lists it after that contribution and after
+// RunResourceMigrations; the migration ledger refuses a pending migration
+// ordered before an applied one. This package does not wire it into any
+// composition (T-132 lists it in numeric order).
+func RunSourceMigrations() storage.Contribution {
+	var out []storage.Migration
+	for _, m := range loadOwn() {
+		if m.ID == RunSourcesMigrationID {
+			out = append(out, m)
+		}
+	}
+	return storage.Contribution{Module: "execution-run-sources", Migrations: out}
+}

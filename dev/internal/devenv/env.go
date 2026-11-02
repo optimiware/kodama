@@ -20,6 +20,8 @@ type Environment struct {
 	Env       []string
 	Kind      string
 	Kubectl   string
+	// RequestedGit is the explicit Git hosting selection (DEV_GIT), "" when none.
+	RequestedGit string
 }
 
 // Hooks tests replace instead of running a real engine or downloading tools.
@@ -79,6 +81,35 @@ func (e *Environment) SelectStack() error {
 	return nil
 }
 
+// GitMode is the Git hosting of the scope: the recorded one, else the requested
+// one, else the compatibility fixture.
+func (e *Environment) GitMode() string {
+	switch {
+	case e.State != nil && e.State.GitHosting != "":
+		return e.State.GitHosting
+	case e.State != nil:
+		return DefaultGitHosting // created before the selection existed
+	case e.RequestedGit != "":
+		return e.RequestedGit
+	default:
+		return DefaultGitHosting
+	}
+}
+
+// SelectGitHosting refuses to build a different Git hosting into an existing
+// scope, and the native hosting anywhere but the services stack.
+func (e *Environment) SelectGitHosting() error {
+	if e.RequestedGit != "" && e.State != nil && e.RequestedGit != e.GitMode() {
+		return fmt.Errorf("scope %s was created with DEV_GIT=%s; run make dev-down first to select %s",
+			e.Scope, e.GitMode(), e.RequestedGit)
+	}
+	if e.GitMode() == GitNative && e.Stack != StackServices {
+		return fmt.Errorf("DEV_GIT=%s hosts the kernel's Git workers on the Podman services network and needs DEV_STACK=%s; scope %s is %s",
+			GitNative, StackServices, e.Scope, e.Stack)
+	}
+	return nil
+}
+
 // Provides reports whether the recorded stack owns a resource.
 func (e *Environment) Provides(resource string) bool { return Provides(e.Stack, resource) }
 
@@ -121,7 +152,27 @@ func (e *Environment) WorkloadEnv() map[string]string {
 	values["KODAMA_POSTGRES_URL"] = fmt.Sprintf("postgres://%s:5432/%s", e.WorkloadHost("postgres"), e.Database())
 	values["KODAMA_PODMAN_NETWORK"] = e.State.Network
 	values["KODAMA_SERVER_CALLBACK_HOST"] = CallbackHosts[e.Provider]
+	if e.GitMode() == GitNative {
+		// No external Git fixture runs: a workload reaches a tenant's own worker.
+		delete(values, "KODAMA_GIT_URL")
+		values["KODAMA_GIT_WORKER_URL"] = e.GitWorkerURLTemplate()
+	}
 	return values
+}
+
+// probeChecks selects the dependency probe checks the scope can answer: the
+// native Git hosting has no fixture for the HTTPS Git check.
+func (e *Environment) probeChecks() string {
+	if e.GitMode() != GitNative {
+		return ServicesProbeChecks
+	}
+	var checks []string
+	for _, check := range strings.Split(ServicesProbeChecks, ",") {
+		if check != "https_git" {
+			checks = append(checks, check)
+		}
+	}
+	return strings.Join(checks, ",")
 }
 
 // Save writes the ownership journal.
@@ -151,8 +202,19 @@ func (e *Environment) Prepare() error {
 	return nil
 }
 
-// Compose runs Compose for this scope; the project name is the cluster name.
+// Compose runs Compose for this scope; the project name is the cluster name. The
+// compatibility Git fixture is a profile, started only when the scope selected it.
 func (e *Environment) Compose(args ...string) error {
+	var profiles []string
+	if e.GitMode() == GitFixture {
+		profiles = append(profiles, profileGitFixture)
+	}
+	return e.composeProject(e.State.Cluster, profiles, nil, args...)
+}
+
+// composeProject runs Compose for one project of this scope with the given
+// profiles and extra variables.
+func (e *Environment) composeProject(project string, profiles, extra []string, args ...string) error {
 	env := append(append([]string{}, e.Env...),
 		"KODAMA_PROJECT="+e.State.Cluster,
 		"KODAMA_OWNER="+e.State.Owner,
@@ -160,10 +222,12 @@ func (e *Environment) Compose(args ...string) error {
 		"KODAMA_IMAGE="+defaultString(e.State.LocalImage, "scaffold:dev"),
 		"KODAMA_NETWORK="+e.Network(),
 	)
-	_, err := runCmd(Cmd{
-		Args: append([]string{e.Provider, "compose", "-p", e.State.Cluster, "-f", ComposeFile()}, args...),
-		Env:  env,
-	})
+	env = append(env, extra...)
+	command := []string{e.Provider, "compose", "-p", project, "-f", ComposeFile()}
+	for _, profile := range profiles {
+		command = append(command, "--profile", profile)
+	}
+	_, err := runCmd(Cmd{Args: append(command, args...), Env: env})
 	return err
 }
 

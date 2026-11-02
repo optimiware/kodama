@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/optimiware/kodama/internal/domain"
+	"github.com/optimiware/kodama/internal/execution"
 )
 
 // Report counts what one reconciliation pass did. It is for operators and
@@ -126,6 +127,44 @@ func (s *Service) processGate(ctx context.Context, ref GateRef, rep *Report) {
 		rep.Failed++
 		s.log(ctx, "load", err, "gate", string(ref.ID))
 		return
+	}
+	// A gate of a source set with integration bases is applicable only while the
+	// default branches are where the approval was given over: observed here,
+	// outside any transaction, before the step is progressed. Once the gate step
+	// has passed the approval is consumed and the integration it authorized is
+	// under way or applied: the default branch moving to the candidate is its
+	// success, so the base is no longer compared (a base that moves to anything
+	// else is answered by IntegrationApproval, which never issues over it).
+	if g.Status != StatusRejected && g.Invalidation == nil {
+		if repos := g.BaseRepositories(); len(repos) > 0 {
+			passed := false
+			if g.Status == StatusApproved {
+				agg, err := s.d.Runs.Get(ctx, ref.Scope, g.RunID)
+				if err != nil {
+					rep.Failed++
+					s.log(ctx, "load run", err, "gate", string(ref.ID))
+					return
+				}
+				st := agg.Step(g.StepID)
+				passed = st != nil && st.Status == execution.StepSucceeded && st.GateRef == string(g.ID)
+			}
+			if !passed {
+				tips, err := s.tips(ctx, ref.Scope, repos)
+				if err != nil {
+					rep.Failed++
+					s.log(ctx, "bases", err, "gate", string(ref.ID))
+					return
+				}
+				if err := g.CheckBases(tips); err != nil {
+					if isDefinitiveStale(err) {
+						s.invalidate(ctx, ref, err, rep)
+					} else {
+						rep.Waiting++
+					}
+					return
+				}
+			}
+		}
 	}
 	switch g.Status {
 	case StatusRejected:

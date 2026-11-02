@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -20,21 +21,35 @@ const lockPoll = 5 * time.Millisecond
 // does not replace the lock another operation holds. A lock is released when
 // its holder exits, so a crashed process never wedges a workload.
 func (r *Runtime) lock(ctx context.Context, name string) (unlock func(), err error) {
-	// Waiters of one workload within this runtime queue here; only the head
-	// polls the file.
-	r.mu.Lock()
-	turn, ok := r.locks[name]
+	return r.fileLocks.lock(ctx, name)
+}
+
+// lockSet serializes operations by name through lock files in dir.
+type lockSet struct {
+	dir string
+	mu  sync.Mutex
+	// turns queue the waiters of one name within this process.
+	turns map[string]chan struct{}
+}
+
+func newLockSet(dir string) *lockSet { return &lockSet{dir: dir, turns: map[string]chan struct{}{}} }
+
+func (l *lockSet) lock(ctx context.Context, name string) (unlock func(), err error) {
+	// Waiters of one name within this set queue here; only the head polls the
+	// file.
+	l.mu.Lock()
+	turn, ok := l.turns[name]
 	if !ok {
 		turn = make(chan struct{}, 1)
-		r.locks[name] = turn
+		l.turns[name] = turn
 	}
-	r.mu.Unlock()
+	l.mu.Unlock()
 	select {
 	case turn <- struct{}{}:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	f, err := os.OpenFile(filepath.Join(r.cfg.StateDir, name+".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(filepath.Join(l.dir, name+".lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err == nil {
 		err = flock(ctx, f)
 	}

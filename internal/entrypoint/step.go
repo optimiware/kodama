@@ -16,8 +16,10 @@ import (
 	"sync"
 	"time"
 
+	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/logs/contract"
 )
@@ -54,10 +56,15 @@ type Step struct {
 	rt  Runtime
 	// v2 is set only by NewStepV2: the run_shared wire's admission, context and
 	// begin. A Step with a nil v2 is the v1 attempt_private entrypoint, unchanged.
-	v2  RuntimeV2
-	up  Uploader
-	log *slog.Logger
-	git *git
+	v2 RuntimeV2
+	// v3 is set only by NewStepV3: the source-set wire's admission, context, begin
+	// and result.
+	v3 RuntimeV3
+	// grants issues the seed and integration grants (the v3 adapter implements it).
+	grants GitGrants
+	up     Uploader
+	log    *slog.Logger
+	git    *git
 
 	mu     sync.Mutex
 	issued [][]byte // admission credential and every runtime token this process held
@@ -84,7 +91,9 @@ type verdict struct {
 	reason   string
 	question *string
 	source   *runtimev1.GitCommit
-	outputs  map[string]runtimev1.Value
+	// commits are the refs a v3 attempt pushed (reported only by a completed result).
+	commits []runtimev3.CommitOutput
+	outputs map[string]runtimev1.Value
 }
 
 func failed(reason string, exit *int64) verdict {
@@ -99,17 +108,39 @@ type attempt struct {
 	// c2 is the ContextV2 of a run_shared attempt (c is its v1 projection, which the
 	// shared output/source code reads); nil on the v1 wire. sealed is the private
 	// Git over the shared workspace, open from verification to the end of the step.
-	c2        *runtimev2.ContextV2
-	sealed    *sealedGit
-	artifacts map[domain.ArtifactID]runtimev1.ArtifactRef
-	names     map[string]bool
-	diag      []domain.ArtifactID
-	diagUsed  int64 // diagnostic bytes uploaded or attempted with unknown outcome
-	notes     strings.Builder
-	needles   [][]byte
-	credForms [][]byte // representations of the checkout credential (redacted from logs, not scanned in source)
-	fin       context.Context
-	finCancel context.CancelFunc
+	c2     *runtimev2.ContextV2
+	sealed *sealedGit
+	// c3 is the ContextV3 of a source-set attempt (c is a source-less v1 projection
+	// carrying the shared fields); srcs are the verified sources in context order,
+	// each with its own sealed Git, open from verification to the end of the step;
+	// issued are the runtime-issued Git grants the command requested.
+	c3     *runtimev3.ContextV3
+	srcs   []*sourceRepo
+	issued []gitv1.GrantClaims
+	// launched is set once the command was about to start: from then on a source
+	// may have been moved and restoreHeads puts it back.
+	launched bool
+	// gitCreds are the Git credential values already registered for redaction.
+	gitCreds map[string]bool
+	gitForms []string
+	credMu   sync.Mutex
+	// broker serves `kodama step-git` while the command runs; grants are the
+	// runtime-issued grants it obtained (the latest of each kind is what is pushed).
+	broker  *grantBroker
+	grantMu sync.Mutex
+	grants  map[gitv1.GrantKind]*grantState
+	// integConflict records, per repository, whether the latest integration request was
+	// refused as a publication conflict.
+	integConflict map[string]bool
+	artifacts     map[domain.ArtifactID]runtimev1.ArtifactRef
+	names         map[string]bool
+	diag          []domain.ArtifactID
+	diagUsed      int64 // diagnostic bytes uploaded or attempted with unknown outcome
+	notes         strings.Builder
+	needles       [][]byte
+	credForms     [][]byte // representations of the checkout credential (redacted from logs, not scanned in source)
+	fin           context.Context
+	finCancel     context.CancelFunc
 }
 
 // authorityLost reports whether the attempt's runtime authority ended
@@ -194,7 +225,7 @@ func (s *Step) Run(ctx context.Context) int {
 		return ExitAdmission
 	}
 	a := &attempt{
-		s: s, parent: ctx, runCtx: runCtx, c: fetched.c, c2: fetched.c2,
+		s: s, parent: ctx, runCtx: runCtx, c: fetched.c, c2: fetched.c2, c3: fetched.c3,
 		artifacts: map[domain.ArtifactID]runtimev1.ArtifactRef{}, names: map[string]bool{},
 	}
 	defer func() {
@@ -204,14 +235,18 @@ func (s *Step) Run(ctx context.Context) int {
 		if a.sealed != nil {
 			a.sealed.Close()
 		}
+		for _, sr := range a.srcs {
+			sr.sg.Close()
+		}
 	}()
 	var v verdict
 	var abort *abortError
-	if !reflect.DeepEqual(admitted.c, fetched.c) || !reflect.DeepEqual(admitted.c2, fetched.c2) {
+	if !reflect.DeepEqual(admitted.c, fetched.c) || !reflect.DeepEqual(admitted.c2, fetched.c2) || !reflect.DeepEqual(admitted.c3, fetched.c3) {
 		a.note("context returned by admit differs from GET /context; refusing to launch")
 		v = failed(ReasonContextMismatch, nil)
 	} else {
 		v, abort = a.execute()
+		a.restoreHeads() // before the result: the next step must find the handed-over HEAD
 	}
 	if abort != nil {
 		s.log.Error("step aborted", "exit", abort.exit, "error", abort.err.Error())
@@ -228,7 +263,7 @@ func (a *attempt) execute() (verdict, *abortError) {
 		return failed(ReasonCommandStartFailed, nil), nil
 	}
 	dirs := []string{cfg.WorkspaceDir, cfg.OutputsDir}
-	if a.c2 != nil {
+	if a.c2 != nil || a.c3 != nil {
 		// The run workspace is the controller's mount and is never created here: a
 		// missing /workspace is a lost scratch, reported by the verification below.
 		dirs = dirs[1:]
@@ -245,7 +280,16 @@ func (a *attempt) execute() (verdict, *abortError) {
 	}
 
 	var begin *runtimev2.BeginRequest
-	if a.c2 != nil {
+	var begin3 *runtimev3.BeginRequestV3
+	if a.c3 != nil {
+		// v3: every source is verified in place (present, a usable repository, the
+		// pinned commits); nothing is cloned, reset or cleaned.
+		req, v := a.verifySources()
+		if v != nil {
+			return *v, nil
+		}
+		begin3 = req
+	} else if a.c2 != nil {
 		// run_shared: no clone, reset or clean and no checkout credential. The
 		// controller prepared the scratch once; this only looks at it.
 		req, v := a.verifyWorkspace()
@@ -284,6 +328,11 @@ func (a *attempt) execute() (verdict, *abortError) {
 		return failed(ReasonInterrupted, nil), nil
 	}
 
+	if begin3 != nil {
+		if ab := a.recordBeginV3(*begin3); ab != nil {
+			return verdict{}, ab
+		}
+	}
 	if begin != nil {
 		// The command-begin fence: the server records, durably and ordered against
 		// cancellation, that this attempt may run user code. The command starts only
@@ -293,6 +342,7 @@ func (a *attempt) execute() (verdict, *abortError) {
 		}
 	}
 
+	a.loadGitCredentials() // before the log and its mirror exist: they redact what it registers
 	logCap := commandLogCapacity(c.Limits.MaxDiagnosticBytes)
 	logw, err := newBoundedLog(cfg.ScratchDir, "kodama-command-*.log", logCap)
 	if err != nil {
@@ -310,10 +360,17 @@ func (a *attempt) execute() (verdict, *abortError) {
 	childCtx, cancelChild := context.WithTimeoutCause(a.runCtx, timeout, errTimeout)
 	a.s.log.Info("launching command", "argv0", argv[0], "timeoutSeconds", c.Limits.TimeoutSeconds)
 	launched := time.Now()
+	if ab := a.startBroker(childCtx); ab != nil {
+		cancelChild()
+		return verdict{}, ab
+	}
+	defer a.stopBroker() // every exit path: authority loss, finalization failure, panic
+	a.launched = true
 	res := runProcess(childCtx, procSpec{argv: argv, dir: cfg.WorkspaceDir, env: a.childEnv(secrets), out: out, grace: cfg.KillGrace})
 	a.s.log.Info("command finished", "durationMs", time.Since(launched).Milliseconds())
 	cause := context.Cause(childCtx)
 	cancelChild()
+	a.stopBroker() // the command is over: no grant is issued from here on
 	if mir != nil {
 		// The held tail is released only for output observed to its end.
 		mir.Close(res.started && res.drainErr == nil && !res.drainIncomplete && cause == nil, cfg.KillGrace)
@@ -326,6 +383,7 @@ func (a *attempt) execute() (verdict, *abortError) {
 	if a.authorityLost() {
 		return verdict{}, &abortError{ExitRevoked, context.Cause(a.runCtx)}
 	}
+	a.loadGitCredentials()
 	interrupted := a.parent.Err() != nil
 	ev := captureEvidence{state: state, drainErr: res.drainErr, incomplete: res.drainIncomplete, stopped: cause != nil}
 	if res.startErr == nil {
@@ -349,6 +407,10 @@ func (a *attempt) execute() (verdict, *abortError) {
 		return failed(ReasonCommandFailed, nil), nil
 	case *res.exitCode != 0:
 		a.note("the command exited with status %d", *res.exitCode)
+		if a.integrationConflicted() {
+			a.note("the integration was refused: the approved base is no longer the default branch's tip")
+			return failed(ReasonPublicationConflict, res.exitCode), nil
+		}
 		return failed(ReasonExitNonzero, res.exitCode), nil
 	}
 	return a.afterSuccessfulExit(res.exitCode)
@@ -402,7 +464,19 @@ func (a *attempt) afterSuccessfulExit(exit *int64) (verdict, *abortError) {
 		}
 	}
 	v := verdict{outcome: runtimev1.OutcomeCompleted, exit: zero, outputs: outputs}
-	if a.c.Workspace.Access == runtimev1.AccessWrite {
+	if a.c3 != nil {
+		// v3: explicit pushes with the Git grants, for readers (agent branches) and
+		// the writer (task branch) alike; there is no source proposal and no bundle.
+		commits, fail, ab := a.pushAll()
+		if ab != nil {
+			return verdict{}, ab
+		}
+		if fail != nil {
+			fail.exit = zero
+			return *fail, nil
+		}
+		v.commits = commits
+	} else if a.c.Workspace.Access == runtimev1.AccessWrite {
 		commit, fail, ab := a.publish()
 		if ab != nil {
 			return verdict{}, ab
@@ -457,6 +531,14 @@ func (a *attempt) classify(ctx context.Context, err error) *abortError {
 	return nil
 }
 
+// c3Git is the Git delivery of a v3 attempt's context, nil for every other wire.
+func (a *attempt) c3Git() *runtimev3.GitDelivery {
+	if a.c3 == nil {
+		return nil
+	}
+	return a.c3.Git
+}
+
 func (a *attempt) childEnv(secrets *secretSet) []string {
 	cfg, c := a.s.cfg, a.c
 	env := map[string]string{}
@@ -475,6 +557,14 @@ func (a *attempt) childEnv(secrets *secretSet) []string {
 	env["KODAMA_SECRETS_DIR"] = cfg.SecretsDir
 	if secrets.dir != "" {
 		env["KODAMA_SECRETS_DIR"] = secrets.dir
+	}
+	if a.broker != nil {
+		// `kodama step-git` asks the supervising entrypoint, over this per-attempt
+		// socket and key, to obtain a runtime-issued Git grant: the command never holds
+		// the attempt's token and a credential is registered for redaction and scanning
+		// before it is written anywhere.
+		env[EnvGitSocket] = a.broker.socket
+		env[EnvGitKey] = a.broker.key
 	}
 	for name, v := range c.Inputs {
 		key := "KODAMA_INPUT_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))

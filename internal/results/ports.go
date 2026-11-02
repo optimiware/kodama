@@ -29,7 +29,16 @@ type AuthRequest struct {
 	Attempt domain.AttemptID
 	Bearer  string
 	Action  Action
+	// Wire is the runtime wire of the route being served: WireV3 for the source-set
+	// result route. The zero value is the earlier routes' behavior (no wire is
+	// asserted; the route's own guard and execution refuse another wire's attempt).
+	// An attempt of another wire than a stated one is ErrContextVersionMismatch
+	// and nothing is read or changed.
+	Wire int64
 }
+
+// WireV3 is the source-set runtime wire (runtimeauth.WireV3, runtime contract v3).
+const WireV3 int64 = 3
 
 // Principal is the verified authority of a workload for one action. Every
 // identifier in it comes from the durable grant, never from the request.
@@ -65,10 +74,15 @@ type Contexts interface {
 	Pinned(ctx context.Context, scope domain.Scope, attempt domain.AttemptID) (runtimev1.Context, error)
 }
 
-// Provenance is the trusted source an artifact's producer worked from.
+// Provenance is the trusted source an artifact's producer worked from: one
+// repository at one commit, or (source-set runs) the digest of the whole set it
+// worked from.
 type Provenance struct {
 	RepositoryURL string
 	Commit        string
+	// SourceSet is the digest of the source set the producer worked from; empty
+	// for a single source or no source.
+	SourceSet string
 }
 
 // IsZero reports an artifact produced without source.

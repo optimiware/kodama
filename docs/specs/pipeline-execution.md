@@ -1,121 +1,208 @@
-# Pipeline execution
+# Pipeline execution and services
 
-**Scope:** M1 containers; M2 agent profiles and human gates. A runtime runs workloads, Kubernetes in staging and production; PostgreSQL owns desired state. JetStream remains a durable event bus.
+**Scope:** Layer 1 pipeline-runtime kernel under [ADR 0013](../adr/0013-two-layer-architecture-and-domain-simplification.md) and [O-38](../decisions.md#pipeline-runtime-and-four-layer-refinement--2026-10-30-o-38). This specification owns pipeline documents, runs, steps, durable waits, workspaces, and container services. The [pipeline-runtime simplification plan](../implementation/pipeline-runtime-simplification.md) owns the transition from the current executable compositions.
 
-**Run models.** Every run pins one model at admission. `attempt_private` (format `kodama/v1alpha1`, runtime context v1) is the **current executable model**: each attempt checks out its own private scratch under the fixed restricted baseline. `run_shared` (format [`kodama/v1alpha2`](../contracts/pipeline-format-v1alpha2.md), [runtime v2](../contracts/runtime-v2.md)) is the normative model of [ADR 0010](../adr/0010-run-workspace-services-builders.md): one disposable `/workspace`, declared support services, a total run deadline and a pinned [execution policy](../contracts/run-resources.md). It is **designed, not delivered or qualified**: no installation admits it until T-116 enables it and T-117 passes. Requirements below apply to both models unless labeled `[attempt_private]` or `[run_shared]`; replaced `attempt_private` rules keep their IDs and are not renumbered.
+## Model
 
-## Model and states
+1. **Pipeline (`pipelines`):**
+   - Defined in `.kodama/<processname>.yaml` in a repository or registered through the API.
+   - The whole parsed definition is persisted once in `pipelines.definition` (JSONB).
+   - Names are unique within a project. The repository is the definition source, not a second naming scope; a conflicting definition source is refused.
+   - Each run stores an immutable definition snapshot; later edits cannot change it.
+2. **Run (`runs`):**
+   - One execution of a pipeline against pinned inputs and optional source commits.
+   - States: `queued`, `running`, `succeeded`, `failed`, `cancelled`.
+   - Allocates one shared `/workspace` filesystem for its steps. A task may accumulate several runs; one is its current execution.
+3. **Step (`run_steps`):**
+   - One row per step per run, created when the run is admitted.
+   - Container states: `pending`, `running`, `succeeded`, `failed`, `skipped`, `cancelled`.
+   - Wait states: `pending`, `waiting`, `succeeded`, `failed`, `skipped`, `cancelled`. A wait is `succeeded` when it is decided with any recorded outcome, including a rejection.
+   - Runs the declared container `image` and `commands` with declared secret references, environment variables, and the shared `/workspace`. There is no agent-specific SQL kind.
+4. **Wait:**
+   - A non-container control step that pauses the same run until it is decided by an authorized signal, its deadline, or cancellation.
+   - Persists a unique identity, assignment, correlation, optional request, expected input kind, deadline, version, and at most one decision. Syntax and bounds are owned by the [pipeline format](../contracts/pipeline-format.md#waits).
+   - Holds no worker and runs no command. A signal is not approval by itself.
+5. **Condition:**
+   - A step's `when` predicate, a bounded expression over declared inputs, prerequisite step results, and wait outcomes. Its grammar, missing-value rule, visibility and bounds are owned by the [pipeline format](../contracts/pipeline-format.md#conditions).
+   - There is no condition step kind: a requirement that `when` cannot express must amend the contract first. The engine executes no arbitrary code.
+6. **Scoped container services (`services`):**
+   - Support containers such as PostgreSQL, Valkey, mock APIs, or preview servers.
+   - **`pipeline` scope:** started with a run and stopped when it finishes.
+   - **`project` scope:** long-lived support shared across a project's runs (`project_id` set, `run_id IS NULL`).
+   - **`tenant` scope:** long-lived support shared across a tenant's projects (`project_id` and `run_id` null).
+   - States: `starting`, `ready`, `failed`, `stopped`.
 
-A run pins definition ID/digest, work item/content revision, source commit, variables, secret-version references, and run inputs. A successful writer supplies a new immutable source output; it does not rewrite the run's original inputs.
+## Kernel boundary
 
-| Record | States | Additional fields |
+The kernel executes a prepared plan. It receives the immutable pipeline snapshot, pinned inputs and sources, declared secret references, and resource requirements through kernel-owned ports. It does not read Git, call the Kodama API, query tasks, publish NATS subjects, or open SQL transactions.
+
+The shell owns:
+
+- resolving a project pipeline and preparing its run admission;
+- indexing definitions from Git and matching triggers;
+- source checkout and knowledge-base preparation;
+- secret custody and authorization;
+- task projection and wait-inbox authorization;
+- durable state and outbox persistence;
+- NATS publication and signal delivery;
+- API, MCP, and CLI transport.
+
+Concrete runtime, state, secret, workspace-preparation, log, and clock adapters are wired by the composition root. The kernel's unit and contract tests use memory implementations without a database, broker, or container.
+
+## Execution
+
+1. Admission snapshots the definition, inputs, sources, secret references, and resource requirements, and records one step row per step.
+2. A worker claims the run and progresses one executable step at a time. A prior container must settle and release the workspace before the next executable step starts.
+3. The backend launches a workload with a stable identity. Observation and recovery use that identity; an uncertain launch or stop is reconciled and never blindly replayed.
+4. A wait commits its durable state before its signal is announced. An authorized result consumes the wait and advances the same run.
+5. Cancellation blocks new claims, stops active workloads, and preserves evidence needed to settle uncertain effects.
+6. A run is terminal only after every owned resource is verified stopped and removed, or after an explicit bounded failure records why cleanup remains pending.
+7. A rerun creates a new run, a new workspace, and new history. It does not reset completed step rows; see [rework and continuation](#rework-and-continuation).
+
+## Rework and continuation
+
+A plan is acyclic and each step runs at most once per run. Rework takes one of two forms:
+
+1. **A declared forward step** in the same run, for example a step selected by a `when` on a wait outcome. It never reopens or repeats an earlier step.
+2. **An explicit new run** that continues the work. Its admission names the continued run, the pinned source commits it starts from (typically the candidate commit the earlier run pushed to a run branch), and any recorded outputs it receives as declared inputs. Nothing else carries over.
+
+The new run prepares a fresh workspace from those pinned commits. The workspace of a terminal run, or one discarded after lost or uncertain state, is never reused, adopted, reset, or handed to another run. A run admitted for a task is admitted only when the task's current run is terminal; admission makes it the current execution. Waits, decisions and authority of the earlier run do not carry over.
+
+## Agent-requested waits
+
+A workload never suspends mid-command and cannot open, resolve or answer a wait; run authority excludes those operations. A step that needs input records a bounded request as a declared output and exits. When the step settles as `succeeded`, its outputs are recorded with its result in the same transition. A declared downstream wait step consumes them through `request` and `when`; if the output is absent the wait is skipped by its `when` or opens without a request, as declared. Outputs of a `failed` or `cancelled` step are discarded and open nothing. A step that cannot continue exits non-zero and fails normally.
+
+## Resume
+
+Resume means the same run continues through the next eligible declared step after a wait is decided or the controller restarts. The next step starts from persisted references only: the run snapshot, settled step results, recorded wait decisions, and the run's workspace and resource identities. The previous command is not replayed and a settled step is not repeated. A step whose launch or stop outcome is uncertain is reconciled, not restarted ([PX-32](#requirements)).
+
+A run with an open wait stays `running`; the task projection reports `waiting`. The run workspace and run-scoped services are retained until the wait is decided, bounded by the wait's deadline. If required workspace or service state is lost during a wait or before the next step starts, the run fails with reason `workspace_lost` or `service_lost`; a replacement is never prepared in its place.
+
+## Eligibility, skipping and joins
+
+A step is evaluated once, when every prerequisite in `depends_on` is terminal, in declaration order among simultaneously eligible steps. A prerequisite is visible as `succeeded` or `skipped`: a failed prerequisite ends the run before any dependent is evaluated. The first matching rule applies:
+
+| Order | Check | Result when not satisfied |
 | --- | --- | --- |
-| Run | `queued`, `running`, `succeeded`, `failed`, `cancelled` | `cancel_requested_at`, failure intent/reason, timestamps |
-| Step run | `pending`, `running`, `succeeded`, `failed`, `skipped`, `cancelled` | `reason`, `next_attempt_at`, gate reference |
-| Attempt | `running`, `succeeded`, `failed`, `cancelled` | `reason`, expected workload name/spec fingerprint, bound instance UID, actual start/finish, reconciliation result, workload removal |
+| 1 | Join: with `join: all` (default) every prerequisite succeeded; with `join: any` at least one succeeded | `skipped`, reason `prerequisite_skipped` |
+| 2 | `when` evaluates to true | `skipped`, reason `condition_false` |
+| 3 | Protected steps only: every `requires` entry names a wait that is `succeeded` with its `approving` outcome | `skipped`, reason `requires_unmet` |
 
-An attempt row is dispatch intent before its workload exists; `reason=starting` explains that interval. Waiting for a gate, quota, or backoff is derived from pending steps. Cancellation is a requested action; the run stays nonterminal until admitted work is settled. A failed attempt with `reason=outcome_unknown` cannot be retried until reconciled. No lost/paused/starting status enums are needed.
+Otherwise the step runs, or opens its wait. Evaluation reads only persisted values. The `when` result and a digest of the values read are recorded with the step in the same transition; recovery reuses the record and never re-evaluates.
 
-`purpose=work` requires an actionable work item. M2 internal `purpose=cleanup` runs are project-scoped, use no workspace, and are authorized only for a recorded deployment's cleanup. They may run after the originating work item is done/cancelled and do not consume business WIP.
+A rejection is a recorded outcome, not a failure. A wait decided with any declared outcome settles `succeeded` with that outcome; it is never `failed`, never retried, and never reported as an infrastructure or workload failure, and it does not fail the run. Only the following produce a failed step, each recorded with a bounded reason code: a failed workload, `wait_expired` (deadline passed with `on_expiry: fail`), `correlation_missing` (a declared correlation value was missing when the wait would open, so no wait opens), `workspace_lost`, `service_lost`.
 
-**Origins and source sets (internal hosting, designed; T-131).** Under [ADR 0011](../adr/0011-internal-tenant-git-service.md) a run also records its **origin**: `work_item`, `push` (an applied push record and ref, from a trigger), `manual`, or `provision`. A push-originated run needs no work item and consumes no WIP; a `provision` run may start before its repository exists and receives seed authority only for repositories it creates. A run pins a **source set**, one exact commit and checkout path per selected repository ([contract](../contracts/git-service.md#source-set)); a single-repository run is the one-entry case. The fields carrying origin and source set are a versioned addition; existing definitions, contexts and hashes are unchanged.
+A failed step fails the run. No further step starts, steps that never started become `skipped` with reason `run_failed`, and every open wait is decided `cancelled`. Cancelling a run instead marks steps that never started `cancelled`. A run whose steps all settle without failure is `succeeded`, even when branches were skipped.
+
+A step with `authority` is a **protected step**. It is eligible only through check 3, so only a wait decided with its single `approving` outcome satisfies it: a rejection, any other declared outcome, `expired`, and a skipped, failed or cancelled wait never do, and the step cannot run unconditionally. The format refuses a definition whose `requires` names anything else ([protected steps](../contracts/pipeline-format.md#protected-steps)), and the engine checks the recorded outcome again regardless. Timeout branching on unprotected steps uses `when` only. The shell repeats the check when it issues authority ([integration](git-repositories.md#integration)).
+
+## Wait decisions
+
+A wait has a version and exactly one decision, taken from `waiting`:
+
+- **resolved** with a declared outcome and the identity of the deciding signal;
+- **expired** when the store's clock reaches the deadline; the step then follows the wait's `on_expiry` (`fail` or `continue` with the reserved outcome `expired`);
+- **cancelled** by cancellation of the run (decided in the same transaction that records the cancellation) or by failure of the run.
+
+Each decision is one version-checked compare-and-set, committed with the step transition, task-projection intent and outbox events in one transaction. Resolution, expiry and cancellation race on that single check, and the deadline is compared with the store's one clock inside it, so a resolution committing at or after the deadline loses to expiry. The first commit wins. A later request performs no transition, creates no second continuation, and returns the recorded decision:
+
+- a replay of a recorded signal returns its recorded result ([signal identity and routing](#signal-identity-and-routing));
+- a new signal addressed to a wait that is already decided is refused as `decided`, returns the recorded decision marked not applied, and is recorded once as `signal.refused`;
+- a request carrying an outdated expected version against a still-waiting wait is refused as a version conflict and applies nothing.
+
+The continuation derives from the recorded decision and is re-driven by reconciliation after a crash. The guarantee is one committed decision and an idempotent continuation; commands that run afterwards are not exactly-once.
+
+## Signal identity and routing
+
+Every signal, inbox resolution or external, carries a caller-supplied key of 1 to 128 characters. Its **signal identity** is the tuple (tenant, project, authenticated caller principal, key). The shell derives an opaque `signalId` from the tuple; the raw key never appears in events. Two callers, projects or tenants that use the same key have unrelated identities.
+
+A durable signal record binds the identity to a digest of the request (address, outcome, answer) and its result, and is self-contained: replaying it never reads the wait, step or run. It has one of two shapes:
+
+| Shape | Written for | Retains | Written |
+| --- | --- | --- | --- |
+| Decision record | A winning signal, and a refusal whose target resolved inside the caller's scope | The original target (run, step and wait identities) and the complete replayable decision: kind (resolved, expired or cancelled), outcome, answer, actor reference, decision version and time. A refusal records the decision it lost to, or only its reason when none exists yet (`version_conflict`, `invalid_outcome`) | A winning record commits in the same transaction as the decision; a refusal's record commits when the refusal is returned |
+| Tombstone | A refusal that resolved no target (`unknown_wait`, `ambiguous_correlation`) | Identity, request digest, refusal reason and time; it has no target or decision | When the refusal is returned |
+
+Neither shape expires. Each is removed only when its project is deleted, so ordinary wait and run retention cleanup never removes the decision needed to replay a signal, and a retry can never be rerouted to a wait that opened later. The shell bounds growth by a per-caller rate limit applied before routing; a rate-limited request creates no record and does not use its key. Routing runs in this order:
+
+1. **Identity lookup.** If the identity has a record, return its recorded result unchanged, whatever the wait's or run's state or retention now is and however many other waits have opened. The signal stays bound to its original target and is never re-routed. A repeat with a different request digest is refused to its caller as `key_reuse`; that response creates no record, emits no event and never modifies the recorded result.
+2. **Address a wait.** For a new identity addressed by wait identity, resolve it inside the caller's tenant and project and the caller's authority. A missing, foreign or unauthorized wait is refused as `unknown_wait`, indistinguishably, and discloses nothing about other tenants. A wait that is already decided is refused as `decided` with its recorded decision.
+3. **Address by correlation.** For a new identity addressed by correlation, match only open waits of the caller's project that carry exactly those values. Zero matches is `unknown_wait` and several is `ambiguous_correlation`. Closed waits are never matched, so a late new signal cannot reach one.
+4. **Decide.** One match proceeds to the single decision in [wait decisions](#wait-decisions).
+
+Each refusal is recorded under the caller's own signal identity, so retrying it returns the same refusal.
+
+## Assignment and correlation
+
+A wait carries separate attributes:
+
+| Attribute | Question | Mutability |
+| --- | --- | --- |
+| Identity | Which wait is this | Immutable and never reused |
+| Assignment | Who may decide it through the inbox | Changeable only by an authorized, version-checked reassignment that never alters identity, correlation or a decision |
+| Correlation | What is being decided | Immutable key/value pairs read when the wait opens |
+
+An inbox resolution addresses the wait identity; an external signal addresses the complete correlation. When both are given they must agree. [Routing](#signal-identity-and-routing) defines how an address selects a wait. A decision belongs to one wait and is never inherited by another wait, step or run, even when assignment, input kind and correlation are identical. A changed candidate (any changed correlation value) can only arise in a different wait, a later declared wait step or a new run, and needs its own identity and decision.
+
+## Shared workspace and services
+
+Every run uses one disposable shared `/workspace`:
+- The shell prepares the pinned source and context through an injected preparation step or adapter before user commands run.
+- Steps execute in deterministic topological order, sharing generated files, caches, and commits. A step records outputs only through its per-step output directory, which is outside `/workspace`.
+- Secret material is mounted outside `/workspace`; a step explicitly granted a secret may copy it into shared files, and publication filters must account for that disclosure.
+- When the run finishes, the workspace is removed. Durable outputs are Git commits and metadata-only artifacts.
+- Run services start with the run and are ready before dependent commands run. Loss of an essential service fails the run; it is not silently recreated with empty state.
+
+## Signals and coordination
+
+NATS is the shell's central bus. The shell publishes committed events and routes signals, triggers, and monitoring subscriptions. The kernel emits execution events through its ports; it does not depend on NATS types or subjects.
+
+- **Git triggers:** `git.refs_updated` matches pipeline triggers and admits a run pinned to the pushed commit.
+- **Task and wait signals:** an authorized resolution emits its decision event for the exact run, step, and wait ([wait decisions](#wait-decisions)).
+- **Run and service observations:** committed run/step transitions feed the task projection and monitoring consumers.
+- **External signals:** a pipeline may wait for an integration callback addressed by its correlation, with a deadline ([assignment and correlation](#assignment-and-correlation)).
+
+Delivery is at least once. Consumers deduplicate against run, step, wait, event, or trigger identity. A missed wakeup is repaired by reconciliation.
 
 ## Requirements
 
 | ID | Requirement |
 | --- | --- |
-| PX-01 | Definition admission MUST validate graph, references, types, and available step kinds. |
-| PX-02 | Run admission MUST pin resolved inputs and reject conflicting source/specification references. |
-| PX-03 | Attempt identity and Job name MUST be stable; existing Jobs MUST match ownership and expected spec before adoption. |
-| PX-04 | Each executable attempt MUST use one Job, one primary workload container, and `backoffLimit: 0`; factory retries create a new attempt. |
-| PX-05 | Transitions MUST commit with audit/outbox; consumers MUST deduplicate and reconciliation MUST tolerate missing/reordered wakeups. |
-| PX-06 | Dispatch MUST check dependencies, cancellation, current authorization, quotas, and writer admission. |
-| PX-07 | Retry MUST be bounded and classified; unknown external outcomes MUST be reconciled first. |
-| PX-08 | Cancellation MUST block new dispatch claims, revoke attempt access, terminate observed workloads, and settle known side effects before terminal completion. |
-| PX-09 | Execution/startup deadlines and gate deadlines MUST be distinct; gate waits consume no Job. `[attempt_private]` A waiting run holds no compute. `[run_shared]` the run's services and scratch persist through gate waits, bounded by the run deadline (PX-20). |
-| PX-10 | Success MUST validate required outputs and source publication in addition to process exit. Failure diagnostics SHOULD be retained even when success outputs are unavailable. |
-| PX-11 | Tenant/project concurrency reservations MUST be transactional and idempotent. |
-| PX-12 | Terminal runs/attempts MUST retain their history; rerun creates a new run. |
-| PX-13 | Gate steps MUST wait in durable records and revalidate their subject before progression. |
-| PX-14 | `[attempt_private]` Workspace sources MUST be the run commit or an explicit successful ancestor's commit. `[run_shared]` replaced: the prepared scratch is cumulative and the source rules are WS-13–WS-16. |
-| PX-15 | Execution MUST reach workloads only through the backend-neutral runtime port. Admission MUST refuse a run whose steps require guarantees the runtime lacks and pin its backend and requirements; another backend MUST NOT start, stop or remove its workloads. |
-| PX-16 | Dispatch MUST bind the instance the runtime reports. A dispatch-confirmed workload reported absent MUST fail as lost with its known launch evidence. Removal after settlement MUST be durably recorded and retried until confirmed. |
-| PX-17 | `[run_shared]` Declared services MUST start with the run and expose only run-unique endpoints, reachable according to the pinned network model (IT-14: the run's workloads under the run model, the tenant's under the tenant model of O-30); no user command MAY be dispatched until workspace preparation and every service are verified ready. |
-| PX-18 | `[run_shared]` A service startup timeout, exit, affirmative loss or sustained readiness loss, or a lost/unverifiable workspace, MUST fail the run with an explicit reason; execution MUST NOT transparently replace a service or reconstruct scratch. Restart MUST adopt only resources verified by scope, fingerprint and UID. |
-| PX-19 | `[run_shared]` Success, failure, timeout and cancellation MUST stop every run resource and record verified stop **and confirmed removal** before terminal completion (stuck cleanup keeps the run nonterminal with a visible safe reason and is retried; historical terminal records with unconfirmed cleanup are still reconciled); lost responses, late creates and restarts MUST converge without touching a foreign object. |
-| PX-20 | `[run_shared]` Admission MUST reserve bounded service, active-attempt and scratch capacity atomically and pin a required total run deadline covering preparation, startup, attempts, retries and gate waits; reservations MUST be released only after verified removal. |
-| PX-21 | `[run_shared]` A run MUST pin its model, runtime context version, execution policy, runtime binding and resource capabilities; a controller, runtime or policy lacking any MUST refuse it. Historical definitions, digests, histories and result hashes MUST remain intact and old-model runs MUST drain under their original semantics. |
-| PX-22 | `[run_shared]` Automatic retry MUST be limited to attempts proven not to have begun their command while scratch and services remain intact; an attempt that may have run user code, an unknown launch or an uncertain effect MUST NOT be replayed automatically. |
-| PX-23 | `[internal hosting]` A run MUST pin its origin and a source set of exact commits with unique checkout paths; every commit MUST belong to a repository of the run's project and stay reachable for the run's retention. |
-| PX-24 | `[internal hosting]` A push-originated run MUST reference one applied push record and ref, pin that update's new commit, and be created at most once per trigger, push and ref. |
-| PX-25 | `[internal hosting]` A provisioning run MUST be admitted without an existing repository and receive seed authority only for repositories it creates in its project. |
+| PX-28 | The kernel MUST execute a pipeline snapshot through kernel-owned state, runtime, resource, secret, workspace-preparation, log, and clock ports; it MUST NOT import shell, task, Git-hosting, SQL/NATS/HTTP client, identity, or agent packages. |
+| PX-29 | A project MUST have at most one pipeline per name; conflicting definition sources MUST be refused rather than silently replacing one another. |
+| PX-30 | A run MUST snapshot its definition and inputs at admission and MUST create one step row per step; a later pipeline edit MUST NOT change an admitted run. |
+| PX-31 | A wait MUST pause the same run without a running workload and persist its identity, expected input, deadline, accepted result, and continuation; a duplicate or late signal MUST NOT advance it twice. |
+| PX-32 | A run MUST progress through durable intent and reconciliation: workload identity is stable, uncertain launch/stop is not replayed blindly, and a run is terminal only after owned resources are confirmed stopped and removed or cleanup remains visibly pending. |
+| PX-33 | The shell MUST publish committed execution events to NATS and consumers MUST deduplicate and reconcile; the kernel MUST remain runnable without a broker. |
+| PX-34 | Run-scoped services MUST reach `ready` before dependent steps and MUST NOT be silently recreated after loss; tenant- and project-scoped services MUST outlive individual runs. |
+| PX-35 | Execution MUST be acyclic with each step run at most once per run; rework MUST be a declared forward step or an explicit new run that names its continued run, pinned source commits and received outputs, and the workspace of a terminal or discarded run MUST NOT be reused. |
+| PX-36 | A workload MUST NOT suspend mid-command or open, resolve or answer a wait; it MUST record a bounded request as a declared output that is persisted only when its step succeeds, and a declared downstream wait MUST consume it. |
+| PX-37 | Resume MUST continue the same run through the next declared step from persisted references without replaying a settled or uncertain command; loss of required workspace or service state during a wait MUST fail the run, and a run with an open wait MUST stay `running`. |
+| PX-38 | A `when` predicate MUST be evaluated once, when all prerequisites are terminal, over persisted values; the result MUST be recorded and reused on recovery; the engine MUST NOT add a condition step kind or execute arbitrary code. |
+| PX-39 | A wait decided with any declared outcome, including a rejection, MUST settle `succeeded` with that outcome and MUST NOT fail the run or be treated as an infrastructure failure; skipped prerequisites and joins MUST follow the ordered eligibility rules, and run failure MUST skip unstarted steps and decide open waits `cancelled`. |
+| PX-40 | A protected step MUST be eligible only when every `requires` wait is `succeeded` with its single `approving` outcome, MUST be skipped otherwise, and MUST NOT be reachable unconditionally by `when`, `join`, a rejection, any other outcome, `expired`, or a skipped, failed or cancelled wait; timeout branching on unprotected steps MUST use `when` only. |
+| PX-41 | A wait MUST have exactly one decision (resolved, expired or cancelled) taken by one version-checked compare-and-set against the store clock; losing requests MUST change nothing, MUST NOT create a second continuation, and MUST return the recorded decision. |
+| PX-42 | Wait identity, assignment and correlation MUST be separate; identity and correlation MUST be immutable, assignment MUST change only by a version-checked authorized operation, a decision MUST NOT be inherited by another wait, and a changed candidate MUST have a fresh wait identity and decision. |
+| PX-43 | A signal identity MUST be the tuple (tenant, project, caller principal, caller key); routing MUST look up that identity before any wait matching, a recorded identity MUST be a non-expiring, self-contained record, removed only with its project, that returns its recorded result permanently and stays bound to its original target: a decision record retaining the target and the complete decision (outcome, answer, actor reference, version, time) for a winning or target-resolved signal, and a smaller tombstone (identity, request digest, refusal reason, time) for a targetless refusal, a changed request under a recorded key MUST be refused without changing the record or emitting an event, and a new request MUST match only open waits of the caller's scope, with foreign and unknown waits indistinguishable. |
 
-## Scheduling and runtime
-
-One server process hosts API, publisher, consumers, and periodic reconciliation. Database transactions claim runnable work using row locks/`SKIP LOCKED`, then persist attempt intent before releasing locks. External calls happen outside database transactions. A recovery scan handles claims whose controller crashed. Multiple replicas can share this protocol; the initial chart uses one replica.
-
-Execution calls one runtime port: `Start`, `Observe`, `Logs`, `Stop`, `Remove` and `Capabilities` ([ADR 0008](../adr/0008-runtime-seam.md)). For `run_shared` runs it also calls a small execution-owned companion port (`Capabilities`, `Ensure`, `Observe`, `Logs`, `Stop`, `Remove`) over run resources ([contract](../contracts/run-resources.md#companion-port)); the attempt port is unchanged. Each method is idempotent and acts only on a verified instance. `Stop` reports a workload stopped only once no launch can still arrive. Backends declare the guarantees they enforce: `oci_image`, `isolation`, `resource_limits`, `network_policy`, `resource_quotas` and `crash_recovery`. The installation's requirement policy decides what a step needs. By default, an executable step requires its image, isolation and resource limits. A run admitted while no runtime is configured stays unbound and is not claimed until one is configured.
-
-| Backend | Environment ([ADR 0009](../adr/0009-environments.md)) | Use | Guarantees |
-| --- | --- | --- | --- |
-| Kubernetes | `production` | Staging and production | Image, isolation, resource limits, network policy, resource quotas, crash recovery |
-| Podman | `test` | Local end-to-end | Image, isolation, resource limits, crash recovery |
-| Process | `development` | Tests only, explicit host programs | None |
-
-`run_shared` runs additionally require the backend's [resource capabilities](../contracts/run-resources.md#capabilities) (a separate named set; the guarantees above plus one `run_resources` marker bit in the existing `uint8`). Expected, only after qualification: Kubernetes the full set, Podman the lifecycle/volume/service members its tests prove with network/egress members absent unless enforced and tested, Process lifecycle members only.
-
-O-25 adds an explicit, optional launch-history proof capability ([ADR 0008](../adr/0008-runtime-seam.md#launch-evidence--o-25), implementation T-102). For a fresh workload, the shared runtime contract requires affirmative `LaunchNotStarted` only when the backend advertises that capability. Kubernetes cannot infer it from absent Secret/Job/Pod records and reports `LaunchUnknown` without affirmative evidence. Every backend still fences a subsequent start and must prove no launch can arrive before reporting `Stopped`; unknown side effects retain reconciliation requirements before retry or writer-barrier release. Keep this optional proof separate from the execution guarantees required at admission.
-
-The Kubernetes runtime injects the static `kodama step` binary through an init container, and Podman bind-mounts it. The primary container runs that entrypoint around the declared command. The entrypoint clones source (`attempt_private`; in `run_shared` it verifies the already prepared shared workspace and records the command-begin fence instead), collects results, and calls scoped interfaces. Outside Kubernetes, one instance stands for both the Job and the Pod in the entrypoint's admission identity. See [entrypoint](../implementation/step-entrypoint.md) for finalization and cancellation races.
-
-Dependencies must succeed. False conditions and skipped ancestors propagate skipping; a mandatory gate cannot be skipped through a false author-supplied condition. The baseline is fail-fast: record failure intent, stop dispatch, terminate siblings, then mark the run failed after settlement. Timeouts are `failed` with a timeout reason.
-
-`retry.on` is exactly `infrastructure` or `transient`. Explicit command exits and validation/policy failures are not automatically retried. An error classification alone does not establish safe replay of an external effect. Defaults are one attempt and no retries.
-
-## `run_shared` model
-
-Normative design; implementation is T-112–T-117 and nothing here is claimed delivered. The [run-resources contract](../contracts/run-resources.md) owns identities, ports and lifecycle detail; this section owns the observable rules.
-
-**One workspace, serialized.** A source-backed run prepares its pinned commit once in a controller-owned workload (read-only credentials, no user code, hooks/submodule recursion disabled) and records a trusted receipt; a source-free run receives initially empty scratch (earlier steps' files persist for later steps) and no checkout credential. Every executable step, each with its own digest-pinned image, mounts the same scratch at `/workspace`. Exactly one attempt holds it at a time, including `read` steps (they can modify it). Definition admission freezes `executionOrder`: the lexicographically smallest topological order by declaration index ([algorithm and fixtures](../contracts/pipeline-format-v1alpha2.md#deterministic-execution-order)). Gates occupy their position and create no Job or mount. A node is claimed only when its predecessor is settled: workload verified stopped, result/publication settled, and the workspace observed released. `needs` still governs logical dependency, skipping, output availability and expression validity. A false condition settles a step without holding the scratch. Backoff keeps the step's slot.
-
-**Services and readiness.** Services start with the run, concurrently with preparation, as run-owned workloads (not steps, sidecars or fake attempts). Endpoints are fixed at admission and published in immutable attempt context. Readiness (TCP, HTTP or exec, with startup budget) gates the first command; service loss fails the run (PX-18). Services keep their own bounded storage and share no mounts, identities or secrets with steps. Network reachability follows the pinned network model (IT-14): tenant-scoped under O-30's stage model, run-scoped under the run model.
-
-**Deadlines.** The required `spec.timeoutSeconds` bounds the run from its start (the admission transaction that reserves resources) and includes gates. It is separate from per-step execution deadlines and gate deadlines; a gate's deadline cannot outlive it. Expiry fails the run (`run_deadline_exceeded`), stops resources and invalidates pending gates.
-
-**Failure and recovery.** There is no scratch checkpoint: after any attempt began, a lost or unverifiable workspace or service fails the run (`workspace_lost`, `service_lost`); a rerun is a new run with new resources. Automatic retry requires pre-command proof from the server-recorded command-begin fence ([runtime v2](../contracts/runtime-v2.md#command-begin-fence)), not from missing runtime records. Cancellation/failure blocks claims, revokes resource and attempt grants, stops attempts then services promptly, and lets uncertain source/external effects settle independently. A run is terminal only after every resource is verified stopped **and** removed; stuck cleanup stays visible as a nonterminal safe reason (`resource_stop_unconfirmed`, `cleanup_pending`), is retried, and reserved capacity is released after verified removal.
-
-**Admission refusals.** `format_retired`, `capability_unsupported`, `policy_unavailable`, `limit_exceeds_policy`, `egress_profile_unknown` and the source-default refusals are stable 422 outcomes ([list](../contracts/pipeline-format-v1alpha2.md#format-availability-and-admission-refusals)). A runtime that does not declare the complete required companion capabilities admits no `run_shared` run.
-
-## Effects, cancellation, and recovery
-
-An action key is stable per logical step across its attempts. External tools must honor it or expose outcome lookup. General commands cannot promise exactly-once execution. A timeout or lost node can leave an uncertain effect requiring manual reconciliation.
-
-A cancellation may race with a Kubernetes create already in flight. Revoked runtime admission prevents the new Pod from starting authorized work; reconciliation deletes it. Late results cannot change a terminal/cancelled run. Required source/artifact finalization occurs before Job cleanup.
-
-Restore rotates workload signing keys and revokes old attempts; it also fences old controllers and reconciles remote Jobs/Git/deployments before dispatch. Token rotation alone cannot stop previously authorized external requests.
+PX-01–PX-05 are retired by this amendment. They described the previous run model, project workflow triggers, and kernel composition. Historical acceptance reports that cite them remain historical evidence for the superseded model.
 
 ## Acceptance
 
 | ID | Scenario | Requirements |
 | --- | --- | --- |
-| PX-A01 | Invalid graph/inputs fail before dispatch | PX-01, PX-02 |
-| PX-A02 | Crash after Job create adopts the same matching Job | PX-03, PX-04 |
-| PX-A03 | Duplicate events/broker outage converge through outbox/inbox and reconciliation | PX-05, PX-12 |
-| PX-A04 | Contending dispatch obeys dependencies, quotas, and source ownership | PX-06, PX-11, PX-14 |
-| PX-A05 | Ambiguous side effect blocks automatic retry | PX-07 |
-| PX-A06 | Cancel during create/run settles Pods and rejects late results | PX-08, PX-09 |
-| PX-A07 | Missing outputs fail success finalization while diagnostics remain readable | PX-10 |
-| PX-A08 | Human gate survives restart without a Job (`attempt_private`: without compute) and stale approval cannot progress | PX-09, PX-13 |
-| PX-A09 | Rerun preserves prior inputs/history; cleanup run has narrowly scoped admission | PX-02, PX-06, PX-12 |
-| PX-A10 | A run its runtime cannot satisfy is refused; another backend never claims, stops or removes a bound run | PX-15 |
-| PX-A11 | The real entrypoint round-trips on Process and Podman; lost workloads fail; settled workloads are removed once | PX-15, PX-16 |
-| PX-A12 | Runtime launch-history capability controls affirmative never-started proof; lost records preserve uncertainty, stopping fences subsequent launch, and uncertain effects cannot bypass reconciliation | PX-07, PX-08, PX-15, PX-16 |
-| PX-A13 | Two runs with identical service aliases resolve only their own run-unique endpoints (and, under the run model, cannot reach each other's); readiness precedes the first command; a database round trip works from different step images | PX-17 |
-| PX-A14 | Startup timeout, service exit/loss and scratch loss fail the run without empty-state replacement; restart adopts intact resources | PX-18 |
-| PX-A15 | Success, failure, timeout and cancellation remove all resources; lost responses and late creates converge without deleting foreign objects, including after controller restart | PX-19 |
-| PX-A16 | Capacity reservations are atomic and bounded; gate waits retain resources only until the run deadline, whose expiry settles resources and gates | PX-09, PX-20 |
-| PX-A17 | Model/context/policy/capability pins survive restart; an unsupported runtime or older controller refuses a `run_shared` run; historical definition digests, histories and result hashes are unchanged | PX-15, PX-21 |
-| PX-A18 | A pre-command infrastructure failure retries on the same scratch; a begun or unknown attempt is never replayed automatically and partial scratch/service effects cannot be silently repeated | PX-07, PX-22 |
-| PX-A19 | A run over two repositories checks each out at its pinned commit and path; a foreign repository, duplicate path or unreachable commit fails admission | PX-02, PX-23 |
-| PX-A20 | A developer push starts one run for the pushed commit; redelivery, replay and later branch movement start nothing more | PX-24, GR-10 |
-| PX-A21 | A provisioning run creates and seeds a repository, then a second run uses it; the seed grant cannot write another repository | PX-25, GR-07 |
+| PX-A24 | A plain multi-step pipeline runs with memory/Process adapters and no SQL, NATS, Git, HTTP, task, or agent service; two steps share workspace files and declared secrets | PX-28, PX-30 |
+| PX-A25 | A project refuses a duplicate pipeline name from another repository; an admitted run keeps its snapshot after the definition changes | PX-29, PX-30 |
+| PX-A26 | A run waits across controller restart without a worker; one authorized signal resumes it once, a duplicate and a late signal change nothing, and a run-scoped service is not silently recreated after loss | PX-31, PX-32, PX-34 |
+| PX-A27 | With the broker unavailable, state commits and the outbox retains the event; after recovery, consumers process it once, a redelivery changes nothing, and reconciliation repairs a missed wakeup | PX-32, PX-33 |
+| PX-A28 | A rework branch runs as a declared forward step without repeating an earlier step; a continuing new run starts from the pinned candidate commit in a fresh workspace and inherits no wait or decision; a second run for a task with a non-terminal current run is refused | PX-35 |
+| PX-A29 | An agent step that records a question and succeeds causes its downstream wait to open with that request; one that records none skips the wait; a failed step's outputs open nothing; a workload cannot resolve a wait with its run token | PX-36 |
+| PX-A30 | After a controller restart between wait decision and the next step, the same run starts the next declared step once without re-running any settled step; loss of the workspace during a wait fails the run with `workspace_lost` | PX-37 |
+| PX-A31 | A `when` over a missing output is false and skips the step; a skipped prerequisite still reads `status == "skipped"` while its outputs and outcome are missing; the recorded result is reused after restart even if the referenced value changed; every grammar bound is enforced | PX-38 |
+| PX-A32 | A reviewer rejection takes the declared rejected branch and the run succeeds; `join: all` skips on a skipped prerequisite and `join: any` runs; a failed step skips unstarted steps and cancels open waits; a protected step is skipped after rejection, any non-approving outcome, expiry or cancellation | PX-39, PX-40 |
+| PX-A33 | Concurrent resolution, expiry and run cancellation of one wait commit exactly one decision; a replay of the winning key returns its result, a new signal for the decided wait is refused as `decided` with the recorded decision, and one continuation runs | PX-41, PX-43 |
+| PX-A34 | A candidate change in a new run yields a new wait identity and an open inbox entry that the earlier decision does not satisfy; reassignment changes who may decide but not identity or correlation; an external signal matching zero or two open waits is refused | PX-42 |
+| PX-A35 | With `on_expiry: continue`, an unprotected step whose `when` tests `outcome == "expired"` runs after expiry; a protected step requiring that wait is skipped with `requires_unmet`, as it is after a rejection | PX-39, PX-40 |
+| PX-A36 | After a wait is resolved, a retry of the winning key returns the recorded decision, including after the wait closed and after another wait with an identical correlation opened; a new signal by correlation matches only the open wait, and a new signal for the closed one is refused | PX-41, PX-43 |
+| PX-A37 | An identical key from another tenant, project or caller is an independent identity; a changed request under a recorded key is refused as `key_reuse`, repeatedly, leaving the record unchanged; zero and multiple correlation matches are refused as `unknown_wait` and `ambiguous_correlation`, and replaying each returns the same refusal even after a matching wait has opened, which it never decides; a foreign wait ID is refused exactly as an unknown one | PX-43 |
+| PX-A38 | After a wait is resolved and the wait, step and run records have been removed by ordinary retention cleanup, a retry of the winning key returns the original outcome, answer, actor reference, decision version and time; a losing signal's replay still returns the decision it lost to; a targetless refusal replays as its tombstone; project deletion is the only removal | PX-43 |

@@ -38,3 +38,8 @@ pages of `Batch` records and the cursor resumes (and wraps) on the next sweep, s
 (applying, unknown outcome, retries exhausted) cannot starve later expired ones. A retry decision rereads the
 record and fails closed on a lookup error or an unknown cleanup state; a round is classified from its
 attempts (an ambiguous attempt without replay-safe evidence is an unknown outcome whatever the run's reason).
+
+**Git storage is out of reach (T-149, GR-13, GR-14).** Cleanup deletes the deployment's external objects and nothing in
+Git: the module imports no Git, repository, workspace or Kubernetes package, its three ports expose no Git operation, and
+the record of a cleaned-up deployment of a source set keeps its set (`Test_unit_cleanup_preserves_git_storage`).
+Repositories, branches and the commits a deployment's source set pins belong to retention.

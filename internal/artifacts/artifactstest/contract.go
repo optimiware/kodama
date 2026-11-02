@@ -313,6 +313,54 @@ func RepoContract(t *testing.T, open OpenRepo) {
 		mustReserve(t, env, newFile(t, ScopeA, attempt1, "b", artifacts.RoleOutput, []byte("2")))
 	})
 
+	t.Run("source set provenance is recorded with the artifact and replays", func(t *testing.T) {
+		env := open(t)
+		ref, err := artifacts.ParseRegistryRef("registry.example.test/acme/set-app")
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := artifacts.DigestOf([]byte("set manifest"))
+		res := artifacts.Reservation{Scope: ScopeA, Attempt: attempt1, Run: "run_1", Step: "build", Name: "image", Kind: artifacts.KindOCI,
+			Role: artifacts.RoleOutput, Digest: digest, Registry: ref.String(), Provenance: SourceSet}
+		id := nextID()
+		a, err := artifacts.NewRegistered(id, res, artifacts.OCIVerification{Repository: ref.String(), Digest: digest,
+			ManifestMediaType: "application/vnd.oci.image.manifest.v1+json", ManifestSize: 512, Provenance: SourceSet}, contractNow)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := mustReserve(t, env, a)
+		if got.Provenance() != SourceSet || got.Provenance().RepositoryURL != "" || got.Provenance().Commit != "" {
+			t.Fatalf("the registration's provenance: %+v", got.Provenance())
+		}
+		stored, err := env.Repository().Get(ctx, ScopeA, id)
+		if err != nil || stored.Provenance() != SourceSet {
+			t.Fatalf("the stored provenance: %+v %v", stored.Provenance(), err)
+		}
+		commits := stored.Provenance().SourceSet.Commits()
+		if len(commits) != 2 || commits[0].RepositoryID != "repo_api" || commits[1].RepositoryID != "repo_web" || stored.Provenance().SourceSet.Digest != SourceSet.SourceSet.Digest {
+			t.Fatalf("the commits are ordered by repository: %+v", commits)
+		}
+		refs, err := env.Repository().ReferencesForAttempt(ctx, ScopeA, attempt1, []domain.ArtifactID{id})
+		if err != nil || refs[id].Provenance != SourceSet {
+			t.Fatalf("the consumer view: %+v %v", refs[id], err)
+		}
+		// A file of the same attempt keeps its own provenance; a source set never
+		// reads back as a single source.
+		file := mustReserve(t, env, newFile(t, ScopeA, attempt1, "report", artifacts.RoleOutput, []byte("one")))
+		if file.Provenance() != Source {
+			t.Fatalf("a single source reads back unchanged: %+v", file.Provenance())
+		}
+		// A repeat of the registration is the stored one.
+		again, err := reserve(env, a)
+		if err != nil || again.Created || again.Artifact.Provenance() != SourceSet {
+			t.Fatalf("a repeated registration: %+v %v", again, err)
+		}
+		// Other tenants never see it.
+		if _, err := env.Repository().Get(ctx, ScopeB, id); !errors.Is(err, artifacts.ErrNotFound) {
+			t.Fatalf("a foreign tenant read the provenance: %v", err)
+		}
+	})
+
 	t.Run("completion is a fenced lease whose losers commit nothing", func(t *testing.T) {
 		env := open(t)
 		data := []byte("verified content")

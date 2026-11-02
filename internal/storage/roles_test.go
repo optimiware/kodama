@@ -63,7 +63,7 @@ func Test_runtime_role_privileges(t *testing.T) {
 		}
 		// The baseline carries every capability's tables: the check above must
 		// have covered all of them, including the base five.
-		for _, name := range []string{"tenants", "projects", "users", "memberships", "audit", "work_items", "runs", "artifacts"} {
+		for _, name := range []string{"tenants", "projects", "users", "memberships", "audit_events", "tasks", "runs", "run_steps", "pipelines", "repositories", "services", "secrets", "artifacts", "agent_sessions", "mcp_servers"} {
 			if !seen[name] {
 				t.Errorf("table %s was not checked", name)
 			}
@@ -78,7 +78,7 @@ func Test_runtime_role_privileges(t *testing.T) {
 			"ALTER TABLE projects DISABLE ROW LEVEL SECURITY",
 			"DROP TABLE projects",
 			"TRUNCATE projects",
-			"TRUNCATE audit",
+			"TRUNCATE audit_events",
 			"CREATE POLICY rogue ON projects USING (true)",
 			"CREATE FUNCTION rogue() RETURNS int LANGUAGE sql AS 'SELECT 1'",
 		} {
@@ -94,7 +94,7 @@ func Test_runtime_role_privileges(t *testing.T) {
 	t.Run("audit_is_append_only", func(t *testing.T) {
 		err := storage.WithTenant(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
 			var n int
-			if err := tx.QueryRow(ctx, "SELECT count(*) FROM audit").Scan(&n); err != nil || n != 1 {
+			if err := tx.QueryRow(ctx, "SELECT count(*) FROM audit_events").Scan(&n); err != nil || n != 1 {
 				t.Errorf("select own audit: n=%d err=%v", n, err)
 			}
 			return nil
@@ -103,10 +103,10 @@ func Test_runtime_role_privileges(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, sql := range []string{
-			"UPDATE audit SET reason = 'tampered'",
-			"UPDATE audit SET action = 'x' WHERE id = 'au-a'",
-			"DELETE FROM audit",
-			"DELETE FROM audit WHERE id = 'au-a'",
+			"UPDATE audit_events SET payload = '{\"tampered\":true}'",
+			"UPDATE audit_events SET event_type = 'x' WHERE id = 'au-a'",
+			"DELETE FROM audit_events",
+			"DELETE FROM audit_events WHERE id = 'au-a'",
 		} {
 			// Each statement gets its own transaction: a failed statement aborts it.
 			err := storage.WithTenant(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
@@ -115,9 +115,9 @@ func Test_runtime_role_privileges(t *testing.T) {
 			})
 			requireCode(t, err, "42501", sql)
 		}
-		var reason *string
-		if err := e.mig.QueryRow(ctx, "SELECT reason FROM audit WHERE id = 'au-a'").Scan(&reason); err != nil || reason != nil {
-			t.Fatalf("audit row changed: reason=%v err=%v", reason, err)
+		var payload string
+		if err := e.mig.QueryRow(ctx, "SELECT payload::text FROM audit_events WHERE id = 'au-a'").Scan(&payload); err != nil || payload != "{}" {
+			t.Fatalf("audit row changed: payload=%v err=%v", payload, err)
 		}
 	})
 
@@ -126,7 +126,7 @@ func Test_runtime_role_privileges(t *testing.T) {
 		for _, g := range []grant{
 			{"tenants", "INSERT"}, {"tenants", "UPDATE"}, {"tenants", "DELETE"},
 			{"users", "INSERT"}, {"users", "UPDATE"}, {"users", "DELETE"},
-			{"projects", "DELETE"}, {"audit", "UPDATE"}, {"audit", "DELETE"}, {"audit", "TRUNCATE"},
+			{"projects", "DELETE"}, {"audit_events", "UPDATE"}, {"audit_events", "DELETE"}, {"audit_events", "TRUNCATE"},
 			{"schema_migrations", "SELECT"},
 		} {
 			var ok bool
@@ -140,7 +140,7 @@ func Test_runtime_role_privileges(t *testing.T) {
 		for _, g := range []grant{
 			{"tenants", "SELECT"}, {"projects", "SELECT"}, {"projects", "INSERT"}, {"projects", "UPDATE"}, {"users", "SELECT"},
 			{"memberships", "SELECT"}, {"memberships", "INSERT"}, {"memberships", "UPDATE"}, {"memberships", "DELETE"},
-			{"audit", "SELECT"}, {"audit", "INSERT"},
+			{"audit_events", "SELECT"}, {"audit_events", "INSERT"},
 		} {
 			var ok bool
 			if err := pool.QueryRow(ctx, "SELECT has_table_privilege(current_user, $1, $2)", g.table, g.priv).Scan(&ok); err != nil {

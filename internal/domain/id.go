@@ -33,7 +33,15 @@ type (
 	RunID         string
 	AttemptID     string
 	ArtifactID    string
+	ReleaseID     string
+	PublicationID string
 	EnvironmentID string
+	TaskID        string
+	PipelineID    string
+	StepID        string
+	RepositoryID  string
+	ServiceID     string
+	SessionID     string
 )
 
 func (id TenantID) Validate() error      { return validateID("tenant id", string(id)) }
@@ -43,4 +51,12 @@ func (id DefinitionID) Validate() error  { return validateID("definition id", st
 func (id RunID) Validate() error         { return validateID("run id", string(id)) }
 func (id AttemptID) Validate() error     { return validateID("attempt id", string(id)) }
 func (id ArtifactID) Validate() error    { return validateID("artifact id", string(id)) }
+func (id ReleaseID) Validate() error     { return validateID("release id", string(id)) }
+func (id PublicationID) Validate() error { return validateID("publication id", string(id)) }
 func (id EnvironmentID) Validate() error { return validateID("environment id", string(id)) }
+func (id TaskID) Validate() error        { return validateID("task id", string(id)) }
+func (id PipelineID) Validate() error    { return validateID("pipeline id", string(id)) }
+func (id StepID) Validate() error        { return validateID("step id", string(id)) }
+func (id RepositoryID) Validate() error  { return validateID("repository id", string(id)) }
+func (id ServiceID) Validate() error     { return validateID("service id", string(id)) }
+func (id SessionID) Validate() error     { return validateID("session id", string(id)) }

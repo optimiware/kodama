@@ -68,6 +68,14 @@ func renderSpec(f AttemptFacts, r Report, o Observation, dep DeploymentFacts, ke
 	fmt.Fprintf(&b, "- Work item under test: `%s` at content revision %d\n", r.Subject.WorkItemID, r.Subject.ContentRevision)
 	fmt.Fprintf(&b, "- Deployment inspected: `%s` (environment `%s`)\n", dep.ID, dep.Environment)
 	fmt.Fprintf(&b, "- Configuration digest: `%s`\n- Candidate commit: `%s`\n- Image digest: `%s`\n", dep.ConfigDigest, dep.Candidate, dep.Image)
+	if !f.Sources.Empty() {
+		// A source-set attempt names every checkout it was pinned to (DQ-10); an
+		// older context has none and renders exactly as before.
+		fmt.Fprintf(&b, "- Source set: `%s`\n", f.Sources.Digest)
+		for _, src := range f.Sources.Sources {
+			fmt.Fprintf(&b, "  - `%s` at `%s` (repository `%s`, %s, pinned `%s`)\n", src.Path, src.HeadCommit, src.RepositoryID, src.Access, src.Commit)
+		}
+	}
 	fmt.Fprintf(&b, "- QA report: artifact `%s` (`%s`), canonical digest `%s`\n", ref.ArtifactID, ref.ArtifactDigest, ref.Digest)
 	fmt.Fprintf(&b, "- Deduplication key: `%s`\n", key)
 	b.WriteString(PayloadMarker(payload) + "\n")

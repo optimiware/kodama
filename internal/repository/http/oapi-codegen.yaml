@@ -1,0 +1,12 @@
+# Types-only generation, as for internal/httpapi/common.gen.go: no router,
+# client, server or embedded spec. Schemas shared with other fragments are
+# referenced through api/common.yaml and are not generated here. The wire shapes
+# are contracts/git/v1's; a test proves these generated types stay identical.
+package: repositoryhttp
+output: types.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true
+import-mapping:
+  common.yaml: github.com/optimiware/kodama/internal/httpapi

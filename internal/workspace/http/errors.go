@@ -53,9 +53,13 @@ func mapError(err error, w *workspace.Workspace) *httpapi.APIError {
 	case errors.Is(err, workspace.ErrDiverged):
 		return httpapi.NewError(stdhttp.StatusConflict, CodeBranchDiverged, "the remote branch is not a fast-forward of the accepted commit").
 			WithDetails(map[string]any{"lastError": workspace.ReasonBranchDiverged})
+	case errors.Is(err, workspace.ErrCheckpointRequired):
+		return httpapi.NewError(stdhttp.StatusConflict, CodeStateConflict, "a push to the task branch is not an accepted checkpoint").
+			WithDetails(map[string]any{"lastError": workspace.ReasonUnacceptedPush})
 	case errors.Is(err, workspace.ErrFenced):
 		return httpapi.NewError(stdhttp.StatusConflict, CodePublisherFenced, "publication is fenced by installation recovery")
-	case errors.Is(err, workspace.ErrInvalidTransition), errors.Is(err, workspace.ErrStale), errors.Is(err, workspace.ErrAdmissionClosed):
+	case errors.Is(err, workspace.ErrInvalidTransition), errors.Is(err, workspace.ErrStale), errors.Is(err, workspace.ErrAdmissionClosed), errors.Is(err, workspace.ErrWrongHosting),
+		errors.Is(err, workspace.ErrPushPending), errors.Is(err, workspace.ErrWriterBlocked):
 		return httpapi.NewError(stdhttp.StatusConflict, CodeStateConflict, "the workspace state does not allow this operation")
 	case errors.Is(err, workspace.ErrUnavailable), errors.Is(err, workspace.ErrLimitExceeded), errors.Is(err, workspace.ErrNotConfigured):
 		return httpapi.UnavailableError(5*time.Second, err)

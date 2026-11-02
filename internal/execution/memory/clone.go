@@ -44,6 +44,21 @@ func cloneRun(r execution.Run) execution.Run {
 	if sh, err := cloneShared(r.Shared); err == nil {
 		r.Shared = sh
 	}
+	if r.Sources != nil {
+		src := *r.Sources
+		src.Entries = slices.Clone(src.Entries)
+		for i := range src.Entries {
+			if b := src.Entries[i].Branch; b != nil {
+				c := *b
+				src.Entries[i].Branch = &c
+			}
+		}
+		if src.CAFile != nil {
+			c := *src.CAFile
+			src.CAFile = &c
+		}
+		r.Sources = &src
+	}
 	return r
 }
 
@@ -93,6 +108,7 @@ func cloneAttempt(a execution.Attempt) execution.Attempt {
 	a.Context = slices.Clone(a.Context)
 	a.ExecutionDeadline, a.StartedAt, a.FinishedAt = cloneTime(a.ExecutionDeadline), cloneTime(a.StartedAt), cloneTime(a.FinishedAt)
 	a.Result = cloneResult(a.Result)
+	a.Commits = slices.Clone(a.Commits)
 	return a
 }
 

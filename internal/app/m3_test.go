@@ -155,7 +155,7 @@ func TestM3CompositionSmoke(t *testing.T) {
 			t.Errorf("durables: %v", durables)
 		}
 
-		// The schema is the squashed two-file baseline: one contribution that
+		// The schema is the squashed baseline (schema, grants and the Git hosting contribution): one contribution that
 		// already holds every business-loop table and grant.
 		m, err := Manifest()
 		if err != nil {
@@ -165,10 +165,9 @@ func TestM3CompositionSmoke(t *testing.T) {
 		for _, c := range Contributions() {
 			modules = append(modules, c.Module)
 		}
-		// The squashed baseline is the whole existing schema; the additive
-		// run_shared contributions (T-112 resources, T-113 resource grants, T-116
-		// artifact workspace provenance) are the only later ones.
-		if !slices.Equal(modules, []string{"storage", "execution-run-resources", "runtimeauth-resource-grants", "artifacts-workspace-provenance"}) {
+		// ADR 0013: the baseline is the only contribution; legacy run-resource,
+		// resource-grant and provenance migrations reference removed tables.
+		if !slices.Equal(modules, []string{"storage"}) {
 			t.Errorf("contributions = %v", modules)
 		}
 		if len(m.Migrations()) == 0 {
@@ -734,6 +733,7 @@ func TestM3ContractCompatibility(t *testing.T) {
 				added = append(added, k)
 			}
 		}
+		added = slices.DeleteFunc(added, isKernelGitOperation) // served by the kernel assembly (T-170)
 		slices.Sort(added)
 		var want []string
 		for k := range m3Operations() {
@@ -747,7 +747,7 @@ func TestM3ContractCompatibility(t *testing.T) {
 		// operation needs its own action and its own entry in the matrix above.
 		bl := summaryOf(t, "api-baseline-t075.json")
 		for k := range now.Operations {
-			if _, known := bl.Operations[k]; !known {
+			if _, known := bl.Operations[k]; !known && !isKernelGitOperation(k) {
 				t.Errorf("operation %s is new since the business-loop composition and has no authorization evidence here", k)
 			}
 		}

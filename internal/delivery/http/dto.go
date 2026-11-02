@@ -145,10 +145,11 @@ func deploymentDTO(d delivery.Deployment) Deployment {
 		r := rec.CleanupReason
 		cleanup.Reason = &r
 	}
+	source, sourceSet := sourceDTO(rec.Source)
 	return Deployment{
 		Id: string(rec.ID), EnvironmentId: httpapi.ID(rec.Environment), ConfigurationDigest: string(rec.ConfigDigest), Namespace: rec.Namespace,
-		Source: Source{RepositoryUrl: rec.Source.RepositoryURL, Commit: rec.Source.Commit},
-		Image:  Image{ArtifactId: httpapi.ID(rec.Image.ArtifactID), Digest: string(rec.Image.Digest)},
+		Source: source, SourceSet: sourceSet,
+		Image: Image{ArtifactId: httpapi.ID(rec.Image.ArtifactID), Digest: string(rec.Image.Digest)},
 		Producer: Producer{AttemptId: httpapi.ID(rec.Producer.Attempt), RunId: httpapi.ID(rec.Producer.Run), StepId: rec.Producer.Step,
 			ToolImage: rec.Producer.ToolImage},
 		RunId: httpapi.ID(rec.Run), StepId: rec.Step, ActionKey: rec.ActionKey, AttemptId: httpapi.ID(rec.Attempt),
@@ -166,11 +167,48 @@ func receiptDTO(r delivery.Receipt, created bool) DeploymentReceipt {
 	return DeploymentReceipt{Deployment: deploymentDTO(r.Deployment), Annotations: ann, Created: created}
 }
 
-func registrationRequest(src Source, img Image) delivery.RegistrationRequest {
-	return delivery.RegistrationRequest{
-		Source: delivery.Source{RepositoryURL: src.RepositoryUrl, Commit: src.Commit},
-		Image:  delivery.Image{ArtifactID: domain.ArtifactID(img.ArtifactId), Digest: runtimev1.Digest(img.Digest)},
+// registrationRequest converts a registration body: exactly one of source and
+// sourceSet names the candidate. A malformed source set is a bad request, not a
+// provenance refusal.
+func registrationRequest(src *Source, set *DeploymentSourceSet, img Image) (delivery.RegistrationRequest, error) {
+	out := delivery.RegistrationRequest{Image: delivery.Image{ArtifactID: domain.ArtifactID(img.ArtifactId), Digest: runtimev1.Digest(img.Digest)}}
+	switch {
+	case (src == nil) == (set == nil):
+		return out, httpapi.BadRequestError("exactly one of source and sourceSet names the candidate")
+	case src != nil:
+		out.Source = delivery.Source{RepositoryURL: src.RepositoryUrl, Commit: src.Commit}
+	default:
+		commits := make([]delivery.SourceCommit, len(set.Commits))
+		for i, c := range set.Commits {
+			commits[i] = delivery.SourceCommit{RepositoryID: string(c.RepositoryId), Commit: c.Commit}
+		}
+		ss, err := delivery.NewSourceSet(set.Digest, commits)
+		if err != nil {
+			return out, httpapi.BadRequestError("the source set is not valid")
+		}
+		// A set is canonical: ordered by repository, so one candidate has one body.
+		for i, c := range ss.Commits() {
+			if set.Commits[i].RepositoryId != httpapi.ID(c.RepositoryID) {
+				return out, httpapi.BadRequestError("the source set is ordered by repository")
+			}
+		}
+		out.Source = delivery.Source{SourceSet: ss}
 	}
+	return out, nil
+}
+
+// sourceDTO renders the source of a deployment, always a repository and commit
+// (the primary source's for a source set), and the source set beside it when
+// there is one (an additive member).
+func sourceDTO(s delivery.Source) (Source, *DeploymentSourceSet) {
+	if s.SourceSet.IsZero() {
+		return Source{RepositoryUrl: s.RepositoryURL, Commit: s.Commit}, nil
+	}
+	out := &DeploymentSourceSet{Digest: s.SourceSet.Digest}
+	for _, c := range s.SourceSet.Commits() {
+		out.Commits = append(out.Commits, DeploymentSourceCommit{RepositoryId: httpapi.ID(c.RepositoryID), Commit: c.Commit})
+	}
+	return Source{RepositoryUrl: s.RepositoryURL, Commit: s.Commit}, out
 }
 
 func outcomeReport(in OutcomeReport) delivery.OutcomeReport {

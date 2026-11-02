@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "wp.sources.positive.writer-two-repositories",
+      "requirements": ["AR-11", "AR-15", "AR-A09", "PX-23"],
+      "context": {"path": "contracts/runtime/v3/fixtures/cases.json", "selector": "name=context_v3_work_item_writer_two_repositories"},
+      "mutation": null,
+      "expected": {
+        "plan": "accepted",
+        "checkouts": [
+          {"path": "backend", "repositoryId": "repo_01", "mode": "head", "ref": "refs/heads/kodama/work/wi_1042"},
+          {"path": "frontend", "repositoryId": "repo_02", "mode": "agent_branch", "ref": "refs/heads/kodama/agents/wi_1042/run_01/generate"}
+        ],
+        "primaryCandidate": "first changed source in path order"
+      },
+      "evidenceKind": "synthetic-fixture"
+    },
+    {
+      "id": "wp.sources.positive.reader-never-the-task-branch",
+      "requirements": ["AR-15", "AR-A09", "GR-07"],
+      "context": {"path": "contracts/runtime/v3/fixtures/cases.json", "selector": "name=context_v3_work_item_reader_first_attempt"},
+      "mutation": null,
+      "expected": {
+        "plan": "accepted",
+        "checkouts": [
+          {"path": "backend", "repositoryId": "repo_01", "mode": "agent_branch", "ref": "refs/heads/kodama/agents/wi_1042/run_01/test"},
+          {"path": "frontend", "repositoryId": "repo_02", "mode": "agent_branch", "ref": "refs/heads/kodama/agents/wi_1042/run_01/test"}
+        ],
+        "primaryCandidate": "first changed source in path order"
+      },
+      "evidenceKind": "synthetic-fixture"
+    },
+    {
+      "id": "wp.sources.positive.push-origin-run-branch",
+      "requirements": ["AR-11", "AR-15", "PX-24"],
+      "context": {"path": "contracts/runtime/v3/fixtures/cases.json", "selector": "name=context_v3_push_origin_reader_root_source"},
+      "mutation": null,
+      "expected": {
+        "plan": "accepted",
+        "checkouts": [
+          {"path": ".", "repositoryId": "repo_01", "mode": "agent_branch", "ref": "refs/heads/kodama/runs/run_01/verify"}
+        ],
+        "primaryCandidate": "first changed source in path order"
+      },
+      "evidenceKind": "synthetic-fixture"
+    },
+    {
+      "id": "wp.sources.negative.grant-cannot-publish",
+      "requirements": ["AR-15", "AR-A09"],
+      "context": {"path": "contracts/runtime/v3/fixtures/cases.json", "selector": "name=context_v3_work_item_reader_first_attempt"},
+      "mutation": "narrow-grant-of-last-repository",
+      "expected": {"plan": "refused", "checkouts": []},
+      "evidenceKind": "synthetic-fixture"
+    },
+    {
+      "id": "wp.sources.negative.source-free",
+      "requirements": ["AR-03", "AR-15"],
+      "context": {"path": "contracts/runtime/v3/fixtures/cases.json", "selector": "name=context_v3_cleanup_run_manual_origin_source_free_without_git"},
+      "mutation": null,
+      "expected": {"plan": "refused", "checkouts": []},
+      "evidenceKind": "synthetic-fixture"
+    }
+  ]
+}

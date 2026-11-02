@@ -4,7 +4,7 @@ milestone: production
 status: deferred
 depends_on: [T-029, T-061, T-090, T-106]
 decision_blockers: []
-owns: [deploy/helm/kodama/, internal/lifecycle/, internal/app/production-lifecycle.go, internal/app/run.go, api/lifecycle.yaml, test/e2e/production/, docs/operations/installation-and-configuration.md, docs/releases/, README.md, LICENSE, CHANGELOG.md]
+owns: [deploy/charts/kodama/, internal/lifecycle/, internal/app/production-lifecycle.go, internal/app/run.go, api/lifecycle.yaml, test/e2e/production/, docs/operations/installation-and-configuration.md, docs/releases/, README.md, LICENSE, CHANGELOG.md]
 ---
 # T-056 — Supported production and public release
 

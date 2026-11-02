@@ -1,0 +1,126 @@
+{{- range .Values.execution.tenants }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .namespace }}
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    kodama.optimi.com/tenant: {{ .tenantId | quote }}
+    helm.sh/resource-policy: keep
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $.Values.execution.serviceAccountName }}
+  namespace: {{ .namespace }}
+  labels:
+    app.kubernetes.io/managed-by: kodama
+  annotations:
+    helm.sh/resource-policy: keep
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: kodama-execution
+  namespace: {{ .namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  hard:
+    {{- toYaml $.Values.execution.quota | nindent 4 }}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: kodama-execution
+  namespace: {{ .namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  limits:
+    - type: Container
+      default:
+        {{- toYaml $.Values.execution.limitRange.default | nindent 8 }}
+      defaultRequest:
+        {{- toYaml $.Values.execution.limitRange.defaultRequest | nindent 8 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kodama-default-deny
+  namespace: {{ .namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kodama-egress
+  namespace: {{ .namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.execution.network.dnsNamespace }}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              {{- toYaml $.Values.execution.network.publicExcept | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 80}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kodama-executor
+  namespace: {{ .namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "secrets", "persistentvolumeclaims"]
+    verbs: ["get", "list", "create", "delete", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kodama-executor
+  namespace: {{ .namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kodama-executor
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kodama-kernel.serviceAccount" $ }}
+    namespace: {{ $.Release.Namespace }}
+---
+{{- end }}

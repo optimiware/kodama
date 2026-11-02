@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 
+	gitv1 "github.com/optimiware/kodama/contracts/git/v1"
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
 	"github.com/optimiware/kodama/internal/domain"
@@ -34,6 +35,15 @@ var messages = map[domain.ErrorCode]string{
 	runtimev2.CodeResourceUnbound:        "The resource instance is not bound yet.",
 	runtimev2.CodeResourceRevoked:        "The resource is no longer authorized.",
 	domain.CodeIdempotencyConflict:       "The request conflicts with the earlier one.",
+	// Codes of the runtime v3 Git grant routes (the Git contract's repository
+	// codes and the integration route's publication_conflict). Only the v3 routes
+	// produce them; the v1 and v2 inventories exclude them.
+	runtimev1.CodePublicationConflict: "The target branch is not what the approval was given over; the candidate must be recomputed.",
+	gitv1.CodeHostingMismatch:         "The repository is not hosted by this installation.",
+	gitv1.CodeRepositoryArchived:      "The repository is archived.",
+	gitv1.CodeRepositoryNotReady:      "The repository is not ready.",
+	gitv1.CodeRepositoryNotEmpty:      "The repository already has refs.",
+	gitv1.CodeSeedPending:             "An earlier push to the repository is unsettled.",
 }
 
 // classify maps a service error to a contract code.
@@ -61,6 +71,8 @@ func classify(err error) domain.ErrorCode {
 		return runtimev2.CodeReceiptConflict
 	case errors.Is(err, runtimeauth.ErrIdempotencyConflict):
 		return domain.CodeIdempotencyConflict
+	case errors.Is(err, runtimeauth.ErrPublicationConflict):
+		return runtimev1.CodePublicationConflict
 	}
 	// Includes ErrUnavailable and ErrConflict: no decision was made, nothing
 	// is granted, and the client may retry.

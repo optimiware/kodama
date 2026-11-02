@@ -1,0 +1,1420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kodama.invalid/contracts/runtime/v3/schema.json",
+  "title": "Kodama runtime contract v3 (run_shared with a source set)",
+  "description": "Messages new in /runtime/v3: the attempt context with origin, source set and Git credential delivery, the begin fence over every source, the result with per-repository commit outputs, and the resource subjects of a v3 run (the preparation of the whole source set; services reuse the v2 service messages). Requests are strict (no additional properties); responses and contexts tolerate compatible additions. Everything shared with v1 and v2 (admission, attempt tokens, secrets, artifacts, errors, endpoints, run window, policy pin) is the unchanged definition, referenced from the v1 and v2 schema resources; Git value syntaxes are referenced from the Git contract schema. Cross-field rules a schema cannot express live in the Go contract checks.",
+  "$defs": {
+    "GitFile": {
+      "type": "string",
+      "pattern": "^/kodama/git/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "OriginKind": {
+      "enum": [
+        "work_item",
+        "push",
+        "manual",
+        "provision"
+      ]
+    },
+    "Origin": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/OriginKind"
+        },
+        "workItemId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+            }
+          ]
+        },
+        "pushId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+            }
+          ]
+        },
+        "repositoryId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+            }
+          ]
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/RefName"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "workItemId",
+        "pushId",
+        "repositoryId",
+        "ref"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "work_item"
+            },
+            "workItemId": {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+            },
+            "pushId": {
+              "type": "null"
+            },
+            "repositoryId": {
+              "type": "null"
+            },
+            "ref": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "push"
+            },
+            "workItemId": {
+              "type": "null"
+            },
+            "pushId": {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+            },
+            "repositoryId": {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+            },
+            "ref": {
+              "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/RefName"
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "manual"
+            },
+            "workItemId": {
+              "type": "null"
+            },
+            "pushId": {
+              "type": "null"
+            },
+            "repositoryId": {
+              "type": "null"
+            },
+            "ref": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "provision"
+            },
+            "workItemId": {
+              "type": "null"
+            },
+            "pushId": {
+              "type": "null"
+            },
+            "repositoryId": {
+              "type": "null"
+            },
+            "ref": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "SourceV3": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/ID"
+        },
+        "commit": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/ObjectID"
+        },
+        "path": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/SourcePath"
+        },
+        "access": {
+          "enum": [
+            "read",
+            "write"
+          ]
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/BranchRef"
+            }
+          ]
+        },
+        "repositoryUrl": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/RepositoryURL"
+        },
+        "headCommit": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/GitCommit"
+        },
+        "expectedTip": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/GitCommit"
+            }
+          ]
+        }
+      },
+      "required": [
+        "repositoryId",
+        "commit",
+        "path",
+        "access",
+        "branch",
+        "repositoryUrl",
+        "headCommit",
+        "expectedTip"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "access": {
+              "const": "write"
+            },
+            "branch": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "properties": {
+            "access": {
+              "const": "read"
+            },
+            "branch": {
+              "type": "null"
+            },
+            "expectedTip": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "PreparedSource": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/SourcePath"
+        },
+        "commit": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/GitCommit"
+        },
+        "treeId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/GitCommit"
+        }
+      },
+      "required": [
+        "path",
+        "commit",
+        "treeId"
+      ]
+    },
+    "PreparationV3": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/PreparedSource"
+          }
+        },
+        "receiptDigest": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Digest"
+        }
+      },
+      "required": [
+        "sources",
+        "receiptDigest"
+      ]
+    },
+    "CommitOutput": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "ref": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/BranchRef"
+        },
+        "commit": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/GitCommit"
+        },
+        "pushId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "ref",
+        "commit",
+        "pushId"
+      ]
+    },
+    "CommitOutputStrict": {
+      "$ref": "#/$defs/CommitOutput",
+      "unevaluatedProperties": false
+    },
+    "LineageEntryV3": {
+      "type": "object",
+      "properties": {
+        "stepId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/StepName"
+        },
+        "attemptId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "access": {
+          "enum": [
+            "none",
+            "read",
+            "write"
+          ]
+        },
+        "beganAt": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Timestamp"
+        },
+        "workspaceState": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/WorkspaceState"
+        },
+        "ignoredPresent": {
+          "type": "boolean"
+        },
+        "published": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/CommitOutput"
+          }
+        }
+      },
+      "required": [
+        "stepId",
+        "attemptId",
+        "access",
+        "beganAt",
+        "workspaceState",
+        "ignoredPresent",
+        "published"
+      ]
+    },
+    "WorkspaceV3": {
+      "type": "object",
+      "properties": {
+        "access": {
+          "enum": [
+            "none",
+            "read",
+            "write"
+          ]
+        },
+        "mountPath": {
+          "const": "/workspace"
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/SourceV3"
+          }
+        },
+        "sourceSetDigest": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Digest"
+            }
+          ]
+        },
+        "preparation": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/PreparationV3"
+            }
+          ]
+        },
+        "lineage": {
+          "type": "array",
+          "maxItems": 8192,
+          "items": {
+            "$ref": "#/$defs/LineageEntryV3"
+          }
+        }
+      },
+      "required": [
+        "access",
+        "mountPath",
+        "sources",
+        "sourceSetDigest",
+        "preparation",
+        "lineage"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "access": {
+              "const": "none"
+            },
+            "sources": {
+              "maxItems": 0
+            },
+            "sourceSetDigest": {
+              "type": "null"
+            },
+            "preparation": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "properties": {
+            "access": {
+              "enum": [
+                "read",
+                "write"
+              ]
+            },
+            "sources": {
+              "minItems": 1
+            },
+            "sourceSetDigest": {
+              "type": "string"
+            },
+            "preparation": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "GitRepositoryAccess": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/ID"
+        },
+        "update": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 33,
+          "items": {
+            "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/RefPattern"
+          }
+        }
+      },
+      "required": [
+        "repositoryId",
+        "update"
+      ]
+    },
+    "GitDelivery": {
+      "type": "object",
+      "properties": {
+        "grantId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+            }
+          ]
+        },
+        "baseUrl": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/RepositoryURL",
+          "not": {
+            "pattern": "/$"
+          },
+          "maxLength": 512
+        },
+        "credentialFile": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GitFile"
+            }
+          ]
+        },
+        "caFile": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GitFile"
+            }
+          ]
+        },
+        "repositories": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/GitRepositoryAccess"
+          }
+        },
+        "runtimeGrants": {
+          "$ref": "#/$defs/GitRuntimeGrants"
+        }
+      },
+      "required": [
+        "grantId",
+        "baseUrl",
+        "credentialFile",
+        "caFile",
+        "repositories",
+        "runtimeGrants"
+      ]
+    },
+    "ContextV3": {
+      "type": "object",
+      "properties": {
+        "contextVersion": {
+          "const": 3
+        },
+        "runModel": {
+          "const": "run_shared"
+        },
+        "tenantId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "projectId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "runId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "stepId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/StepName"
+        },
+        "attemptId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "actionKey": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ActionKey"
+        },
+        "definition": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Definition"
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "workItem": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/WorkItem"
+            }
+          ]
+        },
+        "designBaseline": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/DesignBaseline"
+            }
+          ]
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Profile"
+            }
+          ]
+        },
+        "command": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Command"
+        },
+        "workspace": {
+          "$ref": "#/$defs/WorkspaceV3"
+        },
+        "git": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GitDelivery"
+            }
+          ]
+        },
+        "endpoints": {
+          "type": "object",
+          "maxProperties": 8,
+          "propertyNames": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/ServiceName"
+          },
+          "additionalProperties": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/Endpoint"
+          }
+        },
+        "egress": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/EgressName"
+          }
+        },
+        "run": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/RunWindow"
+        },
+        "policy": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/PolicyPin"
+        },
+        "inputs": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Name"
+          },
+          "additionalProperties": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Value"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/OutputDecl"
+          }
+        },
+        "secrets": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/SecretBinding"
+          }
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/EnvironmentPin"
+            }
+          ]
+        },
+        "limits": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Limits"
+        }
+      },
+      "required": [
+        "contextVersion",
+        "runModel",
+        "tenantId",
+        "projectId",
+        "runId",
+        "stepId",
+        "attemptId",
+        "actionKey",
+        "definition",
+        "origin",
+        "workItem",
+        "designBaseline",
+        "profile",
+        "command",
+        "workspace",
+        "git",
+        "endpoints",
+        "egress",
+        "run",
+        "policy",
+        "inputs",
+        "outputs",
+        "secrets",
+        "environment",
+        "limits"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "properties": {
+                  "kind": {
+                    "const": "work_item"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "origin"
+            ]
+          },
+          "then": {
+            "properties": {
+              "workItem": {
+                "type": "object"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "workItem": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AdmitResponseV3": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/TokenInfo"
+        },
+        "context": {
+          "$ref": "#/$defs/ContextV3"
+        }
+      },
+      "required": [
+        "token",
+        "context"
+      ]
+    },
+    "BeginSource": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/SourcePath"
+        },
+        "head": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/GitCommit"
+        },
+        "trackedClean": {
+          "type": "boolean"
+        },
+        "untrackedPresent": {
+          "type": "boolean"
+        },
+        "ignoredPresent": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "head",
+        "trackedClean",
+        "untrackedPresent",
+        "ignoredPresent"
+      ],
+      "additionalProperties": false
+    },
+    "BeginRequestV3": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/BeginSource"
+          }
+        }
+      },
+      "required": [
+        "sources"
+      ],
+      "additionalProperties": false
+    },
+    "BeginResponseV3": {
+      "type": "object",
+      "properties": {
+        "attemptId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "beganAt": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Timestamp"
+        },
+        "workspaceState": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/WorkspaceState"
+        },
+        "ignoredPresent": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "attemptId",
+        "beganAt",
+        "workspaceState",
+        "ignoredPresent"
+      ],
+      "if": {
+        "properties": {
+          "workspaceState": {
+            "const": "none"
+          }
+        },
+        "required": [
+          "workspaceState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "ignoredPresent": {
+            "const": false
+          }
+        }
+      }
+    },
+    "ResultV3": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "failed",
+            "needs_input"
+          ]
+        },
+        "exitCode": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ReasonCode"
+            }
+          ]
+        },
+        "question": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "pattern": "\\S"
+            }
+          ]
+        },
+        "commits": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/CommitOutputStrict"
+          }
+        },
+        "outputs": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Name"
+          },
+          "additionalProperties": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Value"
+          },
+          "maxProperties": 64
+        },
+        "diagnosticArtifactIds": {
+          "type": "array",
+          "items": {
+            "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+          },
+          "maxItems": 32,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "outcome",
+        "exitCode",
+        "reason",
+        "question",
+        "commits",
+        "outputs",
+        "diagnosticArtifactIds"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "outcome": {
+              "const": "completed"
+            },
+            "exitCode": {
+              "const": 0
+            },
+            "reason": {
+              "type": "null"
+            },
+            "question": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "properties": {
+            "outcome": {
+              "const": "failed"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "question": {
+              "type": "null"
+            },
+            "outputs": {
+              "maxProperties": 0
+            },
+            "commits": {
+              "maxItems": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "outcome": {
+              "const": "needs_input"
+            },
+            "question": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "null"
+            },
+            "outputs": {
+              "maxProperties": 0
+            },
+            "commits": {
+              "maxItems": 0
+            }
+          }
+        }
+      ]
+    },
+    "ResultRequestV3": {
+      "type": "object",
+      "properties": {
+        "resultHash": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Digest"
+        },
+        "result": {
+          "$ref": "#/$defs/ResultV3"
+        }
+      },
+      "required": [
+        "resultHash",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    "PreparedSourceStrict": {
+      "$ref": "#/$defs/PreparedSource",
+      "unevaluatedProperties": false
+    },
+    "PreparationSource": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/ID"
+        },
+        "repositoryUrl": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/RepositoryURL"
+        },
+        "commit": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/GitCommit"
+        },
+        "path": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/SourcePath"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "repositoryUrl",
+        "commit",
+        "path"
+      ]
+    },
+    "PreparationGit": {
+      "type": "object",
+      "properties": {
+        "grantId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "baseUrl": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/RepositoryURL",
+          "not": {
+            "pattern": "/$"
+          },
+          "maxLength": 512
+        },
+        "credentialFile": {
+          "$ref": "#/$defs/GitFile"
+        },
+        "caFile": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GitFile"
+            }
+          ]
+        },
+        "repositories": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/ID"
+          }
+        }
+      },
+      "required": [
+        "grantId",
+        "baseUrl",
+        "credentialFile",
+        "caFile",
+        "repositories"
+      ]
+    },
+    "PreparationContextV3": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/PreparationSource"
+          }
+        },
+        "mountPath": {
+          "const": "/workspace"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1099511627776
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "deadlineAt": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/Timestamp"
+        },
+        "git": {
+          "$ref": "#/$defs/PreparationGit"
+        }
+      },
+      "required": [
+        "sources",
+        "mountPath",
+        "timeoutSeconds",
+        "maxBytes",
+        "maxAttempts",
+        "deadlineAt",
+        "git"
+      ]
+    },
+    "ResourceContextV3": {
+      "type": "object",
+      "properties": {
+        "contextVersion": {
+          "const": 3
+        },
+        "resourceKind": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/ResourceKind"
+        },
+        "tenantId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "projectId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "runId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "resourceKey": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/ResourceKey"
+        },
+        "preparation": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/PreparationContextV3"
+            }
+          ]
+        },
+        "service": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/ServiceContext"
+            }
+          ]
+        },
+        "policy": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/PolicyPin"
+        }
+      },
+      "required": [
+        "contextVersion",
+        "resourceKind",
+        "tenantId",
+        "projectId",
+        "runId",
+        "resourceKey",
+        "preparation",
+        "service",
+        "policy"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "resourceKind": {
+                "const": "preparation"
+              }
+            },
+            "required": [
+              "resourceKind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "resourceKey": {
+                "const": "preparation"
+              },
+              "preparation": {
+                "type": "object"
+              },
+              "service": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resourceKind": {
+                "const": "service"
+              }
+            },
+            "required": [
+              "resourceKind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "preparation": {
+                "type": "null"
+              },
+              "service": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ResourceAdmitResponseV3": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v2/schema.json#/$defs/ResourceTokenInfo"
+        },
+        "context": {
+          "$ref": "#/$defs/ResourceContextV3"
+        }
+      },
+      "required": [
+        "token",
+        "context"
+      ]
+    },
+    "PreparationReceiptRequestV3": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/PreparedSourceStrict"
+          }
+        },
+        "hooksDisabled": {
+          "const": true
+        },
+        "submodules": {
+          "const": "skipped"
+        },
+        "credentialsRemoved": {
+          "const": true
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "sources",
+        "hooksDisabled",
+        "submodules",
+        "credentialsRemoved",
+        "attempts"
+      ],
+      "additionalProperties": false
+    },
+    "GitRuntimeGrant": {
+      "type": "object",
+      "properties": {
+        "credentialFile": {
+          "$ref": "#/$defs/GitFile"
+        }
+      },
+      "required": [
+        "credentialFile"
+      ]
+    },
+    "GitRuntimeGrants": {
+      "type": "object",
+      "properties": {
+        "seed": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GitRuntimeGrant"
+            }
+          ]
+        },
+        "integration": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GitRuntimeGrant"
+            }
+          ]
+        }
+      },
+      "required": [
+        "seed",
+        "integration"
+      ]
+    },
+    "GitSeedRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        }
+      },
+      "required": [
+        "repositoryId"
+      ],
+      "additionalProperties": false
+    },
+    "GitIntegrationRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        },
+        "gateId": {
+          "$ref": "https://kodama.invalid/contracts/runtime/v1/schema.json#/$defs/ID"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "gateId"
+      ],
+      "additionalProperties": false
+    },
+    "GitGrantResponse": {
+      "type": "object",
+      "properties": {
+        "grant": {
+          "allOf": [
+            {
+              "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/GrantClaims"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "seed",
+                    "integration"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "credential": {
+          "$ref": "https://kodama.invalid/contracts/git/v1/schema.json#/$defs/Credential"
+        },
+        "credentialFile": {
+          "$ref": "#/$defs/GitFile"
+        }
+      },
+      "required": [
+        "grant",
+        "credential",
+        "credentialFile"
+      ]
+    },
+    "ErrorCode": {
+      "enum": [
+        "invalid_request",
+        "invalid_credential",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "version_conflict",
+        "version_required",
+        "rate_limited",
+        "unavailable",
+        "attempt_revoked",
+        "admission_consumed",
+        "result_conflict",
+        "publication_conflict",
+        "artifact_incomplete",
+        "output_invalid",
+        "digest_mismatch",
+        "result_hash_mismatch",
+        "profile_unsupported",
+        "context_version_mismatch",
+        "receipt_conflict",
+        "resource_unbound",
+        "resource_revoked",
+        "repository_not_ready",
+        "repository_archived",
+        "hosting_mismatch",
+        "repository_not_empty",
+        "seed_pending",
+        "repository_name_taken",
+        "push_settled",
+        "attempt_inactive",
+        "receive_expired",
+        "ref_changed",
+        "retained_ref_exists",
+        "branch_exists",
+        "too_many_updates"
+      ]
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "details": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "requestId",
+            "details"
+          ]
+        }
+      },
+      "required": [
+        "error"
+      ]
+    }
+  }
+}

@@ -77,6 +77,9 @@ type Artifact struct {
 	SizeBytes *int64            `json:"sizeBytes"`
 	Source    *SourceProvenance `json:"source"`
 
+	// SourceSet Present only for an artifact of a source-set run, in place of source.
+	SourceSet *ArtifactSourceSet `json:"sourceSet,omitempty"`
+
 	// State reserved: a file whose bytes are not verified (never usable). registered: an OCI registration verified against its registry. usable: a file whose bytes were verified and sealed.
 	State      ArtifactState `json:"state"`
 	StepId     string        `json:"stepId"`
@@ -104,6 +107,21 @@ type ArtifactKind string
 
 // ArtifactRole defines model for ArtifactRole.
 type ArtifactRole string
+
+// ArtifactSourceCommit defines model for ArtifactSourceCommit.
+type ArtifactSourceCommit struct {
+	Commit string `json:"commit"`
+
+	// RepositoryId Opaque identifier. Ownership, kind and ordering must not be inferred from it.
+	RepositoryId externalRef0.ID `json:"repositoryId"`
+}
+
+// ArtifactSourceSet The trusted source set of a multi-repository run the producing attempt worked from: the canonical digest of the run's pinned set and, for every repository of it, the commit the attempt worked from. Present instead of source, never together with it (DQ-17).
+type ArtifactSourceSet struct {
+	// Commits Ordered by repositoryId.
+	Commits []ArtifactSourceCommit `json:"commits"`
+	Digest  Digest                 `json:"digest"`
+}
 
 // ArtifactState reserved: a file whose bytes are not verified (never usable). registered: an OCI registration verified against its registry. usable: a file whose bytes were verified and sealed.
 type ArtifactState string

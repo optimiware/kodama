@@ -53,6 +53,11 @@ type Attempt struct {
 	// ResultHash and Result are the accepted result, if any.
 	ResultHash string
 	Result     *runtimev1.Result
+	// Commits are the refs a successful attempt of a source-set run (runtime
+	// context v3) updated, as its accepted result reported them; they are kept
+	// apart from Result (whose v1 shape has a single sourceCommit) and feed the
+	// run's lineage and source heads. Empty for every other attempt.
+	Commits []CommitOutput
 
 	// AuthorityRevision changes when the workload binding, pinned context or
 	// allowed actions change.
@@ -180,6 +185,10 @@ type Control struct {
 	StepResolvedAt *time.Time
 
 	dirty bool
+	// ended is set when this mutation ended the attempt's authority (the revoke
+	// transition happened now, not in an earlier transaction): the store ends the
+	// attempt's Git grants in the same transaction. It is never persisted.
+	ended bool
 }
 
 // NewControl creates the bookkeeping of a fresh attempt.
@@ -189,7 +198,12 @@ func NewControl(id domain.AttemptID) *Control {
 
 // Dirty / MarkClean support persistence adapters.
 func (c *Control) Dirty() bool { return c.dirty }
-func (c *Control) MarkClean()  { c.dirty = false }
+func (c *Control) MarkClean()  { c.dirty, c.ended = false, false }
+
+// AuthorityEnded reports that this mutation ended the attempt's authority:
+// cancellation, failure, timeout, supersession or an accepted result. The stores
+// revoke the attempt's Git grants in the same transaction.
+func (c *Control) AuthorityEnded() bool { return c.ended }
 
 // Live reports whether the attempt still holds authority.
 func (c *Control) Live() bool { return c.RevokedAt == nil }
@@ -203,7 +217,7 @@ func (c *Control) revoke(now time.Time) bool {
 	}
 	t := now.UTC()
 	c.RevokedAt = &t
-	c.dirty = true
+	c.dirty, c.ended = true, true
 	return true
 }
 

@@ -197,7 +197,7 @@ func Test_pooled_tenant_context(t *testing.T) {
 			}
 			for _, q := range []string{
 				"SELECT count(*) FROM memberships WHERE tenant_id = 'tenant-a'",
-				"SELECT count(*) FROM audit WHERE tenant_id = 'tenant-a'",
+				"SELECT count(*) FROM audit_events WHERE tenant_id = 'tenant-a'",
 				"SELECT count(*) FROM tenants WHERE id = 'tenant-a'",
 			} {
 				var visible int
@@ -233,13 +233,13 @@ func Test_pooled_tenant_context(t *testing.T) {
 		if r := probe(t, pool); !r.clean() {
 			t.Fatalf("unset context sees rows: %+v", r)
 		}
-		for _, table := range []string{"tenants", "projects", "users", "memberships", "audit"} {
+		for _, table := range []string{"tenants", "projects", "users", "memberships", "audit_events"} {
 			var n int
 			if err := pool.QueryRow(testCtx(t), "SELECT count(*) FROM "+table).Scan(&n); err != nil || n != 0 {
 				t.Errorf("%s without context: count=%d err=%v, want 0", table, n, err)
 			}
 		}
-		_, err := pool.Exec(testCtx(t), "INSERT INTO projects (tenant_id, id, key, active_wip_limit) VALUES ('tenant-a', 'px', 'px', 1)")
+		_, err := pool.Exec(testCtx(t), "INSERT INTO projects (tenant_id, id, key, task_workflow) VALUES ('tenant-a', 'px', 'px', '{}')")
 		requireCode(t, err, "42501", "insert without tenant context")
 		// An empty-string setting must also fail closed.
 		err = storage.WithTenant(testCtx(t), pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {

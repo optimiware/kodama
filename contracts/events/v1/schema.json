@@ -553,6 +553,93 @@
         ],
         "properties": {
           "type": {
+            "const": "repository.created"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "repository"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.repository.created"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "repository.state_changed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "repository"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.repository.state_changed"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "const": "git.refs_updated"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "type": {
+                "const": "git_push"
+              }
+            }
+          },
+          "data": {
+            "$ref": "#/$defs/data.git.refs_updated"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
             "not": {
               "enum": [
                 "configuration.changed",
@@ -560,8 +647,11 @@
                 "gate.decided",
                 "gate.invalidated",
                 "gate.requested",
+                "git.refs_updated",
                 "membership.changed",
                 "project.settings_changed",
+                "repository.created",
+                "repository.state_changed",
                 "run.created",
                 "run.state_changed",
                 "run_resource.state_changed",
@@ -1254,6 +1344,376 @@
             "properties": {
               "uidBound": {
                 "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RepositoryName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "BranchName": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$",
+      "maxLength": 200,
+      "allOf": [
+        {
+          "not": {
+            "pattern": "\\.\\.|\\.lock(/|$)|\\.(/|$)"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^(refs/|kodama(/|$)|HEAD$)"
+          }
+        }
+      ]
+    },
+    "RefName": {
+      "type": "string",
+      "pattern": "^refs/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)+$",
+      "maxLength": 255,
+      "allOf": [
+        {
+          "not": {
+            "pattern": "\\.\\.|\\.lock(/|$)|\\.(/|$)"
+          }
+        }
+      ]
+    },
+    "data.repository.created": {
+      "type": "object",
+      "description": "References only. Hosting is internal or external; the default branch is a branch name, not a ref path.",
+      "required": [
+        "name",
+        "defaultBranch",
+        "hosting"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/RepositoryName"
+        },
+        "defaultBranch": {
+          "$ref": "#/$defs/BranchName"
+        },
+        "hosting": {
+          "enum": [
+            "internal",
+            "external"
+          ]
+        }
+      }
+    },
+    "data.repository.state_changed": {
+      "type": "object",
+      "description": "One explicit lifecycle transition: provisioning to ready, ready to archived, archived to ready.",
+      "required": [
+        "from",
+        "to",
+        "reason"
+      ],
+      "properties": {
+        "from": {
+          "enum": [
+            "provisioning",
+            "ready",
+            "archived"
+          ]
+        },
+        "to": {
+          "enum": [
+            "provisioning",
+            "ready",
+            "archived"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/Code"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "from": {
+                "const": "provisioning"
+              }
+            },
+            "required": [
+              "from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "to": {
+                "const": "ready"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "to": {
+                "const": "archived"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": {
+                "const": "archived"
+              }
+            },
+            "required": [
+              "from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "to": {
+                "const": "ready"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "data.git.refs_updated": {
+      "type": "object",
+      "description": "The applied updates of one receive, inline: a consumer needs no second read to match a ref, pin a commit or exclude a run's own push. receiveId identifies the receive within its repository and the event's deterministic identity derives from it. originRunId is an explicit null for a person's push; a workload's push names its run. Each update's kind agrees with its old and new values (the all-zero object ID is a ref that did not exist or no longer does); a ref is never a server ref (refs/kodama/...) and appears at most once, and old differs from new (checked by the Go contract; the schema cannot express uniqueness).",
+      "required": [
+        "receiveId",
+        "repositoryId",
+        "actor",
+        "originRunId",
+        "updates"
+      ],
+      "properties": {
+        "receiveId": {
+          "$ref": "#/$defs/ID"
+        },
+        "repositoryId": {
+          "$ref": "#/$defs/ID"
+        },
+        "actor": {
+          "type": "object",
+          "required": [
+            "type",
+            "id"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "user",
+                "workload"
+              ]
+            },
+            "id": {
+              "$ref": "#/$defs/ID"
+            }
+          }
+        },
+        "originRunId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "old",
+              "new",
+              "kind"
+            ],
+            "properties": {
+              "ref": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/RefName"
+                  },
+                  {
+                    "not": {
+                      "pattern": "^refs/kodama/"
+                    }
+                  }
+                ]
+              },
+              "old": {
+                "$ref": "#/$defs/GitCommit"
+              },
+              "new": {
+                "$ref": "#/$defs/GitCommit"
+              },
+              "kind": {
+                "enum": [
+                  "create",
+                  "fast_forward",
+                  "rewrite",
+                  "delete"
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "create"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "old": {
+                      "pattern": "^(0{40}|0{64})$"
+                    },
+                    "new": {
+                      "not": {
+                        "pattern": "^(0{40}|0{64})$"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "delete"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "new": {
+                      "pattern": "^(0{40}|0{64})$"
+                    },
+                    "old": {
+                      "not": {
+                        "pattern": "^(0{40}|0{64})$"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "fast_forward",
+                        "rewrite"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "old": {
+                      "not": {
+                        "pattern": "^(0{40}|0{64})$"
+                      }
+                    },
+                    "new": {
+                      "not": {
+                        "pattern": "^(0{40}|0{64})$"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "journalPosition": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "type": {
+                    "const": "user"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            },
+            "required": [
+              "actor"
+            ]
+          },
+          "then": {
+            "properties": {
+              "originRunId": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "type": {
+                    "const": "workload"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            },
+            "required": [
+              "actor"
+            ]
+          },
+          "then": {
+            "properties": {
+              "originRunId": {
+                "$ref": "#/$defs/ID"
               }
             }
           }

@@ -1,0 +1,443 @@
+[
+  {
+    "name": "empty sources",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_value",
+    "path": "$.spec.sources",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "sources not a list",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_type",
+    "path": "$.spec.sources",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":{},\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "thirty-three sources",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "limit_exceeded",
+    "path": "$.spec.sources",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"read\",\"path\":\"p\",\"repository\":\"r\"},{\"access\":\"read\",\"path\":\"px\",\"repository\":\"rx\"},{\"access\":\"read\",\"path\":\"pxx\",\"repository\":\"rxx\"},{\"access\":\"read\",\"path\":\"pxxx\",\"repository\":\"rxxx\"},{\"access\":\"read\",\"path\":\"pxxxx\",\"repository\":\"rxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxx\",\"repository\":\"rxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxx\",\"repository\":\"rxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxx\",\"repository\":\"rxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxx\",\"repository\":\"rxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxx\",\"repository\":\"rxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"},{\"access\":\"read\",\"path\":\"pxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"repository\":\"rxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "source is not an object",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_type",
+    "path": "sources[0]",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[\"backend\",{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "source without repository",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "missing_field",
+    "path": "sources[0].repository",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "source without path",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "missing_field",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "source without access",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "missing_field",
+    "path": "sources[0].access",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "repository with uppercase",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_format",
+    "path": "sources[0].repository",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"Backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "repository starting with a digit",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_format",
+    "path": "sources[0].repository",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"1backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "repository with a slash",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_format",
+    "path": "sources[0].repository",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"acme/backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "repository too long",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_format",
+    "path": "sources[0].repository",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "repository as a number",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_type",
+    "path": "sources[0].repository",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":7},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "access admin",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_value",
+    "path": "sources[0].access",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"admin\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "access none",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_value",
+    "path": "sources[0].access",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"none\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "access upper case",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_value",
+    "path": "sources[0].access",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"Write\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "source commit is not a document field",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "unknown_field",
+    "path": "sources[0].commit",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"commit\":\"1111111111111111111111111111111111111111\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "source branch is not a document field",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "unknown_field",
+    "path": "sources[0].branch",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"branch\":\"refs/heads/x\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "source ref is not a document field",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "unknown_field",
+    "path": "sources[0].ref",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"ref\":\"main\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "source url is not a document field",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "unknown_field",
+    "path": "sources[0].url",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"backend\",\"url\":\"https://git.example.invalid/x.git\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "source repository id is not a document field",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "unknown_field",
+    "path": "sources[0].repositoryId",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"backend\",\"repositoryId\":\"repo_01\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "absolute path",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"/backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "parent traversal",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"../backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "inner parent traversal",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"a/../b\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "dot-dot alone",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"..\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "dot git",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\".git\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "nested dot git",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"a/.git\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "hidden component",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\".hidden\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "empty component",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"a//b\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "trailing slash",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"a/\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "dot component",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"a/./b\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "dot slash prefix",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"./a\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "backslash",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"a\\\\b\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "space",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"a b\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "empty path",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "dash first",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"-rf\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "path too long",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_source_path",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "path not a string",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "invalid_type",
+    "path": "sources[0].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":5,\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "duplicate path",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "syntax",
+    "code": "source_path_overlap",
+    "path": "sources[1].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"backend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "nested path",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "syntax",
+    "code": "source_path_overlap",
+    "path": "sources[1].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"backend/web\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "enclosing path",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "syntax",
+    "code": "source_path_overlap",
+    "path": "sources[1].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"a/b\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"a\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "root next to another source",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "syntax",
+    "code": "source_path_overlap",
+    "path": "sources[1].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\".\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"web\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "another source before the root",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "syntax",
+    "code": "source_path_overlap",
+    "path": "sources[1].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"web\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\".\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "two roots",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "syntax",
+    "code": "source_path_overlap",
+    "path": "sources[1].path",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\".\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\".\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "duplicate repository",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "syntax",
+    "code": "duplicate_source_repository",
+    "path": "sources[1].repository",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"backend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "a writer without a write source",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "semantic",
+    "code": "source_write_undeclared",
+    "path": "steps[0].workspace.access",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"read\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "a write source without a writer",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "semantic",
+    "code": "source_write_unused",
+    "path": "sources[0].access",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "a write source and steps with no workspace",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "semantic",
+    "code": "source_write_unused",
+    "path": "sources[0].access",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "parallel writers stay forbidden",
+    "format": "json",
+    "schemaValid": true,
+    "stage": "semantic",
+    "code": "parallel_writers",
+    "path": "steps[1]",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\"}}],\"timeoutSeconds\":1800}}"
+  },
+  {
+    "name": "workspace.from stays removed",
+    "format": "json",
+    "schemaValid": false,
+    "stage": "syntax",
+    "code": "workspace_from_removed",
+    "path": "steps[0].workspace.from",
+    "document": "{\"apiVersion\":\"kodama/v1alpha3\",\"kind\":\"Pipeline\",\"metadata\":{\"name\":\"base\"},\"spec\":{\"sources\":[{\"access\":\"write\",\"path\":\"backend\",\"repository\":\"backend\"},{\"access\":\"read\",\"path\":\"frontend\",\"repository\":\"frontend\"}],\"steps\":[{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"build\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"timeoutSeconds\":600,\"workspace\":{\"access\":\"write\",\"from\":\"run\"}},{\"args\":[\"true\"],\"command\":[\"/bin/sh\",\"-ec\"],\"id\":\"check\",\"image\":\"registry.example.invalid/tools@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"kind\":\"container\",\"needs\":[\"build\"],\"timeoutSeconds\":600,\"workspace\":{\"access\":\"read\"}}],\"timeoutSeconds\":1800}}"
+  }
+]

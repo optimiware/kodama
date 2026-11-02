@@ -13,6 +13,7 @@ import (
 
 	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -42,6 +43,27 @@ type RuntimeV2 interface {
 	AdmitV2(ctx context.Context, req runtimev1.AdmitRequest) (runtimev2.AdmitResponseV2, error)
 	ContextV2(ctx context.Context) (runtimev2.ContextV2, error)
 	Begin(ctx context.Context, req runtimev2.BeginRequest) (runtimev2.BeginResponse, error)
+}
+
+// RuntimeV3 is the consumer-owned port of the v3 wire (a run with a source set)
+// for the exchanges whose shape differs from v1: admission and context return the
+// ContextV3, begin observes every source, and the result carries the pushed
+// commits. Token renewal, secrets and artifacts go through Runtime with the
+// unchanged v1 bodies; there is no source-proposal operation: a source is pushed
+// with the attempt's Git grant. The v3 HTTP adapter (Client from NewClientV3)
+// implements both. Unit tests substitute a fake.
+type RuntimeV3 interface {
+	AdmitV3(ctx context.Context, req runtimev1.AdmitRequest) (runtimev3.AdmitResponseV3, error)
+	ContextV3(ctx context.Context) (runtimev3.ContextV3, error)
+	BeginV3(ctx context.Context, req runtimev3.BeginRequestV3) (runtimev3.BeginResponseV3, error)
+	SubmitResultV3(ctx context.Context, req runtimev3.ResultRequestV3) (runtimev1.ResultResponse, error)
+}
+
+// GitGrants is the port of the two runtime-issued Git grants (seed and
+// integration) used by `kodama step-git`.
+type GitGrants interface {
+	SeedGrant(ctx context.Context, req runtimev3.GitSeedRequest) (runtimev3.GitGrantResponse, error)
+	IntegrationGrant(ctx context.Context, req runtimev3.GitIntegrationRequest) (runtimev3.GitGrantResponse, error)
 }
 
 // Uploader transfers one object to the short-lived instructions returned by an

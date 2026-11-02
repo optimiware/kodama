@@ -6,6 +6,7 @@ import (
 	"time"
 
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -75,7 +76,10 @@ type RunResource struct {
 
 	// Receipt (preparation only): the recorded trusted checkout receipt, its
 	// canonical digest (bound to the workspace UID) and when it was recorded.
-	Receipt       *runtimev2.PreparationReceiptRequest
+	Receipt *runtimev2.PreparationReceiptRequest
+	// ReceiptV3 is the receipt of a source-set preparation (runtime v3), recorded
+	// instead of Receipt; at most one of them is set.
+	ReceiptV3     *runtimev3.PreparationReceiptRequestV3
 	ReceiptDigest string
 	ReceiptAt     *time.Time
 
@@ -124,6 +128,9 @@ func (r *RunResource) touch(now time.Time) {
 // mutation is dirty until saved; Created tracks inserts separately.
 func (r *RunResource) Dirty() bool { return r.dirty }
 func (r *RunResource) MarkClean()  { r.dirty = false }
+
+// HasReceipt reports a recorded preparation receipt of either runtime version.
+func (r *RunResource) HasReceipt() bool { return r.Receipt != nil || r.ReceiptV3 != nil }
 
 // Handle returns the resource's handle with its bound UID.
 func (r *RunResource) Handle() ResourceHandle { return r.Spec.Handle(r.UID) }
@@ -179,7 +186,7 @@ func (r *RunResource) state() resState {
 	if r.Removed() {
 		phase = string(PhaseAbsent)
 	}
-	return resState{name: r.stateName(), phase: phase, reason: r.Reason, uid: r.Bound(), receipt: r.Receipt != nil, ensured: r.EnsureRequestedAt != nil}
+	return resState{name: r.stateName(), phase: phase, reason: r.Reason, uid: r.Bound(), receipt: r.HasReceipt(), ensured: r.EnsureRequestedAt != nil}
 }
 
 // RequestObservation allocates the next request generation. It is committed
@@ -354,7 +361,7 @@ func (r *RunResource) Lost(now time.Time) (ResourceReason, bool) {
 		if r.Stopped() {
 			return "", false
 		}
-		if r.Kind == KindPreparation && r.Receipt != nil {
+		if r.Kind == KindPreparation && r.HasReceipt() {
 			return "", false
 		}
 		return r.lossReason(), true
@@ -396,7 +403,7 @@ func (r *RunResource) StartupExpired(now time.Time) (ResourceReason, bool) {
 		// The preparation ends only with a recorded receipt; completing or
 		// exiting without one, within the budget or not, is a failure at the
 		// budget's end.
-		if r.Receipt == nil && now.Sub(*r.EnsureRequestedAt) > time.Duration(r.Spec.Preparation.TimeoutSecs)*time.Second {
+		if !r.HasReceipt() && now.Sub(*r.EnsureRequestedAt) > time.Duration(r.Spec.Preparation.TimeoutSecs)*time.Second {
 			return ReasonPreparationFailed, true
 		}
 	}
@@ -590,10 +597,16 @@ func (a *Aggregate) Draining() bool { return a.Run.Draining() }
 // workspace UID (recomputed, never trusted from the stored digest alone).
 func (a *Aggregate) ReceiptBound() bool {
 	prep, ws := a.Resource(KeyPreparation), a.Resource(KeyWorkspace)
-	if prep == nil || ws == nil || prep.Receipt == nil || ws.UID == "" {
+	if prep == nil || ws == nil || !prep.HasReceipt() || ws.UID == "" {
 		return false
 	}
-	d, err := PreparationReceiptObject{Request: *prep.Receipt, RunID: a.Run.ID, ResourceKey: KeyPreparation, WorkspaceUID: ws.UID}.Digest()
+	var d string
+	var err error
+	if prep.ReceiptV3 != nil {
+		d, err = PreparationReceiptObjectV3{Request: *prep.ReceiptV3, RunID: a.Run.ID, ResourceKey: KeyPreparation, WorkspaceUID: ws.UID}.Digest()
+	} else {
+		d, err = PreparationReceiptObject{Request: *prep.Receipt, RunID: a.Run.ID, ResourceKey: KeyPreparation, WorkspaceUID: ws.UID}.Digest()
+	}
 	return err == nil && d == prep.ReceiptDigest
 }
 

@@ -53,7 +53,7 @@ func (a *Artifacts) References(ctx context.Context, scope domain.Scope, attempt 
 		out[id] = results.ArtifactEvidence{
 			ID: r.ID, Scope: r.Scope, Attempt: r.Attempt, Kind: runtimev1.ArtifactKind(r.Kind), Role: runtimev1.ArtifactRole(r.Role),
 			Usable: r.Usable, Digest: runtimev1.Digest(r.Digest),
-			Provenance: results.Provenance{RepositoryURL: r.Provenance.RepositoryURL, Commit: r.Provenance.Commit},
+			Provenance: results.Provenance{RepositoryURL: r.Provenance.RepositoryURL, Commit: r.Provenance.Commit, SourceSet: r.Provenance.SourceSet.Digest},
 		}
 	}
 	return out, nil

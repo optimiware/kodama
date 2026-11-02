@@ -97,7 +97,7 @@ type ChainConfig struct {
 
 // Chain is the one documented wiring bundle for agent steps. Use its members
 // together: Store as execution.Dependencies.Store, Planner as
-// Dependencies.Planner, Hooks as Dependencies.Hooks, Capabilities(...) as
+// Dependencies.Planner, Pins as Dependencies.AgentPins, Hooks as Dependencies.Hooks, Capabilities(...) as
 // Dependencies.Capabilities (and as the pipeline validator's capabilities), and
 // Creator as executionhttp.Config.Creator. Wiring only some of them is a
 // composition error this type exists to prevent.
@@ -105,6 +105,10 @@ type Chain struct {
 	Store   execution.Store
 	Creator executionhttp.Creator
 	Planner execution.Planner
+	// Pins is execution.Dependencies.AgentPins: it pins the profile and design
+	// baseline into shared (v2/v3) and source-set contexts, which the Planner (the
+	// v1 path) never sees.
+	Pins execution.AgentPins
 	// Hooks enables container and agent steps for dispatch.
 	Hooks execution.Hooks
 }
@@ -126,6 +130,7 @@ func NewChain(cfg ChainConfig) (Chain, error) {
 		Store:   Store{Store: cfg.Store, expander: exp},
 		Creator: Creator{inner: cfg.Creator, expander: exp},
 		Planner: Planner{inner: planner},
+		Pins:    Pinner{},
 		Hooks:   execution.EnabledKinds{pipeline.KindContainer, pipeline.KindAgent},
 	}, nil
 }

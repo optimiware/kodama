@@ -15,14 +15,14 @@ data "scaleway_rdb_instance" "postgres" {
 
 data "kubernetes_secret_v1" "stage_runtime" {
   metadata {
-    name      = "kodama-runtime"
+    name      = "kodama-kernel-runtime"
     namespace = var.stage_namespace
   }
 }
 
 data "kubernetes_secret_v1" "stage_migration" {
   metadata {
-    name      = "kodama-migration"
+    name      = "kodama-kernel-migration"
     namespace = var.stage_namespace
   }
 }
@@ -76,16 +76,12 @@ locals {
   nats_url   = "nats://kodama-nats.${local.ns}.svc.cluster.local:4222"
 
   kodama_values = templatefile("${path.module}/../shared/stack/values/kodama.yaml.tftpl", {
-    contract       = local.contract
-    nats_url       = local.nats_url
-    profile        = "development"
-    kodama_image   = var.kodama_image
-    workload_image = var.example_workload_image
-    git_url        = var.git_url
-    registry_url   = var.registry_url
-    oidc_issuer    = var.oidc_issuer
-    oidc_audience  = var.oidc_audience
-    custom_ca      = false
+    contract      = local.contract
+    nats_url      = local.nats_url
+    kodama_image  = var.kodama_image
+    oidc_issuer   = var.oidc_issuer
+    oidc_audience = var.oidc_audience
+    storage_class = var.storage_class
   })
 }
 
@@ -141,7 +137,12 @@ resource "kubernetes_namespace_v1" "control_plane" {
   }
 }
 
-resource "tls_private_key" "runtime_signing" {
+resource "tls_private_key" "git_forwarding" {
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P256"
+}
+
+resource "tls_private_key" "git_identity" {
   algorithm   = "ECDSA"
   ecdsa_curve = "P256"
 }
@@ -151,54 +152,28 @@ resource "random_password" "nats_token" {
   special = false
 }
 
-resource "random_bytes" "cursor_key" {
-  length = 32
+resource "random_password" "git_control_token" {
+  length  = 48
+  special = false
 }
 
-resource "random_bytes" "idempotency_hash_key" {
-  length = 32
-}
-
-resource "kubernetes_secret_v1" "runtime" {
+resource "kubernetes_secret_v1" "kernel_runtime" {
   metadata {
-    name      = "kodama-runtime"
+    name      = "kodama-kernel-runtime"
     namespace = kubernetes_namespace_v1.control_plane.metadata[0].name
   }
   data = {
-    "database-runtime-url" = local.dsn.runtime
-    "nats-token"           = random_password.nats_token.result
-    "git-read-token"       = data.kubernetes_secret_v1.stage_runtime.data["git-read-token"]
-    "git-write-token"      = data.kubernetes_secret_v1.stage_runtime.data["git-write-token"]
-    "runtime-signing-key"  = tls_private_key.runtime_signing.private_key_pem_pkcs8
-    "runtime-ca.crt"       = data.kubernetes_secret_v1.stage_runtime.data["runtime-ca.crt"]
-    "s3-access-key"        = data.kubernetes_secret_v1.stage_runtime.data["s3-access-key"]
-    "s3-secret-key"        = data.kubernetes_secret_v1.stage_runtime.data["s3-secret-key"]
-    "git-credentials.json" = jsonencode([
-      {
-        ref          = "secret://installation/checkout"
-        username     = "git"
-        passwordFile = "git-read-token"
-        urlPrefix    = local.git_origin
-        tenants      = [for t in local.tenants : t.tenant_id]
-      },
-      {
-        ref          = "secret://installation/publisher"
-        username     = "git"
-        passwordFile = "git-write-token"
-        urlPrefix    = local.git_origin
-        tenants      = [for t in local.tenants : t.tenant_id]
-      },
-    ])
-  }
-  binary_data = {
-    "cursor-key"           = random_bytes.cursor_key.base64
-    "idempotency-hash-key" = random_bytes.idempotency_hash_key.base64
+    "database-runtime-url"   = local.dsn.runtime
+    "nats-token"             = random_password.nats_token.result
+    "git-control-token"      = random_password.git_control_token.result
+    "git-forwarding-key.pem" = tls_private_key.git_forwarding.private_key_pem_pkcs8
+    "git-identity-key.pem"   = tls_private_key.git_identity.private_key_pem_pkcs8
   }
 }
 
-resource "kubernetes_secret_v1" "migration" {
+resource "kubernetes_secret_v1" "kernel_migration" {
   metadata {
-    name      = "kodama-migration"
+    name      = "kodama-kernel-migration"
     namespace = kubernetes_namespace_v1.control_plane.metadata[0].name
   }
   data = {

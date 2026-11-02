@@ -464,6 +464,253 @@ func StoreContract(t *testing.T, open OpenStore) {
 		}
 	})
 
+	t.Run("internal hosting: associations and checkpoints persist beside the workspace", func(t *testing.T) {
+		env := open(t)
+		st := env.Store()
+		now := storeNow
+		nw, err := workspace.NewInternal(workspace.NewInternalParams{ID: "ws_t147_1", Scope: ScopeA, WorkItemID: "wi_i1", Primary: "repo_app",
+			URL: "https://git.example.test/git/acme/repo_app.git", CheckoutSecretRef: "kodama-git-read:repo_app"}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		app, err := workspace.NewAssociation(nw, "repo_app", commitA, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		docs, err := workspace.NewAssociation(nw, "repo_docs", commitB, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, created, err := st.Insert(ctx, nw, workspace.Effects{Associations: []*workspace.RepositoryAssociation{docs, app},
+			Audit: []workspace.Audit{auditOf("workspace.provision_requested")}, Events: []workspace.Event{stateEvent("none", "provisioning", "provision_requested")}})
+		if err != nil || !created || got.Hosting != workspace.HostingInternal || got.PublisherSecretRef != workspace.NoPublisherRef || got.RepositoryID != "repo_app" {
+			t.Fatalf("insert: %+v created=%v %v", got, created, err)
+		}
+		stored, err := st.Get(ctx, ScopeA, nw.ID)
+		if err != nil || !stored.Internal() || stored.WorkBranch != workspace.WorkBranch("wi_i1") {
+			t.Fatalf("get: %+v %v", stored, err)
+		}
+		view, err := st.View(ctx, ScopeA, nw.ID, workspace.Load{Associations: true, Checkpoints: true})
+		if err != nil || len(view.Associations) != 2 || view.Associations[0].RepositoryID != "repo_app" || view.Associations[1].RepositoryID != "repo_docs" || len(view.Checkpoints) != 0 {
+			t.Fatalf("view: %+v %v", view, err)
+		}
+		a0 := view.Associations[0]
+		if a0.State != workspace.AssociationIntent || a0.BaseCommit != commitA || a0.AcceptedCommit != "" || a0.TaskBranch != workspace.WorkBranch("wi_i1") || a0.WorkspaceID != nw.ID || a0.Scope != ScopeA {
+			t.Fatalf("association: %+v", a0)
+		}
+		if plain, err := st.View(ctx, ScopeA, nw.ID, workspace.Load{}); err != nil || plain.Associations != nil {
+			t.Fatalf("associations loaded unasked: %+v %v", plain, err)
+		}
+		// A workspace of another project or tenant never shows them.
+		for _, other := range []domain.Scope{ScopeA2, ScopeB} {
+			if _, err := st.View(ctx, other, nw.ID, workspace.Load{Associations: true}); !errors.Is(err, workspace.ErrNotFound) {
+				t.Fatalf("view from %v: %v", other, err)
+			}
+		}
+		// A repeated insert for the work item stores no association of its own.
+		dup, err := workspace.NewInternal(workspace.NewInternalParams{ID: "ws_t147_dup", Scope: ScopeA, WorkItemID: "wi_i1", Primary: "repo_other",
+			URL: "https://git.example.test/git/acme/o.git", CheckoutSecretRef: "kodama-git-read:o"}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		extra, _ := workspace.NewAssociation(dup, "repo_other", commitC, now)
+		if again, created, err := st.Insert(ctx, dup, workspace.Effects{Associations: []*workspace.RepositoryAssociation{extra}}); err != nil || created || again.ID != nw.ID {
+			t.Fatalf("repeated insert: %+v %v %v", again, created, err)
+		}
+		if v, _ := st.View(ctx, ScopeA, nw.ID, workspace.Load{Associations: true}); len(v.Associations) != 2 {
+			t.Fatalf("a repeated insert wrote an association: %+v", v.Associations)
+		}
+
+		// Reconciliation sees the unfinished intents.
+		if page, err := st.Reconcilable(ctx, ScopeA.TenantID, "", 10); err != nil || len(page) != 1 || page[0].ID != nw.ID {
+			t.Fatalf("reconcilable with intents: %+v %v", page, err)
+		}
+
+		// A failed mutation (the event append fails after the write) changes nothing.
+		boom := ErrInjected()
+		env.FailEvents(boom)
+		if _, err := st.Update(ctx, ScopeA, nw.ID, workspace.Load{Associations: true}, func(a *workspace.Aggregate) (workspace.Effects, error) {
+			as := workspace.FindAssociation(a.Associations, "repo_app")
+			if _, err := as.MarkCreated(now.Add(time.Minute)); err != nil {
+				return workspace.Effects{}, err
+			}
+			a.Workspace.TouchAssociations(now.Add(time.Minute))
+			return workspace.Effects{Associations: []*workspace.RepositoryAssociation{as}, Events: []workspace.Event{stateEvent("provisioning", "provisioning", "x")}}, nil
+		}); err == nil {
+			t.Fatal("the failing event append did not fail the mutation")
+		}
+		env.FailEvents(nil)
+		if v, _ := st.View(ctx, ScopeA, nw.ID, workspace.Load{Associations: true}); v.Associations[0].State != workspace.AssociationIntent || v.Workspace.Version != 1 {
+			t.Fatalf("a rolled-back mutation left %+v at version %d", v.Associations[0], v.Workspace.Version)
+		}
+
+		// Both branches are created, then the workspace becomes available at the primary's commit.
+		if _, err := st.Update(ctx, ScopeA, nw.ID, workspace.Load{Associations: true}, func(a *workspace.Aggregate) (workspace.Effects, error) {
+			var fx workspace.Effects
+			for _, as := range a.Associations {
+				if _, err := as.MarkCreated(now.Add(time.Minute)); err != nil {
+					return workspace.Effects{}, err
+				}
+				// Identity fields never move on a repeated write of the row.
+				as.BaseCommit, as.TaskBranch = commitC, "refs/heads/kodama/work/other"
+				fx.Associations = append(fx.Associations, as)
+			}
+			a.Workspace.TouchAssociations(now.Add(time.Minute))
+			if err := a.Workspace.CompleteInternalProvisioning(a.Associations, now.Add(2*time.Minute)); err != nil {
+				return workspace.Effects{}, err
+			}
+			fx.Events = []workspace.Event{stateEvent("provisioning", "available", "branch_ready")}
+			return fx, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		view, err = st.View(ctx, ScopeA, nw.ID, workspace.Load{Associations: true})
+		if err != nil || view.Workspace.State != workspace.StateAvailable || view.Workspace.AcceptedCommit != commitA {
+			t.Fatalf("after provisioning: %+v %v", view.Workspace, err)
+		}
+		for _, as := range view.Associations {
+			want := map[workspace.RepositoryID]workspace.Commit{"repo_app": commitA, "repo_docs": commitB}[as.RepositoryID]
+			if as.State != workspace.AssociationCreated || as.BaseCommit != want || as.AcceptedCommit != want || as.TaskBranch != workspace.WorkBranch("wi_i1") {
+				t.Fatalf("association after creation: %+v", as)
+			}
+		}
+		if page, err := st.Reconcilable(ctx, ScopeA.TenantID, "", 10); err != nil || len(page) != 0 {
+			t.Fatalf("reconcilable after creation: %+v %v", page, err)
+		}
+
+		// A checkpoint with its retained-ref intent; advancing the association is one write.
+		advance := now.Add(3 * time.Minute)
+		cp := &workspace.InternalCheckpoint{}
+		if _, err := st.Update(ctx, ScopeA, nw.ID, workspace.Load{Associations: true, Checkpoints: true}, func(a *workspace.Aggregate) (workspace.Effects, error) {
+			as := workspace.FindAssociation(a.Associations, "repo_app")
+			if err := as.Advance(commitA, commitB, advance); err != nil {
+				return workspace.Effects{}, err
+			}
+			a.Workspace.AcceptedCommit = commitB
+			a.Workspace.TouchAssociations(advance)
+			c, err := workspace.NewCheckpoint(a.Workspace, "repo_app", "push_1", a.Workspace.WorkBranch, commitB, commitA, true, "att_1", "run_1", "refs/kodama/runs/run_1/1", advance)
+			if err != nil {
+				return workspace.Effects{}, err
+			}
+			cp = c
+			return workspace.Effects{Associations: []*workspace.RepositoryAssociation{as}, Checkpoints: []*workspace.InternalCheckpoint{c},
+				Events: []workspace.Event{{Kind: workspace.EventCheckpointCreated, Actor: owner, PreviousCommit: commitA, NewCommit: commitB, PublishingAttempt: "att_1", Repository: "repo_app"}}}, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		view, err = st.View(ctx, ScopeA, nw.ID, workspace.Load{Associations: true, Checkpoints: true})
+		if err != nil || len(view.Checkpoints) != 1 || view.Workspace.AcceptedCommit != commitB || workspace.FindAssociation(view.Associations, "repo_app").AcceptedCommit != commitB {
+			t.Fatalf("after the checkpoint: %+v %v", view, err)
+		}
+		got0 := view.Checkpoints[0]
+		if got0.Key() != cp.Key() || got0.Commit != commitB || got0.PreviousCommit != commitA || !got0.Advanced || got0.AttemptID != "att_1" || got0.RunID != "run_1" ||
+			got0.PinRef != "refs/kodama/runs/run_1/1" || got0.PinStatus != workspace.CheckpointPinIntent || got0.PinnedAt != nil {
+			t.Fatalf("checkpoint: %+v", got0)
+		}
+		if page, err := st.Reconcilable(ctx, ScopeA.TenantID, "", 10); err != nil || len(page) != 1 {
+			t.Fatalf("an unconfirmed pin is unfinished work: %+v %v", page, err)
+		}
+		// Repoint and confirm: only the pin fields move on a repeated write.
+		if _, err := st.Update(ctx, ScopeA, nw.ID, workspace.Load{Checkpoints: true}, func(a *workspace.Aggregate) (workspace.Effects, error) {
+			c := a.Checkpoints[0]
+			if err := c.RepointPin("refs/kodama/runs/run_1/2"); err != nil {
+				return workspace.Effects{}, err
+			}
+			return workspace.Effects{Checkpoints: []*workspace.InternalCheckpoint{c}}, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Update(ctx, ScopeA, nw.ID, workspace.Load{Checkpoints: true}, func(a *workspace.Aggregate) (workspace.Effects, error) {
+			c := a.Checkpoints[0]
+			c.ConfirmPin(advance.Add(time.Minute))
+			c.Commit = commitC // immutable
+			return workspace.Effects{Checkpoints: []*workspace.InternalCheckpoint{c}}, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		view, _ = st.View(ctx, ScopeA, nw.ID, workspace.Load{Checkpoints: true})
+		got0 = view.Checkpoints[0]
+		if got0.PinRef != "refs/kodama/runs/run_1/2" || got0.PinStatus != workspace.CheckpointPinConfirmed || got0.PinnedAt == nil || got0.Commit != commitB {
+			t.Fatalf("confirmed checkpoint: %+v", got0)
+		}
+		if page, err := st.Reconcilable(ctx, ScopeA.TenantID, "", 10); err != nil || len(page) != 0 {
+			t.Fatalf("reconcilable after the pin: %+v %v", page, err)
+		}
+	})
+
+	t.Run("internal hosting: a guarded mutation of several associations is atomic", func(t *testing.T) {
+		env := open(t)
+		st := env.Store()
+		now := storeNow
+		nw, err := workspace.NewInternal(workspace.NewInternalParams{ID: "ws_t147_2", Scope: ScopeA, WorkItemID: "wi_i2", Primary: "repo_app",
+			URL: "https://git.example.test/git/acme/repo_app.git", CheckoutSecretRef: "kodama-git-read:repo_app"}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		app, _ := workspace.NewAssociation(nw, "repo_app", commitA, now)
+		docs, _ := workspace.NewAssociation(nw, "repo_docs", commitB, now)
+		if _, _, err := st.Insert(ctx, nw, workspace.Effects{Associations: []*workspace.RepositoryAssociation{app, docs}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Update(ctx, ScopeA, nw.ID, workspace.Load{Associations: true}, func(a *workspace.Aggregate) (workspace.Effects, error) {
+			var fx workspace.Effects
+			for _, as := range a.Associations {
+				if _, err := as.MarkCreated(now); err != nil {
+					return workspace.Effects{}, err
+				}
+				fx.Associations = append(fx.Associations, as)
+			}
+			a.Workspace.TouchAssociations(now)
+			return fx, a.Workspace.CompleteInternalProvisioning(a.Associations, now)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		before, err := st.View(ctx, ScopeA, nw.ID, workspace.Load{Associations: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		observed := before.Workspace.Version
+		change := func(expected workspace.Commit, observedVersion domain.Version) workspace.Mutation {
+			return func(a *workspace.Aggregate) (workspace.Effects, error) {
+				var fx workspace.Effects
+				for _, as := range a.Associations {
+					to := commitC
+					if as.RepositoryID == "repo_docs" {
+						to = commitA
+					}
+					if err := as.Advance(as.AcceptedCommit, to, now.Add(time.Minute)); err != nil {
+						return workspace.Effects{}, err
+					}
+					fx.Associations = append(fx.Associations, as)
+				}
+				a.Workspace.TouchAssociations(now.Add(time.Minute))
+				if a.Workspace.Version != observedVersion+1 {
+					return workspace.Effects{}, workspace.ErrStale // the caller's version binding
+				}
+				if workspace.FindAssociation(a.Associations, "repo_app").BaseCommit != expected {
+					return workspace.Effects{}, workspace.ErrStale
+				}
+				return fx, nil
+			}
+		}
+		// The binding fails after both associations were changed: neither is written.
+		if _, err := st.Update(ctx, ScopeA, nw.ID, workspace.Load{Associations: true}, change(commitA, observed+7)); !errors.Is(err, workspace.ErrStale) {
+			t.Fatalf("stale mutation: %v", err)
+		}
+		view, _ := st.View(ctx, ScopeA, nw.ID, workspace.Load{Associations: true})
+		if view.Workspace.Version != observed || workspace.FindAssociation(view.Associations, "repo_app").AcceptedCommit != commitA || workspace.FindAssociation(view.Associations, "repo_docs").AcceptedCommit != commitB {
+			t.Fatalf("a refused mutation left %+v / %+v", view.Workspace, view.Associations)
+		}
+		// Bound to the version it observed, both change together at one new version.
+		if _, err := st.Update(ctx, ScopeA, nw.ID, workspace.Load{Associations: true}, change(commitA, observed)); err != nil {
+			t.Fatal(err)
+		}
+		view, _ = st.View(ctx, ScopeA, nw.ID, workspace.Load{Associations: true})
+		if view.Workspace.Version != observed+1 || workspace.FindAssociation(view.Associations, "repo_app").AcceptedCommit != commitC || workspace.FindAssociation(view.Associations, "repo_docs").AcceptedCommit != commitA {
+			t.Fatalf("after the bound mutation: %+v / %+v", view.Workspace, view.Associations)
+		}
+	})
+
 	t.Run("a project lists its workspace IDs in order", func(t *testing.T) {
 		env := open(t)
 		for i, id := range []workspace.ID{"ws_t088_l3", "ws_t088_l1", "ws_t088_l2"} {

@@ -283,7 +283,7 @@ func Test_shared_migration_is_additive(t *testing.T) {
 		e.Manual.SetStop(execution.StopEvidence{Stopped: true, Launch: execution.LaunchStarted})
 		for _, id := range []domain.RunID{h.Finished, h.Queued, h.Running} {
 			agg, err := e.Store.Get(ctx, executiontest.ScopeA, id)
-			if err != nil || agg.Run.Shared != nil || agg.Run.DeadlineAt != nil || len(agg.Resources) != 0 || len(agg.Holders) != 0 || len(agg.Begins) != 0 ||
+			if err != nil || agg.Run.Shared != nil || agg.Run.DeadlineAt != nil || agg.Run.Sources != nil || !agg.Run.Origin.IsZero() || len(agg.Resources) != 0 || len(agg.Holders) != 0 || len(agg.Begins) != 0 ||
 				agg.Run.Snapshot.Runtime == nil || agg.Run.Snapshot.Runtime.ResourceRequires != 0 || agg.Step("job") == nil {
 				t.Fatalf("historical run %s read through the changed store: %+v %v", id, agg, err)
 			}

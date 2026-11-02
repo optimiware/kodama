@@ -14,10 +14,10 @@ These instructions apply to everyone and every agent working in this repository:
 
 3. Make task edits and run checks inside that worktree. Follow the task's owned paths and use isolated test resources as described in [the task workflow](docs/tasks/README.md#ownership-and-integration).
 4. Before merge, the current changes must receive code review approval and pass the task's scoped required tests and checks. Documentation-only tasks require the relevant documentation checks. Include the commands and results in the review handoff. Address review findings, rerun affected checks, and obtain review approval for the updated changes.
-5. Product-wide unit validation runs against integrated `main` every five task merges and at queue drain; M1/M2 checkpoints add bounded integration suites. Go-only work does not rerun OpenForge or development-tooling checks. A failed batch pauses publication; repair its cause and retry with `bun ../openforge/src/cli.ts batch --retry`. Do not add a second full suite at publication.
+5. Product-wide unit validation (`make lint-go test-go-unit`) runs against the integration branch tip every five task merges and at queue drain; M1/M2 checkpoints add their bounded integration suites. Go-only work does not rerun development-tooling checks. A failed batch pauses further merges: repair its cause on the integration branch and rerun it. Publication to `main` is a separate explicit decision. Do not add a second full suite at publication.
 6. Keep the task branch and worktree available while review or tests are pending. Do not merge until both review approval and passing scoped checks are recorded. The coordinator marks a task complete only after the reviewed and tested changes are merged.
 7. Clean up as the final step of every merge: from the primary checkout, run `git worktree remove .work/<task-id-or-slug>` and `git branch -d task/<task-id-or-slug>`, then confirm with `git worktree list` that only other tasks remain. Use `-d`, not `-D`, so Git refuses to delete an unmerged branch. Keep the worktree and branch only when the user asks to keep them or the merge has not happened. Never remove another task's worktree. Remove cached tools or test resources only when they belong to the finished task.
-8. Automated runs use OpenForge in `../openforge/` (a separate project) (Bun/TypeScript, embedded OpenCode SDK) as described in [the harness guide](docs/implementation/harness.md). Bootstrap each worktree with `make openforge-install`; checks do not install dependencies or rewrite the lockfile. Its independent reviewer-agent verdict plus passing scoped checks, bound to the exact candidate and review context, is the review approval in step 4, and its merge step performs steps 6-7 for the task it merged; batch validation runs outside the per-task publication lane. Autonomous workers never push, never touch another task's worktree, and park the task for a human on any decision they cannot make from the specifications.
+8. The default coordination needs only this repository, Git, Go and Make. A coordinator (a human or an agent session) creates each task worktree under `.work/<task>/` from the agreed integration branch (for example `integration/<name>`, or `main`), implementer subagents edit only the task's `owns` paths and commit to the task branch, an independent reviewer approves the exact candidate, and the coordinator runs the declared checks (`make check-task TASK=T-NNN`, or the task's `check` command directly) and merges into the integration branch. `make validate-tasks` validates the task records and index. Implementers and reviewers never push, never touch another task's worktree and park the task for a human on any decision they cannot make from the specifications. [OpenForge](docs/implementation/harness.md) is an optional, separately installed external harness that can automate this loop; Kodama never requires it.
 
 ## Working on Kodama
 
@@ -47,7 +47,7 @@ Start each task in its own `.work/` worktree and follow the review/test-before-m
 - **HTTP or CLI changes:** read the [interface specification](docs/specs/api-cli-and-integrations.md) and [HTTP contract](docs/contracts/http-api.md).
 - **Installation or operations:** use the [operations reading path](docs/README.md#operators).
 - **Parallel implementation:** read [ownership](docs/implementation/repository-layout.md), [testing](docs/implementation/development-and-testing.md), and the assigned task. Shared-file or interface changes go through the integration owner before dependents proceed.
-- **Automated or parallel runs:** the [OpenForge harness](docs/implementation/harness.md) drives repository contributions; its merge gates define review approval for those runs. Bootstrap each worktree with `make openforge-install`; native role definitions live in `.opencode/agents/`. This repository tooling is separate from Kodama's T-031 product wrapper.
+- **Automated or parallel runs:** follow [Git workflow](#git-workflow) step 8 and the [development workflow](docs/implementation/harness.md). Native role definitions live in `.opencode/agents/`; they are consumed by the optional external OpenForge harness. This repository tooling is separate from Kodama's T-031 product wrapper.
 - **Module design or persistence boundaries:** read [software design](docs/specs/software-design.md) for the preferred hexagonal ports/adapters and DDD entity design.
 
 ### Design discipline
@@ -60,11 +60,12 @@ Update the glossary when a domain term changes; keep implementation decisions in
 
 ## Build and test
 
-Local Go work needs Go 1.27.2 or later and GNU Make 3.81+. OpenForge automation additionally needs Bun 1.4.2. Containers are only needed for integration: Podman is the local default on every OS, with `DEV_PROVIDER=docker` available for CI. Use an isolated worktree as described in [Git workflow](#git-workflow). The Go module path is `github.com/optimiware/kodama`.
+Local Go work needs Go 1.27.2 or later and GNU Make 3.81+. Containers are only needed for integration: Podman is the local default on every OS, with `DEV_PROVIDER=docker` available for CI. Use an isolated worktree as described in [Git workflow](#git-workflow). The Go module path is `github.com/optimiware/kodama`.
 
 ```sh
-make lint test build     # Go unit loop: no containers or harness tests
-make openforge-install   # only when using OpenForge commands
+make lint test build     # Go unit loop: no containers
+make docs-check validate-tasks config-check  # documentation, task graph and pinned configuration
+make check-task TASK=T-NNN  # a task's declared check and acceptance names, run locally
 make tools               # integration tools
 make dev-up DEV_SCOPE=t-001-local
 make test-podman        # real Podman runtime contract
@@ -92,19 +93,11 @@ podman build -f Containerfile -t localhost/kodama:0.0.1 .
 
 See [project status](docs/status.md) for what works today and what is still pending.
 
-## OpenForge repository automation
+## Task coordination and optional OpenForge
 
-OpenForge (`../openforge`) is the Bun/TypeScript contribution harness with an embedded OpenCode SDK 2.1.2 host. It plans, implements, independently reviews and qualifies task branches before publication. Kodama's product wrapper remains the separate T-031 milestone.
+Task records are `docs/tasks/T-*.md`; `make validate-tasks` checks their frontmatter, dependency graph, exclusive ownership of unordered active tasks and the dependency index. `make check-task TASK=T-NNN` runs one task's declared `check` from the repository root with `KODAMA_TASK_ID`, `KODAMA_RESOURCE_PREFIX` and `DEV_SCOPE` set and verifies that every `acceptance` name passed; it exits `75` when the environment is unavailable (make reports it as an error with the message "infrastructure unavailable"). It does not schedule, create worktrees, review or merge. `make check-devtools` qualifies the Go development tooling under `dev/`; `make test` runs only infrastructure-free Go tests. The [task queue](docs/tasks/README.md) records what is ready, blocked and deferred.
 
-Run `make openforge-install` in worktrees using OpenForge commands; it uses the frozen package lock. Checks never install dependencies or rewrite that lock. `make check-openforge` runs typechecking, Biome and Bun tests **for harness changes**; `make check-devtools` qualifies the Go development tooling under `dev/`. `make test` runs only infrastructure-free Go tests. The [task queue](docs/tasks/README.md) schedules Go core → M1 checkpoint → mocked agentic core → M2 checkpoint, with production/extra wrappers/chassis deferred.
-
-```sh
-bun ../openforge/src/cli.ts doctor
-bun ../openforge/src/cli.ts validate
-bun ../openforge/src/cli.ts run --dry-run
-```
-
-See the [harness guide](docs/implementation/harness.md) for credential discovery, native role permissions, typed reports, resource leases, state-v3 migration and batch gates. Doctor qualifies runtime configuration/model availability; live-provider pilot qualification remains separate.
+[OpenForge](docs/implementation/harness.md) is a separate project (Bun/TypeScript, embedded OpenCode SDK) that can plan, implement, review and qualify task branches automatically from `openforge.json` and `.opencode/agents/`. It is optional: install it yourself, and run it through a launcher command you supply (for example `OPENFORGE="<your launcher>" make openforge-telegram`). No Kodama build, check, test or CI workflow needs it, Bun or a sibling checkout. Kodama's product wrapper remains the separate T-031 milestone.
 
 ## Contributing
 

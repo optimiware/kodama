@@ -61,11 +61,13 @@ These documents record the design baseline, not delivered runtime behavior. The 
 | P7 | [T-117](../tasks/T-117-run-resource-acceptance.md) | Integrated qualification and staged rollout |
 | Deferred | [T-123](../tasks/T-123-buildkit-builder-service.md) | BuildKit builder service and isolated-worker mode (O-30) |
 
-The source design is commit `0b12febef5b9e092982af74e2c951afe2dd80c19`; executable baseline remains the commit above. OpenForge bootstrap is currently unavailable because the separate checkout is absent. Manual isolated workers and independent candidate review may prepare changes; automated queue/index validation and batch receipts must not be claimed until the harness is available.
+The source design is commit `0b12febef5b9e092982af74e2c951afe2dd80c19`; executable baseline remains the commit above. OpenForge is an optional external harness and is not needed here: coordinator-created isolated workers, independent candidate review, `make validate-tasks`, `make check-task TASK=T-NNN` and manual batch validation on the integration tip are the supported workflow. Do not claim OpenForge queue receipts unless that harness actually ran.
 
 **Progress:** P0 is complete at the reviewed checkpoints above. The execution-owned P2 component is reviewed, unit/real-SQL checked and merged as squashed commit `978a4e6bd6149314c13cd0ce5e4a16fc8e351140`; T-111's qualification driver and historical blocked report are reviewed, offline-checked and merged as squashed commit `dea45c6c1101ac3519bc0334028182f3d562d499`. New-format registration remains off by default; the application does not compose the shared resource ports/policy or serve the new runtime routes. Full P1 qualification, actual provider/runtime composition and staged rollout remain pending. Scoped checks qualify these components, not the complete plan.
 
 **P2 review prerequisite:** T-119's reviewed event/identity contract at `b75dca7411bdc556f84ab7b674ce5d2f81da8841` is consumed transactionally by merged T-112. Source-free lifecycle, adversarial recovery/fencing, memory/SQL immutability and atomic resource-only outbox failures have shared/real-SQL regression evidence. The bounded append-only migration join was pulled forward from P6 solely to preserve legacy PostgreSQL compatibility; public API fragments and new-feature composition remain with P6.
+
+**Progress (2026-10-30):** P0–P6 are merged (T-122, T-113, T-114, T-115, T-116) and P1 is qualified on stage (T-120, T-124, T-121; [report](../acceptance/run-resource-profile.md)). P7 (T-117) is parked by the owner until stage access is provisioned on the operator machine; its [resume checklist](../tasks/T-117-run-resource-acceptance.md#parked-2026-10-30-resume-checklist) lists the prerequisites and steps. Podman/Process composition is T-134. The paragraphs below are the historical record of earlier checkpoints.
 
 **Owner closeout direction (O-29):** Kubernetes configuration and verification are planned T-120/T-121, not work performed now. T-111 closes as driver/blocked-evidence delivery under offline checks; full P1 remains unqualified until T-121 passes. Dependent authority/runtime adapters remain gated on T-121. Current component changes were squashed before merge only after review and scoped checks. New-format admission remains disabled; no full-plan completion or deployment claim follows from this closeout. The wider factory remains halted. Integrated-main validation is recorded separately rather than retargeting earlier batch receipts.
 
@@ -233,7 +235,7 @@ P1/P2 can proceed independently after P0. P3–P5 have independent paths once in
 
 ### P6 — Assembly, chart and migration
 
-**Own:** `internal/app/`, relevant `internal/cli/`, aggregate `api/openapi.yaml`/`api/client/`, `deploy/helm/kodama/`, migration ordering, shared dependencies and operations documentation. Sole shared-file integration owner.
+**Own:** `internal/app/`, relevant `internal/cli/`, aggregate `api/openapi.yaml`/`api/client/`, `deploy/charts/kodama/`, migration ordering, shared dependencies and operations documentation. Sole shared-file integration owner.
 
 - Wire resource ports/stores/auth/entrypoints/logs/workers/migrations explicitly per `KODAMA_ENV`. Preserve production refusal of Process/Podman/memory/keyfile fallbacks.
 - Render versioned execution policy, PSA baseline/version, LSM/admission prerequisites, storage class, quotas, DNS/egress, RBAC, deadlines and BuildKit mode. Preflight capabilities, not mere declarations.

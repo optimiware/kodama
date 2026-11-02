@@ -49,7 +49,7 @@ func (e *Environment) Integration() error {
 func (e *Environment) servicesProbe() error {
 	fixtures := e.Dir + "/fixtures"
 	environment := e.WorkloadEnv()
-	environment["KODAMA_PROBE_CHECKS"] = ServicesProbeChecks
+	environment["KODAMA_PROBE_CHECKS"] = e.probeChecks()
 	suffix, err := tokenHex(4)
 	if err != nil {
 		return err

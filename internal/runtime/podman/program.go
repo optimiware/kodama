@@ -73,6 +73,11 @@ const (
 // workspace, outputs, results, secrets, identity and scratch are in-memory.
 // The container needs a network that reaches ServerURL.
 //
+// A run_shared attempt (Launch.Spec.Shared) selects the v2 wire
+// (KODAMA_RUNTIME_API=v2), gets /workspace from the run volume rather than a
+// tmpfs and never receives a checkout credential: the preparation filled the
+// workspace.
+//
 // An attempt that consumes the workspace (access read or write) needs checkout
 // material from Checkout, asked once per container create for the repository
 // the attempt's pinned context names. The credential and the Git CA are then
@@ -99,11 +104,17 @@ type Entrypoint struct {
 
 // Container implements Program.
 func (e Entrypoint) Container(ctx context.Context, l Launch) (Container, error) {
-	// Resolve the material first: a refusal must leave nothing behind, not even
-	// a registered admission credential.
-	checkout, err := bootstrap.IssueCheckout(ctx, e.Checkout, l.Spec, l.Context)
-	if err != nil {
-		return Container{}, err
+	// A run_shared attempt takes its source from the run workspace the
+	// preparation filled: it consults no provider and receives no checkout
+	// credential. Every other attempt resolves the material first: a refusal
+	// must leave nothing behind, not even a registered admission credential.
+	shared := l.Spec.Shared != nil
+	var checkout *bootstrap.CheckoutMaterial
+	if !shared {
+		var err error
+		if checkout, err = bootstrap.IssueCheckout(ctx, e.Checkout, l.Spec, l.Context); err != nil {
+			return Container{}, err
+		}
 	}
 	dir := filepath.Join(l.Dir, "bootstrap")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -132,7 +143,7 @@ func (e Entrypoint) Container(ctx context.Context, l Launch) (Container, error) 
 			"--checkout-credential-file="+pathBootstrap+"/"+bootstrap.CheckoutCredentialFile,
 			"--git-ca-file="+pathBootstrap+"/"+bootstrap.GitCAFile)
 	}
-	return Container{
+	c := Container{
 		Entrypoint: []string{pathTools + "/kodama"},
 		Args:       args,
 		Env:        append(bootstrap.Env(l.Workload), "HOME=/tmp", "TMPDIR=/tmp"),
@@ -141,5 +152,17 @@ func (e Entrypoint) Container(ctx context.Context, l Launch) (Container, error) 
 			{Source: dir, Target: pathBootstrap, ReadOnly: true},
 		},
 		Tmpfs: []string{"/workspace", "/kodama/outputs", "/kodama/results", "/kodama/secrets", "/kodama/identity", "/tmp"},
-	}, nil
+	}
+	if shared {
+		// The attempt runs as the non-root workload user: it must be able to read
+		// its own bootstrap mount (see shareWithWorkload).
+		if err := shareWithWorkload(dir); err != nil {
+			return Container{}, err
+		}
+		// S1/S2: the v2 wire, and /workspace from the run volume (the Runtime
+		// mounts it): never an in-memory directory of the attempt.
+		c.Env = append(c.Env, "KODAMA_RUNTIME_API=v2", "KODAMA_WORKSPACE_DIR=/workspace")
+		c.Tmpfs = slices.DeleteFunc(c.Tmpfs, func(t string) bool { return t == "/workspace" })
+	}
+	return c, nil
 }

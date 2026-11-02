@@ -48,7 +48,7 @@ spec:
       timeoutSeconds: 600
 ```
 
-Source-backed run, so absent `workspace` means effective `read`; `generate` is the only writer, `test` and `build` see its generated files because they share one scratch, and `lint` has no `needs` yet runs **last**: `executionOrder` is `generate test review build lint` (smallest declaration index among eligible steps, gate in its position), so `lint` waits for the human decision. Move it above `review` to run it earlier. While the gate waits, no Job exists; the scratch and any services stay until `spec.timeoutSeconds` expires. `test` evidence is `clean` only if `generate`'s commit was published and the tree matches it ([DQ-16](../../specs/delivery-and-quality-gates.md#provenance-in-shared-scratch-run_shared)).
+Source-backed run, so absent `workspace` means effective `read`; `generate` is the only writer, `test` and `build` see its generated files because they share one scratch, and `lint` has no `needs` yet runs **last**: `executionOrder` is `generate test review build lint` (smallest declaration index among eligible steps, gate in its position), so `lint` waits for the human decision. Move it above `review` to run it earlier. While the gate waits, no Job exists; the scratch and any services stay until `spec.timeoutSeconds` expires. `test` evidence is `clean` only if `generate`'s commit was published and the tree matches it. This example is historical; the current model is in the [pipeline-runtime simplification plan](../../implementation/pipeline-runtime-simplification.md).
 
 ## 2. Service-to-service edge
 

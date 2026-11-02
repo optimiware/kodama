@@ -1,0 +1,1306 @@
+[
+  {
+    "name": "initialized_request",
+    "type": "InitializedRequest",
+    "payload": {
+      "defaultBranch": "main",
+      "empty": true,
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "initialized_response",
+    "type": "InitializedResponse",
+    "payload": {
+      "repositoryId": "repo_01",
+      "status": "ready",
+      "version": 4
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "assignments_response",
+    "type": "AssignmentsResponse",
+    "payload": {
+      "items": [
+        {
+          "defaultBranch": "main",
+          "kind": "initialize",
+          "repositoryId": "repo_01"
+        },
+        {
+          "defaultBranch": "main",
+          "kind": "archive",
+          "repositoryId": "repo_02"
+        },
+        {
+          "defaultBranch": "trunk",
+          "kind": "maintain",
+          "repositoryId": "repo_03"
+        },
+        {
+          "defaultBranch": "main",
+          "kind": "reconcile",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "assignments_none",
+    "type": "AssignmentsResponse",
+    "payload": {
+      "items": []
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "assignments_reconcile_ack",
+    "type": "AssignmentsResponse",
+    "payload": {
+      "items": [
+        {
+          "defaultBranch": "main",
+          "journalAck": 41,
+          "kind": "reconcile",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "assignment_ack_negative",
+    "type": "AssignmentsResponse",
+    "payload": {
+      "items": [
+        {
+          "defaultBranch": "main",
+          "journalAck": -1,
+          "kind": "reconcile",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "initialize_request",
+    "type": "InitializeRepositoryRequest",
+    "payload": {
+      "defaultBranch": "main",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "initialize_response_created",
+    "type": "InitializeRepositoryResponse",
+    "payload": {
+      "created": true,
+      "defaultBranch": "main",
+      "empty": true,
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "initialize_response_repeat",
+    "type": "InitializeRepositoryResponse",
+    "payload": {
+      "created": false,
+      "defaultBranch": "main",
+      "empty": false,
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_refs_request_first_page",
+    "type": "ReadRefsRequest",
+    "payload": {
+      "cursor": null,
+      "limit": 100,
+      "prefix": "refs/heads/",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_refs_request_server_namespace",
+    "type": "ReadRefsRequest",
+    "payload": {
+      "cursor": "next_1",
+      "limit": 1000,
+      "prefix": "refs/kodama/",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_ref_values_request",
+    "type": "ReadRefValuesRequest",
+    "payload": {
+      "refs": [
+        "refs/heads/kodama/agents/wi_1042/run_01/impl",
+        "refs/heads/main"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_ref_values_response",
+    "type": "ReadRefValuesResponse",
+    "payload": {
+      "journalHead": 12,
+      "quiescent": true,
+      "values": [
+        {
+          "commit": "4444444444444444444444444444444444444444",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        },
+        {
+          "commit": null,
+          "ref": "refs/heads/main"
+        }
+      ],
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_journal_by_receive",
+    "type": "ReadJournalRequest",
+    "payload": {
+      "limit": 100,
+      "receiveId": "rcv_8f2c",
+      "ref": null,
+      "repositoryId": "repo_01",
+      "sinceSequence": 0
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_journal_by_ref",
+    "type": "ReadJournalRequest",
+    "payload": {
+      "limit": 100,
+      "receiveId": null,
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "repositoryId": "repo_01",
+      "sinceSequence": 7
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_journal_response",
+    "type": "ReadJournalResponse",
+    "payload": {
+      "entries": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "observed": "0000000000000000000000000000000000000000",
+          "old": "0000000000000000000000000000000000000000",
+          "operationId": null,
+          "receiveId": "rcv_8f2c",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "sequence": 8,
+          "state": "prepared"
+        },
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "observed": null,
+          "old": "0000000000000000000000000000000000000000",
+          "operationId": null,
+          "receiveId": "rcv_8f2c",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "sequence": 9,
+          "state": "committed"
+        }
+      ],
+      "hasMore": false,
+      "headSequence": 9,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "read_journal_response_empty",
+    "type": "ReadJournalResponse",
+    "payload": {
+      "entries": [],
+      "hasMore": false,
+      "headSequence": 0,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "receive_liveness_running",
+    "type": "ReceiveLivenessResponse",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "running": true,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "receive_liveness_ended",
+    "type": "ReceiveLivenessResponse",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "running": false,
+      "workerInstance": "gitworker-8a1d"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "set_retained_ref_request",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_01",
+      "ref": "refs/kodama/runs/run_01/1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "set_retained_ref_response",
+    "type": "SetRetainedRefResponse",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "created": true,
+      "ref": "refs/kodama/runs/run_01/1"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "delete_retained_ref_request",
+    "type": "DeleteRetainedRefRequest",
+    "payload": {
+      "expectedCommit": "1111111111111111111111111111111111111111",
+      "operationId": "op_02",
+      "ref": "refs/kodama/runs/run_01/12",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "delete_retained_ref_response",
+    "type": "DeleteRetainedRefResponse",
+    "payload": {
+      "deleted": false,
+      "ref": "refs/kodama/runs/run_01/12"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_branch_request_task",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_10",
+      "ref": "refs/heads/kodama/work/wi_1042",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_branch_request_agent",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_11",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_branch_request_run",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111111111111111111111111111",
+      "operationId": "op_12",
+      "ref": "refs/heads/kodama/runs/run_02/impl",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_branch_response_created",
+    "type": "CreateBranchResponse",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "created": true,
+      "ref": "refs/heads/kodama/work/wi_1042"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "create_branch_response_already_there",
+    "type": "CreateBranchResponse",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "created": false,
+      "ref": "refs/heads/kodama/work/wi_1042"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_branch_exists",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "branch_exists",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "delete_branch_request_agent",
+    "type": "DeleteBranchRequest",
+    "payload": {
+      "expectedCommit": "4444444444444444444444444444444444444444",
+      "operationId": "op_03",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "delete_branch_request_task",
+    "type": "DeleteBranchRequest",
+    "payload": {
+      "expectedCommit": "4444444444444444444444444444444444444444",
+      "operationId": "op_04",
+      "ref": "refs/heads/kodama/work/wi_1042",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "delete_branch_request_run",
+    "type": "DeleteBranchRequest",
+    "payload": {
+      "expectedCommit": "4444444444444444444444444444444444444444",
+      "operationId": "op_05",
+      "ref": "refs/heads/kodama/runs/run_02/impl",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "delete_branch_response",
+    "type": "DeleteBranchResponse",
+    "payload": {
+      "deleted": true,
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "maintain_request",
+    "type": "MaintainRequest",
+    "payload": {
+      "operationId": "op_06",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "maintain_response",
+    "type": "MaintainResponse",
+    "payload": {
+      "completedAt": "2026-10-30T11:00:00Z",
+      "operationId": "op_06"
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_ref_changed",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "ref_changed",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_retained_ref_exists",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "retained_ref_exists",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_unavailable",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "unavailable",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "error_journal_unreadable",
+    "type": "ErrorResponse",
+    "payload": {
+      "error": {
+        "code": "journal_unreadable",
+        "details": {},
+        "message": "refused",
+        "requestId": "req_01"
+      }
+    },
+    "schemaValid": true,
+    "valid": true
+  },
+  {
+    "name": "initialized_unknown_field",
+    "type": "InitializedRequest",
+    "payload": {
+      "defaultBranch": "main",
+      "empty": true,
+      "path": "/data/repo_01.git",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "initialized_default_branch_ref_path",
+    "type": "InitializedRequest",
+    "payload": {
+      "defaultBranch": "refs/heads/main",
+      "empty": true,
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "initialized_empty_omitted",
+    "type": "InitializedRequest",
+    "payload": {
+      "defaultBranch": "main",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "initialized_response_unknown_status",
+    "type": "InitializedResponse",
+    "payload": {
+      "repositoryId": "repo_01",
+      "status": "deleted",
+      "version": 4
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "initialize_request_path_as_id",
+    "type": "InitializeRepositoryRequest",
+    "payload": {
+      "defaultBranch": "main",
+      "repositoryId": "../../etc"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "initialize_request_unknown_field",
+    "type": "InitializeRepositoryRequest",
+    "payload": {
+      "defaultBranch": "main",
+      "hooks": "/tmp/h",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assignment_unknown_kind",
+    "type": "AssignmentsResponse",
+    "payload": {
+      "items": [
+        {
+          "defaultBranch": "main",
+          "kind": "delete",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "assignment_duplicate",
+    "type": "AssignmentsResponse",
+    "payload": {
+      "items": [
+        {
+          "defaultBranch": "main",
+          "kind": "archive",
+          "repositoryId": "repo_01"
+        },
+        {
+          "defaultBranch": "main",
+          "kind": "archive",
+          "repositoryId": "repo_01"
+        }
+      ]
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "assignments_items_null",
+    "type": "AssignmentsResponse",
+    "payload": {
+      "items": null
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_refs_foreign_prefix",
+    "type": "ReadRefsRequest",
+    "payload": {
+      "cursor": null,
+      "limit": 100,
+      "prefix": "refs/notes/",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_refs_prefix_without_slash",
+    "type": "ReadRefsRequest",
+    "payload": {
+      "cursor": null,
+      "limit": 100,
+      "prefix": "refs/heads",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_refs_limit_zero",
+    "type": "ReadRefsRequest",
+    "payload": {
+      "cursor": null,
+      "limit": 0,
+      "prefix": "refs/heads/",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_refs_limit_too_large",
+    "type": "ReadRefsRequest",
+    "payload": {
+      "cursor": null,
+      "limit": 1001,
+      "prefix": "refs/heads/",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_refs_cursor_omitted",
+    "type": "ReadRefsRequest",
+    "payload": {
+      "limit": 100,
+      "prefix": "refs/heads/",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_refs_cursor_with_space",
+    "type": "ReadRefsRequest",
+    "payload": {
+      "cursor": "a b",
+      "limit": 100,
+      "prefix": "refs/heads/",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_ref_values_empty",
+    "type": "ReadRefValuesRequest",
+    "payload": {
+      "refs": [],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_ref_values_duplicate",
+    "type": "ReadRefValuesRequest",
+    "payload": {
+      "refs": [
+        "refs/heads/kodama/agents/wi_1042/run_01/impl",
+        "refs/heads/kodama/agents/wi_1042/run_01/impl"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "read_ref_values_malformed_ref",
+    "type": "ReadRefValuesRequest",
+    "payload": {
+      "refs": [
+        "refs/heads/../x"
+      ],
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_ref_values_response_zero_commit",
+    "type": "ReadRefValuesResponse",
+    "payload": {
+      "journalHead": 1,
+      "quiescent": true,
+      "values": [
+        {
+          "commit": "0000000000000000000000000000000000000000",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl"
+        }
+      ],
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_ref_values_response_quiescent_omitted",
+    "type": "ReadRefValuesResponse",
+    "payload": {
+      "journalHead": 1,
+      "values": [],
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_journal_both_selectors",
+    "type": "ReadJournalRequest",
+    "payload": {
+      "limit": 100,
+      "receiveId": "rcv_8f2c",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "repositoryId": "repo_01",
+      "sinceSequence": 0
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_journal_no_selector",
+    "type": "ReadJournalRequest",
+    "payload": {
+      "limit": 100,
+      "receiveId": null,
+      "ref": null,
+      "repositoryId": "repo_01",
+      "sinceSequence": 0
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_journal_negative_since",
+    "type": "ReadJournalRequest",
+    "payload": {
+      "limit": 100,
+      "receiveId": "rcv_8f2c",
+      "ref": null,
+      "repositoryId": "repo_01",
+      "sinceSequence": -1
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_journal_limit_zero",
+    "type": "ReadJournalRequest",
+    "payload": {
+      "limit": 0,
+      "receiveId": "rcv_8f2c",
+      "ref": null,
+      "repositoryId": "repo_01",
+      "sinceSequence": 0
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "read_journal_response_unordered",
+    "type": "ReadJournalResponse",
+    "payload": {
+      "entries": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "observed": null,
+          "old": "0000000000000000000000000000000000000000",
+          "operationId": null,
+          "receiveId": "rcv_8f2c",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "sequence": 9,
+          "state": "committed"
+        },
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "observed": "0000000000000000000000000000000000000000",
+          "old": "0000000000000000000000000000000000000000",
+          "operationId": null,
+          "receiveId": "rcv_8f2c",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "sequence": 8,
+          "state": "prepared"
+        }
+      ],
+      "hasMore": false,
+      "headSequence": 9,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "read_journal_response_beyond_head",
+    "type": "ReadJournalResponse",
+    "payload": {
+      "entries": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "observed": "0000000000000000000000000000000000000000",
+          "old": "0000000000000000000000000000000000000000",
+          "operationId": null,
+          "receiveId": "rcv_8f2c",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "sequence": 8,
+          "state": "prepared"
+        }
+      ],
+      "hasMore": false,
+      "headSequence": 7,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": true,
+    "valid": false,
+    "code": "invalid_request",
+    "goOnly": true
+  },
+  {
+    "name": "read_journal_response_invalid_entry",
+    "type": "ReadJournalResponse",
+    "payload": {
+      "entries": [
+        {
+          "new": "4444444444444444444444444444444444444444",
+          "observed": null,
+          "old": "0000000000000000000000000000000000000000",
+          "operationId": null,
+          "receiveId": "rcv_8f2c",
+          "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+          "sequence": 8,
+          "state": "prepared"
+        }
+      ],
+      "hasMore": false,
+      "headSequence": 9,
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "receive_liveness_running_omitted",
+    "type": "ReceiveLivenessResponse",
+    "payload": {
+      "receiveId": "rcv_8f2c",
+      "workerInstance": "gitworker-7f9c"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "retained_ref_heads_namespace",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_01",
+      "ref": "refs/heads/main",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "retained_ref_wrong_namespace",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_01",
+      "ref": "refs/kodama/other/1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "retained_ref_zero_counter",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_01",
+      "ref": "refs/kodama/runs/run_01/0",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "retained_ref_leading_zero_counter",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_01",
+      "ref": "refs/kodama/runs/run_01/01",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "retained_ref_no_counter",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_01",
+      "ref": "refs/kodama/runs/run_01",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "retained_ref_traversal",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_01",
+      "ref": "refs/kodama/runs/../1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "retained_ref_zero_commit",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "0000000000000000000000000000000000000000",
+      "operationId": "op_01",
+      "ref": "refs/kodama/runs/run_01/1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "retained_ref_short_commit",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "abc123",
+      "operationId": "op_01",
+      "ref": "refs/kodama/runs/run_01/1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "retained_ref_unknown_field",
+    "type": "SetRetainedRefRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "force": true,
+      "operationId": "op_01",
+      "ref": "refs/kodama/runs/run_01/1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "delete_retained_ref_expected_omitted",
+    "type": "DeleteRetainedRefRequest",
+    "payload": {
+      "operationId": "op_02",
+      "ref": "refs/kodama/runs/run_01/1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_default_branch",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_10",
+      "ref": "refs/heads/main",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_tag",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_10",
+      "ref": "refs/tags/v1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_server_ref",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_10",
+      "ref": "refs/kodama/runs/run_01/1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_other_branch",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_10",
+      "ref": "refs/heads/feature/x",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_malformed_task_branch",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_10",
+      "ref": "refs/heads/kodama/work/wi/1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_traversal",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "operationId": "op_10",
+      "ref": "refs/heads/kodama/work/../main",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_zero_commit",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "0000000000000000000000000000000000000000",
+      "operationId": "op_10",
+      "ref": "refs/heads/kodama/work/wi_1042",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_symbolic_commit",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "main",
+      "operationId": "op_10",
+      "ref": "refs/heads/kodama/work/wi_1042",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_operation_omitted",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "ref": "refs/heads/kodama/work/wi_1042",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_unknown_field",
+    "type": "CreateBranchRequest",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "force": true,
+      "operationId": "op_10",
+      "ref": "refs/heads/kodama/work/wi_1042",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "create_branch_response_created_omitted",
+    "type": "CreateBranchResponse",
+    "payload": {
+      "commit": "1111111111111111111111111111111111111111",
+      "ref": "refs/heads/kodama/work/wi_1042"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "delete_branch_default_branch",
+    "type": "DeleteBranchRequest",
+    "payload": {
+      "expectedCommit": "4444444444444444444444444444444444444444",
+      "operationId": "op_03",
+      "ref": "refs/heads/main",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "delete_branch_other_branch",
+    "type": "DeleteBranchRequest",
+    "payload": {
+      "expectedCommit": "4444444444444444444444444444444444444444",
+      "operationId": "op_03",
+      "ref": "refs/heads/feature/x",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "delete_branch_tag",
+    "type": "DeleteBranchRequest",
+    "payload": {
+      "expectedCommit": "4444444444444444444444444444444444444444",
+      "operationId": "op_03",
+      "ref": "refs/tags/v1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "delete_branch_server_ref",
+    "type": "DeleteBranchRequest",
+    "payload": {
+      "expectedCommit": "4444444444444444444444444444444444444444",
+      "operationId": "op_03",
+      "ref": "refs/kodama/runs/run_01/1",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "delete_branch_malformed_agent_branch",
+    "type": "DeleteBranchRequest",
+    "payload": {
+      "expectedCommit": "4444444444444444444444444444444444444444",
+      "operationId": "op_03",
+      "ref": "refs/heads/kodama/agents/wi_1042/impl",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "delete_branch_without_expected",
+    "type": "DeleteBranchRequest",
+    "payload": {
+      "expectedCommit": "0000000000000000000000000000000000000000",
+      "operationId": "op_03",
+      "ref": "refs/heads/kodama/agents/wi_1042/run_01/impl",
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "maintain_operation_omitted",
+    "type": "MaintainRequest",
+    "payload": {
+      "repositoryId": "repo_01"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  },
+  {
+    "name": "maintain_response_time_without_zone",
+    "type": "MaintainResponse",
+    "payload": {
+      "completedAt": "2026-10-30T11:00:00",
+      "operationId": "op_06"
+    },
+    "schemaValid": false,
+    "valid": false,
+    "code": "invalid_request"
+  }
+]

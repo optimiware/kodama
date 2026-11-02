@@ -31,9 +31,12 @@ Result acknowledgment ordering and classified failure logs are
 
 Tools (`tofu`, `helm`, `kubectl`, `go`, `python3`), the stage kubeconfig, and an operator Scaleway credential
 (`SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, `SCW_DEFAULT_PROJECT_ID`). Keep Terraform state, tfvars, kubeconfig and credentials
-outside the checkout: state lives in `$STAGE_STATE_DIR` (default `~/kodama-stage/state`, mode 0700). Set
-`STAGE_STATE_DIR` and `KODAMA_QUAL_STATE_DIR` to the same directory. The scripts refuse to start if state exists only
-in the former default `~/.kube/kodama-stage/state`.
+outside the checkout: operator files live in `$STAGE_STATE_DIR` (default `~/kodama-stage/state`, mode 0700), one directory
+per cluster name under `clusters/`, and the OpenTofu state is in the versioned Scaleway bucket `KODAMA_TFSTATE_BUCKET`,
+created once with `deploy/stage/scripts/state-bucket.sh`. Several clusters can run at the same time; every script takes
+`--name <cluster>` (or `KODAMA_STAGE_CLUSTER`) and the installation id is `kodama-<name>`. See
+[named clusters and state](../../deploy/stage/README.md#named-clusters-and-state). The scripts refuse to start if state
+exists only in the former default `~/.kube/kodama-stage/state`.
 
 ## Install and upgrade the stage
 
@@ -43,7 +46,8 @@ The stage's own release and its dependencies come from `deploy/stage/scripts/dep
 ```sh
 export KODAMA_IMAGES_FILE=~/kodama-stage/images-<commit>.json   # kodama and workload: repository, tag, digest
 export KODAMA_ACME_EMAIL=...                                      # Let's Encrypt account contact
-deploy/stage/scripts/deploy.sh --cloud scw
+export KODAMA_TFSTATE_BUCKET=...                                  # from deploy/stage/scripts/state-bucket.sh
+deploy/stage/scripts/deploy.sh --cloud scw --name blue            # variables: ~/kodama-stage/state/clusters/blue/scw.tfvars
 ```
 
 Build and publish the images from a **clean, committed** tree with the explicit revision label, and verify them at the
@@ -62,7 +66,8 @@ helm uninstall kodama -n kodama-system --wait
 
 Uninstall removes the workloads and chart objects. It **retains** the database with its schema and rows, the
 object-store buckets and their data, and the Key Manager keys. Deleting any of those is a separate, deliberate action
-(`qualify.sh destroy` for a qualification session, which also purges that session's own `qualification/<session>/`
+(`cluster.sh destroy --cloud scw --name <cluster>` removes a whole disposable stage cluster and its state objects, never the state bucket;
+`qualify.sh destroy` for a qualification session, which also purges that session's own `qualification/<session>/`
 objects). The protected `t028-probe-kb` key and the installation keys are never touched by these scripts.
 
 ## Qualify a candidate
@@ -81,7 +86,7 @@ requires the release image to be labelled with the candidate commit **in the reg
 
 | Acceptance | What the test does |
 | --- | --- |
-| `stage_clean_install` | removes any earlier release, clears jobs, pods and per-attempt bookkeeping from the tenant namespaces, installs the chart, and requires readiness under `KODAMA_ENV=production` with `--assembly core` |
+| `stage_clean_install` | **Historical core-era scenario.** The current kernel readiness path is `test/e2e/kube-kernel`; the staging suite remains to be migrated and its old receipt is not relabelled |
 | `stage_e2e_roundtrip` | submits a pipeline, runs it, and reads the retained log and the output artifact after the workload is gone |
 | `stage_restart_reconcile` | cancels a run (workload removed), then kills the server mid-run (`--force --grace-period=0`) and requires the replacement to adopt the same Job and finish with one attempt |
 | `stage_loki_log_search` | finds the pipeline's and the control plane's log lines for one attempt by `attempt_id` in Loki through Grafana, and requires Grafana to refuse an unauthenticated Loki query |

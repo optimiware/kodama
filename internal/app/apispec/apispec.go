@@ -48,11 +48,19 @@ import (
 // grow types for an interface it cannot call). ChatOps' outbound webhook payload
 // is a receiver contract, not a call a client makes, and is pruned like the
 // workload schemas.
+//
+// T-170 adds the kernel Git hosting surface (kernel-git): the repository resource
+// of a tenant and of a project, and the Git credential exchange. It describes the
+// routes the kernel serves; the fuller drafts (repositories, git-credentials,
+// git-pushes, git-triggers, git-webhooks) stay unpublished until their routes are
+// served. The /git/ smart-HTTP transport is not JSON and is described in prose in
+// the document's introduction, never as an operation.
 var CoreFragments = []string{
 	"common", "identity", "work", "configuration", "pipeline", "runs", "workspace", "artifacts", "observation", "logs",
 	"agents", "gates", "delivery",
 	"gateway", "mcp",
 	"work-dependencies", "chatops",
+	"kernel-git",
 }
 
 // audience reports whether a fragment path belongs to the public (human)
@@ -91,12 +99,13 @@ type Info struct {
 // CoreInfo is the identity of the core subset document.
 var CoreInfo = Info{
 	Title:   "Kodama public API (core assembly subset)",
-	Version: "0.3.0",
+	Version: "0.4.0",
 	Description: "The supported subset of the Kodama HTTP API served by the core, execution, manual delivery, M2 and business-loop assemblies (T-070, T-071, T-072, T-039, T-075): identity, work items, " +
 		"variables and secrets, pipeline definitions, run admission/reads/cancellation, workspaces, artifact metadata, event observation and " +
 		"attempt logs, the manual agent, gate and delivery slice (T-072): agent profiles, human gates, environments and deployment records, and the M2 model and tool " +
 		"management routes (T-039): project model settings and MCP server registrations, and the business-loop routes (T-075): business dependency links between work items and ChatOps " +
-		"notification destinations and delivery history. Generated from the module fragments in api/ by internal/app/apispec; do not edit by hand. Runtime (attempt) routes, " +
+		"notification destinations and delivery history, and the kernel Git hosting routes (T-170): the repository resource of a tenant and of a project and the Git credential exchange; " +
+		"the Git smart-HTTP endpoint (/git/<tenant>/<project>/<repository>.git) is a non-JSON transport for the git client, authenticated with the exchanged credential as the HTTP Basic password, and is not an API operation. Generated from the module fragments in api/ by internal/app/apispec; do not edit by hand. Runtime (attempt) routes, " +
 		"the gateway's chat-completions stream, the MCP proxy endpoint, the Git receive hook, the outbound ChatOps webhook payload and the flow-summary list options are not part of this subset. Paths are relative to the server URL, which must include the /api/v1 prefix.",
 	ServerURL: "/api/v1",
 }
@@ -113,7 +122,7 @@ var typedSections = map[string]bool{"schemas": true, "parameters": true, "respon
 // Fragments published before the business-loop composition are exempt so their
 // generated type names stay exactly as released (AC-10); only fragments added
 // since are checked.
-var typeNamespaced = map[string]bool{"work-dependencies": true, "chatops": true}
+var typeNamespaced = map[string]bool{"work-dependencies": true, "chatops": true, "kernel-git": true}
 
 // prunedFragments are the fragments whose components are limited to those the
 // public paths reach. The runtime-audience routes of a fragment (the gateway's

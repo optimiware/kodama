@@ -27,7 +27,10 @@ type SubjectInput struct {
 	Scope           domain.Scope
 	WorkItemID      domain.WorkItemID
 	ContentRevision domain.ContentRevision
+	// CandidateCommit is the commit of a single-repository candidate. A candidate
+	// of a run with a source set sets SourceSet instead (exactly one of them).
 	CandidateCommit string
+	SourceSet       *SourceSetSubject
 	DefinitionID    domain.DefinitionID
 	Evidence        []EvidenceRef
 	// DeploymentID and DeploymentConfigDigest are both empty for a source-only
@@ -45,6 +48,7 @@ type Subject struct {
 	workItem   domain.WorkItemID
 	revision   domain.ContentRevision
 	candidate  string
+	set        *SourceSetSubject
 	definition domain.DefinitionID
 	evidence   []EvidenceRef
 	deployment *string
@@ -67,8 +71,13 @@ func NewSubject(in SubjectInput) (Subject, error) {
 	if err := in.ContentRevision.Validate(); err != nil {
 		return Subject{}, invalidf("%v", err)
 	}
-	if err := validCommit("candidate commit", in.CandidateCommit); err != nil {
-		return Subject{}, err
+	if (in.CandidateCommit == "") == (in.SourceSet == nil) {
+		return Subject{}, invalidf("a subject names one candidate commit or one source set")
+	}
+	if in.SourceSet == nil {
+		if err := validCommit("candidate commit", in.CandidateCommit); err != nil {
+			return Subject{}, err
+		}
 	}
 	if err := in.DefinitionID.Validate(); err != nil {
 		return Subject{}, invalidf("%v", err)
@@ -77,6 +86,14 @@ func NewSubject(in SubjectInput) (Subject, error) {
 		return Subject{}, invalidf("a deployment and its configuration digest are set together")
 	}
 	s := Subject{scope: in.Scope, workItem: in.WorkItemID, revision: in.ContentRevision, candidate: in.CandidateCommit, definition: in.DefinitionID}
+	if in.SourceSet != nil {
+		// Re-validate: a stored or built set is canonical (ordered, once each).
+		set, err := NewSourceSetSubject(in.SourceSet.Digest, in.SourceSet.Sources)
+		if err != nil {
+			return Subject{}, err
+		}
+		s.set = &set
+	}
 	if in.DeploymentID != "" {
 		if err := validID("deployment id", in.DeploymentID); err != nil {
 			return Subject{}, err
@@ -137,15 +154,58 @@ func normalizeEvidence(in []EvidenceRef) ([]EvidenceRef, error) {
 }
 
 type subjectWire struct {
-	TenantID               string        `json:"tenantId"`
-	ProjectID              string        `json:"projectId"`
-	WorkItemID             string        `json:"workItemId"`
-	ContentRevision        int64         `json:"contentRevision"`
-	CandidateCommit        string        `json:"candidateCommit"`
+	TenantID        string `json:"tenantId"`
+	ProjectID       string `json:"projectId"`
+	WorkItemID      string `json:"workItemId"`
+	ContentRevision int64  `json:"contentRevision"`
+	// CandidateCommit and SourceSet are alternatives. A single-repository subject
+	// keeps its candidateCommit member and has no sourceSet member (its canonical
+	// bytes are those of every earlier subject); a source-set subject has no
+	// candidateCommit member.
+	CandidateCommit        *string       `json:"candidateCommit,omitempty"`
+	SourceSet              *sourceSetW   `json:"sourceSet,omitempty"`
 	DefinitionID           string        `json:"definitionId"`
 	Evidence               []EvidenceRef `json:"evidence"`
 	DeploymentID           *string       `json:"deploymentId"`
 	DeploymentConfigDigest *string       `json:"deploymentConfigDigest"`
+}
+
+type sourceSetW struct {
+	Digest  string    `json:"digest"`
+	Sources []sourceW `json:"sources"`
+}
+
+type sourceW struct {
+	RepositoryID string `json:"repositoryId"`
+	Commit       string `json:"commit"`
+	Base         *baseW `json:"base"`
+}
+
+type baseW struct {
+	Ref    string `json:"ref"`
+	Commit string `json:"commit"`
+}
+
+func (s SourceSetSubject) wire() *sourceSetW {
+	w := &sourceSetW{Digest: s.Digest, Sources: make([]sourceW, len(s.Sources))}
+	for i, x := range s.Sources {
+		w.Sources[i] = sourceW{RepositoryID: x.RepositoryID, Commit: x.Commit}
+		if x.Base != nil {
+			w.Sources[i].Base = &baseW{Ref: x.Base.Ref, Commit: x.Base.Commit}
+		}
+	}
+	return w
+}
+
+func (w sourceSetW) subject() SourceSetSubject {
+	out := SourceSetSubject{Digest: w.Digest, Sources: make([]SubjectSource, len(w.Sources))}
+	for i, x := range w.Sources {
+		out.Sources[i] = SubjectSource{RepositoryID: x.RepositoryID, Commit: x.Commit}
+		if x.Base != nil {
+			out.Sources[i].Base = &Base{Ref: x.Base.Ref, Commit: x.Base.Commit}
+		}
+	}
+	return out
 }
 
 func (s Subject) wire() subjectWire {
@@ -153,11 +213,18 @@ func (s Subject) wire() subjectWire {
 	if ev == nil {
 		ev = []EvidenceRef{}
 	}
-	return subjectWire{
+	w := subjectWire{
 		TenantID: string(s.scope.TenantID), ProjectID: string(s.scope.ProjectID), WorkItemID: string(s.workItem),
-		ContentRevision: int64(s.revision), CandidateCommit: s.candidate, DefinitionID: string(s.definition),
+		ContentRevision: int64(s.revision), DefinitionID: string(s.definition),
 		Evidence: ev, DeploymentID: s.deployment, DeploymentConfigDigest: s.config,
 	}
+	if s.set != nil {
+		w.SourceSet = s.set.wire()
+	} else {
+		c := s.candidate
+		w.CandidateCommit = &c
+	}
+	return w
 }
 
 // ParseSubject restores a stored subject. The bytes must be exactly the
@@ -174,7 +241,14 @@ func ParseSubject(canonical []byte) (Subject, error) {
 	in := SubjectInput{
 		Scope:      domain.Scope{TenantID: domain.TenantID(w.TenantID), ProjectID: domain.ProjectID(w.ProjectID)},
 		WorkItemID: domain.WorkItemID(w.WorkItemID), ContentRevision: domain.ContentRevision(w.ContentRevision),
-		CandidateCommit: w.CandidateCommit, DefinitionID: domain.DefinitionID(w.DefinitionID), Evidence: w.Evidence,
+		DefinitionID: domain.DefinitionID(w.DefinitionID), Evidence: w.Evidence,
+	}
+	if w.CandidateCommit != nil {
+		in.CandidateCommit = *w.CandidateCommit
+	}
+	if w.SourceSet != nil {
+		set := w.SourceSet.subject()
+		in.SourceSet = &set
 	}
 	if w.DeploymentID != nil {
 		in.DeploymentID = *w.DeploymentID
@@ -204,6 +278,26 @@ func (s Subject) WorkItemID() domain.WorkItemID           { return s.workItem }
 func (s Subject) ContentRevision() domain.ContentRevision { return s.revision }
 func (s Subject) CandidateCommit() string                 { return s.candidate }
 func (s Subject) DefinitionID() domain.DefinitionID       { return s.definition }
+
+// PresentedCandidate is the one commit a client that does not read source sets
+// sees: the candidate commit of a single-repository subject, or the commit of the
+// primary source of a source-set subject (SourceSetSubject.Primary). The subject's
+// identity and digest are never defined by it.
+func (s Subject) PresentedCandidate() string {
+	if s.set != nil {
+		return s.set.Primary().Commit
+	}
+	return s.candidate
+}
+
+// SourceSet returns the source-set candidate of the subject, or false for a
+// single-repository subject (which has CandidateCommit instead).
+func (s Subject) SourceSet() (SourceSetSubject, bool) {
+	if s.set == nil {
+		return SourceSetSubject{}, false
+	}
+	return s.set.clone(), true
+}
 
 // Evidence returns a copy of the sorted evidence references.
 func (s Subject) Evidence() []EvidenceRef { return append([]EvidenceRef{}, s.evidence...) }

@@ -19,6 +19,13 @@ func (s *Service) Sync(ctx context.Context, actor Actor, scope domain.Scope, id 
 	if err := s.authorize(ctx, actor, ActionSync, scope, Resource{"workspace", string(id)}); err != nil {
 		return nil, err
 	}
+	w, err := s.d.Store.Get(ctx, scope, id)
+	if err != nil {
+		return nil, err
+	}
+	if w.Internal() {
+		return s.syncInternal(ctx, actor, scope, id, ifMatch)
+	}
 	return s.observe(ctx, actor, scope, id, ifMatch)
 }
 
@@ -28,6 +35,9 @@ func (s *Service) observe(ctx context.Context, actor Actor, scope domain.Scope, 
 	err := retry(3, func() error {
 		w, err := s.d.Store.Get(ctx, scope, id)
 		if err != nil {
+			return err
+		}
+		if err := w.requireExternal("publisher synchronization"); err != nil {
 			return err
 		}
 		if err := w.CheckVersion(ifMatch); err != nil {

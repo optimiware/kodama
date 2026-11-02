@@ -6,8 +6,10 @@
 #   2. loads the AppArmor profile with the HOST's apparmor_parser by entering the host mount
 #      namespace (nsenter -t 1 -m), feeding the profile on stdin. The profile is never
 #      written to the host file system and the host's /etc/apparmor.d includes resolve there.
+#      The profile (kodama-rootless-build-v2) is flags=(unconfined) plus `userns,`, so the
+#      kernel lists it as "kodama-rootless-build-v2 (unconfined)", never as enforce.
 # Then it records what it installed (status file + log) and re-checks every CHECK_INTERVAL
-# seconds, reloading the AppArmor profile if the node lost it (for example after a reboot,
+# seconds, reloading the AppArmor profile if the node lost it or lists it in any other state (for example after a reboot,
 # which clears loaded profiles; the DaemonSet Pod is restarted and re-applies it as well).
 #
 # MODE=uninstall (the separate uninstall DaemonSet) removes the seccomp file and the status file
@@ -23,8 +25,10 @@ NSENTER=${NSENTER:-nsenter}
 AA_PROFILES_FILE=${AA_PROFILES_FILE:-/sys/kernel/security/apparmor/profiles}
 AA_ABI_FILE=${AA_ABI_FILE:-/etc/apparmor.d/abi/4.0}
 SECCOMP_FILE=kodama-rootless-build-v1.json
-APPARMOR_FILE=kodama-rootless-build-v1
-APPARMOR_NAME=kodama-rootless-build-v1
+APPARMOR_FILE=kodama-rootless-build-v2
+APPARMOR_NAME=kodama-rootless-build-v2
+# The only healthy kernel state: an unconfined-flag profile is listed in "unconfined" mode.
+APPARMOR_HEALTHY="$APPARMOR_NAME (unconfined)"
 
 log() { printf '%s kodama-node-profiles: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 fail() { log "ERROR: $*"; exit 1; }
@@ -45,14 +49,15 @@ install_seccomp() {
   log "installed seccomp profile kodama/$SECCOMP_FILE sha256=$(sha256sum "$dst" | cut -d' ' -f1)"
 }
 
-# apparmor_state prints the kernel's state of the profile: "enforce" (exactly the enforce-mode
-# entry), "other" (loaded in complain or any other mode) or "absent". It returns nonzero, printing
+# apparmor_state prints the kernel's state of the profile: "healthy" (exactly the
+# "<name> (unconfined)" entry), "other" (loaded in enforce, complain or any other mode) or
+# "absent". It returns nonzero, printing
 # nothing, when the kernel's profile list cannot be read, so a failed inspection is never mistaken
 # for absence.
 apparmor_state() {
   list=$(host cat "$AA_PROFILES_FILE" 2>/dev/null) || return 1
-  if printf '%s\n' "$list" | grep -qx "$APPARMOR_NAME (enforce)"; then
-    echo enforce
+  if printf '%s\n' "$list" | grep -qxF "$APPARMOR_HEALTHY"; then
+    echo healthy
   elif printf '%s\n' "$list" | grep -q "^$APPARMOR_NAME "; then
     echo other
   else
@@ -70,7 +75,7 @@ load_apparmor() {
     fail "apparmor_parser could not load $APPARMOR_NAME"
   fi
   state=$(apparmor_state) || fail "cannot inspect the kernel profile list after loading $APPARMOR_NAME"
-  [ "$state" = enforce ] || fail "$APPARMOR_NAME is not loaded in enforce mode after loading (state: $state)"
+  [ "$state" = healthy ] || fail "$APPARMOR_NAME is not listed as \"$APPARMOR_HEALTHY\" after loading (state: $state)"
   log "loaded apparmor profile $APPARMOR_NAME sha256=$(sha256sum "$src" | cut -d' ' -f1)"
 }
 
@@ -132,9 +137,9 @@ while true; do
   sleep "$CHECK_INTERVAL" &
   wait $! || true
   if state=$(apparmor_state); then
-    if [ "$state" = enforce ]; then
+    if [ "$state" = healthy ]; then
       install_seccomp
-      # Both profiles verified (seccomp file repaired if it drifted, AppArmor in enforce mode):
+      # Both profiles verified (seccomp file repaired if it drifted, AppArmor listed as unconfined):
       # restore readiness that a transient inspection failure removed, and the normal interval.
       cmp -s "$PROFILES_DIR/$SECCOMP_FILE" "$HOST_SECCOMP_DIR/$SECCOMP_FILE" || fail "seccomp profile does not match after installing it"
       if [ ! -e "$STATE_DIR/ready" ]; then
@@ -144,8 +149,8 @@ while true; do
       fi
       CHECK_INTERVAL=$healthy_interval
     else
-      # Missing (for example after a reboot) or not in enforce mode (complain): reload.
-      log "apparmor profile $APPARMOR_NAME is $state, not enforce; reloading"
+      # Missing (for example after a reboot) or in any state other than the healthy one: reload.
+      log "apparmor profile $APPARMOR_NAME is $state, not \"$APPARMOR_HEALTHY\"; reloading"
       rm -f "$STATE_DIR/ready"
       apply
     fi

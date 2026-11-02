@@ -7,6 +7,7 @@ import (
 	"time"
 
 	runtimev2 "github.com/optimiware/kodama/contracts/runtime/v2"
+	runtimev3 "github.com/optimiware/kodama/contracts/runtime/v3"
 	"github.com/optimiware/kodama/internal/domain"
 )
 
@@ -194,56 +195,89 @@ func sameResource(st ResourceState, g ResourceGrant) bool {
 // is recovered by repeating the same credential and nonce.
 func (s *Service) AdmitResource(ctx context.Context, route ResourceRef, req runtimev2.ResourceAdmitRequest) (resp runtimev2.ResourceAdmitResponse, err error) {
 	defer func() { err = Classify(err); s.logResourceOp(ctx, "admit_resource", route, err) }()
-	rc, err := s.resources()
+	info, st, err := s.admitResource(ctx, route, req, WireV2)
 	if err != nil {
 		return resp, err
 	}
+	resp = runtimev2.ResourceAdmitResponse{Token: info, Context: st.Context}
+	if err := resp.Validate(); err != nil {
+		return runtimev2.ResourceAdmitResponse{}, failWith(ErrUnavailable, err, "the response is not a valid admission")
+	}
+	return resp, nil
+}
+
+// AdmitResourceV3 is AdmitResource on the source-set wire: the same exchange and
+// rules and the unchanged resource token (audience kodama-runtime-resource),
+// returning the ResourceContextV3. A resource of the other wire is
+// ErrContextVersionMismatch with nothing consumed or revoked.
+func (s *Service) AdmitResourceV3(ctx context.Context, route ResourceRef, req runtimev2.ResourceAdmitRequest) (resp runtimev3.ResourceAdmitResponseV3, err error) {
+	defer func() { err = Classify(err); s.logResourceOp(ctx, "admit_resource", route, err) }()
+	info, st, err := s.admitResource(ctx, route, req, WireV3)
+	if err != nil {
+		return resp, err
+	}
+	resp = runtimev3.ResourceAdmitResponseV3{Token: info, Context: *st.ContextV3}
+	if err := resp.Validate(); err != nil {
+		return runtimev3.ResourceAdmitResponseV3{}, failWith(ErrUnavailable, err, "the response is not a valid admission")
+	}
+	return resp, nil
+}
+
+func (s *Service) admitResource(ctx context.Context, route ResourceRef, req runtimev2.ResourceAdmitRequest, wire int64) (info runtimev2.ResourceTokenInfo, admitted ResourceState, err error) {
+	rc, err := s.resources()
+	if err != nil {
+		return info, admitted, err
+	}
 	if err := req.Validate(); err != nil {
-		return resp, failWith(ErrInvalidRequest, err, "the admission request is invalid")
+		return info, admitted, failWith(ErrInvalidRequest, err, "the admission request is invalid")
 	}
 	if _, kerr := ResourceKindOf(route.Key); kerr != nil || route.RunID.Validate() != nil {
-		return resp, fail(ErrInvalidCredential, "the credential is not valid for this resource")
+		return info, admitted, fail(ErrInvalidCredential, "the credential is not valid for this resource")
 	}
 	cred, err := ParseCredential(req.AdmissionCredential)
 	if err != nil {
-		return resp, err
+		return info, admitted, err
 	}
 	digest := cred.Digest()
 	loc, err := rc.Store.LocateResource(ctx, digest)
 	if err != nil {
-		return resp, err
+		return info, admitted, err
 	}
 	if loc.Ref.RunID != route.RunID || loc.Ref.Key != route.Key {
-		return resp, fail(ErrInvalidCredential, "the credential is not valid for this resource")
+		return info, admitted, fail(ErrInvalidCredential, "the credential is not valid for this resource")
 	}
 	ref := loc.Ref
 
 	pre, err := rc.State.ObserveResource(ctx, ref)
 	if err != nil {
-		return resp, missing(err)
+		return info, admitted, missing(err)
 	}
 	if err := pre.Validate(); err != nil {
-		return resp, err
+		return info, admitted, err
+	}
+	if pre.Wire() != wire {
+		// A resource of the other wire: nothing is consumed or revoked.
+		return info, admitted, fail(ErrContextVersionMismatch, "the resource belongs to another runtime version")
 	}
 	now := s.now()
 	if pre.Phase != ResourceActive || !now.Before(micros(pre.DeadlineAt)) {
-		return resp, fail(ErrResourceRevoked, "the resource is no longer authorized")
+		return info, admitted, fail(ErrResourceRevoked, "the resource is no longer authorized")
 	}
 	if !pre.Bound() {
-		return resp, fail(ErrResourceUnbound, "the resource instance is not bound yet")
+		return info, admitted, fail(ErrResourceUnbound, "the resource instance is not bound yet")
 	}
 	ident := IdentityOf(req.Identity)
 	if ident.Name != pre.WorkloadName || ident.UID != pre.WorkloadUID {
-		return resp, fail(ErrForbidden, "the identity does not match the committed resource")
+		return info, admitted, fail(ErrForbidden, "the identity does not match the committed resource")
 	}
 	if ident.HasPod() {
 		err := rc.Workloads.VerifyPod(ctx, ResourceWorkload{Ref: ref, Name: pre.WorkloadName, UID: pre.WorkloadUID}, ident.PodName, ident.PodUID)
 		switch {
 		case err == nil:
 		case errors.Is(err, ErrNotObserved), errors.Is(err, ErrForbidden), errors.Is(err, ErrNotFound):
-			return resp, fail(ErrForbidden, "the pod does not belong to the workload")
+			return info, admitted, fail(ErrForbidden, "the pod does not belong to the workload")
 		default:
-			return resp, failWith(ErrUnavailable, err, "the workload could not be observed")
+			return info, admitted, failWith(ErrUnavailable, err, "the workload could not be observed")
 		}
 	}
 
@@ -263,6 +297,10 @@ func (s *Service) AdmitResource(ctx context.Context, route ResourceRef, req runt
 		}
 		if g.Ref() != ref {
 			return fail(ErrInvalidCredential, "the credential is not valid for this resource")
+		}
+		if state.Wire() != wire {
+			denied = fail(ErrContextVersionMismatch, "the resource belongs to another runtime version")
+			return nil
 		}
 		now := s.now()
 		revoke := func(reason error) error {
@@ -316,19 +354,16 @@ func (s *Service) AdmitResource(ctx context.Context, route ResourceRef, req runt
 		if err != nil {
 			return err // rolls back the consumption: nothing was handed out
 		}
-		resp = runtimev2.ResourceAdmitResponse{Token: resourceTokenInfo(token, exp, adm.MaxExpiresAt), Context: state.Context}
+		info, admitted = resourceTokenInfo(token, exp, adm.MaxExpiresAt), state
 		return nil
 	})
 	if err != nil {
-		return runtimev2.ResourceAdmitResponse{}, err
+		return runtimev2.ResourceTokenInfo{}, ResourceState{}, err
 	}
 	if denied != nil {
-		return runtimev2.ResourceAdmitResponse{}, denied
+		return runtimev2.ResourceTokenInfo{}, ResourceState{}, denied
 	}
-	if err := resp.Validate(); err != nil {
-		return runtimev2.ResourceAdmitResponse{}, failWith(ErrUnavailable, err, "the response is not a valid admission")
-	}
-	return resp, nil
+	return info, admitted, nil
 }
 
 // ResourceAuthorizeRequest is a bearer's request to perform an operation as the
@@ -338,6 +373,10 @@ type ResourceAuthorizeRequest struct {
 	Key    string
 	Bearer string
 	Op     ResourceOp
+	// ContextVersion is the runtime wire of the route being served: WireV2 (the
+	// zero value) or WireV3. A resource of the other wire is
+	// ErrContextVersionMismatch before anything is done.
+	ContextVersion int64
 }
 
 // ResourceAuthorization is the verified authority of a resource workload for one
@@ -353,18 +392,27 @@ type ResourceAuthorization struct {
 	// TokenGeneration is the signing generation of the verified token (see
 	// CheckResourceSession).
 	TokenGeneration int64
+	// ContextVersion is the runtime wire of the resource (WireV2 or WireV3).
+	ContextVersion int64
 	// Context is the committed assignment (pinned secret bindings of a service,
-	// the pinned commit of a preparation).
+	// the pinned commit of a preparation); the zero value on the source-set wire,
+	// where ContextV3 carries it.
 	Context runtimev2.ResourceContext
+	// ContextV3 is the committed assignment of a source-set run's resource.
+	ContextV3 *runtimev3.ResourceContextV3
 }
 
 // Bindings returns the secret bindings a service may resolve: exactly its own
 // pinned ones. A preparation has none.
 func (a ResourceAuthorization) Bindings() []runtimev2.SecretBinding {
-	if a.Context.Service == nil {
+	svc := a.Context.Service
+	if a.ContextV3 != nil {
+		svc = a.ContextV3.Service
+	}
+	if svc == nil {
 		return nil
 	}
-	return append([]runtimev2.SecretBinding(nil), a.Context.Service.Secrets...)
+	return append([]runtimev2.SecretBinding(nil), svc.Secrets...)
 }
 
 // CheckResourceSession applies every resource authority check inside the
@@ -414,7 +462,7 @@ func CheckResourceSession(ctx context.Context, tx ResourceTx, route ResourceRef,
 	return g, state, nil
 }
 
-func (s *Service) withResourceSession(ctx context.Context, rc *ResourceConfig, route ResourceRef, bearer string, op ResourceOp, fn func(g ResourceGrant, st ResourceState, now time.Time) error) (ResourceAuthorization, error) {
+func (s *Service) withResourceSession(ctx context.Context, rc *ResourceConfig, route ResourceRef, bearer string, op ResourceOp, wire int64, fn func(g ResourceGrant, st ResourceState, now time.Time) error) (ResourceAuthorization, error) {
 	var out ResourceAuthorization
 	claims, err := s.verifyResource(ctx, rc, bearer)
 	if err != nil {
@@ -436,7 +484,12 @@ func (s *Service) withResourceSession(ctx context.Context, rc *ResourceConfig, r
 		if g.Scope.TenantID != claims.Tenant {
 			return fail(ErrInvalidCredential, "the token is not valid for this resource")
 		}
-		out = ResourceAuthorization{Ref: g.Ref(), Kind: g.Kind, Session: claims.Session, Op: op, WorkloadUID: g.Consumption.Workload.UID, TokenGeneration: claims.Generation, Context: st.Context}
+		if st.Wire() != wire {
+			// A resource of another runtime wire: nothing is done.
+			return fail(ErrContextVersionMismatch, "the resource belongs to another runtime version")
+		}
+		out = ResourceAuthorization{Ref: g.Ref(), Kind: g.Kind, Session: claims.Session, Op: op, WorkloadUID: g.Consumption.Workload.UID, TokenGeneration: claims.Generation,
+			ContextVersion: wire, Context: st.Context, ContextV3: st.ContextV3}
 		if fn != nil {
 			return fn(g, st, now)
 		}
@@ -458,7 +511,14 @@ func (s *Service) AuthorizeResource(ctx context.Context, req ResourceAuthorizeRe
 	if err != nil {
 		return a, err
 	}
-	return s.withResourceSession(ctx, rc, route, req.Bearer, req.Op, nil)
+	wire := req.ContextVersion
+	if wire == 0 {
+		wire = WireV2
+	}
+	if wire != WireV2 && wire != WireV3 {
+		return a, fail(ErrInvalidRequest, "unknown runtime wire")
+	}
+	return s.withResourceSession(ctx, rc, route, req.Bearer, req.Op, wire, nil)
 }
 
 // RenewResource issues a fresh token for a resource that is still authorized.
@@ -467,11 +527,22 @@ func (s *Service) AuthorizeResource(ctx context.Context, req ResourceAuthorizeRe
 func (s *Service) RenewResource(ctx context.Context, run domain.RunID, key, bearer string) (resp runtimev2.ResourceTokenResponse, err error) {
 	route := ResourceRef{RunID: run, Key: key}
 	defer func() { err = Classify(err); s.logResourceOp(ctx, "renew_resource", route, err) }()
+	return s.renewResource(ctx, route, bearer, WireV2)
+}
+
+// RenewResourceV3 is RenewResource on the source-set wire.
+func (s *Service) RenewResourceV3(ctx context.Context, run domain.RunID, key, bearer string) (resp runtimev2.ResourceTokenResponse, err error) {
+	route := ResourceRef{RunID: run, Key: key}
+	defer func() { err = Classify(err); s.logResourceOp(ctx, "renew_resource", route, err) }()
+	return s.renewResource(ctx, route, bearer, WireV3)
+}
+
+func (s *Service) renewResource(ctx context.Context, route ResourceRef, bearer string, wire int64) (resp runtimev2.ResourceTokenResponse, err error) {
 	rc, err := s.resources()
 	if err != nil {
 		return resp, err
 	}
-	_, err = s.withResourceSession(ctx, rc, route, bearer, OpResourceRenew, func(g ResourceGrant, _ ResourceState, now time.Time) error {
+	_, err = s.withResourceSession(ctx, rc, route, bearer, OpResourceRenew, wire, func(g ResourceGrant, _ ResourceState, now time.Time) error {
 		exp, err := g.TokenExpiry(now, s.cfg.Policy.TokenTTL)
 		if err != nil {
 			return err
@@ -502,11 +573,30 @@ func (s *Service) ResourceContext(ctx context.Context, run domain.RunID, key, be
 	if err != nil {
 		return c, err
 	}
-	a, err := s.withResourceSession(ctx, rc, route, bearer, OpResourceContext, nil)
+	a, err := s.withResourceSession(ctx, rc, route, bearer, OpResourceContext, WireV2, nil)
 	if err != nil {
 		return runtimev2.ResourceContext{}, err
 	}
 	return a.Context, nil
+}
+
+// ResourceContextV3 returns the committed ResourceContextV3 of a source-set
+// run's resource, unchanged.
+func (s *Service) ResourceContextV3(ctx context.Context, run domain.RunID, key, bearer string) (c runtimev3.ResourceContextV3, err error) {
+	route := ResourceRef{RunID: run, Key: key}
+	defer func() { err = Classify(err); s.logResourceOp(ctx, "resource_context", route, err) }()
+	rc, err := s.resources()
+	if err != nil {
+		return c, err
+	}
+	a, err := s.withResourceSession(ctx, rc, route, bearer, OpResourceContext, WireV3, nil)
+	if err != nil {
+		return runtimev3.ResourceContextV3{}, err
+	}
+	if a.ContextV3 == nil {
+		return runtimev3.ResourceContextV3{}, fail(ErrUnavailable, "the resource has no source-set context")
+	}
+	return *a.ContextV3, nil
 }
 
 // RevokeResource irreversibly denies the resource's grant. It is idempotent and
@@ -568,6 +658,9 @@ func (s *Service) ReauthorizeResource(ctx context.Context, a ResourceAuthorizati
 		}
 		if g.Consumption.Workload.UID != a.WorkloadUID || st.Fingerprint != g.SpecFingerprint {
 			return fail(ErrResourceRevoked, "the admitted instance is not the committed one")
+		}
+		if a.ContextVersion != 0 && st.Wire() != a.ContextVersion {
+			return fail(ErrContextVersionMismatch, "the resource belongs to another runtime version")
 		}
 		return nil
 	})

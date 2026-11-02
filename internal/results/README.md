@@ -129,3 +129,74 @@ pinned context against caller mutation, and to the same result of a lost race.
 Not modelled: SQL, row-level security, lock order, isolation, real tokens, Git
 objects, object bytes and restart persistence (SD-14); a pass here is not
 evidence for them.
+
+## Source-set results (task T-150, runtime v3)
+
+`POST /runtime/v3/attempts/{attemptId}/result` for an attempt of a run that pins a source set
+([runtime v3](../../docs/contracts/runtime-v3.md#result), WS-19, GR-06). **Not wired by `internal/app` (T-132).** The external
+publication path is untouched: `Submit`, `ProposeSource`, their ports, their frozen order and their bytes are the ones above
+(`Test_unit_result_external_publication_unchanged` runs the whole earlier Contract with the source-set ports configured as
+failing doubles and requires that it never reaches them, pins the v1 result hash and shows the two wires reject each other's
+bodies). A source-set attempt never proposes a source: the entrypoint pushes with its Git grant and reports the refs it updated as
+`commits: [{repositoryId, ref, commit, pushId}]`; **a commit output is a reference to evidence, never evidence**.
+
+`Service.SubmitV3` (enabled by `Dependencies.V3`, every port required; without it the route is unavailable):
+
+1. **Authenticate** with the source-set wire asserted (`AuthRequest.Wire`): an attempt of another wire is
+   `409 context_version_mismatch` and nothing is read or changed.
+2. **Validate** the strict body and recompute the canonical hash (`ResultRequestV3`).
+3. **Receipt first.** When execution already accepted a hash for the attempt, go straight to commit: the same hash returns the
+   original acknowledgment (its persisted time), a different one `409 result_conflict`. No artifact, grant, context or push record
+   is read, so an outage, a retention or a push record that moved since never replaces a receipt decision (the receipt exception of
+   `result.submit` is the authority's: an unrevoked grant keeps it after the attempt left `active`, a revoked one loses it).
+4. **Evidence and grants** (`ValidateV3`): the artifact owner's evidence with the earlier precedence (absent/foreign/removed is
+   `404`, unfinished `409`); an output artifact is trusted only with no source, the pinned **source set's digest** or one pinned
+   source at its pinned commit, never what the attempt newly pushed; then `runtimev3.CheckResult` against the attempt's own grant as
+   its context records it **and the runtime-issued grants loaded from the control plane's records** (`IssuedGrants`, never the
+   caller). A violation (an output on the default branch no grant covers, a commit that is not the approved candidate, another
+   attempt's grant) is a verdict with `OutputViolation`: execution records the durable failure; no push record is read for it.
+5. **Push records** (`VerifyCommits`/`CheckPush`, port `Pushes` over `gitpush.Service.Reload`): every commit output must name a
+   record of this repository, made by **this attempt's workload in this run** (the actor the Git service recorded from the verified
+   grant: never a person, never another attempt or run), with exactly one entry for the output's ref whose new value is the output's
+   commit and whose state is **applied**. `authorized`, `committing`, `unknown` (and any state this version does not know) are not
+   accepted yet: **503 unavailable, nothing changed, repeat** (WS-A15: a lost confirmation stays pending until reconciliation, and an
+   `unknown` entry waits for an operator). A missing, foreign, refused or mismatching record can never count: **422
+   `output_invalid`**, nothing changed. A refusal outranks a pending output; an outage reading a record is the read's own
+   unavailable and decides nothing. Nothing is read for a result without commit outputs.
+6. **Protect** the consumed artifacts, then **commit** through execution (`FinalizerV3`, adapter `ExecutionV3` over
+   `execution.Service.CommitResultV3`) with the loaded `Issued` claims: execution repeats the session check under its run lock and,
+   for a work item's writer, accepts the task-branch outputs as checkpoints through the workspace **before** the transaction that
+   settles the writer (T-147's order); a busy checkpoint is its `ErrBusy`, reported as the same retryable unavailable, and a
+   refused one fails the attempt as an invalid output. The acknowledgment is built from the persisted attempt (status, original
+   acceptance time) and checked against the persisted hash.
+
+| Piece | Where |
+| --- | --- |
+| `Dependencies.V3`, ports `ContextsV3`, `Pushes`, `IssuedGrants`, `FinalizerV3`, `CommitV3`; `AuthRequest.Wire`; `Provenance.SourceSet`; `ErrContextVersionMismatch` | `ports_v3.go`, `ports.go`, `errors.go` |
+| `SubmitV3`, `SubmitV3Command` | `service_v3.go` |
+| `ValidateV3`, `ReferencedArtifactsV3`, `CheckPush`, `VerifyCommits`, `PushVerdict` (pure) | `validation_v3.go` |
+| Adapters `ExecutionV3`, `Pushes`, `Issued`; the authority adapter asserts the wire; the artifact adapter carries the source-set digest | `adapters/` |
+| `resultshttp.NewV3Handler` (the v3 envelope: the v1 codes plus `context_version_mismatch`; mounted by `runtimehttp.V3Config.Direct` behind its WireV3 guard) | `http/v3.go` |
+| `resultstest.V3World`: the development fixture (attempts, pinned contexts, push records, issued claims, evidence, a finalizer modelling receipt first and conflicts) | `resultstest/v3.go` |
+
+### What T-132 must wire
+
+`Dependencies.V3 = &DependenciesV3{Contexts: ExecutionV3, Pushes: adapters.NewPushes(gitpushSvc), Issued: adapters.NewIssued(runtimeauthSvc), Finalizer: ExecutionV3}`
+(`adapters.NewExecutionV3(executionSvc, executionStore)` over the **guarded** execution store, like the v1 path, so the commit
+repeats the session check under the run lock); give `execution.Dependencies.InternalWorkspaces` (T-148's adapter over the workspace)
+so a writer's checkpoints are accepted; mount `resultshttp.NewV3Handler` as `V3Config.Direct{"submitResult"}`; return
+`Provenance{SourceSet}` for source-set attempts from the artifact authority (the results artifact adapter already carries
+`artifacts.Provenance.SourceSet.Digest`).
+
+### Limits recorded here
+
+- A commit output that is refused or has no record is rejected (422) without a durable failure: execution has no input for "refused
+  outputs" except through its own checkpoint path, so a fabricated push ID leaves the attempt to its deadline and the entrypoint's
+  bounded finalization rather than failing it at once. Grant-coverage violations do reach execution and fail the attempt.
+- The real-SQL composition of the v3 result path (a source-set run in the PostgreSQL execution fixtures through the guarded store)
+  is not exercised here; it belongs to the assembly acceptance (T-132/T-133). This module owns no table.
+
+Tests: `Test_unit_result_requires_applied_push_record`, `Test_unit_result_receipt_first_replay`,
+`Test_unit_result_external_publication_unchanged`, `Test_unit_result_source_set_route_fails_closed`,
+`Test_unit_check_push_verdicts`, `Test_unit_verify_commits_classes`, `Test_unit_validate_v3_trusts_the_pinned_input_only` and the
+handler and adapter tests (`http/v3_test.go`, `adapters/v3_test.go`).

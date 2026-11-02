@@ -25,6 +25,7 @@ type record struct {
 	Name          string                   `json:"name"`
 	Scope         domain.Scope             `json:"scope"`
 	AttemptID     domain.AttemptID         `json:"attemptId"`
+	RunID         domain.RunID             `json:"runId,omitempty"`
 	UID           string                   `json:"uid,omitempty"`
 	Fingerprint   string                   `json:"fingerprint,omitempty"`
 	ContextDigest string                   `json:"contextDigest,omitempty"`
@@ -78,7 +79,7 @@ func (s records) begin(spec execution.AttemptSpec) (record, error) {
 	rec, err := s.load(spec.WorkloadName)
 	if errors.Is(err, execution.ErrNotFound) {
 		rec = record{
-			Name: spec.WorkloadName, Scope: spec.Scope, AttemptID: spec.AttemptID, UID: newUID(),
+			Name: spec.WorkloadName, Scope: spec.Scope, AttemptID: spec.AttemptID, RunID: spec.RunID, UID: newUID(),
 			Fingerprint: spec.SpecFingerprint, ContextDigest: spec.ContextDigest,
 		}
 		err = s.create(rec)
