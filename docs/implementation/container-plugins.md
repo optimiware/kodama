@@ -1231,7 +1231,7 @@ The following slice is implemented and exercised locally:
 | `internal/state` | Memory and PostgreSQL stores, binding-relative keys, conditional lifecycle, creation metadata, project quota trigger, append-only audit, artifact pin/unpin compensation, executable entry schema, runtime HTTP handler and live PostgreSQL lifecycle/RLS tests |
 | `contracts/pipeline/v1alpha3` | State/artifact-file bindings and no v1alpha3 environment field |
 | Runtime bindings | State and artifact descriptors are pinned into v1/v2 contexts; `/runtime/v3` state route checks the run_shared wire; state references are checked against the attempt's pinned inputs or prior retained references |
-| Artifact inputs | Admission pins the verified descriptor, the entrypoint materializes it under `/kodama/inputs`, and the runtime download route checks the pinned attempt context |
+| Artifact inputs | Admission pins the verified descriptor, the entrypoint materializes it under `/kodama/inputs`, and the runtime download route checks pinned inputs or an explicit state reference/ETag |
 | `pkg/pluginruntime/state` | HTTP client with create/read/update/delete/list and token-file refresh |
 | `images/plugins/deploy` | Shared engine, CAS operation claim, durable checkpoints, pending-history publication, release identity hashing, `plan`/`apply`/`status`/`reconcile`/`rollback`/`cleanup`/`prune`/`import-legacy`, expiry and receipt emission |
 | `drivers/kubernetes` | Bounded manifest validation, ownership annotations, live primary-image verification, old-inventory deletion, kubeconfig context validation, readiness observation and UID/resourceVersion-preconditioned deletion via kubectl proxy |
@@ -1249,7 +1249,7 @@ Implementation decisions and remaining work:
 - **Gate subject version.** The extended subject is additive and canonical; it is not a second API shape. Existing v1 subjects and hashes remain readable. A separate "subject v2" schema identifier would add no field not already bound by the extended subject.
 - **Artifact retention.** State writes pin new references and unpin removed ones through the artifact module’s retention port. This is a compensating sequence around the state CAS, not a single shared database transaction; the atomic state/artifact/runtime-session join remains open.
 - **State outbox.** Append-only audit rows are implemented; outbox publication and an atomic state-CAS plus runtime-session transaction remain open.
-- **State-backed artifact reads.** The runtime download route validates pinned inputs. Reading an artifact named by a state binding/key/ETag with an attempt-lifetime hold remains open.
+- **State-backed artifact reads.** The runtime download route accepts a declared state binding/key/ETag and requires the entry's explicit reference to match the artifact digest. The state entry's pin supplies retention for the attempt/window; a distinct attempt-lifetime hold record is not implemented.
 - **QA receipts.** Generic receipt/evidence QA and removal of `internal/qa` deployment lookups remain open; the legacy QA path is still composed.
 - **Legacy retirement.** `internal/delivery`, `deliverycleanup`, environment joins, `deployment.call`, deployment-bearing gate subjects, `api/delivery.yaml`, `images/deployment-tools` and their tests remain active. The P8 export/import, freeze/drain, compatibility and destructive-retirement work is not complete.
 - **Real provider qualification.** Cloudflare/GCP tests use controlled commands; live account/project qualification is not claimed.
