@@ -13,6 +13,7 @@ import (
 	"os"
 
 	"github.com/optimiware/kodama/internal/entrypoint"
+	"github.com/optimiware/kodama/internal/mcpserver"
 )
 
 const usageText = `Usage: kodama <command> [flags]
@@ -27,6 +28,7 @@ Commands:
   step       Run one attempt's command inside its workload (used by the runtimes)
   prepare    Check out the run's pinned commit once into the shared workspace (run_shared preparation Job)
   service-run  Deliver a run service's pinned secrets and run its command (run_shared services with secrets)
+  mcp        Run the external OAuth-protected MCP server for the public API
 
 Command groups of the command-line client:
   context, auth, work, workspace, pipeline, run, variable, secret, agent, gate, environment, deployment
@@ -74,6 +76,11 @@ func Main(ctx context.Context, args []string, getenv func(string) string, stdout
 			// Like the workload commands, a hook reads no environment selection and
 			// builds no adapter: it is a client of its worker.
 			return runGitHook(command[1:], os.Stdin, stdout, stderr, os.Environ())
+		case "mcp":
+			// The MCP server is a client of the public API and the selected OIDC
+			// issuer. It intentionally reads no KODAMA_ENV and opens no database,
+			// broker, object store or KMS connection.
+			return mcpserver.Command(ctx, command[1:], getenv, stdout, stderr)
 		}
 	}
 	if len(command) == 0 || (command[0] != "server" && command[0] != "migrate" && command[0] != "bootstrap" && command[0] != "seed") {

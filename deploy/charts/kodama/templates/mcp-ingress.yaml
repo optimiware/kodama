@@ -1,0 +1,44 @@
+{{- if and .Values.mcp.enabled .Values.mcp.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kodama.mcpFullname" . }}
+  labels:
+    {{- include "kodama.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+  {{- with .Values.mcp.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.mcp.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.mcp.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.mcp.ingress.host | quote }}
+      secretName: {{ .Values.mcp.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.mcp.ingress.host | quote }}
+      http:
+        paths:
+          {{- $path := default "/" .Values.mcp.ingress.path }}
+          - path: {{ $path | quote }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kodama.mcpFullname" . }}
+                port:
+                  name: http
+          {{- if eq $path "/mcp" }}
+          - path: /.well-known/oauth-protected-resource/mcp
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "kodama.mcpFullname" . }}
+                port:
+                  name: http
+          {{- end }}
+{{- end }}

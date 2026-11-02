@@ -11,8 +11,9 @@ These documents define Kodama's implementation architecture under [ADR 0013](../
 - [Platform core and agent-layer boundary](../specs/platform-integration.md)
 - [Step entrypoint contract](step-entrypoint.md)
 - [Environments and adapters](environments.md)
+- [External MCP server](mcp-server.md)
 - [Local development and testing](development-and-testing.md)
 - [Task graph and agent workflow](../tasks/README.md)
 - [Autonomous task harness](harness.md)
 
-The target binary roles are `server`, `git serve`, `step`, `agent`, and the `kodactl` CLI. PostgreSQL owns authoritative shell state, NATS JetStream is the central system bus, the native Git service hosts code and Markdown knowledge-base repositories (`<tenant>/context`, `<tenant>/<project>/*`), and external registries/services store published production artifacts while Kodama tracks their metadata. The [pipeline-runtime simplification plan](pipeline-runtime-simplification.md) owns the convergence from the transitional assemblies.
+The target binary roles are `server`, `git serve`, `step`, `agent`, `mcp serve`, and the `kodactl` CLI. `mcp serve` is a separate client process over the public API and the selected OIDC issuer; it is not part of the server assembly. PostgreSQL owns authoritative shell state, NATS JetStream is the central system bus, the native Git service hosts code and Markdown knowledge-base repositories (`<tenant>/context`, `<tenant>/<project>/*`), and external registries/services store published production artifacts while Kodama tracks their metadata. The [pipeline-runtime simplification plan](pipeline-runtime-simplification.md) owns the convergence from the transitional assemblies.

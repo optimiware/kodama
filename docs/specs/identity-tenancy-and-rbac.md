@@ -41,6 +41,11 @@ Kodama uses a straightforward permission model separating **human configuration 
 | IT-03 | Steps and agents executing in a project MUST receive project-space runtime access to that project's configured repositories, secrets, services, tasks, AI Gateway, and external MCP proxy, and MUST be denied cross-tenant access. |
 | IT-04 | Resolving a pipeline wait MUST verify that the caller currently holds the wait's assigned role or correlation in that project or tenant and that the run, step, and wait are current. |
 | IT-05 | Cross-tenant references MUST return non-disclosing `404 not_found` responses. |
+| IT-06 | A delegated access token MUST preserve the represented user and verified intermediary; authorization MUST re-check the represented user's current membership, and a delegated invocation MUST NOT satisfy a human-only permission. |
+
+## Recovery
+
+Rotate workload signing keys, fence old controllers/publishers, revoke old runtime sessions, and reconcile external effects before dispatch. Already delivered credentials and running remote requests require explicit revocation/settlement; a key rotation only invalidates subsequent token use.
 
 ## Acceptance
 
@@ -50,3 +55,4 @@ Kodama uses a straightforward permission model separating **human configuration 
 | IT-A02 | Pooled PostgreSQL connections and RLS policies prevent any cross-tenant read or write | IT-02, IT-05 |
 | IT-A03 | A pipeline step or `kodama agent` in project A can access project A's repos, secrets, services, and tasks, but cannot access tenant B | IT-03, IT-05 |
 | IT-A04 | Only a user currently holding the wait's assigned role can resolve it; a stale wait, wrong run, or foreign task is refused | IT-04 |
+| IT-A05 | A delegated MCP call is attributable to the represented user, re-checks that user's current membership, and is denied for a human-only gate/completion permission | IT-06 |

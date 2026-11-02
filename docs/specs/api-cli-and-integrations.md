@@ -46,6 +46,8 @@ The kernel emits execution events through its ports and is tested without a brok
 | AC-03 | NATS JetStream MUST carry committed Git triggers, pipeline indexing, task projection, wait resolutions, and run/service observations, and deployed profiles MUST require it. |
 | AC-04 | Task operations MUST use the task's selected pipeline and execution projection; workflow transition, park, and separate blocking-task commands MUST NOT be exposed. |
 
+The separate `kodama mcp serve` process is specified by the [external MCP server](mcp-server.md); it exposes the public API to OAuth-authenticated MCP clients and is distinct from the in-process `/api/v1/mcp` surface.
+
 ## Acceptance
 
 | ID | Scenario | Requirements |

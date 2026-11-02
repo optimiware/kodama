@@ -47,18 +47,37 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request) (http
 	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.ContainsAny(token, " \t\r\n") {
 		return httpapi.Principal{}, httpapi.ErrUnauthenticated
 	}
-	p, err := a.verifier.Verify(ctx, token)
-	if err != nil {
-		if errors.Is(err, identity.ErrUnauthenticated) {
-			return httpapi.Principal{}, httpapi.ErrUnauthenticated
+	var delegation *identity.Delegation
+	var p identity.Principal
+	if rich, ok := a.verifier.(identity.AccessTokenVerifier); ok {
+		verified, err := rich.VerifyAccessToken(ctx, token)
+		if err != nil {
+			if errors.Is(err, identity.ErrUnauthenticated) {
+				return httpapi.Principal{}, httpapi.ErrUnauthenticated
+			}
+			return httpapi.Principal{}, err
 		}
-		return httpapi.Principal{}, err
+		p, delegation = verified.Principal, verified.Delegation
+	} else {
+		var err error
+		p, err = a.verifier.Verify(ctx, token)
+		if err != nil {
+			if errors.Is(err, identity.ErrUnauthenticated) {
+				return httpapi.Principal{}, httpapi.ErrUnauthenticated
+			}
+			return httpapi.Principal{}, err
+		}
 	}
 	id, err := a.mapper.MapPrincipal(ctx, p)
 	if err != nil {
 		return httpapi.Principal{}, err
 	}
-	return httpapi.Principal{ID: string(id)}, nil
+	principal := httpapi.Principal{ID: string(id)}
+	if delegation != nil {
+		principal.DelegatedBy = delegation.Actor
+		principal.DelegatedScopes = strings.Join(delegation.Scopes, " ")
+	}
+	return principal, nil
 }
 
 // Level says which part of the target a rule needs.
@@ -123,6 +142,23 @@ func (a *Authorizer) Authorize(ctx context.Context, p httpapi.Principal, action 
 	}
 	if rule.Level == LevelPrincipal {
 		return nil
+	}
+	// A delegated credential is attributable to its represented user, but the
+	// intermediary is not a human reviewer. A route whose only permissions are
+	// human-only (for example a gate decision) is refused here. Mixed routes
+	// remain open so delegated users can perform their non-human transitions;
+	// the owning use case rejects the human-only branch.
+	if p.Delegated() && len(rule.Any) > 0 {
+		humanOnly := true
+		for _, perm := range rule.Any {
+			if !perm.HumanOnly() {
+				humanOnly = false
+				break
+			}
+		}
+		if humanOnly {
+			return httpapi.ErrDenied
+		}
 	}
 	if (rule.Level == LevelProject) != (t.ProjectID != "") || t.TenantID == "" {
 		return httpapi.ErrDenied // the route's target does not match what its action needs

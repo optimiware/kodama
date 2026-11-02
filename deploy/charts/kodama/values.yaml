@@ -61,6 +61,8 @@ serviceAccounts:
     annotations: {}
   migration:
     annotations: {}
+  mcp:
+    annotations: {}
 
 server:
   # Fixed to 1 for the initial profile; the schema rejects any other value.
@@ -100,6 +102,89 @@ ingress:
     enabled: false
     # Existing TLS Secret (or one issued by an annotation-driven controller).
     secretName: ""
+
+# External MCP server (`kodama mcp serve`). It is a separate Deployment in this
+# release: no database, NATS, S3, KMS or Kubernetes credential is mounted.
+# The chart exposes it on a dedicated host by default in the external profile;
+# the default/development profiles keep it cluster-internal.
+mcp:
+  enabled: true
+  replicaCount: 1
+  port: 8090
+  tmpSizeLimit: 16Mi
+  service:
+    type: ClusterIP
+    port: 8090
+
+  # Empty defaults derive from the release service and config.oidc:
+  #   apiURL      = http://<release>:<service.port>/api/v1
+  #   resource    = https://<mcp.ingress.host>/mcp, or http://<release>-mcp:<port>/mcp
+  #   audience    = resource (tokens must be issued for the MCP server)
+  #   issuer      = config.oidc.issuer
+  #   apiAudience = config.oidc.audience (the separate delegated API resource)
+  #   apiIssuer   = config.oidc.issuer
+  #   apiResource = apiAudience
+  apiURL: ""
+  resource: ""
+  audience: ""
+  issuer: ""
+  apiAudience: ""
+  apiIssuer: ""
+  apiResource: ""
+
+  # RFC 8693 exchange. The MCP process authenticates as a confidential client
+  # and exchanges the MCP-bound token for an API-bound token. The secret is an
+  # existing Secret reference; it is never a chart value.
+  exchange:
+    url: "https://issuer.example.invalid/token"
+    clientId: "kodama-mcp"
+    clientAuth: "client_secret_basic"
+    existingSecret: "kodama-mcp-exchange"
+    secretKey: "client-secret"
+    scopes: ""
+    caSecret: ""
+    caKey: "ca.crt"
+
+  scopes: "openid"
+  readOnly: false
+  toolsets: ""
+  enableSecretWrites: false
+  enableCredentialTools: false
+  # The in-cluster Kodama Service is plain HTTP. Public issuer/resource/exchange
+  # endpoints remain HTTPS in the external profile.
+  allowInsecureHTTP: true
+  allowInsecureAPIHTTP: true
+
+  # Optional existing Secret with a CA key for a private OIDC issuer.
+  caSecret: ""
+  caKey: "ca.crt"
+
+  ingress:
+    enabled: false
+    className: ""
+    host: ""
+    # "/" is the dedicated-host form. Use "/mcp" when this Ingress shares the
+    # server host; the chart then routes /mcp and the path-specific metadata.
+    path: "/"
+    annotations: {}
+    tls:
+      enabled: false
+      secretName: ""
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+  probes:
+    liveness:
+      periodSeconds: 10
+      failureThreshold: 3
+    readiness:
+      periodSeconds: 5
+      failureThreshold: 3
+  podAnnotations: {}
 
 # References to Secrets that already exist in the release namespace. The chart never creates
 # Secrets. Required keys (file names from dev/configuration.md):

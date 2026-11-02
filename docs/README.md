@@ -45,6 +45,7 @@ Start with [ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.
 | [Secrets and configuration](specs/variables-and-secrets.md) | Kernel & shell | Declared secret references in the kernel; encrypted tenant/project custody in the shell |
 | [Artifacts, releases, and promotions](specs/delivery-and-quality-gates.md) | Shell & Layer 4 | Metadata-only external artifacts and delivery/promotion recipes |
 | [API, `kodactl` CLI, and MCP](specs/api-cli-and-integrations.md) | Shell | Unified HTTP API, Kodama MCP server, `kodactl` CLI, and NATS signals |
+| [External MCP server](specs/mcp-server.md) | Shell | Separate OAuth-protected `kodama mcp serve` process over the public API |
 | [Agent runtime](specs/agent-runtime.md) | Agentic | Container harnesses (`opencode`, `claude-code`, `pi`) and the native `kodama agent` runtime |
 | [AI gateway and MCP proxy](specs/ai-gateway-and-mcp-proxy.md) | Agentic | OpenAI-compatible model gateway, external MCP proxy, and `agent_sessions` |
 | [Software design](specs/software-design.md) | Cross-cutting | Layer dependency direction, lightweight ports/adapters, and environments |
@@ -56,12 +57,14 @@ Start with [ADR 0013](adr/0013-two-layer-architecture-and-domain-simplification.
 2. [Installation and configuration](operations/installation-and-configuration.md)
 3. [Observability and audit](operations/observability-and-audit.md)
 4. [Upgrades, backup, and recovery](operations/upgrades-backup-and-recovery.md)
-5. [Identity, tenancy, and RBAC](specs/identity-tenancy-and-rbac.md)
+5. [External MCP server](operations/mcp-server.md)
+6. [Identity, tenancy, and RBAC](specs/identity-tenancy-and-rbac.md)
 
 ### Integrators
 
 - [Contract overview](contracts/README.md)
 - [HTTP interface](contracts/http-api.md)
+- [External MCP server](specs/mcp-server.md)
 - [Pipeline format](contracts/pipeline-format.md)
 - [Event catalog (NATS signals)](contracts/event-catalog.md)
 - [Git service](contracts/git-service.md)

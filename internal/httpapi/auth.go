@@ -17,7 +17,19 @@ import (
 // maps to platform identity; nothing here grants access from it.
 type Principal struct {
 	ID string
+	// DelegatedBy names the verified intermediary that acted for ID. It is
+	// empty for a direct human credential and never replaces ID.
+	DelegatedBy string
+	// DelegatedScopes are issuer-reported restrictions carried by a delegated
+	// credential, space-separated. They supplement, never replace, current
+	// membership checks. A string keeps Principal comparable for rate-limit and
+	// idempotency keys.
+	DelegatedScopes string
 }
+
+// Delegated reports whether the request was made through a verified
+// intermediary rather than directly by the represented principal.
+func (p Principal) Delegated() bool { return p.DelegatedBy != "" }
 
 // MaxPrincipalBytes bounds Principal.ID (it is stored in the idempotency key).
 const MaxPrincipalBytes = 512
@@ -27,9 +39,14 @@ func (p Principal) Validate() error {
 	if p.ID == "" || len(p.ID) > MaxPrincipalBytes || !utf8.ValidString(p.ID) {
 		return fmt.Errorf("%w: principal id must be 1..%d bytes of UTF-8", domain.ErrInvalidValue, MaxPrincipalBytes)
 	}
-	for _, r := range p.ID {
-		if r < 0x20 || r == 0x7f {
-			return fmt.Errorf("%w: principal id contains a control character", domain.ErrInvalidValue)
+	for _, value := range []string{p.ID, p.DelegatedBy, p.DelegatedScopes} {
+		if len(value) > MaxPrincipalBytes || !utf8.ValidString(value) {
+			return fmt.Errorf("%w: principal authentication context is too large or not UTF-8", domain.ErrInvalidValue)
+		}
+		for _, r := range value {
+			if r < 0x20 || r == 0x7f {
+				return fmt.Errorf("%w: principal authentication context contains a control character", domain.ErrInvalidValue)
+			}
 		}
 	}
 	return nil

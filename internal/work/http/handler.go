@@ -153,6 +153,10 @@ func (h *Handler) transition(w http.ResponseWriter, r *http.Request, c *httpapi.
 		h.fail(w, r, err)
 		return
 	}
+	if body.To == Done && c.Principal.Delegated() {
+		h.fail(w, r, httpapi.ForbiddenError())
+		return
+	}
 	it, err := h.svc.Transition(r.Context(), work.TransitionCommand{
 		Scope: scope, Caller: h.caller(c), ID: domain.WorkItemID(r.PathValue("id")), Expected: expected, Request: transitionDomain(body),
 	})

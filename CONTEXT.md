@@ -66,6 +66,10 @@ _Avoid_: Ticket, card, workflow state machine, parked blocker.
 
 **External MCP proxy**: Kodama's proxy to registered external MCP servers, with tool visibility and policy specific to agent work.
 
+**MCP proxy**: Kodama's workload-facing gateway that exposes approved external MCP tools to an agent attempt under the attempt's runtime authority.
+
+**MCP server**: The external OAuth-protected endpoint that exposes the Kodama public API as MCP tools to a human-authorized MCP client. It validates an MCP-bound token and exchanges it for a separate delegated API token; it holds no database, broker, object-store or KMS credential and is distinct from the MCP proxy.
+
 ## Layer 4: External behavior
 
 **Recipe**: Pipeline YAML, scripts, container images, and conventions that implement delivery, rollback, QA, notification, or organizational policy outside the kernel and shell code.

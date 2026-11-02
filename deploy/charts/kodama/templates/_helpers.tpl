@@ -40,6 +40,54 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: server
 {{- end -}}
 
+{{- define "kodama.mcpFullname" -}}
+{{- printf "%s-mcp" (include "kodama.fullname" . | trunc 58 | trimSuffix "-") -}}
+{{- end -}}
+
+{{- define "kodama.mcpServiceAccount" -}}
+{{- include "kodama.mcpFullname" . -}}
+{{- end -}}
+
+{{- define "kodama.mcpSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "kodama.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: mcp
+{{- end -}}
+
+{{- define "kodama.mcpAPIURL" -}}
+{{- if .Values.mcp.apiURL -}}
+{{- .Values.mcp.apiURL -}}
+{{- else -}}
+{{- printf "http://%s:%d/api/v1" (include "kodama.fullname" .) (int .Values.service.port) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kodama.mcpResource" -}}
+{{- if .Values.mcp.resource -}}
+{{- .Values.mcp.resource -}}
+{{- else if .Values.mcp.ingress.enabled -}}
+{{- printf "https://%s/mcp" .Values.mcp.ingress.host -}}
+{{- else -}}
+{{- printf "http://%s:%d/mcp" (include "kodama.mcpFullname" .) (int .Values.mcp.service.port) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kodama.mcpAudience" -}}
+{{- default (include "kodama.mcpResource" .) .Values.mcp.audience -}}
+{{- end -}}
+
+{{- define "kodama.mcpAPIAudience" -}}
+{{- default .Values.config.oidc.audience .Values.mcp.apiAudience -}}
+{{- end -}}
+
+{{- define "kodama.mcpAPIIssuer" -}}
+{{- default .Values.config.oidc.issuer .Values.mcp.apiIssuer -}}
+{{- end -}}
+
+{{- define "kodama.mcpAPIResource" -}}
+{{- default (include "kodama.mcpAPIAudience" .) .Values.mcp.apiResource -}}
+{{- end -}}
+
 {{/* Image reference pinned by digest: repository[:tag]@sha256:... */}}
 {{- define "kodama.imageRef" -}}
 {{- if .tag -}}
@@ -92,6 +140,21 @@ seccompProfile:
 {{- if eq .namespace $.Release.Namespace -}}
 {{- fail (printf "execution tenant namespace %q must differ from the release namespace" .namespace) -}}
 {{- end -}}
+{{- end -}}
+{{- if and .Values.mcp.enabled .Values.mcp.ingress.enabled (not .Values.mcp.ingress.host) -}}
+{{- fail "mcp.ingress.enabled requires mcp.ingress.host" -}}
+{{- end -}}
+{{- if and .Values.mcp.enabled .Values.mcp.ingress.enabled .Values.ingress.enabled (eq .Values.mcp.ingress.host .Values.ingress.host) (ne .Values.mcp.ingress.path "/mcp") -}}
+{{- fail "a shared MCP/server host requires mcp.ingress.path=/mcp; a dedicated host may use /" -}}
+{{- end -}}
+{{- if and .Values.mcp.enabled (not .Values.mcp.exchange.url) -}}
+{{- fail "mcp.enabled requires mcp.exchange.url" -}}
+{{- end -}}
+{{- if and .Values.mcp.enabled (not .Values.mcp.exchange.clientId) -}}
+{{- fail "mcp.enabled requires mcp.exchange.clientId" -}}
+{{- end -}}
+{{- if and .Values.mcp.enabled (not .Values.mcp.exchange.existingSecret) -}}
+{{- fail "mcp.enabled requires mcp.exchange.existingSecret" -}}
 {{- end -}}
 {{- end -}}
 
