@@ -161,6 +161,15 @@ Propose `kodama/v1alpha3`, runtime context v3 and gate subject v2. They retain
 Older definitions, contexts, canonical bytes and result hashes remain frozen.
 Do not add a new run model merely to add plugin bindings.
 
+**Implementation note (2026-11-02).** The branch keeps the v2 context wire and
+extends it additively with `state` and `artifactFiles`; the state route is
+versioned separately. A distinct v3 envelope would duplicate every field and
+hash without adding a new semantic field, so it is deferred until a breaking
+field requires it. Gates use one canonical subject shape: the extended subject
+adds `subjectVersion`, definition/snapshot digests and source repository while
+leaving established v1 canonical bytes unchanged. These are intentional
+deviations, not claims that the proposed version numbers were delivered.
+
 P0 freezes executable JSON Schemas, module OpenAPI, canonical examples, Go DTOs,
 positive/negative fixtures and compatibility refusal codes. Old controllers
 must refuse unsupported context/definition versions before executing a command.
