@@ -350,9 +350,16 @@ func (s *Service) claimShared(ctx context.Context, ref RunRef, view *Aggregate) 
 	}
 	var src SourceInfo
 	if access := view.Run.Shared.Access[step.ID]; access != AccessNone {
-		src, err = s.d.Sources.Describe(ctx, ref.Scope, view.Run.WorkspaceID, access == AccessWrite)
-		if err != nil {
-			return nil, mapLookup(err, "source")
+		if view.Run.WorkspaceID == "" {
+			if !view.Run.Shared.SourceBacked || access == AccessWrite {
+				return nil, Refusedf("the project source has no writable workspace")
+			}
+			src = SourceInfo{RepositoryURL: view.Run.Shared.RepositoryURL}
+		} else {
+			src, err = s.d.Sources.Describe(ctx, ref.Scope, view.Run.WorkspaceID, access == AccessWrite)
+			if err != nil {
+				return nil, mapLookup(err, "source")
+			}
 		}
 	}
 	opts := UpdateOptions{Quota: true, LockWork: view.Run.Purpose == PurposeWork, SkipLocked: true}

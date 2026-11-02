@@ -41,12 +41,18 @@ type CleanupCommand struct {
 type ProjectAdmitCommand struct {
 	Scope        domain.Scope
 	DefinitionID domain.DefinitionID
+	// SourceCommit pins an exact project-repository commit. Empty selects the
+	// source-free maintenance origin.
+	SourceCommit string
 	Inputs       map[string]runtimev1.Value
 }
 
 func (c ProjectAdmitCommand) validate() error {
 	if err := firstOf(c.Scope.Validate(), c.DefinitionID.Validate()); err != nil {
 		return invalidf("%v", err)
+	}
+	if c.SourceCommit != "" && !commitPattern.MatchString(c.SourceCommit) {
+		return invalidf("the source commit is not a Git object id")
 	}
 	return nil
 }
@@ -190,6 +196,20 @@ func (s *Service) PrepareProject(ctx context.Context, caller Caller, cmd Project
 	if err := s.authorizeStateBindings(ctx, cmd.Scope, actor, doc); err != nil {
 		return nil, err
 	}
+	sourceBacked := cmd.SourceCommit != ""
+	var src SourceInfo
+	if sourceBacked {
+		if s.d.ProjectSources == nil {
+			return nil, Refusedf("source-backed project runs are not configured")
+		}
+		if err := projectReadOnly(doc); err != nil {
+			return nil, err
+		}
+		src, err = s.d.ProjectSources.VerifyProject(ctx, cmd.Scope, cmd.SourceCommit)
+		if err != nil {
+			return nil, mapLookup(err, "project source")
+		}
+	}
 	snap, err = s.resolveInputArtifacts(ctx, cmd.Scope, doc, snap)
 	if err != nil {
 		return nil, err
@@ -199,7 +219,7 @@ func (s *Service) PrepareProject(ctx context.Context, caller Caller, cmd Project
 		return nil, err
 	}
 	runID := domain.RunID(s.d.NewID("run"))
-	pins, binding, err := s.planShared(ctx, cmd.Scope, runID, doc, false, SourceInfo{}, snap)
+	pins, binding, err := s.planShared(ctx, cmd.Scope, runID, doc, sourceBacked, src, snap)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +227,7 @@ func (s *Service) PrepareProject(ctx context.Context, caller Caller, cmd Project
 	run := &Run{
 		Scope: cmd.Scope, ID: runID, Purpose: PurposeProject, Shared: pins,
 		DefinitionID: def.ID, DefinitionDigest: string(def.Digest), Snapshot: snap,
-		SourceRetention: RetentionNotRequired, RequestedBy: actor,
+		SourceCommit: cmd.SourceCommit, SourceRetention: RetentionNotRequired, RequestedBy: actor,
 		Status: RunQueued, Reason: ReasonCreated, Version: 1,
 	}
 	plan, err := s.plan(run, doc, SourceInfo{}, actor, caller.RequestID, 0)
@@ -215,6 +235,17 @@ func (s *Service) PrepareProject(ctx context.Context, caller Caller, cmd Project
 		return nil, err
 	}
 	return plan, nil
+}
+
+// projectReadOnly enforces the initial project-origin rule: source-backed
+// project runs may read the source but cannot publish a new Git ref.
+func projectReadOnly(doc pipeline.Document) error {
+	for _, step := range doc.Spec.Steps {
+		if step.Workspace != nil && step.Workspace.Access == pipeline.AccessWrite {
+			return Refusedf("source-backed project runs are read-only; step %s requests write access", step.ID)
+		}
+	}
+	return nil
 }
 
 // PrepareCleanup builds the plan of an internal cleanup run. It requires the

@@ -235,13 +235,14 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request, c *httpa
 	}
 	var req struct {
 		DefinitionID domain.DefinitionID        `json:"definitionId"`
+		SourceCommit string                     `json:"sourceCommit,omitempty"`
 		Inputs       map[string]runtimev1.Value `json:"inputs,omitempty"`
 	}
 	if err := httpapi.DecodeJSONBytes(body, &req); err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	cmd := execution.ProjectAdmitCommand{Scope: scope, DefinitionID: req.DefinitionID, Inputs: req.Inputs}
+	cmd := execution.ProjectAdmitCommand{Scope: scope, DefinitionID: req.DefinitionID, SourceCommit: req.SourceCommit, Inputs: req.Inputs}
 	ctx := h.ctx(r, c)
 	plan, err := h.svc.PrepareProject(ctx, h.caller(c), cmd)
 	if err != nil {

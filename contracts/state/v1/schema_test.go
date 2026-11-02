@@ -46,3 +46,22 @@ func TestArtifactReferencesAreSorted(t *testing.T) {
 		t.Fatal("unsorted references accepted")
 	}
 }
+
+func TestSchemaAcceptsEntryAndRejectsMissingMetadata(t *testing.T) {
+	sch, err := Schema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := map[string]any{
+		"namespace": "deploy", "key": "resources/app", "value": map[string]any{"release": "v1"},
+		"generation": 1, "revision": 2, "createdAt": "2026-11-02T10:00:00Z",
+		"updatedAt": "2026-11-02T10:01:00Z", "artifactReferences": []any{},
+	}
+	if err := sch.Validate(entry); err != nil {
+		t.Fatalf("valid entry: %v", err)
+	}
+	delete(entry, "createdAt")
+	if err := sch.Validate(entry); err == nil {
+		t.Fatal("entry without createdAt accepted")
+	}
+}

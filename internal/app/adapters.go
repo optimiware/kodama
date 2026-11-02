@@ -613,3 +613,30 @@ func (v stateArtifactVerifier) UnpinStateReference(ctx context.Context, scope st
 	}
 	return v.svc.Unpin(ctx, domain.Scope{TenantID: scope.TenantID, ProjectID: scope.ProjectID}, domain.ArtifactID(ref.ArtifactID), v.pinOwner(scope, namespace, key))
 }
+
+// projectSources verifies an exact commit in the project's configured
+// repository. A source-backed project run has no work-item workspace, so the
+// project binding and the read-only ref reader are the authority.
+type projectSources struct {
+	repos workspace.Repositories
+	refs  workspace.RefReader
+}
+
+func (p projectSources) VerifyProject(ctx context.Context, scope domain.Scope, commit string) (execution.SourceInfo, error) {
+	repo, err := p.repos.Repository(ctx, scope)
+	if err != nil {
+		if errors.Is(err, workspace.ErrNotFound) {
+			return execution.SourceInfo{}, execution.Refusedf("the project has no repository binding")
+		}
+		return execution.SourceInfo{}, execution.Unavailablef(err, "the project repository is unavailable")
+	}
+	ref := workspace.RepoRef{Scope: scope, URL: repo.URL, CheckoutSecretRef: repo.CheckoutSecretRef, PublisherSecretRef: repo.PublisherSecretRef}
+	info, err := p.refs.BranchContains(ctx, ref, repo.BaseRef, workspace.Commit(commit))
+	if err != nil {
+		return execution.SourceInfo{}, execution.Unavailablef(err, "the project repository is unavailable")
+	}
+	if !info.Exists || !info.Contains {
+		return execution.SourceInfo{}, execution.Refusedf("the source commit is not in the project repository")
+	}
+	return execution.SourceInfo{RepositoryURL: repo.URL, Branch: repo.BaseRef, AcceptedTip: string(info.Tip)}, nil
+}

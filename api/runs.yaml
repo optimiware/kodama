@@ -447,6 +447,12 @@ components:
       properties:
         definitionId:
           $ref: 'common.yaml#/components/schemas/ID'
+        sourceCommit:
+          type: string
+          description: >-
+            Exact project-repository commit for a source-backed CI run. Omitted selects the
+            source-free maintenance origin. Source-backed project runs are read-only initially.
+          pattern: '^[0-9a-f]{40}$'
         inputs:
           type: object
           maxProperties: 100

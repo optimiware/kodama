@@ -1,0 +1,32 @@
+apiVersion: kodama/v1alpha3
+kind: Pipeline
+metadata: {name: website-stage-cleanup}
+spec:
+  timeoutSeconds: 900
+  inputs:
+    operation_id: {type: string, required: true}
+  steps:
+    - id: cleanup
+      kind: container
+      image: registry.example.invalid/deploy-cloudflare@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      state:
+        release:
+          namespace: deploy
+          prefix: website/stage/
+          access: read-write
+      env:
+        CLOUDFLARE_API_TOKEN: {secretRef: "secret://project/cloudflare-stage"}
+      command: ["/usr/local/bin/deploy"]
+      args:
+        - cleanup
+        - --driver
+        - cloudflare
+        - --worker
+        - website-stage
+        - --state-binding
+        - release
+        - --operation-id
+        - "${{ inputs.operation_id }}"
+      timeoutSeconds: 600
+      outputs:
+        receipt: {type: artifact, path: /kodama/outputs/cleanup.json}

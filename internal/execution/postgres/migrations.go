@@ -21,9 +21,11 @@ func loadOwn() []storage.Migration {
 // and persistence (T-112). StepArtifactRefsMigrationID pins verified descendant
 // artifact descriptors on the producing step.
 const (
-	RunResourcesMigrationID     = "003_run_resources.sql"
-	StepArtifactRefsMigrationID = "004_step_artifact_refs.sql"
-	ProjectRunsMigrationID      = "005_project_runs.sql"
+	RunResourcesMigrationID          = "003_run_resources.sql"
+	StepArtifactRefsMigrationID      = "004_step_artifact_refs.sql"
+	ProjectRunsMigrationID           = "005_project_runs.sql"
+	ProjectSourceRunsMigrationID     = "006_project_source_runs.sql"
+	ProjectSourceAttemptsMigrationID = "007_project_source_attempts.sql"
 )
 
 // RunResourceMigrations returns the additive run_shared tables and columns as
@@ -34,7 +36,7 @@ const (
 func RunResourceMigrations() storage.Contribution {
 	var out []storage.Migration
 	for _, m := range loadOwn() {
-		if m.ID == RunResourcesMigrationID || m.ID == StepArtifactRefsMigrationID || m.ID == ProjectRunsMigrationID {
+		if m.ID == RunResourcesMigrationID || m.ID == StepArtifactRefsMigrationID || m.ID == ProjectRunsMigrationID || m.ID == ProjectSourceRunsMigrationID || m.ID == ProjectSourceAttemptsMigrationID {
 			out = append(out, m)
 		}
 	}

@@ -897,7 +897,7 @@ func TestM2ContractCompatibility(t *testing.T) {
 		for name, edit := range map[string]func(string) string{
 			"an operation removed": func(s string) string { return strings.Replace(s, "operationId: cancelRun", "operationId: abortRun", 1) },
 			"a response member removed": func(s string) string {
-				return strings.Replace(s, "        sourceCommit:\n", "        sourceCommitX:\n", 1)
+				return strings.Replace(s, "        definitionDigest:\n", "        definitionDigestX:\n", 1)
 			},
 		} {
 			mutated := edit(string(current))

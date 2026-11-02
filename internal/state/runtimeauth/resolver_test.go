@@ -22,6 +22,7 @@ func (f *fakeAuthority) Authorize(_ context.Context, req runtimeauth.AuthorizeRe
 		StateBindings: []runtimev1.StateBinding{{
 			Name: "release", Namespace: "deploy", Prefix: "website/", Write: true,
 		}},
+		ArtifactFiles: []runtimev1.ArtifactInput{{Name: "bundle", ArtifactID: "art_bundle", Digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
 	}, nil
 }
 
@@ -40,6 +41,10 @@ func TestResolverUsesSharedWireAndDeclaredBinding(t *testing.T) {
 	if f.req.Action != runtimeauth.ActionStateWrite || scope.TenantID != "t_1" || scope.ProjectID != "p_1" ||
 		binding.Namespace != "deploy" || binding.Prefix != "website/" || !binding.Write {
 		t.Fatalf("resolved %+v %+v request=%+v", scope, binding, f.req)
+	}
+	pins, err := r.PinnedArtifacts(context.Background(), req, "att_1")
+	if err != nil || len(pins) != 1 || pins[0].ArtifactID != "art_bundle" {
+		t.Fatalf("pinned artifacts = %+v, %v", pins, err)
 	}
 }
 

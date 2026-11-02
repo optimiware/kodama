@@ -36,6 +36,9 @@ type Authorization struct {
 	// descriptive authority boundaries; the state handler still checks the
 	// requested action and prefix.
 	StateBindings []runtimev1.StateBinding
+	// ArtifactFiles are the verified input descriptors pinned in the workload
+	// context. A state reference cannot name another artifact.
+	ArtifactFiles []runtimev1.ArtifactInput
 }
 
 // SessionCheck is the check that re-verifies this authorization inside a
@@ -140,6 +143,7 @@ func (s *Service) withSession(ctx context.Context, route domain.AttemptID, beare
 			var v2 runtimev2.ContextV2
 			if json.Unmarshal(g.Context, &v2) == nil && v2.AttemptID == g.AttemptID {
 				out.StateBindings = append([]runtimev1.StateBinding(nil), v2.State...)
+				out.ArtifactFiles = append([]runtimev1.ArtifactInput(nil), v2.ArtifactFiles...)
 			}
 		} else if json.Unmarshal(g.Context, &ctxDoc) == nil && ctxDoc.AttemptID == g.AttemptID {
 			out.StateBindings = append([]runtimev1.StateBinding(nil), ctxDoc.State...)

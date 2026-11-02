@@ -5089,6 +5089,10 @@ components:
           description: Run inputs by declared name. Unknown names and type mismatches are admission_refused.
           maxProperties: 100
           type: object
+        sourceCommit:
+          description: Exact project-repository commit for a source-backed CI run. Omitted selects the source-free maintenance origin. Source-backed project runs are read-only initially.
+          pattern: ^[0-9a-f]{40}$
+          type: string
       required:
         - definitionId
       type: object

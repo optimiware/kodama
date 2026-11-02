@@ -256,3 +256,60 @@ func TestDefinitions(t *testing.T) {
 		t.Fatal("a nil reader must fail construction")
 	}
 }
+
+type fakeProjectPreparer struct {
+	cmd   execution.ProjectAdmitCommand
+	calls int
+	err   error
+}
+
+func (p *fakeProjectPreparer) PrepareProject(_ context.Context, _ execution.Caller, cmd execution.ProjectAdmitCommand) (*execution.AdmissionPlan, error) {
+	p.calls++
+	p.cmd = cmd
+	if p.err != nil {
+		return nil, p.err
+	}
+	return &execution.AdmissionPlan{
+		Aggregate: &execution.Aggregate{Run: &execution.Run{Scope: cmd.Scope, ID: "run_project", SourceCommit: cmd.SourceCommit}},
+		Source:    execution.SourceInfo{RepositoryURL: gitwebhooktest.RepositoryURL},
+	}, nil
+}
+
+func TestExecutionPlannerSourceBackedProjectTrigger(t *testing.T) {
+	ctx := context.Background()
+	f := gitwebhooktest.NewFixture(t)
+	project := &fakeProjectPreparer{}
+	planner, err := adapters.NewExecutionPlanner(adapters.PlannerConfig{
+		Preparer: &fakePreparer{}, ProjectPreparer: project, Work: fakeWork{},
+		Repositories: f.Repos, Workspaces: fakeWorkspaces{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := plannerRequest(f)
+	req.WorkItemID = ""
+	plan, err := planner.Plan(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.calls != 1 || project.cmd.SourceCommit != string(gitwebhooktest.CommitA) ||
+		project.cmd.DefinitionID != gitwebhooktest.DefinitionName || plan.Aggregate.Run.SourceCommit != string(gitwebhooktest.CommitA) {
+		t.Fatalf("project admission = %+v calls=%d", project.cmd, project.calls)
+	}
+}
+
+func TestExecutionPlannerRefusesProjectTriggerWithoutProjectAdmission(t *testing.T) {
+	ctx := context.Background()
+	f := gitwebhooktest.NewFixture(t)
+	planner, err := adapters.NewExecutionPlanner(adapters.PlannerConfig{
+		Preparer: &fakePreparer{}, Work: fakeWork{}, Repositories: f.Repos, Workspaces: fakeWorkspaces{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := plannerRequest(f)
+	req.WorkItemID = ""
+	if _, err := planner.Plan(ctx, req); !errors.Is(err, gw.ErrRunRefused) {
+		t.Fatalf("err = %v, want run refused", err)
+	}
+}

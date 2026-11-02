@@ -914,7 +914,8 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 		Env: cfg.Env, Log: c.log, Tuning: tune,
 		Deps: execution.Dependencies{
 			Authority: execAuthority, Definitions: definitions, Capabilities: chain.Capabilities(pipeline.KindGate), Work: workContent,
-			Configuration: execConfig, Sources: sources, Artifacts: artifactInputResolver{svc: artSvc}, Limits: limits, Hooks: chain.Hooks,
+			Configuration: execConfig, Sources: sources, ProjectSources: projectSources{repos: repositories, refs: gitReader},
+			Artifacts: artifactInputResolver{svc: artSvc}, Limits: limits, Hooks: chain.Hooks,
 			Tenants: tenants, CancelledWork: cancelled,
 			Cleanup: ports.Cleanup, CleanupEnvironments: ports.CleanupEnvironments, EffectReconciler: ports.EffectReconciler,
 		},
@@ -1011,7 +1012,7 @@ func (c *Core) build(ctx context.Context, cons Constructors, s3client *awss3.Cli
 	if err != nil {
 		return err
 	}
-	hookPlanner, err := gwadapters.NewExecutionPlanner(gwadapters.PlannerConfig{Preparer: execSvc, Work: workContent, Repositories: repositories, Workspaces: wsStore})
+	hookPlanner, err := gwadapters.NewExecutionPlanner(gwadapters.PlannerConfig{Preparer: execSvc, ProjectPreparer: execSvc, Work: workContent, Repositories: repositories, Workspaces: wsStore})
 	if err != nil {
 		return err
 	}

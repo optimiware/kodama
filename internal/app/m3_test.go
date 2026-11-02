@@ -763,7 +763,7 @@ func TestM3ContractCompatibility(t *testing.T) {
 					return strings.Replace(s, "operationId: addWorkItemDependency", "operationId: linkWorkItem", 1)
 				},
 				"a response member removed": func(s string) string {
-					return strings.Replace(s, "        sourceCommit:\n", "        sourceCommitX:\n", 1)
+					return strings.Replace(s, "        definitionDigest:\n", "        definitionDigestX:\n", 1)
 				},
 			} {
 				mutated := edit(string(current))

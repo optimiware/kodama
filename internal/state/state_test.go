@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	statev1 "github.com/optimiware/kodama/contracts/state/v1"
 	"github.com/optimiware/kodama/internal/domain"
 )
@@ -306,5 +307,43 @@ func TestHTTPStateDoesNotWriteWhenRetentionPinFails(t *testing.T) {
 	resp.Body.Close()
 	if _, err := mem.Get(context.Background(), testScope(), "deploy", "website/releases/v1"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("entry written despite pin failure: %v", err)
+	}
+}
+
+type pinnedResolver struct {
+	testResolver
+	pins []runtimev1.ArtifactInput
+}
+
+func (r pinnedResolver) PinnedArtifacts(context.Context, *http.Request, string) ([]runtimev1.ArtifactInput, error) {
+	return r.pins, nil
+}
+
+func TestHTTPStateReferenceMustBePinnedOrRetained(t *testing.T) {
+	mem := NewMemory(nil)
+	pin := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	h, _ := NewHandler(mem, pinnedResolver{
+		testResolver: testResolver{scope: testScope(), write: true},
+		pins:         []runtimev1.ArtifactInput{{Name: "bundle", ArtifactID: "art_1", Digest: runtimev1.Digest(pin)}},
+	})
+	h.Artifacts = testVerifier{}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	write := func(key, id, digest string) int {
+		body := `{"value":{"v":1},"artifactReferences":[{"artifactId":"` + id + `","digest":"` + digest + `"}]}`
+		req, _ := http.NewRequest(http.MethodPut, srv.URL+"/runtime/v3/attempts/att_test/state/release/entries?key="+key, strings.NewReader(body))
+		req.Header.Set("If-None-Match", "*")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := write("releases/one", "art_2", pin); got != http.StatusForbidden {
+		t.Fatalf("unpinned reference = %d, want 403", got)
+	}
+	if got := write("releases/two", "art_1", pin); got != http.StatusOK {
+		t.Fatalf("pinned reference = %d, want 200", got)
 	}
 }

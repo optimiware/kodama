@@ -16,6 +16,11 @@ type Preparer interface {
 	Prepare(ctx context.Context, caller execution.Caller, cmd execution.AdmitCommand) (*execution.AdmissionPlan, error)
 }
 
+// ProjectPreparer is the source-backed project admission use case.
+type ProjectPreparer interface {
+	PrepareProject(ctx context.Context, caller execution.Caller, cmd execution.ProjectAdmitCommand) (*execution.AdmissionPlan, error)
+}
+
 // WorkspaceReader reads the workspace a run will be admitted against. The
 // workspace module's store satisfies it. It returns workspace.ErrNotFound for a
 // missing or foreign workspace.
@@ -28,6 +33,9 @@ type PlannerConfig struct {
 	// Preparer authorizes the installing principal and pins the definition,
 	// work item, source commit and configuration.
 	Preparer Preparer
+	// ProjectPreparer admits a source-backed project run when the trigger names
+	// no work item.
+	ProjectPreparer ProjectPreparer
 	// Work reads the work item's current content revision, the revision the
 	// admission transaction re-verifies under the item lock (the core's
 	// execution.WorkContent).
@@ -79,9 +87,6 @@ func (p *ExecutionPlanner) Plan(ctx context.Context, req gw.RunRequest) (*execut
 	if req.RequestedBy == "" {
 		return nil, fmt.Errorf("%w: the requesting principal is required", gw.ErrInvalid)
 	}
-	if req.WorkItemID == "" {
-		return nil, refusedf("the trigger names no work item to attach the run to")
-	}
 	cfg, err := p.cfg.Repositories.Repository(ctx, req.Scope)
 	switch {
 	case errors.Is(err, workspace.ErrNotFound):
@@ -91,13 +96,28 @@ func (p *ExecutionPlanner) Plan(ctx context.Context, req gw.RunRequest) (*execut
 	case cfg.ID != req.RepositoryID:
 		return nil, refusedf("the project's repository is not the one the delivery verified")
 	}
-	snap, err := p.cfg.Work.Snapshot(ctx, req.Scope, req.WorkItemID)
-	if err != nil {
-		return nil, ClassifyAdmission(err)
-	}
 	requestID := req.IdempotencyKey
 	if len(requestID) > maxRequestID {
 		requestID = requestID[:maxRequestID]
+	}
+	if req.WorkItemID == "" {
+		if p.cfg.ProjectPreparer == nil {
+			return nil, refusedf("the trigger names no work item and project admission is not configured")
+		}
+		plan, err := p.cfg.ProjectPreparer.PrepareProject(ctx, execution.Caller{PrincipalID: req.RequestedBy, RequestID: requestID},
+			execution.ProjectAdmitCommand{Scope: req.Scope, DefinitionID: req.DefinitionID, SourceCommit: string(req.Commit)})
+		if err != nil {
+			return nil, ClassifyAdmission(err)
+		}
+		if plan == nil || plan.Aggregate == nil || plan.Aggregate.Run == nil || plan.Aggregate.Run.SourceCommit != string(req.Commit) ||
+			(plan.Source.RepositoryURL != "" && plan.Source.RepositoryURL != cfg.URL) {
+			return nil, refusedf("the run does not pin the verified project commit")
+		}
+		return plan, nil
+	}
+	snap, err := p.cfg.Work.Snapshot(ctx, req.Scope, req.WorkItemID)
+	if err != nil {
+		return nil, ClassifyAdmission(err)
 	}
 	plan, err := p.cfg.Preparer.Prepare(ctx, execution.Caller{PrincipalID: req.RequestedBy, RequestID: requestID}, execution.AdmitCommand{
 		Scope: req.Scope, WorkItemID: req.WorkItemID, DefinitionID: req.DefinitionID,

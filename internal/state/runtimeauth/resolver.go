@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
+
 	"github.com/optimiware/kodama/internal/domain"
 	"github.com/optimiware/kodama/internal/runtimeauth"
 	"github.com/optimiware/kodama/internal/state"
@@ -31,6 +33,29 @@ func (r Resolver) ResolveBinding(ctx context.Context, req *http.Request, attempt
 func (r Resolver) ReauthorizeBinding(ctx context.Context, req *http.Request, attempt, alias string) error {
 	_, _, err := r.resolve(ctx, req, attempt, alias)
 	return err
+}
+
+// PinnedArtifacts returns the verified input descriptors of the attempt. A
+// state reference can only name one of them.
+func (r Resolver) PinnedArtifacts(ctx context.Context, req *http.Request, attempt string) ([]runtimev1.ArtifactInput, error) {
+	if r.Authority == nil || attempt == "" {
+		return nil, state.ErrDenied
+	}
+	token := bearer(req)
+	if token == "" {
+		return nil, state.ErrDenied
+	}
+	auth, err := r.Authority.Authorize(ctx, runtimeauth.AuthorizeRequest{
+		AttemptID: domain.AttemptID(attempt), Bearer: token, Action: runtimeauth.ActionStateWrite,
+		ContextVersion: runtimeauth.WireV2,
+	})
+	if err != nil {
+		if errors.Is(err, runtimeauth.ErrUnavailable) {
+			return nil, state.ErrUnavailable
+		}
+		return nil, state.ErrDenied
+	}
+	return append([]runtimev1.ArtifactInput(nil), auth.ArtifactFiles...), nil
 }
 
 func (r Resolver) resolve(ctx context.Context, req *http.Request, attempt, alias string) (state.Scope, state.Binding, error) {

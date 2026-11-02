@@ -86,6 +86,8 @@ type MemOptions struct {
 	Shared *execution.SharedConfig
 	// SourceWrap wraps the Git observation seam (a call counter).
 	SourceWrap func(execution.Sources) execution.Sources
+	// ProjectSources enables source-backed project admission.
+	ProjectSources execution.ProjectSources
 }
 
 // Mem is one fully wired execution module over the in-memory store: the memory
@@ -172,7 +174,7 @@ func (m *Mem) NewService(opt MemOptions) *execution.Service {
 		Store: m.Mem, Authority: m.Auth, Definitions: memDefinitions{m.Defs}, Capabilities: kinds,
 		Work: m.World, Configuration: m.World, Sources: m.World, Limits: m.Limits, Hooks: hooks,
 		Tenants: tenantList{ScopeA.TenantID, ScopeB.TenantID}, Cleanup: opt.Cleanup, Clock: m.Clock.Now, CancelledWork: m.World,
-		Requirements: opt.Requirements, NewID: m.ID, Shared: opt.Shared,
+		Requirements: opt.Requirements, NewID: m.ID, Shared: opt.Shared, ProjectSources: opt.ProjectSources,
 	}
 	if opt.SourceWrap != nil {
 		deps.Sources = opt.SourceWrap(deps.Sources)

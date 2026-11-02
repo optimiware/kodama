@@ -157,6 +157,9 @@ type CreateProjectRunRequest struct {
 
 	// Inputs Run inputs by declared name. Unknown names and type mismatches are admission_refused.
 	Inputs *map[string]Scalar `json:"inputs,omitempty"`
+
+	// SourceCommit Exact project-repository commit for a source-backed CI run. Omitted selects the source-free maintenance origin. Source-backed project runs are read-only initially.
+	SourceCommit *string `json:"sourceCommit,omitempty"`
 }
 
 // CreateRunRequest defines model for CreateRunRequest.

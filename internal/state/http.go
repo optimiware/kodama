@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	runtimev1 "github.com/optimiware/kodama/contracts/runtime/v1"
 	statev1 "github.com/optimiware/kodama/contracts/state/v1"
 	"github.com/optimiware/kodama/internal/domain"
 )
@@ -20,6 +21,12 @@ import (
 // artifact module's current ownership and content metadata.
 type ArtifactVerifier interface {
 	VerifyArtifact(ctx context.Context, scope Scope, id domain.ArtifactID, digest string) error
+}
+
+// PinnedArtifactResolver exposes the verified input descriptors of the attempt
+// so a state reference cannot name an arbitrary project artifact.
+type PinnedArtifactResolver interface {
+	PinnedArtifacts(ctx context.Context, r *http.Request, attempt string) ([]runtimev1.ArtifactInput, error)
 }
 
 // ArtifactRetainer is the optional retention owner used for explicit state
@@ -185,7 +192,7 @@ func (h *Handler) put(w http.ResponseWriter, r *http.Request, scope Scope, bindi
 		writeError(w, http.StatusForbidden, "state_binding_denied", "state write denied")
 		return
 	}
-	if err := h.verifyReferences(r, scope, req); err != nil {
+	if err := h.verifyReferences(r, scope, binding.Namespace, key, req); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -281,12 +288,36 @@ func statePath(path string) (attempt, alias string, ok bool) {
 	return attempt, alias, true
 }
 
-func (h *Handler) verifyReferences(r *http.Request, scope Scope, req statev1.WriteRequest) error {
+func (h *Handler) verifyReferences(r *http.Request, scope Scope, namespace, key string, req statev1.WriteRequest) error {
 	if len(req.ArtifactReferences) == 0 {
 		return nil
 	}
 	if h.Artifacts == nil {
 		return fmt.Errorf("%w: artifact verification is not configured", ErrUnavailable)
+	}
+	_, attempt, _ := statePath(r.URL.Path)
+	if pins, ok := h.Resolver.(PinnedArtifactResolver); ok {
+		inputs, err := pins.PinnedArtifacts(r.Context(), r, attempt)
+		if err != nil {
+			return err
+		}
+		allowed := map[string]string{}
+		for _, in := range inputs {
+			allowed[in.ArtifactID] = string(in.Digest)
+		}
+		// A maintenance operation may carry forward references already attached
+		// to the entry even when the retained descriptor is not an input of the
+		// new attempt. It cannot introduce a new unpinned artifact.
+		if old, err := h.Store.Get(r.Context(), scope, namespace, key); err == nil {
+			for _, ref := range old.ArtifactReferences {
+				allowed[ref.ArtifactID] = ref.Digest
+			}
+		}
+		for _, ref := range req.ArtifactReferences {
+			if allowed[ref.ArtifactID] != ref.Digest {
+				return fmt.Errorf("%w: state artifact reference is not a pinned or retained input", ErrDenied)
+			}
+		}
 	}
 	for _, ref := range req.ArtifactReferences {
 		if err := h.Artifacts.VerifyArtifact(r.Context(), scope, domain.ArtifactID(ref.ArtifactID), ref.Digest); err != nil {

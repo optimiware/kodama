@@ -1,0 +1,32 @@
+apiVersion: kodama/v1alpha3
+kind: Pipeline
+metadata: {name: website-stage-rollback}
+spec:
+  timeoutSeconds: 900
+  inputs:
+    release_id: {type: string, required: true}
+  steps:
+    - id: rollback
+      kind: container
+      image: registry.example.invalid/deploy-cloudflare@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      state:
+        release:
+          namespace: deploy
+          prefix: website/stage/
+          access: read-write
+      env:
+        CLOUDFLARE_API_TOKEN: {secretRef: "secret://project/cloudflare-stage"}
+      command: ["/usr/local/bin/deploy"]
+      args:
+        - rollback
+        - --driver
+        - cloudflare
+        - --worker
+        - website-stage
+        - --state-binding
+        - release
+        - --rollback-release
+        - "${{ inputs.release_id }}"
+      timeoutSeconds: 600
+      outputs:
+        receipt: {type: artifact, path: /kodama/outputs/rollback.json}

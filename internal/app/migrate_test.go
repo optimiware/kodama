@@ -21,9 +21,10 @@ func TestMigrationBaselineIsTwoFiles(t *testing.T) {
 	if len(cs) != 5 || cs[0].Module != "storage" || len(cs[0].Migrations) != 2 {
 		t.Fatalf("contributions = %+v", cs)
 	}
-	if cs[1].Module != "execution-run-resources" || len(cs[1].Migrations) != 3 ||
+	if cs[1].Module != "execution-run-resources" || len(cs[1].Migrations) != 5 ||
 		cs[1].Migrations[0].ID != execpg.RunResourcesMigrationID || cs[1].Migrations[1].ID != execpg.StepArtifactRefsMigrationID ||
-		cs[1].Migrations[2].ID != execpg.ProjectRunsMigrationID {
+		cs[1].Migrations[2].ID != execpg.ProjectRunsMigrationID || cs[1].Migrations[3].ID != execpg.ProjectSourceRunsMigrationID ||
+		cs[1].Migrations[4].ID != execpg.ProjectSourceAttemptsMigrationID {
 		t.Fatalf("the appended contribution is %+v", cs[1])
 	}
 	if cs[2].Module != "runtimeauth-resource-grants" || len(cs[2].Migrations) != 1 || cs[2].Migrations[0].ID != runtimeauthpg.ResourceGrantsMigrationID {
@@ -38,11 +39,12 @@ func TestMigrationBaselineIsTwoFiles(t *testing.T) {
 		t.Fatalf("the state contribution is %+v", cs[4])
 	}
 	ms := m.Migrations()
-	if len(ms) != 12 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID ||
+	if len(ms) != 14 || ms[0].ID != "001_schema.sql" || ms[1].ID != "002_grants.sql" || ms[2].ID != execpg.RunResourcesMigrationID ||
 		ms[3].ID != execpg.StepArtifactRefsMigrationID || ms[4].ID != execpg.ProjectRunsMigrationID ||
-		ms[5].ID != runtimeauthpg.ResourceGrantsMigrationID || ms[6].ID != artifactspg.WorkspaceProvenanceMigrationID ||
-		ms[7].ID != "300_state.sql" || ms[8].ID != "301_state_grants.sql" || ms[9].ID != "302_state_quota.sql" ||
-		ms[10].ID != "303_state_audit.sql" || ms[11].ID != "304_state_created_at.sql" {
+		ms[5].ID != execpg.ProjectSourceRunsMigrationID || ms[6].ID != execpg.ProjectSourceAttemptsMigrationID ||
+		ms[7].ID != runtimeauthpg.ResourceGrantsMigrationID || ms[8].ID != artifactspg.WorkspaceProvenanceMigrationID ||
+		ms[9].ID != "300_state.sql" || ms[10].ID != "301_state_grants.sql" || ms[11].ID != "302_state_quota.sql" ||
+		ms[12].ID != "303_state_audit.sql" || ms[13].ID != "304_state_created_at.sql" {
 		t.Fatalf("manifest = %+v", ms)
 	}
 	// The schema file defines objects: the only privilege change it may make is a

@@ -37,6 +37,12 @@ type Definitions interface {
 	Get(ctx context.Context, scope domain.Scope, id domain.DefinitionID) (pipeline.Definition, error)
 }
 
+// ProjectSources verifies an exact project-repository commit for a source-backed
+// project run. It does not require a work-item workspace.
+type ProjectSources interface {
+	VerifyProject(ctx context.Context, scope domain.Scope, commit string) (SourceInfo, error)
+}
+
 // ArtifactResolver resolves the verified descriptor of an admitted artifact
 // input. It is a read-only admission seam; the artifact module owns ownership
 // and content state.
@@ -370,15 +376,16 @@ type Dependencies struct {
 	Authority   Authority
 	Definitions Definitions
 	// Capabilities reports enabled step kinds for admission.
-	Capabilities  pipeline.Capabilities
-	Work          WorkContent
-	Configuration Configuration
-	Sources       Sources
-	Artifacts     ArtifactResolver
-	Limits        Limits
-	Planner       Planner
-	Hooks         Hooks
-	Tenants       Tenants
+	Capabilities   pipeline.Capabilities
+	Work           WorkContent
+	Configuration  Configuration
+	Sources        Sources
+	ProjectSources ProjectSources
+	Artifacts      ArtifactResolver
+	Limits         Limits
+	Planner        Planner
+	Hooks          Hooks
+	Tenants        Tenants
 	// Runtime runs attempt workloads. Without it runs are admitted unbound; an
 	// unbound run is never dispatched, so admit with the runtime that will run it.
 	Runtime Runtime

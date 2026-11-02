@@ -1,0 +1,22 @@
+apiVersion: kodama/v1alpha3
+kind: Pipeline
+metadata: {name: website-stage-status}
+spec:
+  timeoutSeconds: 600
+  steps:
+    - id: status
+      kind: container
+      image: registry.example.invalid/deploy-cloudflare@sha256:3333333333333333333333333333333333333333333333333333333333333333
+      state:
+        release:
+          namespace: deploy
+          prefix: website/stage/
+          access: read
+      env:
+        CLOUDFLARE_API_TOKEN: {secretRef: "secret://project/cloudflare-stage"}
+      command: ["/usr/local/bin/deploy"]
+      args: ["status", "--driver", "cloudflare", "--worker", "website-stage", "--state-binding", "release"]
+      timeoutSeconds: 300
+      outputs:
+        provider_version: {type: string}
+        url: {type: string}

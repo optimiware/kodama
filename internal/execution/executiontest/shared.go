@@ -659,6 +659,8 @@ type SharedSubject struct {
 	EvidenceCount func(attempt domain.AttemptID, kind string) int
 	// SourceCalls counts the calls the service made to the Git observation seam.
 	SourceCalls func() int
+	// ProjectSources is the optional source-backed project admission seam.
+	ProjectSources execution.ProjectSources
 	// Cleanup builds the Service used to admit a cleanup run with the explicit
 	// run_shared composition (NewCleanup) or without it (NewClosedCleanup).
 	NewCleanup, NewClosedCleanup func() *execution.Service
@@ -745,14 +747,14 @@ func NewSharedMem(t testing.TB, mod ...func(*MemOptions)) (*Mem, SharedSubject) 
 	m.Manual.SetCapabilities(SharedCaps())
 	m.Validator = sharedValidator(t)
 	p := m.NewProject(ScopeA)
-	s := SharedSubject{Subject: m.Subject(), Resources: res, Policies: pol, Manual: m.Manual, Project: p}
+	s := SharedSubject{Subject: m.Subject(), Resources: res, Policies: pol, Manual: m.Manual, Project: p, ProjectSources: mo.ProjectSources}
 	s.DefineShared = func(yaml string) pipeline.Definition { return m.Define(ScopeA, yaml) }
 	m.Manual.SetStop(execution.StopEvidence{Stopped: true, Launch: execution.LaunchStarted})
 	s.Closed = func() *execution.Service {
-		return m.NewService(MemOptions{ServiceOptions: &so, Cleanup: AllowCleanup{}})
+		return m.NewService(MemOptions{ServiceOptions: &so, Cleanup: AllowCleanup{}, ProjectSources: s.ProjectSources})
 	}
 	s.Restart = func() *execution.Service {
-		return m.NewService(MemOptions{Shared: &execution.SharedConfig{Resources: res, Policies: pol}, ServiceOptions: &so, Cleanup: AllowCleanup{}, SourceWrap: wrap})
+		return m.NewService(MemOptions{Shared: &execution.SharedConfig{Resources: res, Policies: pol}, ServiceOptions: &so, Cleanup: AllowCleanup{}, SourceWrap: wrap, ProjectSources: s.ProjectSources})
 	}
 	s.NewCleanup, s.NewClosedCleanup = s.Restart, s.Closed
 	s.SourceCalls = counter.Calls
