@@ -5,8 +5,10 @@ not a deployment module and does not know any provider or plugin schema.
 
 The memory and PostgreSQL adapters share the conditional contract. The
 PostgreSQL migration includes forced tenant RLS, binding-relative key checks, a
-per-project entry/byte quota trigger and live lifecycle/RLS tests. Certificate
-retention joins and audit/outbox events remain integration checkpoints.
+per-project entry/byte quota trigger, creation metadata and live lifecycle/RLS
+tests. Artifact references are pinned through the artifact module's retention
+port; an outbox and an atomic state-CAS/artifact/runtime-session transaction
+remain integration checkpoints.
 
 ## Rules
 
@@ -18,8 +20,9 @@ retention joins and audit/outbox events remain integration checkpoints.
 - An ETag contains a generation and revision, so deleting and recreating a key
   cannot accept a stale writer's token.
 - Values and references are bounded. Large content belongs in artifacts.
-- Artifact references are explicit retention roots; arbitrary artifact IDs in a
-  value are not retention authority.
+- Artifact references are explicit retention roots. A new reference must be an
+  attempt-pinned input (or a reference already retained on the entry); it is
+  pinned on write and unpinned when removed or when the entry is deleted.
 - No unconditional writes, watch streams, query language or automatic TTL
   deletion exist in this slice.
 

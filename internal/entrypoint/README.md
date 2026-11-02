@@ -54,7 +54,9 @@ rejected.
 `KODAMA_INPUTS_DIR`, `KODAMA_CONTEXT_FILE`, `KODAMA_RUNTIME_URL`,
 `KODAMA_TOKEN_FILE`, `KODAMA_RESULTS_FILE`, `KODAMA_SECRETS_DIR`,
 `KODAMA_INPUT_<NAME>` (inputs; strings verbatim, other values as JSON), the
-context's `command.env`, and finally secrets delivered as `env`. The admission credential, runtime token and checkout
+context's `command.env`, and finally secrets delivered as `env`. The entrypoint
+materializes every declared `artifactFiles` entry under `KODAMA_INPUTS_DIR`
+before the command and verifies its pinned digest. The admission credential, runtime token and checkout
 credential are never in it. The command runs as `command` + `args` (argv, no
 shell) in the workspace, with stdin closed and stdout/stderr merged into one
 bounded log.

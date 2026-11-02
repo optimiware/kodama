@@ -1219,27 +1219,32 @@ The following slice is implemented and exercised locally:
 | Area | State |
 | --- | --- |
 | `contracts/state/v1` | Implemented with bounded values, keys, artifact references and ETags |
-| `internal/state` | Memory and PostgreSQL stores, binding-relative keys, conditional lifecycle, project quota trigger, append-only audit, runtime HTTP handler and live PostgreSQL lifecycle/RLS tests |
+| `internal/state` | Memory and PostgreSQL stores, binding-relative keys, conditional lifecycle, creation metadata, project quota trigger, append-only audit, artifact pin/unpin compensation, executable entry schema, runtime HTTP handler and live PostgreSQL lifecycle/RLS tests |
 | `contracts/pipeline/v1alpha3` | State/artifact-file bindings and no v1alpha3 environment field |
-| Runtime bindings | State and artifact descriptors are pinned into v1/v2 contexts; `/runtime/v3` state route is composed and checks the run_shared wire |
+| Runtime bindings | State and artifact descriptors are pinned into v1/v2 contexts; `/runtime/v3` state route checks the run_shared wire; state references are checked against the attempt's pinned inputs or prior retained references |
 | Artifact inputs | Admission pins the verified descriptor, the entrypoint materializes it under `/kodama/inputs`, and the runtime download route checks the pinned attempt context |
 | `pkg/pluginruntime/state` | HTTP client with create/read/update/delete/list and token-file refresh |
-| `images/plugins/deploy` | Shared engine, CAS operation claim, durable checkpoints, apply/status/reconcile/cleanup/rollback CLI and result-manifest emission |
-| `drivers/kubernetes` | Bounded manifest validation, ownership annotations, image checks, readiness observation and UID/resourceVersion-preconditioned deletion via kubectl proxy |
-| `drivers/cloudflare` | Wrangler apply/observe/delete/rollback driver with controlled-command tests |
-| `drivers/gcp` | Cloud Run apply/observe/delete/rollback driver with controlled-command tests |
-| Project runs | Source-free `kodama/v1alpha3` admission service and `POST /runs/project`, with a `project` purpose and no work item/workspace/deployment |
+| `images/plugins/deploy` | Shared engine, CAS operation claim, durable checkpoints, pending-history publication, release identity hashing, `plan`/`apply`/`status`/`reconcile`/`rollback`/`cleanup`/`prune`/`import-legacy`, expiry and receipt emission |
+| `drivers/kubernetes` | Bounded manifest validation, ownership annotations, live primary-image verification, old-inventory deletion, kubeconfig context validation, readiness observation and UID/resourceVersion-preconditioned deletion via kubectl proxy |
+| `drivers/cloudflare` | Wrangler apply/observe/delete/rollback, build-marker verification and controlled-command tests |
+| `drivers/gcp` | Cloud Run apply/observe/delete/rollback, traffic-revision readiness and controlled-command tests |
+| Project runs | Source-free and source-backed `kodama/v1alpha3` admission, `POST /runs/project`, exact project-repository commit verification, and the Git trigger's no-work-item planner path |
+| Gates | Extended canonical subject for v1alpha3 runs binding definition digest, execution snapshot digest, source repository and evidence; historical v1 subject bytes remain unchanged |
 | `images/plugins/sync-cursor` | Non-deployment reference plugin that fetches a page, CASes a cursor and writes a declared artifact file |
-| Templates | Agent-development and Cloudflare-website project shapes |
+| Templates | Agent-development profiles/pipeline and Cloudflare-website publish plus status/reconcile/rollback/cleanup definitions |
 | Real local test | `test/integration/deploy-plugins` creates/reuses kind, builds the plugin, applies a dummy nginx Deployment through the plugin, observes readiness and cleans it up |
 
-Not yet implemented in this branch:
+Implementation decisions and remaining work:
 
-- State outbox publication, artifact retention pin/unpin joins and an atomic state-CAS plus runtime-session transaction (audit rows are implemented).
-- A distinct runtime context v3 wire; v1alpha3 currently extends the v2 context additively. The state route is versioned separately.
-- Source-backed CI origins and the Git trigger planner's no-work-item path (source-free project admission exists, but the planner still requires a work item).
-- Generic gate/QA evidence integration and the legacy delivery-core removal. The legacy delivery composition is still constructed by `internal/app`.
-- Real Cloudflare/GCP account qualification; their tests use controlled provider commands.
+- **Runtime context version.** v1alpha3 extends the v2 context additively; the state route is versioned separately. A distinct v3 context envelope is intentionally deferred until a breaking field requires it, rather than duplicating the v2 wire and hash semantics.
+- **Gate subject version.** The extended subject is additive and canonical; it is not a second API shape. Existing v1 subjects and hashes remain readable. A separate "subject v2" schema identifier would add no field not already bound by the extended subject.
+- **Artifact retention.** State writes pin new references and unpin removed ones through the artifact module’s retention port. This is a compensating sequence around the state CAS, not a single shared database transaction; the atomic state/artifact/runtime-session join remains open.
+- **State outbox.** Append-only audit rows are implemented; outbox publication and an atomic state-CAS plus runtime-session transaction remain open.
+- **State-backed artifact reads.** The runtime download route validates pinned inputs. Reading an artifact named by a state binding/key/ETag with an attempt-lifetime hold remains open.
+- **QA receipts.** Generic receipt/evidence QA and removal of `internal/qa` deployment lookups remain open; the legacy QA path is still composed.
+- **Legacy retirement.** `internal/delivery`, `deliverycleanup`, environment joins, `deployment.call`, deployment-bearing gate subjects, `api/delivery.yaml`, `images/deployment-tools` and their tests remain active. The P8 export/import, freeze/drain, compatibility and destructive-retirement work is not complete.
+- **Real provider qualification.** Cloudflare/GCP tests use controlled commands; live account/project qualification is not claimed.
+- **Assembled evidence.** The kind fixture uses an in-process state API and a fake artifact-reference verifier; it does not prove PostgreSQL, runtime authority, entrypoint, artifact service and plugin image together.
 
 The local test is intentionally explicit about this boundary. It proves the
 engine and Kubernetes provider path, not the full planned cutover.
