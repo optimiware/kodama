@@ -2,14 +2,14 @@
 status: accepted
 ---
 
-# ADR 0012: Stateful container plugins and deployment-core retirement
+# ADR 0014: Stateful container plugins and deployment-core retirement
 
 **Date:** 2026-11-02  
 **Direction:** owner-requested on 2026-10-30; this record confirms the decision and the staged cutover.  
 **Disposition:** accepted for new-format work. The convenience `internal/delivery` path remains the historical owner until P8 removes it; this ADR does not claim that cutover is complete.  
 **Repository baseline:** `github.com/optimiware/kodama` at `74096e2623168db4502c3f2eff64721377be578e` on `main`.  
 **Implementation:** [stateful container plugins and deployment-core retirement](../implementation/container-plugins.md).  
-**Register:** [O-34](../decisions.md#container-plugins-and-deployment-core--2026-11-02-o-34). Supersedes [O-12](../decisions.md) for new-format application deployment while preserving O-12 as the historical selection.
+**Register:** [O-41](../decisions.md#container-plugins-and-deployment-core--2026-11-02-o-41). Supersedes [O-12](../decisions.md) for new-format application deployment while preserving O-12 as the historical selection.
 
 ## Context
 
