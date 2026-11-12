@@ -370,6 +370,26 @@ func TestAdmissionResolvesImagesAndRefusesMutableOrUnavailable(t *testing.T) {
 	_, err = newAdmission(t, plainError, nil).Admit(t.Context(), base)
 	requireFaultClass(t, err, fault.DependencyUnavailable)
 
+	// A reference the resolver cannot read as an image name is the caller's
+	// input: the refusal is permanent and says what is wrong with which action.
+	badReference := &fakeResolver{resolve: func(context.Context, pipeline.ResolveRequest) (pipeline.ResolvedImage, error) {
+		return pipeline.ResolvedImage{}, fault.Wrap(fault.InvalidInput, "image reference carries both a tag and a digest", pipeline.ErrImageReference)
+	}}
+	_, err = newAdmission(t, badReference, nil).Admit(t.Context(), base)
+	requireFaultClass(t, err, fault.InvalidInput)
+	message, _ := fault.MessageOf(err)
+	if !strings.Contains(message, "image is not usable") || !strings.Contains(message, "both a tag and a digest") {
+		t.Fatalf("image reference refusal message = %q; want the action and the resolver's reason", message)
+	}
+
+	// Any other invalid_input from the resolver describes the registry's
+	// answer, not the caller's text. It stays retryable.
+	anomaly := &fakeResolver{resolve: func(context.Context, pipeline.ResolveRequest) (pipeline.ResolvedImage, error) {
+		return pipeline.ResolvedImage{}, fault.New(fault.InvalidInput, "registry returned an unexpected status")
+	}}
+	_, err = newAdmission(t, anomaly, nil).Admit(t.Context(), base)
+	requireFaultClass(t, err, fault.DependencyUnavailable)
+
 	// Resolution is outside any commit: a commit port is never touched.
 	changes := &fakeChangePort{}
 	if _, err := newAdmission(t, &fakeResolver{}, nil).Admit(t.Context(), base); err != nil {

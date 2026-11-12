@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -236,7 +237,7 @@ func (service *AdmissionService) admitActions(ctx context.Context, pipeline defi
 			image := container.Image
 			resolved, err := service.resolver.Resolve(ctx, ResolveRequest{Reference: image})
 			if err != nil {
-				return nil, nil, nil, resolverFault(err)
+				return nil, nil, nil, resolverFault(action.Name, err)
 			}
 			if err := resolved.Validate(); err != nil {
 				return nil, nil, nil, fault.Wrap(fault.UnsupportedCapability, fmt.Sprintf("image %q did not resolve to an immutable digest", image), err)
@@ -290,9 +291,19 @@ func resolveActionTimeout(explicit, fallback time.Duration) (time.Duration, erro
 	return fallback, nil
 }
 
-func resolverFault(err error) error {
+// resolverFault classifies one resolver failure. A reference the resolver
+// cannot read as an image name is the caller's input and is refused for good;
+// every other failure is an unavailable registry, which a caller may retry.
+func resolverFault(action id.ActionName, err error) error {
 	if class, ok := fault.ClassOf(err); ok && class == fault.DependencyUnavailable {
 		return err
+	}
+	if errors.Is(err, ErrImageReference) {
+		detail, ok := fault.MessageOf(err)
+		if !ok {
+			detail = ErrImageReference.Error()
+		}
+		return fault.Wrap(fault.InvalidInput, fmt.Sprintf("action %q image is not usable: %s", action, detail), err)
 	}
 	return fault.Wrap(fault.DependencyUnavailable, "image registry is unavailable", err)
 }
