@@ -1,0 +1,6 @@
+actions:
+  - name: approve
+    request: role/reviewer
+    subject:
+      candidate:
+        from: inputs.missing

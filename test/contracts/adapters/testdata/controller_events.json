@@ -1,0 +1,238 @@
+{
+  "version": 1,
+  "vectors": [
+    {
+      "name": "engine_commit_publishes_lifecycle_events_and_audit",
+      "clock": "2026-01-01T00:00:00Z",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 2, "values": {"state": "queued", "principal_id": "principal-1"}},
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-1", "version": 1, "values": {"execution_id": "execution-1", "index": 0, "kind": "container", "state": "pending"}}
+        ]
+      },
+      "steps": [
+        {
+          "op": "execute",
+          "execution_id": "execution-1",
+          "locks": [
+            {"table": "executions", "ids": ["execution-1"], "expect_version": 2},
+            {"table": "actions", "ids": ["action-1"], "expect_version": 1}
+          ],
+          "writes": [
+            {"table": "executions", "id": "execution-1", "expect_version": 2, "values": {"state": "running"}},
+            {"table": "actions", "id": "action-1", "expect_version": 1, "values": {"state": "running"}}
+          ],
+          "events": [
+            {"id": "event-1", "type": "execution.started", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "subject_id": "execution-1", "subject_version": 3, "at": "2026-01-01T00:00:00Z", "data": "{\"execution_id\":\"execution-1\",\"state\":\"running\",\"version\":3}"},
+            {"id": "event-2", "type": "execution.cleanup", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "subject_id": "execution-1", "subject_version": 3, "at": "2026-01-01T00:00:00Z", "data": "{\"execution_id\":\"execution-1\",\"cleanup_state\":\"pending\"}"},
+            {"id": "event-3", "type": "action.transition", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "subject_id": "action-1", "subject_version": 2, "at": "2026-01-01T00:00:00Z", "data": "{\"action_id\":\"action-1\",\"state\":\"running\",\"version\":2}"}
+          ],
+          "audit": [
+            {"id": "audit-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "actor": "system", "operation": "execution.engine.commit", "at": "2026-01-01T00:00:00Z", "detail": "engine commit"}
+          ]
+        },
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_values": {"state": "running"}, "want_version": 3},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "actions", "id": "action-1", "want_values": {"state": "running"}, "want_version": 2},
+        {"op": "scan", "table": "events", "order_by": [{"column": "publish_sequence"}], "limit": 10, "want_ids": ["event-1", "event-2", "event-3"]},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "audit", "id": "audit-1", "want_values": {"operation": "execution.engine.commit"}}
+      ]
+    },
+    {
+      "name": "event_scope_mismatch_rolls_back_the_whole_unit",
+      "clock": "2026-01-01T00:00:00Z",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 2, "values": {"state": "queued", "principal_id": "principal-1"}},
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-1", "version": 1, "values": {"execution_id": "execution-1", "index": 0, "kind": "container", "state": "pending"}}
+        ]
+      },
+      "steps": [
+        {
+          "op": "execute",
+          "execution_id": "execution-1",
+          "locks": [
+            {"table": "executions", "ids": ["execution-1"], "expect_version": 2},
+            {"table": "actions", "ids": ["action-1"], "expect_version": 1}
+          ],
+          "writes": [
+            {"table": "executions", "id": "execution-1", "expect_version": 2, "values": {"state": "running"}},
+            {"table": "actions", "id": "action-1", "expect_version": 1, "values": {"state": "running"}}
+          ],
+          "events": [
+            {"id": "event-1", "type": "execution.started", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "subject_id": "execution-1", "subject_version": 3, "at": "2026-01-01T00:00:00Z", "data": "{\"execution_id\":\"execution-1\",\"state\":\"running\",\"version\":3}"},
+            {"id": "event-2", "type": "action.transition", "scope": {"tenant_id": "tenant-2", "project_id": "project-2"}, "subject_id": "action-1", "subject_version": 2, "at": "2026-01-01T00:00:00Z", "data": "{\"action_id\":\"action-1\",\"state\":\"running\",\"version\":2}"}
+          ],
+          "want_error": "forbidden"
+        },
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_values": {"state": "queued"}, "want_version": 2},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "actions", "id": "action-1", "want_values": {"state": "pending"}, "want_version": 1},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "id": "event-1", "want_absent": true},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-2", "project_id": "project-2"}, "table": "events", "id": "event-2", "want_absent": true}
+      ]
+    },
+    {
+      "name": "audit_scope_mismatch_rolls_back_the_whole_unit",
+      "clock": "2026-01-01T00:00:00Z",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 2, "values": {"state": "queued", "principal_id": "principal-1"}}
+        ]
+      },
+      "steps": [
+        {
+          "op": "execute",
+          "execution_id": "execution-1",
+          "locks": [
+            {"table": "executions", "ids": ["execution-1"], "expect_version": 2}
+          ],
+          "writes": [
+            {"table": "executions", "id": "execution-1", "expect_version": 2, "values": {"state": "running"}}
+          ],
+          "audit": [
+            {"id": "audit-1", "scope": {"tenant_id": "tenant-2", "project_id": "project-2"}, "actor": "system", "operation": "execution.engine.commit", "at": "2026-01-01T00:00:00Z", "detail": "foreign scope"}
+          ],
+          "want_error": "forbidden"
+        },
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_values": {"state": "queued"}, "want_version": 2},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-2", "project_id": "project-2"}, "table": "audit", "id": "audit-1", "want_absent": true}
+      ]
+    },
+    {
+      "name": "controller_receipt_is_still_refused",
+      "clock": "2026-01-01T00:00:00Z",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 2, "values": {"state": "queued", "principal_id": "principal-1"}}
+        ]
+      },
+      "steps": [
+        {
+          "op": "execute",
+          "execution_id": "execution-1",
+          "locks": [
+            {"table": "executions", "ids": ["execution-1"], "expect_version": 2}
+          ],
+          "writes": [
+            {"table": "executions", "id": "execution-1", "expect_version": 2, "values": {"state": "running"}}
+          ],
+          "events": [
+            {"id": "event-1", "type": "execution.started", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "subject_id": "execution-1", "subject_version": 3, "at": "2026-01-01T00:00:00Z", "data": "{\"execution_id\":\"execution-1\",\"state\":\"running\",\"version\":3}"}
+          ],
+          "receipt": {
+            "tenant_id": "tenant-1",
+            "project_id": "project-1",
+            "principal_id": "principal-1",
+            "operation": "execution.transition",
+            "caller_key": "execution-1",
+            "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "result": "ok",
+            "completed": true
+          },
+          "want_error": "forbidden"
+        },
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_values": {"state": "queued"}, "want_version": 2},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "id": "event-1", "want_absent": true}
+      ]
+    },
+    {
+      "name": "controller_event_and_audit_updates_and_deletes_are_refused",
+      "clock": "2026-01-01T00:00:00Z",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 2, "values": {"state": "running", "principal_id": "principal-1"}},
+          {"table": "events", "tenant_id": "tenant-1", "project_id": "project-1", "id": "event-1", "version": 1, "values": {"type": "execution.started", "publish_state": "pending", "publish_sequence": 1}},
+          {"table": "audit", "tenant_id": "tenant-1", "project_id": "project-1", "id": "audit-1", "version": 1, "values": {"actor": "system", "operation": "execution.engine.commit"}}
+        ]
+      },
+      "steps": [
+        {
+          "op": "execute",
+          "execution_id": "execution-1",
+          "locks": [
+            {"table": "executions", "ids": ["execution-1"], "expect_version": 2}
+          ],
+          "writes": [
+            {"table": "events", "id": "event-1", "expect": {"publish_state": "pending"}, "values": {"publish_state": "published"}}
+          ],
+          "want_error": "forbidden"
+        },
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "id": "event-1", "want_values": {"publish_state": "pending"}},
+        {
+          "op": "execute",
+          "execution_id": "execution-1",
+          "locks": [
+            {"table": "executions", "ids": ["execution-1"], "expect_version": 2}
+          ],
+          "writes": [
+            {"table": "events", "id": "event-1", "delete": true, "expect": {"publish_state": "pending"}}
+          ],
+          "want_error": "forbidden"
+        },
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "id": "event-1", "want_values": {"publish_state": "pending"}},
+        {
+          "op": "execute",
+          "execution_id": "execution-1",
+          "locks": [
+            {"table": "executions", "ids": ["execution-1"], "expect_version": 2}
+          ],
+          "writes": [
+            {"table": "audit", "id": "audit-1", "delete": true, "expect": {"operation": "execution.engine.commit"}}
+          ],
+          "want_error": "forbidden"
+        },
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "audit", "id": "audit-1", "want_values": {"operation": "execution.engine.commit"}}
+      ]
+    },
+    {
+      "name": "stale_execution_version_refuses_the_event_commit",
+      "clock": "2026-01-01T00:00:00Z",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 2, "values": {"state": "queued", "principal_id": "principal-1"}}
+        ]
+      },
+      "steps": [
+        {
+          "op": "execute",
+          "execution_id": "execution-1",
+          "locks": [
+            {"table": "executions", "ids": ["execution-1"], "expect_version": 1}
+          ],
+          "writes": [
+            {"table": "executions", "id": "execution-1", "expect_version": 1, "values": {"state": "running"}}
+          ],
+          "events": [
+            {"id": "event-1", "type": "execution.started", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "subject_id": "execution-1", "subject_version": 3, "at": "2026-01-01T00:00:00Z", "data": "{\"execution_id\":\"execution-1\",\"state\":\"running\",\"version\":3}"}
+          ],
+          "want_error": "version_conflict"
+        },
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_values": {"state": "queued"}, "want_version": 2},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "id": "event-1", "want_absent": true}
+      ]
+    },
+    {
+      "name": "event_commit_requires_a_guarded_execution_row",
+      "clock": "2026-01-01T00:00:00Z",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 2, "values": {"state": "queued", "principal_id": "principal-1"}}
+        ]
+      },
+      "steps": [
+        {
+          "op": "execute",
+          "execution_id": "execution-1",
+          "writes": [
+            {"table": "executions", "id": "execution-1", "expect_version": 2, "values": {"state": "running"}}
+          ],
+          "events": [
+            {"id": "event-1", "type": "execution.started", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "subject_id": "execution-1", "subject_version": 3, "at": "2026-01-01T00:00:00Z", "data": "{\"execution_id\":\"execution-1\",\"state\":\"running\",\"version\":3}"}
+          ],
+          "want_error": "forbidden"
+        },
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_values": {"state": "queued"}, "want_version": 2},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "id": "event-1", "want_absent": true}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# scripts/image: build the Kodama image and push it, printing the pushed digest.
+#
+#   scripts/image build-push --repository <registry/path/name> [--tag <tag>]
+#                            [--version <version>]
+#   scripts/image build      --repository <registry/path/name> [--tag <tag>]
+#                            [--version <version>]
+#
+# `build` only builds and prints the local reference <repository>:<tag>.
+#
+# The binary is stamped with the version (default: the VERSION file) and the
+# full git revision of this checkout; `kodama version` prints both.
+#
+# The digest comes from `podman push --digestfile`, i.e. what the registry
+# accepted, not the local image ID (the two differ when the manifest format is
+# converted on push). Registry credentials come from an existing `podman login`;
+# this script never reads or prints one. Output of build-push:
+# <repository>@sha256:<digest>.
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/image build-push --repository <registry/path/name> [--tag <tag>]
+                                [--version <version>]
+       scripts/image build      --repository <registry/path/name> [--tag <tag>]
+                                [--version <version>]
+
+  build-push     build, push and print <repository>@sha256:<digest>
+  build          build only and print <repository>:<tag>
+  --repository   image repository to push to (required)
+  --tag          tag (default: the short git revision of this checkout)
+  --version      version stamped into the binary (default: the VERSION file)
+USAGE
+}
+
+die() { printf 'scripts/image: %s\n' "$*" >&2; exit 1; }
+
+action="${1:-}"
+[[ "$action" == "build-push" || "$action" == "build" ]] || { usage >&2; exit 2; }
+shift
+
+repository=""
+tag=""
+version=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repository) [[ $# -ge 2 ]] || die "--repository requires a value"; repository="$2"; shift 2 ;;
+    --tag) [[ $# -ge 2 ]] || die "--tag requires a value"; tag="$2"; shift 2 ;;
+    --version) [[ $# -ge 2 ]] || die "--version requires a value"; version="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+[[ -n "$repository" ]] || die "--repository is required"
+command -v podman >/dev/null 2>&1 || die "podman is required"
+revision="$(git -C "$repo_root" rev-parse HEAD)"
+[[ -n "$tag" ]] || tag="${revision:0:12}"
+[[ -n "$version" ]] || version="$(<"${repo_root}/VERSION")"
+[[ "$version" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]*$ ]] || die "version '${version}' is not a version string"
+
+ref="${repository}:${tag}"
+digestfile="$(mktemp)"
+trap 'rm -f "$digestfile"' EXIT
+
+podman build --format oci -q \
+  -f "${repo_root}/deploy/images/kodama/Containerfile" \
+  --build-arg "VERSION=${version}" \
+  --build-arg "REVISION=${revision}" \
+  --label "org.opencontainers.image.version=${version}" \
+  --label "org.opencontainers.image.revision=${revision}" \
+  -t "$ref" "$repo_root" >/dev/null
+if [[ "$action" == "build" ]]; then
+  printf '%s\n' "$ref"
+  exit 0
+fi
+podman push --digestfile "$digestfile" "$ref" >/dev/null
+digest="$(cat "$digestfile")"
+[[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "push did not report a digest"
+printf '%s@%s\n' "$repository" "$digest"

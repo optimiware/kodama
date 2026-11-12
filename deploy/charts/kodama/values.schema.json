@@ -1,0 +1,920 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Kodama installation values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "environment",
+    "image",
+    "replicaCount",
+    "config",
+    "secrets",
+    "tenants",
+    "networkPolicy",
+    "securityContext",
+    "resources"
+  ],
+  "properties": {
+    "environment": {
+      "type": "string",
+      "enum": [
+        "development",
+        "test",
+        "production"
+      ]
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "description": "Empty selects the tag. Otherwise a full lower-case sha256 digest: sha256:<64 hex>.",
+          "pattern": "^$|^sha256:[a-f0-9]{64}$"
+        },
+        "pullPolicy": {
+          "type": "string"
+        }
+      }
+    },
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "installationID": {
+          "type": "string"
+        },
+        "publicURL": {
+          "type": "string"
+        },
+        "databaseURL": {
+          "type": "string"
+        },
+        "natsURL": {
+          "type": "string"
+        },
+        "keyAdapter": {
+          "type": "string"
+        },
+        "keyReference": {
+          "type": "string"
+        },
+        "keyCurrentVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mcpPath": {
+          "type": "string"
+        },
+        "extraEnv": {
+          "type": "object",
+          "description": "Optional extra server environment as name to literal string. Only the allowlisted OIDC, discovery and workload variables are accepted; a value must not contain URL userinfo (user:password@host). Secrets are never passed here.",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^(KODAMA_OIDC_(ISSUER|AUDIENCE|JWKS_URL|TENANT_CLAIM|SUBJECT_CLAIM|PROJECT_CLAIM|CA_FILE)|KODAMA_DISCOVERY_(ISSUER|CLIENT_ID|AUDIENCE|AUTHORIZATION_ENDPOINT|TOKEN_ENDPOINT|DEVICE_AUTHORIZATION_ENDPOINT|REVOCATION_ENDPOINT|SCOPES|API_URL)|KODAMA_TENANT_NAMESPACE|KODAMA_WORKLOAD_(CPU|MEMORY)_(REQUEST|LIMIT))$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "description": "Refuse URL userinfo carrying a password, which would render a literal secret.",
+              "pattern": "://[^/@]*:[^@]*@"
+            }
+          }
+        },
+        "workspacePVC": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "storageClass": {
+              "type": "string"
+            },
+            "size": {
+              "type": "string"
+            },
+            "accessMode": {
+              "type": "string"
+            }
+          }
+        },
+        "workloadCA": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "secretName": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "existingSecret"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "existingSecret": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "properties": {
+        "natsAuth": {
+          "type": "object",
+          "description": "Per-credential broker access. existingSecret names the bootstrap-created Secret (kodama-nats-auth) and is always rendered, so an absent Secret fails the pod instead of disabling callout authentication. account is the broker account every callout grant binds to and must match nats.auth.callout.account in the stack chart.",
+          "required": [
+            "existingSecret"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": {
+              "type": "string",
+              "minLength": 1
+            },
+            "account": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "tenants": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The installation's tenant ids. The chart derives one namespace, RBAC role and network policy per tenant (kodama-tenant-<tenant>) and renders KODAMA_TENANTS from this whole list. Ids must be lowercase DNS labels so the derived namespace is valid; duplicates are refused at render time.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 49,
+        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultDeny": {
+          "type": "boolean",
+          "const": true
+        },
+        "permitKodama": {
+          "type": "boolean"
+        },
+        "permitGit": {
+          "type": "boolean"
+        },
+        "egressFQDNs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "Exact DNS name (no wildcard, scheme, port or path). Each label is 1-63 lowercase alphanumerics or hyphens and does not start or end with a hyphen; the whole name is at most 253 characters.",
+            "maxLength": 253,
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"
+          }
+        }
+      }
+    },
+    "securityContext": {
+      "type": "object"
+    },
+    "resources": {
+      "type": "object"
+    },
+    "service": {
+      "description": "Control-plane Kubernetes Service. Internal ClusterIP-only.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "ClusterIP"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "targetPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean"
+        }
+      }
+    },
+    "persistence": {
+      "type": "object"
+    },
+    "probes": {
+      "description": "Kubernetes probes. Both are HTTPS httpGet requests against the server's operational routes: process liveness and dependency readiness. A tcpSocket probe is refused because it reports a process with every dependency down as ready.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "livenessPath",
+        "readinessPath",
+        "timeoutSeconds"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "httpGet"
+          ]
+        },
+        "livenessPath": {
+          "type": "string",
+          "const": "/healthz"
+        },
+        "readinessPath": {
+          "type": "string",
+          "const": "/readyz"
+        },
+        "timeoutSeconds": {
+          "description": "Kubelet probe timeout. Must exceed the server's whole readiness budget (4s).",
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 60
+        }
+      }
+    },
+    "gitService": {
+      "description": "Optional per-tenant git serve StatefulSets. Off by default; enabling the block requires one complete tenant entry per configured tenant.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "baseURL": {
+          "description": "Public API base URL the Git service calls. Empty uses config.publicURL.",
+          "type": "string"
+        },
+        "tlsProxyImage": {
+          "description": "TLS-terminating proxy image pinned by digest (repository[:tag]@sha256:<64 hex>).",
+          "type": "string",
+          "pattern": "^[^[:space:]@]+@sha256:[a-f0-9]{64}$"
+        },
+        "port": {
+          "description": "Unprivileged port exposed by the ClusterIP Service and the TLS sidecar. Port 8081 is reserved for the plaintext smart-HTTP backend on the pod network and is refused: the git and TLS containers share the Pod network namespace, so both would claim the same socket and the sidecar would crash-loop.",
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "not": {
+            "const": 8081
+          }
+        },
+        "tenants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tenant",
+              "repositories",
+              "credential",
+              "tls",
+              "storage",
+              "clients"
+            ],
+            "properties": {
+              "tenant": {
+                "description": "Tenant id; capped at 41 characters so kodama-git-<tenant> plus the StatefulSet controller-revision-hash label stays within 63 characters.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 41,
+                "pattern": "^[a-z0-9]([a-z0-9-]{0,39}[a-z0-9])?$"
+              },
+              "repositories": {
+                "description": "Repository name to registered resource id mappings, rendered as repeated git serve --resource flags.",
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "resource"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+                    },
+                    "resource": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._~:-]*$"
+                    }
+                  }
+                }
+              },
+              "credential": {
+                "description": "Service credential mounted read-only; never a value.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "existingSecret",
+                  "key"
+                ],
+                "properties": {
+                  "existingSecret": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253,
+                    "pattern": "^[A-Za-z0-9._-]+$"
+                  }
+                }
+              },
+              "tls": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "existingSecret"
+                ],
+                "properties": {
+                  "existingSecret": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "storage": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "size",
+                  "accessMode"
+                ],
+                "properties": {
+                  "storageClass": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]*(Mi|Gi|Ti)$"
+                  },
+                  "accessMode": {
+                    "type": "string",
+                    "enum": [
+                      "ReadWriteOnce",
+                      "ReadOnlyMany",
+                      "ReadWriteMany"
+                    ]
+                  }
+                }
+              },
+              "clients": {
+                "description": "The only pod sources allowed to reach the Git service, one NetworkPolicy ingress peer each.",
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "namespace"
+                  ],
+                  "properties": {
+                    "namespace": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 63,
+                      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+                    },
+                    "podLabels": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "description": "Enabling the Git workloads without at least one complete tenant entry is refused before any object renders.",
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {
+            "required": [
+              "tenants"
+            ],
+            "properties": {
+              "tenants": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "services": {
+      "description": "Optional independent Userland service adapter Deployments. Off by default; merge_coordinator is refused.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "baseURL": {
+          "description": "Public API base URL the adapters call. Empty uses config.publicURL.",
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "kind",
+              "service",
+              "tenant",
+              "project",
+              "credential"
+            ],
+            "properties": {
+              "name": {
+                "description": "Kubernetes workload name suffix; a lowercase DNS label.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 49,
+                "pattern": "^[a-z0-9]([a-z0-9-]{0,47}[a-z0-9])?$"
+              },
+              "kind": {
+                "description": "One real `kodama services --kind` adapter. merge_coordinator is refused.",
+                "type": "string",
+                "enum": [
+                  "webhook",
+                  "email",
+                  "timer",
+                  "responder"
+                ]
+              },
+              "service": {
+                "description": "Service account identity passed as --service.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+              },
+              "tenant": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 49,
+                "pattern": "^[a-z0-9]([a-z0-9-]{0,47}[a-z0-9])?$"
+              },
+              "project": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+              },
+              "schedule": {
+                "description": "Positive Go duration for the timer kind; refused for every other kind.",
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 32,
+                "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$"
+              },
+              "credential": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "existingSecret",
+                  "key"
+                ],
+                "properties": {
+                  "existingSecret": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253,
+                    "pattern": "^[A-Za-z0-9._-]+$"
+                  }
+                }
+              },
+              "mailboxCredential": {
+                "description": "Optional mailbox credential for email adapters, mounted read-only and exposed only through KODAMA_MAILBOX_CREDENTIAL_FILE.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "existingSecret",
+                  "key"
+                ],
+                "properties": {
+                  "existingSecret": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253,
+                    "pattern": "^[A-Za-z0-9._-]+$"
+                  }
+                }
+              }
+            },
+            "allOf": [
+              {
+                "description": "A timer needs a schedule.",
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "timer"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "schedule"
+                  ]
+                }
+              },
+              {
+                "description": "Only the timer kind takes a schedule.",
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "webhook",
+                        "email",
+                        "responder"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "schedule"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "description": "Enabling the service adapters without at least one complete entry is refused before any object renders.",
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {
+            "required": [
+              "entries"
+            ],
+            "properties": {
+              "entries": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "global": {
+      "type": "object"
+    },
+    "jobs": {
+      "description": "Reserved for a preflight hook; the chart ships no Job.",
+      "type": "object",
+      "required": [
+        "restartPolicy",
+        "backoffLimit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "restartPolicy": {
+          "type": "string",
+          "const": "Never"
+        },
+        "backoffLimit": {
+          "type": "integer",
+          "const": 0
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "A multi-tenant installation derives one namespace per configured tenant (kodama-tenant-<tenant>). The singleton KODAMA_TENANT_NAMESPACE override cannot name a namespace for every tenant, so it is refused when more than one tenant is configured.",
+      "if": {
+        "properties": {
+          "tenants": {
+            "minItems": 2
+          }
+        },
+        "required": [
+          "tenants"
+        ]
+      },
+      "then": {
+        "properties": {
+          "config": {
+            "properties": {
+              "extraEnv": {
+                "not": {
+                  "required": [
+                    "KODAMA_TENANT_NAMESPACE"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A production installation must carry the OIDC variables cmd/kodama/production.go reads. Development and test profiles may omit them.",
+      "if": {
+        "properties": {
+          "environment": {
+            "const": "production"
+          }
+        },
+        "required": [
+          "environment"
+        ]
+      },
+      "then": {
+        "properties": {
+          "config": {
+            "required": [
+              "extraEnv"
+            ],
+            "properties": {
+              "extraEnv": {
+                "required": [
+                  "KODAMA_OIDC_ISSUER",
+                  "KODAMA_OIDC_AUDIENCE",
+                  "KODAMA_OIDC_JWKS_URL",
+                  "KODAMA_OIDC_TENANT_CLAIM"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A production installation whose key adapter has a static cloud credential must name the KMS credentials Secret: scw-kms reads SCW_SECRET_KEY from it. Only aws-kms (EKS IRSA) and gcp-kms (GKE Workload Identity) are exempt, so an unknown adapter name cannot drop the requirement; for those two the chart renders no reference to the Secret and a value left in secrets.kmsCredentials is ignored. Development and test profiles may omit the Secret.",
+      "if": {
+        "properties": {
+          "environment": {
+            "const": "production"
+          }
+        },
+        "required": [
+          "environment"
+        ],
+        "not": {
+          "properties": {
+            "config": {
+              "properties": {
+                "keyAdapter": {
+                  "enum": [
+                    "aws-kms",
+                    "gcp-kms"
+                  ]
+                }
+              },
+              "required": [
+                "keyAdapter"
+              ]
+            }
+          },
+          "required": [
+            "config"
+          ]
+        }
+      },
+      "then": {
+        "properties": {
+          "secrets": {
+            "required": [
+              "kmsCredentials"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "A production aws-kms installation has no static cloud credential: the ServiceAccount this chart creates must carry eks.amazonaws.com/role-arn (the EKS IRSA role ARN), or the pod starts and every KMS decrypt is refused. A ServiceAccount managed outside the chart (serviceAccount.create: false) is not checked.",
+      "if": {
+        "properties": {
+          "environment": {
+            "const": "production"
+          },
+          "config": {
+            "properties": {
+              "keyAdapter": {
+                "const": "aws-kms"
+              }
+            },
+            "required": [
+              "keyAdapter"
+            ]
+          }
+        },
+        "required": [
+          "environment",
+          "config"
+        ],
+        "not": {
+          "properties": {
+            "serviceAccount": {
+              "properties": {
+                "create": {
+                  "const": false
+                }
+              },
+              "required": [
+                "create"
+              ]
+            }
+          },
+          "required": [
+            "serviceAccount"
+          ]
+        }
+      },
+      "then": {
+        "required": [
+          "serviceAccount"
+        ],
+        "properties": {
+          "serviceAccount": {
+            "required": [
+              "annotations"
+            ],
+            "properties": {
+              "annotations": {
+                "required": [
+                  "eks.amazonaws.com/role-arn"
+                ],
+                "properties": {
+                  "eks.amazonaws.com/role-arn": {
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A production gcp-kms installation has no static cloud credential: the ServiceAccount this chart creates must carry iam.gke.io/gcp-service-account (the Workload Identity Google service account), or the pod starts and every KMS decrypt is refused. A ServiceAccount managed outside the chart (serviceAccount.create: false) is not checked.",
+      "if": {
+        "properties": {
+          "environment": {
+            "const": "production"
+          },
+          "config": {
+            "properties": {
+              "keyAdapter": {
+                "const": "gcp-kms"
+              }
+            },
+            "required": [
+              "keyAdapter"
+            ]
+          }
+        },
+        "required": [
+          "environment",
+          "config"
+        ],
+        "not": {
+          "properties": {
+            "serviceAccount": {
+              "properties": {
+                "create": {
+                  "const": false
+                }
+              },
+              "required": [
+                "create"
+              ]
+            }
+          },
+          "required": [
+            "serviceAccount"
+          ]
+        }
+      },
+      "then": {
+        "required": [
+          "serviceAccount"
+        ],
+        "properties": {
+          "serviceAccount": {
+            "required": [
+              "annotations"
+            ],
+            "properties": {
+              "annotations": {
+                "required": [
+                  "iam.gke.io/gcp-service-account"
+                ],
+                "properties": {
+                  "iam.gke.io/gcp-service-account": {
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

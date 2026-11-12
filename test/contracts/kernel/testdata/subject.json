@@ -1,0 +1,20 @@
+{
+  "operation": {
+    "kind": "literal",
+    "literal": "git.ref.update"
+  },
+  "resource": {
+    "kind": "reference",
+    "reference": {
+      "input": true,
+      "key": "repository"
+    }
+  },
+  "candidate": {
+    "kind": "reference",
+    "reference": {
+      "action": "implement",
+      "key": "candidate"
+    }
+  }
+}

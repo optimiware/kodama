@@ -1,0 +1,339 @@
+#!/usr/bin/env bash
+# stage-git: reconcile the Scaleway stage Git service credential, resource
+# bindings, and tenant/run repositories.
+#
+# Invoke it only through the host-wide stage lock:
+#
+#   scripts/infra-slot.sh --exclusive scw-stage stack -- \
+#     scripts/stage-git [--bootstrap-service] [--provision]
+#
+# Modes (at least one required):
+#   --bootstrap-service   create/reconcile the `git` service account (and
+#                         optional `m2-responder` when KODAMA_STAGE_WITH_RESPONDER=1),
+#                         issue or rotate its bounded credential into
+#                         Secret kodama-system/kodama-git-<tenant>, and
+#                         register/reconcile the `git-admin` and run repository
+#                         bindings (`m2-repo-<run-id>`).
+#   --provision           exec into pod/kodama-git-<tenant>-0 to run
+#                         `kodama git provision-tenant` and
+#                         `kodama git provision-repository` for `smoke/<run-id>`.
+#
+# Required inputs:
+#   KODAMA_STAGE_KUBE_CONTEXT       must be admin@kodama-stage-k8s
+#   KODAMA_STAGE_RUN_ID             bounded run identifier (^[a-z0-9][a-z0-9_-]{0,31}$)
+#   (Plus for --bootstrap-service):
+#   KODAMA_STAGE_API_URL            https API origin on loopback
+#   KODAMA_STAGE_CA_FILE            installation CA bundle
+#   KODAMA_STAGE_ADMIN_TOKEN_FILE   mode 0600 admin bearer token file
+#
+# Optional inputs:
+#   KODAMA_STAGE_PROJECT_ID         project id (default tenant-a)
+#   KODAMA_STAGE_TENANT_ID          tenant id (default $KODAMA_STAGE_PROJECT_ID)
+#   KODAMA_STAGE_RELEASE_NAMESPACE  must be kodama-system (default kodama-system)
+#   KODAMA_STAGE_GIT_PORT           local port-forward port for Git (default 18445)
+#   KODAMA_STAGE_WITH_RESPONDER     1 also reconciles service m2-responder and
+#                                   Secret kodama-service-m2-responder
+#   KODAMA_STAGE_ADMIN_BINDING      admin binding id (default git-admin; must be
+#                                   distinct per tenant, ids are installation
+#                                   unique)
+#   KODAMA_STAGE_ADMIN_RESOURCE     admin resource id (default git-admin; same
+#                                   uniqueness rule)
+#   KODAMA_STAGE_GIT_SERVICE        service id for this tenant's Git credential
+#                                   (default git; service ids are installation
+#                                   unique, so a second tenant needs its own)
+set -euo pipefail
+set +x
+umask 077
+
+die() {
+	printf 'stage-git: %s\n' "$*" >&2
+	exit 1
+}
+
+do_bootstrap=0
+do_provision=0
+while (( $# > 0 )); do
+	case "$1" in
+	--bootstrap-service)
+		do_bootstrap=1
+		shift
+		;;
+	--provision)
+		do_provision=1
+		shift
+		;;
+	*)
+		die "unknown argument: $1 (expected --bootstrap-service and/or --provision)"
+		;;
+	esac
+done
+(( do_bootstrap == 1 || do_provision == 1 )) ||
+	die "specify --bootstrap-service and/or --provision"
+
+for forbidden in KODAMA_STAGE_ADMIN_TOKEN KODAMA_STAGE_TOKEN KODAMA_STAGE_BEARER; do
+	if [[ -n "${!forbidden:-}" ]]; then
+		die "${forbidden} is refused; supply the administrator credential only as a 0600 file"
+	fi
+done
+
+kube_context="${KODAMA_STAGE_KUBE_CONTEXT:-}"
+run_id="${KODAMA_STAGE_RUN_ID:-}"
+project="${KODAMA_STAGE_PROJECT_ID:-tenant-a}"
+tenant="${KODAMA_STAGE_TENANT_ID:-$project}"
+release_ns="${KODAMA_STAGE_RELEASE_NAMESPACE:-kodama-system}"
+git_port="${KODAMA_STAGE_GIT_PORT:-18445}"
+with_responder="${KODAMA_STAGE_WITH_RESPONDER:-0}"
+
+[[ "$kube_context" == "admin@kodama-stage-k8s" ]] ||
+	die "KODAMA_STAGE_KUBE_CONTEXT must be admin@kodama-stage-k8s"
+[[ "$release_ns" == "kodama-system" ]] ||
+	die "KODAMA_STAGE_RELEASE_NAMESPACE must be kodama-system"
+[[ "$project" =~ ^[a-z0-9][a-z0-9_-]{0,40}$ ]] ||
+	die "KODAMA_STAGE_PROJECT_ID is not a bounded identity"
+[[ "$tenant" =~ ^[a-z0-9][a-z0-9_-]{0,40}$ ]] ||
+	die "KODAMA_STAGE_TENANT_ID is not a bounded identity"
+[[ "$run_id" =~ ^[a-z0-9][a-z0-9_-]{0,31}$ ]] ||
+	die "KODAMA_STAGE_RUN_ID must match ^[a-z0-9][a-z0-9_-]{0,31}$"
+[[ "$git_port" =~ ^[0-9]+$ ]] && (( git_port >= 1024 && git_port <= 65535 )) ||
+	die "KODAMA_STAGE_GIT_PORT is not an unprivileged port"
+[[ "$with_responder" == "0" || "$with_responder" == "1" ]] ||
+	die "KODAMA_STAGE_WITH_RESPONDER must be 0 or 1"
+
+smoke_repo="smoke/${run_id}"
+smoke_resource="m2-repo-${run_id}"
+smoke_binding="m2-repo-${run_id}"
+git_host_origin="https://127.0.0.1:${git_port}"
+git_workload_origin="https://kodama-git-${tenant}.${release_ns}.svc.cluster.local:8443"
+
+for tool in kubectl jq python3 mktemp stat sed head; do
+	command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
+done
+
+work="$(mktemp -d "${TMPDIR:-/tmp}/stage-git.XXXXXX")"
+header="$work/admin-header"
+request="$work/request.json"
+response="$work/response.json"
+
+cleanup() {
+	local status=$?
+	set +e
+	rm -rf -- "$work"
+	exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+if (( do_bootstrap == 1 )); then
+	command -v curl >/dev/null 2>&1 || die "curl is required for --bootstrap-service"
+	api_url="${KODAMA_STAGE_API_URL:-}"
+	ca_file="${KODAMA_STAGE_CA_FILE:-}"
+	token_file="${KODAMA_STAGE_ADMIN_TOKEN_FILE:-}"
+	[[ -n "$api_url" ]] || die "KODAMA_STAGE_API_URL is required for --bootstrap-service"
+	[[ "$api_url" =~ ^https://127\.0\.0\.1:[0-9]{1,5}/?$ ]] ||
+		die "KODAMA_STAGE_API_URL must be an https://127.0.0.1:<port> origin"
+	api_base="${api_url%/}"
+	[[ -f "$ca_file" && -r "$ca_file" ]] || die "KODAMA_STAGE_CA_FILE is not readable"
+	[[ -f "$token_file" && -r "$token_file" && -s "$token_file" ]] ||
+		die "KODAMA_STAGE_ADMIN_TOKEN_FILE is missing or empty"
+	token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || true)"
+	[[ "$token_mode" == "600" ]] ||
+		die "KODAMA_STAGE_ADMIN_TOKEN_FILE must be mode 0600 (found ${token_mode:-unknown})"
+
+	{
+		umask 077
+		printf 'Authorization: Bearer %s\n' "$(cat -- "$token_file")"
+		printf 'Content-Type: application/json\n'
+	} >"$header"
+	chmod 600 "$header"
+
+	api() {
+		local method=$1 path=$2 envelope=$3
+		{
+			umask 077
+			printf '%s' "$envelope" >"$request"
+		}
+		chmod 600 "$request"
+		: >"$response"
+		local status
+		status="$(curl --silent --show-error --noproxy '*' --max-time 30 \
+			--cacert "$ca_file" \
+			--request "$method" \
+			--header @"$header" \
+			--data-binary @"$request" \
+			--output "$response" \
+			--write-out '%{http_code}' \
+			"${api_base}${path}" 2>"$work/curl.log" || true)"
+		rm -f -- "$request"
+		printf '%s' "$status"
+	}
+
+	api_code() {
+		jq -r '.code // empty' "$response" 2>/dev/null || true
+	}
+
+	api_message() {
+		jq -r '.message // empty' "$response" 2>/dev/null || true
+	}
+
+	current_version_from_error() {
+		api_message | sed -n 's/.*current version \([0-9][0-9]*\).*/\1/p' | head -n 1
+	}
+
+	reconcile_service_secret() {
+		local service=$1 roles_json=$2 secret_name=$3
+		local create_env status version=1
+		create_env="$(jq -cn --arg project "$project" --arg service "$service" --argjson roles "$roles_json" --arg key "stage-git-svc-${service}-${run_id}" \
+			'{input: {project_id: $project, service_id: $service, roles: $roles}, idempotency_key: $key}')"
+		status="$(api POST "/api/v1/projects/${project}/services" "$create_env")"
+		if [[ "$status" == "200" ]]; then
+			version="$(jq -er '.body.version' "$response")"
+		elif [[ "$status" == "409" && "$(api_code)" == "version_conflict" ]]; then
+			local parsed
+			parsed="$(current_version_from_error)"
+			[[ -n "$parsed" ]] && version="$parsed"
+		else
+			die "service.create failed for ${service} (HTTP ${status}, $(api_code)): $(api_message)"
+		fi
+
+		local attempt rotated=0 issued=0
+		for attempt in 1 2 3; do
+			local rot_env
+			rot_env="$(jq -cn --arg service "$service" --argjson version "$version" --arg key "stage-git-rot-${service}-${run_id}-${attempt}-$(date +%s)" \
+				'{input: {service_id: $service, ttl_seconds: 28800}, expected_version: $version, idempotency_key: $key}')"
+			status="$(api POST "/api/v1/services/${service}/credentials/rotate" "$rot_env")"
+			if [[ "$status" == "200" ]]; then
+				rotated=1
+				break
+			fi
+			if [[ "$(api_code)" == "version_conflict" ]]; then
+				local current
+				current="$(current_version_from_error)"
+				[[ -n "$current" ]] || die "credential rotate for ${service} reported version_conflict without current version"
+				version="$current"
+				continue
+			fi
+			case "$(api_message)" in
+			*"no current service credential"*) break ;;
+			esac
+			die "service.credential.rotate failed for ${service} (HTTP ${status}, $(api_code)): $(api_message)"
+		done
+
+		if (( rotated == 0 )); then
+			for attempt in 1 2 3; do
+				local iss_env
+				iss_env="$(jq -cn --arg service "$service" --argjson version "$version" --arg key "stage-git-iss-${service}-${run_id}-${attempt}-$(date +%s)" \
+					'{input: {service_id: $service, ttl_seconds: 28800}, expected_version: $version, idempotency_key: $key}')"
+				status="$(api POST "/api/v1/services/${service}/credentials" "$iss_env")"
+				if [[ "$status" == "200" ]]; then
+					issued=1
+					break
+				fi
+				if [[ "$(api_code)" == "version_conflict" ]]; then
+					local current
+					current="$(current_version_from_error)"
+					[[ -n "$current" ]] || die "credential issue for ${service} reported version_conflict without current version"
+					version="$current"
+					continue
+				fi
+				die "service.credential.issue failed for ${service} (HTTP ${status}, $(api_code)): $(api_message)"
+			done
+		fi
+		(( rotated == 1 || issued == 1 )) || die "could not issue or rotate credential for ${service}"
+
+		local svc_token_file="$work/svc-token-${service}"
+		jq -er '.body.token | select(type == "string" and length > 0)' "$response" >"$svc_token_file" ||
+			die "credential response for ${service} contained no token"
+		chmod 600 "$svc_token_file"
+		: >"$response"
+
+		kubectl --context "$kube_context" -n "$release_ns" create secret generic "$secret_name" \
+			--from-file=token="$svc_token_file" --dry-run=client -o yaml |
+			kubectl --context "$kube_context" -n "$release_ns" apply -f - >/dev/null
+		rm -f -- "$svc_token_file"
+		printf 'stage-git: reconciled service %s and Secret %s/%s\n' "$service" "$release_ns" "$secret_name"
+	}
+
+	git_service="${KODAMA_STAGE_GIT_SERVICE:-git}"
+
+	reconcile_binding() {
+		local binding_id=$1 resource_id=$2
+		local origins
+		origins="$(jq -cn --arg h "$git_host_origin" --arg w "$git_workload_origin" '[$h, $w]')"
+		local attempt status
+		for attempt in 1 2 3; do
+			local read_env
+			read_env="$(jq -cn --arg b "$binding_id" '{input: {binding_id: $b}}')"
+			status="$(api GET "/api/v1/bindings/${binding_id}" "$read_env")"
+			if [[ "$status" == "200" ]]; then
+				local version current
+				version="$(jq -er '.body.version' "$response")"
+				current="$(jq -c '.body.trusted_origins | sort' "$response")"
+				if [[ "$current" == "$(printf '%s' "$origins" | jq -c 'sort')" ]]; then
+					printf 'stage-git: binding %s already up to date (version %s)\n' "$binding_id" "$version"
+					return 0
+				fi
+				local upd_env
+				upd_env="$(jq -cn --arg r "$resource_id" --arg s "$git_service" --argjson o "$origins" --argjson v "$version" --arg k "stage-git-bupd-${binding_id}-${run_id}-${attempt}-$(date +%s)" \
+					'{input: {resource_id: $r, enforcing_service: $s, trusted_origins: $o, operations: ["git.read", "git.ref.update"], reportable_events: ["git.ref.updated"]}, expected_version: $v, idempotency_key: $k}')"
+				status="$(api PATCH "/api/v1/bindings/${binding_id}" "$upd_env")"
+				if [[ "$status" == "200" ]]; then
+					printf 'stage-git: updated binding %s\n' "$binding_id"
+					return 0
+				fi
+				[[ "$(api_code)" == "version_conflict" ]] && continue
+				die "resource.binding.update failed for ${binding_id} (HTTP ${status}, $(api_code)): $(api_message)"
+			fi
+
+			local reg_env
+			reg_env="$(jq -cn --arg p "$project" --arg b "$binding_id" --arg r "$resource_id" --arg s "$git_service" --argjson o "$origins" --arg k "stage-git-breg-${binding_id}-${run_id}-${attempt}-$(date +%s)" \
+				'{input: {project_id: $p, binding_id: $b, resource_id: $r, enforcing_service: $s, trusted_origins: $o, operations: ["git.read", "git.ref.update"], reportable_events: ["git.ref.updated"]}, idempotency_key: $k}')"
+			status="$(api POST "/api/v1/projects/${project}/bindings" "$reg_env")"
+			if [[ "$status" == "200" ]]; then
+				printf 'stage-git: registered binding %s (resource %s)\n' "$binding_id" "$resource_id"
+				return 0
+			fi
+			[[ "$(api_code)" == "version_conflict" ]] && continue
+			die "resource.binding.register failed for ${binding_id} (HTTP ${status}, $(api_code)): $(api_message)"
+		done
+		die "could not reconcile binding ${binding_id}"
+	}
+
+	# Service ids are unique per installation, so a second tenant needs its own
+	# id (the Secret name stays per-tenant because it is mounted by that
+	# tenant's Git workload). Default keeps the historic "git" id.
+	reconcile_service_secret "$git_service" '["viewer"]' "kodama-git-${tenant}"
+	if [[ "$with_responder" == "1" ]]; then
+		reconcile_service_secret "m2-responder" '["viewer"]' "kodama-service-m2-responder"
+	fi
+	# Resource and binding identities are installation unique (a foreign owner is
+	# the uniform not_found class), so a second tenant names its own admin pair.
+	admin_binding="${KODAMA_STAGE_ADMIN_BINDING:-git-admin}"
+	admin_resource="${KODAMA_STAGE_ADMIN_RESOURCE:-git-admin}"
+	reconcile_binding "$admin_binding" "$admin_resource"
+	reconcile_binding "$smoke_binding" "$smoke_resource"
+fi
+
+if (( do_provision == 1 )); then
+	pod="pod/kodama-git-${tenant}-0"
+	kubectl --context "$kube_context" -n "$release_ns" wait --for=condition=Ready "$pod" --timeout=300s >/dev/null
+	kubectl --context "$kube_context" -n "$release_ns" exec "$pod" -c git -- \
+		kodama git provision-tenant \
+		--tenant "$tenant" \
+		--storage-root /var/lib/kodama/git/repos \
+		--journal-dir /var/lib/kodama/git/journal >/dev/null
+	printf 'stage-git: provisioned tenant %s admin repository in %s\n' "$tenant" "$pod"
+
+	prov_out="$(kubectl --context "$kube_context" -n "$release_ns" exec "$pod" -c git -- \
+		kodama git provision-repository \
+		--tenant "$tenant" \
+		--storage-root /var/lib/kodama/git/repos \
+		--repository "$smoke_repo" \
+		--resource "$smoke_resource")"
+	case "$prov_out" in
+	*"--resource ${smoke_repo}=${smoke_resource}"*) ;;
+	*) die "git provision-repository did not print expected --resource ${smoke_repo}=${smoke_resource}" ;;
+	esac
+	printf 'stage-git: provisioned repository %s (resource %s) in %s\n' "$smoke_repo" "$smoke_resource" "$pod"
+fi

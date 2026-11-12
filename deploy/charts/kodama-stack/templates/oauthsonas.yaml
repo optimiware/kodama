@@ -1,0 +1,299 @@
+{{- /*
+OAuthSonas development identity provider, for stage and preview installations
+ONLY. It exists so a stage operator or a script can sign in as a persona
+without a browser. Never enable it where real identities matter: anyone with
+the access code can become any persona.
+
+The provider speaks plain HTTP on loopback. Kodama accepts only https issuers,
+so a Caddy sidecar terminates TLS with the server certificate that
+scripts/bootstrap-secrets issues from the installation CA into the
+oauthsonas-tls Secret (kubernetes.io/tls: tls.crt/tls.key). The picker access
+code comes only from the oauthsonas-access Secret (access_code key); it is
+never a value, an argument or a literal environment value, because those are
+visible in values files, Helm release history, `ps` and /proc.
+
+Everything below is gated on oauthsonas.enabled (default false), so a default
+`helm upgrade` renders nothing and cannot delete a stage identity provider.
+*/ -}}
+{{- if .Values.oauthsonas }}
+{{- if .Values.oauthsonas.enabled }}
+{{- $oauth := .Values.oauthsonas }}
+{{- $host := $oauth.host | default (printf "oauthsonas.%s.svc.cluster.local" .Release.Namespace) }}
+{{- $port := $oauth.port | default 8443 }}
+{{- $issuer := printf "https://%s:%v" $host $port }}
+{{- /* The host lands in a Caddy site address: a newline or space would inject directives. */ -}}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$" (toString $host)) }}
+{{- fail "oauthsonas.host must be a lower-case DNS name (the issuer host and oauthsonas-tls SAN)" }}
+{{- end }}
+{{- if or (lt (int $port) 1024) (gt (int $port) 65535) }}
+{{- fail "oauthsonas.port must be between 1024 and 65535: the container runs as non-root and cannot bind a privileged port" }}
+{{- end }}
+{{- /* The access code is credential material: refuse every values spelling. */ -}}
+{{- if hasKey $oauth "accessCode" }}
+{{- fail "oauthsonas.accessCode is not a value: the picker access code comes only from the oauthsonas-access Secret (access_code key); set oauthsonas.accessCodeSecret instead" }}
+{{- end }}
+{{- if hasKey $oauth "access_code" }}
+{{- fail "oauthsonas.access_code is not a value: the picker access code comes only from the oauthsonas-access Secret (access_code key); set oauthsonas.accessCodeSecret instead" }}
+{{- end }}
+{{- if or (contains "access_code" $oauth.config) (contains "accessCode" $oauth.config) }}
+{{- fail "oauthsonas.config must not contain the access code: the picker code comes only from the oauthsonas-access Secret (access_code key), never from values" }}
+{{- end }}
+{{- /* Images must be immutable: a tag can be repointed by the registry. */ -}}
+{{- if not (and $oauth.image (regexMatch "^[^[:space:]@]+@sha256:[a-f0-9]{64}$" $oauth.image)) }}
+{{- fail "oauthsonas.image must be pinned by digest (repository[:tag]@sha256:<64 hex>): a tag can be repointed without a chart change" }}
+{{- end }}
+{{- if not (and $oauth.tlsProxyImage (regexMatch "^[^[:space:]@]+@sha256:[a-f0-9]{64}$" $oauth.tlsProxyImage)) }}
+{{- fail "oauthsonas.tlsProxyImage must be pinned by digest (repository[:tag]@sha256:<64 hex>): a tag can be repointed without a chart change" }}
+{{- end }}
+{{- if not $oauth.config }}
+{{- fail (printf "oauthsonas.config is required when oauthsonas.enabled is true: it must be the complete OAuthSonas configuration document and contain `issuer: %s`" $issuer) }}
+{{- end }}
+{{- /* Parse the document so a blank OIDC value is a named refusal rather than
+a provider that starts with an empty issuer, client id or client secret. The
+substring checks below cannot express an empty value. */ -}}
+{{- $document := fromYaml $oauth.config }}
+{{- if not (kindIs "map" $document) }}
+{{- fail "oauthsonas.config must be a YAML mapping with a non-empty issuer and clients" }}
+{{- end }}
+{{- $issuerValue := get $document "issuer" }}
+{{- if or (not $issuerValue) (eq (trim (toString $issuerValue)) "") }}
+{{- fail "oauthsonas.config must set a non-empty issuer: Kodama accepts only https issuers and the Caddy site address and certificate SAN must agree" }}
+{{- end }}
+{{- $clients := get $document "clients" }}
+{{- if not $clients }}
+{{- fail "oauthsonas.config must declare at least one client with a non-empty id" }}
+{{- end }}
+{{- range $client := $clients }}
+{{- if not (kindIs "map" $client) }}
+{{- fail "oauthsonas.config clients entries must be mappings" }}
+{{- end }}
+{{- $clientID := get $client "id" }}
+{{- if or (not $clientID) (eq (trim (toString $clientID)) "") }}
+{{- fail "oauthsonas.config client id must not be empty: kodactl and scripts/oauthsonas-token need the public client id" }}
+{{- end }}
+{{- if hasKey $client "secret" }}
+{{- $clientSecret := get $client "secret" }}
+{{- if or (not $clientSecret) (eq (trim (toString $clientSecret)) "") }}
+{{- fail "oauthsonas.config client secret must not be empty when the secret key is present; omit it for a public client instead" }}
+{{- else }}
+{{- fail "oauthsonas.config inline client secrets are forbidden: oauthsonas.config renders into a ConfigMap, so OAuthSonas clients must be public (omit secret)" }}
+{{- end }}
+{{- end }}
+{{- if or (hasKey $client "client_secret") (hasKey $client "clientSecret") }}
+{{- fail "oauthsonas.config inline client secrets are forbidden: oauthsonas.config renders into a ConfigMap, so OAuthSonas clients must be public" }}
+{{- end }}
+{{- end }}
+{{- if contains "issuer: http://" $oauth.config }}
+{{- fail "oauthsonas.config must use an https issuer: Kodama accepts only https issuers, and the Caddy sidecar terminates TLS with the installation CA certificate" }}
+{{- end }}
+{{- if not (contains (printf "issuer: %s" $issuer) $oauth.config) }}
+{{- fail (printf "oauthsonas.config must contain `issuer: %s`: the issuer, the Caddy site address and the oauthsonas-tls certificate SAN must agree" $issuer) }}
+{{- end }}
+{{- /* The picker must be gated: an empty Secret reference would render it open. */ -}}
+{{- if not $oauth.accessCodeSecret }}
+{{- fail "oauthsonas.accessCodeSecret is required when oauthsonas.enabled is true: the picker access code comes only from the oauthsonas-access Secret (access_code key), never from values" }}
+{{- end }}
+{{- if not $oauth.accessCodeKey }}
+{{- fail "oauthsonas.accessCodeKey is required when oauthsonas.enabled is true: scripts/bootstrap-secrets stores the picker access code under the access_code key" }}
+{{- end }}
+{{- if not $oauth.tlsSecret }}
+{{- fail "oauthsonas.tlsSecret is required when oauthsonas.enabled is true: scripts/bootstrap-secrets creates the oauthsonas-tls Secret from the installation CA" }}
+{{- end }}
+{{- /* The provider keeps its protocol state and signing key in memory, so two
+pods must never serve at once: they would sign with different keys. Recreate
+would say that directly, but a Deployment cannot be switched from RollingUpdate
+(the API server's default) to Recreate through Helm server-side apply: the
+defaulted spec.strategy.rollingUpdate belongs to the API server's field manager,
+so a rendered `rollingUpdate: null` is a no-op and the object is rejected. A
+RollingUpdate with maxSurge 0 and maxUnavailable 1 applies over an existing
+RollingUpdate Deployment (and on a first install); at one replica it stops the
+old pod before the new one starts, the same no-overlap guarantee as Recreate.
+These guards fail the render if either constant drifts. */ -}}
+{{- $replicas := 1 }}
+{{- $maxSurge := 0 }}
+{{- $maxUnavailable := 1 }}
+{{- if ne (int $replicas) 1 }}
+{{- fail "oauthsonas replicas must be exactly 1: OAuthSonas keeps its protocol state and signing key in memory, so two pods would sign with different keys" }}
+{{- end }}
+{{- if ne (int $maxSurge) 0 }}
+{{- fail "oauthsonas rollingUpdate.maxSurge must be 0: a surge starts the new pod before the old one stops, so two OAuthSonas pods with different in-memory signing keys would serve at once" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oauthsonas-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: oauthsonas
+    app.kubernetes.io/part-of: kodama-stack
+data:
+  config.yaml: |
+{{ $oauth.config | indent 4 }}
+  Caddyfile: |
+    {
+      auto_https off
+      admin off
+    }
+    {{ $issuer }} {
+      tls /etc/oauthsonas-tls/tls.crt /etc/oauthsonas-tls/tls.key
+      reverse_proxy 127.0.0.1:8181
+    }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: oauthsonas
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: oauthsonas
+    app.kubernetes.io/part-of: kodama-stack
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauthsonas
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: oauthsonas
+    app.kubernetes.io/part-of: kodama-stack
+spec:
+  replicas: {{ $replicas }}
+  # OAuthSonas keeps all protocol state and its signing key in memory. A
+  # rolling update that surged would run two pods with different signing keys,
+  # so the deployment keeps one replica and rolls with maxSurge 0 and
+  # maxUnavailable 1: the old pod stops before the new one starts, the same
+  # no-overlap guarantee as Recreate. Recreate is not used because a Deployment
+  # cannot be switched from the API server's defaulted RollingUpdate type to
+  # Recreate through Helm server-side apply; the defaulted rollingUpdate field
+  # is owned by the API server, so a rendered `rollingUpdate: null` is a no-op
+  # and the object is rejected as invalid.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ $maxSurge }}
+      maxUnavailable: {{ $maxUnavailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oauthsonas
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oauthsonas
+        app.kubernetes.io/part-of: kodama-stack
+      annotations:
+        # Roll the single pod when the rendered configuration or the Caddy site
+        # address changes. The TLS Secret itself cannot be checksummed without
+        # a lookup; a certificate rotation is applied by deleting the pod.
+        checksum/config: {{ printf "%s\n%s\n%v" $oauth.config $host $port | sha256sum }}
+    spec:
+      serviceAccountName: oauthsonas
+      automountServiceAccountToken: false
+      # Both images are stateless on disk: the provider keeps every artifact in
+      # memory and Caddy writes only to the mounted /tmp emptyDir, so the root
+      # filesystem is read-only for both containers.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: oauthsonas
+          image: {{ $oauth.image | quote }}
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/etc/oauthsonas/config.yaml", "--listen", "127.0.0.1:8181"]
+          env:
+            # The picker access code: Secret reference only, never a value.
+            - name: OAUTHSONAS_ACCESS_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oauth.accessCodeSecret | quote }}
+                  key: {{ $oauth.accessCodeKey | quote }}
+          readinessProbe:
+            exec:
+              command: ["/usr/local/bin/oauthsonas", "--healthcheck", "--listen", "127.0.0.1:8181"]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["/usr/local/bin/oauthsonas", "--healthcheck", "--listen", "127.0.0.1:8181"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/oauthsonas
+              readOnly: true
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+        - name: tls
+          image: {{ $oauth.tlsProxyImage | quote }}
+          imagePullPolicy: IfNotPresent
+          args: ["caddy", "run", "--config", "/etc/oauthsonas/Caddyfile", "--adapter", "caddyfile"]
+          env:
+            - name: XDG_DATA_HOME
+              value: /tmp/caddy-data
+            - name: XDG_CONFIG_HOME
+              value: /tmp/caddy-config
+          ports:
+            - name: https
+              containerPort: {{ $port }}
+          readinessProbe:
+            tcpSocket:
+              port: https
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/oauthsonas
+              readOnly: true
+            - name: tls
+              mountPath: /etc/oauthsonas-tls
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+      volumes:
+        - name: config
+          configMap:
+            name: oauthsonas-config
+        - name: tls
+          secret:
+            secretName: {{ $oauth.tlsSecret | quote }}
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauthsonas
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: oauthsonas
+    app.kubernetes.io/part-of: kodama-stack
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: oauthsonas
+  ports:
+    - name: https
+      port: {{ $port }}
+      targetPort: https
+      protocol: TCP
+{{- end }}
+{{- end }}

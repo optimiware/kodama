@@ -1,0 +1,49 @@
+# A conversation handoff is an ask, not a declared request. The ask operation
+# (POST /api/v1/tasks/{task}/ask) appends the question, marks the task waiting
+# and cancels this execution (cancel reason requested), so nothing here may
+# rely on the workspace, staged outputs or this container outliving the ask.
+#
+# This pipeline requires a task-associated execution. Only then are KODAMA_TASK
+# and the read-only /kodama/task.json snapshot present; a task-free run has
+# neither and cannot ask.
+#
+# /kodama/task.json carries only the admitted conversation (a JSON array of
+# messages with their references), not task metadata and not the task
+# lifecycle version, so this example first reads the current
+# task with `kodactl call task.read` and passes its lifecycle_version as the
+# ask's expected version. The read pins KODAMA_OUTPUT=json because kodactl
+# defaults to a table rendering that never spells the version as JSON.
+# kodactl exposes served operations as `kodactl call <operation> --input=<json>
+# --expected-version=<n> --idempotency-key=<key>`; there is no `kodactl task ...`
+# subcommand.
+#
+# Persist durable context first, then reference only durable values: the pushed
+# context commit from the earlier action and the admitted commit/digest inputs.
+inputs:
+  - commit
+  - digest
+actions:
+  - name: persist
+    image: registry.example.com/kodama/handoff@sha256:283b837d6ffdf6c792a33e6bbf622bd14a1bb81292488a90873b5408da745448
+    commands:
+      - push-handoff-context "$(cat /kodama/inputs/commit)"
+    outputs:
+      - context_commit
+  - name: ask
+    image: registry.example.com/kodama/handoff@sha256:283b837d6ffdf6c792a33e6bbf622bd14a1bb81292488a90873b5408da745448
+    commands:
+      - |
+        task_version="$(KODAMA_OUTPUT=json kodactl call task.read \
+          --input="$(printf '{"task_id":"%s"}' "$KODAMA_TASK")" \
+          | sed -n 's/.*"lifecycle_version":\([0-9][0-9]*\).*/\1/p')"
+        if [ -z "$task_version" ]; then
+          echo "the current task version is unavailable" >&2
+          exit 1
+        fi
+        kodactl call task.ask \
+          --input="$(printf '{"task_id":"%s","question":"Continue from the durable handoff context.","assignment":"role/engineer","references":["commit=%s","digest=%s"]}' \
+            "$KODAMA_TASK" \
+            "$(cat /kodama/outputs/persist/context_commit)" \
+            "$(cat /kodama/inputs/digest)")" \
+          --expected-version="$task_version" \
+          --idempotency-key="ask:${KODAMA_TASK}:$(cat /kodama/outputs/persist/context_commit)"

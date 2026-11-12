@@ -1,0 +1,191 @@
+# Kodama full stack values (Kodama control plane + in-cluster TLS NATS JetStream).
+#
+# All credentials and TLS certificates are referenced via existingSecret.
+
+# Single source for the broker callout account. The broker's auth_callout block
+# and the control plane's KODAMA_NATS_CALLOUT_ACCOUNT both reference this
+# anchor, so the account the broker admits clients into and the account the
+# callout signs grants for cannot drift apart.
+x-nats-callout-account: &natsCalloutAccount "KODAMA"
+
+nats:
+  enabled: true
+  image:
+    repository: docker.io/library/nats
+    tag: "2.12-alpine"
+    digest: "sha256:e01e9f09c03f60a8ded4785444ec4c5b2fd18a773b8b874daeefeff559119316"
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  port: 4222
+  tls:
+    # Server certificate/key and the CA used to verify clients (same Secret
+    # that bootstrap-secrets creates with the CA-signed broker certificate).
+    # `verifyClient` is deliberately ignored: client verification is always on.
+    existingSecret: kodama-broker-tls
+  auth:
+    # Fail-closed broker authentication. Rendering aborts unless this is a
+    # supported mode with a usable Secret. No anonymous mode, no no_auth_user.
+    #
+    # callout (default): mTLS plus per-credential NATS authorization. External
+    #   clients present their current Kodama bearer token as the NATS auth
+    #   token; the broker asks the Shell's authorization callout and binds the
+    #   connection to the credential's current scope. The control plane and the
+    #   callout service use bypass users from nats.auth.callout.existingSecret.
+    #   The account signing seed lives only in that Secret; the broker receives
+    #   the matching public key.
+    # mtls: every client presents a certificate signed by the CA in
+    #   nats.auth.mtls.existingSecret; the server verifies it with verify: true.
+    #   No per-credential authorization is available in this mode.
+    # credentials: mTLS plus a static NATS user/password authorization block
+    #   whose values come from nats.auth.credentials.existingSecret.
+    mode: "callout"
+    mtls:
+      existingSecret: kodama-broker-tls
+      caKey: "ca.crt"
+    credentials:
+      existingSecret: ""
+      userKey: "user"
+      passwordKey: "password"
+    callout:
+      # scripts/bootstrap-secrets creates this Secret (issuer.seed/issuer.pub,
+      # shell-user/shell-password, callout-user/callout-password and the account
+      # below) before the first chart render. A rerun reuses the stored values;
+      # --rotate-nats-auth regenerates them. The chart never embeds a seed or
+      # password, so `helm template` renders with references only and no
+      # developer literal.
+      existingSecret: "kodama-nats-auth"
+      issuerKey: "issuer.seed"
+      issuerPubKey: "issuer.pub"
+      shellUserKey: "shell-user"
+      shellPasswordKey: "shell-password"
+      userKey: "callout-user"
+      passwordKey: "callout-password"
+      # One value with kodama.secrets.natsAuth.account below (YAML anchor).
+      account: *natsCalloutAccount
+  jetstream:
+    maxMemory: "256M"
+    maxFile: "8G"
+    storageClass: ""
+    size: "10Gi"
+  resources:
+    limits:
+      cpu: "500m"
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+kodama:
+  environment: "production"
+  # A production install must also set kodama.config.extraEnv for the four
+  # OIDC variables (KODAMA_OIDC_ISSUER, _AUDIENCE, _JWKS_URL, _TENANT_CLAIM):
+  # the kodama subchart schema and template guard refuse the render without
+  # them. Operator extra values supply them; see deploy/README.md.
+  replicaCount: 1
+  image:
+    repository: registry.example.com/kodama
+    tag: "0.1.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+  config:
+    installationID: "kodama-stage"
+    publicURL: "https://kodama.kodama-system.svc.cluster.local:8443"
+    databaseURL: "postgres://kodama_runtime@database:5432/kodama?sslmode=verify-full&sslrootcert=/etc/kodama/pg-ca/ca.crt"
+    natsURL: "tls://nats.kodama-system.svc.cluster.local:4222"
+    keyAdapter: "scw-kms"
+    keyReference: "scw-kms:fr-par/00000000-0000-0000-0000-000000000000"
+    keyCurrentVersion: 1
+    mcpPath: "/mcp"
+    workspacePVC:
+      storageClass: "sbs-default"
+      size: "10Gi"
+      accessMode: "ReadWriteOnce"
+    workloadCA:
+      secretName: "kodama-workload-ca"
+  secrets:
+    database:
+      existingSecret: kodama-database
+    broker:
+      existingSecret: kodama-broker
+    keys:
+      existingSecret: kodama-keys
+    # Read only by the scw-kms adapter (SCW_SECRET_KEY). With aws-kms or
+    # gcp-kms in production the subchart renders no reference to it and
+    # requires the workload-identity annotation on the ServiceAccount instead.
+    kmsCredentials:
+      existingSecret: kodama-kms-credentials
+    tls:
+      existingSecret: kodama-tls
+    natsAuth:
+      existingSecret: "kodama-nats-auth"
+      # Same anchor as nats.auth.callout.account; the broker and the callout
+      # must bind the identical account name.
+      account: *natsCalloutAccount
+  tenants:
+    - tenant-a
+  networkPolicy:
+    defaultDeny: true
+    permitKodama: true
+    permitGit: true
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+# Development identity provider for stage and preview installations ONLY.
+# OAuthSonas gives stage and preview a persona-picker OpenID provider so an
+# operator or scripts/oauthsonas-token can sign in without a browser. Never
+# enable it where real identities matter: anyone with the access code can
+# become any persona. It is opt-in (enabled: false renders nothing at all).
+#
+# The issuer must be https://<host>:<port>. A Caddy sidecar terminates TLS
+# with the certificate scripts/bootstrap-secrets issues from the installation
+# CA into the oauthsonas-tls Secret (kubernetes.io/tls: tls.crt/tls.key); the
+# provider itself listens on 127.0.0.1:8181 only. Kodama accepts only https
+# issuers.
+#
+# The panel access code lives only in the oauthsonas-access Secret under the
+# access_code key (created once by scripts/bootstrap-secrets with
+# KODAMA_WITH_OAUTHSONAS=1). It must never be a value, an argument or a
+# literal environment value: helm values, release history, `ps` and
+# /proc/<pid>/cmdline all expose those.
+#
+# OAuthSonas keeps every token, authorization code and signing key in memory,
+# so the chart pins one replica and a rolling update with maxSurge 0 and
+# maxUnavailable 1: the old pod stops before the new one starts, so two pods
+# with different signing keys never serve at once (the same guarantee as
+# Recreate, which Helm server-side apply cannot switch to from the API server's
+# defaulted RollingUpdate). The template fails the render if either constant
+# drifts.
+#
+# OAuthSonas has a single string claim. Stage maps both the tenant and project
+# claims to org_id, and the project is named like the tenant (for example
+# tenant "tenant-a" -> org_id "tenant-a"). Persona subject ids ("sub") must
+# match [A-Za-z0-9_-]; a value such as "oauthsonas|admin" is not a principal
+# id Kodama can parse, so scripts/oauthsonas-token refuses it.
+oauthsonas:
+  enabled: false
+  # Both images are pinned by digest; a tag-only override aborts the render.
+  image: ghcr.io/optimiware/oauthsonas:1.5.0@sha256:39f371048640a95aef951d4ffbc5efd58168f58910e9bb4b972694fa7e82d178
+  tlsProxyImage: docker.io/library/caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee
+  # Issuer host. Empty means oauthsonas.<release namespace>.svc.cluster.local,
+  # a subject alternative name of the oauthsonas-tls certificate.
+  host: ""
+  port: 8443
+  # Secret names and keys created by scripts/bootstrap-secrets. The certificate
+  # is a kubernetes.io/tls Secret; the access code Secret carries access_code.
+  tlsSecret: oauthsonas-tls
+  accessCodeSecret: oauthsonas-access
+  accessCodeKey: access_code
+  # The complete OAuthSonas configuration document (issuer, clients, personas).
+  # It MUST contain `issuer: https://<host>:<port>` (the render refuses an
+  # http:// issuer, an empty issuer, a client without a non-empty id, a client
+  # with an empty or inline `secret` since oauthsonas.config renders into a
+  # ConfigMap, or a mismatched host/port) and must never contain the access code.
+  config: ""

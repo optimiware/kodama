@@ -1,0 +1,227 @@
+{{- /*
+Optional independent Userland service adapters.
+
+Everything is gated on services.enabled (default false). Each entry runs one
+real `kodama services --kind <kind>` adapter with the exact flags the command
+reads: --kind, --service, --tenant, --project, --base-url,
+--credential-file and, for the timer kind only, --schedule. The service
+credential is an existing Secret mounted read-only. An email entry may mount a
+mailbox credential Secret as well; the file is referenced only through
+KODAMA_MAILBOX_CREDENTIAL_FILE and is never a value.
+
+The merge_coordinator kind is refused; the schema lists the four accepted
+kinds. Adapters reach Kodama only through the public
+API Service and cluster DNS, so the rendered NetworkPolicy isolates ingress with
+no allowed peer and has exactly those two egress peers.
+*/ -}}
+{{- if .Values.services }}
+{{- if .Values.services.enabled }}
+{{- $services := .Values.services }}
+{{- $baseURL := $services.baseURL | default .Values.config.publicURL }}
+{{- $service := .Values.service | default dict }}
+{{- $apiPort := int ($service.targetPort | default 8443) }}
+{{- if not (and .Values.secrets .Values.secrets.tls .Values.secrets.tls.existingSecret) }}
+{{- fail "services.enabled requires secrets.tls.existingSecret: the API certificate is issued by the private installation CA and SSL_CERT_FILE must trust it" }}
+{{- end }}
+{{- if not $services.entries }}
+{{- fail "services.enabled requires at least one complete entries entry" }}
+{{- end }}
+{{- $seenNames := dict }}
+{{- range $entry := $services.entries }}
+{{- $name := toString $entry.name }}
+{{- $kind := toString $entry.kind }}
+{{- if hasKey $seenNames $name }}
+{{- fail (printf "services repeats entry name %q; two Deployments would claim the same name" $name) }}
+{{- end }}
+{{- $_ := set $seenNames $name true }}
+{{- if not (has $kind (list "webhook" "email" "timer" "responder")) }}
+{{- fail (printf "services entry %q has kind %q; the chart refuses merge_coordinator and unknown kinds" $name $kind) }}
+{{- end }}
+{{- if not (has (toString $entry.tenant) $.Values.tenants) }}
+{{- fail (printf "services entry %q names tenant %q, which is not in values.tenants" $name (toString $entry.tenant)) }}
+{{- end }}
+{{- if eq $kind "timer" }}
+{{- if not $entry.schedule }}
+{{- fail (printf "services entry %q of kind timer requires a positive schedule" $name) }}
+{{- end }}
+{{- else if $entry.schedule }}
+{{- fail (printf "services entry %q is kind %q, not timer; --schedule is refused" $name $kind) }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kodama-service-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: service
+    kodama.dev/service: {{ $name | quote }}
+spec:
+  replicas: 1
+  # One adapter owns its scan loop; an old and a new process must never
+  # overlap during an upgrade.
+  strategy:
+    type: Recreate
+    rollingUpdate: null
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kodama
+      app.kubernetes.io/component: service
+      kodama.dev/service: {{ $name | quote }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kodama
+        app.kubernetes.io/component: service
+        kodama.dev/service: {{ $name | quote }}
+    spec:
+      # The adapter authenticates as its service account through the mounted
+      # credential, not through a Kubernetes API identity.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ $.Values.securityContext.runAsUser }}
+        fsGroup: {{ $.Values.securityContext.runAsUser }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: service
+          image: {{ if $.Values.image.digest }}"{{ $.Values.image.repository }}@{{ $.Values.image.digest }}"{{ else }}"{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"{{ end }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - services
+            - --kind={{ $kind }}
+            - --service={{ $entry.service }}
+            - --tenant={{ $entry.tenant }}
+            - --project={{ $entry.project }}
+            - --base-url={{ $baseURL }}
+            - --credential-file=/etc/kodama/service/credential
+            {{- if eq $kind "timer" }}
+            - --schedule={{ $entry.schedule }}
+            {{- end }}
+          env:
+            - name: KODAMA_BASE_URL
+              value: {{ $baseURL | quote }}
+            - name: KODAMA_CREDENTIAL_FILE
+              value: "/etc/kodama/service/credential"
+            - name: SSL_CERT_FILE
+              value: "/etc/kodama/api-ca/ca.crt"
+            {{- if $entry.mailboxCredential }}
+            - name: KODAMA_MAILBOX_CREDENTIAL_FILE
+              value: "/etc/kodama/service/mailbox/{{ $entry.mailboxCredential.key }}"
+            {{- end }}
+          # The adapter has no network listener: the probes observe that the
+          # process is still alive. A restart is the only recovery for a clean
+          # ErrDisabled exit.
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "test -e /proc/1/exe"]
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "test -e /proc/1/exe"]
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: {{ $.Values.resources.limits.cpu }}
+              memory: {{ $.Values.resources.limits.memory }}
+            requests:
+              cpu: {{ $.Values.resources.requests.cpu }}
+              memory: {{ $.Values.resources.requests.memory }}
+          volumeMounts:
+            - name: credential
+              mountPath: /etc/kodama/service
+              readOnly: true
+            - name: api-ca
+              mountPath: /etc/kodama/api-ca
+              readOnly: true
+            {{- if $entry.mailboxCredential }}
+            - name: mailbox
+              mountPath: /etc/kodama/service/mailbox
+              readOnly: true
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: credential
+          secret:
+            secretName: {{ $entry.credential.existingSecret | quote }}
+            items:
+              - key: {{ $entry.credential.key | quote }}
+                path: credential
+        - name: api-ca
+          secret:
+            secretName: {{ $.Values.secrets.tls.existingSecret | quote }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- if $entry.mailboxCredential }}
+        - name: mailbox
+          secret:
+            secretName: {{ $entry.mailboxCredential.existingSecret | quote }}
+            items:
+              - key: {{ $entry.mailboxCredential.key | quote }}
+                path: {{ $entry.mailboxCredential.key | quote }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kodama-service-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: service
+    kodama.dev/service: {{ $name | quote }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kodama
+      app.kubernetes.io/component: service
+      kodama.dev/service: {{ $name | quote }}
+  policyTypes:
+    - Ingress
+    - Egress
+  # No ingress rules: the adapter opens no listener and both probes are
+  # exec-based, so isolating and denying all ingress cuts off no real traffic.
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Release.Namespace | quote }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kodama
+              app.kubernetes.io/component: control-plane
+      ports:
+        - protocol: TCP
+          port: {{ $apiPort }}
+{{- end }}
+{{- end }}
+{{- end }}

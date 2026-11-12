@@ -1,0 +1,57 @@
+# Reproducible inline Vite acceptance pipeline for the Scaleway stage (M2).
+#
+# It is the checked-in fixture scripts/stage-accept.sh submits byte-for-byte on
+# the task-free pipeline.start alternate binding
+# POST /api/v1/projects/<project>/executions. The image is digest-only (never
+# tag@digest) and Vite is pinned to the version the gate asserts.
+actions:
+  - name: vite-build
+    image: docker.io/library/node@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216
+    timeout: 10m
+    commands:
+      - |
+        cd /workspace
+        cat > package.json <<'JSON'
+        {
+          "name": "kodama-vite-acceptance",
+          "private": true,
+          "type": "module",
+          "devDependencies": {
+            "vite": "8.3.6"
+          }
+        }
+        JSON
+      - |
+        cd /workspace
+        cat > vite.config.js <<'JS'
+        import { defineConfig } from 'vite'
+
+        export default defineConfig({
+          build: { outDir: 'dist' }
+        })
+        JS
+      - |
+        cd /workspace
+        cat > index.html <<'HTML'
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Kodama Vite acceptance</title>
+          </head>
+          <body>
+            <div id="app"></div>
+            <script type="module">
+              document.querySelector('#app').textContent = 'Kodama Vite acceptance'
+            </script>
+          </body>
+        </html>
+        HTML
+      - cd /workspace && npm install --no-audit --no-fund
+      - cd /workspace && npx vite build
+      - test -s /workspace/dist/index.html
+      - |
+        printf '\n<!-- %s -->\n' KODAMA_VITE_OK >> /workspace/dist/index.html
+        grep -F KODAMA_VITE_OK /workspace/dist/index.html
+      - ls -l /workspace/dist/index.html
+      - cd /workspace && npx vite --version

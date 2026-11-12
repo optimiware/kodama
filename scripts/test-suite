@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# scripts/test-suite: run one target of the unified test suite.
+#
+#   scripts/test-suite --target=local-all|podman|kind|stage [flags]
+#
+# The flags are those of test/suite/cmd/testsuite (--dry-run prints the plan);
+# docs/runbooks/unified-test-suite.md describes every target.
+#
+# The podman, kind and local-all targets run the orchestrator directly: each of
+# its lanes takes its own host slot through scripts/infra-slot.sh.
+#
+# The stage target is one stage session:
+#   1. it holds the host-wide stage lock (KODAMA_STAGE_LOCK, default scw-stage)
+#      for the whole run;
+#   2. test/e2e/internal/harness/run-stage.sh opens the port-forwards, acquires
+#      the four persona token files, describes the installation and removes all
+#      of it on exit. Its inputs apply unchanged (Q01_KUBE_CONTEXT, Q01_CA_PEM,
+#      Q01_PROJECT_ID, ...). Without --installation or Q01_INSTALLATION_FILE it
+#      generates the descriptor (Q01_STAGE_DESCRIPTOR=1);
+#   3. the orchestrator runs both waves inside that session and refreshes the
+#      token files every five minutes (--token-refresh), well inside their
+#      lifetime.
+#
+# This script handles no credential and never enables shell tracing.
+set -euo pipefail
+set +x
+
+die() {
+  printf 'test-suite: %s\n' "$*" >&2
+  exit 2
+}
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+target=local-all
+installation=""
+dry_run=0
+arguments=("$@")
+for ((index = 0; index < ${#arguments[@]}; index++)); do
+  argument="${arguments[index]}"
+  # The orchestrator accepts -flag and --flag.
+  [[ "$argument" == -* ]] || continue
+  flag="${argument#-}"
+  case "${flag#-}" in
+    target=*) target="${argument#*=}" ;;
+    target) target="${arguments[index + 1]:-}" ;;
+    installation=*) installation="${argument#*=}" ;;
+    installation) installation="${arguments[index + 1]:-}" ;;
+    dry-run | dry-run=true) dry_run=1 ;;
+  esac
+done
+
+if [[ "$target" != stage || "$dry_run" == 1 ]]; then
+  exec go run ./test/suite/cmd/testsuite "$@"
+fi
+
+lock="${KODAMA_STAGE_LOCK:-scw-stage}"
+[[ "$lock" =~ ^[A-Za-z0-9._-]+$ ]] || die "KODAMA_STAGE_LOCK must be a simple lock name"
+
+if [[ -n "$installation" ]]; then
+  export Q01_INSTALLATION_FILE="$installation"
+elif [[ -z "${Q01_INSTALLATION_FILE:-}" ]]; then
+  export Q01_STAGE_DESCRIPTOR=1
+fi
+
+exec scripts/infra-slot.sh --exclusive "$lock" stack -- \
+  test/e2e/internal/harness/run-stage.sh \
+  go run ./test/suite/cmd/testsuite --token-refresh=5m "$@"

@@ -1,0 +1,55 @@
+{
+  "provider": "fixture",
+  "version": 1,
+  "exchanges": [
+    {
+      "request": {
+        "model": "fixture-model",
+        "messages": [
+          {"role": "system", "content": "plan the work"},
+          {"role": "user", "content": "do the work"}
+        ],
+        "max_tokens": 64
+      },
+      "response": {
+        "content": "reading the repository",
+        "tool_calls": [
+          {"name": "repo.read", "arguments": {"path": "README.md"}}
+        ],
+        "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16},
+        "finish_reason": "tool_calls"
+      }
+    },
+    {
+      "request": {
+        "model": "fixture-model",
+        "messages": [
+          {"role": "user", "content": "summarize"}
+        ],
+        "max_tokens": 8
+      },
+      "response": {
+        "content": "done",
+        "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
+        "finish_reason": "stop"
+      }
+    },
+    {
+      "request": {
+        "model": "fixture-model",
+        "messages": [
+          {"role": "user", "content": "read the readme with the declared tool"}
+        ],
+        "tools": [
+          {"name": "repo_read", "description": "read one repository file", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}
+        ],
+        "max_tokens": 32
+      },
+      "response": {
+        "content": "done",
+        "usage": {"prompt_tokens": 9, "completion_tokens": 2, "total_tokens": 11},
+        "finish_reason": "stop"
+      }
+    }
+  ]
+}

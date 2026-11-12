@@ -1,0 +1,45 @@
+{{- /*
+Opt-in egress to named internet hosts for tenant workloads (for example a
+package registry). The Kubernetes default-deny policy stays in force and this
+only adds allowed destinations, so a build can reach exactly the hosts listed in
+networkPolicy.egressFQDNs on 443 and nothing else. It needs Cilium's FQDN
+support and is skipped, never approximated, on a cluster without the CRD.
+*/ -}}
+{{- if and .Values.networkPolicy.egressFQDNs (.Capabilities.APIVersions.Has "cilium.io/v2/CiliumNetworkPolicy") }}
+{{- range $tenant := .Values.tenants }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kodama-tenant-egress-fqdn
+  namespace: kodama-tenant-{{ $tenant }}
+  labels:
+    app.kubernetes.io/name: kodama
+    kodama.dev/tenant: {{ $tenant | quote }}
+spec:
+  endpointSelector: {}
+  egress:
+    # The DNS proxy must see the lookups for the FQDN rule to learn addresses.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              {{- range $.Values.networkPolicy.egressFQDNs }}
+              - matchName: {{ . | quote }}
+              {{- end }}
+    - toFQDNs:
+        {{- range $.Values.networkPolicy.egressFQDNs }}
+        - matchName: {{ . | quote }}
+        {{- end }}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+{{- end }}
+{{- end }}

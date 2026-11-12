@@ -1,0 +1,16 @@
+.work/
+work/
+.harness/
+/bin/
+/dist/
+*.test
+coverage.out
+*.prof
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+deploy/charts/*/charts/
+deploy/charts/*/Chart.lock
+deploy/*/clusters/*.secret.tfvars*
+deploy/*/clusters/*.local.tfvars*

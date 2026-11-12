@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Kodama stack values",
+  "description": "Values for the Kodama control-plane stack. The nats and kodama objects are validated by their own templates and the kodama subchart schema; oauthsonas is closed because its access code is credential material.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "nats": {
+      "type": "object",
+      "properties": {
+        "replicaCount": {
+          "description": "The in-cluster JetStream StatefulSet is single-node (no cluster routes are configured), so replicaCount must be 1.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1
+        },
+        "image": {
+          "type": "object",
+          "description": "The broker image is pinned by tag and digest. A tag alone can be repointed by the registry.",
+          "required": [
+            "repository",
+            "tag",
+            "digest"
+          ],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "pullPolicy": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "kodama": {
+      "type": "object"
+    },
+    "oauthsonas": {
+      "type": "object",
+      "description": "OAuthSonas development identity provider, stage and preview installations only.",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "image",
+        "tlsProxyImage",
+        "host",
+        "port",
+        "tlsSecret",
+        "accessCodeSecret",
+        "accessCodeKey",
+        "config"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^[^@]+@sha256:[0-9a-f]{64}$"
+        },
+        "tlsProxyImage": {
+          "type": "string",
+          "pattern": "^[^@]+@sha256:[0-9a-f]{64}$"
+        },
+        "host": {
+          "type": "string",
+          "pattern": "^$|^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535
+        },
+        "tlsSecret": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accessCodeSecret": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accessCodeKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "string",
+          "description": "Complete OAuthSonas configuration document (issuer, public clients, personas). Rendered into a ConfigMap, so inline client secrets and access codes are forbidden.",
+          "not": {
+            "description": "Refuse a non-empty inline client secret in oauthsonas.config, which renders into a ConfigMap.",
+            "pattern": "(^|[\\r\\n])[ \\t]*(-[ \\t]+)?(client_secret|clientSecret)[ \\t]*:|(^|[\\r\\n])[ \\t]*(-[ \\t]+)?secret[ \\t]*:[ \\t]*(\"[^\"\\r\\n]*[^ \\t\"\\r\\n][^\"\\r\\n]*\"|'[^'\\r\\n]*[^ \\t'\\r\\n][^'\\r\\n]*'|[^ \\t\"'#\\r\\n])"
+          }
+        }
+      }
+    }
+  }
+}

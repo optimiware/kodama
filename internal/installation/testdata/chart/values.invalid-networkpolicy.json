@@ -1,0 +1,24 @@
+{
+  "environment": "production",
+  "image": {
+    "repository": "registry.example.com/kodama",
+    "tag": "0.1.0"
+  },
+  "replicaCount": 1,
+  "config": {},
+  "secrets": {
+    "database": {
+      "existingSecret": "kodama-database"
+    }
+  },
+  "tenants": [
+    "tenant-a"
+  ],
+  "networkPolicy": {
+    "defaultDeny": false,
+    "permitKodama": true,
+    "permitGit": true
+  },
+  "securityContext": {},
+  "resources": {}
+}

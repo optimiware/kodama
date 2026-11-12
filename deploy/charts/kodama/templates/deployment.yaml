@@ -1,0 +1,338 @@
+{{- include "kodama.validateExtraEnv" . }}
+{{- if and .Values.config (hasKey .Values.config "optionalCapabilities") }}
+{{- fail "config.optionalCapabilities is unsupported and ignored by the chart; remove it from values" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kodama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # One controller owns the commit lane; Recreate prevents an old and a new
+  # pod from overlapping during an upgrade. This Deployment must already be
+  # Recreate: the API server owns the defaulted
+  # spec.strategy.rollingUpdate, so `rollingUpdate: null` cannot
+  # switch an existing RollingUpdate Deployment to Recreate through Helm
+  # server-side apply. A cluster that still has it as RollingUpdate needs the
+  # one-time operator remedy documented in deploy/README.md (delete the
+  # Deployment before the upgrade).
+  strategy:
+    type: Recreate
+    rollingUpdate: null
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kodama
+      app.kubernetes.io/component: control-plane
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kodama
+        app.kubernetes.io/component: control-plane
+    spec:
+      serviceAccountName: {{ if .Values.serviceAccount }}{{ .Values.serviceAccount.name | default "kodama" }}{{ else }}kodama{{ end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        fsGroup: {{ .Values.securityContext.runAsUser }}
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if and .Values.gitService .Values.gitService.enabled }}
+      # The server mounts each Git PVC through a subPath. A freshly provisioned
+      # claim has no directories yet, and a missing subPath makes the whole Pod
+      # fail to start, so this init container creates them before the server
+      # container starts. It is idempotent and touches only
+      # <claim>/repos/<tenant>, exactly the directory `git serve` serves.
+      initContainers:
+        - name: prepare-git-repos
+          image: {{ if .Values.image.digest }}"{{ .Values.image.repository }}@{{ .Values.image.digest }}"{{ else }}"{{ .Values.image.repository }}:{{ .Values.image.tag }}"{{ end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              {{- range $entry := .Values.gitService.tenants }}
+              mkdir -p "/data/{{ $entry.tenant }}/repos/{{ $entry.tenant }}"
+              {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi
+          volumeMounts:
+            {{- range $entry := .Values.gitService.tenants }}
+            - name: git-repos-{{ $entry.tenant }}
+              mountPath: /data/{{ $entry.tenant }}
+            {{- end }}
+      {{- end }}
+      containers:
+        - name: kodama
+          image: {{ if .Values.image.digest }}"{{ .Values.image.repository }}@{{ .Values.image.digest }}"{{ else }}"{{ .Values.image.repository }}:{{ .Values.image.tag }}"{{ end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - server
+            - --profile={{ .Values.environment }}
+            - --address=0.0.0.0:{{ if .Values.service }}{{ .Values.service.targetPort | default 8443 }}{{ else }}8443{{ end }}
+            - --data-dir={{ if and .Values.persistence .Values.persistence.logs }}{{ .Values.persistence.logs.mountPath | default "/var/lib/kodama" }}{{ else }}/var/lib/kodama{{ end }}
+            - --public-url={{ .Values.config.publicURL }}
+          env:
+            - name: KODAMA_PROFILE
+              value: {{ .Values.environment | quote }}
+            - name: KODAMA_INSTALLATION_ID
+              value: {{ .Values.config.installationID | default "kodama-stage" | quote }}
+            - name: KODAMA_PUBLIC_URL
+              value: {{ .Values.config.publicURL | quote }}
+            - name: KODAMA_MCP_PATH
+              value: {{ .Values.config.mcpPath | default "/mcp" | quote }}
+            - name: KODAMA_DATA_DIR
+              value: {{ if and .Values.persistence .Values.persistence.logs }}{{ .Values.persistence.logs.mountPath | default "/var/lib/kodama" | quote }}{{ else }}"/var/lib/kodama"{{ end }}
+            - name: KODAMA_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database.existingSecret }}
+                  key: database_url
+            - name: KODAMA_CONTROLLER_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database.existingSecret }}
+                  key: controller_url
+            - name: KODAMA_PUBLISHER_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database.existingSecret }}
+                  key: publisher_url
+            - name: KODAMA_AUTH_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database.existingSecret }}
+                  key: auth_url
+            - name: KODAMA_NATS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.broker.existingSecret }}
+                  key: nats_url
+            - name: KODAMA_NATS_CA_FILE
+              value: "/etc/kodama/broker-tls/ca.crt"
+            - name: KODAMA_NATS_CERT_FILE
+              value: "/etc/kodama/broker-tls/tls.crt"
+            - name: KODAMA_NATS_KEY_FILE
+              value: "/etc/kodama/broker-tls/tls.key"
+            {{- if .Values.secrets.natsAuth.existingSecret }}
+            - name: KODAMA_NATS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.natsAuth.existingSecret }}
+                  key: shell-user
+            - name: KODAMA_NATS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.natsAuth.existingSecret }}
+                  key: shell-password
+            - name: KODAMA_NATS_CALLOUT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.natsAuth.existingSecret }}
+                  key: callout-user
+            - name: KODAMA_NATS_CALLOUT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.natsAuth.existingSecret }}
+                  key: callout-password
+            - name: KODAMA_NATS_CALLOUT_ISSUER_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.natsAuth.existingSecret }}
+                  key: issuer.seed
+            - name: KODAMA_NATS_CALLOUT_ACCOUNT
+              value: {{ .Values.secrets.natsAuth.account | quote }}
+            {{- end }}
+            - name: KODAMA_KEY_ADAPTER
+              value: {{ .Values.config.keyAdapter | quote }}
+            - name: KODAMA_KEY_REF
+              value: {{ .Values.config.keyReference | quote }}
+            - name: KODAMA_KEY_CURRENT_VERSION
+              value: {{ .Values.config.keyCurrentVersion | default 1 | quote }}
+            - name: KODAMA_KEY_BLOBS_DIR
+              value: "/etc/kodama/keys"
+            - name: KODAMA_TLS_DIR
+              value: "/etc/kodama/tls"
+            # The tenant configuration comes from the chart's tenant list. A
+            # multi-tenant installation serves every listed tenant through
+            # KODAMA_TENANTS; the singleton form keeps KODAMA_TENANT for
+            # compatibility. The server refuses a namespace override next to a
+            # multi-tenant list, so the chart refuses it first.
+            {{- if gt (len .Values.tenants) 1 }}
+            - name: KODAMA_TENANTS
+              value: {{ .Values.tenants | toJson | quote }}
+            {{- else }}
+            - name: KODAMA_TENANT
+              value: {{ index .Values.tenants 0 | quote }}
+            {{- end }}
+            {{- range $name, $value := .Values.config.extraEnv }}
+            - name: {{ $name | quote }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- if .Values.config.workspacePVC }}
+            - name: KODAMA_WORKSPACE_PVC_STORAGE_CLASS
+              value: {{ .Values.config.workspacePVC.storageClass | quote }}
+            - name: KODAMA_WORKSPACE_PVC_SIZE
+              value: {{ .Values.config.workspacePVC.size | quote }}
+            - name: KODAMA_WORKSPACE_PVC_ACCESS_MODE
+              value: {{ .Values.config.workspacePVC.accessMode | default "ReadWriteOnce" | quote }}
+            {{- end }}
+            {{- if .Values.config.workloadCA }}
+            - name: KODAMA_WORKLOAD_CA_SECRET
+              value: {{ .Values.config.workloadCA.secretName | quote }}
+            {{- end }}
+            # Retained-commit keep refs. Every Git tenant PVC is mounted
+            # under one root; the keeper enumerates each tenant's bare
+            # repositories from storage on every sweep, so a new repository
+            # needs no restart and no static list. This is only meaningful when
+            # the chart also deploys the Git service and its repository PVC.
+            {{- if and .Values.gitService .Values.gitService.enabled }}
+            - name: KODAMA_GIT_STORAGE_ROOT
+              value: "/var/lib/kodama/git-repos"
+            {{- end }}
+          # A static cloud KMS credential lives in its own Secret, apart from
+          # the binary KEK blobs in the keys Secret (a blob cannot be an env var
+          # and rotating a credential must never touch the KEK). Production
+          # with the scw-kms adapter reads SCW_SECRET_KEY from it, so the
+          # reference is required there; it is optional only for a development
+          # or test profile. Production with aws-kms (EKS IRSA) or gcp-kms (GKE
+          # Workload Identity) has no static credential: the pod authenticates
+          # through its annotated ServiceAccount, and no reference to the
+          # Secret is rendered, so a missing Secret cannot block the pod and a
+          # present one cannot reach it. A development or test profile that
+          # names no Secret renders no reference either.
+          {{- $production := eq .Values.environment "production" }}
+          {{- $workloadIdentity := and $production (has .Values.config.keyAdapter (list "aws-kms" "gcp-kms")) }}
+          {{- $kmsCredentialsNamed := and .Values.secrets.kmsCredentials .Values.secrets.kmsCredentials.existingSecret }}
+          {{- if and (not $workloadIdentity) (or $production $kmsCredentialsNamed) }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.kmsCredentials.existingSecret }}
+                {{- if ne .Values.environment "production" }}
+                optional: true
+                {{- end }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
+          ports:
+            - name: https
+              containerPort: {{ if .Values.service }}{{ .Values.service.targetPort | default 8443 }}{{ else }}8443{{ end }}
+              protocol: TCP
+          {{- $probes := .Values.probes | default dict }}
+          {{- if ne ($probes.mode | default "httpGet") "httpGet" }}
+          {{- fail "probes.mode must be httpGet: a TCP probe cannot observe process liveness or dependency readiness" }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: {{ $probes.livenessPath | default "/healthz" }}
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: {{ $probes.timeoutSeconds | default 10 }}
+          readinessProbe:
+            httpGet:
+              path: {{ $probes.readinessPath | default "/readyz" }}
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: {{ $probes.timeoutSeconds | default 10 }}
+          volumeMounts:
+            - name: retained-logs
+              mountPath: {{ if and .Values.persistence .Values.persistence.logs }}{{ .Values.persistence.logs.mountPath | default "/var/lib/kodama" }}{{ else }}/var/lib/kodama{{ end }}
+            - name: keys
+              mountPath: /etc/kodama/keys
+              readOnly: true
+            - name: database-ca
+              mountPath: /etc/kodama/pg-ca
+              readOnly: true
+            - name: broker-tls
+              mountPath: /etc/kodama/broker-tls
+              readOnly: true
+            {{- if .Values.secrets.tls }}
+            - name: tls
+              mountPath: /etc/kodama/tls
+              readOnly: true
+            {{- end }}
+            {{- if and .Values.gitService .Values.gitService.enabled }}
+            {{- range $entry := .Values.gitService.tenants }}
+            # Only the tenant's served repository directory, never the receive
+            # journal, is visible to the control plane.
+            - name: git-repos-{{ $entry.tenant }}
+              mountPath: /var/lib/kodama/git-repos/{{ $entry.tenant }}
+              subPath: repos/{{ $entry.tenant }}
+            {{- end }}
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: retained-logs
+          {{- if and .Values.persistence .Values.persistence.logs .Values.persistence.logs.enabled }}
+          persistentVolumeClaim:
+            claimName: kodama-retained-logs
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: keys
+          secret:
+            secretName: {{ .Values.secrets.keys.existingSecret }}
+        - name: database-ca
+          secret:
+            secretName: {{ .Values.secrets.database.existingSecret }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: broker-tls
+          secret:
+            secretName: {{ .Values.secrets.broker.existingSecret }}
+        {{- if .Values.secrets.tls }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.secrets.tls.existingSecret }}
+        {{- end }}
+        {{- if and .Values.gitService .Values.gitService.enabled }}
+        {{- range $entry := .Values.gitService.tenants }}
+        # RWO on a single-worker stage lets the control plane and the tenant's
+        # Git StatefulSet share the claim. A multi-node cluster needs an RWX
+        # class or both pods pinned to one node; see
+        # docs/runbooks/production-deployment.md.
+        - name: git-repos-{{ $entry.tenant }}
+          persistentVolumeClaim:
+            claimName: kodama-git-{{ $entry.tenant }}-data
+        {{- end }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}

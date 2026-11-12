@@ -1,0 +1,31 @@
+[
+  {
+    "kind": "unknown"
+  },
+  {
+    "kind": "absent"
+  },
+  {
+    "kind": "never_started",
+    "proof": "controller acquired no lease and the runtime confirms no object was ever created"
+  },
+  {
+    "kind": "running"
+  },
+  {
+    "kind": "exited",
+    "exit_code": 0,
+    "stop": {
+      "state": "confirmed",
+      "detail": "runtime observed exit and confirmed termination"
+    }
+  },
+  {
+    "kind": "exited",
+    "exit_code": 137,
+    "stop": {
+      "state": "unconfirmed",
+      "detail": "exit observed; stop barrier still pending"
+    }
+  }
+]

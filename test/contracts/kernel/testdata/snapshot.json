@@ -1,0 +1,20 @@
+[
+  {
+    "name": "task-free",
+    "task": null,
+    "present": false,
+    "task_id": ""
+  },
+  {
+    "name": "empty-task",
+    "task": "",
+    "present": true,
+    "task_id": "task-empty"
+  },
+  {
+    "name": "opaque-task",
+    "task": "eyJ0aXRsZSI6Im9wYXF1ZSJ9",
+    "present": true,
+    "task_id": "task-1"
+  }
+]

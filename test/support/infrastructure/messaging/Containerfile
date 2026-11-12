@@ -1,0 +1,16 @@
+# Deterministic fixture image context.
+#
+# The single base is the Git-capable SCM buildpack image, pinned by both its tag
+# and its manifest digest. The digest was resolved once from
+# docker.io/library/buildpack-deps:trixie-scm; the Go fixture resolves that tag
+# once per shard (one pull at most) and refuses to build unless the resolution
+# matches this pin, so a retagged upstream base cannot silently replace it.
+#
+# The builder also passes --pull=never, --network=none, --timestamp 0 and
+# SOURCE_DATE_EPOCH=0, so the context carries no ambient package installation,
+# network access or wall-clock stamp. There is deliberately no FIXTURE_BASE
+# build argument: this FROM is the only base declaration.
+FROM docker.io/library/buildpack-deps:trixie-scm@sha256:712f969c9d81a35f9f00cce701faae521891d42a20b592b61bd0e6c5328fad7c
+COPY fixture.sh /fixture.sh
+COPY marker /fixture/marker
+ENTRYPOINT ["/bin/sh", "/fixture.sh"]

@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# scripts/dist: build the release artifacts of this checkout. Nothing is pushed.
+#
+#   scripts/dist [--output <directory>]
+#
+# For the version in the VERSION file it writes, into dist/ by default:
+#
+#   kodactl_<version>_<os>_<arch>.tar.gz   kodactl and LICENSE, one per platform
+#   kodama-<version>.tgz                   the control-plane Helm chart
+#   kodama-stack-<version>.tgz             the stack Helm chart (bundles kodama)
+#   SHA256SUMS                             digests of every file above
+#
+# DIST_PLATFORMS overrides the kodactl platforms (space-separated os/arch).
+# The kodama server is released as a container image (scripts/image), not here.
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+die() { printf 'scripts/dist: %s\n' "$*" >&2; exit 1; }
+
+output="${repo_root}/dist"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) [[ $# -ge 2 ]] || die "--output requires a value"; output="$2"; shift 2 ;;
+    -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+for tool in go helm git tar sha256sum; do
+  command -v "$tool" >/dev/null 2>&1 || die "${tool} is required"
+done
+
+version="$(<"${repo_root}/VERSION")"
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "VERSION '${version}' is not MAJOR.MINOR.PATCH"
+revision="$(git -C "$repo_root" rev-parse HEAD)"
+# Archive entries carry the commit time, so the same commit gives the same bytes.
+commit_time="$(git -C "$repo_root" log -1 --format=%ct HEAD)"
+platforms="${DIST_PLATFORMS:-linux/amd64 linux/arm64 darwin/amd64 darwin/arm64}"
+
+# helm package takes the chart version from Chart.yaml; refuse a chart that
+# disagrees with VERSION instead of publishing two versions under one tag.
+for chart in kodama kodama-stack; do
+  chart_version="$(sed -n 's/^version: *//p' "${repo_root}/deploy/charts/${chart}/Chart.yaml")"
+  [[ "$chart_version" == "$version" ]] || die "chart ${chart} is version '${chart_version}', VERSION is '${version}'"
+done
+
+mkdir -p "$output"
+output="$(cd "$output" && pwd)"
+[[ -z "$(ls -A "$output")" ]] || die "${output} is not empty; remove it first"
+stage="$(mktemp -d)"
+trap 'rm -rf "$stage"' EXIT
+
+for platform in $platforms; do
+  os="${platform%/*}"
+  arch="${platform#*/}"
+  name="kodactl_${version}_${os}_${arch}"
+  mkdir "${stage}/${name}"
+  (cd "$repo_root" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+    go build -trimpath -buildvcs=false \
+      -ldflags "-s -w -X main.version=${version} -X main.revision=${revision}" \
+      -o "${stage}/${name}/kodactl" ./cmd/kodactl)
+  cp "${repo_root}/LICENSE" "${stage}/${name}/LICENSE"
+  tar -C "$stage" --sort=name --owner=0 --group=0 --numeric-owner --mtime="@${commit_time}" \
+    -cf - "$name" | gzip -n >"${output}/${name}.tar.gz"
+done
+
+# The stack chart's dependency is file://../kodama. Package a copy, so the
+# vendored subchart never lands in the checkout.
+cp -R "${repo_root}/deploy/charts" "${stage}/charts"
+helm package "${stage}/charts/kodama" --destination "$output" >/dev/null
+helm package --dependency-update "${stage}/charts/kodama-stack" --destination "$output" >/dev/null
+
+(cd "$output" && sha256sum -- * >SHA256SUMS)
+printf 'scripts/dist: version %s, revision %s\n' "$version" "$revision"
+(cd "$output" && ls -1)

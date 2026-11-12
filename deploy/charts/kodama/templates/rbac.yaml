@@ -1,0 +1,84 @@
+{{- if not .Values.tenants }}{{- fail "tenants must not be empty" }}{{- end }}
+{{- $create := true }}
+{{- if .Values.rbac }}
+{{- if hasKey .Values.rbac "create" }}
+{{- $create = .Values.rbac.create }}
+{{- end }}
+{{- end }}
+{{- if $create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kodama-namespace-reader-{{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: control-plane
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get"]
+    resourceNames:
+      {{- range $tenant := .Values.tenants }}
+      - kodama-tenant-{{ $tenant }}
+      {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kodama-namespace-reader-{{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: control-plane
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kodama-namespace-reader-{{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ if .Values.serviceAccount }}{{ .Values.serviceAccount.name | default "kodama" }}{{ else }}kodama{{ end }}
+    namespace: {{ .Release.Namespace }}
+{{- range $tenant := .Values.tenants }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kodama-runtime
+  namespace: kodama-tenant-{{ $tenant }}
+  labels:
+    app.kubernetes.io/name: kodama
+    kodama.dev/tenant: {{ $tenant | quote }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kodama-runtime
+  namespace: kodama-tenant-{{ $tenant }}
+  labels:
+    app.kubernetes.io/name: kodama
+    kodama.dev/tenant: {{ $tenant | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kodama-runtime
+subjects:
+  - kind: ServiceAccount
+    name: {{ if $.Values.serviceAccount }}{{ $.Values.serviceAccount.name | default "kodama" }}{{ else }}kodama{{ end }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}

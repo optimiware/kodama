@@ -1,0 +1,86 @@
+{{- /*
+Tenant namespaces start from default-deny. The control-plane namespace is
+deliberately not fenced here: it needs its own egress to PostgreSQL, NATS, KMS
+and cluster DNS, so a blanket deny would cut the controller off. Every tenant
+policy is rendered into kodama-tenant-<tenant>, never into .Release.Namespace.
+*/ -}}
+{{- if .Values.networkPolicy.defaultDeny }}
+{{- $apiPort := 8443 }}
+{{- if .Values.service }}
+{{- $apiPort = int (.Values.service.targetPort | default 8443) }}
+{{- end }}
+{{- range $tenant := .Values.tenants }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kodama-tenant-default-deny
+  namespace: kodama-tenant-{{ $tenant }}
+  labels:
+    app.kubernetes.io/name: kodama
+    kodama.dev/tenant: {{ $tenant | quote }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+{{- if $.Values.networkPolicy.permitKodama }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Release.Namespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kodama
+      ports:
+        - protocol: TCP
+          port: {{ $apiPort }}
+{{- end }}
+  egress:
+    # Cluster DNS stays reachable so permitted destinations resolve.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- if $.Values.networkPolicy.permitKodama }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Release.Namespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kodama
+      ports:
+        - protocol: TCP
+          port: {{ $apiPort }}
+        {{- if and $.Values.gitService $.Values.gitService.enabled (ne (int ($.Values.gitService.port | default 8443)) $apiPort) }}
+        # A Git Service port that differs from the control-plane targetPort is
+        # reachable from workloads through the same release-namespace pod
+        # selector. When equal to targetPort it is already covered above.
+        - protocol: TCP
+          port: {{ int ($.Values.gitService.port | default 8443) }}
+        {{- end }}
+{{- end }}
+{{- if $.Values.networkPolicy.permitGit }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: git
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: git
+      ports:
+        - protocol: TCP
+          port: 443
+{{- end }}
+{{- end }}
+{{- end }}

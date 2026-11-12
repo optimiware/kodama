@@ -1,0 +1,27 @@
+{{- if and .Values.service (hasKey .Values.service "type") (ne (toString .Values.service.type) "ClusterIP") }}
+{{- fail (printf "service.type must be ClusterIP (got %q): the Kodama control-plane Service is internal ClusterIP-only" (toString .Values.service.type)) }}
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kodama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: control-plane
+  {{- if and .Values.service .Values.service.annotations }}
+  annotations:
+    {{- range $key, $value := .Values.service.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: control-plane
+  ports:
+    - name: https
+      port: {{ if .Values.service }}{{ .Values.service.port | default 8443 }}{{ else }}8443{{ end }}
+      targetPort: {{ if .Values.service }}{{ .Values.service.targetPort | default 8443 }}{{ else }}8443{{ end }}
+      protocol: TCP

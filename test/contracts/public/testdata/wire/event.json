@@ -1,0 +1,18 @@
+{
+  "id": "evt-0001",
+  "type": "task.created",
+  "source": {
+    "kind": "shell",
+    "principal_id": "prn-1"
+  },
+  "at": "2026-01-02T03:04:05Z",
+  "scope": {
+    "tenant_id": "ten-1",
+    "project_id": "prj-1"
+  },
+  "subject_id": "tsk-1",
+  "subject_version": 3,
+  "correlation_id": "cor-1",
+  "causation_id": "cau-1",
+  "data": "eyJvayI6dHJ1ZX0="
+}

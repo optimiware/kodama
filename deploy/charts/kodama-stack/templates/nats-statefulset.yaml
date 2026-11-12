@@ -1,0 +1,163 @@
+{{- if .Values.nats.enabled }}
+{{- include "kodama-stack.natsAuthGuard" . }}
+{{- $auth := .Values.nats.auth }}
+{{- if hasKey .Values.nats "replicaCount" }}
+{{- if or (eq (toString .Values.nats.replicaCount) "") (not (regexMatch "^-?[0-9]+$" (toString .Values.nats.replicaCount))) (ne (int .Values.nats.replicaCount) 1) }}
+{{- fail "nats.replicaCount must be 1: the in-cluster JetStream StatefulSet is single-node (no cluster routes are configured)" }}
+{{- end }}
+{{- end }}
+{{- /* The broker image must stay immutable: a tag can be repointed. */ -}}
+{{- if not (and .Values.nats.image.tag (regexMatch "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$" (toString .Values.nats.image.tag))) }}
+{{- fail "nats.image.tag must be a non-empty tag: the broker image is pinned by tag and digest" }}
+{{- end }}
+{{- if not (and .Values.nats.image.digest (regexMatch "^sha256:[a-f0-9]{64}$" (toString .Values.nats.image.digest))) }}
+{{- fail "nats.image.digest must be pinned by digest (sha256:<64 hex>): a tag can be repointed without a chart change" }}
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/part-of: kodama-stack
+spec:
+  serviceName: nats
+  replicas: {{ .Values.nats.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nats
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nats
+        app.kubernetes.io/part-of: kodama-stack
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nats
+          image: "{{ .Values.nats.image.repository }}:{{ .Values.nats.image.tag }}@{{ .Values.nats.image.digest }}"
+          imagePullPolicy: {{ .Values.nats.image.pullPolicy | default "IfNotPresent" }}
+          args:
+            - "-c"
+            - "/etc/nats/config/nats.conf"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- if eq $auth.mode "credentials" }}
+            - name: NATS_AUTH_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.nats.auth.credentials.existingSecret }}
+                  key: {{ .Values.nats.auth.credentials.userKey | default "user" }}
+            - name: NATS_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.nats.auth.credentials.existingSecret }}
+                  key: {{ .Values.nats.auth.credentials.passwordKey | default "password" }}
+            {{- end }}
+            {{- if eq $auth.mode "callout" }}
+            - name: NATS_SHELL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.nats.auth.callout.existingSecret }}
+                  key: {{ .Values.nats.auth.callout.shellUserKey | default "shell-user" }}
+            - name: NATS_SHELL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.nats.auth.callout.existingSecret }}
+                  key: {{ .Values.nats.auth.callout.shellPasswordKey | default "shell-password" }}
+            - name: NATS_CALLOUT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.nats.auth.callout.existingSecret }}
+                  key: {{ .Values.nats.auth.callout.userKey | default "callout-user" }}
+            - name: NATS_CALLOUT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.nats.auth.callout.existingSecret }}
+                  key: {{ .Values.nats.auth.callout.passwordKey | default "callout-password" }}
+            - name: NATS_CALLOUT_ISSUER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.nats.auth.callout.existingSecret }}
+                  key: {{ .Values.nats.auth.callout.issuerPubKey | default "issuer.pub" }}
+            {{- end }}
+          ports:
+            - name: tls-client
+              containerPort: {{ .Values.nats.port | default 4222 }}
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: tls-client
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            tcpSocket:
+              port: tls-client
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: {{ .Values.nats.resources.limits.cpu }}
+              memory: {{ .Values.nats.resources.limits.memory }}
+            requests:
+              cpu: {{ .Values.nats.resources.requests.cpu }}
+              memory: {{ .Values.nats.resources.requests.memory }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nats/config
+              readOnly: true
+            - name: tls
+              mountPath: /etc/nats/tls
+              readOnly: true
+            - name: client-ca
+              mountPath: /etc/nats/client-ca
+              readOnly: true
+            - name: jetstream-data
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: nats-config
+        - name: tls
+          secret:
+            secretName: {{ .Values.nats.tls.existingSecret }}
+        - name: client-ca
+          secret:
+            secretName: {{ .Values.nats.auth.mtls.existingSecret }}
+            items:
+              - key: {{ .Values.nats.auth.mtls.caKey | default "ca.crt" }}
+                path: ca.crt
+  volumeClaimTemplates:
+    - metadata:
+        name: jetstream-data
+        labels:
+          app.kubernetes.io/name: nats
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- if .Values.nats.jetstream.storageClass }}
+        storageClassName: {{ .Values.nats.jetstream.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.nats.jetstream.size | default "10Gi" }}
+{{- end }}

@@ -1,0 +1,304 @@
+# Kodama installation values.
+#
+# Every credential is referenced through an existing Kubernetes Secret. This
+# file never carries a literal secret value, no template creates a Secret, and
+# config.extraEnv below is restricted to non-secret optional variables: a
+# credential-shaped name, a development token, a cloud credential or a value
+# with URL userinfo is refused at render time (values.schema.json and
+# templates/_extraenv.tpl).
+# The control plane runs as one replica; tenant workloads live in their own
+# namespaces behind default-deny network policies.
+
+environment: "production"
+
+image:
+  repository: registry.example.com/kodama
+  tag: "0.1.0"
+  digest: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+config:
+  installationID: "kodama-stage"
+  publicURL: "https://kodama.kodama-system.svc.cluster.local:8443"
+  # Retained for the descriptor baseline only: no chart template reads
+  # databaseURL or natsURL. The server reads every database URL from the
+  # kodama-database Secret keys (database_url, controller_url, publisher_url,
+  # auth_url) and the broker URL from the kodama-broker Secret; the
+  # full-verification TLS mode is delivered by scripts/bootstrap-secrets, not
+  # by this value.
+  databaseURL: "postgres://kodama_runtime@database:5432/kodama?sslmode=verify-full&sslrootcert=/etc/kodama/pg-ca/ca.crt"
+  natsURL: "tls://nats:4222"
+  keyAdapter: "scw-kms"
+  keyReference: "scw-kms:fr-par/00000000-0000-0000-0000-000000000000"
+  keyCurrentVersion: 1
+  mcpPath: "/mcp"
+  # Server environment, name to literal string. This is a narrow allowlist,
+  # repeated in values.schema.json and templates/_extraenv.tpl:
+  #
+  # REQUIRED for environment: production (the render fails without them or with
+  # an empty value; cmd/kodama/production.go refuses to start):
+  #   KODAMA_OIDC_ISSUER, KODAMA_OIDC_AUDIENCE, KODAMA_OIDC_JWKS_URL,
+  #   KODAMA_OIDC_TENANT_CLAIM
+  #
+  # Every value that is present must be non-empty: an empty OIDC or discovery
+  # value is a named configuration error, never a silent default.
+  #
+  # Optional:
+  #   KODAMA_OIDC_{SUBJECT_CLAIM,PROJECT_CLAIM,CA_FILE}
+  #                                            (cmd/kodama/production.go)
+  #   KODAMA_DISCOVERY_{ISSUER,CLIENT_ID,AUDIENCE,AUTHORIZATION_ENDPOINT,
+  #                     TOKEN_ENDPOINT,DEVICE_AUTHORIZATION_ENDPOINT,
+  #                     REVOCATION_ENDPOINT,SCOPES,API_URL}
+  #                                            (cmd/kodama/server.go)
+  #   KODAMA_TENANT_NAMESPACE                  (production.go singleton only:
+  #                                            defaults to kodama-tenant-<tenant>;
+  #                                            refused with more than one tenant)
+  #   KODAMA_WORKLOAD_{CPU,MEMORY}_{REQUEST,LIMIT}
+  #                                            (production.go runtime policy)
+  #
+  # A name the chart renders itself is refused (a duplicate env entry would
+  # override the production composition), as are KODAMA_DEV_* development
+  # tokens, SCW_/AWS_/GOOGLE_ cloud credentials and credential-shaped names
+  # (except a mounted *_FILE path). Values are literal strings: objects
+  # (valueFrom) are refused, and so is a URL carrying user:password@ userinfo.
+  # Never put a secret here; credentials come from Secrets.
+  extraEnv: {}
+  workspacePVC:
+    storageClass: "sbs-default"
+    size: "10Gi"
+    accessMode: "ReadWriteOnce"
+  workloadCA:
+    secretName: "kodama-workload-ca"
+
+secrets:
+  database:
+    existingSecret: kodama-database
+  broker:
+    existingSecret: kodama-broker
+  keys:
+    existingSecret: kodama-keys
+  # The static cloud KMS credential, by config.keyAdapter:
+  #   scw-kms  REQUIRED for environment: production. The production composition
+  #            reads SCW_SECRET_KEY from this Secret.
+  #   aws-kms  not used. The pod authenticates with EKS IRSA: set
+  #            serviceAccount.annotations."eks.amazonaws.com/role-arn".
+  #   gcp-kms  not used. The pod authenticates with GKE Workload Identity: set
+  #            serviceAccount.annotations."iam.gke.io/gcp-service-account".
+  # For aws-kms and gcp-kms in production the chart renders no reference to
+  # this Secret, so the value below is ignored and the Secret need not exist;
+  # the render fails instead when the ServiceAccount the chart creates lacks
+  # the annotation. A development or test profile may omit the Secret.
+  kmsCredentials:
+    existingSecret: kodama-kms-credentials
+  tls:
+    existingSecret: kodama-tls
+  # Per-credential broker access. scripts/bootstrap-secrets creates this Secret
+  # (kodama-nats-auth) before the first chart render; the control plane connects
+  # with the bypass user and starts the authorization callout. The broker
+  # receives the matching public issuer key; this Secret holds the account seed
+  # and both bypass credentials and is never rendered inline. The reference is
+  # always rendered, so a missing Secret fails the pod at start instead of
+  # silently falling back to an unauthenticated broker connection.
+  natsAuth:
+    existingSecret: "kodama-nats-auth"
+    # The broker account the callout grants bind to. It must equal the stack
+    # chart's nats.auth.callout.account; the stack chart wires both from one
+    # YAML anchor so they cannot drift.
+    account: "KODAMA"
+
+# The tenants this installation serves. Every entry gets its own namespace,
+# RBAC role, network policy and Kubernetes runtime adapter, and the Deployment
+# renders the whole list as KODAMA_TENANTS (a one-entry list keeps the
+# singleton KODAMA_TENANT). Ids are lowercase DNS labels because the namespace
+# is derived as kodama-tenant-<tenant>; duplicates and invalid ids are refused
+# at render time.
+tenants:
+  - tenant-a
+
+networkPolicy:
+  defaultDeny: true
+  permitKodama: true
+  permitGit: true
+  # Hosts tenant workloads may reach on 443 (Cilium FQDN policy), for example
+  # ["registry.npmjs.org"]. Empty keeps workloads on cluster-internal traffic.
+  # The policy needs the cilium.io/v2 CiliumNetworkPolicy CRD: on a cluster
+  # without Cilium FQDN support this renders no policy at all, it never
+  # approximates the allowlist with CIDR or entity rules. Cilium's DNS proxy
+  # must also be enabled (enable-l7-proxy) for the DNS rule to work.
+  egressFQDNs: []
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+
+resources:
+  limits:
+    cpu: "1"
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+service:
+  type: ClusterIP
+  port: 8443
+  targetPort: 8443
+
+# The control plane's ServiceAccount. In production the aws-kms adapter needs
+# the annotation eks.amazonaws.com/role-arn (EKS IRSA role) and the gcp-kms
+# adapter iam.gke.io/gcp-service-account (GKE Workload Identity); the render
+# fails without it while create is true. scripts/deploy sets it from the
+# deployment descriptor. The cloud binding trusts exactly the ServiceAccount
+# named kodama in the release namespace.
+serviceAccount:
+  create: true
+  name: kodama
+  annotations: {}
+
+rbac:
+  create: true
+
+persistence:
+  logs:
+    enabled: true
+    storageClass: ""
+    size: 10Gi
+    accessMode: ReadWriteOnce
+    mountPath: /var/lib/kodama
+
+probes:
+  mode: httpGet
+  livenessPath: /healthz
+  readinessPath: /readyz
+  timeoutSeconds: 10
+
+# Optional per-tenant `kodama git serve` StatefulSets. Off by default: with
+# gitService.enabled false the chart renders nothing new.
+#
+# Each entry deploys one independent Git service account companion in the
+# release namespace, with its own PVC, ClusterIP Service, TLS-terminating
+# sidecar, NetworkPolicy and repository-to-resource mappings. The tenant id is
+# capped at 41 characters so kodama-git-<tenant> plus the StatefulSet
+# controller-revision-hash label stays within 63 characters. The service
+# credential and the TLS certificate are referenced from existing Secrets;
+# this file never carries a credential value.
+#
+# The receive journal is /var/lib/kodama/git/journal and the served repositories
+# are /var/lib/kodama/git/repos on the same PVC. They are siblings: `git serve`
+# refuses a journal directory at or inside a served repository.
+#
+# When enabled, the control plane also mounts every tenant's served repository
+# directory (repos/<tenant>, never the journal) read-write and sets
+# KODAMA_GIT_STORAGE_ROOT. The retention loop then keeps one ref per commit
+# named by a retained execution under refs/kodama/keep/<sha>, which smart HTTP
+# hides from every advertisement. The control plane enumerates the tenant's
+# repositories from storage on every sweep, so a newly provisioned repository
+# needs no restart. On a single worker the RWO claim is shared directly; a
+# multi-node cluster needs an RWX class or both pods on one node. Keep refs are
+# written on the next retention sweep (once at startup, then daily), so do not
+# run `git gc` on the repository PVC before that sweep after a rewinding push.
+#
+# The binary speaks smart HTTP; the pinned Caddy sidecar terminates TLS for the
+# externally served listener. The repository PVC is mounted by the Git service
+# and, for retained-commit keep refs, by the control plane's served-repository
+# subpath; execution workloads never mount it. It carries
+# helm.sh/resource-policy: keep so an uninstall or removed entry cannot delete
+# the repositories and journal.
+#
+# Both this workload and the services entries mount the API CA from
+# secrets.tls.existingSecret (key ca.crt) and set SSL_CERT_FILE to it. Only the
+# Kodama API is called, so the system trust roots are deliberately replaced by
+# the installation CA rather than appended to them.
+gitService:
+  enabled: false
+  # Public API base URL the Git service calls. Empty uses config.publicURL.
+  baseURL: ""
+  # TLS-terminating proxy image, pinned by digest. A tag can be repointed, so
+  # the template refuses anything that is not repository@sha256:<64 hex>.
+  tlsProxyImage: "docker.io/library/caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee"
+  # Port the ClusterIP Service and the TLS sidecar expose. Must be unprivileged
+  # (1024-65535) because both containers run as UID 65532. Port 8081 is
+  # reserved for the plaintext smart-HTTP backend on the pod network and is
+  # refused: both containers share the Pod network namespace, so the sidecar
+  # would crash-loop on the taken socket.
+  port: 8443
+  # Complete per-tenant entries. Enabling gitService without at least one entry
+  # is refused at render time, as is an entry missing any required block.
+  tenants: []
+  # Example:
+  # tenants:
+  #   - tenant: tenant-a
+  #     # Repository name to registered resource id. One git serve --resource
+  #     # flag is rendered per entry; a repository without a mapping is refused
+  #     # by the service.
+  #     repositories:
+  #       - name: shop/web
+  #         resource: resource-id
+  #     # Service account credential, mounted read-only. The service
+  #     # authenticates only through the public API with this credential.
+  #     credential:
+  #       existingSecret: kodama-git-tenant-a
+  #       key: token
+  #     # kubernetes.io/tls Secret carrying tls.crt and tls.key.
+  #     tls:
+  #       existingSecret: kodama-tls
+  #     storage:
+  #       storageClass: sbs-default
+  #       size: 10Gi
+  #       accessMode: ReadWriteOnce
+  #     # The only pod sources permitted to reach the Git service. Each entry
+  #     # becomes one NetworkPolicy ingress peer on the TLS port; podLabels
+  #     # narrows the peer to those pods.
+  #     clients:
+  #       - namespace: kodama-tenant-tenant-a
+  #         podLabels:
+  #           kodama.dev/tenant: tenant-a
+
+# Optional independent Userland service adapters (`kodama services`). Off by
+# default: with services.enabled false the chart renders nothing new.
+#
+# Each entry runs one adapter kind in the release namespace with its own
+# service credential from an existing Secret and a NetworkPolicy that allows
+# egress only to the Kodama API and cluster DNS and denies all ingress: the
+# adapter opens no listener and both probes are exec-based. The merge_coordinator
+# kind is refused; the accepted kinds are webhook, email, timer
+# and responder. A timer entry requires a positive duration schedule. An email
+# entry may reference a mailbox credential Secret; the file is mounted
+# read-only and exposed only through KODAMA_MAILBOX_CREDENTIAL_FILE.
+services:
+  enabled: false
+  # Public API base URL the adapters call. Empty uses config.publicURL.
+  baseURL: ""
+  entries: []
+  # Example:
+  # entries:
+  #   - name: responder
+  #     kind: responder
+  #     service: responder-svc
+  #     tenant: tenant-a
+  #     project: project-a
+  #     credential:
+  #       existingSecret: kodama-service-responder
+  #       key: token
+  #   - name: timer
+  #     kind: timer
+  #     service: timer-svc
+  #     tenant: tenant-a
+  #     project: project-a
+  #     schedule: 30s
+  #     credential:
+  #       existingSecret: kodama-service-timer
+  #       key: token
+  #   - name: email
+  #     kind: email
+  #     service: email-svc
+  #     tenant: tenant-a
+  #     project: project-a
+  #     credential:
+  #       existingSecret: kodama-service-email
+  #       key: token
+  #     mailboxCredential:
+  #       existingSecret: kodama-email-mailbox
+  #       key: password

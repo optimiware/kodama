@@ -1,0 +1,876 @@
+{
+  "operations": [
+    {
+      "operation": "tenant.create",
+      "request": {
+        "tenant_id": "ten-1",
+        "name": "Acme Corp"
+      },
+      "result": {
+        "tenant_id": "ten-1",
+        "version": 1
+      }
+    },
+    {
+      "operation": "tenant.rotate_key",
+      "request": {
+        "name": "Acme Corp",
+        "tenant_id": "ten-1"
+      },
+      "result": {
+        "tenant_version": 2,
+        "key_version": 2
+      }
+    },
+    {
+      "operation": "project.create",
+      "request": {
+        "project_id": "prj-1",
+        "name": "Platform",
+        "tenant_id": "ten-1"
+      },
+      "result": {
+        "project_id": "prj-1",
+        "version": 1
+      }
+    },
+    {
+      "operation": "project.update",
+      "request": {
+        "name": "Platform Team",
+        "project_id": "prj-1"
+      },
+      "result": {
+        "version": 2
+      }
+    },
+    {
+      "operation": "membership.grant",
+      "request": {
+        "roles": [
+          "engineer",
+          "viewer"
+        ],
+        "project_id": "prj-1",
+        "principal_id": "prn-1"
+      },
+      "result": {
+        "version": 1
+      }
+    },
+    {
+      "operation": "membership.revoke",
+      "request": {
+        "project_id": "prj-1",
+        "principal_id": "prn-1"
+      },
+      "result": {
+        "version": 2
+      }
+    },
+    {
+      "operation": "membership.list",
+      "request": {
+        "page": {
+          "limit": 2
+        },
+        "project_id": "prj-1"
+      },
+      "result": {
+        "memberships": [
+          {
+            "principal_id": "prn-1",
+            "roles": [
+              "admin"
+            ],
+            "version": 1
+          }
+        ],
+        "next_cursor": "djEKcHJuLTE"
+      }
+    },
+    {
+      "operation": "resource.binding.register",
+      "request": {
+        "binding_id": "bnd-1",
+        "resource_id": "res-1",
+        "enforcing_service": "svc-1",
+        "trusted_origins": [
+          "https://git.example.com"
+        ],
+        "operations": [
+          "git.ref.update"
+        ],
+        "reportable_events": [
+          "merge.completed"
+        ],
+        "project_id": "prj-1",
+        "metadata": {
+          "owner": "platform"
+        }
+      },
+      "result": {
+        "binding_id": "bnd-1",
+        "version": 1
+      }
+    },
+    {
+      "operation": "resource.binding.update",
+      "request": {
+        "resource_id": "res-1",
+        "enforcing_service": "svc-1",
+        "trusted_origins": [
+          "https://git.example.com"
+        ],
+        "operations": [
+          "git.ref.update"
+        ],
+        "reportable_events": [
+          "merge.completed"
+        ],
+        "binding_id": "bnd-1",
+        "metadata": {
+          "owner": "platform-team"
+        }
+      },
+      "result": {
+        "version": 2
+      }
+    },
+    {
+      "operation": "resource.binding.delete",
+      "request": {
+        "binding_id": "bnd-1"
+      },
+      "result": {
+        "version": 3
+      }
+    },
+    {
+      "operation": "resource.binding.read",
+      "request": {
+        "binding_id": "bnd-1"
+      },
+      "result": {
+        "binding_id": "bnd-1",
+        "resource_id": "res-1",
+        "enforcing_service": "svc-1",
+        "trusted_origins": [
+          "https://git.example.com"
+        ],
+        "operations": [
+          "git.ref.update"
+        ],
+        "reportable_events": [
+          "merge.completed"
+        ],
+        "version": 2,
+        "metadata": {
+          "owner": "platform-team"
+        }
+      }
+    },
+    {
+      "operation": "pipeline.apply",
+      "request": {
+        "yaml": "cGlwZWxpbmU6IGJ1aWxk",
+        "project_id": "prj-1",
+        "name": "build.v2"
+      },
+      "result": {
+        "pipeline_id": "pipe-1",
+        "version": 1
+      }
+    },
+    {
+      "operation": "pipeline.read",
+      "request": {
+        "project_id": "prj-1",
+        "pipeline_id": "pipe-1"
+      },
+      "result": {
+        "pipeline_id": "pipe-1",
+        "name": "build",
+        "version": 1,
+        "yaml": "cGlwZWxpbmU6IGJ1aWxk"
+      }
+    },
+    {
+      "operation": "pipeline.update",
+      "request": {
+        "name": "build",
+        "yaml": "cGlwZWxpbmU6IGJ1aWxk",
+        "project_id": "prj-1",
+        "pipeline_id": "pipe-1"
+      },
+      "result": {
+        "version": 2
+      }
+    },
+    {
+      "operation": "pipeline.delete",
+      "request": {
+        "project_id": "prj-1",
+        "pipeline_id": "pipe-1"
+      },
+      "result": {
+        "version": 3
+      }
+    },
+    {
+      "operation": "pipeline.start",
+      "request": {
+        "inputs": {
+          "branch": "main"
+        },
+        "project_id": "prj-1",
+        "pipeline_id": "pipe-1"
+      },
+      "result": {
+        "execution_id": "exe-1",
+        "version": 1
+      }
+    },
+    {
+      "operation": "secret.metadata.read",
+      "request": {
+        "project_id": "prj-1",
+        "secret_id": "sec-1"
+      },
+      "result": {
+        "secret_id": "sec-1",
+        "name": "DEPLOY_TOKEN",
+        "version": 3,
+        "updated_at": "2026-01-02T03:04:05Z"
+      }
+    },
+    {
+      "operation": "secret.write",
+      "request": {
+        "value": "s3cr3t-value",
+        "project_id": "prj-1",
+        "secret_id": "sec-1"
+      },
+      "result": {
+        "secret_id": "sec-1",
+        "name": "DEPLOY_TOKEN",
+        "version": 4
+      }
+    },
+    {
+      "operation": "secret.delete",
+      "request": {
+        "project_id": "prj-1",
+        "secret_id": "sec-1"
+      },
+      "result": {
+        "version": 5
+      }
+    },
+    {
+      "operation": "service.create",
+      "request": {
+        "service_id": "svc-1",
+        "roles": [
+          "engineer"
+        ],
+        "project_id": "prj-1"
+      },
+      "result": {
+        "service_id": "svc-1",
+        "version": 1
+      }
+    },
+    {
+      "operation": "service.update",
+      "request": {
+        "roles": [
+          "engineer",
+          "viewer"
+        ],
+        "service_id": "svc-1"
+      },
+      "result": {
+        "version": 2
+      }
+    },
+    {
+      "operation": "service.enable",
+      "request": {
+        "service_id": "svc-1"
+      },
+      "result": {
+        "state": "enabled",
+        "version": 3,
+        "revoked_credentials": 0
+      }
+    },
+    {
+      "operation": "service.disable",
+      "request": {
+        "service_id": "svc-1"
+      },
+      "result": {
+        "state": "disabled",
+        "version": 4,
+        "revoked_credentials": 1
+      }
+    },
+    {
+      "operation": "service.credential.issue",
+      "request": {
+        "ttl_seconds": 3600,
+        "service_id": "svc-1"
+      },
+      "result": {
+        "state": "current",
+        "version": 5,
+        "token": "tok-fresh-1"
+      }
+    },
+    {
+      "operation": "service.credential.rotate",
+      "request": {
+        "ttl_seconds": 3600,
+        "service_id": "svc-1"
+      },
+      "result": {
+        "state": "current",
+        "version": 6,
+        "token": "tok-fresh-2"
+      }
+    },
+    {
+      "operation": "service.credential.revoke",
+      "request": {
+        "service_id": "svc-1"
+      },
+      "result": {
+        "version": 7,
+        "invalidated": true
+      }
+    },
+    {
+      "operation": "task.create",
+      "request": {
+        "title": "Ship the wire vocabulary",
+        "description": "Add typed DTOs",
+        "pipeline_id": "pipe-1",
+        "inputs": {
+          "branch": "main"
+        },
+        "project_id": "prj-1",
+        "metadata": {
+          "stage": "build"
+        }
+      },
+      "result": {
+        "task_id": "tsk-1",
+        "content_version": 1,
+        "lifecycle_version": 1
+      }
+    },
+    {
+      "operation": "task.read",
+      "request": {
+        "task_id": "tsk-1"
+      },
+      "result": {
+        "task_id": "tsk-1",
+        "title": "Ship the wire vocabulary",
+        "description": "Add typed DTOs",
+        "state": "waiting",
+        "content_version": 1,
+        "lifecycle_version": 1,
+        "selected_pipeline": "pipe-1",
+        "inputs": {
+          "branch": "main"
+        },
+        "metadata": {
+          "stage": "build"
+        },
+        "initiator": "prn-1",
+        "messages": [
+          {
+            "author": "prn-1",
+            "at": "2026-01-02T03:04:05Z",
+            "body": "Looks good",
+            "references": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "https://svc.example/restore/ctx-1"
+            ]
+          }
+        ],
+        "execution_history": [
+          "exe-1"
+        ],
+        "current_execution": "exe-1",
+        "question": {
+          "question_id": "qst-1",
+          "body": "Which branch?",
+          "assignment": "role/reviewer",
+          "references": [
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "https://svc.example/restore/ctx-1"
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "operation": "task.edit",
+      "request": {
+        "title": "Ship the wire vocabulary v2",
+        "description": "Add typed DTOs",
+        "task_id": "tsk-1",
+        "metadata": {
+          "stage": "review"
+        }
+      },
+      "result": {
+        "content_version": 2,
+        "lifecycle_version": 1
+      }
+    },
+    {
+      "operation": "task.comment",
+      "request": {
+        "body": "Looks good",
+        "references": [
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "https://svc.example/restore/ctx-1"
+        ],
+        "task_id": "tsk-1"
+      },
+      "result": {
+        "content_version": 3,
+        "lifecycle_version": 1
+      }
+    },
+    {
+      "operation": "task.select_pipeline",
+      "request": {
+        "pipeline_id": "pipe-1",
+        "inputs": {
+          "branch": "main"
+        },
+        "task_id": "tsk-1"
+      },
+      "result": {
+        "lifecycle_version": 2
+      }
+    },
+    {
+      "operation": "task.start",
+      "request": {
+        "task_id": "tsk-1"
+      },
+      "result": {
+        "execution_id": "exe-1",
+        "lifecycle_version": 3
+      }
+    },
+    {
+      "operation": "task.create_and_start",
+      "request": {
+        "title": "Ship it",
+        "description": "Create and admit in one commit",
+        "pipeline_id": "pipe-1",
+        "inputs": {
+          "branch": "main"
+        },
+        "project_id": "prj-1",
+        "metadata": {
+          "stage": "build"
+        }
+      },
+      "result": {
+        "task_id": "tsk-2",
+        "execution_id": "exe-2",
+        "lifecycle_version": 1
+      }
+    },
+    {
+      "operation": "task.ask",
+      "request": {
+        "question": "Which branch?",
+        "assignment": "role/reviewer",
+        "references": [
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "https://svc.example/restore/ctx-1"
+        ],
+        "task_id": "tsk-1"
+      },
+      "result": {
+        "lifecycle_version": 4,
+        "question_version": 1,
+        "question_id": "qst-1"
+      }
+    },
+    {
+      "operation": "task.reply",
+      "request": {
+        "question_id": "qst-1",
+        "expected_question_version": 1,
+        "answer": "main",
+        "task_id": "tsk-1"
+      },
+      "result": {
+        "execution_id": "exe-3",
+        "lifecycle_version": 5,
+        "question_version": 2
+      }
+    },
+    {
+      "operation": "task.cancel",
+      "request": {
+        "task_id": "tsk-1"
+      },
+      "result": {
+        "lifecycle_version": 6
+      }
+    },
+    {
+      "operation": "task.history",
+      "request": {
+        "page": {
+          "limit": 2
+        },
+        "task_id": "tsk-1"
+      },
+      "result": {
+        "entries": [
+          {
+            "kind": "execution",
+            "execution_id": "exe-1",
+            "state": "succeeded",
+            "at": "2026-01-02T03:04:05Z"
+          },
+          {
+            "kind": "message",
+            "at": "2026-01-02T03:05:05Z",
+            "message": {
+              "author": "prn-1",
+              "at": "2026-01-02T03:05:05Z",
+              "body": "Looks good",
+              "references": [
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "https://svc.example/restore/ctx-1"
+              ]
+            }
+          },
+          {
+            "kind": "question",
+            "at": "2026-01-02T03:06:05Z",
+            "question": {
+              "question_id": "qst-1",
+              "body": "Which branch?",
+              "assignment": "role/reviewer",
+              "references": [
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "https://svc.example/restore/ctx-1"
+              ],
+              "version": 1
+            }
+          }
+        ],
+        "next_cursor": "djEKdHNrLTE"
+      }
+    },
+    {
+      "operation": "task.inbox",
+      "request": {
+        "kinds": [
+          "request",
+          "waiting_task"
+        ],
+        "page": {
+          "limit": 2
+        },
+        "project_id": "prj-1"
+      },
+      "result": {
+        "items": [
+          {
+            "kind": "request",
+            "task_id": "tsk-1",
+            "execution_id": "exe-1",
+            "action_id": "act-1",
+            "assignment": "role/reviewer",
+            "version": 2,
+            "at": "2026-01-02T03:04:05Z",
+            "subject": {
+              "fields": [
+                {
+                  "name": "artifact",
+                  "kind": "string",
+                  "value": "built:seed-1"
+                },
+                {
+                  "name": "seed",
+                  "kind": "string",
+                  "value": "seed-1"
+                }
+              ]
+            },
+            "outputs": [
+              "approved"
+            ]
+          },
+          {
+            "kind": "waiting_task",
+            "task_id": "tsk-2",
+            "assignment": "service/svc-1",
+            "question_id": "qst-1",
+            "question": "Which base should the merge use?",
+            "references": [
+              "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            ],
+            "version": 3,
+            "lifecycle_version": 9,
+            "at": "2026-01-02T03:05:05Z"
+          },
+          {
+            "kind": "failed_task",
+            "task_id": "tsk-3",
+            "version": 4,
+            "at": "2026-01-02T03:06:05Z"
+          }
+        ],
+        "next_cursor": "djEKZXhlLTE"
+      }
+    },
+    {
+      "operation": "execution.inspect",
+      "request": {
+        "execution_id": "exe-1"
+      },
+      "result": {
+        "execution_id": "exe-1",
+        "task_id": "tsk-1",
+        "pipeline_id": "pipe-1",
+        "state": "failed",
+        "version": 5,
+        "current_action": 1,
+        "actions": [
+          {
+            "action_id": "act-1",
+            "index": 0,
+            "name": "build",
+            "kind": "container",
+            "state": "succeeded",
+            "version": 2,
+            "timeout_seconds": 600,
+            "activated_at": "2026-01-02T03:04:05Z",
+            "deadline": "2026-01-02T03:14:05Z",
+            "outputs": {
+              "digest": "sha256:abc"
+            },
+            "stop": {
+              "state": "confirmed",
+              "detail": "container exited"
+            }
+          },
+          {
+            "action_id": "act-2",
+            "index": 1,
+            "name": "review",
+            "kind": "request",
+            "state": "failed",
+            "version": 2,
+            "deadline": "2026-01-02T03:24:05Z",
+            "decision": "fail",
+            "actor": "prn-1",
+            "answered_at": "2026-01-02T03:10:00Z",
+            "stop": {
+              "state": "confirmed",
+              "detail": "request settled"
+            }
+          }
+        ],
+        "failure": {
+          "kind": "runtime",
+          "reason": "request_rejected",
+          "detail": "reviewer rejected the candidate"
+        },
+        "cleanup": {
+          "state": "pending",
+          "workload_id": "wld-1",
+          "workspace_id": "wsp-1",
+          "attempts": 2,
+          "last_error": "workspace removal pending"
+        }
+      }
+    },
+    {
+      "operation": "execution.list",
+      "request": {
+        "task_id": "tsk-1",
+        "pipeline_id": "pipe-1",
+        "state": "running",
+        "page": {
+          "limit": 2
+        },
+        "project_id": "prj-1"
+      },
+      "result": {
+        "executions": [
+          {
+            "execution_id": "exe-1",
+            "task_id": "tsk-1",
+            "pipeline_id": "pipe-1",
+            "state": "running",
+            "version": 2
+          }
+        ],
+        "next_cursor": "djEKZXhlLTE"
+      }
+    },
+    {
+      "operation": "execution.cancel",
+      "request": {
+        "execution_id": "exe-1"
+      },
+      "result": {
+        "execution_version": 3
+      }
+    },
+    {
+      "operation": "execution.action.outputs",
+      "request": {
+        "outputs": {
+          "digest": "sha256:abc"
+        },
+        "execution_id": "exe-1",
+        "action_id": "act-1"
+      },
+      "result": {
+        "execution_version": 3,
+        "action_version": 2
+      }
+    },
+    {
+      "operation": "execution.request.resolve",
+      "request": {
+        "decision": "pass",
+        "outputs": {
+          "approved": "true"
+        },
+        "execution_id": "exe-1",
+        "action_id": "act-1",
+        "expected_action_version": 2
+      },
+      "result": {
+        "execution_version": 4,
+        "action_version": 3
+      }
+    },
+    {
+      "operation": "execution.logs.read",
+      "request": {
+        "action_id": "act-1",
+        "stream": "stdout",
+        "page": {
+          "limit": 2
+        },
+        "execution_id": "exe-1"
+      },
+      "result": {
+        "chunks": [
+          {
+            "action_id": "act-1",
+            "stream": "stdout",
+            "offset": 0,
+            "sequence": 1,
+            "data": "YnVpbHQK"
+          }
+        ],
+        "next_cursor": "djEKZXhlLTE",
+        "truncated": false
+      }
+    },
+    {
+      "operation": "event.publish",
+      "request": {
+        "project_id": "prj-1",
+        "type": "observation.custom",
+        "subject_id": "tsk-1",
+        "subject_version": 3,
+        "correlation_id": "cor-1",
+        "causation_id": "cau-1",
+        "data": "eyJvayI6dHJ1ZX0="
+      },
+      "result": {
+        "event_id": "evt-0001",
+        "receipt_id": "rcp-0001",
+        "replayed": false
+      }
+    },
+    {
+      "operation": "event.read",
+      "request": {
+        "project_id": "prj-1",
+        "page": {
+          "cursor": "djEKMg",
+          "limit": 2
+        },
+        "types": [
+          "task.created"
+        ]
+      },
+      "result": {
+        "events": [
+          {
+            "id": "evt-0001",
+            "type": "task.created",
+            "source": {
+              "kind": "shell",
+              "principal_id": "prn-1"
+            },
+            "at": "2026-01-02T03:04:05Z",
+            "scope": {
+              "tenant_id": "ten-1",
+              "project_id": "prj-1"
+            },
+            "subject_id": "tsk-1",
+            "subject_version": 3,
+            "data": "eyJvayI6dHJ1ZX0="
+          }
+        ],
+        "next": "djEKMw",
+        "has_more": true
+      }
+    },
+    {
+      "operation": "event.subscribe",
+      "request": {
+        "project_id": "prj-1",
+        "types": [
+          "task.created"
+        ],
+        "cursor": "djEKMA"
+      },
+      "result": {
+        "subjects": [
+          "kodama.v1.ten-1.prj-1.events"
+        ],
+        "cursor": "djEKMA",
+        "expires_at": "2026-01-02T04:04:05Z"
+      }
+    },
+    {
+      "operation": "tool.invoke",
+      "request": {
+        "arguments": {
+          "path": "README.md"
+        },
+        "project_id": "prj-1",
+        "tool": "tool-1"
+      },
+      "result": {
+        "content": "file content",
+        "is_error": false
+      }
+    }
+  ]
+}

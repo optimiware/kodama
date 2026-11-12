@@ -1,0 +1,341 @@
+{
+  "version": 1,
+  "controller": [
+    {
+      "name": "controller read and scan are limited to the controller tables",
+      "kind": "authority",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 3, "values": {"state": "running", "principal_id": "principal-1"}},
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-1", "version": 2, "values": {"execution_id": "execution-1", "state": "running", "index": 0}},
+          {"table": "cleanup", "tenant_id": "tenant-1", "project_id": "project-1", "id": "cleanup-1", "version": 1, "values": {"execution_id": "execution-1", "state": "pending"}},
+          {"table": "events", "tenant_id": "tenant-1", "project_id": "project-1", "id": "event-1", "version": 1, "values": {"type": "execution.succeeded", "publish_sequence": 1}},
+          {"table": "events", "tenant_id": "tenant-1", "project_id": "", "id": "event-2", "version": 1, "values": {"type": "project.created", "publish_sequence": 2}},
+          {"table": "tasks", "tenant_id": "tenant-1", "project_id": "project-1", "id": "task-1", "version": 1, "values": {"state": "open"}}
+        ]
+      },
+      "steps": [
+        {"op": "read", "table": "executions", "id": "execution-1", "want_values": {"state": "running"}},
+        {"op": "read", "table": "events", "id": "event-2", "want_values": {"type": "project.created"}},
+        {"op": "read", "table": "tasks", "id": "task-1", "want_error": "invalid_input"},
+        {"op": "scan", "table": "actions", "equals": {"execution_id": "execution-1"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["action-1"]},
+        {"op": "scan", "table": "events", "order_by": [{"column": "publish_sequence"}], "limit": 10, "want_ids": ["event-1", "event-2"]},
+        {"op": "scan", "table": "tasks", "order_by": [{"column": "id"}], "limit": 10, "want_error": "invalid_input"}
+      ]
+    },
+    {
+      "name": "controller execute derives the owning scope from the execution row",
+      "kind": "scope_derivation",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 3, "values": {"state": "running", "principal_id": "principal-1"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-2", "id": "execution-2", "version": 1, "values": {"state": "running", "principal_id": "principal-2"}},
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-1", "version": 2, "values": {"execution_id": "execution-1", "state": "running", "index": 0}},
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-2", "id": "action-2", "version": 1, "values": {"execution_id": "execution-2", "state": "running", "index": 0}}
+        ]
+      },
+      "steps": [
+        {"op": "execute", "execution_id": "execution-1", "unit": {"locks": [{"table": "actions", "ids": ["action-1"], "expect_version": 2}], "writes": [{"table": "actions", "id": "action-1", "expect_version": 2, "values": {"state": "succeeded"}}]}, "want_replayed": false},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "actions", "id": "action-1", "want_values": {"state": "succeeded"}, "want_version": 3},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-2"}, "table": "actions", "id": "action-2", "want_values": {"state": "running"}, "want_version": 1}
+      ]
+    },
+    {
+      "name": "controller execute refuses a row outside the derived owning scope",
+      "kind": "cross_scope",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 3, "values": {"state": "running", "principal_id": "principal-1"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-2", "id": "execution-2", "version": 1, "values": {"state": "running", "principal_id": "principal-2"}},
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-2", "id": "action-2", "version": 1, "values": {"execution_id": "execution-2", "state": "running", "index": 0}}
+        ]
+      },
+      "steps": [
+        {"op": "execute", "execution_id": "execution-1", "unit": {"writes": [{"table": "actions", "id": "action-2", "expect_version": 1, "values": {"state": "succeeded"}}]}, "want_error": "forbidden"},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-2"}, "table": "actions", "id": "action-2", "want_values": {"state": "running"}, "want_version": 1}
+      ]
+    },
+    {
+      "name": "controller execute refuses a missing execution and non-state commit units",
+      "kind": "authority",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 3, "values": {"state": "running", "principal_id": "principal-1"}},
+          {"table": "events", "tenant_id": "tenant-1", "project_id": "project-1", "id": "event-1", "version": 1, "values": {"type": "execution.succeeded", "publish_state": "pending", "publish_sequence": 1}}
+        ]
+      },
+      "steps": [
+        {"op": "execute", "execution_id": "missing", "unit": {"writes": [{"table": "actions", "id": "action-9", "insert": true, "values": {"state": "pending"}}]}, "want_error": "not_found"},
+        {"op": "execute", "execution_id": "execution-1", "unit": {"writes": [{"table": "events", "id": "event-1", "expect": {"publish_state": "pending"}, "values": {"publish_state": "published"}}]}, "want_error": "forbidden"},
+        {"op": "execute", "execution_id": "execution-1", "unit": {"receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "principal-1", "operation": "execution.transition", "caller_key": "execution-1", "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "result": "ok", "completed": true}}, "want_error": "forbidden"},
+        {"op": "execute", "execution_id": "execution-1", "unit": {"audit": 1}, "want_error": "forbidden"},
+        {"op": "execute", "execution_id": "execution-1", "unit": {"events": 1}, "want_error": "forbidden"}
+      ]
+    },
+    {
+      "name": "controller execute applies the deadline guard inside the derived scope",
+      "kind": "deadline",
+      "clock": "2026-01-01T00:00:10Z",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 3, "values": {"state": "running", "principal_id": "principal-1"}},
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-1", "version": 2, "values": {"execution_id": "execution-1", "state": "running", "index": 0, "deadline": "2026-01-01T00:00:10Z"}}
+        ]
+      },
+      "steps": [
+        {"op": "execute", "execution_id": "execution-1", "unit": {"locks": [{"table": "actions", "ids": ["action-1"], "expect_version": 2, "deadline": "deadline"}], "writes": [{"table": "actions", "id": "action-1", "expect_version": 2, "deadline": "deadline", "values": {"state": "succeeded"}}]}, "want_error": "deadline_expired"},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "actions", "id": "action-1", "want_values": {"state": "running"}, "want_version": 2}
+      ]
+    }
+  ],
+  "credentials": [
+    {
+      "name": "execution credential lookup returns a candidate scope",
+      "kind": "candidate",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 1, "values": {"principal_id": "principal-1", "state": "running"}}
+        ]
+      },
+      "steps": [
+        {"op": "lookup", "kind": "execution", "id": "execution-1", "want_candidate": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "principal-1"}}
+      ]
+    },
+    {
+      "name": "service credential lookup uses the service identity as the principal",
+      "kind": "candidate",
+      "seed": {
+        "rows": [
+          {"table": "services", "tenant_id": "tenant-1", "project_id": "project-1", "id": "service-1", "version": 1, "values": {"state": "enabled"}},
+          {"table": "services", "tenant_id": "tenant-1", "project_id": "", "id": "service-2", "version": 1, "values": {"state": "enabled"}}
+        ]
+      },
+      "steps": [
+        {"op": "lookup", "kind": "service", "id": "service-1", "want_candidate": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1"}},
+        {"op": "lookup", "kind": "service", "id": "service-2", "want_candidate": {"tenant_id": "tenant-1", "project_id": "", "principal_id": "service-2"}}
+      ]
+    },
+    {
+      "name": "missing and mismatched lookups are indistinguishable",
+      "kind": "uniform_refusal",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "version": 1, "values": {"principal_id": "principal-1"}},
+          {"table": "services", "tenant_id": "tenant-1", "project_id": "project-1", "id": "service-1", "version": 1, "values": {"state": "enabled"}}
+        ]
+      },
+      "steps": [
+        {"op": "lookup", "kind": "execution", "id": "missing", "want_error": "unauthenticated"},
+        {"op": "lookup", "kind": "service", "id": "execution-1", "want_error": "unauthenticated"},
+        {"op": "lookup", "kind": "execution", "id": "service-1", "want_error": "unauthenticated"},
+        {"op": "lookup", "kind": "unknown", "id": "execution-1", "want_error": "invalid_input"}
+      ]
+    }
+  ],
+  "receipts": [
+    {
+      "name": "completion advances an incomplete selection receipt and applies the start write",
+      "kind": "completion",
+      "clock": "2026-01-01T00:00:00Z",
+      "seed": {
+        "receipts": [
+          {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "result": "", "completed": false}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "result": "started", "execution_id": "execution-1", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}, "writes": [{"table": "executions", "id": "execution-1", "insert": true, "values": {"state": "queued", "version": 1, "principal_id": "service-1"}}]}, "want_replayed": false},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "started", "want_completed": true},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_values": {"state": "queued"}}
+      ]
+    },
+    {
+      "name": "equal-key replay of a completed receipt applies nothing and returns the original result",
+      "kind": "replay",
+      "seed": {
+        "receipts": [
+          {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "result": "started", "execution_id": "execution-1", "completed": true}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "result": "started", "execution_id": "execution-1", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}, "writes": [{"table": "executions", "id": "execution-1", "insert": true, "values": {"state": "queued", "version": 1}}]}, "want_replayed": true, "want_result": "started"},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_absent": true}
+      ]
+    },
+    {
+      "name": "completion of changed content is refused without replacing the receipt",
+      "kind": "conflict",
+      "seed": {
+        "receipts": [
+          {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "result": "", "completed": false}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "result": "started", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}}, "want_error": "changed_idempotency_content"},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "", "want_completed": false}
+      ]
+    },
+    {
+      "name": "completion of a missing receipt and a stale guard are conflicts",
+      "kind": "conflict",
+      "seed": {
+        "receipts": [
+          {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "result": "", "completed": false}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-2", "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "result": "started", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}}, "want_error": "version_conflict"},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "result": "started", "completed": true}, "receipt_expect": {"completed": true, "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}}, "want_error": "version_conflict"},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "result": "started", "completed": true}}, "want_error": "invalid_input"}
+      ]
+    },
+    {
+      "name": "a plain insert-mode receipt is stored completed at insert",
+      "kind": "insert",
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666", "result": "done", "execution_id": "execution-1", "completed": true}}, "want_replayed": false},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "done", "want_completed": true},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666", "result": "done", "execution_id": "execution-1", "completed": true}}, "want_replayed": true, "want_result": "done"}
+      ]
+    },
+    {
+      "name": "an incomplete receipt inserted by a unit is completed and then replayed",
+      "kind": "completion",
+      "clock": "2026-01-01T00:00:00Z",
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "insert_incomplete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "result": ""}}, "want_replayed": false},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_completed": false},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "result": "started", "execution_id": "execution-1", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"}, "writes": [{"table": "executions", "id": "execution-1", "insert": true, "values": {"state": "queued", "version": 1, "principal_id": "service-1"}}]}, "want_replayed": false},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "started", "want_completed": true},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "result": "started", "execution_id": "execution-1", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"}, "writes": [{"table": "executions", "id": "execution-1", "insert": true, "values": {"state": "queued", "version": 1, "principal_id": "service-1"}}]}, "want_replayed": true, "want_result": "started"},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_values": {"state": "queued"}}
+      ]
+    },
+    {
+      "name": "a concurrent second completer replays the first result and cannot overwrite it",
+      "kind": "concurrency",
+      "seed": {
+        "receipts": [
+          {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "result": "", "completed": false}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "result": "first", "execution_id": "execution-1", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"}, "writes": [{"table": "executions", "id": "execution-1", "insert": true, "values": {"state": "queued", "version": 1, "principal_id": "service-1"}}]}, "want_replayed": false},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "result": "second", "execution_id": "execution-1", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"}, "writes": [{"table": "executions", "id": "execution-1", "insert": true, "values": {"state": "queued", "version": 1, "principal_id": "service-1"}}]}, "want_replayed": true, "want_result": "first"},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "first", "want_completed": true},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555", "result": "third", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"}}, "want_error": "changed_idempotency_content"},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "first", "want_completed": true}
+      ]
+    }
+  ],
+  "receipt_in_progress": [
+    {
+      "name": "an incomplete receipt persists an in-progress result and an equal replay returns it without applying the write",
+      "kind": "in_progress",
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "insert_incomplete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "result": "selection-v1"}, "writes": [{"table": "executions", "id": "execution-1", "insert": true, "values": {"state": "queued", "version": 1, "principal_id": "service-1"}}]}, "want_replayed": false},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "selection-v1", "want_completed": false},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "id": "execution-1", "want_values": {"state": "queued"}},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "insert_incomplete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "result": "selection-v1"}, "writes": [{"table": "executions", "id": "execution-1", "insert": true, "values": {"state": "queued", "version": 1, "principal_id": "service-1"}}]}, "want_replayed": true, "want_result": "selection-v1"},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "selection-v1", "want_completed": false}
+      ]
+    },
+    {
+      "name": "completion overwrites the in-progress result and applies exactly once",
+      "kind": "completion",
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "insert_incomplete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "result": "selection-v1"}}, "want_replayed": false},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "selection-v1", "want_completed": false},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "result": "started", "execution_id": "execution-1", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"}}, "want_replayed": false},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "started", "want_completed": true},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "result": "started", "execution_id": "execution-1", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"}}, "want_replayed": true, "want_result": "started"},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "started", "want_completed": true}
+      ]
+    },
+    {
+      "name": "changed content on an incomplete receipt with an in-progress result is refused",
+      "kind": "conflict",
+      "seed": {
+        "receipts": [
+          {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "result": "selection-v1", "completed": false}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "insert_incomplete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "result": "selection-v2"}}, "want_error": "changed_idempotency_content"},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "selection-v1", "want_completed": false}
+      ]
+    },
+    {
+      "name": "a completion of changed content does not overwrite the in-progress result",
+      "kind": "conflict",
+      "seed": {
+        "receipts": [
+          {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "result": "selection-v1", "completed": false}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"receipt_mode": "complete", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1", "content_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "result": "started", "completed": true}, "receipt_expect": {"completed": false, "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"}}, "want_error": "changed_idempotency_content"},
+        {"op": "inspect_receipt", "receipt": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "service-1", "operation": "pipeline.push", "caller_key": "event-1"}, "want_result": "selection-v1", "want_completed": false}
+      ]
+    }
+  ],
+  "deadlines": [
+    {
+      "name": "a write guard passes strictly before the transaction clock",
+      "kind": "write_guard",
+      "clock": "2026-01-01T00:00:05Z",
+      "seed": {
+        "rows": [
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-1", "version": 2, "values": {"state": "running", "deadline": "2026-01-01T00:00:10Z"}}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"writes": [{"table": "actions", "id": "action-1", "expect_version": 2, "deadline": "deadline", "values": {"state": "succeeded"}}]}, "want_replayed": false},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "actions", "id": "action-1", "want_values": {"state": "succeeded"}, "want_version": 3}
+      ]
+    },
+    {
+      "name": "a deadline equal to the clock is refused",
+      "kind": "write_guard",
+      "clock": "2026-01-01T00:00:10Z",
+      "seed": {
+        "rows": [
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-1", "version": 2, "values": {"state": "running", "deadline": "2026-01-01T00:00:10Z"}}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"writes": [{"table": "actions", "id": "action-1", "expect_version": 2, "deadline": "deadline", "values": {"state": "succeeded"}}]}, "want_error": "deadline_expired"},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "actions", "id": "action-1", "want_values": {"state": "running"}, "want_version": 2}
+      ]
+    },
+    {
+      "name": "a deadline before the clock and a NULL deadline are refused",
+      "kind": "write_guard",
+      "clock": "2026-01-01T00:00:11Z",
+      "seed": {
+        "rows": [
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-1", "version": 2, "values": {"state": "running", "deadline": "2026-01-01T00:00:10Z"}},
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-null", "version": 2, "values": {"state": "running"}}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"writes": [{"table": "actions", "id": "action-1", "expect_version": 2, "deadline": "deadline", "values": {"state": "succeeded"}}]}, "want_error": "deadline_expired"},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"writes": [{"table": "actions", "id": "action-null", "expect_version": 2, "deadline": "deadline", "values": {"state": "succeeded"}}]}, "want_error": "deadline_expired"}
+      ]
+    },
+    {
+      "name": "a lock deadline guard passes before the clock and refuses a late lock",
+      "kind": "lock_guard",
+      "clock": "2026-01-01T00:00:05Z",
+      "seed": {
+        "rows": [
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-1", "version": 2, "values": {"state": "running", "deadline": "2026-01-01T00:00:10Z"}},
+          {"table": "actions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "action-late", "version": 2, "values": {"state": "running", "deadline": "2026-01-01T00:00:01Z"}}
+        ]
+      },
+      "steps": [
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"locks": [{"table": "actions", "ids": ["action-1"], "expect_version": 2, "deadline": "deadline"}], "writes": [{"table": "actions", "id": "action-1", "expect_version": 2, "values": {"state": "succeeded"}}]}, "want_replayed": false},
+        {"op": "apply", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "unit": {"locks": [{"table": "actions", "ids": ["action-late"], "expect_version": 2, "deadline": "deadline"}], "writes": [{"table": "actions", "id": "action-late", "expect_version": 2, "values": {"state": "succeeded"}}]}, "want_error": "deadline_expired"}
+      ]
+    }
+  ]
+}

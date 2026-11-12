@@ -1,0 +1,50 @@
+{
+  "request": {
+    "model": "fixture-model",
+    "messages": [
+      {"role": "system", "content": "plan the work"},
+      {"role": "user", "content": "read the readme"},
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {"id": "call-1", "type": "function", "function": {"name": "repo_read", "arguments": "{\"path\":\"README.md\"}"}}
+        ]
+      },
+      {"role": "tool", "tool_call_id": "call-1", "content": "README contents"}
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "repo_read",
+          "description": "read one repository file",
+          "parameters": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"]
+          }
+        }
+      }
+    ],
+    "max_tokens": 64
+  },
+  "response": {
+    "id": "chat-tool-1",
+    "model": "fixture-model",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {"id": "call-2", "type": "function", "function": {"name": "repo_read", "arguments": "{\"path\":\"README.md\"}"}}
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16}
+  }
+}

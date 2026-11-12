@@ -1,0 +1,9 @@
+{
+  "subjects": {
+    "tenant_event": "kodama.v1.tenant-1._.events",
+    "project_event": "kodama.v1.tenant-1.project-1.events",
+    "project_log": "kodama.v1.tenant-1.project-1.logs.exec-1",
+    "tenant_invalidation": "kodama.v1.tenant-1._.invalidations",
+    "project_invalidation": "kodama.v1.tenant-1.project-1.invalidations"
+  }
+}

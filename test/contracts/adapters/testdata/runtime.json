@@ -1,0 +1,12 @@
+{
+  "api_versions": {
+    "process": "process/v1",
+    "podman": "libpod/v4",
+    "kubernetes": "batch/v1"
+  },
+  "capabilities": {
+    "process": ["process", "process-group-stop", "credential-refresh"],
+    "podman": ["container", "retained-workspace", "credential-refresh", "process-group-stop"],
+    "kubernetes": ["container", "retained-workspace", "credential-refresh", "network-isolation", "job-deletion-not-stop-proof"]
+  }
+}

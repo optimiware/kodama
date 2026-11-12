@@ -1,0 +1,7 @@
+actions:
+  - name: observe
+    image: registry.example.com/kodama/readiness@sha256:0e06b84496798ba899c50de6eb2efc0b92c62a75e5ba69af7a158cba107352bc
+    commands:
+      - observe-readiness
+    outputs:
+      - ready

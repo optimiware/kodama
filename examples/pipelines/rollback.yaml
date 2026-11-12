@@ -1,0 +1,26 @@
+inputs:
+  - image
+actions:
+  - name: release
+    image: registry.example.com/kodama/release@sha256:a4d451ec23463726f72c43d64c710968f6b602cd653b4de8adee1b556240a829
+    commands:
+      - write-deploy-candidate
+    outputs:
+      - candidate
+      - expected_base
+  - name: approve
+    request: role/reviewer
+    subject:
+      operation: git.ref.update
+      resource: deploy-repo-1
+      ref: refs/heads/deploy
+      expected_base:
+        from: release.outputs.expected_base
+      candidate:
+        from: release.outputs.candidate
+    outputs:
+      - approved
+  - name: integrate
+    image: registry.example.com/kodama/integrate@sha256:ad9b338ab555c072a2131a946e8ed993cfcee4fe61c1f65efa37a1ce78ecfed5
+    commands:
+      - integrate-protected-update

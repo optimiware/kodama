@@ -1,0 +1,369 @@
+{{- /*
+Optional per-tenant `kodama git serve` StatefulSets.
+
+Everything is gated on gitService.enabled (default false), so a default render
+adds no object and cannot delete an existing optional workload. Each entry owns one
+tenant-scoped object set in the release namespace: a PVC for repositories and
+the receive journal, a ClusterIP Service, a TLS-terminating Caddy sidecar (the
+binary speaks smart HTTP), the StatefulSet and a NetworkPolicy. The release
+namespace carries no default-deny policy, so the Git NetworkPolicy is the
+complete statement of its ingress and egress; a tenant namespace policy would
+be additive and could widen it.
+
+The service credential and the TLS certificate are existing Secrets. The
+receive journal is /var/lib/kodama/git/journal, outside the served repository
+root /var/lib/kodama/git/repos: `git serve` refuses a journal directory at or
+inside a served repository. The PVC is mounted only by this workload;
+execution pods never mount it.
+*/ -}}
+{{- if .Values.gitService }}
+{{- if .Values.gitService.enabled }}
+{{- $git := .Values.gitService }}
+{{- $baseURL := $git.baseURL | default .Values.config.publicURL }}
+{{- $port := int ($git.port | default 8443) }}
+{{- /* Plaintext smart-HTTP backend on the Pod network. The git and TLS
+       containers share the Pod network namespace, so this must never equal
+       $port: the sidecar would crash-loop on the taken socket. */}}
+{{- $backendPort := 8081 }}
+{{- $service := .Values.service | default dict }}
+{{- $apiPort := int ($service.targetPort | default 8443) }}
+{{- if or (lt $port 1024) (gt $port 65535) }}
+{{- fail "gitService.port must be between 1024 and 65535: both containers run as non-root and cannot bind a privileged port" }}
+{{- end }}
+{{- if eq $port $backendPort }}
+{{- fail (printf "gitService.port must not be %d: that port is reserved for the plaintext smart-HTTP backend on the pod network, so the TLS sidecar and the git process would claim the same socket and the sidecar would crash-loop" $backendPort) }}
+{{- end }}
+{{- if not (and $git.tlsProxyImage (regexMatch "^[^[:space:]@]+@sha256:[a-f0-9]{64}$" (toString $git.tlsProxyImage))) }}
+{{- fail "gitService.tlsProxyImage must be pinned by digest (repository[:tag]@sha256:<64 hex>): a tag can be repointed without a chart change" }}
+{{- end }}
+{{- if not (and .Values.secrets .Values.secrets.tls .Values.secrets.tls.existingSecret) }}
+{{- fail "gitService.enabled requires secrets.tls.existingSecret: the API certificate is issued by the private installation CA and SSL_CERT_FILE must trust it" }}
+{{- end }}
+{{- if not $git.tenants }}
+{{- fail "gitService.enabled requires at least one complete tenants entry" }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kodama-git-tls-proxy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: git-service
+data:
+  Caddyfile: |
+    {
+      auto_https off
+      admin off
+    }
+    :{{ $port }} {
+      tls /etc/kodama/git/tls/tls.crt /etc/kodama/git/tls/tls.key
+      reverse_proxy 127.0.0.1:{{ $backendPort }}
+    }
+{{- $seenTenants := dict }}
+{{- range $entry := $git.tenants }}
+{{- $tenant := toString $entry.tenant }}
+{{- if not (has $tenant $.Values.tenants) }}
+{{- fail (printf "gitService tenant %q is not in values.tenants; the Git service must serve a declared tenant" $tenant) }}
+{{- end }}
+{{- if hasKey $seenTenants $tenant }}
+{{- fail (printf "gitService repeats tenant %q; one tenant must not get two Git services" $tenant) }}
+{{- end }}
+{{- $_ := set $seenTenants $tenant true }}
+{{- if not $entry.repositories }}
+{{- fail (printf "gitService tenant %q needs at least one repositories mapping" $tenant) }}
+{{- end }}
+{{- if not $entry.clients }}
+{{- fail (printf "gitService tenant %q needs at least one declared clients source; an empty peer list would widen the policy or drop it" $tenant) }}
+{{- end }}
+{{- $seenRepositories := dict }}
+{{- range $repository := $entry.repositories }}
+{{- if hasKey $seenRepositories (toString $repository.name) }}
+{{- fail (printf "gitService tenant %q repeats repository %q" $tenant (toString $repository.name)) }}
+{{- end }}
+{{- $_ := set $seenRepositories (toString $repository.name) true }}
+{{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kodama-git-{{ $tenant }}-data
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: git-service
+    kodama.dev/tenant: {{ $tenant | quote }}
+  annotations:
+    # Repositories and the receive journal are customer data. Helm uninstall
+    # or removing the tenant entry must never delete this claim.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ $entry.storage.accessMode | default "ReadWriteOnce" }}
+  {{- if $entry.storage.storageClass }}
+  storageClassName: {{ $entry.storage.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $entry.storage.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kodama-git-{{ $tenant }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: git-service
+    kodama.dev/tenant: {{ $tenant | quote }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: git-service
+    kodama.dev/tenant: {{ $tenant | quote }}
+  ports:
+    - name: https
+      port: {{ $port }}
+      targetPort: https
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kodama-git-{{ $tenant }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: git-service
+    kodama.dev/tenant: {{ $tenant | quote }}
+spec:
+  serviceName: kodama-git-{{ $tenant }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kodama
+      app.kubernetes.io/component: git-service
+      kodama.dev/tenant: {{ $tenant | quote }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kodama
+        app.kubernetes.io/component: git-service
+        kodama.dev/tenant: {{ $tenant | quote }}
+    spec:
+      # The Git service calls only the public API; it needs no Kubernetes API
+      # identity.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ $.Values.securityContext.runAsUser }}
+        fsGroup: {{ $.Values.securityContext.runAsUser }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: git
+          image: {{ if $.Values.image.digest }}"{{ $.Values.image.repository }}@{{ $.Values.image.digest }}"{{ else }}"{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"{{ end }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - git
+            - serve
+            - --tenant={{ $tenant }}
+            # The sidecar terminates TLS; the binary listens on the pod network
+            # only, and the NetworkPolicy admits external traffic on the TLS
+            # port alone.
+            - --listen=0.0.0.0:{{ $backendPort }}
+            - --storage-root=/var/lib/kodama/git/repos
+            - --journal-dir=/var/lib/kodama/git/journal
+            - --base-url={{ $baseURL }}
+            - --credential-file=/etc/kodama/git/credential
+            {{- range $repository := $entry.repositories }}
+            - --resource={{ $repository.name }}={{ $repository.resource }}
+            {{- end }}
+          env:
+            - name: KODAMA_BASE_URL
+              value: {{ $baseURL | quote }}
+            - name: KODAMA_CREDENTIAL_FILE
+              value: "/etc/kodama/git/credential"
+            - name: SSL_CERT_FILE
+              value: "/etc/kodama/api-ca/ca.crt"
+          ports:
+            - name: git
+              containerPort: {{ $backendPort }}
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: git
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            tcpSocket:
+              port: git
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: {{ $.Values.resources.limits.cpu }}
+              memory: {{ $.Values.resources.limits.memory }}
+            requests:
+              cpu: {{ $.Values.resources.requests.cpu }}
+              memory: {{ $.Values.resources.requests.memory }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kodama/git
+            - name: credential
+              mountPath: /etc/kodama/git
+              readOnly: true
+            - name: api-ca
+              mountPath: /etc/kodama/api-ca
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+        - name: tls
+          image: {{ $git.tlsProxyImage | quote }}
+          imagePullPolicy: IfNotPresent
+          args: ["caddy", "run", "--config", "/etc/kodama/git/Caddyfile", "--adapter", "caddyfile"]
+          env:
+            - name: XDG_DATA_HOME
+              value: /tmp/caddy-data
+            - name: XDG_CONFIG_HOME
+              value: /tmp/caddy-config
+          ports:
+            - name: https
+              containerPort: {{ $port }}
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: https
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            tcpSocket:
+              port: https
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: "250m"
+              memory: 128Mi
+            requests:
+              cpu: 25m
+              memory: 32Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kodama/git
+              readOnly: true
+            - name: tls
+              mountPath: /etc/kodama/git/tls
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kodama-git-{{ $tenant }}-data
+        - name: credential
+          secret:
+            secretName: {{ $entry.credential.existingSecret | quote }}
+            items:
+              - key: {{ $entry.credential.key | quote }}
+                path: credential
+        - name: api-ca
+          secret:
+            secretName: {{ $.Values.secrets.tls.existingSecret | quote }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: tls
+          secret:
+            secretName: {{ $entry.tls.existingSecret | quote }}
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        - name: config
+          configMap:
+            name: kodama-git-tls-proxy
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kodama-git-{{ $tenant }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: git-service
+    kodama.dev/tenant: {{ $tenant | quote }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kodama
+      app.kubernetes.io/component: git-service
+      kodama.dev/tenant: {{ $tenant | quote }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- range $client := $entry.clients }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $client.namespace | quote }}
+          {{- if $client.podLabels }}
+          podSelector:
+            matchLabels:
+              {{- range $key, $value := $client.podLabels }}
+              {{ $key }}: {{ $value | quote }}
+              {{- end }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $port }}
+    {{- end }}
+  egress:
+    # Cluster DNS stays reachable so service names resolve.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The Git service reaches Kodama only through its public API Service.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Release.Namespace | quote }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kodama
+              app.kubernetes.io/component: control-plane
+      ports:
+        - protocol: TCP
+          port: {{ $apiPort }}
+{{- end }}
+{{- end }}
+{{- end }}

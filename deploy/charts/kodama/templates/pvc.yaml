@@ -1,0 +1,19 @@
+{{- if and .Values.persistence .Values.persistence.logs .Values.persistence.logs.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kodama-retained-logs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: control-plane
+spec:
+  accessModes:
+    - {{ .Values.persistence.logs.accessMode | default "ReadWriteOnce" }}
+  {{- if .Values.persistence.logs.storageClass }}
+  storageClassName: {{ .Values.persistence.logs.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.logs.size | default "10Gi" }}
+{{- end }}

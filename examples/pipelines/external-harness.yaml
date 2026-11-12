@@ -1,0 +1,10 @@
+actions:
+  - name: prepare
+    image: registry.example.com/kodama/base@sha256:cae662172fd450bb0cd710a769079c05bfc5d8e35efa6576edc7d0377afdd4a2
+    commands:
+      - kodama-example prepare-workspace
+  - name: harness
+    image: registry.example.com/kodama/harness@sha256:49f756463ad9dcfb9b6ade54d7d6f15476e7214f46a65b4b0c55d46845b12f70
+    commands:
+      - harness run --config harness.yaml
+      - harness report

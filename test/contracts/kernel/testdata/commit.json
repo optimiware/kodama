@@ -1,0 +1,90 @@
+{
+  "execution_id": "exec-0001",
+  "expected_execution_version": 7,
+  "next_execution_state": "running",
+  "action_id": "act-0002",
+  "expected_action_version": 1,
+  "next_action_state": "running",
+  "pending_cancellations": [
+    {
+      "action_id": "act-0003",
+      "expected_version": 1,
+      "next_state": "cancelled"
+    },
+    {
+      "action_id": "act-0004",
+      "expected_version": 1,
+      "next_state": "cancelled"
+    }
+  ],
+  "next_current_action": -1,
+  "output": {
+    "action": "stage",
+    "values": {
+      "candidate": "abc123"
+    }
+  },
+  "invalidate_credential": true,
+  "stop": {
+    "workload_id": "wl-0001",
+    "workspace_id": "ws-0001"
+  },
+  "stop_evidence": {
+    "state": "confirmed",
+    "detail": "termination observed"
+  },
+  "cleanup": {
+    "workload_id": "wl-0001",
+    "workspace_id": "ws-0001",
+    "reason": "cancelled"
+  },
+  "cleanup_update": {
+    "state": "pending",
+    "workload_id": "wl-0001",
+    "workspace_id": "ws-0001",
+    "attempts": 2,
+    "last_error": "runtime unavailable"
+  },
+  "subject": {
+    "operation": {
+      "kind": "literal",
+      "literal": "git.ref.update"
+    },
+    "candidate": {
+      "kind": "reference",
+      "reference": {
+        "action": "implement",
+        "key": "candidate"
+      }
+    }
+  },
+  "answer": {
+    "decision": "pass",
+    "outputs": {
+      "decision": "approved"
+    },
+    "actor": "principal-0001",
+    "at": "2026-01-02T03:04:00Z",
+    "provenance": "c2lnbmF0dXJl"
+  },
+  "observation": {
+    "kind": "exited",
+    "exit_code": 0,
+    "stop": {
+      "state": "confirmed",
+      "detail": "termination observed"
+    }
+  },
+  "launch": {
+    "workload_id": "wl-0001",
+    "state": "issued",
+    "idempotency_key": "start-wl-0001"
+  },
+  "failure": {
+    "kind": "timeout",
+    "reason": "deadline_expired",
+    "detail": "authoritative time reached the persisted deadline"
+  },
+  "deadline": "2026-01-02T04:04:05Z",
+  "at": "2026-01-02T03:04:05Z"
+}

@@ -1,0 +1,592 @@
+#!/usr/bin/env bash
+# Multi-cloud OpenTofu + Helm deployment orchestrator for Kodama.
+#
+# Supports deploying multiple independent clusters per cloud (e.g., "stage",
+# "preview") with isolated remote state keys, local working directories,
+# kubeconfigs, and generated Helm values. Cluster name defaults to "stage".
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/deploy.sh
+source "${SCRIPT_DIR}/lib/deploy.sh"
+# shellcheck source=scripts/lib/scw.sh
+source "${SCRIPT_DIR}/lib/scw.sh"
+# shellcheck source=scripts/lib/gcp.sh
+source "${SCRIPT_DIR}/lib/gcp.sh"
+# shellcheck source=scripts/lib/aws.sh
+source "${SCRIPT_DIR}/lib/aws.sh"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/deploy <scw|gcp|aws> <action> [options]
+
+Actions:
+  backend-config   Render the per-cluster OpenTofu backend configuration file
+  init             Initialize OpenTofu with the per-cluster remote state backend
+  validate         Initialize (-backend=false) and validate the OpenTofu root
+  plan             Create a per-cluster OpenTofu execution plan
+  apply            Apply the OpenTofu plan and export descriptor.json
+  destroy          Destroy the selected cluster's infrastructure (never deletes state bucket)
+  output           Export deployment_descriptor to <state_dir>/<cloud>/<cluster>/descriptor.json
+  kubeconfig       Fetch and isolate the cluster kubeconfig (0600)
+  render-values    Render Helm values from descriptor.json
+  migrate          Create the database, apply migrations and set role passwords (one-shot pod; run before helm)
+  helm             Install or upgrade the deploy/charts/kodama-stack Helm release
+  status           Print isolated paths and deployment status for the selected cluster
+
+Options:
+  --cluster <name>             Cluster name (default: $KODAMA_CLUSTER or "stage")
+  --project, --account <id>    Cloud project ID (scw, gcp) or account ID (aws)
+  --region <region>            Cloud region override
+  --state-bucket <name>        Remote state bucket name override
+  --state-region <region>      Remote state bucket region override
+  --var-file <path>            Explicit OpenTofu .tfvars or .tfvars.json file
+  --skip-helm-uninstall        Skip Helm release uninstall before OpenTofu destroy
+  --allow-placeholder-image    Permit installing the chart with registry.example.com/kodama
+  --auto-approve               Pass -auto-approve on apply/destroy
+  --dry-run                    Render files/commands without contacting cloud APIs
+  -h, --help                   Show this help message
+EOF
+}
+
+write_cluster_backend_config() {
+  local cloud="$1"
+  local cluster="$2"
+  local bucket="$3"
+  local project_or_account="$4"
+  local cluster_region="$5"
+  local bucket_region="$6"
+  local backend_file="$7"
+
+  case "$cloud" in
+    scw)
+      scw_write_backend_config "$backend_file" "$bucket" "$project_or_account" "$cluster_region" "$cluster" "$bucket_region"
+      ;;
+    gcp)
+      gcp_write_backend_config "$backend_file" "$bucket" "$project_or_account" "$cluster_region" "$cluster"
+      ;;
+    aws)
+      aws_write_backend_config "$backend_file" "$bucket" "$project_or_account" "$cluster_region" "$cluster" "$bucket_region"
+      ;;
+  esac
+}
+
+build_tofu_var_args() {
+  local cloud="$1"
+  local cluster="$2"
+  local project_or_account="$3"
+  local region="$4"
+  local var_file="$5"
+
+  TOFU_VAR_ARGS=()
+  if [[ -n "$var_file" ]]; then
+    verify_tfvars_cluster_identity "$var_file" "$cluster"
+    TOFU_VAR_ARGS+=("-var-file=${var_file}")
+  fi
+  TOFU_VAR_ARGS+=("-var=cluster_name=${cluster}" "-var=region=${region}")
+  if [[ -n "$project_or_account" ]]; then
+    if [[ "$cloud" == "aws" ]]; then
+      TOFU_VAR_ARGS+=("-var=account_id=${project_or_account}")
+    else
+      TOFU_VAR_ARGS+=("-var=project_id=${project_or_account}")
+    fi
+  fi
+}
+
+main() {
+  if [[ $# -eq 0 ]]; then
+    usage >&2
+    exit 2
+  fi
+
+  case "${1:-}" in
+    -h|--help|help)
+      usage
+      exit 0
+      ;;
+  esac
+
+  if [[ $# -lt 2 ]]; then
+    usage >&2
+    exit 2
+  fi
+
+  local cloud="$1"
+  local action="$2"
+  shift 2
+
+  validate_cloud "$cloud"
+
+  local cluster="${KODAMA_CLUSTER:-stage}"
+  local project_or_account=""
+  local region=""
+  local state_bucket=""
+  local state_region=""
+  local explicit_var_file=""
+  local skip_helm_uninstall="false"
+  local allow_placeholder_image="false"
+  local auto_approve="false"
+  local dry_run="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --cluster)
+        [[ $# -ge 2 ]] || die "--cluster requires a cluster name"
+        cluster="$2"
+        shift 2
+        ;;
+      --project|--account)
+        [[ $# -ge 2 ]] || die "$1 requires a value"
+        project_or_account="$2"
+        shift 2
+        ;;
+      --region)
+        [[ $# -ge 2 ]] || die "--region requires a value"
+        region="$2"
+        shift 2
+        ;;
+      --state-bucket)
+        [[ $# -ge 2 ]] || die "--state-bucket requires a value"
+        state_bucket="$2"
+        shift 2
+        ;;
+      --state-region)
+        [[ $# -ge 2 ]] || die "--state-region requires a value"
+        state_region="$2"
+        shift 2
+        ;;
+      --var-file)
+        [[ $# -ge 2 ]] || die "--var-file requires a file path"
+        explicit_var_file="$2"
+        shift 2
+        ;;
+      --skip-helm-uninstall)
+        skip_helm_uninstall="true"
+        shift
+        ;;
+      --allow-placeholder-image)
+        allow_placeholder_image="true"
+        shift
+        ;;
+      --auto-approve)
+        auto_approve="true"
+        shift
+        ;;
+      --dry-run)
+        dry_run="true"
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown option: $1"
+        ;;
+    esac
+  done
+
+  validate_cluster_name "$cluster"
+
+  local var_file
+  var_file="$(resolve_tfvars_file "$cloud" "$cluster" "$explicit_var_file")"
+  verify_tfvars_cluster_identity "$var_file" "$cluster"
+
+  if [[ -z "$region" ]]; then
+    if [[ -n "$var_file" && "$var_file" == *.json ]] && command -v jq >/dev/null 2>&1; then
+      region="$(jq -r '.region // empty' "$var_file")"
+    fi
+  fi
+
+  if [[ -z "$project_or_account" ]]; then
+    if [[ -n "$var_file" && "$var_file" == *.json ]] && command -v jq >/dev/null 2>&1; then
+      project_or_account="$(jq -r '.project_id // .account_id // empty' "$var_file")"
+    fi
+  fi
+
+  load_state_backend_env "$cloud" "$project_or_account" "$region"
+
+  region="${region:-${KODAMA_STATE_REGION:-$(default_region_for_cloud "$cloud")}}"
+  project_or_account="${project_or_account:-${KODAMA_STATE_PROJECT_OR_ACCOUNT:-}}"
+  state_region="${state_region:-${KODAMA_STATE_REGION:-$region}}"
+
+  local work_dir iac_dir tf_data_dir backend_file plan_file descriptor_file kubeconfig_file values_file
+  work_dir="$(ensure_cluster_work_dir "$cloud" "$cluster")"
+  iac_dir="$(cloud_iac_dir "$cloud")"
+  tf_data_dir="${work_dir}/tfdata"
+  backend_file="${work_dir}/backend.hcl"
+  plan_file="${work_dir}/plan.tfplan"
+  descriptor_file="${work_dir}/descriptor.json"
+  kubeconfig_file="${work_dir}/kubeconfig.yaml"
+  values_file="${work_dir}/values.generated.yaml"
+
+  case "$action" in
+    backend-config)
+      [[ -n "$project_or_account" ]] || project_or_account="00000000-0000-0000-0000-000000000000"
+      if [[ -z "$state_bucket" ]]; then
+        local short_id="${project_or_account//[^a-zA-Z0-9]/}"
+        short_id="$(printf '%s' "$short_id" | tr '[:upper:]' '[:lower:]' | cut -c1-16)"
+        state_bucket="${KODAMA_STATE_BUCKET:-kodama-tofu-state-${cloud}-${short_id}-${state_region}}"
+      fi
+      write_cluster_backend_config "$cloud" "$cluster" "$state_bucket" "$project_or_account" "$region" "$state_region" "$backend_file"
+      log_info "wrote backend config for ${cloud}/${cluster} to ${backend_file}"
+      cat "$backend_file"
+      ;;
+
+    validate)
+      require_cmd tofu
+      log_info "validating OpenTofu configuration in ${iac_dir} (cluster=${cluster})"
+      TF_DATA_DIR="$tf_data_dir" tofu -chdir="$iac_dir" init -backend=false -input=false >/dev/null
+      TF_DATA_DIR="$tf_data_dir" tofu -chdir="$iac_dir" validate
+      ;;
+
+    init)
+      require_cmd tofu
+      if [[ -z "$project_or_account" ]]; then
+        case "$cloud" in
+          scw) project_or_account="$(scw_resolve_project_id)" ;;
+          gcp) project_or_account="$(gcp_resolve_project_id)" ;;
+          aws) project_or_account="$(aws_resolve_account_id)" ;;
+        esac
+      fi
+      if [[ -z "$state_bucket" ]]; then
+        state_bucket="${KODAMA_STATE_BUCKET:-}"
+        [[ -n "$state_bucket" ]] || die "remote state bucket is required (run 'scripts/bootstrap-state ${cloud}' or pass --state-bucket)"
+      fi
+      write_cluster_backend_config "$cloud" "$cluster" "$state_bucket" "$project_or_account" "$region" "$state_region" "$backend_file"
+      if [[ "$cloud" == "scw" ]]; then
+        scw_prepare_s3_credentials
+      fi
+      log_info "initializing OpenTofu for ${cloud}/${cluster} with backend config ${backend_file}"
+      if [[ "$dry_run" == "true" ]]; then
+        return 0
+      fi
+      TF_DATA_DIR="$tf_data_dir" tofu -chdir="$iac_dir" init -reconfigure -input=false "-backend-config=${backend_file}"
+      ;;
+
+    plan)
+      require_cmd tofu
+      if [[ -z "$project_or_account" ]]; then
+        case "$cloud" in
+          scw) project_or_account="$(scw_resolve_project_id)" ;;
+          gcp) project_or_account="$(gcp_resolve_project_id)" ;;
+          aws) project_or_account="$(aws_resolve_account_id)" ;;
+        esac
+      fi
+      build_tofu_var_args "$cloud" "$cluster" "$project_or_account" "$region" "$var_file"
+      if [[ "$cloud" == "scw" ]]; then
+        scw_prepare_s3_credentials
+      fi
+      log_info "planning ${cloud}/${cluster} -> ${plan_file}"
+      if [[ "$dry_run" == "true" ]]; then
+        return 0
+      fi
+      TF_DATA_DIR="$tf_data_dir" tofu -chdir="$iac_dir" plan -input=false -out="$plan_file" "${TOFU_VAR_ARGS[@]}"
+      ;;
+
+    apply)
+      if [[ "$dry_run" == "true" ]]; then
+        log_info "dry-run: not applying ${cloud}/${cluster} (no OpenTofu call, no descriptor written)"
+        return 0
+      fi
+      require_cmd tofu jq
+      if [[ "$cloud" == "scw" ]]; then
+        scw_prepare_s3_credentials
+      fi
+      if [[ -f "$plan_file" ]]; then
+        log_info "applying saved plan ${plan_file} for ${cloud}/${cluster}"
+        TF_DATA_DIR="$tf_data_dir" tofu -chdir="$iac_dir" apply -input=false "$plan_file"
+        rm -f "$plan_file"
+      else
+        if [[ -z "$project_or_account" ]]; then
+          case "$cloud" in
+            scw) project_or_account="$(scw_resolve_project_id)" ;;
+            gcp) project_or_account="$(gcp_resolve_project_id)" ;;
+            aws) project_or_account="$(aws_resolve_account_id)" ;;
+          esac
+        fi
+        build_tofu_var_args "$cloud" "$cluster" "$project_or_account" "$region" "$var_file"
+        local apply_flags=("-input=false")
+        if [[ "$auto_approve" == "true" ]]; then
+          apply_flags+=("-auto-approve")
+        fi
+        log_info "applying ${cloud}/${cluster}"
+        TF_DATA_DIR="$tf_data_dir" tofu -chdir="$iac_dir" apply "${apply_flags[@]}" "${TOFU_VAR_ARGS[@]}"
+      fi
+      (
+        umask 077
+        TF_DATA_DIR="$tf_data_dir" tofu -chdir="$iac_dir" output -json deployment_descriptor >"$descriptor_file"
+      )
+      verify_descriptor_identity "$descriptor_file" "$cloud" "$cluster"
+      log_info "wrote deployment descriptor to ${descriptor_file}"
+      ;;
+
+    destroy)
+      if [[ "$dry_run" == "true" ]]; then
+        log_info "dry-run: not destroying ${cloud}/${cluster} (no Helm uninstall, no OpenTofu call)"
+        return 0
+      fi
+      require_cmd tofu
+      if [[ -z "$project_or_account" ]]; then
+        case "$cloud" in
+          scw) project_or_account="$(scw_resolve_project_id)" ;;
+          gcp) project_or_account="$(gcp_resolve_project_id)" ;;
+          aws) project_or_account="$(aws_resolve_account_id)" ;;
+        esac
+      fi
+      if [[ "$skip_helm_uninstall" != "true" && -f "$kubeconfig_file" && -f "$descriptor_file" ]] && command -v helm >/dev/null 2>&1; then
+        local release_ns
+        release_ns="$(jq -r '.release_namespace // "kodama-system"' "$descriptor_file")"
+        log_info "uninstalling Helm release kodama-${cluster} in ${release_ns} before infrastructure teardown"
+        helm uninstall "kodama-${cluster}" --kubeconfig "$kubeconfig_file" --namespace "$release_ns" --wait --ignore-not-found >/dev/null 2>&1 || true
+      fi
+      build_tofu_var_args "$cloud" "$cluster" "$project_or_account" "$region" "$var_file"
+      if [[ "$cloud" == "scw" ]]; then
+        scw_prepare_s3_credentials
+      fi
+      local destroy_flags=("-input=false")
+      if [[ "$auto_approve" == "true" ]]; then
+        destroy_flags+=("-auto-approve")
+      fi
+      log_info "destroying cluster '${cluster}' on ${cloud} (state bucket is preserved)"
+      TF_DATA_DIR="$tf_data_dir" tofu -chdir="$iac_dir" destroy "${destroy_flags[@]}" "${TOFU_VAR_ARGS[@]}"
+      rm -f "$plan_file"
+      ;;
+
+    output)
+      require_cmd tofu jq
+      if [[ "$cloud" == "scw" ]]; then
+        scw_prepare_s3_credentials
+      fi
+      (
+        umask 077
+        TF_DATA_DIR="$tf_data_dir" tofu -chdir="$iac_dir" output -json deployment_descriptor >"$descriptor_file"
+      )
+      verify_descriptor_identity "$descriptor_file" "$cloud" "$cluster"
+      cat "$descriptor_file"
+      ;;
+
+    kubeconfig)
+      verify_descriptor_identity "$descriptor_file" "$cloud" "$cluster"
+      case "$cloud" in
+        scw) scw_write_kubeconfig "$iac_dir" "$tf_data_dir" "$kubeconfig_file" ;;
+        gcp) gcp_write_kubeconfig "$descriptor_file" "$kubeconfig_file" ;;
+        aws) aws_write_kubeconfig "$descriptor_file" "$kubeconfig_file" ;;
+      esac
+      chmod 600 "$kubeconfig_file"
+      log_info "wrote isolated kubeconfig (0600) for ${cloud}/${cluster} to ${kubeconfig_file}"
+      ;;
+
+    render-values)
+      verify_descriptor_identity "$descriptor_file" "$cloud" "$cluster"
+      render_helm_values_from_descriptor "$descriptor_file" "$values_file"
+      log_info "rendered Helm values for ${cloud}/${cluster} to ${values_file}"
+      ;;
+
+    migrate)
+      require_cmd jq
+      verify_descriptor_identity "$descriptor_file" "$cloud" "$cluster"
+      local release_ns migrate_image
+      release_ns="$(jq -r '.release_namespace' "$descriptor_file")"
+      [[ -n "${KODAMA_IMAGE_REPOSITORY:-}" && -n "${KODAMA_IMAGE_DIGEST:-}" ]] ||
+        die "export KODAMA_IMAGE_REPOSITORY and KODAMA_IMAGE_DIGEST (scripts/image prints them)"
+      # The values are interpolated into the heredoc manifest. Reject anything
+      # that is not a registry reference and a sha256 digest so a value from the
+      # environment cannot add a YAML document or field.
+      [[ "$KODAMA_IMAGE_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] ||
+        die "invalid KODAMA_IMAGE_REPOSITORY '${KODAMA_IMAGE_REPOSITORY}': letters, digits and . _ : / - only"
+      [[ "$KODAMA_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+        die "invalid KODAMA_IMAGE_DIGEST '${KODAMA_IMAGE_DIGEST}': want sha256:<64 lowercase hex>"
+      migrate_image="${KODAMA_IMAGE_REPOSITORY}@${KODAMA_IMAGE_DIGEST}"
+      # A one-shot pod, not a chart Job: the chart declares no Job (Kodama never
+      # replays work), and the administrator URL is mounted into this pod alone.
+      # It runs `kodama migrate`, which is idempotent, then is removed.
+      local migrate_manifest
+      migrate_manifest="$(cat <<MIGRATE_POD
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: kodama-migrate-
+  labels:
+    app.kubernetes.io/name: kodama
+    app.kubernetes.io/component: migrate
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: migrate
+      image: "${migrate_image}"
+      args: ["migrate"]
+      env:
+        - {name: KODAMA_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database-admin, key: admin_url}}}
+        - {name: KODAMA_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: database_url}}}
+        - {name: KODAMA_CONTROLLER_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: controller_url}}}
+        - {name: KODAMA_PUBLISHER_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: publisher_url}}}
+        - {name: KODAMA_AUTH_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: auth_url}}}
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: ["ALL"]}
+      volumeMounts:
+        - {name: database-ca, mountPath: /etc/kodama/pg-ca, readOnly: true}
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 500m, memory: 256Mi}
+  volumes:
+    - name: database-ca
+      secret:
+        secretName: kodama-database
+        items: [{key: ca.crt, path: ca.crt}]
+MIGRATE_POD
+)"
+      if [[ "$dry_run" == "true" ]]; then
+        log_info "dry-run: rendering the migration pod for ${cloud}/${cluster}"
+        printf '%s\n' "$migrate_manifest"
+        return 0
+      fi
+      require_cmd kubectl
+      [[ -f "$kubeconfig_file" ]] || die "kubeconfig not found at ${kubeconfig_file} (run 'scripts/deploy ${cloud} kubeconfig --cluster ${cluster}' first)"
+
+      # One-shot pods are never Jobs, so nothing else removes them: an EXIT,
+      # INT or TERM trap deletes the pod on every path, including a failed wait
+      # and an operator interrupt.
+      local pod=""
+      cleanup_migrate_pod() {
+        if [[ -n "${pod:-}" ]]; then
+          kubectl --kubeconfig "$kubeconfig_file" -n "$release_ns" delete "$pod" --wait=false >/dev/null 2>&1 || true
+          pod=""
+        fi
+      }
+      trap cleanup_migrate_pod EXIT
+      trap 'cleanup_migrate_pod; exit 130' INT
+      trap 'cleanup_migrate_pod; exit 143' TERM
+
+      kubectl --kubeconfig "$kubeconfig_file" -n "$release_ns" get secret kodama-database-admin >/dev/null 2>&1 ||
+        die "Secret ${release_ns}/kodama-database-admin is missing (run bootstrap-secrets with TF_VAR_postgres_admin_password set)"
+      pod="$(printf '%s' "$migrate_manifest" | kubectl --kubeconfig "$kubeconfig_file" -n "$release_ns" create -o name -f -)" ||
+        die "could not create the migration pod"
+      [[ -n "$pod" ]] || die "kubectl create returned no pod name"
+      log_info "running ${pod} in ${release_ns}"
+      local phase="" waited=0
+      while :; do
+        phase="$(kubectl --kubeconfig "$kubeconfig_file" -n "$release_ns" get "$pod" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+        [[ "$phase" != "Succeeded" && "$phase" != "Failed" ]] || break
+        [[ "$waited" -lt 300 ]] || break
+        sleep 3
+        waited=$((waited + 3))
+      done
+      kubectl --kubeconfig "$kubeconfig_file" -n "$release_ns" logs "$pod" 2>&1 || true
+      cleanup_migrate_pod
+      [[ "$phase" == "Succeeded" ]] || die "migration did not succeed (phase: ${phase:-unknown})"
+      ;;
+
+    helm)
+      require_cmd helm jq
+      verify_descriptor_identity "$descriptor_file" "$cloud" "$cluster"
+      render_helm_values_from_descriptor "$descriptor_file" "$values_file"
+
+      local -a extra_values=()
+      if [[ -n "${KODAMA_HELM_EXTRA_VALUES:-}" ]]; then
+        [[ -f "$KODAMA_HELM_EXTRA_VALUES" ]] || die "KODAMA_HELM_EXTRA_VALUES file not found: ${KODAMA_HELM_EXTRA_VALUES}"
+        extra_values=(--values "$KODAMA_HELM_EXTRA_VALUES")
+      fi
+
+      local release_ns tmp_charts_dir stack_chart
+      release_ns="$(jq -r '.release_namespace' "$descriptor_file")"
+      tmp_charts_dir="$(mktemp -d "${work_dir}/charts.XXXXXX")"
+      cp -R "${KODAMA_REPO_ROOT}/deploy/charts/." "$tmp_charts_dir/"
+      stack_chart="${tmp_charts_dir}/kodama-stack"
+
+      helm dependency build --skip-refresh "$stack_chart" >/dev/null
+
+      if [[ "$dry_run" == "true" ]]; then
+        log_info "dry-run: rendering Helm templates for ${cloud}/${cluster}"
+        helm template "kodama-${cluster}" "$stack_chart" \
+          --namespace "$release_ns" \
+          --values "$values_file" \
+          ${extra_values[@]+"${extra_values[@]}"} >/dev/null
+        rm -rf "$tmp_charts_dir"
+        log_info "Helm template validation succeeded for ${cloud}/${cluster}"
+        return 0
+      fi
+
+      local configured_repo configured_digest configured_env
+      configured_repo="$(jq -r '.kodama.image.repository // empty' "$values_file")"
+      if [[ "$configured_repo" == "registry.example.com/kodama" && "$allow_placeholder_image" != "true" ]]; then
+        rm -rf "$tmp_charts_dir"
+        die "refusing live Helm install with placeholder image '${configured_repo}' (export KODAMA_IMAGE_REPOSITORY and KODAMA_IMAGE_DIGEST, or pass --allow-placeholder-image)"
+      fi
+
+      configured_digest="$(jq -r '.kodama.image.digest // empty' "$values_file")"
+      if [[ -z "${KODAMA_IMAGE_DIGEST:-}" || ! "${KODAMA_IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ || ! "$configured_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        rm -rf "$tmp_charts_dir"
+        die "refusing live Helm install without a valid KODAMA_IMAGE_DIGEST (want sha256:<64 lowercase hex>)"
+      fi
+
+      configured_env="$(jq -r '.kodama.environment // "production"' "$values_file")"
+      if [[ "$configured_env" == "production" ]]; then
+        local has_env_oidc="false" has_file_oidc="false"
+        if [[ -n "${KODAMA_OIDC_ISSUER:-}" && -n "${KODAMA_OIDC_AUDIENCE:-}" && -n "${KODAMA_OIDC_TENANT_CLAIM:-}" ]]; then
+          has_env_oidc="true"
+        fi
+        if [[ -n "${KODAMA_HELM_EXTRA_VALUES:-}" ]] &&
+          grep -Eq 'KODAMA_OIDC_ISSUER' "$KODAMA_HELM_EXTRA_VALUES" &&
+          grep -Eq 'KODAMA_OIDC_AUDIENCE' "$KODAMA_HELM_EXTRA_VALUES" &&
+          grep -Eq 'KODAMA_OIDC_TENANT_CLAIM' "$KODAMA_HELM_EXTRA_VALUES"; then
+          has_file_oidc="true"
+        fi
+        if [[ "$has_env_oidc" != "true" && "$has_file_oidc" != "true" ]]; then
+          rm -rf "$tmp_charts_dir"
+          die "refusing live production Helm install without OIDC configuration (set KODAMA_OIDC_ISSUER, KODAMA_OIDC_AUDIENCE, and KODAMA_OIDC_TENANT_CLAIM, or supply them via KODAMA_HELM_EXTRA_VALUES)"
+        fi
+      fi
+
+      [[ -f "$kubeconfig_file" ]] || {
+        rm -rf "$tmp_charts_dir"
+        die "kubeconfig not found at ${kubeconfig_file} (run 'scripts/deploy ${cloud} kubeconfig --cluster ${cluster}' first)"
+      }
+      # KODAMA_HELM_NO_WAIT=1 returns once the release is applied, for iterating
+      # on a cluster whose workload is known not to be ready yet.
+      local -a wait_args=(--wait)
+      [[ -z "${KODAMA_HELM_NO_WAIT:-}" ]] || wait_args=()
+      log_info "installing/upgrading Helm release kodama-${cluster} in namespace ${release_ns}"
+      helm upgrade --install "kodama-${cluster}" "$stack_chart" \
+        --kubeconfig "$kubeconfig_file" \
+        --namespace "$release_ns" \
+        --create-namespace \
+        --values "$values_file" \
+        ${extra_values[@]+"${extra_values[@]}"} \
+        ${wait_args[@]+"${wait_args[@]}"} \
+        --timeout 10m
+      rm -rf "$tmp_charts_dir"
+      ;;
+
+    status)
+      cat <<EOF
+cloud:           ${cloud}
+cluster:         ${cluster}
+iac_dir:         ${iac_dir}
+work_dir:        ${work_dir}
+tf_data_dir:     ${tf_data_dir}
+backend_config:  ${backend_file}
+descriptor:      ${descriptor_file}
+kubeconfig:      ${kubeconfig_file}
+helm_values:     ${values_file}
+tfvars_file:     ${var_file:-<none>}
+EOF
+      ;;
+
+    *)
+      die "unknown action '${action}' (run 'scripts/deploy --help' for usage)"
+      ;;
+  esac
+}
+
+main "$@"

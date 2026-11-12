@@ -1,0 +1,12 @@
+{{- if .Values.oauthsonas }}
+{{- if .Values.oauthsonas.enabled }}
+WARNING: OAuthSonas is enabled in namespace {{ .Release.Namespace }}.
+
+OAuthSonas is a development identity provider for stage and preview
+installations ONLY; never enable it where real identities matter. Its persona
+picker accepts anyone who has the access code from the oauthsonas-access
+Secret (access_code key). The issuer is https://{{ .Values.oauthsonas.host | default (printf "oauthsonas.%s.svc.cluster.local" .Release.Namespace) }}:{{ .Values.oauthsonas.port | default 8443 }}
+through the Caddy sidecar, and scripts/oauthsonas-token reads the access code
+from a 0600 file or stdin, never from an argument.
+{{- end }}
+{{- end }}

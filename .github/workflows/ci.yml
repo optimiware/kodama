@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: .go-version
+      - run: make check
+      - run: go vet -tags=integration ./test/...
+      - run: go vet -tags=component ./test/...
+      - run: go vet -tags=e2e ./test/e2e/...
+      - run: go vet -tags=qualification ./test/qualification/...
+      - run: make test-e2e-hermetic
+
+  # Builds everything a release publishes and pushes nothing, so a broken
+  # release build is found on the commit that breaks it.
+  artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: .go-version
+      - run: make build
+      - name: Binaries report the version and revision
+        run: |
+          want="$(cat VERSION) (revision ${GITHUB_SHA},"
+          for binary in kodama kodactl; do
+            line="$(bin/$binary version)"
+            echo "$line"
+            [[ "$line" == "$binary $want"* ]] || { echo "::error::$binary version does not start with '$binary $want'"; exit 1; }
+          done
+      - run: make dist
+      - run: sha256sum --check SHA256SUMS
+        working-directory: dist
+      - name: Image builds and reports the version and revision
+        run: |
+          ref="$(scripts/image build --repository localhost/kodama --tag ci)"
+          line="$(podman run --rm "$ref" version)"
+          echo "$line"
+          [[ "$line" == "kodama $(cat VERSION) (revision ${GITHUB_SHA},"* ]] || { echo "::error::the image reports another version or revision"; exit 1; }

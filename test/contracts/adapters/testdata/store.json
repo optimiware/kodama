@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "vectors": [
+    {
+      "name": "rollback_multi_record_unit",
+      "kind": "rollback",
+      "seed": {
+        "rows": [
+          {"table": "tasks", "tenant_id": "tenant-1", "project_id": "project-1", "id": "task-1", "version": 3, "values": {"state": "open"}}
+        ]
+      },
+      "steps": [
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}},
+        {"op": "write", "table": "tasks", "id": "task-1", "expect_version": 3, "values": {"state": "waiting"}},
+        {"op": "write", "table": "executions", "id": "exec-1", "values": {"state": "queued", "task_id": "task-1"}},
+        {"op": "fail", "point": "before_commit", "want_error": "injected_failure"},
+        {"op": "inspect", "table": "tasks", "id": "task-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "want": {"state": "open"}, "want_version": 3},
+        {"op": "inspect", "table": "executions", "id": "exec-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "want_absent": true}
+      ]
+    },
+    {
+      "name": "stale_version_conflict",
+      "kind": "conflict",
+      "seed": {
+        "rows": [
+          {"table": "tasks", "tenant_id": "tenant-1", "project_id": "project-1", "id": "task-1", "version": 3, "values": {"state": "open"}}
+        ]
+      },
+      "steps": [
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}},
+        {"op": "write", "table": "tasks", "id": "task-1", "expect_version": 2, "values": {"state": "waiting"}, "want_error": "version_conflict"},
+        {"op": "inspect", "table": "tasks", "id": "task-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "want": {"state": "open"}, "want_version": 3}
+      ]
+    },
+    {
+      "name": "receipt_equal_content_replays_original",
+      "kind": "receipt_identity",
+      "seed": {
+        "receipts": [
+          {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "principal-1", "operation": "task.create", "caller_key": "key-1", "content": "{\"a\":1}", "result": "result-1"}
+        ]
+      },
+      "steps": [
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}},
+        {"op": "receipt", "key": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "principal-1", "operation": "task.create", "caller_key": "key-1"}, "content": "{\"a\":1}", "result": "ignored", "want_result": "result-1"},
+        {"op": "commit"},
+        {"op": "inspect_receipt", "key": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "principal-1", "operation": "task.create", "caller_key": "key-1"}, "want_content": "{\"a\":1}", "want_result": "result-1"}
+      ]
+    },
+    {
+      "name": "receipt_changed_content_conflicts",
+      "kind": "receipt_identity",
+      "seed": {
+        "receipts": [
+          {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "principal-1", "operation": "task.create", "caller_key": "key-1", "content": "{\"a\":1}", "result": "result-1"}
+        ]
+      },
+      "steps": [
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}},
+        {"op": "receipt", "key": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "principal-1", "operation": "task.create", "caller_key": "key-1"}, "content": "{\"a\":2}", "result": "other", "want_error": "changed_idempotency_content"},
+        {"op": "inspect_receipt", "key": {"tenant_id": "tenant-1", "project_id": "project-1", "principal_id": "principal-1", "operation": "task.create", "caller_key": "key-1"}, "want_content": "{\"a\":1}", "want_result": "result-1"}
+      ]
+    },
+    {
+      "name": "state_and_event_commit_together",
+      "kind": "atomicity",
+      "seed": {},
+      "steps": [
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}},
+        {"op": "write", "table": "executions", "id": "exec-1", "values": {"state": "queued"}},
+        {"op": "write", "table": "events", "id": "event-1", "values": {"type": "execution.queued", "subject_id": "exec-1"}},
+        {"op": "commit"},
+        {"op": "inspect", "table": "executions", "id": "exec-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "want": {"state": "queued"}},
+        {"op": "inspect", "table": "events", "id": "event-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "want": {"type": "execution.queued"}}
+      ]
+    },
+    {
+      "name": "state_and_event_roll_back_together",
+      "kind": "atomicity",
+      "seed": {},
+      "steps": [
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}},
+        {"op": "write", "table": "executions", "id": "exec-1", "values": {"state": "queued"}},
+        {"op": "write", "table": "events", "id": "event-1", "values": {"type": "execution.queued", "subject_id": "exec-1"}},
+        {"op": "rollback"},
+        {"op": "inspect", "table": "executions", "id": "exec-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "want_absent": true},
+        {"op": "inspect", "table": "events", "id": "event-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "want_absent": true}
+      ]
+    },
+    {
+      "name": "pooled_scope_reset",
+      "kind": "scope",
+      "seed": {
+        "rows": [
+          {"table": "tasks", "tenant_id": "tenant-1", "project_id": "project-1", "id": "task-1", "version": 1, "values": {"state": "open"}}
+        ]
+      },
+      "steps": [
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}},
+        {"op": "read", "table": "tasks", "id": "task-1", "want": {"state": "open"}},
+        {"op": "commit"},
+        {"op": "read", "table": "tasks", "id": "task-1", "want_error": "no_transaction"},
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-2"}},
+        {"op": "read", "table": "tasks", "id": "task-1", "want_absent": true},
+        {"op": "commit"},
+        {"op": "inspect", "table": "tasks", "id": "task-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "want": {"state": "open"}}
+      ]
+    },
+    {
+      "name": "cross_scope_reference_refused",
+      "kind": "ownership",
+      "seed": {
+        "rows": [
+          {"table": "tasks", "tenant_id": "tenant-2", "project_id": "project-2", "id": "task-1", "version": 1, "values": {"state": "open"}},
+          {"table": "tasks", "tenant_id": "tenant-1", "project_id": "project-1", "id": "task-2", "version": 1, "values": {"state": "open"}}
+        ]
+      },
+      "steps": [
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}},
+        {"op": "write", "table": "executions", "id": "exec-1", "values": {"state": "queued"}, "reference": {"table": "tasks", "tenant_id": "tenant-2", "project_id": "project-2", "id": "task-1"}, "want_error": "cross_scope"},
+        {"op": "begin", "scope": {"tenant_id": "tenant-1", "project_id": "project-2"}},
+        {"op": "write", "table": "executions", "id": "exec-2", "values": {"state": "queued"}, "reference": {"table": "tasks", "tenant_id": "tenant-1", "project_id": "project-1", "id": "task-2"}, "want_error": "cross_scope"},
+        {"op": "inspect", "table": "executions", "id": "exec-1", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "want_absent": true},
+        {"op": "inspect", "table": "executions", "id": "exec-2", "scope": {"tenant_id": "tenant-1", "project_id": "project-2"}, "want_absent": true}
+      ]
+    }
+  ]
+}

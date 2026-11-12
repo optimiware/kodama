@@ -1,0 +1,32 @@
+{
+  "suite": "aes-256-gcm",
+  "key_ref": "kms/key-1",
+  "key_version": 7,
+  "associated_data": {
+    "installation_id": "install-1",
+    "tenant_id": "tenant-1",
+    "project_id": "project-1",
+    "secret_id": "secret-1",
+    "name": "DATABASE_PASSWORD",
+    "key_version": 7
+  },
+  "associated_data_hex": "00000009696e7374616c6c2d310000000874656e616e742d310000000970726f6a6563742d31000000087365637265742d310000001144415441424153455f50415353574f524400000007",
+  "envelope": {
+    "suite": "aes-256-gcm",
+    "key_ref": "kms/key-1",
+    "key_version": 7,
+    "nonce_hex": "000102030405060708090a0b",
+    "ciphertext_hex": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+    "wrapped_key_hex": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+    "wrap_nonce_hex": "0c0d0e0f1011121314151617"
+  },
+  "tamper": [
+    {"field": "ciphertext", "valid": false},
+    {"field": "nonce", "valid": false},
+    {"field": "wrap_nonce", "valid": false},
+    {"field": "wrapped_key", "valid": false},
+    {"field": "key_version", "valid": false},
+    {"field": "suite", "valid": false},
+    {"field": "key_ref", "valid": false}
+  ]
+}

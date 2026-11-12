@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "vectors": [
+    {
+      "name": "project scope never widens to tenant-wide, another project or another tenant",
+      "kind": "scope",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "values": {"state": "queued", "created_at": "2026-01-01T00:00:01Z"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-2", "id": "execution-2", "values": {"state": "queued", "created_at": "2026-01-01T00:00:02Z"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-3", "values": {"state": "running", "created_at": "2026-01-01T00:00:03Z"}},
+          {"table": "executions", "tenant_id": "tenant-2", "project_id": "project-1", "id": "execution-4", "values": {"state": "queued", "created_at": "2026-01-01T00:00:04Z"}},
+          {"table": "events", "tenant_id": "tenant-1", "project_id": "project-1", "id": "event-1", "values": {"type": "execution.succeeded"}},
+          {"table": "events", "tenant_id": "tenant-1", "project_id": "", "id": "event-2", "values": {"type": "project.created"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "equals": {"state": "queued"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["execution-1"]},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "equals": {"tenant_id": "tenant-2"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": []},
+        {"op": "query", "scope": {"tenant_id": "tenant-1"}, "table": "events", "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["event-2"]},
+        {"op": "query", "scope": {"tenant_id": "tenant-1"}, "table": "executions", "order_by": [{"column": "id"}], "limit": 10, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["execution-1", "execution-3"]}
+      ]
+    },
+    {
+      "name": "tenant and project root rows are scoped by their own identity",
+      "kind": "scope",
+      "seed": {
+        "rows": [
+          {"table": "tenants", "id": "tenant-1", "values": {"name": "tenant one"}},
+          {"table": "tenants", "id": "tenant-2", "values": {"name": "tenant two"}},
+          {"table": "projects", "tenant_id": "tenant-1", "id": "project-1", "values": {"name": "project one"}},
+          {"table": "projects", "tenant_id": "tenant-1", "id": "project-2", "values": {"name": "project two"}},
+          {"table": "projects", "tenant_id": "tenant-2", "id": "project-3", "values": {"name": "project three"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "tenants", "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["tenant-1"]},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "tenants", "equals": {"id": "tenant-2"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": []},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "projects", "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["project-1"]},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "projects", "equals": {"id": "project-2"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": []},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "projects", "equals": {"id": "project-3"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": []},
+        {"op": "query", "scope": {"tenant_id": "tenant-1"}, "table": "projects", "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["project-1", "project-2"]},
+        {"op": "query", "scope": {"tenant_id": "tenant-1"}, "table": "tenants", "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["tenant-1"]},
+        {"op": "query", "scope": {"tenant_id": "tenant-1"}, "table": "tenants", "equals": {"id": "tenant-2"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": []}
+      ]
+    },
+    {
+      "name": "keyset pages stay stable when a concurrent insert sorts before the cursor",
+      "kind": "pagination",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "values": {"created_at": "2026-01-01T00:00:01Z"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-2", "values": {"created_at": "2026-01-01T00:00:02Z"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-3", "values": {"created_at": "2026-01-01T00:00:03Z"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-4", "values": {"created_at": "2026-01-01T00:00:04Z"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at"}], "limit": 2, "want_ids": ["execution-1", "execution-2"], "want_has_more": true, "want_next": true},
+        {"op": "insert", "row": {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-0", "values": {"created_at": "2026-01-01T00:00:00Z"}}},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at"}], "after_step": 0, "limit": 2, "want_ids": ["execution-3", "execution-4"], "want_has_more": false, "want_next": false},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at", "desc": true}], "limit": 2, "want_ids": ["execution-4", "execution-3"], "want_has_more": true}
+      ]
+    },
+    {
+      "name": "equal order values are tie-broken by the row id deterministically",
+      "kind": "pagination",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "values": {"created_at": "2026-01-01T00:00:00Z"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-2", "values": {"created_at": "2026-01-01T00:00:00Z"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-3", "values": {"created_at": "2026-01-01T00:00:00Z"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at"}], "limit": 1, "want_ids": ["execution-1"], "want_has_more": true},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at"}], "after_step": 0, "limit": 1, "want_ids": ["execution-2"], "want_has_more": true},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at"}], "after_step": 1, "limit": 1, "want_ids": ["execution-3"], "want_has_more": false},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at"}], "limit": 3, "want_ids": ["execution-1", "execution-2", "execution-3"]},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "id", "desc": true}], "limit": 3, "want_ids": ["execution-3", "execution-2", "execution-1"]}
+      ]
+    },
+    {
+      "name": "the same query over the same state returns the same deterministic page",
+      "kind": "determinism",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "values": {"state": "queued"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-2", "values": {"state": "running"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-3", "values": {"state": "queued"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "equals": {"state": "queued"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["execution-1", "execution-3"]},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "equals": {"state": "queued"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["execution-1", "execution-3"]},
+        {"op": "inspect", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "want_count": 3}
+      ]
+    },
+    {
+      "name": "a cursor is bound to its scope, table and order",
+      "kind": "cursor",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "values": {"created_at": "2026-01-01T00:00:01Z"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-2", "values": {"created_at": "2026-01-01T00:00:02Z"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-2", "id": "execution-3", "values": {"created_at": "2026-01-01T00:00:03Z"}},
+          {"table": "tasks", "tenant_id": "tenant-1", "project_id": "project-1", "id": "task-1", "values": {"created_at": "2026-01-01T00:00:01Z"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at"}], "limit": 1, "want_ids": ["execution-1"], "want_next": true},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-2"}, "table": "executions", "order_by": [{"column": "created_at"}], "after_step": 0, "limit": 1, "want_error": "forbidden"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at", "desc": true}], "after_step": 0, "limit": 1, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "tasks", "order_by": [{"column": "created_at"}], "after_step": 0, "limit": 1, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at"}], "after": "not a cursor", "limit": 1, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "created_at"}], "after_step": 0, "limit": 1, "want_ids": ["execution-2"], "want_has_more": false}
+      ]
+    },
+    {
+      "name": "the page limit is required and bounded before a statement runs",
+      "kind": "limit",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "values": {"state": "queued"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "id"}], "limit": 0, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "id"}], "limit": 501, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "id"}], "limit": -1, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "id"}], "limit": 500, "want_ids": ["execution-1"]}
+      ]
+    },
+    {
+      "name": "unknown tables, columns and malformed filters are refused before a statement",
+      "kind": "invalid_input",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "values": {"state": "queued", "created_at": "2026-01-01T00:00:01Z"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "unknown", "order_by": [{"column": "id"}], "limit": 10, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "equals": {"nope": "x"}, "order_by": [{"column": "id"}], "limit": 10, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "range": [{"column": "nope", "after": "a"}], "order_by": [{"column": "id"}], "limit": 10, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "nope"}], "limit": 10, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "id"}, {"column": "id", "desc": true}], "limit": 10, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "range": [{"column": "created_at"}], "order_by": [{"column": "id"}], "limit": 10, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "equals": {"created_at": null}, "order_by": [{"column": "id"}], "limit": 10, "want_error": "invalid_input"}
+      ]
+    },
+    {
+      "name": "nullable columns cannot order or bound a keyset scan but may be equated",
+      "kind": "invalid_input",
+      "seed": {
+        "rows": [
+          {"table": "events", "tenant_id": "tenant-1", "project_id": "project-1", "id": "event-1", "values": {"type": "execution.succeeded"}},
+          {"table": "events", "tenant_id": "tenant-1", "project_id": "", "id": "event-2", "values": {"type": "project.created"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "equals": {"project_id": "project-1"}, "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["event-1"]},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "range": [{"column": "project_id", "after": "a"}], "order_by": [{"column": "id"}], "limit": 10, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "order_by": [{"column": "project_id"}], "limit": 10, "want_error": "invalid_input"},
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "events", "equals": {"project_id": null}, "order_by": [{"column": "id"}], "limit": 10, "want_error": "invalid_input"}
+      ]
+    },
+    {
+      "name": "a query never writes, locks or publishes",
+      "kind": "readonly",
+      "seed": {
+        "rows": [
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-1", "values": {"state": "queued"}},
+          {"table": "executions", "tenant_id": "tenant-1", "project_id": "project-1", "id": "execution-2", "values": {"state": "running"}}
+        ]
+      },
+      "steps": [
+        {"op": "query", "scope": {"tenant_id": "tenant-1", "project_id": "project-1"}, "table": "executions", "order_by": [{"column": "id"}], "limit": 10, "want_ids": ["execution-1", "execution-2"]},
+        {"op": "inspect", "table": "executions", "want_count": 2},
+        {"op": "inspect", "table": "events", "want_count": 0}
+      ]
+    }
+  ]
+}

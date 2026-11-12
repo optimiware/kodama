@@ -1,0 +1,68 @@
+{{- if .Values.nats.enabled }}
+{{- include "kodama-stack.natsAuthGuard" . }}
+{{- $auth := .Values.nats.auth }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nats-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/part-of: kodama-stack
+data:
+  nats.conf: |
+    port: {{ .Values.nats.port | default 4222 }}
+    server_name: $POD_NAME
+
+    jetstream {
+      store_dir: "/data/jetstream"
+      max_mem: {{ .Values.nats.jetstream.maxMemory | default "256M" }}
+      max_file: {{ .Values.nats.jetstream.maxFile | default "8G" }}
+    }
+
+    tls {
+      cert_file: "/etc/nats/tls/tls.crt"
+      key_file: "/etc/nats/tls/tls.key"
+      # Client authentication is always on: the mTLS CA is mounted read-only
+      # from nats.auth.mtls.existingSecret; client verification has no opt-out.
+      ca_file: "/etc/nats/client-ca/ca.crt"
+      verify: true
+      timeout: 5
+    }
+{{- if eq $auth.mode "credentials" }}
+
+    # Credentials mode adds a NATS authorization block. The values come from
+    # nats.auth.credentials.existingSecret through the StatefulSet environment,
+    # never from values.yaml or this ConfigMap.
+    authorization {
+      user: $NATS_AUTH_USER
+      password: $NATS_AUTH_PASSWORD
+    }
+{{- end }}
+{{- if eq $auth.mode "callout" }}
+
+    # Per-credential authorization callout. The broker never accepts an
+    # unauthenticated client and only the two bypass users below skip the
+    # callout.
+    # External clients present their current Kodama credential as the NATS auth
+    # token; the Shell's callout service returns a scope-limited user JWT or an
+    # error. The issuer public key and both bypass users come from
+    # nats.auth.callout.existingSecret through the StatefulSet environment.
+    accounts {
+      {{ $auth.callout.account }}: {
+        jetstream: enabled
+        users: [
+          { user: $NATS_SHELL_USER, password: $NATS_SHELL_PASSWORD }
+          { user: $NATS_CALLOUT_USER, password: $NATS_CALLOUT_PASSWORD }
+        ]
+      }
+    }
+    authorization {
+      auth_callout {
+        issuer: $NATS_CALLOUT_ISSUER
+        auth_users: [ $NATS_SHELL_USER, $NATS_CALLOUT_USER ]
+        account: {{ $auth.callout.account }}
+      }
+    }
+{{- end }}
+{{- end }}

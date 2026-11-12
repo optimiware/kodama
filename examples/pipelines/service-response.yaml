@@ -1,0 +1,11 @@
+inputs:
+  - request_id
+actions:
+  - name: respond
+    request: service/git-service
+    subject:
+      operation: service.response
+      request:
+        from: inputs.request_id
+    outputs:
+      - response

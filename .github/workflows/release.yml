@@ -1,0 +1,129 @@
+name: Release
+
+# A pushed tag v<VERSION> publishes that version: the kodama image and both
+# Helm charts to GHCR, and a GitHub release with the kodactl archives, the
+# chart packages and SHA256SUMS. A manual run on a branch builds everything
+# and publishes nothing. See docs/runbooks/release.md.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      # The packages live under the repository name: ghcr.io/<owner>/kodama
+      # belongs to the archived v1 repository and this workflow cannot write it.
+      IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}/kodama
+      CHART_REGISTRY: oci://ghcr.io/${{ github.repository }}/charts
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: .go-version
+
+      # Sets VERSION, PUBLISH and PRERELEASE for the steps below.
+      - name: Resolve the version
+        run: |
+          version="$(cat VERSION)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::VERSION '${version}' is not MAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          publish=false
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            if [[ "$GITHUB_REF_NAME" != "v${version}" ]]; then
+              echo "::error::tag ${GITHUB_REF_NAME} is not v${version}, the version in the VERSION file"
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+              echo "::error::${GITHUB_SHA} is not on master; a release is cut from master"
+              exit 1
+            fi
+            publish=true
+          fi
+          prerelease=false
+          if [[ "$version" == 0.0.* || "$version" == *-* ]]; then
+            prerelease=true
+          fi
+          {
+            echo "VERSION=${version}"
+            echo "PUBLISH=${publish}"
+            echo "PRERELEASE=${prerelease}"
+          } >>"$GITHUB_ENV"
+          echo "version ${version}, publish ${publish}, prerelease ${prerelease}"
+
+      - name: Build the release artifacts
+        run: make dist
+
+      - name: Build the image
+        run: |
+          ref="$(scripts/image build --repository "$IMAGE_REPOSITORY" --tag "$VERSION")"
+          line="$(podman run --rm "$ref" version)"
+          echo "$line"
+          [[ "$line" == "kodama ${VERSION} (revision ${GITHUB_SHA},"* ]] || { echo "::error::the image reports another version or revision"; exit 1; }
+
+      - name: Log in to GHCR
+        if: env.PUBLISH == 'true'
+        run: |
+          printf '%s' "$GH_TOKEN" | podman login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push the image
+        if: env.PUBLISH == 'true'
+        run: |
+          reference="$(scripts/image build-push --repository "$IMAGE_REPOSITORY" --tag "$VERSION")"
+          echo "IMAGE_REFERENCE=${reference}" >>"$GITHUB_ENV"
+          echo "pushed ${reference}"
+
+      - name: Push the charts
+        if: env.PUBLISH == 'true'
+        run: |
+          helm push "dist/kodama-${VERSION}.tgz" "$CHART_REGISTRY"
+          helm push "dist/kodama-stack-${VERSION}.tgz" "$CHART_REGISTRY"
+
+      - name: Publish the GitHub release
+        if: env.PUBLISH == 'true'
+        run: |
+          {
+            echo "## Artifacts"
+            echo
+            echo "| Artifact | Reference |"
+            echo "|---|---|"
+            echo "| Image | \`${IMAGE_REFERENCE}\` (tag \`${VERSION}\`) |"
+            echo "| Chart \`kodama\` | \`${CHART_REGISTRY}/kodama\` version \`${VERSION}\` |"
+            echo "| Chart \`kodama-stack\` | \`${CHART_REGISTRY}/kodama-stack\` version \`${VERSION}\` |"
+            echo "| \`kodactl\` | the archives below; verify with \`sha256sum --check SHA256SUMS\` |"
+            echo
+            echo "Source revision: \`${GITHUB_SHA}\`. Changes and known limitations: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)."
+          } >"${RUNNER_TEMP}/notes.md"
+          flags=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            flags+=(--prerelease)
+          fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
+              --title "Kodama ${VERSION}" --notes-file "${RUNNER_TEMP}/notes.md" "${flags[@]}"
+          fi

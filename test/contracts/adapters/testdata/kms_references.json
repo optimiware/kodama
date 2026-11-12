@@ -1,0 +1,154 @@
+{
+  "note": "One grammar corpus for both real seams: installation.Config.Preflight and the keys cloud-provider constructors. References are never normalized; every accepted vector must cross both seams unchanged.",
+  "providers": {
+    "aws": {
+      "adapter": "aws-kms",
+      "environment": "production",
+      "accepted": [
+        {
+          "name": "arn uuid key",
+          "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab",
+          "reference_region": "eu-west-1",
+          "reference_account": "123456789012"
+        },
+        {
+          "name": "arn multi-region key",
+          "reference": "aws-kms:arn:aws:kms:us-east-1:111122223333:key/mrk-0123456789abcdef0123456789abcdef",
+          "reference_region": "us-east-1",
+          "reference_account": "111122223333"
+        },
+        {
+          "name": "arn alias",
+          "reference": "aws-kms:arn:aws:kms:ap-southeast-2:210987654321:alias/kodama-kek",
+          "reference_region": "ap-southeast-2",
+          "reference_account": "210987654321"
+        },
+        {
+          "name": "arn gov partition",
+          "reference": "aws-kms:arn:aws-us-gov:kms:us-gov-west-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab",
+          "reference_region": "us-gov-west-1",
+          "reference_account": "111122223333"
+        },
+        {
+          "name": "arn cn partition",
+          "reference": "aws-kms:arn:aws-cn:kms:cn-north-1:111122223333:alias/kodama",
+          "reference_region": "cn-north-1",
+          "reference_account": "111122223333"
+        },
+        {
+          "name": "configured-region alias",
+          "reference": "aws-kms:alias/kodama-kek"
+        },
+        {
+          "name": "alias with slash and mixed case",
+          "reference": "aws-kms:alias/Kodama/Team_Kek-1"
+        }
+      ],
+      "refused": [
+        {"name": "bare ambiguous key id", "reference": "aws-kms:key-1"},
+        {"name": "bare uuid", "reference": "aws-kms:1234abcd-12ab-34cd-56ef-1234567890ab"},
+        {"name": "empty arn key id", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012:key/"},
+        {"name": "extra key resource segment", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab/extra"},
+        {"name": "empty arn alias", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012:alias/"},
+        {"name": "foreign service", "reference": "aws-kms:arn:aws:s3:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"},
+        {"name": "short account", "reference": "aws-kms:arn:aws:kms:eu-west-1:12345:key/1234abcd-12ab-34cd-56ef-1234567890ab"},
+        {"name": "non-numeric account", "reference": "aws-kms:arn:aws:kms:eu-west-1:abcdefghijkl:key/1234abcd-12ab-34cd-56ef-1234567890ab"},
+        {"name": "malformed key id", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012:key/not-a-uuid"},
+        {"name": "upper-case region", "reference": "aws-kms:arn:aws:kms:EU-WEST-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"},
+        {"name": "empty region", "reference": "aws-kms:arn:aws:kms::123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"},
+        {"name": "unsupported partition", "reference": "aws-kms:arn:aws-other:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"},
+        {"name": "missing resource", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012"},
+        {"name": "query string", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab?x=1"},
+        {"name": "fragment", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab#frag"},
+        {"name": "space in alias", "reference": "aws-kms:alias/kodama kek"},
+        {"name": "percent escape in alias", "reference": "aws-kms:alias/%2e%2e"},
+        {"name": "traversal in alias", "reference": "aws-kms:alias/.."},
+        {"name": "alias name repeats prefix", "reference": "aws-kms:alias/alias/kodama"},
+        {"name": "uppercase scheme prefix", "reference": "AWS-KMS:alias/kodama"},
+        {"name": "space after prefix", "reference": "aws-kms: alias/kodama"},
+        {"name": "trailing space", "reference": "aws-kms:alias/kodama "},
+        {"name": "empty reference", "reference": "aws-kms:"}
+      ]
+    },
+    "gcp": {
+      "adapter": "gcp-kms",
+      "environment": "production",
+      "accepted": [
+        {
+          "name": "full key resource",
+          "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek",
+          "reference_project": "demo-project",
+          "reference_location": "europe-west1",
+          "reference_key_ring": "kodama",
+          "reference_crypto_key": "kek"
+        },
+        {
+          "name": "project number and global location",
+          "reference": "gcp-kms:projects/123456789012/locations/global/keyRings/kodama-ring/cryptoKeys/kek_1",
+          "reference_project": "123456789012",
+          "reference_location": "global",
+          "reference_key_ring": "kodama-ring",
+          "reference_crypto_key": "kek_1"
+        },
+        {
+          "name": "multi-region location",
+          "reference": "gcp-kms:projects/my-proj-1/locations/us/keyRings/ring-kodama/cryptoKeys/key-1",
+          "reference_project": "my-proj-1",
+          "reference_location": "us",
+          "reference_key_ring": "ring-kodama",
+          "reference_crypto_key": "key-1"
+        }
+      ],
+      "refused": [
+        {"name": "incomplete key ring", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama"},
+        {"name": "empty crypto key", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/"},
+        {"name": "crypto key version", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/cryptoKeyVersions/1"},
+        {"name": "extra segment", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/extra"},
+        {"name": "empty segment", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings//cryptoKeys/kek"},
+        {"name": "leading slash", "reference": "gcp-kms:/projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
+        {"name": "trailing slash", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/"},
+        {"name": "upper-case project", "reference": "gcp-kms:projects/Demo-Project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
+        {"name": "underscore project", "reference": "gcp-kms:projects/demo_project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
+        {"name": "traversal location", "reference": "gcp-kms:projects/demo-project/locations/../keyRings/kodama/cryptoKeys/kek"},
+        {"name": "percent escape", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/%2e%2e"},
+        {"name": "query string", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek?x=1"},
+        {"name": "fragment", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek#frag"},
+        {"name": "wrong label case", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyrings/kodama/cryptoKeys/kek"},
+        {"name": "missing locations", "reference": "gcp-kms:projects/demo-project/keyRings/kodama/cryptoKeys/kek"},
+        {"name": "missing key ring", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/cryptoKeys/kek"},
+        {"name": "invalid ring character", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama.ring/cryptoKeys/kek"},
+        {"name": "ring starts with digit", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/1ring/cryptoKeys/kek"},
+        {"name": "space in crypto key", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/ke k"},
+        {"name": "uppercase scheme prefix", "reference": "GCP-KMS:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
+        {"name": "space after prefix", "reference": "gcp-kms: projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
+        {"name": "trailing space", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek "},
+        {"name": "empty reference", "reference": "gcp-kms:"}
+      ]
+    },
+    "scaleway": {
+      "adapter": "scw-kms",
+      "environment": "production",
+      "accepted": [
+        {"name": "prefix-only reference", "reference": "scw-kms:key-id"},
+        {"name": "region and id reference", "reference": "scw-kms:fr-par/00000000-0000-0000-0000-000000000000"}
+      ],
+      "refused": [
+        {"name": "empty reference", "reference": "scw-kms:"},
+        {"name": "space after prefix", "reference": "scw-kms: fr-par/kid"},
+        {"name": "uppercase scheme prefix", "reference": "SCW-KMS:fr-par/kid"}
+      ]
+    }
+  },
+  "preserved": [
+    {"name": "development ephemeral", "provider": "ephemeral", "environment": "development", "adapter": "ephemeral", "accepted": [
+      {"name": "ephemeral name", "reference": "ephemeral:dev"}
+    ], "refused": [
+      {"name": "empty reference", "reference": "ephemeral:"}
+    ]},
+    {"name": "test keyfile", "provider": "keyfile", "environment": "test", "adapter": "keyfile", "accepted": [
+      {"name": "keyfile name", "reference": "keyfile:kodama"}
+    ], "refused": [
+      {"name": "empty reference", "reference": "keyfile:"}
+    ]}
+  ]
+}

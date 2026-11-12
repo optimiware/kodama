@@ -1,0 +1,34 @@
+{{- if not .Values.tenants }}{{- fail "tenants must not be empty" }}{{- end }}
+{{- range $tenant := .Values.tenants }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kodama-tenant-{{ $tenant }}
+  labels:
+    app.kubernetes.io/name: kodama
+    kodama.dev/tenant: {{ $tenant | quote }}
+    # Workloads are arbitrary pipeline images: refuse privileged pods outright and
+    # surface (not yet enforce) what the restricted profile would reject.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: kodama-tenant-limits
+  namespace: kodama-tenant-{{ $tenant }}
+  labels:
+    app.kubernetes.io/name: kodama
+    kodama.dev/tenant: {{ $tenant | quote }}
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: {{ $.Values.resources.limits.cpu }}
+        memory: {{ $.Values.resources.limits.memory }}
+      defaultRequest:
+        cpu: {{ $.Values.resources.requests.cpu }}
+        memory: {{ $.Values.resources.requests.memory }}
+{{- end }}

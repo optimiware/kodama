@@ -1,0 +1,35 @@
+# Kodama application image: one static kodama binary on a minimal Alpine base.
+#
+# Build from the repository root:
+#   podman build -f deploy/images/kodama/Containerfile -t <registry>/kodama:<tag> .
+# The runtime needs the git binary (Git service and hooks run it) and CA roots
+# (OIDC discovery and KMS calls). It runs as the non-root UID the chart expects.
+
+FROM docker.io/library/golang:1.27.3-alpine@sha256:0fd028db9bdd4f01657bc8047c209b04d8ce19b853d776bd6f1e76a41729b936 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# VERSION and REVISION are what `kodama version` prints. The build context has
+# no .git directory, so the caller passes them (scripts/image does).
+ARG VERSION=dev
+ARG REVISION=
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.revision=${REVISION}" \
+      -o /out/kodama ./cmd/kodama
+
+FROM docker.io/library/alpine@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
+# git-daemon supplies git-http-backend, the CGI program `kodama git serve` runs
+# for every smart-HTTP exchange; Alpine's `git` package does not ship it.
+RUN apk add --no-cache ca-certificates git git-daemon \
+ && addgroup -g 65532 kodama \
+ && adduser -D -u 65532 -G kodama -h /var/lib/kodama kodama \
+ && mkdir -p /var/lib/kodama && chown 65532:65532 /var/lib/kodama
+COPY --from=build /out/kodama /usr/local/bin/kodama
+LABEL org.opencontainers.image.title="kodama" \
+      org.opencontainers.image.source="https://github.com/optimiware/kodama" \
+      org.opencontainers.image.licenses="Apache-2.0"
+USER 65532:65532
+EXPOSE 8443
+VOLUME ["/var/lib/kodama"]
+ENTRYPOINT ["/usr/local/bin/kodama"]

@@ -1,0 +1,716 @@
+{
+  "version": 1,
+  "roles": {
+    "runtime": "kodama_runtime",
+    "owner": "kodama_owner",
+    "controller": "kodama_controller",
+    "publisher": "kodama_publisher",
+    "auth": "kodama_auth"
+  },
+  "migration": {
+    "pattern": "^\\d{4}_[a-z0-9_]+\\.sql$",
+    "sequence_start": 1
+  },
+  "role_attributes": [
+    {
+      "name": "kodama_controller",
+      "nobypassrls": true,
+      "noinherit": true,
+      "memberships": []
+    },
+    {
+      "name": "kodama_publisher",
+      "nobypassrls": true,
+      "noinherit": true,
+      "memberships": []
+    },
+    {
+      "name": "kodama_auth",
+      "nobypassrls": true,
+      "noinherit": true,
+      "memberships": []
+    }
+  ],
+  "policies": [
+    {
+      "role": "kodama_controller",
+      "table": "executions",
+      "command": "select",
+      "using": "any"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "executions",
+      "command": "update",
+      "using": "scope_matches_txn_scope",
+      "with_check": "scope_matches_txn_scope"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "actions",
+      "command": "select",
+      "using": "any"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "actions",
+      "command": "insert",
+      "using": "scope_matches_txn_scope",
+      "with_check": "scope_matches_txn_scope"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "actions",
+      "command": "update",
+      "using": "scope_matches_txn_scope",
+      "with_check": "scope_matches_txn_scope"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "cleanup",
+      "command": "select",
+      "using": "any"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "cleanup",
+      "command": "insert",
+      "using": "scope_matches_txn_scope",
+      "with_check": "scope_matches_txn_scope"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "cleanup",
+      "command": "update",
+      "using": "scope_matches_txn_scope",
+      "with_check": "scope_matches_txn_scope"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "events",
+      "command": "select",
+      "using": "any"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "events",
+      "command": "insert",
+      "using": "scope_matches_txn_scope",
+      "with_check": "scope_matches_txn_scope"
+    },
+    {
+      "role": "kodama_controller",
+      "table": "audit",
+      "command": "insert",
+      "using": "scope_matches_txn_scope",
+      "with_check": "scope_matches_txn_scope"
+    },
+    {
+      "role": "kodama_publisher",
+      "table": "events",
+      "command": "select",
+      "using": "any"
+    },
+    {
+      "role": "kodama_publisher",
+      "table": "events",
+      "command": "update",
+      "using": "any",
+      "with_check": "column_in_set",
+      "column": "publish_state",
+      "values": [
+        "pending",
+        "published"
+      ]
+    },
+    {
+      "role": "kodama_auth",
+      "table": "executions",
+      "command": "select",
+      "using": "exact_row",
+      "column": "id"
+    },
+    {
+      "role": "kodama_auth",
+      "table": "services",
+      "command": "select",
+      "using": "exact_row",
+      "column": "id"
+    }
+  ],
+  "lock_order": [
+    "tenants",
+    "projects",
+    "memberships",
+    "services",
+    "resource_bindings",
+    "pipelines",
+    "tasks",
+    "task_messages",
+    "executions",
+    "actions",
+    "cleanup",
+    "verifications",
+    "receipts",
+    "audit",
+    "events"
+  ],
+  "tables": [
+    {
+      "name": "verifications",
+      "required_columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "tenant_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "service_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "actor_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "execution_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "action_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "binding_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "resource_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "operation",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "subject",
+          "type": "jsonb",
+          "nullable": false
+        },
+        {
+          "name": "requested_approval",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "result",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "approved",
+          "type": "boolean",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false
+        }
+      ],
+      "forbidden_columns": [
+        "source_event_id"
+      ],
+      "project_nullable": false,
+      "forced_rls": true
+    },
+    {
+      "name": "executions",
+      "required_columns": [
+        {
+          "name": "failure",
+          "type": "jsonb",
+          "nullable": true
+        }
+      ],
+      "project_nullable": false,
+      "forced_rls": true
+    },
+    {
+      "name": "actions",
+      "required_columns": [
+        {
+          "name": "workload_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "launch_state",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "launch_key",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "observation",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "activated_at",
+          "type": "timestamptz",
+          "nullable": true
+        },
+        {
+          "name": "answer_provenance",
+          "type": "bytea",
+          "nullable": true
+        }
+      ],
+      "checks": [
+        {
+          "name": "actions_launch_state",
+          "contains": [
+            "launch_state",
+            "not_issued",
+            "issued",
+            "unknown",
+            "retiring"
+          ]
+        }
+      ],
+      "indexes": [
+        {
+          "name": "actions_one_running",
+          "columns": [
+            "execution_id"
+          ],
+          "unique": true,
+          "predicate": "state = 'running'"
+        }
+      ],
+      "project_nullable": false,
+      "forced_rls": true
+    },
+    {
+      "name": "pipelines",
+      "required_columns": [
+        {
+          "name": "push_triggers",
+          "type": "jsonb",
+          "nullable": false,
+          "default": "[]"
+        }
+      ],
+      "checks": [
+        {
+          "name": "pipelines_push_triggers_array",
+          "contains": [
+            "push_triggers",
+            "array"
+          ]
+        }
+      ],
+      "project_nullable": false,
+      "forced_rls": true
+    },
+    {
+      "name": "receipts",
+      "required_columns": [
+        {
+          "name": "completed_at",
+          "type": "timestamptz",
+          "nullable": true
+        }
+      ],
+      "checks": [
+        {
+          "name": "receipts_completion_pair",
+          "contains": [
+            "completed_at",
+            "result"
+          ],
+          "exact": "completed_at IS NULL OR result IS NOT NULL"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "receipts_resource_report_dedupe",
+          "columns": [
+            "tenant_id",
+            "project_id",
+            "principal_id",
+            "caller_key"
+          ],
+          "unique": true,
+          "predicate": "operation = 'resource.report'"
+        }
+      ],
+      "project_nullable": true,
+      "forced_rls": true
+    },
+    {
+      "name": "events",
+      "indexes": [
+        {
+          "name": "events_publish_backlog",
+          "columns": [
+            "publish_sequence"
+          ],
+          "unique": false,
+          "predicate": "publish_state = 'pending'"
+        }
+      ],
+      "project_nullable": true,
+      "forced_rls": true
+    },
+    {
+      "name": "model_usage",
+      "required_columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "tenant_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "principal_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "execution_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "upstream_model",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "outcome",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "usage_known",
+          "type": "boolean",
+          "nullable": false
+        },
+        {
+          "name": "prompt_tokens",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "completion_tokens",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "total_tokens",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "recorded_at",
+          "type": "timestamptz",
+          "nullable": false
+        },
+        {
+          "name": "version",
+          "type": "bigint",
+          "nullable": false
+        }
+      ],
+      "checks": [
+        {
+          "name": "model_usage_outcome",
+          "contains": [
+            "outcome",
+            "succeeded",
+            "failed",
+            "uncertain"
+          ]
+        },
+        {
+          "name": "model_usage_counts",
+          "contains": [
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens"
+          ]
+        },
+        {
+          "name": "model_usage_known",
+          "contains": [
+            "usage_known",
+            "succeeded"
+          ]
+        }
+      ],
+      "indexes": [
+        {
+          "name": "model_usage_scope_recorded",
+          "columns": [
+            "tenant_id",
+            "project_id",
+            "recorded_at",
+            "id"
+          ],
+          "unique": false,
+          "predicate": ""
+        }
+      ],
+      "project_nullable": false,
+      "forced_rls": true
+    },
+    {
+      "name": "content_records",
+      "required_columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "tenant_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "principal_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "execution_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "request_body",
+          "type": "bytea",
+          "nullable": false
+        },
+        {
+          "name": "response_body",
+          "type": "bytea",
+          "nullable": false
+        },
+        {
+          "name": "recorded_at",
+          "type": "timestamptz",
+          "nullable": false
+        },
+        {
+          "name": "retain_until",
+          "type": "timestamptz",
+          "nullable": false
+        },
+        {
+          "name": "version",
+          "type": "bigint",
+          "nullable": false
+        }
+      ],
+      "checks": [
+        {
+          "name": "content_records_retention",
+          "contains": [
+            "retain_until",
+            "recorded_at"
+          ]
+        }
+      ],
+      "indexes": [
+        {
+          "name": "content_records_scope_recorded",
+          "columns": [
+            "tenant_id",
+            "project_id",
+            "recorded_at",
+            "id"
+          ],
+          "unique": false,
+          "predicate": ""
+        }
+      ],
+      "project_nullable": false,
+      "forced_rls": true
+    },
+    {
+      "name": "event_consumptions",
+      "required_columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "tenant_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "consumer",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "completed_at",
+          "type": "timestamptz",
+          "nullable": false
+        },
+        {
+          "name": "version",
+          "type": "bigint",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "event_consumptions_scope_consumer",
+          "columns": [
+            "tenant_id",
+            "project_id",
+            "consumer"
+          ],
+          "unique": false,
+          "predicate": ""
+        }
+      ],
+      "project_nullable": true,
+      "forced_rls": true
+    }
+  ],
+  "grants": [
+    {
+      "role": "kodama_controller",
+      "table": "executions",
+      "operations": [
+        "select",
+        "update"
+      ]
+    },
+    {
+      "role": "kodama_controller",
+      "table": "actions",
+      "operations": [
+        "select",
+        "insert",
+        "update"
+      ]
+    },
+    {
+      "role": "kodama_controller",
+      "table": "cleanup",
+      "operations": [
+        "select",
+        "insert",
+        "update"
+      ]
+    },
+    {
+      "role": "kodama_controller",
+      "table": "events",
+      "operations": [
+        "select",
+        "insert"
+      ]
+    },
+    {
+      "role": "kodama_controller",
+      "table": "audit",
+      "operations": [
+        "insert"
+      ]
+    },
+    {
+      "role": "kodama_publisher",
+      "table": "events",
+      "operations": [
+        "select",
+        "update"
+      ],
+      "write_columns": [
+        "publish_state"
+      ]
+    },
+    {
+      "role": "kodama_auth",
+      "table": "executions",
+      "operations": [
+        "select"
+      ],
+      "select_columns": [
+        "id",
+        "tenant_id",
+        "project_id",
+        "principal_id"
+      ]
+    },
+    {
+      "role": "kodama_auth",
+      "table": "services",
+      "operations": [
+        "select"
+      ],
+      "select_columns": [
+        "id",
+        "tenant_id",
+        "project_id"
+      ]
+    }
+  ]
+}

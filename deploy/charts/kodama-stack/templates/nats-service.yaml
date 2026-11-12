@@ -1,0 +1,19 @@
+{{- if .Values.nats.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/part-of: kodama-stack
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: nats
+  ports:
+    - name: tls-client
+      port: {{ .Values.nats.port | default 4222 }}
+      targetPort: {{ .Values.nats.port | default 4222 }}
+      protocol: TCP
+{{- end }}

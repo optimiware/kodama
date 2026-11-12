@@ -1,0 +1,34 @@
+{
+  "environment": "production",
+  "image": {
+    "repository": "registry.example.com/kodama",
+    "tag": "0.1.0"
+  },
+  "replicaCount": 1,
+  "config": {
+    "extraEnv": {
+      "KODAMA_OIDC_ISSUER": "https://issuer.example",
+      "KODAMA_OIDC_AUDIENCE": "kodama",
+      "KODAMA_OIDC_JWKS_URL": "https://issuer.example/jwks",
+      "KODAMA_OIDC_TENANT_CLAIM": "org_id"
+    }
+  },
+  "secrets": {
+    "database": {
+      "existingSecret": "kodama-database"
+    },
+    "kmsCredentials": {
+      "existingSecret": "kodama-kms-credentials"
+    }
+  },
+  "tenants": [
+    "tenant-a"
+  ],
+  "networkPolicy": {
+    "defaultDeny": true,
+    "permitKodama": true,
+    "permitGit": true
+  },
+  "securityContext": {},
+  "resources": {}
+}

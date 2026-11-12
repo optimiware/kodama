@@ -1,0 +1,423 @@
+#!/usr/bin/env bash
+# stage-personas: create the four canonical stage personas and their project
+# memberships on a freshly deployed production installation, through the public
+# API only.
+#
+# Invoke it only through the host-wide stage lock, with the public API reached
+# by a loopback port-forward and the administrator credential supplied as a
+# private file:
+#
+#   scripts/infra-slot.sh --exclusive scw-stage stack -- \
+#     scripts/stage-personas
+#
+# Inputs:
+#   KODAMA_STAGE_API_URL            https API origin (default none)
+#   KODAMA_STAGE_CA_FILE            installation CA bundle (path)
+#   KODAMA_STAGE_ADMIN_TOKEN_FILE   administrator bearer token, mode 0600
+#   KODAMA_STAGE_PROJECT_ID         project (default tenant-a)
+#   KODAMA_STAGE_ISSUER             OAuthSonas issuer (https)
+#
+# Optional:
+#   KODAMA_STAGE_TENANT_ID          tenant (default: the project id)
+#   KODAMA_STAGE_API_HOST           allowed API host (default 127.0.0.1)
+#   KODAMA_STAGE_SUBJECT_ADMIN      admin subject (default admin)
+#   KODAMA_STAGE_SUBJECT_ENGINEER   engineer subject (default engineer)
+#   KODAMA_STAGE_SUBJECT_REVIEWER   reviewer subject (default reviewer)
+#   KODAMA_STAGE_SUBJECT_OPERATOR   operator subject (default operator)
+#   KODAMA_STAGE_EVIDENCE_DIR       absolute evidence directory
+#
+# The script creates the project idempotently, derives each principal as
+# "oidc-" plus the first 32 lowercase hex characters of
+# SHA-256(issuer + NUL + subject), grants the exact role table below, and reads
+# membership.list back. The administrator already holds its bootstrap
+# tenant-wide Admin grant; Admin alone does not imply review authority, so the
+# admin persona also receives explicit project engineer, reviewer and operator
+# roles.
+#
+#   admin     engineer, reviewer, operator
+#   engineer  engineer
+#   reviewer  reviewer
+#   operator  operator
+#
+# The token is never accepted in argv or the environment and never appears in a
+# command line: curl reads an @header file that is mode 0600 inside a private
+# work directory. Shell tracing is disabled. Nothing outside the stage API and
+# the optional evidence directory is written.
+set -euo pipefail
+set +x
+umask 077
+
+die() {
+	printf 'stage-personas: %s\n' "$*" >&2
+	exit 1
+}
+
+# A credential supplied on the command line or as a plain environment value is
+# refused: only the private file input is accepted.
+if (( $# > 0 )); then
+	die "no argv is accepted; supply the administrator credential only through KODAMA_STAGE_ADMIN_TOKEN_FILE"
+fi
+for forbidden in KODAMA_STAGE_ADMIN_TOKEN KODAMA_STAGE_TOKEN KODAMA_STAGE_BEARER; do
+	if [[ -n "${!forbidden:-}" ]]; then
+		die "${forbidden} is refused; a credential is accepted only as a private 0600 file"
+	fi
+done
+
+api_url="${KODAMA_STAGE_API_URL:-}"
+ca_file="${KODAMA_STAGE_CA_FILE:-}"
+token_file="${KODAMA_STAGE_ADMIN_TOKEN_FILE:-}"
+project="${KODAMA_STAGE_PROJECT_ID:-tenant-a}"
+tenant="${KODAMA_STAGE_TENANT_ID:-$project}"
+issuer="${KODAMA_STAGE_ISSUER:-}"
+allowed_host="${KODAMA_STAGE_API_HOST:-127.0.0.1}"
+evidence_dir="${KODAMA_STAGE_EVIDENCE_DIR:-}"
+work=""
+
+[[ -n "$api_url" ]] || die "KODAMA_STAGE_API_URL is required"
+[[ -n "$ca_file" ]] || die "KODAMA_STAGE_CA_FILE is required"
+[[ -n "$token_file" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE is required"
+[[ -n "$issuer" ]] || die "KODAMA_STAGE_ISSUER is required"
+
+# https://host[:port] only: no user information, path, query or fragment.
+if [[ ! "$api_url" =~ ^https://([^/?#]+)/?$ ]]; then
+	die "KODAMA_STAGE_API_URL must be an https origin without user information, a path, query or fragment"
+fi
+authority="${BASH_REMATCH[1]}"
+[[ "$authority" != *"@"* ]] || die "KODAMA_STAGE_API_URL must not carry user information"
+if [[ "$authority" =~ ^([A-Za-z0-9.-]+):([0-9]{1,5})$ ]]; then
+	api_host="${BASH_REMATCH[1]}"
+	api_port="${BASH_REMATCH[2]}"
+elif [[ "$authority" =~ ^[A-Za-z0-9.-]+$ ]]; then
+	api_host="$authority"
+	api_port="443"
+else
+	die "KODAMA_STAGE_API_URL host is not a plain DNS name or IPv4 address"
+fi
+[[ "$allowed_host" =~ ^[A-Za-z0-9.-]+$ ]] || die "KODAMA_STAGE_API_HOST is not a plain host"
+[[ "$api_host" == "$allowed_host" ]] ||
+	die "KODAMA_STAGE_API_URL host ${api_host} is not the stage API host ${allowed_host}"
+[[ "$api_port" =~ ^[0-9]+$ ]] && (( api_port >= 1 && api_port <= 65535 )) || die "KODAMA_STAGE_API_URL port is not a port"
+api_base="${api_url%/}"
+
+[[ "$issuer" =~ ^https://[^[:space:]/?#]+(/[^[:space:]]*)?$ ]] ||
+	die "KODAMA_STAGE_ISSUER must be an https URL"
+[[ "$project" =~ ^[A-Za-z0-9_-]{1,128}$ ]] || die "KODAMA_STAGE_PROJECT_ID is not a bounded identity"
+[[ "$tenant" =~ ^[A-Za-z0-9_-]{1,128}$ ]] || die "KODAMA_STAGE_TENANT_ID is not a bounded identity"
+
+[[ -f "$ca_file" ]] || die "KODAMA_STAGE_CA_FILE is not a regular file"
+[[ -r "$ca_file" ]] || die "KODAMA_STAGE_CA_FILE is not readable"
+
+[[ -f "$token_file" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE is not a regular file"
+[[ -r "$token_file" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE is not readable"
+[[ -s "$token_file" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE is empty"
+token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || true)"
+[[ "$token_mode" == "600" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE must be mode 0600 (found ${token_mode:-unknown})"
+
+case "$evidence_dir" in
+	"" | /*) ;;
+	*) die "KODAMA_STAGE_EVIDENCE_DIR must be absolute" ;;
+esac
+
+for tool in curl python3 stat sha256sum cut mktemp; do
+	command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
+done
+
+# principal_id <subject> prints the product's verified human principal id for
+# the configured issuer.
+principal_id() {
+	local subject=$1
+	printf 'oidc-%s' "$(printf '%s\0%s' "$issuer" "$subject" | sha256sum | cut -c1-32)"
+}
+
+# roles_for <persona> prints the exact complete replacement role set. This table
+# is authority-sensitive: the focused test would fail if any role were added,
+# removed or swapped.
+roles_for() {
+	case "$1" in
+	admin) printf '%s' '["engineer","reviewer","operator"]' ;;
+	engineer) printf '%s' '["engineer"]' ;;
+	reviewer) printf '%s' '["reviewer"]' ;;
+	operator) printf '%s' '["operator"]' ;;
+	*) die "unknown persona $1" ;;
+	esac
+}
+
+subject_for() {
+	case "$1" in
+	admin) printf '%s' "${KODAMA_STAGE_SUBJECT_ADMIN:-admin}" ;;
+	engineer) printf '%s' "${KODAMA_STAGE_SUBJECT_ENGINEER:-engineer}" ;;
+	reviewer) printf '%s' "${KODAMA_STAGE_SUBJECT_REVIEWER:-reviewer}" ;;
+	operator) printf '%s' "${KODAMA_STAGE_SUBJECT_OPERATOR:-operator}" ;;
+	*) die "unknown persona $1" ;;
+	esac
+}
+
+work="$(mktemp -d "${TMPDIR:-/tmp}/stage-personas.XXXXXX")"
+header="$work/admin-header"
+request="$work/request.json"
+response="$work/response.json"
+
+cleanup() {
+	local status=$?
+	set +e
+	rm -f -- "$header" "$request" "$response" "$response.status"
+	rm -rf -- "$work"
+	exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+# The bearer header is read by curl from this private file. The token value is
+# never an argument, an environment value, or a printed diagnostic.
+{
+	umask 077
+	printf 'Authorization: Bearer %s\n' "$(cat -- "$token_file")"
+	printf 'Content-Type: application/json\n'
+} >"$header"
+chmod 600 "$header"
+
+# api <method> <path> <envelope-json> prints the HTTP status. The response body
+# is left in $response.
+api() {
+	local method=$1 path=$2 envelope=$3
+	{
+		umask 077
+		printf '%s' "$envelope" >"$request"
+	}
+	chmod 600 "$request"
+	: >"$response"
+	local status
+	status="$(curl --silent --show-error --max-time 20 \
+		--cacert "$ca_file" \
+		--request "$method" \
+		--header @"$header" \
+		--data-binary @"$request" \
+		--output "$response" \
+		--write-out '%{http_code}' \
+		"${api_base}${path}" 2>"$work/curl.log" || true)"
+	rm -f -- "$request"
+	[ -f "$response" ] || : >"$response"
+	printf '%s' "$status" >"$response.status"
+	printf '%s' "$status"
+}
+
+# error_code reads the public refusal code from the last response, if any.
+error_code() {
+	python3 - "$response" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+try:
+    data = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+except Exception:
+    raise SystemExit(0)
+if isinstance(data, dict) and isinstance(data.get("code"), str):
+    print(data["code"])
+PY
+}
+
+# memberships_json reads the complete membership set, following every page
+# cursor. The output is the concatenated memberships array as JSON.
+memberships_json() {
+	local cursor="" page=0 body="" envelope next
+	local out="$work/memberships.json"
+	: >"$out"
+	while :; do
+		if [[ -n "$cursor" ]]; then
+			envelope="$(printf '{"input":{"project_id":"%s","page":{"cursor":"%s"}}}' "$project" "$cursor")"
+		else
+			envelope="$(printf '{"input":{"project_id":"%s"}}' "$project")"
+		fi
+		local status
+		status="$(api GET "/api/v1/projects/${project}/memberships" "$envelope")"
+		[[ "$status" == "200" ]] || die "membership.list failed with HTTP ${status} (${body:-no code})"
+		next="$(python3 - "$response" "$out" <<'PY'
+import json
+import sys
+
+path, out = sys.argv[1], sys.argv[2]
+try:
+    data = json.load(open(path, "r", encoding="utf-8"))
+except Exception as error:
+    print("stage-personas: membership.list result is not JSON: %s" % error, file=sys.stderr)
+    raise SystemExit(1)
+body = data.get("body") if isinstance(data, dict) else None
+if not isinstance(body, dict) or "memberships" not in body:
+    print("stage-personas: membership.list result has no memberships array", file=sys.stderr)
+    raise SystemExit(1)
+# The product's Go result carries a nil []MembershipView before the first
+# grant, which encodes as JSON null. That is an empty set, not a malformed
+# response; a missing key, object or string is still refused.
+memberships = body["memberships"]
+if memberships is None:
+    memberships = []
+if not isinstance(memberships, list):
+    print("stage-personas: membership.list result has no memberships array", file=sys.stderr)
+    raise SystemExit(1)
+with open(out, "a", encoding="utf-8") as handle:
+    for membership in memberships:
+        handle.write(json.dumps(membership, separators=(",", ":")) + "\n")
+next_cursor = body.get("next_cursor", "")
+print(next_cursor if isinstance(next_cursor, str) else "")
+PY
+)" || die "membership.list result could not be read"
+		cursor="$next"
+		page=$((page + 1))
+		(( page < 64 )) || die "membership.list did not finish within 64 pages"
+		[[ -n "$cursor" ]] || break
+	done
+}
+
+# membership_version <principal> prints the observed membership version, or 0
+# when the principal has no project membership yet.
+membership_version() {
+	local principal=$1
+	memberships_json
+	python3 - "$work/memberships.json" "$principal" <<'PY'
+import json
+import sys
+
+path, principal = sys.argv[1], sys.argv[2]
+version = 0
+for line in open(path, "r", encoding="utf-8"):
+    line = line.strip()
+    if not line:
+        continue
+    membership = json.loads(line)
+    if membership.get("principal_id") == principal:
+        version = max(version, int(membership.get("version", 0)))
+print(version)
+PY
+}
+
+# verify_memberships proves every expected principal carries exactly its role
+# set in the final read-back.
+verify_memberships() {
+	local expected_file=$1
+	memberships_json
+	python3 - "$work/memberships.json" "$expected_file" <<'PY'
+import json
+import sys
+
+memberships = {}
+for line in open(sys.argv[1], "r", encoding="utf-8"):
+    line = line.strip()
+    if not line:
+        continue
+    membership = json.loads(line)
+    memberships[membership.get("principal_id", "")] = sorted(membership.get("roles") or [])
+failed = False
+for line in open(sys.argv[2], "r", encoding="utf-8"):
+    line = line.strip()
+    if not line:
+        continue
+    entry = json.loads(line)
+    got = memberships.get(entry["principal_id"])
+    want = sorted(entry["roles"])
+    if got != want:
+        print(
+            "stage-personas: read-back for %s (%s) has roles %s; want %s"
+            % (entry.get("persona", "?"), entry["principal_id"], got, want),
+            file=sys.stderr,
+        )
+        failed = True
+if failed:
+    raise SystemExit(1)
+PY
+}
+
+# ---- project ---------------------------------------------------------------
+
+project_envelope="$(printf '{"input":{"tenant_id":"%s","project_id":"%s","name":"Stage project"},"idempotency_key":"stage-personas-project-%s-%s"}' \
+	"$tenant" "$project" "$$" "$(date +%s)")"
+project_status="$(api POST "/api/v1/tenants/${tenant}/projects" "$project_envelope")"
+if [[ "$project_status" != "200" ]]; then
+	project_code="$(error_code)"
+	# The public project create reports an existing project as a version
+	# conflict; an idempotent bootstrap tolerates exactly that refusal.
+	[[ "$project_code" == "version_conflict" ]] ||
+		die "project.create failed with HTTP ${project_status} (${project_code:-no code})"
+fi
+
+# ---- memberships -----------------------------------------------------------
+
+personas=(admin engineer reviewer operator)
+expected="$work/expected.jsonl"
+: >"$expected"
+
+for persona in "${personas[@]}"; do
+	subject="$(subject_for "$persona")"
+	principal="$(principal_id "$subject")"
+	roles="$(roles_for "$persona")"
+	granted=0
+	for attempt in 1 2 3; do
+		version="$(membership_version "$principal")"
+		if [[ "$version" == "0" ]]; then
+			envelope="$(printf '{"input":{"project_id":"%s","principal_id":"%s","roles":%s},"idempotency_key":"stage-personas-%s-%s-%s-%s"}' \
+				"$project" "$principal" "$roles" "$persona" "$$" "$(date +%s)" "$attempt")"
+		else
+			envelope="$(printf '{"input":{"project_id":"%s","principal_id":"%s","roles":%s},"expected_version":%s,"idempotency_key":"stage-personas-%s-%s-%s-%s"}' \
+				"$project" "$principal" "$roles" "$version" "$persona" "$$" "$(date +%s)" "$attempt")"
+		fi
+		status="$(api PUT "/api/v1/projects/${project}/memberships/${principal}" "$envelope")"
+		if [[ "$status" == "200" ]]; then
+			granted=1
+			break
+		fi
+		code="$(error_code)"
+		if [[ "$code" == "version_conflict" ]]; then
+			continue
+		fi
+		die "membership.grant failed for ${persona} with HTTP ${status} (${code:-no code})"
+	done
+	(( granted == 1 )) || die "membership.grant for ${persona} kept conflicting after a fresh observation"
+	printf '{"persona":"%s","principal_id":"%s","roles":%s}\n' "$persona" "$principal" "$roles" >>"$expected"
+done
+
+verify_memberships "$expected" || die "membership.list did not confirm every stage persona grant"
+
+# ---- evidence --------------------------------------------------------------
+
+if [[ -n "$evidence_dir" ]]; then
+	mkdir -p -- "$evidence_dir"
+	chmod 700 -- "$evidence_dir" 2>/dev/null || true
+	python3 - "$expected" "$work/memberships.json" "$evidence_dir/stage-personas.json" "$project" "$tenant" <<'PY'
+import json
+import os
+import sys
+
+expected_path, memberships_path, out_path, project, tenant = sys.argv[1:6]
+versions = {}
+for line in open(memberships_path, "r", encoding="utf-8"):
+    line = line.strip()
+    if not line:
+        continue
+    membership = json.loads(line)
+    versions[membership.get("principal_id", "")] = membership.get("version", 0)
+grants = []
+for line in open(expected_path, "r", encoding="utf-8"):
+    line = line.strip()
+    if not line:
+        continue
+    entry = json.loads(line)
+    grants.append(
+        {
+            "persona": entry["persona"],
+            "principal_id": entry["principal_id"],
+            "roles": entry["roles"],
+            "version": versions.get(entry["principal_id"], 0),
+        }
+    )
+record = {"project_id": project, "tenant_id": tenant, "grants": grants}
+with open(out_path, "w", encoding="utf-8") as handle:
+    json.dump(record, handle, separators=(",", ":"), sort_keys=True)
+    handle.write("\n")
+os.chmod(out_path, 0o600)
+PY
+	chmod 600 -- "$evidence_dir/stage-personas.json" 2>/dev/null || true
+	printf 'stage-personas: evidence %s\n' "$evidence_dir/stage-personas.json" >&2
+fi
+
+printf 'stage-personas: project %s and four persona memberships confirmed\n' "$project" >&2

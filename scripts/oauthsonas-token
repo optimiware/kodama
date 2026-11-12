@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# scripts/oauthsonas-token: sign in to a development OAuthSonas as one persona
+# without a browser (authorization code + PKCE, login_hint) and print the
+# access token on stdout. For stage and preview installations only; the token
+# is the only thing printed.
+#
+#   OAUTHSONAS_URL                  issuer URL (the in-cluster https address)
+#   OAUTHSONAS_RESOLVE              optional curl --resolve value, host:port:address, for a port-forward
+#   OAUTHSONAS_CA                   CA bundle to trust (the installation CA)
+#   OAUTHSONAS_CLIENT_ID            default kodactl
+#   OAUTHSONAS_REDIRECT             a redirect URI registered for that client (never contacted)
+#   OAUTHSONAS_ACCESS_CODE_FILE     a 0600 file holding the picker access code, or "-" to read it from stdin
+#
+#   scripts/oauthsonas-token <persona-id>
+#
+# The access code gates the persona picker, so it is handled as credential
+# material: it is read from a private file or stdin, never from an argument or
+# an environment variable (both are visible to other local users through ps
+# and /proc/<pid>/cmdline, /proc/<pid>/environ). It is also passed to curl by
+# file reference, never as a literal data argument.
+set -euo pipefail
+
+die() {
+  printf 'oauthsonas-token: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat >&2 <<'EOF'
+usage: oauthsonas-token <persona-id>
+
+The persona id must match [A-Za-z0-9_-]. The picker access code, when the
+provider asks for one, is read from a 0600 file named by
+OAUTHSONAS_ACCESS_CODE_FILE, or from stdin when that variable is "-".
+EOF
+}
+
+persona="${1:-}"
+if [[ $# -eq 0 || -z "$persona" ]]; then
+  usage
+  exit 2
+fi
+if [[ $# -gt 1 ]]; then
+  die "unexpected extra arguments: the access code is read from OAUTHSONAS_ACCESS_CODE_FILE or stdin, never from an argument"
+fi
+if [[ ! "$persona" =~ ^[A-Za-z0-9_-]+$ ]]; then
+  die "persona '$persona' is not a principal id: it must match [A-Za-z0-9_-] (a value such as 'oauthsonas|admin' would not parse)"
+fi
+
+if [[ -n "${OAUTHSONAS_ACCESS_CODE+x}" ]]; then
+  die "refusing OAUTHSONAS_ACCESS_CODE in the environment: set OAUTHSONAS_ACCESS_CODE_FILE to a 0600 file, or '-' to read stdin, so the code never appears in /proc/<pid>/environ"
+fi
+
+base="${OAUTHSONAS_URL:-}"
+if [[ -z "$base" ]]; then
+  die "OAUTHSONAS_URL is required (the in-cluster https issuer)"
+fi
+base="${base%/}"
+case "$base" in
+  https://?*) ;;
+  *) die "OAUTHSONAS_URL must be an https:// issuer: Kodama accepts only https issuers" ;;
+esac
+
+client="${OAUTHSONAS_CLIENT_ID:-kodactl}"
+redirect="${OAUTHSONAS_REDIRECT:-http://127.0.0.1:52790/callback}"
+for tool in curl openssl jq; do
+  command -v "$tool" >/dev/null || die "$tool is required"
+done
+
+work="$(mktemp -d "${TMPDIR:-/tmp}/oauthsonas-token.XXXXXX")"
+chmod 700 "$work"
+cleanup() { rm -rf -- "$work"; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+jar="$work/cookies"
+page_file="$work/auth-page.html"
+verifier_file="$work/verifier"
+code_file="$work/authorization-code"
+
+curl_args=(-sS --max-time 20)
+[[ -z "${OAUTHSONAS_CA:-}" ]] || curl_args+=(--cacert "$OAUTHSONAS_CA")
+[[ -z "${OAUTHSONAS_RESOLVE:-}" ]] || curl_args+=(--resolve "$OAUTHSONAS_RESOLVE")
+
+verifier="$(openssl rand -hex 32)"
+[[ ${#verifier} -eq 64 ]] || die "could not generate a PKCE verifier"
+printf '%s' "$verifier" >"$verifier_file"
+chmod 600 "$verifier_file"
+challenge="$(printf %s "$verifier" | openssl dgst -binary -sha256 | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
+state="$(openssl rand -hex 16)"
+nonce="$(openssl rand -hex 16)"
+
+auth_query=(--data-urlencode "client_id=$client" --data-urlencode "redirect_uri=$redirect"
+  --data-urlencode response_type=code --data-urlencode "scope=openid profile email"
+  --data-urlencode "code_challenge=$challenge" --data-urlencode code_challenge_method=S256
+  --data-urlencode "state=$state" --data-urlencode "nonce=$nonce" --data-urlencode "login_hint=$persona")
+
+location() { tr -d '\r' | awk 'tolower($1)=="location:" {print $2}'; }
+auth() { curl "${curl_args[@]}" -b "$jar" -c "$jar" -o "$1" -D - -G "$base/oauth2/auth" "${auth_query[@]}"; }
+
+# file_mode prints a file's permission bits on GNU and BSD stat.
+file_mode() {
+  if stat -c '%a' -- "$1" 2>/dev/null; then return 0; fi
+  if stat -f '%Lp' "$1" 2>/dev/null; then return 0; fi
+  return 1
+}
+
+# prepare_access_code reads the picker access code from a 0600 file or stdin
+# and writes a normalized 0600 copy, whose path it prints. The copy exists
+# because files written with `openssl rand -hex 16 > file` end in a newline
+# that must not become part of the submitted code.
+prepare_access_code() {
+  local source="${OAUTHSONAS_ACCESS_CODE_FILE:-}"
+  local destination="$work/picker-access-code"
+  if [[ -z "$source" ]]; then
+    die "the provider asks for an access code: set OAUTHSONAS_ACCESS_CODE_FILE to a 0600 file, or '-' to read stdin"
+  fi
+  if [[ "$source" == "-" ]]; then
+    cat >"$destination"
+  else
+    [[ -f "$source" ]] || die "OAUTHSONAS_ACCESS_CODE_FILE is not a regular file: $source"
+    local mode
+    mode="$(file_mode "$source")" || die "cannot read the mode of OAUTHSONAS_ACCESS_CODE_FILE: $source"
+    if [[ ! "$mode" =~ ^[0-7]+$ ]]; then
+      die "cannot interpret the mode of OAUTHSONAS_ACCESS_CODE_FILE: $source"
+    fi
+    if (( 8#$mode & 077 )); then
+      die "OAUTHSONAS_ACCESS_CODE_FILE must be 0600 (it is $mode): the access code must not be readable or writable by other users"
+    fi
+    cat -- "$source" >"$destination"
+  fi
+  chmod 600 "$destination"
+  local normalized
+  normalized="$(cat "$destination")"
+  [[ -n "$normalized" ]] || die "the access code file is empty"
+  printf '%s' "$normalized" >"$destination"
+  printf '%s' "$destination"
+}
+
+headers="$(auth "$page_file")"
+target="$(printf %s "$headers" | location)"
+page="$(cat "$page_file" 2>/dev/null || true)"
+if [[ -z "$target" && "$page" == *"/oauth2/gate"* ]]; then
+  picker_code="$(prepare_access_code)" || exit 1
+  return_to="$(printf %s "$page" | grep -o 'name="return_to" value="[^"]*"' | head -1 | sed -E 's/.*value="([^"]*)"/\1/' | sed 's/&#43;/+/g; s/&#39;/'"'"'/g; s/&amp;/\&/g')"
+  curl "${curl_args[@]}" -b "$jar" -c "$jar" -o /dev/null "$base/oauth2/gate" \
+    --data-urlencode "code@$picker_code" --data-urlencode "return_to=$return_to"
+  headers="$(auth "$page_file")"
+  target="$(printf %s "$headers" | location)"
+fi
+
+case "$target" in
+  "$redirect"?*) ;;
+  *)
+    error_code="$(printf %s "$target" | sed -nE 's/.*[?&]error=([^&]*).*/\1/p')"
+    if [[ -n "$error_code" ]]; then
+      die "the provider refused the authorization: $error_code"
+    fi
+    die "no authorization redirect (is persona '$persona' defined?)"
+    ;;
+esac
+
+returned_state="$(printf %s "$target" | sed -nE 's/.*[?&]state=([^&]*).*/\1/p')"
+if [[ "$returned_state" != "$state" ]]; then
+  die "the authorization response state does not match this request"
+fi
+code="$(printf %s "$target" | sed -nE 's/.*[?&]code=([^&]*).*/\1/p')"
+[[ -n "$code" ]] || die "the provider returned no authorization code"
+printf '%s' "$code" >"$code_file"
+chmod 600 "$code_file"
+
+reply="$(curl "${curl_args[@]}" "$base/oauth2/token" -d grant_type=authorization_code \
+  --data-urlencode "client_id=$client" --data-urlencode "redirect_uri=$redirect" \
+  --data-urlencode "code@$code_file" --data-urlencode "code_verifier@$verifier_file")"
+token="$(printf '%s' "$reply" | jq -er 'select((.access_token? | type) == "string" and ((.access_token // "") | length) > 0) | .access_token')" ||
+  die "token exchange failed"
+[[ -n "$token" ]] || die "token exchange returned an empty access token"
+printf '%s\n' "$token"
