@@ -133,7 +133,7 @@ case "$git_version" in
 esac
 
 podman info >/dev/null 2>&1 || die "rootless Podman is not usable for this user"
-[ -S "$PODMAN_SOCKET" ] || die "KODAMA_LOCAL_PODMAN_SOCKET does not name an existing Unix socket: ${PODMAN_SOCKET}"
+[ -S "$PODMAN_SOCKET" ] || die "KODAMA_LOCAL_PODMAN_SOCKET does not name an existing Unix socket: ${PODMAN_SOCKET} (start it with: systemctl --user enable --now podman.socket; if the unit is already active, systemctl --user restart podman.socket)"
 
 host_ip="$(host_address)"
 log "host ${host_ip}: Kodama https ${HTTPS_PORT}, OAuthSonas https ${OIDC_PORT}, git ${GIT_PORT}, git https ${GIT_HTTPS_PORT}, PostgreSQL ${POSTGRES_PORT}, NATS ${NATS_PORT}"
@@ -164,9 +164,12 @@ done
 
 if [ ! -s "$tls_dir/ca.crt" ] || [ ! -s "$tls_dir/ca.key" ]; then
 	log "creating the private installation CA"
+	# keyUsage is explicit: a CA certificate without it is refused by strict
+	# RFC 5280 verifiers (Python 3.13 and newer enable that mode by default).
 	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
 		-keyout "$tls_dir/ca.key" -out "$tls_dir/ca.crt" -days 825 \
-		-subj "/CN=Kodama local install CA" >/dev/null 2>&1
+		-subj "/CN=Kodama local install CA" \
+		-addext "keyUsage=critical,keyCertSign,cRLSign" >/dev/null 2>&1
 fi
 chmod 600 "$tls_dir/ca.key"
 chmod 644 "$tls_dir/ca.crt"
