@@ -15,6 +15,20 @@ conversation that starts executions.
 The current version is in [`VERSION`](VERSION). The changes and known
 limitations of each version are in [CHANGELOG.md](CHANGELOG.md).
 
+## Quick start
+
+A single-host test installation on rootless Podman (Podman 5, `git` 2.44, `jq`,
+`openssl`, `curl`, `socat`):
+
+```sh
+git clone --branch v0.1.0 https://github.com/optimiware/kodama && cd kodama
+podman pull ghcr.io/optimiware/kodama/kodama:0.1.0
+KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.1.0 ./deploy/podman/install.sh
+```
+
+Then follow the [Podman quickstart](docs/runbooks/podman-quickstart.md) to
+[run a first pipeline](docs/runbooks/podman-quickstart.md#run-a-first-pipeline).
+
 ## Documentation
 
 | Document | Contents |

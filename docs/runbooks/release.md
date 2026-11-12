@@ -39,14 +39,15 @@ kodama 0.1.0 (revision <40 hex>, go1.27.3, linux/amd64)
 The packages are named after this repository because
 `ghcr.io/optimiware/kodama` holds the images of the archived v1 repository.
 The image is built for linux/amd64 only. Nothing is signed and no SBOM is
-produced. The GHCR packages are private, like the repository.
+produced. The GHCR packages are public, like the repository.
 
 ## Cut a release
 
 1. Set the version: edit `VERSION`, the `version` and `appVersion` of both
    `Chart.yaml` files, the `kodama` dependency version in
    `deploy/charts/kodama-stack/Chart.yaml`, the `image.tag` defaults of both
-   `values.yaml` files and the default tag in `scripts/lib/deploy.sh`.
+   `values.yaml` files, the default tag in `scripts/lib/deploy.sh` and the
+   version in the README quick start and the Podman quickstart.
    `go test ./internal/installation/ -run TestReleaseVersionIsConsistent`
    names any place that was missed.
 2. Add the version's section to `CHANGELOG.md`.
@@ -86,8 +87,8 @@ helm pull oci://ghcr.io/optimiware/kodama/charts/kodama-stack --version <version
 ```
 
 `scripts/deploy` deploys the chart of the checkout, not a published one; see
-[production-deployment.md](production-deployment.md) §7. A cluster that pulls
-the image from GHCR needs an image pull secret for the private package.
+[production-deployment.md](production-deployment.md) §7. The package is public,
+so no image pull secret is needed.
 
 ## If the release workflow fails
 
