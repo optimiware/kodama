@@ -28,6 +28,8 @@ func TestDispatchTable(t *testing.T) {
 	}{
 		{"server", []string{"server"}, "server"},
 		{"git serve", []string{"git", "serve"}, "gitServe"},
+		{"auth serve", []string{"auth", "serve"}, "authServe"},
+		{"auth principal-id", []string{"auth", "principal-id"}, "authPrincipalID"},
 		{"agent", []string{"agent"}, "agent"},
 		{"services", []string{"services"}, "services"},
 		{"migrate", []string{"migrate"}, "migrate"},
@@ -37,12 +39,14 @@ func TestDispatchTable(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			recorder := &dispatchRecorder{}
 			deps := deps{
-				server:    recorder.runner("server"),
-				gitServe:  recorder.runner("gitServe"),
-				agent:     recorder.runner("agent"),
-				services:  recorder.runner("services"),
-				migrate:   recorder.runner("migrate"),
-				bootstrap: recorder.runner("bootstrap"),
+				server:          recorder.runner("server"),
+				gitServe:        recorder.runner("gitServe"),
+				authServe:       recorder.runner("authServe"),
+				authPrincipalID: recorder.runner("authPrincipalID"),
+				agent:           recorder.runner("agent"),
+				services:        recorder.runner("services"),
+				migrate:         recorder.runner("migrate"),
+				bootstrap:       recorder.runner("bootstrap"),
 			}
 			var stdout, stderr bytes.Buffer
 			code := run(context.Background(), testCase.args, &stdout, &stderr, deps)
@@ -100,6 +104,18 @@ func TestDefaultDepsRouteEveryCommandToItsOwnEntry(t *testing.T) {
 			args: []string{"git", "hook"},
 			want: "git hook requires a phase",
 		},
+		{
+			name: "auth serve reaches the auth serve entry",
+			args: []string{"auth", "serve"},
+			env:  []string{"KODAMA_AUTH_ISSUER"},
+			want: "auth serve requires --issuer",
+		},
+		{
+			name: "auth principal-id reaches the auth principal-id entry",
+			args: []string{"auth", "principal-id"},
+			env:  []string{"KODAMA_AUTH_ISSUER"},
+			want: "auth principal-id requires --issuer and exactly one of --subject, --github, --email or --local",
+		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			for _, name := range testCase.env {
@@ -135,6 +151,8 @@ func TestUnknownCommandRefused(t *testing.T) {
 		{"unknown"},
 		{"git"},
 		{"git", "push"},
+		{"auth"},
+		{"auth", "unknown"},
 	} {
 		var stdout, stderr bytes.Buffer
 		code := run(context.Background(), args, &stdout, &stderr, deps)
@@ -182,6 +200,8 @@ func TestDispatchIsolation(t *testing.T) {
 	}{
 		{[]string{"server"}, "server"},
 		{[]string{"git", "serve"}, "gitServe"},
+		{[]string{"auth", "serve"}, "authServe"},
+		{[]string{"auth", "principal-id"}, "authPrincipalID"},
 		{[]string{"agent"}, "agent"},
 		{[]string{"services"}, "services"},
 		{[]string{"migrate"}, "migrate"},
@@ -195,15 +215,20 @@ func TestDispatchIsolation(t *testing.T) {
 			}
 		}
 		deps := deps{
-			server:    makeRunner("server"),
-			gitServe:  makeRunner("gitServe"),
-			agent:     makeRunner("agent"),
-			services:  makeRunner("services"),
-			migrate:   makeRunner("migrate"),
-			bootstrap: makeRunner("bootstrap"),
+			server:          makeRunner("server"),
+			gitServe:        makeRunner("gitServe"),
+			authServe:       makeRunner("authServe"),
+			authPrincipalID: makeRunner("authPrincipalID"),
+			agent:           makeRunner("agent"),
+			services:        makeRunner("services"),
+			migrate:         makeRunner("migrate"),
+			bootstrap:       makeRunner("bootstrap"),
 		}
 		// Replace every other runner with a failure.
-		for name := range map[string]struct{}{"server": {}, "gitServe": {}, "agent": {}, "services": {}, "migrate": {}, "bootstrap": {}} {
+		for name := range map[string]struct{}{
+			"server": {}, "gitServe": {}, "authServe": {}, "authPrincipalID": {},
+			"agent": {}, "services": {}, "migrate": {}, "bootstrap": {},
+		} {
 			if name == testCase.want {
 				continue
 			}
@@ -212,6 +237,10 @@ func TestDispatchIsolation(t *testing.T) {
 				deps.server = unexpected(name)
 			case "gitServe":
 				deps.gitServe = unexpected(name)
+			case "authServe":
+				deps.authServe = unexpected(name)
+			case "authPrincipalID":
+				deps.authPrincipalID = unexpected(name)
 			case "agent":
 				deps.agent = unexpected(name)
 			case "services":

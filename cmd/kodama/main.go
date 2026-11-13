@@ -20,6 +20,8 @@ commands:
   git hook      run one native Git hook callback
   git provision-tenant  create the tenant's trusted admin repository
   git provision-repository  initialize a repository and commit its default access rules
+  auth serve    run the built-in OIDC provider and social login broker
+  auth principal-id  derive the human principal id for an OIDC issuer and subject
   agent         run one bounded native-agent run
   services      run one independent service adapter
   migrate       apply database migrations and set role passwords (administrator)
@@ -40,6 +42,8 @@ type deps struct {
 	gitHook                runner
 	gitProvision           runner
 	gitProvisionRepository runner
+	authServe              runner
+	authPrincipalID        runner
 	agent                  runner
 	services               runner
 	migrate                runner
@@ -59,6 +63,8 @@ func defaultDeps() deps {
 		gitHook:                runGitHookEntry,
 		gitProvision:           runGitProvisionEntry,
 		gitProvisionRepository: runGitProvisionRepositoryEntry,
+		authServe:              runAuthServeEntry,
+		authPrincipalID:        runAuthPrincipalIDEntry,
 		agent:                  runAgentEntry,
 		services:               runServicesEntry,
 		migrate:                runMigrateEntry,
@@ -97,6 +103,20 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps deps
 			return deps.gitProvisionRepository(ctx, args[2:], stdout, stderr)
 		default:
 			usage(stderr, fmt.Sprintf("unknown git subcommand %q", args[1]))
+			return 2
+		}
+	case "auth":
+		if len(args) < 2 {
+			usage(stderr, "auth requires a subcommand")
+			return 2
+		}
+		switch args[1] {
+		case "serve":
+			return deps.authServe(ctx, args[2:], stdout, stderr)
+		case "principal-id":
+			return deps.authPrincipalID(ctx, args[2:], stdout, stderr)
+		default:
+			usage(stderr, fmt.Sprintf("unknown auth subcommand %q", args[1]))
 			return 2
 		}
 	case "agent":

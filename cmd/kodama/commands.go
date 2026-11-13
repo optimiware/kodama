@@ -15,6 +15,7 @@ import (
 	"github.com/optimiware/kodama/internal/id"
 	"github.com/optimiware/kodama/internal/userland/agent"
 	agentapp "github.com/optimiware/kodama/internal/userland/agent/app"
+	authapp "github.com/optimiware/kodama/internal/userland/app/auth"
 	"github.com/optimiware/kodama/internal/userland/git"
 	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
 	"github.com/optimiware/kodama/internal/userland/git/app/actors"
@@ -32,6 +33,10 @@ var newReadVerifier = func(verification git.VerificationClient, resourceID func(
 // runGitApp starts the composed smart-HTTP Git service. Tests replace it to
 // capture the production configuration without opening a listener.
 var runGitApp = gitapp.Run
+
+// runAuthApp starts the composed OIDC provider and social login broker. Tests
+// replace it to capture the configuration without opening a listener.
+var runAuthApp = authapp.Run
 
 // newPublicTransport builds the public HTTP transport used by the Git and agent
 // processes. The mounted credential file is read on every attempt.
