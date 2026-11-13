@@ -180,6 +180,9 @@ type Files interface {
 // Libpod is the only external effect surface of the adapter.
 type Libpod interface {
 	CreateContainer(context.Context, ContainerSpec) (ContainerState, error)
+	// InspectImage checks that a digest-pinned image reference is present in
+	// the local container store. An absent image is ErrNotFound.
+	InspectImage(context.Context, string) error
 	InspectContainer(context.Context, string) (ContainerState, error)
 	// ListContainers returns every container matching all supplied labels. It
 	// is how workspace ownership is checked before a volume is released.

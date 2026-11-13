@@ -101,9 +101,13 @@ type SmartHTTPConfig struct {
 	Actors       ReadActorVerifier
 	ActorHandles ActorHandleIssuer
 	// ResourceID resolves the registered resource metadata identity for a
-	// tenant-relative repository. It is required so the backend environment
-	// always carries the registered identity the hook reports against.
+	// tenant-relative repository. Either ResourceID or ResourceIDContext is
+	// required so the backend environment always carries the registered
+	// identity the hook reports against.
 	ResourceID func(repository string) (string, error)
+	// ResourceIDContext resolves the registered resource metadata identity with
+	// the request context. When set, it takes precedence over ResourceID.
+	ResourceIDContext func(ctx context.Context, repository string) (string, error)
 	// SourceEvent mints the unique per-request push identity placed in the
 	// backend environment as KODAMA_SOURCE_EVENT. It is required: a repeated
 	// identical push must never reuse an earlier journal identity.
@@ -116,14 +120,15 @@ type SmartHTTPConfig struct {
 // the actor, applies the local read/write-at-all rules, and streams the
 // validated exchange to the injected backend.
 type SmartHTTP struct {
-	service     *Service
-	backend     GitBackend
-	actors      ReadActorVerifier
-	handles     ActorHandleIssuer
-	resourceID  func(string) (string, error)
-	sourceEvent func() (string, error)
-	maxBody     int64
-	timeout     time.Duration
+	service           *Service
+	backend           GitBackend
+	actors            ReadActorVerifier
+	handles           ActorHandleIssuer
+	resourceID        func(string) (string, error)
+	resourceIDContext func(context.Context, string) (string, error)
+	sourceEvent       func() (string, error)
+	maxBody           int64
+	timeout           time.Duration
 }
 
 var _ http.Handler = (*SmartHTTP)(nil)
@@ -139,7 +144,7 @@ func NewSmartHTTP(config SmartHTTPConfig) (*SmartHTTP, error) {
 		return nil, fmt.Errorf("smart HTTP read actor verifier is missing")
 	case config.ActorHandles == nil:
 		return nil, fmt.Errorf("smart HTTP actor handle issuer is missing")
-	case config.ResourceID == nil:
+	case config.ResourceID == nil && config.ResourceIDContext == nil:
 		return nil, fmt.Errorf("smart HTTP resource resolver is missing")
 	case config.SourceEvent == nil:
 		return nil, fmt.Errorf("smart HTTP source event source is missing")
@@ -149,14 +154,15 @@ func NewSmartHTTP(config SmartHTTPConfig) (*SmartHTTP, error) {
 		maxBody = DefaultSmartHTTPMaxBodyBytes
 	}
 	return &SmartHTTP{
-		service:     config.Service,
-		backend:     config.Backend,
-		actors:      config.Actors,
-		handles:     config.ActorHandles,
-		resourceID:  config.ResourceID,
-		sourceEvent: config.SourceEvent,
-		maxBody:     maxBody,
-		timeout:     config.Timeout,
+		service:           config.Service,
+		backend:           config.Backend,
+		actors:            config.Actors,
+		handles:           config.ActorHandles,
+		resourceID:        config.ResourceID,
+		resourceIDContext: config.ResourceIDContext,
+		sourceEvent:       config.SourceEvent,
+		maxBody:           maxBody,
+		timeout:           config.Timeout,
 	}, nil
 }
 
@@ -221,7 +227,7 @@ func (handler *SmartHTTP) ServeHTTP(writer http.ResponseWriter, request *http.Re
 		writeRefusal(writer, http.StatusInternalServerError)
 		return
 	}
-	resourceID, err := handler.resourceID(route.repository)
+	resourceID, err := handler.resolveResourceID(ctx, route.repository)
 	if err != nil {
 		// The repository-to-resource resolution uses the class table, never a
 		// special case: an unregistered repository is deliberately reported as
@@ -289,6 +295,13 @@ func (handler *SmartHTTP) ServeHTTP(writer http.ResponseWriter, request *http.Re
 	if !response.written() {
 		response.WriteHeader(http.StatusOK)
 	}
+}
+
+func (handler *SmartHTTP) resolveResourceID(ctx context.Context, repository string) (string, error) {
+	if handler.resourceIDContext != nil {
+		return handler.resourceIDContext(ctx, repository)
+	}
+	return handler.resourceID(repository)
 }
 
 // authorize applies the repository-level read or write-at-all decision. The
@@ -766,6 +779,8 @@ func refusalStatus(err error) (int, bool) {
 		class, ok := fault.ClassOf(err)
 		if ok {
 			switch class {
+			case fault.Forbidden:
+				return http.StatusForbidden, false
 			case fault.VersionConflict, fault.DependencyUnavailable, fault.UncertainExternalEffect, fault.DeadlineExpired:
 				return http.StatusServiceUnavailable, true
 			}

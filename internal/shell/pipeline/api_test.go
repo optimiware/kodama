@@ -177,8 +177,9 @@ package pipeline_test
 //     {from: <path>}, where <path> is inputs.<key> or
 //     <earlier-action>.outputs.<key>.
 //   - repository/service are resource/service ids. on is {push: [refs...]} with
-//     exact refs only; on.push requires repository and service and restricts
-//     declared inputs to repository, ref, commit and previous_commit.
+//     exact refs or trailing-slash ref prefixes under refs/; on.push requires
+//     repository and service and restricts declared inputs to repository, ref,
+//     commit and previous_commit.
 //   - Duplicate keys, unsupported tags/anchors/aliases/merge keys, malformed
 //     YAML, mixed literal/reference forms, unknown/self/forward references and
 //     undeclared outputs are refused with fault.InvalidInput.

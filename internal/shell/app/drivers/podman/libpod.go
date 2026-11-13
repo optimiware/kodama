@@ -244,6 +244,26 @@ func (c *Libpod) CreateContainer(ctx context.Context, spec runtimepodman.Contain
 	}
 }
 
+// InspectImage checks whether an image reference exists in the local container
+// store. An absent image is ErrNotFound.
+func (c *Libpod) InspectImage(ctx context.Context, reference string) error {
+	if strings.TrimSpace(reference) == "" {
+		return fault.New(fault.InvalidInput, "podman image inspect requires an image reference")
+	}
+	_, status, err := c.request(ctx, http.MethodGet, "images/"+url.PathEscape(reference)+"/exists", nil, nil)
+	if err != nil {
+		return err
+	}
+	switch status {
+	case http.StatusNoContent, http.StatusOK:
+		return nil
+	case http.StatusNotFound:
+		return runtimepodman.ErrNotFound
+	default:
+		return statusError("image inspect", status)
+	}
+}
+
 // InspectContainer returns the observed container state. A missing container is
 // ErrNotFound, never an absent observation by itself.
 func (c *Libpod) InspectContainer(ctx context.Context, name string) (runtimepodman.ContainerState, error) {

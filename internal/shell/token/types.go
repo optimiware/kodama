@@ -173,10 +173,13 @@ type Bounds struct {
 	MaxTTL        time.Duration `json:"max_ttl"`
 }
 
-// DefaultBounds is the declared credential bound set.
+// DefaultBounds is the declared credential bound set. MinTTL stays below the
+// one-minute minimum action timeout so an action with `timeout: 1m` retains
+// headroom to mint its execution credential after activation commits its
+// deadline.
 var DefaultBounds = Bounds{
 	MinNonceBytes: MinNonceBytes,
-	MinTTL:        time.Minute,
+	MinTTL:        15 * time.Second,
 	MaxTTL:        8 * time.Hour,
 }
 

@@ -131,8 +131,13 @@ func (handler *HookHandler) Handle(ctx context.Context, request Request) Respons
 		handler.logRejection(request, err)
 		return rejectResponse()
 	}
-	if _, ok := policy.Policy(request.Repository); !ok {
+	repoPolicy, ok := policy.Policy(request.Repository)
+	if !ok {
 		handler.logRejection(request, fmt.Errorf("repository %q is not declared by the committed policy", request.Repository))
+		return rejectResponse()
+	}
+	if err := handler.service.VerifyResourceBinding(request.Repository, request.ResourceID, repoPolicy); err != nil {
+		handler.logRejection(request, err)
 		return rejectResponse()
 	}
 	if err := handler.validateObjectEnvironment(request); err != nil {

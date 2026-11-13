@@ -48,7 +48,7 @@ No definition blob store, pipeline version table, canonicalized YAML hash, mutab
 
 ## 4. Push definitions
 
-`repository` selects a registered resource and its trusted reporting service. `service` selects the automatic-start principal. These may be different service accounts. `on.push` contains exact refs; no patterns or input mappings. Declared inputs can only require values supplied from `repository`, `ref`, `commit`, `previous_commit`.
+`repository` selects a registered resource and its trusted reporting service. `service` selects the automatic-start principal. These may be different service accounts. `on.push` contains exact anchored refs (such as `refs/heads/main`) or anchored ref prefixes ending in `/` with at least two slashes (such as `refs/heads/work/`, `refs/heads/`, or `refs/tags/`); bare `refs/`, `..`, globs, regular expressions, and input mappings are refused. Declared inputs can only require values supplied from `repository`, `ref`, `commit`, `previous_commit`.
 
 Configuration requires pipeline-management authority and Admin authority to bind/change the automatic principal. Invocation rechecks service enablement, scope, event-read, and current start authority. Trigger handling and immutable first selection are specified in S08.
 
@@ -63,6 +63,6 @@ Configuration requires pipeline-management authority and Admin authority to bind
 | A-TIME | Default and explicit boundary durations; invalid/infinite durations; no admission-time deadline |
 | A-ENV | Override precedence; reserved variables/secrets; path traversal and invalid name rejection |
 | A-ATOMIC | Fake registry failure and version/authority changes prevent admission; no secret values in snapshot |
-| A-PUSH | Exact refs/input set; binding authority; no Git-to-pipeline synchronization |
+| A-PUSH | Exact refs and trailing-`/` ref prefixes/input set; binding authority; no Git-to-pipeline synchronization |
 
 Unit tests fake registry/store/authorization collaborators. Real digest lookup, transaction races, API parity, and trigger replay are verified after G2.

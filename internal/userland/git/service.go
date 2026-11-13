@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodama/internal/fault"
 	"github.com/optimiware/kodama/internal/id"
 )
 
@@ -31,6 +32,9 @@ var (
 	// ErrSourceEventConflict reports a stable source event reused with
 	// different content.
 	ErrSourceEventConflict = errors.New("source event id was reused with different content")
+	// ErrResourceMismatch reports a repository whose configured static resource
+	// identity and committed policy `option resource` declaration disagree.
+	ErrResourceMismatch = errors.New("repository resource id disagrees with policy")
 )
 
 // PolicySource supplies the current parsed tenant git.conf. The service reads
@@ -44,15 +48,16 @@ type PolicySource interface {
 // Every boundary is required: a missing seam would silently skip verification,
 // journaling or observation.
 type ServiceConfig struct {
-	TenantID  id.TenantID
-	Storage   Storage
-	Policies  PolicySource
-	Executor  CommandExecutor
-	Observer  RefObserver
-	Journal   JournalStore
-	Verify    VerificationClient
-	Retention RetentionQuery
-	Clock     Clock
+	TenantID    id.TenantID
+	Storage     Storage
+	Policies    PolicySource
+	Executor    CommandExecutor
+	Observer    RefObserver
+	Journal     JournalStore
+	Verify      VerificationClient
+	Retention   RetentionQuery
+	Clock       Clock
+	ResourceIDs map[string]string
 }
 
 // UpdateRequest is one received ref update attempt.
@@ -111,16 +116,17 @@ type BackupManifest struct {
 // smart-HTTP read authorization seam and the atomic ref receive sequence. It
 // starts no process itself and never imports Shell or Kernel internals.
 type Service struct {
-	tenant    id.TenantID
-	storage   Storage
-	policies  PolicySource
-	executor  CommandExecutor
-	observer  RefObserver
-	journal   JournalStore
-	verify    VerificationClient
-	retention RetentionQuery
-	clock     Clock
-	keepRefs  *KeepRefStore
+	tenant      id.TenantID
+	storage     Storage
+	policies    PolicySource
+	executor    CommandExecutor
+	observer    RefObserver
+	journal     JournalStore
+	verify      VerificationClient
+	retention   RetentionQuery
+	clock       Clock
+	keepRefs    *KeepRefStore
+	resourceIDs map[string]string
 
 	locks lockTable
 }
@@ -153,18 +159,97 @@ func NewService(config ServiceConfig) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	var resourceIDs map[string]string
+	if len(config.ResourceIDs) > 0 {
+		resourceIDs = make(map[string]string, len(config.ResourceIDs))
+		for repository, resourceID := range config.ResourceIDs {
+			repository = strings.TrimSpace(repository)
+			resourceID = strings.TrimSpace(resourceID)
+			if repository == "" || resourceID == "" {
+				continue
+			}
+			if !validJournalID(resourceID) {
+				return nil, fmt.Errorf("git service resource id %q for repository %q is invalid", resourceID, repository)
+			}
+			resourceIDs[repository] = resourceID
+		}
+	}
 	return &Service{
-		tenant:    tenant,
-		storage:   config.Storage,
-		policies:  config.Policies,
-		executor:  config.Executor,
-		observer:  config.Observer,
-		journal:   config.Journal,
-		verify:    config.Verify,
-		retention: config.Retention,
-		clock:     config.Clock,
-		keepRefs:  keepRefs,
+		tenant:      tenant,
+		storage:     config.Storage,
+		policies:    config.Policies,
+		executor:    config.Executor,
+		observer:    config.Observer,
+		journal:     config.Journal,
+		verify:      config.Verify,
+		retention:   config.Retention,
+		clock:       config.Clock,
+		keepRefs:    keepRefs,
+		resourceIDs: resourceIDs,
 	}, nil
+}
+
+// ResolveResourceID resolves a repository's registered resource metadata
+// identity from the static ResourceIDs mapping when configured, or else from
+// the committed tenant policy's `option resource` declaration. When both are
+// present and disagree, the attempt is refused with fault.Forbidden so a
+// policy commit can never spoof a static pin. When neither supplies a resource
+// identity, UnregisteredRepositoryError is returned so smart HTTP answers the
+// uniform authentication challenge without revealing repository existence.
+func (service *Service) ResolveResourceID(ctx context.Context, repository string) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := validateRepositoryName(repository); err != nil {
+		return "", err
+	}
+	staticID := service.resourceIDs[repository]
+	config, err := service.policies.Current(ctx)
+	if err != nil {
+		return "", err
+	}
+	policy, hasPolicy := config.Policy(repository)
+	policyID := ""
+	if hasPolicy {
+		policyID = policy.ResourceID
+	}
+	if staticID != "" && policyID != "" && staticID != policyID {
+		return "", fault.Wrap(fault.Forbidden,
+			fmt.Sprintf("repository %q resource id disagrees with policy", repository),
+			ErrResourceMismatch)
+	}
+	if staticID != "" {
+		return staticID, nil
+	}
+	if policyID != "" {
+		return policyID, nil
+	}
+	return "", UnregisteredRepositoryError(repository)
+}
+
+// VerifyResourceBinding checks that a supplied resource identity agrees with
+// both the static ResourceIDs pin (if configured) and the repository policy's
+// `option resource` declaration (if configured).
+func (service *Service) VerifyResourceBinding(repository, resourceID string, policy RepositoryPolicy) error {
+	staticID := service.resourceIDs[repository]
+	if staticID != "" && policy.ResourceID != "" && staticID != policy.ResourceID {
+		return fault.Wrap(fault.Forbidden,
+			fmt.Sprintf("repository %q resource id disagrees with policy", repository),
+			ErrResourceMismatch)
+	}
+	expected := staticID
+	if expected == "" {
+		expected = policy.ResourceID
+	}
+	if expected != "" && resourceID != expected {
+		return fault.Wrap(fault.Forbidden,
+			fmt.Sprintf("repository %q resource id disagrees with configured binding", repository),
+			ErrResourceMismatch)
+	}
+	return nil
 }
 
 // KeepRefs reconciles this tenant's managed retained-commit refs for one
@@ -205,8 +290,9 @@ func (service *Service) AuthorizeRead(ctx context.Context, repository string, id
 // verification response also carries the service's RBAC roles, because those
 // roles never grant a human-role match.
 type ReadVerifier struct {
-	verification VerificationClient
-	resourceID   func(repository string) (string, error)
+	verification      VerificationClient
+	resourceID        func(repository string) (string, error)
+	contextResourceID func(ctx context.Context, repository string) (string, error)
 }
 
 var _ ReadActorVerifier = (*ReadVerifier)(nil)
@@ -222,9 +308,32 @@ func NewReadVerifier(verification VerificationClient, resourceID func(repository
 	return &ReadVerifier{verification: verification, resourceID: resourceID}, nil
 }
 
+// WithResourceResolver returns a copy of the verifier that resolves repository
+// resource identities with ctx. The original verifier is unchanged.
+func (verifier *ReadVerifier) WithResourceResolver(resolve func(ctx context.Context, repository string) (string, error)) (*ReadVerifier, error) {
+	if verifier == nil || verifier.verification == nil {
+		return nil, fmt.Errorf("read verifier requires a verification client")
+	}
+	if resolve == nil {
+		return nil, fmt.Errorf("read verifier requires a resource identity resolver")
+	}
+	return &ReadVerifier{
+		verification:      verifier.verification,
+		contextResourceID: resolve,
+	}, nil
+}
+
 // VerifyReadActor verifies one smart-HTTP read actor.
 func (verifier *ReadVerifier) VerifyReadActor(ctx context.Context, repository, credential string) (Identity, error) {
-	resourceID, err := verifier.resourceID(repository)
+	var (
+		resourceID string
+		err        error
+	)
+	if verifier.contextResourceID != nil {
+		resourceID, err = verifier.contextResourceID(ctx, repository)
+	} else {
+		resourceID, err = verifier.resourceID(repository)
+	}
 	if err != nil {
 		return Identity{}, err
 	}
@@ -289,6 +398,9 @@ func (service *Service) prepareLocked(ctx context.Context, request UpdateRequest
 
 	policy, err := service.currentPolicy(ctx, request.Repository)
 	if err != nil {
+		return JournalEntry{}, err
+	}
+	if err := service.VerifyResourceBinding(request.Repository, request.ResourceID, policy); err != nil {
 		return JournalEntry{}, err
 	}
 	approvalRole, guarded := policy.ApprovalFor(request.Ref)
