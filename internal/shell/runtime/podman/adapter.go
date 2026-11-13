@@ -273,7 +273,7 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if err := validatePrepareContext(request.ActionName, request.TaskID); err != nil {
 		return engine.Preparation{}, err
 	}
-	files, secrets, err := buildPreparation(request)
+	files, secrets, err := buildPreparationWithCA(request, a.workloadCAPEM)
 	if err != nil {
 		return engine.Preparation{}, err
 	}

@@ -58,8 +58,9 @@ var errTrustedConfigTrailing = errors.New("trailing content after the document")
 
 // modelsFile is the strict JSON shape of KODAMA_MODELS_FILE.
 type modelsFile struct {
-	Models      []modelFile      `json:"models"`
-	SecretRules []secretRuleFile `json:"secret_rules"`
+	Models      []modelFile         `json:"models"`
+	Providers   []modelProviderFile `json:"providers"`
+	SecretRules []secretRuleFile    `json:"secret_rules"`
 }
 
 // modelFile is one configured model entry.
@@ -76,6 +77,20 @@ type modelFile struct {
 	Timeout             string `json:"timeout"`
 	RecordContent       bool   `json:"record_content"`
 	ContentRetention    string `json:"content_retention"`
+}
+
+// modelProviderFile is one configured streaming LLM proxy provider entry.
+type modelProviderFile struct {
+	TenantID         string `json:"tenant_id"`
+	ProjectID        string `json:"project_id"`
+	Name             string `json:"name"`
+	BaseURL          string `json:"base_url"`
+	Endpoint         string `json:"endpoint"`
+	SecretName       string `json:"secret_name"`
+	AuthHeader       string `json:"auth_header"`
+	AnthropicVersion string `json:"anthropic_version"`
+	MaxRequestBytes  int    `json:"max_request_bytes"`
+	Timeout          string `json:"timeout"`
 }
 
 // toolProxyFile is the strict JSON shape of KODAMA_TOOL_PROXY_FILE.
@@ -163,6 +178,27 @@ func LoadModelsConfigFile(path string, profile Profile) (*ModelsConfig, error) {
 			Timeout:             timeout,
 			RecordContent:       entry.RecordContent,
 			ContentRetention:    retention,
+		})
+	}
+	for index, entry := range file.Providers {
+		timeout, err := trustedDuration(entry.Timeout)
+		if err != nil {
+			return nil, fault.Wrap(fault.InvalidInput,
+				fmt.Sprintf("%s provider %d timeout is invalid: %v", ModelsFileSetting, index+1, err), err)
+		}
+		config.Providers = append(config.Providers, ModelProviderConfig{
+			Scope: tenancy.Scope{
+				TenantID:  id.TenantID(entry.TenantID),
+				ProjectID: id.ProjectID(entry.ProjectID),
+			},
+			Name:             entry.Name,
+			BaseURL:          entry.BaseURL,
+			Endpoint:         entry.Endpoint,
+			SecretName:       id.SecretName(entry.SecretName),
+			AuthHeader:       entry.AuthHeader,
+			AnthropicVersion: entry.AnthropicVersion,
+			MaxRequestBytes:  entry.MaxRequestBytes,
+			Timeout:          timeout,
 		})
 	}
 	config.SecretRules = trustedSecretRules(file.SecretRules)

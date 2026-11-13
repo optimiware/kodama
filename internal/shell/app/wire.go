@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"net/http"
 
 	"github.com/optimiware/kodama/api"
 	"github.com/optimiware/kodama/internal/fault"
@@ -385,6 +386,8 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Controller:  environment.controller,
 		IDs:         ids,
 		Clock:       clock,
+		Models:      cfg.Models,
+		WorkloadURL: cfg.workloadBaseURL(),
 	})
 	if err != nil {
 		return nil, err
@@ -479,7 +482,16 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	// bindings so an incomplete enabled configuration refuses startup. A nil
 	// configuration returns the disabled port without touching any dependency.
 	// The composition adopts the provider transport and stops it at shutdown.
-	modelInvocation, stopModels, err := newConfiguredModels(modelGatewayDependencies{
+	var sharedModelTransport http.RoundTripper
+	if cfg.Models != nil {
+		if err := cfg.Models.validate(cfg.Profile); err != nil {
+			return nil, err
+		}
+		var stopModels func(context.Context) error
+		sharedModelTransport, stopModels = cfg.Models.transportFor()
+		builder.addStop("model-gateway-transport", stopModels)
+	}
+	modelInvocation, _, err := newConfiguredModels(modelGatewayDependencies{
 		Config:         cfg.Models,
 		Profile:        cfg.Profile,
 		InstallationID: cfg.InstallationID,
@@ -492,11 +504,27 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Store:          environment.store,
 		IDs:            ids,
 		Clock:          clock,
+		Transport:      sharedModelTransport,
 	})
 	if err != nil {
 		return nil, err
 	}
-	builder.addStop("model-gateway-transport", stopModels)
+	llmProxy, _, err := newLLMProxyHandler(llmProxyDependencies{
+		Config:         cfg.Models,
+		Profile:        cfg.Profile,
+		InstallationID: cfg.InstallationID,
+		Controller:     environment.controller,
+		Principals:     bindingAuth,
+		Authorizer:     authorizer,
+		Authority:      identityAdapter,
+		Lookup:         secretLookup,
+		Cipher:         environment.cipher,
+		Clock:          clock,
+		Transport:      sharedModelTransport,
+	})
+	if err != nil {
+		return nil, err
+	}
 	// The optional external tool proxy is constructed before the operation
 	// bindings so an incomplete enabled configuration refuses startup. A nil
 	// configuration returns the disabled port without touching any dependency.
@@ -638,7 +666,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	if err != nil {
 		return nil, err
 	}
-	handler := newPublicHandler(restEdge, mcpEdge, cfg.MCPPath, restConfig.Discovery)
+	handler := newPublicHandler(restEdge, mcpEdge, cfg.MCPPath, restConfig.Discovery, llmProxy)
 
 	tracked, err := newTrackedRuntime(environment.runtime, closePolicyForRuntime(cfg.Installation.Runtime))
 	if err != nil {

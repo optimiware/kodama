@@ -1,3 +1,11 @@
+# External coding-agent harness recipe (Claude Code, Codex, OpenCode, Pi).
+#
+# Raw provider credentials (ANTHROPIC_API_KEY, OPENAI_API_KEY) are never mounted
+# into the workload container. Instead, the harness authenticates to Kodama's
+# streaming LLM proxy (/llm/{provider}/*) by reading the mounted execution
+# credential from /kodama/secrets/KODAMA_TOKEN into ANTHROPIC_API_KEY and
+# OPENAI_API_KEY while pointing ANTHROPIC_BASE_URL at ${KODAMA_URL}/llm/anthropic
+# and OPENAI_BASE_URL at ${KODAMA_URL}/llm/openai/v1.
 actions:
   - name: prepare
     image: registry.example.com/kodama/base@sha256:cae662172fd450bb0cd710a769079c05bfc5d8e35efa6576edc7d0377afdd4a2
@@ -6,5 +14,17 @@ actions:
   - name: harness
     image: registry.example.com/kodama/harness@sha256:49f756463ad9dcfb9b6ade54d7d6f15476e7214f46a65b4b0c55d46845b12f70
     commands:
-      - harness run --config harness.yaml
+      - |
+        export ANTHROPIC_BASE_URL="${KODAMA_LLM_ANTHROPIC_BASE_URL:-${KODAMA_URL}/llm/anthropic}"
+        export OPENAI_BASE_URL="${KODAMA_LLM_OPENAI_BASE_URL:-${KODAMA_URL}/llm/openai/v1}"
+        IFS= read -r ANTHROPIC_API_KEY < /kodama/secrets/KODAMA_TOKEN
+        IFS= read -r OPENAI_API_KEY < /kodama/secrets/KODAMA_TOKEN
+        export ANTHROPIC_API_KEY OPENAI_API_KEY
+        if [ -n "${KODAMA_CA_FILE:-}" ]; then
+          export NODE_EXTRA_CA_CERTS="${KODAMA_CA_FILE}"
+          export SSL_CERT_FILE="${KODAMA_CA_FILE}"
+          export CURL_CA_BUNDLE="${KODAMA_CA_FILE}"
+          export GIT_SSL_CAINFO="${KODAMA_CA_FILE}"
+        fi
+        harness run --config harness.yaml
       - harness report

@@ -24,14 +24,16 @@ type publicHandler struct {
 	mcp       *mcp.Edge
 	mcpPath   string
 	discovery httpapi.DiscoveryProvider
+	llmProxy  http.Handler
 }
 
-func newPublicHandler(rest http.Handler, edge *mcp.Edge, mcpPath string, discovery httpapi.DiscoveryProvider) http.Handler {
+func newPublicHandler(rest http.Handler, edge *mcp.Edge, mcpPath string, discovery httpapi.DiscoveryProvider, llmProxy http.Handler) http.Handler {
 	return &publicHandler{
 		rest:      rest,
 		mcp:       edge,
 		mcpPath:   mcpPath,
 		discovery: discovery,
+		llmProxy:  llmProxy,
 	}
 }
 
@@ -43,6 +45,10 @@ func (handler *publicHandler) ServeHTTP(writer http.ResponseWriter, request *htt
 		}
 		if request.URL.Path == api.OAuthProtectedResourcePath {
 			handler.serveOAuthProtectedResource(writer, request)
+			return
+		}
+		if handler.llmProxy != nil && strings.HasPrefix(request.URL.Path, "/llm/") {
+			handler.llmProxy.ServeHTTP(writer, request)
 			return
 		}
 	}
