@@ -6,12 +6,12 @@ Source: [events](../../KODAMA.md#events-and-operations), [push](../../KODAMA.md#
 
 Every application operation has one typed schema, authorization rule, shared handler binding, result schema, and error mapping. REST and MCP JSON-RPC decode into the same operation invocation. `kodactl` uses REST through `client`. NATS never submits operations.
 
-C01/C03 freeze the complete operation inventory and REST/MCP names before builders start. Required families:
+C01/C03 freeze the complete 58-operation inventory and 1:1 REST/MCP parity before builders start. Required families:
 
-- Tenant/project/membership and resource binding administration.
-- Pipeline apply/read/update/delete and immutable execution start.
-- Secret metadata/write/delete; service account and credential lifecycle.
-- Task create/read/edit/comment/select/start/create-and-start/ask/reply/cancel/history/inbox.
+- Tenant/project/membership, authenticated `principal.whoami` discovery, project listing, and resource binding administration/listing.
+- Pipeline apply/read/list/update/delete and immutable execution start.
+- Secret metadata read/list, write and delete; service account create/list/update/enable/disable and credential lifecycle.
+- Task create/read/list/edit/comment/select/start/create-and-start/ask/reply/cancel/history/inbox.
 - Execution inspect/list/cancel, action outputs and request resolution, retained logs.
 - Actor/approval verification, custom event publication, verified resource reporting, authorized event reads/subscription setup.
 - Optional configured model/tool surfaces with the same authorizer.
@@ -27,7 +27,9 @@ Product-fixed endpoints:
 | `POST /api/v1/verify` | Service-plus-actor facts |
 | `GET /api/v1/executions/{execution}` | Inspect recorded execution/evidence |
 
-Other routes are implementation decisions frozen in C03. Expected versions and idempotency keys have one consistent transport representation. Unknown fields/operations and oversized input are refused. Authenticate before resource lookup exposes scoped information; map error codes consistently. Credential issuance returns secrets only in its authorized response, never general reads.
+Other routes are implementation decisions frozen in C03. Expected versions and idempotency keys have one consistent transport representation; REST `GET` routes accept an empty request body as `{}` while non-`GET` methods continue to require an explicit JSON object body. Unknown fields/operations and oversized input are refused. Authenticate before resource lookup exposes scoped information; map error codes consistently. Credential issuance returns secrets only in its authorized response, never general reads.
+
+The MCP Streamable HTTP edge (`/mcp`) negotiates MCP protocol versions (`2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, with `2025-06-18` fallback for other `202x-xx-xx` revisions), accepts `ping` (`{}`) and JSON-RPC notifications (`notifications/initialized`, `notifications/cancelled` -> `202 Accepted` with empty body), returns `405 Method Not Allowed` (`Allow: POST`) on `GET`/`DELETE /mcp`, and responds `401 Unauthorized` with `WWW-Authenticate: Bearer` (plus RFC 9728 `resource_metadata` pointing to `/.well-known/oauth-protected-resource` when discovery is configured) on `unauthenticated` calls. `tools/list` advertises underscore-sanitized tool names (`^[A-Za-z0-9_-]{1,64}$`) with descriptions, `tools/call` accepts both underscore and canonical dotted operation names, and `EncodeMCPResult` emits standard MCP `CallToolResult` (`content` + `structuredContent`).
 
 REST handler tests use in-process request/recorder objects; MCP tests use message fixtures and a fake dispatcher. Before G2 neither edge is connected to real capabilities. Schema parity tests enumerate the operation registry and ensure neither edge invents grants or hidden operations.
 

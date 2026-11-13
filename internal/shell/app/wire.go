@@ -568,6 +568,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Receipts:       receiptLookup,
 		Secrets:        secretManager,
 		Authority:      identityAdapter,
+		Scanner:        environment.scanner,
 		Services:       serviceAdmin,
 		Credentials:    credentialAdmin,
 		Tasks:          taskService,
@@ -637,7 +638,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	if err != nil {
 		return nil, err
 	}
-	handler := newPublicHandler(restEdge, mcpEdge, cfg.MCPPath)
+	handler := newPublicHandler(restEdge, mcpEdge, cfg.MCPPath, restConfig.Discovery)
 
 	tracked, err := newTrackedRuntime(environment.runtime, closePolicyForRuntime(cfg.Installation.Runtime))
 	if err != nil {

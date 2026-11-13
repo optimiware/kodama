@@ -130,8 +130,8 @@ func TestMCPToolsListMatchesRegistry(t *testing.T) {
 		t.Fatalf("tools/list returned %d tools; want %d", len(response.Result.Tools), len(routes))
 	}
 	for index, route := range routes {
-		if response.Result.Tools[index].Name != route.Operation {
-			t.Fatalf("tool %d = %q; want %q", index, response.Result.Tools[index].Name, route.Operation)
+		if response.Result.Tools[index].Name != route.MCPTool {
+			t.Fatalf("tool %d = %q; want %q", index, response.Result.Tools[index].Name, route.MCPTool)
 		}
 	}
 	_ = mcp.ToolCatalog()

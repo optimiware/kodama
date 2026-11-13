@@ -126,8 +126,8 @@ func TestRESTAndMCPParity(t *testing.T) {
 	if len(mcpResponse.Error) != 0 {
 		t.Fatalf("MCP error: %s", mcpResponse.Error)
 	}
-	var mcpResult api.Result
-	if err := json.Unmarshal(mcpResponse.Result, &mcpResult); err != nil {
+	mcpResult, err := api.DecodeMCPResult(mcpResponse.Result)
+	if err != nil {
 		t.Fatalf("decode MCP result: %v", err)
 	}
 	if restResult.Operation != mcpResult.Operation || !bytes.Equal(restResult.Body, mcpResult.Body) {

@@ -2,7 +2,7 @@
 //
 // The kodactl login flow is configured with the Kodama API URL only. It reads
 // one unauthenticated public discovery document from the fixed
-// /.well-known/kodama-configuration path, outside the 51-operation registry.
+// /.well-known/kodama-configuration path, outside the 58-operation registry.
 // The document is strictly decoded, bounded, validated and carries no secret
 // or JWKS material.
 package publiccontract
@@ -231,7 +231,7 @@ func discoveryPaddedTo(t *testing.T, size int) []byte {
 }
 
 // TestDiscoveryRouteIsOutsideOperationRegistry pins the unauthenticated
-// discovery route: a fixed root path, not one of the 51 operations, not
+// discovery route: a fixed root path, not one of the 58 operations, not
 // matchable by the operation router and not requiring a credential to decode.
 func TestDiscoveryRouteIsOutsideOperationRegistry(t *testing.T) {
 	if api.DiscoveryPath != "/.well-known/kodama-configuration" {
@@ -242,8 +242,8 @@ func TestDiscoveryRouteIsOutsideOperationRegistry(t *testing.T) {
 	}
 
 	codecs := api.OperationCodecs()
-	if len(codecs) != 51 {
-		t.Fatalf("OperationCodecs() has %d entries; want exactly the 51 registry operations", len(codecs))
+	if len(codecs) != 58 {
+		t.Fatalf("OperationCodecs() has %d entries; want exactly the 58 registry operations", len(codecs))
 	}
 	for _, route := range api.Routes() {
 		if route.Path == api.DiscoveryPath {

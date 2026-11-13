@@ -44,25 +44,142 @@ func TestMCPInitializePinsProtocolVersionAndServerInfo(t *testing.T) {
 	}
 }
 
-func TestMCPInitializeRefusesUnsupportedVersion(t *testing.T) {
+func TestMCPInitializeNegotiatesProtocolVersion(t *testing.T) {
 	router := &fakeRouter{}
 	edge := newEdge(t, router)
 
-	response := decodeResponse(t, edge.Handle(context.Background(), "", initializeRequest("2024-11-05")))
-	if err := response.Validate(); err != nil {
-		t.Fatalf("error response is invalid: %v", err)
+	for _, version := range api.SupportedMCPProtocolVersions() {
+		t.Run(version, func(t *testing.T) {
+			response := decodeResponse(t, edge.Handle(context.Background(), "", initializeRequest(version)))
+			if err := response.Validate(); err != nil {
+				t.Fatalf("initialize response is invalid: %v", err)
+			}
+			if response.Error != nil {
+				t.Fatalf("initialize(%s) refused: %+v", version, response.Error)
+			}
+			var result api.MCPInitializeResult
+			if err := json.Unmarshal(response.Result, &result); err != nil {
+				t.Fatalf("decode initialize result: %v", err)
+			}
+			if result.ProtocolVersion != version {
+				t.Fatalf("protocolVersion = %q; want echoed %q", result.ProtocolVersion, version)
+			}
+		})
 	}
-	if response.Error == nil {
-		t.Fatal("unsupported protocol version was accepted")
+
+	// An unknown 202x-xx-xx revision falls back to MCPProtocolVersion per MCP
+	// version negotiation rules.
+	fallback := decodeResponse(t, edge.Handle(context.Background(), "", initializeRequest("2026-01-15")))
+	if fallback.Error != nil {
+		t.Fatalf("fallback initialize refused: %+v", fallback.Error)
 	}
-	if response.Error.Code != -32602 {
-		t.Fatalf("MCP error code = %d; want -32602", response.Error.Code)
+	var fallbackResult api.MCPInitializeResult
+	if err := json.Unmarshal(fallback.Result, &fallbackResult); err != nil {
+		t.Fatalf("decode fallback initialize result: %v", err)
 	}
-	if got := decodeErrorData(t, response); got.Code != api.CodeInvalidInput {
-		t.Fatalf("public code = %q; want %q", got.Code, api.CodeInvalidInput)
+	if fallbackResult.ProtocolVersion != api.MCPProtocolVersion {
+		t.Fatalf("fallback protocolVersion = %q; want %q", fallbackResult.ProtocolVersion, api.MCPProtocolVersion)
+	}
+
+	for _, bad := range []string{"", "1.0", "not-a-date", "2025-99-99", "1999-01-01"} {
+		t.Run("bad_"+bad, func(t *testing.T) {
+			response := decodeResponse(t, edge.Handle(context.Background(), "", initializeRequest(bad)))
+			if err := response.Validate(); err != nil {
+				t.Fatalf("error response is invalid: %v", err)
+			}
+			if response.Error == nil {
+				t.Fatalf("malformed protocol version %q was accepted", bad)
+			}
+			if response.Error.Code != -32602 {
+				t.Fatalf("MCP error code = %d; want -32602", response.Error.Code)
+			}
+			if got := decodeErrorData(t, response); got.Code != api.CodeInvalidInput {
+				t.Fatalf("public code = %q; want %q", got.Code, api.CodeInvalidInput)
+			}
+		})
 	}
 	if got := router.callCount(); got != 0 {
 		t.Fatalf("router calls = %d; want 0", got)
+	}
+}
+
+func TestMCPNotificationsAndPing(t *testing.T) {
+	router := &fakeRouter{}
+	edge := newEdge(t, router)
+
+	for _, body := range []string{
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
+		`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1,"reason":"user cancelled"}}`,
+	} {
+		out := edge.Handle(context.Background(), "", []byte(body))
+		if len(out) != 0 {
+			t.Fatalf("notification %s returned %q; want empty slice", body, string(out))
+		}
+	}
+
+	for _, body := range []string{
+		`{"jsonrpc":"2.0","id":9,"method":"ping"}`,
+		`{"jsonrpc":"2.0","id":"p-1","method":"ping","params":{}}`,
+	} {
+		response := decodeResponse(t, edge.Handle(context.Background(), "", []byte(body)))
+		if err := response.Validate(); err != nil {
+			t.Fatalf("ping response invalid: %v", err)
+		}
+		if response.Error != nil {
+			t.Fatalf("ping refused: %+v", response.Error)
+		}
+		if string(response.Result) != `{}` {
+			t.Fatalf("ping result = %s; want {}", string(response.Result))
+		}
+	}
+	if got := router.callCount(); got != 0 {
+		t.Fatalf("router calls = %d; want 0", got)
+	}
+}
+
+func TestMCPToolsCallAcceptsUnderscoreAndDottedToolNamesAndEncodesCallToolResult(t *testing.T) {
+	cases := []struct {
+		toolName  string
+		canonical string
+	}{
+		{"task_inbox", "task.inbox"},
+		{"task.inbox", "task.inbox"},
+		{"task_create_and_start", "task.create_and_start"},
+		{"resource_binding_read", "resource.binding.read"},
+		{"principal_whoami", "principal.whoami"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.toolName, func(t *testing.T) {
+			router := &fakeRouter{}
+			edge := newEdge(t, router)
+			responseBytes := edge.Handle(context.Background(), "token-1",
+				toolsCallRequest(t, 1, tc.toolName, json.RawMessage(`{"input":{},"idempotency_key":"k-1"}`)))
+			response := decodeResponse(t, responseBytes)
+			if response.Error != nil {
+				t.Fatalf("%s refused: %+v", tc.toolName, response.Error)
+			}
+			var callResult api.MCPCallToolResult
+			if err := json.Unmarshal(response.Result, &callResult); err != nil {
+				t.Fatalf("decode CallToolResult: %v", err)
+			}
+			if callResult.IsError || len(callResult.Content) != 1 || callResult.Content[0].Type != "text" {
+				t.Fatalf("CallToolResult = %+v; want single text content and isError=false", callResult)
+			}
+			if len(callResult.StructuredContent) == 0 {
+				t.Fatal("CallToolResult structuredContent is empty")
+			}
+			decoded, err := api.DecodeMCPResult(response.Result)
+			if err != nil {
+				t.Fatalf("DecodeMCPResult: %v", err)
+			}
+			if decoded.Operation != tc.canonical {
+				t.Fatalf("decoded operation = %q; want %q", decoded.Operation, tc.canonical)
+			}
+			if string(router.lastInvocation().Operation) != tc.canonical {
+				t.Fatalf("routed operation = %q; want %q", router.lastInvocation().Operation, tc.canonical)
+			}
+		})
 	}
 }
 

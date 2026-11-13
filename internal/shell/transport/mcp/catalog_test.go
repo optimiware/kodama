@@ -14,8 +14,9 @@ import (
 	"github.com/optimiware/kodama/internal/shell/transport/mcp"
 )
 
-// TestMCPToolCatalogEqualsRegistry pins the MCP tool catalog: exactly the 51
-// registry operations in registry order, each advertising the field-level
+// TestMCPToolCatalogEqualsRegistry pins the MCP tool catalog: exactly the 58
+// registry operations in registry order, each advertising the sanitized
+// underscore tool name, a non-empty description and the field-level
 // api.OperationInputSchema of that operation byte for byte.
 func TestMCPToolCatalogEqualsRegistry(t *testing.T) {
 	catalog := mcp.ToolCatalog()
@@ -26,16 +27,22 @@ func TestMCPToolCatalogEqualsRegistry(t *testing.T) {
 	}
 	for index, operation := range operations {
 		tool := catalog[index]
-		if tool.Name != string(operation.Name) {
-			t.Fatalf("catalog[%d] = %q; want %q", index, tool.Name, operation.Name)
-		}
-		route, ok := api.LookupRoute(tool.Name)
+		route, ok := api.LookupRoute(string(operation.Name))
 		if !ok {
-			t.Fatalf("catalog tool %q has no declared route", tool.Name)
+			t.Fatalf("operation %q has no declared route", operation.Name)
 		}
-		wantSchema, err := api.OperationInputSchema(tool.Name)
+		if tool.Name != route.MCPTool {
+			t.Fatalf("catalog[%d] = %q; want %q", index, tool.Name, route.MCPTool)
+		}
+		if strings.Contains(tool.Name, ".") || len(tool.Name) == 0 || len(tool.Name) > 64 {
+			t.Fatalf("catalog[%d] tool name %q violates ^[A-Za-z0-9_-]{1,64}$", index, tool.Name)
+		}
+		if strings.TrimSpace(tool.Description) == "" {
+			t.Fatalf("catalog[%d] %q has an empty description", index, tool.Name)
+		}
+		wantSchema, err := api.OperationInputSchema(string(operation.Name))
 		if err != nil {
-			t.Fatalf("OperationInputSchema(%q): %v", tool.Name, err)
+			t.Fatalf("OperationInputSchema(%q): %v", operation.Name, err)
 		}
 		if !bytes.Equal(tool.InputSchema, wantSchema) {
 			t.Fatalf("tool %q input schema = %s; want the field-level %s",
@@ -192,8 +199,11 @@ func TestMCPToolsListAdvertisesFieldLevelSchemas(t *testing.T) {
 		t.Fatalf("tools/list tools = %d; want %d routes", len(result.Tools), len(routes))
 	}
 	for index, route := range routes {
-		if result.Tools[index].Name != route.Operation {
-			t.Fatalf("tools/list[%d] = %q; want %q", index, result.Tools[index].Name, route.Operation)
+		if result.Tools[index].Name != route.MCPTool {
+			t.Fatalf("tools/list[%d] = %q; want %q", index, result.Tools[index].Name, route.MCPTool)
+		}
+		if strings.TrimSpace(result.Tools[index].Description) == "" {
+			t.Fatalf("tools/list[%d] %q has no description", index, result.Tools[index].Name)
 		}
 		want, err := api.OperationInputSchema(route.Operation)
 		if err != nil {

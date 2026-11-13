@@ -5,16 +5,16 @@ import (
 )
 
 // routeSpec is one registry row: the operation name and its one REST binding.
-// The MCP tool is always the operation name and both schema names are derived,
-// so a single table keeps the REST and MCP inventories in parity with the
-// Shell operation registry.
+// The MCP tool name is the underscore-sanitized operation name and both schema
+// names are derived, so a single table keeps the REST and MCP inventories in
+// parity with the Shell operation registry.
 type routeSpec struct {
 	operation string
 	method    Method
 	path      string
 }
 
-// routeSpecs is the route inventory: exactly the 51 registered operations,
+// routeSpecs is the route inventory: exactly the 58 registered operations,
 // one method/path and one MCP tool each. The six product-fixed S08 endpoints
 // appear verbatim.
 var routeSpecs = []routeSpec{
@@ -23,30 +23,36 @@ var routeSpecs = []routeSpec{
 	{"tenant.rotate_key", MethodPost, "/api/v1/tenants/{tenant}/rotate-key"},
 	{"project.create", MethodPost, "/api/v1/tenants/{tenant}/projects"},
 	{"project.update", MethodPatch, "/api/v1/projects/{project}"},
+	{"project.list", MethodGet, "/api/v1/tenants/{tenant}/projects"},
 	{"membership.grant", MethodPut, "/api/v1/projects/{project}/memberships/{principal}"},
 	{"membership.revoke", MethodDelete, "/api/v1/projects/{project}/memberships/{principal}"},
 	{"membership.list", MethodGet, "/api/v1/projects/{project}/memberships"},
+	{"principal.whoami", MethodGet, "/api/v1/whoami"},
 
 	// Resource bindings.
 	{"resource.binding.register", MethodPost, "/api/v1/projects/{project}/bindings"},
 	{"resource.binding.update", MethodPatch, "/api/v1/bindings/{binding}"},
 	{"resource.binding.delete", MethodDelete, "/api/v1/bindings/{binding}"},
 	{"resource.binding.read", MethodGet, "/api/v1/bindings/{binding}"},
+	{"resource.binding.list", MethodGet, "/api/v1/projects/{project}/bindings"},
 
 	// Pipelines and immutable execution start.
 	{"pipeline.apply", MethodPut, "/api/v1/projects/{project}/pipelines/{pipeline}"},
 	{"pipeline.read", MethodGet, "/api/v1/projects/{project}/pipelines/{pipeline}"},
+	{"pipeline.list", MethodGet, "/api/v1/projects/{project}/pipelines"},
 	{"pipeline.update", MethodPatch, "/api/v1/projects/{project}/pipelines/{pipeline}"},
 	{"pipeline.delete", MethodDelete, "/api/v1/projects/{project}/pipelines/{pipeline}"},
 	{"pipeline.start", MethodPost, "/api/v1/projects/{project}/pipelines/{pipeline}/start"},
 
 	// Secret metadata and writes.
 	{"secret.metadata.read", MethodGet, "/api/v1/projects/{project}/secrets/{secret}"},
+	{"secret.metadata.list", MethodGet, "/api/v1/projects/{project}/secrets"},
 	{"secret.write", MethodPut, "/api/v1/projects/{project}/secrets/{secret}"},
 	{"secret.delete", MethodDelete, "/api/v1/projects/{project}/secrets/{secret}"},
 
 	// Service accounts and credential lifecycle.
 	{"service.create", MethodPost, "/api/v1/projects/{project}/services"},
+	{"service.list", MethodGet, "/api/v1/projects/{project}/services"},
 	{"service.update", MethodPatch, "/api/v1/services/{service}"},
 	{"service.enable", MethodPost, "/api/v1/services/{service}/enable"},
 	{"service.disable", MethodPost, "/api/v1/services/{service}/disable"},
@@ -57,6 +63,7 @@ var routeSpecs = []routeSpec{
 	// Tasks and conversation handoffs.
 	{"task.create", MethodPost, "/api/v1/projects/{project}/tasks"},
 	{"task.read", MethodGet, "/api/v1/tasks/{task}"},
+	{"task.list", MethodGet, "/api/v1/projects/{project}/tasks"},
 	{"task.edit", MethodPatch, "/api/v1/tasks/{task}"},
 	{"task.comment", MethodPost, "/api/v1/tasks/{task}/comments"},
 	{"task.select_pipeline", MethodPut, "/api/v1/tasks/{task}/pipeline"},
@@ -93,7 +100,7 @@ var routeSpecs = []routeSpec{
 // alternateRouteSpecs is the additive second REST binding of an operation. An
 // alternate is a second binding, never a second operation: it keeps the
 // operation name, MCP tool and schema names, and api.Routes() stays exactly the
-// 51 canonical operations.
+// 58 canonical operations.
 var alternateRouteSpecs = []routeSpec{
 	// pipeline.start accepts inline YAML on a task-free executions route; the
 	// canonical stored-pipeline route is unchanged.
@@ -124,6 +131,17 @@ var routesByOperation = func() map[string]Route {
 	return byOperation
 }()
 
+// mcpToolOperations maps both the advertised underscore MCP tool name and the
+// canonical dotted operation name back to the canonical operation name.
+var mcpToolOperations = func() map[string]string {
+	byName := make(map[string]string, len(routes)*2)
+	for _, route := range routes {
+		byName[route.Operation] = route.Operation
+		byName[route.MCPTool] = route.Operation
+	}
+	return byName
+}()
+
 // buildRoutes derives each route's MCP tool and schema names from its
 // operation name.
 func buildRoutes(specs []routeSpec) []Route {
@@ -133,12 +151,21 @@ func buildRoutes(specs []routeSpec) []Route {
 			Operation:    spec.operation,
 			Method:       spec.method,
 			Path:         spec.path,
-			MCPTool:      spec.operation,
+			MCPTool:      strings.ReplaceAll(spec.operation, ".", "_"),
 			InputSchema:  spec.operation + ".input.v1",
 			ResultSchema: spec.operation + ".result.v1",
 		}
 	}
 	return out
+}
+
+// MCPToolOperationName resolves either an advertised underscore MCP tool name
+// (such as "task_create_and_start") or a canonical dotted operation name (such
+// as "task.create_and_start") to the canonical operation name. Unknown and
+// empty names report false.
+func MCPToolOperationName(name string) (string, bool) {
+	operation, ok := mcpToolOperations[name]
+	return operation, ok
 }
 
 // Routes returns every canonical route in declaration order. Alternate

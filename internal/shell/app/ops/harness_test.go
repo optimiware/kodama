@@ -743,6 +743,7 @@ func (h *harness) buildRouter(t *testing.T) {
 		Receipts:       mustReceiptLookup(t, h.store),
 		Secrets:        h.secrets,
 		Authority:      h.adapter,
+		Scanner:        h.store,
 		Services:       h.services,
 		Credentials:    h.credentials,
 		Tasks:          h.taskService,

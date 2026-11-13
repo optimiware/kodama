@@ -131,3 +131,56 @@ func (result SecretDeleteResult) Validate() error {
 	}
 	return nil
 }
+
+// SecretMetadataListRequest is the secret.metadata.list input. The project is
+// carried explicitly for MCP callers and is optional for REST callers whose
+// route supplies it.
+type SecretMetadataListRequest struct {
+	ProjectID string `json:"project_id,omitempty" schema:"id"`
+	Page      *Page  `json:"page,omitempty"`
+}
+
+// Validate checks the optional project identity and page bounds.
+func (request SecretMetadataListRequest) Validate() error {
+	if request.ProjectID != "" && !validID(request.ProjectID) {
+		return invalid("project_id is invalid")
+	}
+	if request.Page != nil {
+		return request.Page.Validate()
+	}
+	return nil
+}
+
+// SecretMetadataView is one secret-free metadata observation in
+// secret.metadata.list. It never carries a secret value, ciphertext or key
+// material.
+type SecretMetadataView struct {
+	SecretID  string    `json:"secret_id"`
+	Name      string    `json:"name"`
+	Version   uint64    `json:"version" schema:"version"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Validate checks the secret identity, name, version and update time.
+func (view SecretMetadataView) Validate() error {
+	return SecretMetadataReadResult(view).Validate()
+}
+
+// SecretMetadataListResult is the secret.metadata.list result.
+type SecretMetadataListResult struct {
+	Secrets    []SecretMetadataView `json:"secrets"`
+	NextCursor string               `json:"next_cursor,omitempty"`
+}
+
+// Validate checks every secret metadata item and the optional cursor bound.
+func (result SecretMetadataListResult) Validate() error {
+	for _, secret := range result.Secrets {
+		if err := secret.Validate(); err != nil {
+			return err
+		}
+	}
+	if len(result.NextCursor) > MaxCursorBytes {
+		return invalid("next_cursor is %d bytes; at most %d are allowed", len(result.NextCursor), MaxCursorBytes)
+	}
+	return nil
+}

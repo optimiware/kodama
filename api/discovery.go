@@ -10,9 +10,22 @@ import (
 )
 
 // DiscoveryPath is the one unauthenticated public discovery route. It is a
-// fixed root path outside the 51-operation registry: it is not returned by
+// fixed root path outside the 58-operation registry: it is not returned by
 // Routes, not resolvable by Match or LookupRoute, and carries no credential.
 const DiscoveryPath = "/.well-known/kodama-configuration"
+
+// OAuthProtectedResourcePath is the RFC 9728 OAuth 2.0 Protected Resource
+// Metadata route served alongside DiscoveryPath when public discovery is
+// configured.
+const OAuthProtectedResourcePath = "/.well-known/oauth-protected-resource"
+
+// OAuthProtectedResourceMetadata is the RFC 9728 protected-resource metadata
+// document MCP clients discover on an unauthenticated /mcp response.
+type OAuthProtectedResourceMetadata struct {
+	Resource               string   `json:"resource"`
+	AuthorizationServers   []string `json:"authorization_servers"`
+	BearerMethodsSupported []string `json:"bearer_methods_supported"`
+}
 
 // MaxDiscoveryBytes bounds one discovery document body. A body of exactly the
 // bound is accepted; one byte more is refused.

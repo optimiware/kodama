@@ -73,7 +73,7 @@ func NewMCP(config Config) (*MCP, error) {
 	return &MCP{
 		base:           base,
 		client:         httpClient,
-		maxResponse:    api.MaxResponseBytes,
+		maxResponse:    3 * api.MaxResponseBytes,
 		requestTimeout: defaultAPITimeout,
 	}, nil
 }
@@ -263,7 +263,7 @@ func (client *MCP) roundTrip(ctx context.Context, token Secret, body []byte) (ap
 	if response.StatusCode >= 300 && response.StatusCode < 400 {
 		return api.MCPResponse{}, data, fmt.Errorf("the MCP endpoint redirected; redirects are never followed")
 	}
-	if response.StatusCode != api.HTTPStatusSuccess {
+	if response.StatusCode != api.HTTPStatusSuccess && response.StatusCode != http.StatusUnauthorized {
 		return api.MCPResponse{}, data, fmt.Errorf("the MCP endpoint returned status %d", response.StatusCode)
 	}
 	var decoded api.MCPResponse

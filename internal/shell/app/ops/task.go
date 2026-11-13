@@ -12,6 +12,7 @@ import (
 	"github.com/optimiware/kodama/internal/shell/inbox"
 	"github.com/optimiware/kodama/internal/shell/pipeline"
 	shellrequest "github.com/optimiware/kodama/internal/shell/request"
+	"github.com/optimiware/kodama/internal/shell/store"
 	"github.com/optimiware/kodama/internal/shell/task"
 	"github.com/optimiware/kodama/internal/shell/transport/ops"
 )
@@ -39,6 +40,78 @@ func taskHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				return api.Result{}, err
 			}
 			return respond(call, taskReadResult(current))
+		}),
+		"task.list": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
+			request, err := decodeRequest[api.TaskListRequest](call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			if err := confirmReadAuthority(ctx, deps, call, call.Scope); err != nil {
+				return api.Result{}, err
+			}
+			scanner, err := requireScanner(deps)
+			if err != nil {
+				return api.Result{}, err
+			}
+			equals := map[string]any{}
+			if request.Status != "" {
+				equals["state"] = request.Status
+			}
+			page := pageOrDefault(request.Page)
+			committed, err := scanner.Query(ctx, call.Scope, store.ScanQuery{
+				Table:   "tasks",
+				Equals:  equals,
+				OrderBy: []store.Order{{Column: "id"}},
+				After:   page.Cursor,
+				Limit:   page.EffectiveLimit(),
+			})
+			if err != nil {
+				return api.Result{}, err
+			}
+			tasks := make([]api.TaskSummaryView, 0, len(committed.Rows))
+			for _, row := range committed.Rows {
+				taskID, err := scanRowString(row, "id")
+				if err != nil {
+					return api.Result{}, err
+				}
+				title, err := scanRowString(row, "title")
+				if err != nil {
+					return api.Result{}, err
+				}
+				state, err := scanRowString(row, "state")
+				if err != nil {
+					return api.Result{}, err
+				}
+				selectedPipeline, err := scanRowNullableString(row, "pipeline_id")
+				if err != nil {
+					return api.Result{}, err
+				}
+				currentExecution, err := scanRowNullableString(row, "current_execution_id")
+				if err != nil {
+					return api.Result{}, err
+				}
+				contentVersion, err := scanRowUint(row, "content_version")
+				if err != nil {
+					return api.Result{}, err
+				}
+				lifecycleVersion, err := scanRowUint(row, "lifecycle_version")
+				if err != nil {
+					return api.Result{}, err
+				}
+				tasks = append(tasks, api.TaskSummaryView{
+					TaskID:           taskID,
+					Title:            title,
+					State:            state,
+					SelectedPipeline: selectedPipeline,
+					CurrentExecution: currentExecution,
+					ContentVersion:   contentVersion,
+					LifecycleVersion: lifecycleVersion,
+				})
+			}
+			return respond(call, api.TaskListResult{
+				Tasks:      tasks,
+				NextCursor: committed.Next,
+			})
 		}),
 		"task.edit": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
 			request, err := decodeRequest[api.TaskEditRequest](call)

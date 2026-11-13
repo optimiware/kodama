@@ -46,7 +46,7 @@ func (matrix) Authorize(_ context.Context, principal Principal, name OperationNa
 	if principal.Kind == identity.KindExecution {
 		return DecisionDeny, fault.New(fault.InvalidInput, "execution principal requires its admitted permission")
 	}
-	if !scopeContains(principal.Scope, scope) {
+	if !operationScopeContains(operation.Name, principal.Scope, scope) {
 		return DecisionDeny, nil
 	}
 	if err := operationScopeMatches(operation, scope); err != nil {
@@ -57,11 +57,11 @@ func (matrix) Authorize(_ context.Context, principal Principal, name OperationNa
 	}
 	switch principal.Kind {
 	case identity.KindHuman:
-		if anyRoleGranted(principal.Roles, operation.Requires.HumanRoles) {
+		if operation.Name == "principal.whoami" || anyRoleGranted(principal.Roles, operation.Requires.HumanRoles) {
 			return DecisionAllow, nil
 		}
 	case identity.KindService:
-		if anyRoleGranted(principal.Roles, operation.Requires.ServiceRoles) {
+		if operation.Name == "principal.whoami" || anyRoleGranted(principal.Roles, operation.Requires.ServiceRoles) {
 			return DecisionAllow, nil
 		}
 	}
@@ -86,7 +86,7 @@ func AuthorizeExecution(admitted AdmittedExecution, name OperationName, scope te
 	if err := admitted.Validate(); err != nil {
 		return DecisionDeny, err
 	}
-	if !scopeContains(admitted.Principal.Scope, scope) {
+	if !operationScopeContains(operation.Name, admitted.Principal.Scope, scope) {
 		return DecisionDeny, nil
 	}
 	if err := operationScopeMatches(operation, scope); err != nil {
@@ -99,6 +99,20 @@ func AuthorizeExecution(admitted AdmittedExecution, name OperationName, scope te
 		return DecisionAllow, nil
 	}
 	return DecisionDeny, nil
+}
+
+// operationScopeContains checks scope containment for one operation. The two
+// read-only discovery operations (principal.whoami and project.list) allow a
+// project-scoped principal inside its own tenant, while every other tenant
+// operation requires a tenant-wide owner scope.
+func operationScopeContains(name OperationName, owner, target tenancy.Scope) bool {
+	if owner.TenantID != target.TenantID {
+		return false
+	}
+	if name == "principal.whoami" || name == "project.list" {
+		return true
+	}
+	return scopeContains(owner, target)
 }
 
 // scopeContains reports whether the owner scope covers the target scope. A

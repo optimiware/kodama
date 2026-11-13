@@ -452,13 +452,17 @@ func (probe *parityProbe) requireToolCatalog() []api.MCPTool {
 		byName[tool.Name] = tool
 	}
 	for _, operation := range parityOperations {
-		tool, ok := byName[operation]
+		route, ok := api.LookupRoute(operation)
 		if !ok {
-			probe.t.Fatalf("the MCP tools/list catalog does not advertise %q", operation)
+			probe.t.Fatalf("parity operation %q has no declared route", operation)
+		}
+		tool, ok := byName[route.MCPTool]
+		if !ok {
+			probe.t.Fatalf("the MCP tools/list catalog does not advertise %q", route.MCPTool)
 		}
 		var schema map[string]any
 		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
-			probe.t.Fatalf("MCP tool %q inputSchema is not a JSON object: %v", operation, err)
+			probe.t.Fatalf("MCP tool %q inputSchema is not a JSON object: %v", route.MCPTool, err)
 		}
 	}
 	return tools
