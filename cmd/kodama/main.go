@@ -15,6 +15,10 @@ import (
 const usageText = `usage: kodama <command> [flags]
 
 commands:
+  dev           run the instant single-origin local dev server (zero containers)
+  up            start the single-origin container stack (Podman or Docker)
+  down          stop the single-origin container stack (--purge removes state)
+  status        inspect the single-origin container stack
   server        run the Shell composition (--profile development, test or production)
   git serve     run the independent Git smart-HTTP service
   git hook      run one native Git hook callback
@@ -37,6 +41,10 @@ type runner func(context.Context, []string, io.Writer, io.Writer) int
 // deps are the injectable subcommand runners. Tests use them to prove dispatch
 // isolation: one command never starts another command's process.
 type deps struct {
+	dev                    runner
+	up                     runner
+	down                   runner
+	status                 runner
 	server                 runner
 	gitServe               runner
 	gitHook                runner
@@ -58,6 +66,10 @@ func main() {
 
 func defaultDeps() deps {
 	return deps{
+		dev:                    runDevEntry,
+		up:                     runUpEntry,
+		down:                   runDownEntry,
+		status:                 runStatusEntry,
 		server:                 runServerEntry,
 		gitServe:               runGitServeEntry,
 		gitHook:                runGitHookEntry,
@@ -85,6 +97,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps deps
 	case "version", "--version":
 		printVersion(stdout)
 		return 0
+	case "dev":
+		return deps.dev(ctx, args[1:], stdout, stderr)
+	case "up":
+		return deps.up(ctx, args[1:], stdout, stderr)
+	case "down":
+		return deps.down(ctx, args[1:], stdout, stderr)
+	case "status":
+		return deps.status(ctx, args[1:], stdout, stderr)
 	case "server":
 		return deps.server(ctx, args[1:], stdout, stderr)
 	case "git":

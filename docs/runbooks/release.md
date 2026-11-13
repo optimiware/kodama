@@ -31,15 +31,18 @@ kodama 0.1.0 (revision <40 hex>, go1.27.3, linux/amd64)
 
 | Artifact | Where |
 |---|---|
-| `kodama` image | `ghcr.io/optimiware/kodama/kodama:<version>`; the release notes give the digest |
+| `kodama` image (`linux/amd64`, `linux/arm64`) | `ghcr.io/optimiware/kodama/kodama:<version>` (and `:latest` for non-prerelease versions); the release notes give the manifest index digest |
 | Charts `kodama` and `kodama-stack` | `oci://ghcr.io/optimiware/kodama/charts`, and attached to the GitHub release |
 | `kodactl` for linux and darwin, amd64 and arm64 | `kodactl_<version>_<os>_<arch>.tar.gz` attached to the GitHub release |
 | `SHA256SUMS` | attached to the GitHub release; covers the archives and chart packages |
 
 The packages are named after this repository because
 `ghcr.io/optimiware/kodama` holds the images of the archived v1 repository.
-The image is built for linux/amd64 only. Nothing is signed and no SBOM is
-produced. The GHCR packages are public, like the repository.
+The image is published as a multi-architecture OCI manifest index covering
+`linux/amd64` and `linux/arm64`; non-prerelease versions (`PRERELEASE=false`)
+also push the `:latest` tag pointing to the same manifest digest. Nothing is
+signed and no SBOM is produced. The GHCR packages are public, like the
+repository.
 
 ## Cut a release
 

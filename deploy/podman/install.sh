@@ -271,6 +271,15 @@ server_common=(
 	"KODAMA_OIDC_JWKS_URL=${OIDC_ISSUER}/.well-known/jwks.json"
 	"KODAMA_OIDC_CA_FILE=${tls_dir}/ca.crt"
 	"KODAMA_OIDC_TENANT_CLAIM=org_id"
+	"KODAMA_DISCOVERY_ISSUER=${OIDC_ISSUER}"
+	"KODAMA_DISCOVERY_CLIENT_ID=${OIDC_CLIENT_ID}"
+	"KODAMA_DISCOVERY_AUDIENCE=${OIDC_AUDIENCE}"
+	"KODAMA_DISCOVERY_AUTHORIZATION_ENDPOINT=${DISCOVERY_AUTHORIZATION_ENDPOINT}"
+	"KODAMA_DISCOVERY_TOKEN_ENDPOINT=${DISCOVERY_TOKEN_ENDPOINT}"
+	"KODAMA_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT=${DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT}"
+	"KODAMA_DISCOVERY_REVOCATION_ENDPOINT=${DISCOVERY_REVOCATION_ENDPOINT}"
+	"KODAMA_DISCOVERY_SCOPES=${DISCOVERY_SCOPES}"
+	"KODAMA_DISCOVERY_API_URL=${PUBLIC_URL}"
 	"KODAMA_PUBLIC_URL=${PUBLIC_URL}"
 	"KODAMA_WORKLOAD_URL=${WORKLOAD_URL}"
 	"KODAMA_ADDRESS=0.0.0.0:${HTTPS_PORT}"
@@ -310,6 +319,10 @@ write_env "$operator_env" \
 # OAuthSonas configuration carries no secret; the access code stays in the
 # environment file. The file is mounted directly, so its mode is world-readable
 # only because it holds public client/persona configuration.
+extra_redirect=""
+if [ "$OIDC_REDIRECT" != "http://127.0.0.1/callback" ]; then
+	extra_redirect=$'\n      - http://127.0.0.1/callback'
+fi
 umask 022
 cat >"$oauth_config" <<EOF
 issuer: ${OIDC_ISSUER}
@@ -319,7 +332,7 @@ clients:
     name: ${OIDC_CLIENT_ID}
     public: true
     redirect_uris:
-      - ${OIDC_REDIRECT}
+      - ${OIDC_REDIRECT}${extra_redirect}
 personas:
   - id: admin
     name: Local Administrator

@@ -73,6 +73,11 @@ jobs:
           } >>"$GITHUB_ENV"
           echo "version ${version}, publish ${publish}, prerelease ${prerelease}"
 
+      - name: Enable multi-arch container runtime support
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-user-static
+
       - name: Build the release artifacts
         run: make dist
 
@@ -82,6 +87,9 @@ jobs:
           line="$(podman run --rm "$ref" version)"
           echo "$line"
           [[ "$line" == "kodama ${VERSION} (revision ${GITHUB_SHA},"* ]] || { echo "::error::the image reports another version or revision"; exit 1; }
+          if [[ "$PUBLISH" != "true" ]]; then
+            scripts/image build --repository "$IMAGE_REPOSITORY" --tag "${VERSION}-multiarch" --platforms linux/amd64,linux/arm64
+          fi
 
       - name: Log in to GHCR
         if: env.PUBLISH == 'true'
@@ -92,7 +100,11 @@ jobs:
       - name: Push the image
         if: env.PUBLISH == 'true'
         run: |
-          reference="$(scripts/image build-push --repository "$IMAGE_REPOSITORY" --tag "$VERSION")"
+          extra_args=(--platforms linux/amd64,linux/arm64)
+          if [[ "$PRERELEASE" == "false" ]]; then
+            extra_args+=(--also-tag latest)
+          fi
+          reference="$(scripts/image build-push --repository "$IMAGE_REPOSITORY" --tag "$VERSION" "${extra_args[@]}")"
           echo "IMAGE_REFERENCE=${reference}" >>"$GITHUB_ENV"
           echo "pushed ${reference}"
 
@@ -105,12 +117,16 @@ jobs:
       - name: Publish the GitHub release
         if: env.PUBLISH == 'true'
         run: |
+          image_tags="tag \`${VERSION}\`"
+          if [[ "$PRERELEASE" == "false" ]]; then
+            image_tags="tags \`${VERSION}\`, \`latest\`"
+          fi
           {
             echo "## Artifacts"
             echo
             echo "| Artifact | Reference |"
             echo "|---|---|"
-            echo "| Image | \`${IMAGE_REFERENCE}\` (tag \`${VERSION}\`) |"
+            echo "| Image (\`linux/amd64\`, \`linux/arm64\`) | \`${IMAGE_REFERENCE}\` (${image_tags}) |"
             echo "| Chart \`kodama\` | \`${CHART_REGISTRY}/kodama\` version \`${VERSION}\` |"
             echo "| Chart \`kodama-stack\` | \`${CHART_REGISTRY}/kodama-stack\` version \`${VERSION}\` |"
             echo "| \`kodactl\` | the archives below; verify with \`sha256sum --check SHA256SUMS\` |"

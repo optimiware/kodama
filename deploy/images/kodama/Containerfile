@@ -5,16 +5,19 @@
 # The runtime needs the git binary (Git service and hooks run it) and CA roots
 # (OIDC discovery and KMS calls). It runs as the non-root UID the chart expects.
 
-FROM docker.io/library/golang:1.27.3-alpine@sha256:0fd028db9bdd4f01657bc8047c209b04d8ce19b853d776bd6f1e76a41729b936 AS build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.3-alpine@sha256:0fd028db9bdd4f01657bc8047c209b04d8ce19b853d776bd6f1e76a41729b936 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # VERSION and REVISION are what `kodama version` prints. The build context has
-# no .git directory, so the caller passes them (scripts/image does).
+# no .git directory, so the caller passes them (scripts/image does). TARGETOS
+# and TARGETARCH cross-compile natively on BUILDPLATFORM without QEMU overhead.
+ARG TARGETOS=linux
+ARG TARGETARCH
 ARG VERSION=dev
 ARG REVISION=
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -buildvcs=false \
       -ldflags="-s -w -X main.version=${VERSION} -X main.revision=${REVISION}" \
       -o /out/kodama ./cmd/kodama
 

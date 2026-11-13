@@ -26,6 +26,10 @@ func TestDispatchTable(t *testing.T) {
 		args []string
 		want string
 	}{
+		{"dev", []string{"dev"}, "dev"},
+		{"up", []string{"up"}, "up"},
+		{"down", []string{"down"}, "down"},
+		{"status", []string{"status"}, "status"},
 		{"server", []string{"server"}, "server"},
 		{"git serve", []string{"git", "serve"}, "gitServe"},
 		{"auth serve", []string{"auth", "serve"}, "authServe"},
@@ -39,6 +43,10 @@ func TestDispatchTable(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			recorder := &dispatchRecorder{}
 			deps := deps{
+				dev:             recorder.runner("dev"),
+				up:              recorder.runner("up"),
+				down:            recorder.runner("down"),
+				status:          recorder.runner("status"),
 				server:          recorder.runner("server"),
 				gitServe:        recorder.runner("gitServe"),
 				authServe:       recorder.runner("authServe"),
@@ -71,6 +79,26 @@ func TestDefaultDepsRouteEveryCommandToItsOwnEntry(t *testing.T) {
 		env  []string
 		want string
 	}{
+		{
+			name: "dev reaches the dev entry",
+			args: []string{"dev", "--state-dir", "relative/path"},
+			want: "--state-dir \"relative/path\" must be an absolute path",
+		},
+		{
+			name: "up reaches the up entry",
+			args: []string{"up", "extra"},
+			want: "up: unexpected argument \"extra\"",
+		},
+		{
+			name: "down reaches the down entry",
+			args: []string{"down", "extra"},
+			want: "down: unexpected argument \"extra\"",
+		},
+		{
+			name: "status reaches the status entry",
+			args: []string{"status", "extra"},
+			want: "status: unexpected argument \"extra\"",
+		},
 		{
 			name: "migrate reaches the migrate entry",
 			args: []string{"migrate", "--force"},
@@ -198,6 +226,10 @@ func TestDispatchIsolation(t *testing.T) {
 		args []string
 		want string
 	}{
+		{[]string{"dev"}, "dev"},
+		{[]string{"up"}, "up"},
+		{[]string{"down"}, "down"},
+		{[]string{"status"}, "status"},
 		{[]string{"server"}, "server"},
 		{[]string{"git", "serve"}, "gitServe"},
 		{[]string{"auth", "serve"}, "authServe"},
@@ -215,6 +247,10 @@ func TestDispatchIsolation(t *testing.T) {
 			}
 		}
 		deps := deps{
+			dev:             makeRunner("dev"),
+			up:              makeRunner("up"),
+			down:            makeRunner("down"),
+			status:          makeRunner("status"),
 			server:          makeRunner("server"),
 			gitServe:        makeRunner("gitServe"),
 			authServe:       makeRunner("authServe"),
@@ -226,6 +262,7 @@ func TestDispatchIsolation(t *testing.T) {
 		}
 		// Replace every other runner with a failure.
 		for name := range map[string]struct{}{
+			"dev": {}, "up": {}, "down": {}, "status": {},
 			"server": {}, "gitServe": {}, "authServe": {}, "authPrincipalID": {},
 			"agent": {}, "services": {}, "migrate": {}, "bootstrap": {},
 		} {
@@ -233,6 +270,14 @@ func TestDispatchIsolation(t *testing.T) {
 				continue
 			}
 			switch name {
+			case "dev":
+				deps.dev = unexpected(name)
+			case "up":
+				deps.up = unexpected(name)
+			case "down":
+				deps.down = unexpected(name)
+			case "status":
+				deps.status = unexpected(name)
 			case "server":
 				deps.server = unexpected(name)
 			case "gitServe":
