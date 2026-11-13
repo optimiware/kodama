@@ -42,6 +42,7 @@ func (format OutputFormat) Valid() bool {
 type Config struct {
 	ServerURL      string       `json:"server_url"`
 	CredentialFile string       `json:"credential_file,omitempty"`
+	CAFile         string       `json:"ca_file,omitempty"`
 	Output         OutputFormat `json:"output,omitempty"`
 	TrustedOrigins []string     `json:"trusted_origins,omitempty"`
 	Project        string       `json:"project,omitempty"`
@@ -108,6 +109,7 @@ type Ports struct {
 	Files      FileSystem
 	Session    SessionStore
 	Credential client.CredentialSource
+	In         io.Reader
 	Out        io.Writer
 	Err        io.Writer
 	Now        func() time.Time

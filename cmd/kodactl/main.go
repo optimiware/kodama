@@ -9,6 +9,7 @@ import (
 	"context"
 	cryptorand "crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -42,19 +43,26 @@ const defaultSessionLockTimeout = 30 * time.Second
 // never used: run always constructs the real runtime unless a test injects a
 // specific port.
 type cliDeps struct {
-	runCLI      func(context.Context, cli.Config, []string, cli.Ports, cli.CommandDeps) int
-	oidc        cli.OIDCClient
-	browser     cli.BrowserOpener
-	loopback    cli.LoopbackListener
-	sessionLock cli.SessionLock
-	clock       cli.Clock
-	random      cli.Random
-	environment func(string) string
-	lockTimeout time.Duration
+	runCLI        func(context.Context, cli.Config, []string, cli.Ports, cli.CommandDeps) int
+	oidc          cli.OIDCClient
+	httpTransport http.RoundTripper
+	browser       cli.BrowserOpener
+	loopback      cli.LoopbackListener
+	sessionLock   cli.SessionLock
+	clock         cli.Clock
+	random        cli.Random
+	environment   func(string) string
+	homeDir       func() (string, error)
+	stdin         io.Reader
+	lockTimeout   time.Duration
 }
 
 func defaultCLIDeps() cliDeps {
-	return cliDeps{runCLI: cli.RunWithDeps}
+	return cliDeps{
+		runCLI:  cli.RunWithDeps,
+		stdin:   os.Stdin,
+		homeDir: os.UserHomeDir,
+	}
 }
 
 func main() {
@@ -66,13 +74,18 @@ func main() {
 // run parses the leading connection flags, constructs the real login runtime
 // and delegates every command to the Userland CLI. It never starts a server.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliDeps) int {
+	if deps.runCLI == nil {
+		deps.runCLI = cli.RunWithDeps
+	}
 	flags := flag.NewFlagSet("kodactl", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	configFile := flags.String("config", envOr("KODAMA_CONFIG", defaultConfigFile()), "kodactl configuration file")
-	serverDefault := firstEnv("KODAMA_SERVER", "KODAMA_SERVER_URL")
+	serverDefault := firstEnv("KODAMA_SERVER", "KODAMA_SERVER_URL", "KODAMA_URL")
 	serverURL := serverDefault
 	flags.StringVar(&serverURL, "server", serverDefault, "public server base URL")
 	flags.StringVar(&serverURL, "server-url", serverDefault, "alias for --server")
+	flags.StringVar(&serverURL, "url", serverDefault, "alias for --server")
+	caFile := flags.String("ca-file", envOr("KODAMA_CA_FILE", ""), "PEM CA certificate bundle file")
 	credentialFile := flags.String("credential-file", envOr("KODAMA_CREDENTIAL_FILE", ""), "mounted execution credential file")
 	output := flags.String("output", envOr("KODAMA_OUTPUT", ""), "output format (table|json)")
 	project := flags.String("project", envOr("KODAMA_PROJECT", ""), "project identity")
@@ -89,16 +102,28 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 	trustedOrigins := stringList{}
 	flags.Var(&trustedOrigins, "trusted-origin", "registered trusted Git origin (repeatable)")
 	showVersion := flags.Bool("version", false, "print the version and source revision, then exit")
+	showHelp := false
+	flags.BoolVar(&showHelp, "help", false, "show usage help and exit")
+	flags.BoolVar(&showHelp, "h", false, "alias for --help")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
+	if showHelp {
+		return deps.runCLI(ctx, cli.Config{}, append([]string{"help"}, flags.Args()...), cli.Ports{Out: stdout, Err: stderr}, cli.CommandDeps{})
+	}
 	// The version needs no configuration, session or server.
 	if *showVersion || flags.Arg(0) == "version" {
+		if !*showVersion && containsHelpArg(flags.Args()[1:]) {
+			return deps.runCLI(ctx, cli.Config{}, []string{"help", "version"}, cli.Ports{Out: stdout, Err: stderr}, cli.CommandDeps{})
+		}
 		printVersion(stdout)
 		return 0
 	}
+	if flags.Arg(0) == "help" && !flagSet(flags, "ca-file") && !flagSet(flags, "config") {
+		return deps.runCLI(ctx, cli.Config{}, flags.Args(), cli.Ports{Out: stdout, Err: stderr}, cli.CommandDeps{})
+	}
 
-	config, code := loadConfig(flags, *configFile, serverURL, *credentialFile, *output, *project, trustedOrigins, stderr)
+	config, rootCAs, code := loadConfig(flags, *configFile, serverURL, *caFile, *credentialFile, *output, *project, trustedOrigins, stderr)
 	if code != 0 {
 		return code
 	}
@@ -117,7 +142,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 	store := cli.FileSessionStore{Path: sessionFile, Files: files, Now: now}
 	oidc := deps.oidc
 	if oidc == nil {
-		oidc = newHTTPOIDCClient()
+		oidc = newHTTPOIDCClientWithRootCAs(rootCAs)
 	}
 	lock := newBoundedSessionLock(sessionLockFor(sessionFile, deps.sessionLock), lockTimeout)
 	browser := deps.browser
@@ -136,6 +161,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 	if environment == nil {
 		environment = os.Getenv
 	}
+	homeDir := deps.homeDir
+	if homeDir == nil {
+		homeDir = os.UserHomeDir
+	}
 	runtimeDeps := cli.LoginRuntime{
 		OIDC:        oidc,
 		Browser:     browser,
@@ -151,22 +180,31 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 		Files:      files,
 		Session:    store,
 		Credential: source,
+		In:         deps.stdin,
 		Out:        stdout,
 		Err:        stderr,
 		Now:        now,
 		Sleep:      time.Sleep,
 	}
+	apiTransport := deps.httpTransport
+	if apiTransport == nil {
+		apiTransport = newAPITransport(rootCAs)
+	}
 	if strings.TrimSpace(config.ServerURL) != "" {
 		retry := client.RetryPolicy{MaxAttempts: 3, BaseDelay: 100 * time.Millisecond, MaxDelay: time.Second}
 		ports.Client = &client.HTTPTransport{
 			BaseURL:      config.ServerURL,
-			RoundTripper: http.DefaultTransport,
+			RoundTripper: apiTransport,
 			Source:       source,
 			Retry:        retry,
 			Now:          now,
 		}
 	}
-	return deps.runCLI(ctx, config, flags.Args(), ports, cli.CommandDeps{Login: runtimeDeps})
+	return deps.runCLI(ctx, config, flags.Args(), ports, cli.CommandDeps{
+		Login:   runtimeDeps,
+		HTTP:    apiTransport,
+		HomeDir: homeDir,
+	})
 }
 
 // credentialSource selects the human session file outside a container and the
@@ -342,13 +380,25 @@ func (systemClock) Sleep(ctx context.Context, duration time.Duration) error {
 // newHTTPOIDCClient builds the production OAuth/OIDC adapter over a transport
 // with default TLS verification and no proxy for loopback endpoints.
 func newHTTPOIDCClient() cli.OIDCClient {
-	return &cli.HTTPOIDCClient{RoundTripper: newOIDCTransport()}
+	return newHTTPOIDCClientWithRootCAs(nil)
+}
+
+// newHTTPOIDCClientWithRootCAs builds the production OAuth/OIDC adapter with
+// optional custom root CAs.
+func newHTTPOIDCClientWithRootCAs(rootCAs *x509.CertPool) cli.OIDCClient {
+	return &cli.HTTPOIDCClient{RoundTripper: newOIDCTransportWithRootCAs(rootCAs)}
 }
 
 // newOIDCTransport clones the default HTTP transport, keeps certificate
 // verification at its default (InsecureSkipVerify is never set) and bypasses any
 // configured proxy for a loopback OAuth issuer.
 func newOIDCTransport() http.RoundTripper {
+	return newOIDCTransportWithRootCAs(nil)
+}
+
+// newOIDCTransportWithRootCAs builds the OIDC transport with optional custom
+// root CAs while always keeping certificate verification enabled.
+func newOIDCTransportWithRootCAs(rootCAs *x509.CertPool) http.RoundTripper {
 	var transport *http.Transport
 	if base, ok := http.DefaultTransport.(*http.Transport); ok {
 		transport = base.Clone()
@@ -364,6 +414,32 @@ func newOIDCTransport() http.RoundTripper {
 	}
 	// The adapter never disables certificate verification.
 	configuration.InsecureSkipVerify = false
+	if rootCAs != nil {
+		configuration.RootCAs = rootCAs
+	}
+	transport.TLSClientConfig = configuration
+	return transport
+}
+
+// newAPITransport clones the default HTTP transport for REST and MCP calls,
+// wiring optional custom root CAs while never disabling certificate verification.
+func newAPITransport(rootCAs *x509.CertPool) http.RoundTripper {
+	var transport *http.Transport
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = base.Clone()
+	} else {
+		transport = &http.Transport{}
+	}
+	configuration := transport.TLSClientConfig
+	if configuration == nil {
+		configuration = &tls.Config{}
+	} else {
+		configuration = configuration.Clone()
+	}
+	configuration.InsecureSkipVerify = false
+	if rootCAs != nil {
+		configuration.RootCAs = rootCAs
+	}
 	transport.TLSClientConfig = configuration
 	return transport
 }
@@ -445,8 +521,9 @@ func validateBrowserTarget(raw string) error {
 // loadConfig merges the configuration file with the explicit flags and
 // environment values. Explicit flags and environment values win over the file.
 // A missing default file is not an error; an explicitly requested unreadable
-// file and an invalid configuration are usage refusals.
-func loadConfig(flags *flag.FlagSet, configFile, serverURL, credentialFile, output, project string, trustedOrigins stringList, stderr io.Writer) (cli.Config, int) {
+// file, an unreadable/invalid --ca-file and an invalid configuration are usage
+// refusals.
+func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFile, output, project string, trustedOrigins stringList, stderr io.Writer) (cli.Config, *x509.CertPool, int) {
 	explicitConfig := flagSet(flags, "config") || envSet("KODAMA_CONFIG")
 	config := cli.Config{}
 	if configPath := strings.TrimSpace(configFile); configPath != "" {
@@ -455,19 +532,26 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, credentialFile, outp
 		case err == nil:
 			loaded, parseErr := cli.ParseConfig(data)
 			if parseErr != nil {
-				return cli.Config{}, usage(stderr, parseErr.Error())
+				return cli.Config{}, nil, usage(stderr, parseErr.Error())
 			}
 			config = loaded
 		case errors.Is(err, fs.ErrNotExist) && !explicitConfig:
 			// No default configuration file is a normal workstation state.
 		default:
-			return cli.Config{}, usage(stderr, fmt.Sprintf("kodactl config %q is unreadable", configPath))
+			return cli.Config{}, nil, usage(stderr, fmt.Sprintf("kodactl config %q is unreadable", configPath))
 		}
 	}
-	explicitServer := flagSet(flags, "server") || flagSet(flags, "server-url") ||
-		envSet("KODAMA_SERVER") || envSet("KODAMA_SERVER_URL")
+	explicitServer := flagSet(flags, "server") || flagSet(flags, "server-url") || flagSet(flags, "url") ||
+		envSet("KODAMA_SERVER") || envSet("KODAMA_SERVER_URL") || envSet("KODAMA_URL")
 	if explicitServer {
 		config.ServerURL = serverURL
+	}
+	if flagSet(flags, "ca-file") || envSet("KODAMA_CA_FILE") {
+		trimmedCA := strings.TrimSpace(caFile)
+		if trimmedCA == "" && flagSet(flags, "ca-file") {
+			return cli.Config{}, nil, usage(stderr, "--ca-file requires a path")
+		}
+		config.CAFile = trimmedCA
 	}
 	if flagSet(flags, "credential-file") || envSet("KODAMA_CREDENTIAL_FILE") {
 		config.CredentialFile = credentialFile
@@ -484,7 +568,49 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, credentialFile, outp
 	if len(trustedOrigins) > 0 {
 		config.TrustedOrigins = append(append([]string(nil), config.TrustedOrigins...), trustedOrigins...)
 	}
-	return config, 0
+	var rootCAs *x509.CertPool
+	if caPath := strings.TrimSpace(config.CAFile); caPath != "" {
+		pool, err := loadCABundleFile(caPath)
+		if err != nil {
+			return cli.Config{}, nil, usage(stderr, err.Error())
+		}
+		rootCAs = pool
+	}
+	return config, rootCAs, 0
+}
+
+// loadCABundleFile reads and validates one PEM CA certificate bundle file. It
+// never includes file contents in a diagnostic.
+func loadCABundleFile(path string) (*x509.CertPool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("CA file %q is unreadable", path)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("CA file %q is a directory", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("CA file %q is unreadable", path)
+	}
+	pool, err := cli.ParseCABundle(data)
+	if err != nil {
+		return nil, fmt.Errorf("CA file %q is invalid: %w", path, err)
+	}
+	return pool, nil
+}
+
+// containsHelpArg reports whether args contains -h or --help before "--".
+func containsHelpArg(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if arg == "-h" || arg == "--help" {
+			return true
+		}
+	}
+	return false
 }
 
 // stringList is a repeatable flag value.
