@@ -7,6 +7,7 @@ import (
 	"github.com/optimiware/kodama/api"
 	"github.com/optimiware/kodama/internal/shell/resource"
 	"github.com/optimiware/kodama/internal/shell/service"
+	"github.com/optimiware/kodama/internal/shell/store"
 	"github.com/optimiware/kodama/internal/shell/transport/ops"
 )
 
@@ -111,6 +112,109 @@ func resourceHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				ReportableEvents: append([]string(nil), binding.ReportableEvents...),
 				Metadata:         cloneMetadata(binding.Metadata),
 				Version:          binding.Version,
+			})
+		}),
+		"resource.binding.list": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
+			request, err := decodeRequest[api.ResourceBindingListRequest](call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			if err := confirmReadAuthority(ctx, deps, call, call.Scope); err != nil {
+				return api.Result{}, err
+			}
+			scanner, err := requireScanner(deps)
+			if err != nil {
+				return api.Result{}, err
+			}
+			page := pageOrDefault(request.Page)
+			wantLimit := page.EffectiveLimit()
+			if request.Kind == "" {
+				committed, err := scanner.Query(ctx, call.Scope, store.ScanQuery{
+					Table:   "resource_bindings",
+					OrderBy: []store.Order{{Column: "id"}},
+					After:   page.Cursor,
+					Limit:   wantLimit,
+				})
+				if err != nil {
+					return api.Result{}, err
+				}
+				bindings := make([]api.ResourceBindingView, 0, len(committed.Rows))
+				for _, row := range committed.Rows {
+					view, err := decodeBindingRow(row)
+					if err != nil {
+						return api.Result{}, err
+					}
+					bindings = append(bindings, view)
+				}
+				return respond(call, api.ResourceBindingListResult{
+					Bindings:   bindings,
+					NextCursor: committed.Next,
+				})
+			}
+
+			bindings := make([]api.ResourceBindingView, 0, wantLimit)
+			after := page.Cursor
+			var nextCursor string
+			// Scan in full batches. Once the page is full, keep scanning until
+			// one more matching binding shows that a next page exists.
+			batchLimit := store.MaxQueryLimit
+			for {
+				committed, err := scanner.Query(ctx, call.Scope, store.ScanQuery{
+					Table:   "resource_bindings",
+					OrderBy: []store.Order{{Column: "id"}},
+					After:   after,
+					Limit:   batchLimit,
+				})
+				if err != nil {
+					return api.Result{}, err
+				}
+				kept := len(bindings)
+				reread := false
+				foundExtra := false
+				for index, row := range committed.Rows {
+					view, err := decodeBindingRow(row)
+					if err != nil {
+						return api.Result{}, err
+					}
+					if !bindingMatchesKind(view, request.Kind) {
+						continue
+					}
+					if len(bindings) < wantLimit {
+						bindings = append(bindings, view)
+						if len(bindings) < wantLimit {
+							continue
+						}
+						if index < len(committed.Rows)-1 {
+							// The scanner has a cursor only for the end of a
+							// batch, so re-read this one ending on the
+							// binding that fills the page.
+							bindings = bindings[:kept]
+							batchLimit = index + 1
+							reread = true
+							break
+						}
+						nextCursor = committed.Next
+					} else {
+						foundExtra = true
+						break
+					}
+				}
+				if foundExtra {
+					break
+				}
+				if reread {
+					continue
+				}
+				batchLimit = store.MaxQueryLimit
+				if !committed.HasMore {
+					nextCursor = ""
+					break
+				}
+				after = committed.Next
+			}
+			return respond(call, api.ResourceBindingListResult{
+				Bindings:   bindings,
+				NextCursor: nextCursor,
 			})
 		}),
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,6 +50,9 @@ func TestKodactlDispatchesOnlyTheCLI(t *testing.T) {
 		gotDeps.Login.Browser == nil || gotDeps.Login.Loopback == nil || gotDeps.Login.Random == nil ||
 		gotDeps.Login.Clock == nil || gotDeps.Login.Environment == nil {
 		t.Fatalf("the real login runtime was not wired: %+v", gotDeps.Login)
+	}
+	if !filepath.IsAbs(gotDeps.CommandPath) {
+		t.Fatalf("command path = %q; want the absolute path of this executable", gotDeps.CommandPath)
 	}
 }
 

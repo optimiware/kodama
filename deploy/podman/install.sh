@@ -133,7 +133,7 @@ case "$git_version" in
 esac
 
 podman info >/dev/null 2>&1 || die "rootless Podman is not usable for this user"
-[ -S "$PODMAN_SOCKET" ] || die "KODAMA_LOCAL_PODMAN_SOCKET does not name an existing Unix socket: ${PODMAN_SOCKET}"
+[ -S "$PODMAN_SOCKET" ] || die "KODAMA_LOCAL_PODMAN_SOCKET does not name an existing Unix socket: ${PODMAN_SOCKET} (start it with: systemctl --user enable --now podman.socket; if the unit is already active, systemctl --user restart podman.socket)"
 
 host_ip="$(host_address)"
 log "host ${host_ip}: Kodama https ${HTTPS_PORT}, OAuthSonas https ${OIDC_PORT}, git ${GIT_PORT}, git https ${GIT_HTTPS_PORT}, PostgreSQL ${POSTGRES_PORT}, NATS ${NATS_PORT}"
@@ -164,9 +164,12 @@ done
 
 if [ ! -s "$tls_dir/ca.crt" ] || [ ! -s "$tls_dir/ca.key" ]; then
 	log "creating the private installation CA"
+	# keyUsage is explicit: a CA certificate without it is refused by strict
+	# RFC 5280 verifiers (Python 3.13 and newer enable that mode by default).
 	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
 		-keyout "$tls_dir/ca.key" -out "$tls_dir/ca.crt" -days 825 \
-		-subj "/CN=Kodama local install CA" >/dev/null 2>&1
+		-subj "/CN=Kodama local install CA" \
+		-addext "keyUsage=critical,keyCertSign,cRLSign" >/dev/null 2>&1
 fi
 chmod 600 "$tls_dir/ca.key"
 chmod 644 "$tls_dir/ca.crt"
@@ -268,6 +271,15 @@ server_common=(
 	"KODAMA_OIDC_JWKS_URL=${OIDC_ISSUER}/.well-known/jwks.json"
 	"KODAMA_OIDC_CA_FILE=${tls_dir}/ca.crt"
 	"KODAMA_OIDC_TENANT_CLAIM=org_id"
+	"KODAMA_DISCOVERY_ISSUER=${OIDC_ISSUER}"
+	"KODAMA_DISCOVERY_CLIENT_ID=${OIDC_CLIENT_ID}"
+	"KODAMA_DISCOVERY_AUDIENCE=${OIDC_AUDIENCE}"
+	"KODAMA_DISCOVERY_AUTHORIZATION_ENDPOINT=${DISCOVERY_AUTHORIZATION_ENDPOINT}"
+	"KODAMA_DISCOVERY_TOKEN_ENDPOINT=${DISCOVERY_TOKEN_ENDPOINT}"
+	"KODAMA_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT=${DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT}"
+	"KODAMA_DISCOVERY_REVOCATION_ENDPOINT=${DISCOVERY_REVOCATION_ENDPOINT}"
+	"KODAMA_DISCOVERY_SCOPES=${DISCOVERY_SCOPES}"
+	"KODAMA_DISCOVERY_API_URL=${PUBLIC_URL}"
 	"KODAMA_PUBLIC_URL=${PUBLIC_URL}"
 	"KODAMA_WORKLOAD_URL=${WORKLOAD_URL}"
 	"KODAMA_ADDRESS=0.0.0.0:${HTTPS_PORT}"
@@ -307,6 +319,10 @@ write_env "$operator_env" \
 # OAuthSonas configuration carries no secret; the access code stays in the
 # environment file. The file is mounted directly, so its mode is world-readable
 # only because it holds public client/persona configuration.
+extra_redirect=""
+if [ "$OIDC_REDIRECT" != "http://127.0.0.1/callback" ]; then
+	extra_redirect=$'\n      - http://127.0.0.1/callback'
+fi
 umask 022
 cat >"$oauth_config" <<EOF
 issuer: ${OIDC_ISSUER}
@@ -316,7 +332,7 @@ clients:
     name: ${OIDC_CLIENT_ID}
     public: true
     redirect_uris:
-      - ${OIDC_REDIRECT}
+      - ${OIDC_REDIRECT}${extra_redirect}
 personas:
   - id: admin
     name: Local Administrator

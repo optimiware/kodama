@@ -174,13 +174,13 @@ func TestPipelineStartVersionOnlyAppliesToStoredSelection(t *testing.T) {
 }
 
 // TestPipelineStartAlternateRouteInventory pins the second REST binding of
-// pipeline.start: the canonical route table keeps its 51 rows, and
+// pipeline.start: the canonical route table keeps its 58 rows, and
 // exactly one alternate route exists with the same operation, MCP tool and
 // schema names.
 func TestPipelineStartAlternateRouteInventory(t *testing.T) {
 	canonical := api.Routes()
-	if len(canonical) != 51 {
-		t.Fatalf("api.Routes() has %d rows; want the 51 canonical operations", len(canonical))
+	if len(canonical) != 58 {
+		t.Fatalf("api.Routes() has %d rows; want the 58 canonical operations", len(canonical))
 	}
 	route, ok := api.LookupRoute("pipeline.start")
 	if !ok {
@@ -200,8 +200,8 @@ func TestPipelineStartAlternateRouteInventory(t *testing.T) {
 		alternate.Path != "/api/v1/projects/{project}/executions" {
 		t.Fatalf("alternate route = %+v; want POST /api/v1/projects/{project}/executions for pipeline.start", alternate)
 	}
-	if alternate.MCPTool != "pipeline.start" {
-		t.Errorf("alternate route MCP tool = %q; want the operation name", alternate.MCPTool)
+	if alternate.MCPTool != "pipeline_start" {
+		t.Errorf("alternate route MCP tool = %q; want pipeline_start", alternate.MCPTool)
 	}
 	if alternate.InputSchema != "pipeline.start.input.v1" || alternate.ResultSchema != "pipeline.start.result.v1" {
 		t.Errorf("alternate route schemas = %q/%q; want pipeline.start.input.v1/result.v1",

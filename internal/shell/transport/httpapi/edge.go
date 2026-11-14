@@ -12,7 +12,7 @@
 // public code/message survive while a private cause is never rendered.
 //
 // The one exception is the fixed unauthenticated discovery route
-// api.DiscoveryPath, which is outside the 51-operation registry: it is served
+// api.DiscoveryPath, which is outside the 58-operation registry: it is served
 // from an optional consumer-owned DiscoveryProvider before operation matching,
 // validates the provider's document on every response and never dispatches an
 // operation or reads a credential.
@@ -113,6 +113,9 @@ func (edge *Edge) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	if err != nil {
 		writeError(writer, err)
 		return
+	}
+	if route.Method == api.MethodGet && len(bytes.TrimSpace(body)) == 0 {
+		body = []byte("{}")
 	}
 	decoded, err := api.DecodeOperationRequest(route.Operation, body)
 	if err != nil {

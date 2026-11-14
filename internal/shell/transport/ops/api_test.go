@@ -52,7 +52,7 @@
 // # Pinned router behavior
 //
 // The registry is immutable and complete: NewRouter accepts exactly one binding
-// for every one of the 51 authorize registry operations and refuses a duplicate,
+// for every one of the 58 authorize registry operations and refuses a duplicate,
 // missing, empty or unknown binding, a nil codec/handler and a nil dependency.
 // It copies the caller's binding slice so later caller mutation cannot change a
 // running router.
@@ -420,7 +420,7 @@ func newHarness(t *testing.T) *harness {
 }
 
 // prepare selects a principal and scope the real authorize matrix grants for
-// one registry operation. It keeps the 51-operation parity and receipt-policy
+// one registry operation. It keeps the 58-operation parity and receipt-policy
 // tables on the production grant matrix instead of an allow-all fake.
 func (h *harness) prepare(operation authorize.Operation) {
 	h.t.Helper()

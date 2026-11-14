@@ -247,18 +247,18 @@ func examplePublishedTools(t *testing.T, harness *factory.Harness) map[string]ap
 	}
 	tools := make(map[string]api.MCPTool, len(listing.Tools))
 	for index, tool := range listing.Tools {
-		if tool.Name != routes[index].Operation {
-			t.Fatalf("served tool %d = %q; want %q in the declared route order", index, tool.Name, routes[index].Operation)
+		if tool.Name != routes[index].MCPTool {
+			t.Fatalf("served tool %d = %q; want %q in the declared route order", index, tool.Name, routes[index].MCPTool)
 		}
-		want, err := api.OperationInputSchema(tool.Name)
+		want, err := api.OperationInputSchema(routes[index].Operation)
 		if err != nil {
-			t.Fatalf("OperationInputSchema(%q): %v", tool.Name, err)
+			t.Fatalf("OperationInputSchema(%q): %v", routes[index].Operation, err)
 		}
 		if !bytes.Equal(tool.InputSchema, want) {
 			t.Fatalf("served inputSchema of %q differs from api.OperationInputSchema:\nserved=%s\napi=%s",
 				tool.Name, string(tool.InputSchema), string(want))
 		}
-		tools[tool.Name] = tool
+		tools[routes[index].Operation] = tool
 	}
 	return tools
 }

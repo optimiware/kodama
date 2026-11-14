@@ -22,6 +22,9 @@ type RepositoryProvisionConfig struct {
 	StorageRoot string
 	// Repository is the tenant-relative repository name.
 	Repository string
+	// ResourceID is the optional registered resource id written as `option
+	// resource = <id>` when appending default rules.
+	ResourceID string
 	// GitPath is the native git binary. It defaults to "git".
 	GitPath string
 	// Environment is the exact child environment. A nil slice selects the
@@ -111,6 +114,7 @@ func ProvisionRepository(ctx context.Context, config RepositoryProvisionConfig) 
 		TenantDirectory:     filepath.Join(storageRoot, string(config.TenantID)),
 		RepositoryPath:      repositoryPath,
 		AdminRepositoryPath: adminRepositoryPath,
+		ResourceID:          config.ResourceID,
 		HookBinaryPath:      hookBinary,
 		Executor:            executor,
 	})

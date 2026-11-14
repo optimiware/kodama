@@ -11,7 +11,7 @@
 // signatures, JSON keys, vocabularies, bounds and refusal classes are fixed by
 // these tests. The domain's separate resource-operation vocabulary
 // (`git.ref.update`) is accepted by the verification/report schemas while the
-// 51-operation router registry is not. Git reads are local Git RBAC
+// 58-operation router registry is not. Git reads are local Git RBAC
 // decisions, the approval subject names the repository `resource`, and the
 // public lifecycle name is `action.requested`.
 //
@@ -134,7 +134,7 @@
 //
 // # Behavior rules pinned here
 //
-//   - Routes enumerate exactly the 51 registry operations, one REST
+//   - Routes enumerate exactly the 58 registry operations, one REST
 //     method/path and one MCP tool per operation, with the registry schema
 //     names.
 //     The six product-fixed endpoints are exact.
@@ -186,26 +186,32 @@ var wantRoutes = []wantRoute{
 	{"tenant.rotate_key", api.MethodPost, "/api/v1/tenants/{tenant}/rotate-key"},
 	{"project.create", api.MethodPost, "/api/v1/tenants/{tenant}/projects"},
 	{"project.update", api.MethodPatch, "/api/v1/projects/{project}"},
+	{"project.list", api.MethodGet, "/api/v1/tenants/{tenant}/projects"},
 	{"membership.grant", api.MethodPut, "/api/v1/projects/{project}/memberships/{principal}"},
 	{"membership.revoke", api.MethodDelete, "/api/v1/projects/{project}/memberships/{principal}"},
 	{"membership.list", api.MethodGet, "/api/v1/projects/{project}/memberships"},
+	{"principal.whoami", api.MethodGet, "/api/v1/whoami"},
 
 	{"resource.binding.register", api.MethodPost, "/api/v1/projects/{project}/bindings"},
 	{"resource.binding.update", api.MethodPatch, "/api/v1/bindings/{binding}"},
 	{"resource.binding.delete", api.MethodDelete, "/api/v1/bindings/{binding}"},
 	{"resource.binding.read", api.MethodGet, "/api/v1/bindings/{binding}"},
+	{"resource.binding.list", api.MethodGet, "/api/v1/projects/{project}/bindings"},
 
 	{"pipeline.apply", api.MethodPut, "/api/v1/projects/{project}/pipelines/{pipeline}"},
 	{"pipeline.read", api.MethodGet, "/api/v1/projects/{project}/pipelines/{pipeline}"},
+	{"pipeline.list", api.MethodGet, "/api/v1/projects/{project}/pipelines"},
 	{"pipeline.update", api.MethodPatch, "/api/v1/projects/{project}/pipelines/{pipeline}"},
 	{"pipeline.delete", api.MethodDelete, "/api/v1/projects/{project}/pipelines/{pipeline}"},
 	{"pipeline.start", api.MethodPost, "/api/v1/projects/{project}/pipelines/{pipeline}/start"},
 
 	{"secret.metadata.read", api.MethodGet, "/api/v1/projects/{project}/secrets/{secret}"},
+	{"secret.metadata.list", api.MethodGet, "/api/v1/projects/{project}/secrets"},
 	{"secret.write", api.MethodPut, "/api/v1/projects/{project}/secrets/{secret}"},
 	{"secret.delete", api.MethodDelete, "/api/v1/projects/{project}/secrets/{secret}"},
 
 	{"service.create", api.MethodPost, "/api/v1/projects/{project}/services"},
+	{"service.list", api.MethodGet, "/api/v1/projects/{project}/services"},
 	{"service.update", api.MethodPatch, "/api/v1/services/{service}"},
 	{"service.enable", api.MethodPost, "/api/v1/services/{service}/enable"},
 	{"service.disable", api.MethodPost, "/api/v1/services/{service}/disable"},
@@ -215,6 +221,7 @@ var wantRoutes = []wantRoute{
 
 	{"task.create", api.MethodPost, "/api/v1/projects/{project}/tasks"},
 	{"task.read", api.MethodGet, "/api/v1/tasks/{task}"},
+	{"task.list", api.MethodGet, "/api/v1/projects/{project}/tasks"},
 	{"task.edit", api.MethodPatch, "/api/v1/tasks/{task}"},
 	{"task.comment", api.MethodPost, "/api/v1/tasks/{task}/comments"},
 	{"task.select_pipeline", api.MethodPut, "/api/v1/tasks/{task}/pipeline"},
@@ -266,8 +273,8 @@ var fixedRoutes = []fixedRoute{
 // invented operation, and the registry schema names.
 func TestRouteInventoryAndOperationParity(t *testing.T) {
 	operations := authorize.Operations()
-	if len(operations) != 51 {
-		t.Fatalf("the operation registry has %d operations; the public contract pins 51", len(operations))
+	if len(operations) != 58 {
+		t.Fatalf("the operation registry has %d operations; the public contract pins 58", len(operations))
 	}
 	if len(wantRoutes) != len(operations) {
 		t.Fatalf("pinned route table has %d rows; the registry has %d operations", len(wantRoutes), len(operations))
@@ -311,8 +318,9 @@ func TestRouteInventoryAndOperationParity(t *testing.T) {
 		if route.ResultSchema != operation.ResultSchema {
 			t.Errorf("%s result schema = %q; want %q", name, route.ResultSchema, operation.ResultSchema)
 		}
-		if route.MCPTool != name {
-			t.Errorf("%s MCP tool = %q; want the operation name", name, route.MCPTool)
+		wantTool := strings.ReplaceAll(name, ".", "_")
+		if route.MCPTool != wantTool {
+			t.Errorf("%s MCP tool = %q; want %q", name, route.MCPTool, wantTool)
 		}
 	}
 
@@ -521,17 +529,45 @@ func TestMCPOperationMapping(t *testing.T) {
 
 	for _, operation := range authorize.OperationNames() {
 		name := string(operation)
-		params, err := json.Marshal(api.MCPToolsCallParams{Name: name, Arguments: json.RawMessage(`{"input":{}}`)})
+		underscore := strings.ReplaceAll(name, ".", "_")
+		for _, toolName := range []string{name, underscore} {
+			resolved, ok := api.MCPToolOperationName(toolName)
+			if !ok || resolved != name {
+				t.Fatalf("MCPToolOperationName(%q) = (%q, %v); want (%q, true)", toolName, resolved, ok, name)
+			}
+			params, err := json.Marshal(api.MCPToolsCallParams{Name: toolName, Arguments: json.RawMessage(`{"input":{}}`)})
+			if err != nil {
+				t.Fatalf("marshal tools/call params for %s: %v", toolName, err)
+			}
+			request, err := api.DecodeMCPRequest([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":` + string(params) + `}`))
+			if err != nil {
+				t.Fatalf("DecodeMCPRequest(%s): %v", toolName, err)
+			}
+			if err := request.Validate(); err != nil {
+				t.Errorf("%s tools/call refused: %v", toolName, err)
+			}
+		}
+	}
+
+	for _, validNotification := range []string{
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
+		`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`,
+	} {
+		notification, err := api.DecodeMCPRequest([]byte(validNotification))
 		if err != nil {
-			t.Fatalf("marshal tools/call params for %s: %v", name, err)
+			t.Fatalf("DecodeMCPRequest(%s): %v", validNotification, err)
 		}
-		request, err := api.DecodeMCPRequest([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":` + string(params) + `}`))
-		if err != nil {
-			t.Fatalf("DecodeMCPRequest(%s): %v", name, err)
+		if !notification.IsNotification() {
+			t.Fatalf("%s did not report IsNotification()", validNotification)
 		}
-		if err := request.Validate(); err != nil {
-			t.Errorf("%s tools/call refused: %v", name, err)
-		}
+	}
+	pingReq, err := api.DecodeMCPRequest([]byte(`{"jsonrpc":"2.0","id":"p1","method":"ping"}`))
+	if err != nil {
+		t.Fatalf("DecodeMCPRequest(ping): %v", err)
+	}
+	if pingReq.IsNotification() {
+		t.Fatal("ping with id reported IsNotification()")
 	}
 
 	initialize, err := api.DecodeMCPRequest([]byte(`{"jsonrpc":"2.0","id":"init-1","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"kodama-test","version":"1.0.0"}}}`))
@@ -671,9 +707,21 @@ func TestMCPHandshakeAndResult(t *testing.T) {
 		t.Fatalf("initialize clientInfo = %+v; want kodama-cli/1.0.0", params.ClientInfo)
 	}
 
+	for _, version := range api.SupportedMCPProtocolVersions() {
+		body := `{"jsonrpc":"2.0","id":"init-v","method":"initialize","params":{"protocolVersion":"` + version + `","capabilities":{},"clientInfo":{"name":"kodama-cli","version":"1.0.0"}}}`
+		if _, err := api.DecodeMCPRequest([]byte(body)); err != nil {
+			t.Errorf("supported protocol version %q refused: %v", version, err)
+		}
+	}
+	negotiated, err := api.NegotiateMCPProtocolVersion("2026-01-15")
+	if err != nil || negotiated != api.MCPProtocolVersion {
+		t.Errorf("NegotiateMCPProtocolVersion(2026-01-15) = (%q, %v); want (%q, nil)", negotiated, err, api.MCPProtocolVersion)
+	}
+
 	initializeRefusals := []string{
-		// Unsupported protocol version.
-		`{"jsonrpc":"2.0","id":"init-2","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"kodama-cli","version":"1.0.0"}}}`,
+		// Unsupported malformed protocol version.
+		`{"jsonrpc":"2.0","id":"init-2","method":"initialize","params":{"protocolVersion":"not-a-date","capabilities":{},"clientInfo":{"name":"kodama-cli","version":"1.0.0"}}}`,
+		`{"jsonrpc":"2.0","id":"init-2b","method":"initialize","params":{"protocolVersion":"","capabilities":{},"clientInfo":{"name":"kodama-cli","version":"1.0.0"}}}`,
 		// Missing client identity.
 		`{"jsonrpc":"2.0","id":"init-3","method":"initialize","params":{"protocolVersion":"` + api.MCPProtocolVersion + `","capabilities":{}}}`,
 		// Non-object capabilities.
@@ -727,6 +775,17 @@ func TestMCPHandshakeAndResult(t *testing.T) {
 	}
 	if !reflect.DeepEqual(decodedResult, toolsResult) {
 		t.Fatalf("tools/call result round trip = %+v; want %+v", decodedResult, toolsResult)
+	}
+	legacyResultBytes, err := json.Marshal(toolsResult)
+	if err != nil {
+		t.Fatalf("marshal legacy result: %v", err)
+	}
+	legacyDecoded, err := api.DecodeMCPResult(legacyResultBytes)
+	if err != nil {
+		t.Fatalf("DecodeMCPResult(legacy): %v", err)
+	}
+	if !reflect.DeepEqual(legacyDecoded, toolsResult) {
+		t.Fatalf("legacy tools/call result round trip = %+v; want %+v", legacyDecoded, toolsResult)
 	}
 
 	publicError := api.Error{Code: api.CodeForbidden, Message: "denied", RequestID: "req-1"}

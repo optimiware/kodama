@@ -216,7 +216,7 @@ func TestTransportParityAcrossOperationFamilies(t *testing.T) {
 	})
 }
 
-// TestMCPToolsListEqualsTheRegistry proves tools/list advertises exactly the 51
+// TestMCPToolsListEqualsTheRegistry proves tools/list advertises exactly the 58
 // declared routes in registry order with their declared schema titles.
 func TestMCPToolsListEqualsTheRegistry(t *testing.T) {
 	harness := newHarness(t)
@@ -234,13 +234,13 @@ func TestMCPToolsListEqualsTheRegistry(t *testing.T) {
 		t.Fatalf("decode tools/list: %v", err)
 	}
 	routes := api.Routes()
-	if len(catalog.Tools) != 51 || len(catalog.Tools) != len(routes) {
-		t.Fatalf("tools/list returned %d tools; want 51 declared routes", len(catalog.Tools))
+	if len(catalog.Tools) != 58 || len(catalog.Tools) != len(routes) {
+		t.Fatalf("tools/list returned %d tools; want 58 declared routes", len(catalog.Tools))
 	}
 	for index, route := range routes {
 		tool := catalog.Tools[index]
-		if tool.Name != route.Operation {
-			t.Fatalf("tools/list[%d] = %q; want %q", index, tool.Name, route.Operation)
+		if tool.Name != route.MCPTool {
+			t.Fatalf("tools/list[%d] = %q; want %q", index, tool.Name, route.MCPTool)
 		}
 		var schema struct {
 			Type  string `json:"type"`

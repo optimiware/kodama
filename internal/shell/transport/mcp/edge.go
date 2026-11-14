@@ -60,11 +60,11 @@ func NewEdge(config Config) (*Edge, error) {
 	return &Edge{router: config.Router, serverInfo: config.ServerInfo}, nil
 }
 
-// Handle decodes one bounded MCP message and returns exactly one encoded
-// JSON-RPC response. A tools/call message uses the YAML-aware decoder: a hard
-// 2 MiB cap before decoding and then the named operation's
-// api.MaxEnvelopeBytes bound. Every other method keeps the declared 1 MiB
-// bound.
+// Handle decodes one bounded MCP message and returns the encoded JSON-RPC
+// response, or nil for a valid JSON-RPC notification. A tools/call message uses
+// the YAML-aware decoder: a hard 2 MiB cap before decoding and then the named
+// operation's api.MaxEnvelopeBytes bound. Every other method keeps the declared
+// 1 MiB bound.
 func (edge *Edge) Handle(ctx context.Context, credential string, body []byte) []byte {
 	if len(body) > api.MaxYAMLRequestBytes {
 		return encodeError(nil, api.CodeInvalidInput, "MCP request exceeds the maximum allowed size")
@@ -89,10 +89,15 @@ func (edge *Edge) Handle(ctx context.Context, credential string, body []byte) []
 	if err != nil {
 		return encodeError(requestID(body), api.CodeInvalidInput, messageOf(err))
 	}
+	if request.IsNotification() {
+		return nil
+	}
 
 	switch request.Method {
 	case api.MCPMethodInitialize:
 		return edge.handleInitialize(request)
+	case api.MCPMethodPing:
+		return encodeResult(request.ID, json.RawMessage(`{}`))
 	case api.MCPMethodToolsList:
 		return edge.handleToolsList(request)
 	default:
@@ -101,11 +106,19 @@ func (edge *Edge) Handle(ctx context.Context, credential string, body []byte) []
 	}
 }
 
-// handleInitialize echoes the pinned protocol version and the configured server
-// identity. It never dispatches an operation.
+// handleInitialize echoes the negotiated protocol version and the configured
+// server identity. It never dispatches an operation.
 func (edge *Edge) handleInitialize(request api.MCPRequest) []byte {
+	var params api.MCPInitializeParams
+	if err := json.Unmarshal(request.Params, &params); err != nil {
+		return encodeError(request.ID, api.CodeInvalidInput, "initialize params are invalid")
+	}
+	version, err := api.NegotiateMCPProtocolVersion(params.ProtocolVersion)
+	if err != nil {
+		return encodeError(request.ID, api.CodeInvalidInput, messageOf(err))
+	}
 	result := api.MCPInitializeResult{
-		ProtocolVersion: api.MCPProtocolVersion,
+		ProtocolVersion: version,
 		Capabilities:    json.RawMessage(`{"tools":{}}`),
 		ServerInfo:      edge.serverInfo,
 	}
@@ -136,12 +149,16 @@ func (edge *Edge) handleToolsList(request api.MCPRequest) []byte {
 // the already-validated JSON-RPC id; the arguments envelope is decoded with the
 // named operation's own api.MaxEnvelopeBytes bound.
 func (edge *Edge) handleToolsCall(ctx context.Context, credential string, id json.RawMessage, params api.MCPToolsCallParams) []byte {
+	operation, ok := api.MCPToolOperationName(params.Name)
+	if !ok {
+		return encodeError(id, api.CodeInvalidInput, fmt.Sprintf("tools/call names unknown operation %q", params.Name))
+	}
 	var decoded api.Request
 	switch strings.TrimSpace(string(params.Arguments)) {
 	case "", "null":
 		decoded = api.Request{}
 	default:
-		arguments, err := api.DecodeOperationRequest(params.Name, params.Arguments)
+		arguments, err := api.DecodeOperationRequest(operation, params.Arguments)
 		if err != nil {
 			return encodeError(id, api.CodeInvalidInput, messageOf(err))
 		}
@@ -149,23 +166,27 @@ func (edge *Edge) handleToolsCall(ctx context.Context, credential string, id jso
 	}
 
 	result, err := edge.router.Invoke(ctx, ops.Invocation{
-		Operation:  authorize.OperationName(params.Name),
+		Operation:  authorize.OperationName(operation),
 		Credential: credential,
 		Request:    decoded,
 	})
 	if err != nil {
 		return encodeFault(id, err)
 	}
-	if result.Operation != params.Name {
+	if result.Operation != operation {
 		return encodeError(id, api.CodeInternalFailure, "internal failure")
+	}
+	rawResult, err := json.Marshal(result)
+	if err != nil {
+		return encodeError(id, api.CodeInternalFailure, "internal failure")
+	}
+	if len(rawResult) > api.MaxResponseBytes {
+		return encodeError(id, api.CodeInternalFailure,
+			"MCP result exceeds the maximum allowed size")
 	}
 	encoded, err := api.EncodeMCPResult(result)
 	if err != nil {
 		return encodeError(id, api.CodeInternalFailure, "internal failure")
-	}
-	if len(encoded) > api.MaxResponseBytes {
-		return encodeError(id, api.CodeInternalFailure,
-			"MCP result exceeds the maximum allowed size")
 	}
 	return encodeResult(id, encoded)
 }

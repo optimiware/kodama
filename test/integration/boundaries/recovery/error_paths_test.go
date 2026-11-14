@@ -534,15 +534,16 @@ func TestPreReceiveObservationFailureRejectsWithoutApply(t *testing.T) {
 		t.Fatalf("NewVerificationClient: %v", err)
 	}
 	service, err := git.NewService(git.ServiceConfig{
-		TenantID:  harness.Tenant,
-		Storage:   storage,
-		Policies:  policies,
-		Executor:  executor,
-		Observer:  failingObserver{},
-		Journal:   journal,
-		Verify:    verify,
-		Retention: &gitapp.RetentionClient{},
-		Clock:     gitapp.SystemClock{},
+		TenantID:    harness.Tenant,
+		Storage:     storage,
+		Policies:    policies,
+		Executor:    executor,
+		Observer:    failingObserver{},
+		Journal:     journal,
+		Verify:      verify,
+		Retention:   &gitapp.RetentionClient{},
+		Clock:       gitapp.SystemClock{},
+		ResourceIDs: map[string]string{recoveryfix.Repository: recoveryfix.ResourceID},
 	})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
@@ -652,15 +653,16 @@ func TestPrepareCancellationBeforeVerificationStopsVerification(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	service, err := git.NewService(git.ServiceConfig{
-		TenantID:  harness.Tenant,
-		Storage:   storage,
-		Policies:  cancelingPolicy{inner: policies, cancel: cancel},
-		Executor:  executor,
-		Observer:  observer,
-		Journal:   journal,
-		Verify:    verify,
-		Retention: &gitapp.RetentionClient{},
-		Clock:     gitapp.SystemClock{},
+		TenantID:    harness.Tenant,
+		Storage:     storage,
+		Policies:    cancelingPolicy{inner: policies, cancel: cancel},
+		Executor:    executor,
+		Observer:    observer,
+		Journal:     journal,
+		Verify:      verify,
+		Retention:   &gitapp.RetentionClient{},
+		Clock:       gitapp.SystemClock{},
+		ResourceIDs: map[string]string{recoveryfix.Repository: recoveryfix.ResourceID},
 	})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)

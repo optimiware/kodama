@@ -512,6 +512,10 @@ func TestCommittedPolicyValidateCommitRefusesWithoutAnAdminWriteRule(t *testing.
 			name:   "an earlier deny matches the admin identity",
 			policy: "repo admin\n- = @admin\nRW = @all\n",
 		},
+		{
+			name:   "admin resource contradicts its static pin",
+			policy: "repo admin\noption resource = res-other\nRW = @admin\n",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -520,6 +524,7 @@ func TestCommittedPolicyValidateCommitRefusesWithoutAnAdminWriteRule(t *testing.
 				candidate + ":conf/git.conf": test.policy,
 			})
 			policy := newTestCommittedPolicy(t, policyRepositoryPath(t), executor)
+			policy.resourceIDs = map[string]string{AdminRepository: "res-admin"}
 			if err := policy.ValidateCommit(context.Background(), candidate); err == nil {
 				t.Fatalf("ValidateCommit accepted a proposed policy that leaves the admin policy ref unwritable by @admin: %q", test.policy)
 			}

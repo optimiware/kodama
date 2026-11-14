@@ -9,6 +9,7 @@ import (
 	"github.com/optimiware/kodama/internal/shell/execution"
 	"github.com/optimiware/kodama/internal/shell/pipeline"
 	"github.com/optimiware/kodama/internal/shell/receipt"
+	"github.com/optimiware/kodama/internal/shell/store"
 	"github.com/optimiware/kodama/internal/shell/transport/ops"
 )
 
@@ -54,6 +55,53 @@ func pipelineHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				Name:       definition.Name,
 				Version:    definition.Version,
 				YAML:       append([]byte(nil), definition.YAML...),
+			})
+		}),
+		"pipeline.list": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
+			request, err := decodeRequest[api.PipelineListRequest](call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			if err := confirmReadAuthority(ctx, deps, call, call.Scope); err != nil {
+				return api.Result{}, err
+			}
+			scanner, err := requireScanner(deps)
+			if err != nil {
+				return api.Result{}, err
+			}
+			page := pageOrDefault(request.Page)
+			committed, err := scanner.Query(ctx, call.Scope, store.ScanQuery{
+				Table:   "pipelines",
+				OrderBy: []store.Order{{Column: "id"}},
+				After:   page.Cursor,
+				Limit:   page.EffectiveLimit(),
+			})
+			if err != nil {
+				return api.Result{}, err
+			}
+			pipelines := make([]api.PipelineSummaryView, 0, len(committed.Rows))
+			for _, row := range committed.Rows {
+				pipelineID, err := scanRowString(row, "id")
+				if err != nil {
+					return api.Result{}, err
+				}
+				name, err := scanRowString(row, "name")
+				if err != nil {
+					return api.Result{}, err
+				}
+				version, err := scanRowUint(row, "version")
+				if err != nil {
+					return api.Result{}, err
+				}
+				pipelines = append(pipelines, api.PipelineSummaryView{
+					PipelineID: pipelineID,
+					Name:       name,
+					Version:    version,
+				})
+			}
+			return respond(call, api.PipelineListResult{
+				Pipelines:  pipelines,
+				NextCursor: committed.Next,
 			})
 		}),
 		"pipeline.update": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {

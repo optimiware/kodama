@@ -107,7 +107,7 @@
 //     credential while disabling the service is refused as invalid input;
 //     disablement is the clearing path with an empty credential pair and the
 //     declared disabled invalidation reason.
-//   - Execution TTL is within [1 minute, 8 hours] and never exceeds the action
+//   - Execution TTL is within [15 seconds, 8 hours] and never exceeds the action
 //     deadline. A current execution credential is reused without mutation.
 //   - Revocation clears the pair atomically and only then invalidates live
 //     connections. A failed mutation never invalidates.
@@ -818,9 +818,27 @@ func TestManagerIssueCapsTTLByDeadlineAndBounds(t *testing.T) {
 		env := newTestEnv(t)
 		env.setAbsentCredential()
 		request := executionIssueRequest(env)
-		request.TTL = 30 * time.Second
+		request.TTL = 10 * time.Second
 		_, err := env.manager.Issue(context.Background(), request)
 		requireClass(t, err, fault.InvalidInput)
+	})
+
+	t.Run("one-minute action deadline after activation delay", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.setAbsentCredential()
+		request := executionIssueRequest(env)
+		request.TTL = token.DefaultBounds.MaxTTL
+		// An action declared with `timeout: 1m` sets deadline = activatedAt + 1m;
+		// a few seconds of clock advance before credential issuance must still
+		// succeed and cap expiry at that deadline.
+		request.Deadline = env.now.Add(time.Minute - 5*time.Second)
+		if _, err := env.manager.Issue(context.Background(), request); err != nil {
+			t.Fatalf("Issue for 1m action after 5s advance: %v", err)
+		}
+		unit := env.mutations.units[0]
+		if !unit.Credential.Expiry.Equal(request.Deadline) {
+			t.Fatalf("expiry = %v; want deadline %v", unit.Credential.Expiry, request.Deadline)
+		}
 	})
 
 	t.Run("ttl above maximum", func(t *testing.T) {

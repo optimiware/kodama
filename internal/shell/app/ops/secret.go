@@ -9,6 +9,7 @@ import (
 	"github.com/optimiware/kodama/internal/id"
 	"github.com/optimiware/kodama/internal/shell/authorize"
 	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodama/internal/shell/store"
 	"github.com/optimiware/kodama/internal/shell/transport/ops"
 )
 
@@ -64,6 +65,58 @@ func secretHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				Name:      string(metadata.Name),
 				Version:   metadata.Version,
 				UpdatedAt: metadata.UpdatedAt,
+			})
+		}),
+		"secret.metadata.list": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
+			request, err := decodeRequest[api.SecretMetadataListRequest](call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			if err := confirmReadAuthority(ctx, deps, call, call.Scope); err != nil {
+				return api.Result{}, err
+			}
+			scanner, err := requireScanner(deps)
+			if err != nil {
+				return api.Result{}, err
+			}
+			page := pageOrDefault(request.Page)
+			committed, err := scanner.Query(ctx, call.Scope, store.ScanQuery{
+				Table:   "secrets",
+				OrderBy: []store.Order{{Column: "id"}},
+				After:   page.Cursor,
+				Limit:   page.EffectiveLimit(),
+			})
+			if err != nil {
+				return api.Result{}, err
+			}
+			secrets := make([]api.SecretMetadataView, 0, len(committed.Rows))
+			for _, row := range committed.Rows {
+				secretID, err := scanRowString(row, "id")
+				if err != nil {
+					return api.Result{}, err
+				}
+				name, err := scanRowString(row, "name")
+				if err != nil {
+					return api.Result{}, err
+				}
+				version, err := scanRowUint(row, "version")
+				if err != nil {
+					return api.Result{}, err
+				}
+				updatedAt, err := scanRowTime(row, "updated_at")
+				if err != nil {
+					return api.Result{}, err
+				}
+				secrets = append(secrets, api.SecretMetadataView{
+					SecretID:  secretID,
+					Name:      name,
+					Version:   version,
+					UpdatedAt: updatedAt,
+				})
+			}
+			return respond(call, api.SecretMetadataListResult{
+				Secrets:    secrets,
+				NextCursor: committed.Next,
 			})
 		}),
 		"secret.write": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {

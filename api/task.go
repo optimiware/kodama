@@ -614,6 +614,83 @@ func (result TaskHistoryResult) Validate() error {
 	return nil
 }
 
+// TaskListRequest is the task.list input. The project is carried explicitly
+// for MCP callers and is optional for REST callers whose route supplies it.
+type TaskListRequest struct {
+	ProjectID string `json:"project_id,omitempty" schema:"id"`
+	Status    string `json:"status,omitempty"`
+	Page      *Page  `json:"page,omitempty"`
+}
+
+// Validate checks the optional project identity, optional task state filter
+// and page bounds.
+func (request TaskListRequest) Validate() error {
+	if request.ProjectID != "" && !validID(request.ProjectID) {
+		return invalid("project_id is invalid")
+	}
+	if request.Status != "" && !validTaskState(request.Status) {
+		return invalid("unknown task status %q", request.Status)
+	}
+	if request.Page != nil {
+		return request.Page.Validate()
+	}
+	return nil
+}
+
+// TaskSummaryView is one scoped task summary observation in task.list.
+type TaskSummaryView struct {
+	TaskID           string `json:"task_id"`
+	Title            string `json:"title"`
+	State            string `json:"state"`
+	SelectedPipeline string `json:"selected_pipeline,omitempty" schema:"id"`
+	CurrentExecution string `json:"current_execution,omitempty" schema:"id"`
+	ContentVersion   uint64 `json:"content_version" schema:"version"`
+	LifecycleVersion uint64 `json:"lifecycle_version" schema:"version"`
+}
+
+// Validate checks the task identity, title, state, optional pipeline/execution
+// identities and both versions.
+func (view TaskSummaryView) Validate() error {
+	if !validID(view.TaskID) {
+		return invalid("task_id is invalid")
+	}
+	if view.Title == "" {
+		return invalid("task title is empty")
+	}
+	if !validTaskState(view.State) {
+		return invalid("unknown task state %q", view.State)
+	}
+	if view.SelectedPipeline != "" && !validID(view.SelectedPipeline) {
+		return invalid("selected_pipeline is invalid")
+	}
+	if view.CurrentExecution != "" && !validID(view.CurrentExecution) {
+		return invalid("current_execution is invalid")
+	}
+	if view.ContentVersion == 0 || view.LifecycleVersion == 0 {
+		return invalid("task content and lifecycle versions must be positive")
+	}
+	return nil
+}
+
+// TaskListResult is the task.list result.
+type TaskListResult struct {
+	Tasks      []TaskSummaryView `json:"tasks"`
+	NextCursor string            `json:"next_cursor,omitempty"`
+}
+
+// Validate checks every task summary and the optional cursor bound.
+func (result TaskListResult) Validate() error {
+	for _, task := range result.Tasks {
+		if err := task.Validate(); err != nil {
+			return err
+		}
+	}
+	if len(result.NextCursor) > MaxCursorBytes {
+		return invalid("next_cursor is %d bytes; at most %d are allowed", len(result.NextCursor), MaxCursorBytes)
+	}
+	return nil
+}
+
 // taskStates is the durable task state vocabulary.
 var taskStates = []string{"open", "waiting", "done", "cancelled"}
 

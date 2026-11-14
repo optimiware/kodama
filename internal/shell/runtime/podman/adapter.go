@@ -273,7 +273,7 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if err := validatePrepareContext(request.ActionName, request.TaskID); err != nil {
 		return engine.Preparation{}, err
 	}
-	files, secrets, err := buildPreparation(request)
+	files, secrets, err := buildPreparationWithCA(request, a.workloadCAPEM)
 	if err != nil {
 		return engine.Preparation{}, err
 	}
@@ -310,6 +310,14 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	}
 	if volume.Labels[LabelWorkspace] != string(request.WorkspaceID) {
 		return engine.Preparation{}, fault.New(fault.Forbidden, "workspace volume is not owned by this workspace")
+	}
+
+	if err := a.libpod.InspectImage(ctx, request.Container.Image); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return engine.Preparation{}, fault.New(fault.DependencyUnavailable,
+				fmt.Sprintf("workload image %q is not present in the local container store; pull it before starting the execution", request.Container.Image))
+		}
+		return engine.Preparation{}, fault.Wrap(fault.DependencyUnavailable, "workload image state is unreachable", err)
 	}
 
 	if err := a.ensureConfinedDirectories(ctx, request.Identity.WorkloadID, files); err != nil {

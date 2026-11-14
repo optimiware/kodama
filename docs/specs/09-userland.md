@@ -14,7 +14,7 @@ Source: [Userland](../../KODAMA.md#4-userland-agents-and-software-delivery). Own
 
 Configuration is flags with environment defaults. Required: `--tenant` (`KODAMA_GIT_TENANT`), `--storage-root` (`KODAMA_GIT_STORAGE_ROOT`), `--journal-dir` (`KODAMA_GIT_JOURNAL_DIR`), `--base-url` (`KODAMA_BASE_URL`), `--credential-file` (`KODAMA_CREDENTIAL_FILE`). Optional: `--listen` (`KODAMA_GIT_LISTEN`, default `127.0.0.1:8081`), `--timeout` (`KODAMA_GIT_TIMEOUT`), repeatable `--resource repository=resource-id`. There is no `--policy` flag or `KODAMA_GIT_POLICY`: the access policy is the committed `conf/git.conf` of the tenant's `admin` repository. Native Git runs in an isolated environment: inherited `GIT_*` variables are dropped and global/system configuration is disabled.
 
-Smart HTTP verifies actor and applies read rules. The managed `pre-receive` hook verifies every exact ref update of the whole push batch immediately before acceptance (no `update` hook is installed); after-the-fact webhooks are insufficient. Tenant workers and durable volumes are isolated; execution containers never mount repository storage. Resources are provisioned in Git (`kodama git provision-repository` creates a tenant repository and appends its default rules to the `admin` policy) and registered as metadata in Kodama.
+Smart HTTP verifies actor and applies read rules. The managed `pre-receive` hook verifies every exact ref update of the whole push batch immediately before acceptance (no `update` hook is installed); after-the-fact webhooks are insufficient. Tenant workers and durable volumes are isolated; execution containers never mount repository storage. Repositories may bind their registered resource identity through `option resource = <resource-id>` in `admin/conf/git.conf` (with on-demand bare-repository and hook initialization on first authenticated access, without restarting `git serve`), or through startup `--resource` pins and `kodama git provision-repository`.
 
 ### Native Git minimum version
 
@@ -41,7 +41,7 @@ Rules live in tenant `admin/conf/git.conf`. Repository names are tenant-relative
 
 Evaluate in order: first ref/principal match whose permission covers the attempt allows; matching deny refuses; no match refuses. Ref-less rule covers all refs; other refs match exactly or by prefix only when ending `/`. No regex or implicit Admin bypass.
 
-`option approve.<ref> = <role>` additionally requires same-execution passed human-role request matching `git.ref.update`, resource, exact `ref`, `expected_base`, and `candidate`. Humans/services cannot directly update approval-guarded refs. Rule changes apply after accepting the `admin` push, affecting the next attempt.
+`option resource = <resource-id>` binds the repository stanza to its registered Kodama resource identity (refusing duplicate `option resource` lines in the same stanza and refusing any mismatch against a static `--resource` pin). `option approve.<ref> = <role>` additionally requires same-execution passed human-role request matching `git.ref.update`, resource, exact `ref`, `expected_base`, and `candidate`. Humans/services cannot directly update approval-guarded refs. Rule changes apply after accepting the `admin` push, affecting the next attempt.
 
 Provision defaults follow KODAMA.md: append-only Admin `admin` history; repository read for `@all`, work-branch `RW+` for Engineer/execution, default-branch `RW` for execution with Reviewer approval.
 

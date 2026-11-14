@@ -110,13 +110,13 @@ func inputSchemaFor(t *testing.T, operation string) (map[string]any, map[string]
 	return schema, inputProperties
 }
 
-// TestOperationInputSchemaIsFieldLevel pins that every one of the 51 exposed
+// TestOperationInputSchemaIsFieldLevel pins that every one of the 58 exposed
 // operations advertises a strict, field-level envelope schema that keeps the
 // frozen title and the typed input member.
 func TestOperationInputSchemaIsFieldLevel(t *testing.T) {
 	routes := api.Routes()
-	if len(routes) != 51 {
-		t.Fatalf("api.Routes() has %d routes; want 51", len(routes))
+	if len(routes) != 58 {
+		t.Fatalf("api.Routes() has %d routes; want 58", len(routes))
 	}
 	for _, route := range routes {
 		t.Run(route.Operation, func(t *testing.T) {
@@ -152,7 +152,7 @@ func TestOperationInputSchemaIsFieldLevel(t *testing.T) {
 			if got, ok := schemaMember(t, input, "additionalProperties", route.Operation+" input").(bool); !ok || got {
 				t.Errorf("%s input schema does not refuse unknown input members", route.Operation)
 			}
-			if len(inputProperties) == 0 {
+			if len(inputProperties) == 0 && route.Operation != "principal.whoami" {
 				t.Errorf("%s input schema is not field-level: it declares no properties", route.Operation)
 			}
 		})
@@ -339,7 +339,7 @@ func TestOperationInputSchemaRefusesUnknownOperations(t *testing.T) {
 }
 
 // TestOperationMCPToolsListCarriesFieldLevelSchema pins that the advertised
-// tools/list catalog is exactly the 51 registry operations in order, each with
+// tools/list catalog is exactly the 58 registry operations in order, each with
 // a field-level input schema whose title is retained.
 func TestOperationMCPToolsListCarriesFieldLevelSchema(t *testing.T) {
 	var catalog api.MCPToolsListResult
@@ -363,21 +363,22 @@ func TestOperationMCPToolsListCarriesFieldLevelSchema(t *testing.T) {
 		t.Fatalf("tools/list advertises %d tools; want %d", len(decoded.Tools), len(names))
 	}
 	for index, tool := range decoded.Tools {
-		want := string(names[index])
-		if tool.Name != want {
-			t.Fatalf("tools/list tool %d = %q; want %q in registry order", index, tool.Name, want)
+		wantOp := string(names[index])
+		wantTool := strings.ReplaceAll(wantOp, ".", "_")
+		if tool.Name != wantTool {
+			t.Fatalf("tools/list tool %d = %q; want %q in registry order", index, tool.Name, wantTool)
 		}
 		var schema any
 		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
 			t.Fatalf("%s inputSchema is not valid JSON: %v", tool.Name, err)
 		}
 		object := schemaObject(t, schema, tool.Name+" inputSchema")
-		if got := schemaString(t, object, "title", tool.Name+" inputSchema"); got != want+".input.v1" {
-			t.Errorf("%s inputSchema title = %q; want %q", tool.Name, got, want+".input.v1")
+		if got := schemaString(t, object, "title", tool.Name+" inputSchema"); got != wantOp+".input.v1" {
+			t.Errorf("%s inputSchema title = %q; want %q", tool.Name, got, wantOp+".input.v1")
 		}
 		properties := schemaObject(t, schemaMember(t, object, "properties", tool.Name+" inputSchema"), tool.Name+" properties")
 		input := schemaObject(t, schemaMember(t, properties, "input", tool.Name+" properties"), tool.Name+" input")
-		if len(schemaObject(t, schemaMember(t, input, "properties", tool.Name+" input"), tool.Name+" input properties")) == 0 {
+		if len(schemaObject(t, schemaMember(t, input, "properties", tool.Name+" input"), tool.Name+" input properties")) == 0 && wantOp != "principal.whoami" {
 			t.Errorf("%s inputSchema is not field-level", tool.Name)
 		}
 	}

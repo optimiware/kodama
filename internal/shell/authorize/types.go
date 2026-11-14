@@ -16,6 +16,7 @@
 package authorize
 
 import (
+	"context"
 	"time"
 
 	"github.com/optimiware/kodama/internal/fault"
@@ -383,4 +384,27 @@ type AuthorityFact struct {
 	Version     uint64         `json:"version,omitempty"`
 	Allowed     bool           `json:"allowed"`
 	Detail      string         `json:"detail,omitempty"`
+}
+
+type unassignedPrincipalContextKey struct{}
+
+// WithUnassignedPrincipal marks a principal-resolution context so an
+// authenticated human whose OIDC token verified cleanly is resolved even when
+// they hold no committed membership rows yet. Only principal.whoami sets this
+// marker; every other operation requires a committed principal in scope.
+func WithUnassignedPrincipal(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, unassignedPrincipalContextKey{}, true)
+}
+
+// AllowsUnassignedPrincipal reports whether ctx carries the
+// WithUnassignedPrincipal marker.
+func AllowsUnassignedPrincipal(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	allowed, _ := ctx.Value(unassignedPrincipalContextKey{}).(bool)
+	return allowed
 }

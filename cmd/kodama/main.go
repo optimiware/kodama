@@ -15,11 +15,16 @@ import (
 const usageText = `usage: kodama <command> [flags]
 
 commands:
+  up            start a local Kodama on Podman (then: kodactl run <pipeline.yaml>)
+  down          stop the local Kodama (--purge removes its state)
+  status        inspect the local Kodama
   server        run the Shell composition (--profile development, test or production)
   git serve     run the independent Git smart-HTTP service
   git hook      run one native Git hook callback
   git provision-tenant  create the tenant's trusted admin repository
   git provision-repository  initialize a repository and commit its default access rules
+  auth serve    run the built-in OIDC provider and social login broker
+  auth principal-id  derive the human principal id for an OIDC issuer and subject
   agent         run one bounded native-agent run
   services      run one independent service adapter
   migrate       apply database migrations and set role passwords (administrator)
@@ -35,11 +40,16 @@ type runner func(context.Context, []string, io.Writer, io.Writer) int
 // deps are the injectable subcommand runners. Tests use them to prove dispatch
 // isolation: one command never starts another command's process.
 type deps struct {
+	up                     runner
+	down                   runner
+	status                 runner
 	server                 runner
 	gitServe               runner
 	gitHook                runner
 	gitProvision           runner
 	gitProvisionRepository runner
+	authServe              runner
+	authPrincipalID        runner
 	agent                  runner
 	services               runner
 	migrate                runner
@@ -54,11 +64,16 @@ func main() {
 
 func defaultDeps() deps {
 	return deps{
+		up:                     runUpEntry,
+		down:                   runDownEntry,
+		status:                 runStatusEntry,
 		server:                 runServerEntry,
 		gitServe:               runGitServeEntry,
 		gitHook:                runGitHookEntry,
 		gitProvision:           runGitProvisionEntry,
 		gitProvisionRepository: runGitProvisionRepositoryEntry,
+		authServe:              runAuthServeEntry,
+		authPrincipalID:        runAuthPrincipalIDEntry,
 		agent:                  runAgentEntry,
 		services:               runServicesEntry,
 		migrate:                runMigrateEntry,
@@ -79,6 +94,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps deps
 	case "version", "--version":
 		printVersion(stdout)
 		return 0
+	case "up":
+		return deps.up(ctx, args[1:], stdout, stderr)
+	case "down":
+		return deps.down(ctx, args[1:], stdout, stderr)
+	case "status":
+		return deps.status(ctx, args[1:], stdout, stderr)
 	case "server":
 		return deps.server(ctx, args[1:], stdout, stderr)
 	case "git":
@@ -97,6 +118,20 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps deps
 			return deps.gitProvisionRepository(ctx, args[2:], stdout, stderr)
 		default:
 			usage(stderr, fmt.Sprintf("unknown git subcommand %q", args[1]))
+			return 2
+		}
+	case "auth":
+		if len(args) < 2 {
+			usage(stderr, "auth requires a subcommand")
+			return 2
+		}
+		switch args[1] {
+		case "serve":
+			return deps.authServe(ctx, args[2:], stdout, stderr)
+		case "principal-id":
+			return deps.authPrincipalID(ctx, args[2:], stdout, stderr)
+		default:
+			usage(stderr, fmt.Sprintf("unknown auth subcommand %q", args[1]))
 			return 2
 		}
 	case "agent":

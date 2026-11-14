@@ -1425,6 +1425,11 @@ func (f *testFakeLibpod) CreateContainer(context.Context, runtimepodman.Containe
 	return runtimepodman.ContainerState{}, errors.New("testFakeLibpod: create is not expected")
 }
 
+func (f *testFakeLibpod) InspectImage(context.Context, string) error {
+	f.otherCalls++
+	return errors.New("testFakeLibpod: image inspect is not expected")
+}
+
 func (f *testFakeLibpod) InspectContainer(_ context.Context, name string) (runtimepodman.ContainerState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

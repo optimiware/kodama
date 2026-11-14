@@ -318,12 +318,17 @@ type Config struct {
 	// upstream tool; its MCP secret allow-list is separate from SecretRules.
 	ToolProxy *ToolProxyConfig
 
-	// Models is the optional configured model gateway. A nil value keeps the
-	// optional surface disabled with the not_found refusal and constructs
-	// no provider dependency. An enabled configuration maps every caller alias
-	// to exactly one project, upstream model and provider endpoint; its gateway
-	// secret allow-list is separate from SecretRules.
+	// Models is the optional configured model gateway and workload LLM proxy. A
+	// nil value keeps the optional surface disabled with the not_found refusal
+	// and constructs no provider dependency. An enabled configuration maps every
+	// caller alias or provider slug to trusted endpoints; its gateway secret
+	// allow-list is separate from SecretRules.
 	Models *ModelsConfig
+
+	// WorkloadURL optionally specifies the base URL workloads inside containers
+	// use to reach this Kodama server when it differs from Installation.PublicURL
+	// (such as https://host.containers.internal:8443 in the Podman test profile).
+	WorkloadURL string
 
 	// GitStorageRoot enables retained-commit keep refs. The retention loop
 	// keeps one ref per commit named by a retained execution under
@@ -374,6 +379,19 @@ func (config Config) logger() *slog.Logger {
 		return config.Logger
 	}
 	return slog.Default()
+}
+
+// workloadBaseURL returns the base URL workloads reach this server through,
+// without a trailing slash.
+func (config Config) workloadBaseURL() string {
+	base := strings.TrimSpace(config.WorkloadURL)
+	if base == "" {
+		base = strings.TrimSpace(config.Installation.PublicURL)
+	}
+	if base == "" {
+		base = "http://127.0.0.1:8080"
+	}
+	return strings.TrimRight(base, "/")
 }
 
 // resolved fills the explicit defaults.

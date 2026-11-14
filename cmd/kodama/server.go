@@ -74,7 +74,10 @@ type serverOptions struct {
 	// WorkloadURL is the test profile's base URL workloads reach the server
 	// through, separate from the client-facing public URL.
 	WorkloadURL string
-	MCPPath     string
+	// WorkloadCAFile optionally names the PEM CA bundle mounted read-only into
+	// Podman workloads at /kodama/ca.crt (with KODAMA_CA_FILE=/kodama/ca.crt).
+	WorkloadCAFile string
+	MCPPath        string
 	// LoopInterval is the durable profiles' background scan cadence. Zero
 	// selects the profile default (one second); the value is bounded by
 	// resolvedLoopInterval before any adapter is built.
@@ -171,6 +174,7 @@ func applyServerEnv(options serverOptions) (serverOptions, error) {
 	options.InstallationID = envOr("KODAMA_INSTALLATION_ID", options.InstallationID)
 	options.PublicURL = envOr("KODAMA_PUBLIC_URL", options.PublicURL)
 	options.WorkloadURL = envOr("KODAMA_WORKLOAD_URL", options.WorkloadURL)
+	options.WorkloadCAFile = envOr("KODAMA_WORKLOAD_CA_FILE", options.WorkloadCAFile)
 	options.MCPPath = envOr("KODAMA_MCP_PATH", options.MCPPath)
 	options.GitStorageRoot = envOr("KODAMA_GIT_STORAGE_ROOT", options.GitStorageRoot)
 	interval, err := envDurationStrict("KODAMA_LOOP_INTERVAL", options.LoopInterval)
@@ -262,6 +266,7 @@ type serverFile struct {
 	InstallationID string               `json:"installation_id"`
 	PublicURL      string               `json:"public_url"`
 	WorkloadURL    string               `json:"workload_url"`
+	WorkloadCAFile string               `json:"workload_ca_file"`
 	MCPPath        string               `json:"mcp_path"`
 	LoopInterval   string               `json:"loop_interval"`
 	GitStorageRoot string               `json:"git_storage_root"`
@@ -334,6 +339,7 @@ func parseServerOptions(args []string, stderr io.Writer) (serverOptions, int) {
 	flags.StringVar(&options.InstallationID, "installation-id", options.InstallationID, "installation identity")
 	flags.StringVar(&options.PublicURL, "public-url", options.PublicURL, "public URL")
 	flags.StringVar(&options.WorkloadURL, "workload-url", options.WorkloadURL, "test profile: base URL workloads reach the server through")
+	flags.StringVar(&options.WorkloadCAFile, "workload-ca-file", options.WorkloadCAFile, "test profile: PEM CA bundle mounted read-only into workloads at /kodama/ca.crt")
 	flags.StringVar(&options.MCPPath, "mcp-path", options.MCPPath, "MCP JSON-RPC path")
 	flags.DurationVar(&options.LoopInterval, "loop-interval", options.LoopInterval, "durable profiles' background scan interval (default 1s, 100ms to 1m)")
 	flags.StringVar(&options.GitStorageRoot, "git-storage-root", options.GitStorageRoot, "mounted tenant Git storage root for retained-commit keep refs")
@@ -417,6 +423,9 @@ func mergeServerFile(file serverFile, options serverOptions) (serverOptions, err
 	}
 	if file.WorkloadURL != "" {
 		options.WorkloadURL = file.WorkloadURL
+	}
+	if file.WorkloadCAFile != "" {
+		options.WorkloadCAFile = file.WorkloadCAFile
 	}
 	if file.MCPPath != "" {
 		options.MCPPath = file.MCPPath
@@ -643,6 +652,7 @@ func (options serverOptions) config() (shellapp.Config, error) {
 		MCPPath:              options.MCPPath,
 		Discovery:            discovery,
 		Models:               models,
+		WorkloadURL:          options.WorkloadURL,
 		ToolProxy:            toolProxy,
 		Dev: &shellapp.DevelopmentConfig{
 			Tokens: tokens,

@@ -112,7 +112,7 @@ func requireScopeRefusal(t *testing.T, label string, err error) {
 	}
 }
 
-// TestScopeIdentityRegistrySweep walks all 51 registry operations. For every
+// TestScopeIdentityRegistrySweep walks all 58 registry operations. For every
 // operation it pins that the principal's own tenant/project is accepted by the
 // scope resolver, that a foreign tenant (REST route or MCP input) and a
 // project-scoped principal naming another project are uniformly not_found, and

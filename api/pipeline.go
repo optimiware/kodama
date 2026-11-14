@@ -286,6 +286,65 @@ func (result PipelineStartResult) Validate() error {
 	return nil
 }
 
+// PipelineListRequest is the pipeline.list input. The project is carried
+// explicitly for MCP callers and is optional for REST callers whose route
+// supplies it.
+type PipelineListRequest struct {
+	ProjectID string `json:"project_id,omitempty" schema:"id"`
+	Page      *Page  `json:"page,omitempty"`
+}
+
+// Validate checks the optional project identity and page bounds.
+func (request PipelineListRequest) Validate() error {
+	if request.ProjectID != "" && !validID(request.ProjectID) {
+		return invalid("project_id is invalid")
+	}
+	if request.Page != nil {
+		return request.Page.Validate()
+	}
+	return nil
+}
+
+// PipelineSummaryView is one pipeline summary observation in pipeline.list.
+type PipelineSummaryView struct {
+	PipelineID string `json:"pipeline_id"`
+	Name       string `json:"name"`
+	Version    uint64 `json:"version" schema:"version"`
+}
+
+// Validate checks the pipeline identity, non-empty name and version.
+func (view PipelineSummaryView) Validate() error {
+	if !validID(view.PipelineID) {
+		return invalid("pipeline_id is invalid")
+	}
+	if !validPipelineName(view.Name) {
+		return invalid("pipeline name %q is invalid", view.Name)
+	}
+	if view.Version == 0 {
+		return invalid("pipeline version must be positive")
+	}
+	return nil
+}
+
+// PipelineListResult is the pipeline.list result.
+type PipelineListResult struct {
+	Pipelines  []PipelineSummaryView `json:"pipelines"`
+	NextCursor string                `json:"next_cursor,omitempty"`
+}
+
+// Validate checks every pipeline summary and the optional cursor bound.
+func (result PipelineListResult) Validate() error {
+	for _, pipeline := range result.Pipelines {
+		if err := pipeline.Validate(); err != nil {
+			return err
+		}
+	}
+	if len(result.NextCursor) > MaxCursorBytes {
+		return invalid("next_cursor is %d bytes; at most %d are allowed", len(result.NextCursor), MaxCursorBytes)
+	}
+	return nil
+}
+
 // validatePipelineYAML checks the 1 MiB YAML document bound.
 func validatePipelineYAML(document []byte) error {
 	if len(document) == 0 {

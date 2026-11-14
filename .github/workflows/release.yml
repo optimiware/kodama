@@ -1,15 +1,22 @@
 name: Release
 
-# A pushed tag v<VERSION> publishes that version: the kodama image and both
-# Helm charts to GHCR, and a GitHub release with the kodactl archives, the
-# chart packages and SHA256SUMS. A manual run on a branch builds everything
-# and publishes nothing. See docs/runbooks/release.md.
+# A change of the VERSION file on master publishes that version: the kodama
+# image and both Helm charts to GHCR, and a GitHub release with the kodactl
+# archives, the chart packages and SHA256SUMS. The workflow creates the tag
+# v<VERSION> itself. A development version (-dev) and a manual run build
+# everything and publish nothing, unless the manual run asks to publish from
+# master. A version that is already released is never replaced.
+# See docs/runbooks/release.md.
 on:
   push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
-      - "v[0-9]+.[0-9]+.[0-9]+-*"
+    branches: [master]
+    paths: [VERSION]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the version in VERSION. Only on master; off builds everything and publishes nothing."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,6 +41,7 @@ jobs:
       IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}/kodama
       CHART_REGISTRY: oci://ghcr.io/${{ github.repository }}/charts
       GH_TOKEN: ${{ github.token }}
+      PUBLISH_INPUT: ${{ inputs.publish }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -51,16 +59,35 @@ jobs:
             exit 1
           fi
           publish=false
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            if [[ "$GITHUB_REF_NAME" != "v${version}" ]]; then
-              echo "::error::tag ${GITHUB_REF_NAME} is not v${version}, the version in the VERSION file"
+          if [[ "$GITHUB_EVENT_NAME" == "push" || "$PUBLISH_INPUT" == "true" ]]; then
+            if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
+              echo "::error::a version is published from master, not from ${GITHUB_REF}"
               exit 1
             fi
-            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
-              echo "::error::${GITHUB_SHA} is not on master; a release is cut from master"
-              exit 1
+            if [[ "$version" == *-dev* ]]; then
+              if [[ "$PUBLISH_INPUT" == "true" ]]; then
+                echo "::error::${version} is a development version and is never published"
+                exit 1
+              fi
+              echo "::notice::${version} is a development version: building everything, publishing nothing"
+            else
+              # The GitHub release is created last, so it marks a complete
+              # publication. Only "not found" lets the run continue: an API
+              # failure must not be read as "not released yet".
+              if found="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${version}" --jq .tag_name 2>&1)"; then
+                echo "::error::version ${version} is already released (${found}). A released version is never replaced; set the next one with scripts/release-prepare."
+                exit 1
+              elif [[ "$found" != *"HTTP 404"* ]]; then
+                echo "::error::cannot tell whether ${version} is released: ${found}"
+                exit 1
+              fi
+              tagged="$(git ls-remote origin "refs/tags/v${version}" "refs/tags/v${version}^{}" | tail -n 1 | cut -f 1)"
+              if [[ -n "$tagged" && "$tagged" != "$GITHUB_SHA" ]]; then
+                echo "::error::the tag v${version} exists on ${tagged}, not on this commit ${GITHUB_SHA}"
+                exit 1
+              fi
+              publish=true
             fi
-            publish=true
           fi
           prerelease=false
           if [[ "$version" == 0.0.* || "$version" == *-* ]]; then
@@ -73,6 +100,13 @@ jobs:
           } >>"$GITHUB_ENV"
           echo "version ${version}, publish ${publish}, prerelease ${prerelease}"
 
+      - name: Enable multi-arch container runtime support
+        run: |
+          sudo apt-get update
+          # qemu-user-binfmt registers the emulators the arm64 image stage runs
+          # under; socat serves the installation check's TLS front ends.
+          sudo apt-get install -y --no-install-recommends qemu-user-binfmt socat
+
       - name: Build the release artifacts
         run: make dist
 
@@ -82,6 +116,23 @@ jobs:
           line="$(podman run --rm "$ref" version)"
           echo "$line"
           [[ "$line" == "kodama ${VERSION} (revision ${GITHUB_SHA},"* ]] || { echo "::error::the image reports another version or revision"; exit 1; }
+          if [[ "$PUBLISH" != "true" ]]; then
+            scripts/image build --repository "$IMAGE_REPOSITORY" --tag "${VERSION}-multiarch" --platforms linux/amd64,linux/arm64
+          fi
+
+      # The gate before anything is pushed: the image must install with the
+      # Podman bundle and run a pipeline.
+      - name: Install the image and run a pipeline
+        run: |
+          socket="${RUNNER_TEMP}/podman.sock"
+          podman system service --time=0 "unix://${socket}" &
+          service=$!
+          trap 'kill "$service" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            [[ -S "$socket" ]] && break
+            sleep 1
+          done
+          KODAMA_LOCAL_PODMAN_SOCKET="$socket" scripts/release-smoke --image "${IMAGE_REPOSITORY}:${VERSION}"
 
       - name: Log in to GHCR
         if: env.PUBLISH == 'true'
@@ -92,7 +143,11 @@ jobs:
       - name: Push the image
         if: env.PUBLISH == 'true'
         run: |
-          reference="$(scripts/image build-push --repository "$IMAGE_REPOSITORY" --tag "$VERSION")"
+          extra_args=(--platforms linux/amd64,linux/arm64)
+          if [[ "$PRERELEASE" == "false" ]]; then
+            extra_args+=(--also-tag latest)
+          fi
+          reference="$(scripts/image build-push --repository "$IMAGE_REPOSITORY" --tag "$VERSION" "${extra_args[@]}")"
           echo "IMAGE_REFERENCE=${reference}" >>"$GITHUB_ENV"
           echo "pushed ${reference}"
 
@@ -105,25 +160,26 @@ jobs:
       - name: Publish the GitHub release
         if: env.PUBLISH == 'true'
         run: |
+          image_tags="tag \`${VERSION}\`"
+          if [[ "$PRERELEASE" == "false" ]]; then
+            image_tags="tags \`${VERSION}\`, \`latest\`"
+          fi
           {
             echo "## Artifacts"
             echo
             echo "| Artifact | Reference |"
             echo "|---|---|"
-            echo "| Image | \`${IMAGE_REFERENCE}\` (tag \`${VERSION}\`) |"
+            echo "| Image (\`linux/amd64\`, \`linux/arm64\`) | \`${IMAGE_REFERENCE}\` (${image_tags}) |"
             echo "| Chart \`kodama\` | \`${CHART_REGISTRY}/kodama\` version \`${VERSION}\` |"
             echo "| Chart \`kodama-stack\` | \`${CHART_REGISTRY}/kodama-stack\` version \`${VERSION}\` |"
             echo "| \`kodactl\` | the archives below; verify with \`sha256sum --check SHA256SUMS\` |"
             echo
-            echo "Source revision: \`${GITHUB_SHA}\`. Changes and known limitations: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)."
+            echo "Source revision: \`${GITHUB_SHA}\`. Changes and known limitations: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/v${VERSION}/CHANGELOG.md)."
           } >"${RUNNER_TEMP}/notes.md"
           flags=()
           if [[ "$PRERELEASE" == "true" ]]; then
             flags+=(--prerelease)
           fi
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
-              --title "Kodama ${VERSION}" --notes-file "${RUNNER_TEMP}/notes.md" "${flags[@]}"
-          fi
+          # Creates the tag v<VERSION> on this commit when it does not exist.
+          gh release create "v${VERSION}" dist/* --target "$GITHUB_SHA" \
+            --title "Kodama ${VERSION}" --notes-file "${RUNNER_TEMP}/notes.md" "${flags[@]}"

@@ -296,11 +296,26 @@ func TestGitRuleParserRefusals(t *testing.T) {
 		{"duplicate repo", "repo admin\n    RW = @admin\nrepo admin\n    RW = @admin\n"},
 		{"trailing garbage", "repo admin\n    RW = @admin extra=\n"},
 		{"unbalanced option", "repo admin\n    option approve.refs/heads/main reviewer\n"},
+		{"option resource before repo", "option resource = res-1\nrepo admin\n    RW = @admin\n"},
+		{"empty option resource", "repo admin\n    option resource =\n    RW = @admin\n"},
+		{"invalid option resource slash", "repo admin\n    option resource = res/1\n    RW = @admin\n"},
+		{"invalid option resource dot", "repo admin\n    option resource = ..\n    RW = @admin\n"},
+		{"duplicate option resource", "repo admin\n    option resource = res-1\n    option resource = res-2\n    RW = @admin\n"},
+		{"option resource shared by two repos", "repo admin\n    option resource = res-1\n    RW = @admin\nrepo shop\n    option resource = res-1\n    R = @all\n"},
+		{"unknown option key", "repo admin\n    option unknown = res-1\n    RW = @admin\n"},
 	}
 	for _, testCase := range refusals {
 		if _, err := git.ParseConfig([]byte(testCase.body)); err == nil {
 			t.Errorf("%s: ParseConfig accepted %q", testCase.name, testCase.body)
 		}
+	}
+
+	withResource, err := git.ParseConfig([]byte("repo my-app\n    option resource = res_my-app-1\n    R = @all\n"))
+	if err != nil {
+		t.Fatalf("ParseConfig refused valid option resource: %v", err)
+	}
+	if policy, ok := withResource.Policy("my-app"); !ok || policy.ResourceID != "res_my-app-1" {
+		t.Fatalf("Policy(my-app).ResourceID = %q (ok=%v); want res_my-app-1", policy.ResourceID, ok)
 	}
 
 	// Comments and blank lines are insignificant.

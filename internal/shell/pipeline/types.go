@@ -192,8 +192,9 @@ type PinnedImage struct {
 	Digest    string `json:"digest"`
 }
 
-// PushTrigger is the optional exact-ref push definition of an API-posted
-// pipeline. Refs match exactly; there are no patterns or input mappings.
+// PushTrigger is the optional push definition of an API-posted pipeline. Refs
+// match either an exact anchored ref or a trailing-slash ref prefix under
+// `refs/`; there are no globs, regexes or input mappings.
 type PushTrigger struct {
 	Repository resource.ResourceID `json:"repository"`
 	Service    service.ServiceID   `json:"service"`

@@ -5,7 +5,7 @@ import (
 	"github.com/optimiware/kodama/internal/shell/tenancy"
 )
 
-// This file is the declared operation registry: 51 operations in 12 families.
+// This file is the declared operation registry: 58 operations in 12 families.
 // Schema names follow one convention so REST/MCP parity checks can enumerate
 // the registry without a second table:
 //
@@ -111,6 +111,10 @@ var registry = []Operation{
 	operation("project.update", FamilyTenancy, ScopeTenant,
 		[]tenancy.Role{tenancy.RoleAdmin}, nil, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckPrincipalEnabled}, ReceiptRequired, receiptErrors()),
+	operation("project.list", FamilyTenancy, ScopeTenant,
+		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer, tenancy.RoleReviewer, tenancy.RoleOperator, tenancy.RoleViewer},
+		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleReviewer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
 	operation("membership.grant", FamilyTenancy, ScopeTenant,
 		[]tenancy.Role{tenancy.RoleAdmin}, nil, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptRequired, receiptErrors()),
@@ -120,6 +124,10 @@ var registry = []Operation{
 	operation("membership.list", FamilyTenancy, ScopeTenant,
 		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleViewer}, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	operation("principal.whoami", FamilyTenancy, ScopeTenant,
+		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer, tenancy.RoleReviewer, tenancy.RoleOperator, tenancy.RoleViewer},
+		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleReviewer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecOwnTaskContent,
+		nil, ReceiptNone, readErrors()),
 
 	// Resource bindings.
 	operation("resource.binding.register", FamilyResource, ScopeProject,
@@ -134,12 +142,18 @@ var registry = []Operation{
 	operation("resource.binding.read", FamilyResource, ScopeProject,
 		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleViewer}, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	operation("resource.binding.list", FamilyResource, ScopeProject,
+		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleViewer}, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
 
 	// API-posted pipelines and immutable execution start.
 	operation("pipeline.apply", FamilyPipeline, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckPipelineVersion, CheckPushServiceAdmin}, ReceiptRequired, receiptErrors()),
 	operation("pipeline.read", FamilyPipeline, ScopeProject,
+		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	operation("pipeline.list", FamilyPipeline, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
 	operation("pipeline.update", FamilyPipeline, ScopeProject,
@@ -157,6 +171,10 @@ var registry = []Operation{
 		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer, tenancy.RoleViewer},
 		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	operation("secret.metadata.list", FamilySecret, ScopeProject,
+		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer, tenancy.RoleViewer},
+		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
 	operation("secret.write", FamilySecret, ScopeProject,
 		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptRequired, receiptErrors()),
@@ -168,6 +186,9 @@ var registry = []Operation{
 	operation("service.create", FamilyService, ScopeProject,
 		[]tenancy.Role{tenancy.RoleAdmin}, nil, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptRequired, receiptErrors()),
+	operation("service.list", FamilyService, ScopeProject,
+		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleViewer}, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
 	operation("service.update", FamilyService, ScopeProject,
 		[]tenancy.Role{tenancy.RoleAdmin}, nil, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckServiceEnabled}, ReceiptRequired, receiptErrors()),
@@ -193,6 +214,10 @@ var registry = []Operation{
 		[]AuthorityCheck{CheckMembership}, ReceiptRequired, receiptErrors()),
 	operation("task.read", FamilyTask, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecOwnTaskContent,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	operation("task.list", FamilyTask, ScopeProject,
+		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleReviewer, tenancy.RoleViewer},
+		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleReviewer, tenancy.RoleViewer}, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
 	operation("task.edit", FamilyTask, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecOwnTaskContent,

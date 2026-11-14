@@ -99,6 +99,11 @@ func (kms *AWSKMS) send(ctx context.Context, service string, request *http.Reque
 		}
 		return awsReply{}, fault.Wrap(fault.DependencyUnavailable, service+" response could not be read", err)
 	}
+	// A response sent as the caller cancelled can still arrive complete. The
+	// caller asked to stop, so it is cancellation here too, not a reply.
+	if contextErr := ctx.Err(); contextErr != nil {
+		return awsReply{}, contextErr
+	}
 	reply := awsReply{status: response.StatusCode, errorType: response.Header.Get("X-Amzn-Errortype")}
 	if int64(len(body)) > awsMaxResponse {
 		reply.oversized = true

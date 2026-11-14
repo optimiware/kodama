@@ -489,3 +489,49 @@ func TestLoadToolProxyConfigFileRefuses(t *testing.T) {
 		}
 	})
 }
+
+func TestLoadModelsConfigFileProviders(t *testing.T) {
+	const providersOnlyFile = `{
+  "providers": [
+    {
+      "tenant_id": "tenant-1",
+      "project_id": "project-1",
+      "name": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "secret_name": "ANTHROPIC_API_KEY",
+      "auth_header": "x-api-key",
+      "anthropic_version": "2023-06-01",
+      "max_request_bytes": 8388608,
+      "timeout": "10m"
+    },
+    {
+      "tenant_id": "tenant-1",
+      "name": "openai",
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "secret_name": "OPENAI_API_KEY"
+    }
+  ],
+  "secret_rules": [
+    {"tenant_id": "tenant-1", "names": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]}
+  ]
+}`
+	path := writeConfigFile(t, "providers.json", providersOnlyFile)
+	config, err := LoadModelsConfigFile(path, ProfileProduction)
+	if err != nil {
+		t.Fatalf("LoadModelsConfigFile(providers): %v", err)
+	}
+	if len(config.Providers) != 2 {
+		t.Fatalf("providers = %d; want 2", len(config.Providers))
+	}
+	if config.Providers[0].Name != "anthropic" || config.Providers[0].Timeout != 10*time.Minute {
+		t.Fatalf("provider 0 = %+v", config.Providers[0])
+	}
+	if config.Providers[1].Name != "openai" || config.Providers[1].Scope.ProjectID != "" {
+		t.Fatalf("provider 1 = %+v", config.Providers[1])
+	}
+
+	httpProvider := strings.Replace(providersOnlyFile, "https://api.anthropic.com", "http://api.anthropic.com", 1)
+	if _, err := LoadModelsConfigFile(writeConfigFile(t, "http-provider.json", httpProvider), ProfileProduction); err == nil {
+		t.Fatal("production accepted a plaintext http provider base_url")
+	}
+}

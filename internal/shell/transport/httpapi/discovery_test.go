@@ -1,7 +1,7 @@
 package httpapi_test
 
 // These tests pin the one unauthenticated public discovery route served by the
-// REST edge, api.DiscoveryPath. It is a fixed root route outside the 51-operation
+// REST edge, api.DiscoveryPath. It is a fixed root route outside the 58-operation
 // registry: it is served before authentication and before operation routing,
 // validates the consumer-owned provider's document on every response, and never
 // falls back to a partial, invalid or oversized document.
@@ -490,12 +490,12 @@ func discoveryURLOfEncodedSize(t *testing.T, document api.DiscoveryDocument, siz
 }
 
 // TestDiscoveryIsAbsentFromRegistries pins that the discovery route is not one
-// of the 51 operations: it is not in the declared route table, does not resolve
+// of the 58 operations: it is not in the declared route table, does not resolve
 // through api.Match and is not advertised as an MCP tool.
 func TestDiscoveryIsAbsentFromRegistries(t *testing.T) {
 	routes := api.Routes()
-	if len(routes) != 51 {
-		t.Fatalf("routes = %d; want 51", len(routes))
+	if len(routes) != 58 {
+		t.Fatalf("routes = %d; want 58", len(routes))
 	}
 	for _, route := range routes {
 		if route.Path == api.DiscoveryPath {
@@ -513,8 +513,8 @@ func TestDiscoveryIsAbsentFromRegistries(t *testing.T) {
 	}
 
 	catalog := mcp.ToolCatalog()
-	if len(catalog) != 51 {
-		t.Fatalf("MCP catalog = %d tools; want 51", len(catalog))
+	if len(catalog) != 58 {
+		t.Fatalf("MCP catalog = %d tools; want 58", len(catalog))
 	}
 	for _, tool := range catalog {
 		if tool.Name == api.DiscoveryPath {

@@ -11,7 +11,7 @@ import (
 	"github.com/optimiware/kodama/api"
 )
 
-// TestMCPToolsListAdvertisesFieldLevelSchemas pins that every one of the 51
+// TestMCPToolsListAdvertisesFieldLevelSchemas pins that every one of the 58
 // tools/list entries advertises exactly api.OperationInputSchema, a strict
 // field-level envelope schema with the declared title.
 func TestMCPToolsListAdvertisesFieldLevelSchemas(t *testing.T) {
@@ -34,8 +34,8 @@ func TestMCPToolsListAdvertisesFieldLevelSchemas(t *testing.T) {
 		t.Fatalf("tools/list returned %d tools; want %d", len(catalog.Tools), len(routes))
 	}
 	for index, route := range routes {
-		if catalog.Tools[index].Name != route.Operation {
-			t.Fatalf("tools/list[%d] = %q; want %q", index, catalog.Tools[index].Name, route.Operation)
+		if catalog.Tools[index].Name != route.MCPTool {
+			t.Fatalf("tools/list[%d] = %q; want %q", index, catalog.Tools[index].Name, route.MCPTool)
 		}
 		wantRaw, err := api.OperationInputSchema(route.Operation)
 		if err != nil {
