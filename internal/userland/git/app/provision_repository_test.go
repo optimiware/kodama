@@ -334,6 +334,15 @@ func TestProvisionRepositoryAdoptsExistingBareRepository(t *testing.T) {
 	if observed := repositoryProvisionPolicy(t, config.Environment, layout.repositoryPath()); observed != wantPolicy {
 		t.Fatalf("committed policy = %q; want %q", observed, wantPolicy)
 	}
+
+	// An update hook is a foreign mutation path: a repository carrying one is
+	// not adopted.
+	if err := os.WriteFile(filepath.Join(repositoryPath, "hooks", "update"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatalf("write update hook: %v", err)
+	}
+	if _, err := ProvisionRepository(context.Background(), config); !errors.Is(err, native.ErrRepositoryProvisionDestination) {
+		t.Fatalf("error = %v with an update hook; want ErrRepositoryProvisionDestination", err)
+	}
 }
 
 // TestProvisionRepositoryInitializesExistingEmptyDirectory pins that the only

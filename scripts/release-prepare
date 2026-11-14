@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# scripts/release-prepare: set the version of this checkout. Nothing is pushed.
+#
+#   scripts/release-prepare <version>
+#
+# <version> is MAJOR.MINOR.PATCH with an optional suffix:
+#
+#   0.2.0        a release. Also updates the version the README and the Podman
+#                quickstart install, and renames the CHANGELOG's "Unreleased"
+#                section to the version.
+#   0.2.0-rc.1   a release candidate. It is published as a pre-release; the
+#                documents keep naming the last release.
+#   0.3.0-dev    a development version, set right after a release. It is never
+#                published.
+#
+# Commit the result and open a pull request. Merging a release or a release
+# candidate to master publishes it (docs/runbooks/release.md).
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+die() { printf 'scripts/release-prepare: %s\n' "$*" >&2; exit 1; }
+
+case "${1:-}" in
+  -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  "") die "a version is required, for example: scripts/release-prepare 0.2.0" ;;
+esac
+[[ $# -eq 1 ]] || die "exactly one version is expected"
+new="$1"
+[[ "$new" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "'${new}' is not MAJOR.MINOR.PATCH with an optional -suffix"
+
+old="$(<VERSION)"
+[[ "$new" != "$old" ]] || die "the checkout is already version ${new}"
+
+# replace <file> <fixed old text> <fixed new text>: exactly the lines that
+# carry the old text change; a file that does not carry it is an error, so a
+# moved or renamed version line cannot be skipped silently.
+replace() {
+  local file=$1 from=$2 to=$3
+  grep -qF -- "$from" "$file" || die "${file} does not contain '${from}'"
+  FROM="$from" TO="$to" perl -0pi -e 's/\Q$ENV{FROM}\E/$ENV{TO}/g' "$file"
+}
+
+printf '%s\n' "$new" >VERSION
+for chart in kodama kodama-stack; do
+  replace "deploy/charts/${chart}/Chart.yaml" "version: ${old}"$'\n' "version: ${new}"$'\n'
+  replace "deploy/charts/${chart}/Chart.yaml" "appVersion: \"${old}\"" "appVersion: \"${new}\""
+  replace "deploy/charts/${chart}/values.yaml" "tag: \"${old}\"" "tag: \"${new}\""
+done
+replace deploy/charts/kodama-stack/Chart.yaml "    version: \"${old}\"" "    version: \"${new}\""
+replace scripts/lib/deploy.sh "KODAMA_IMAGE_TAG:-${old}}" "KODAMA_IMAGE_TAG:-${new}}"
+
+if [[ "$new" != *-* ]]; then
+  # A release: the documents install it, and its changes get their section.
+  documented="$(sed -n 's/.*git clone --branch v\([0-9][0-9.]*\) .*/\1/p' README.md | head -n 1)"
+  [[ -n "$documented" ]] || die "README.md names no released version (git clone --branch v<version>)"
+  if [[ "$documented" != "$new" ]]; then
+    for file in README.md docs/runbooks/podman-quickstart.md; do
+      replace "$file" "kodama/kodama:${documented}" "kodama/kodama:${new}"
+    done
+    replace README.md "--branch v${documented} " "--branch v${new} "
+  fi
+  grep -q '^## Unreleased$' CHANGELOG.md || die "CHANGELOG.md has no '## Unreleased' section to release as ${new}"
+  replace CHANGELOG.md $'\n## Unreleased\n' $'\n'"## ${new}"$'\n'
+elif ! grep -q '^## Unreleased$' CHANGELOG.md; then
+  replace CHANGELOG.md $'# Changelog\n' $'# Changelog\n\n## Unreleased\n'
+fi
+
+printf 'scripts/release-prepare: %s -> %s\n' "$old" "$new"
+git status --short

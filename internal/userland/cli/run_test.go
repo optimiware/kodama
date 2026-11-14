@@ -140,6 +140,8 @@ func TestRunUsageErrors(t *testing.T) {
 		{name: "call invalid idempotency key", args: []string{"call", "task.read", "--idempotency-key=bad key"}},
 		{name: "inspect without execution", args: []string{"inspect"}},
 		{name: "watch without execution", args: []string{"watch"}},
+		{name: "run without file", args: []string{"run"}},
+		{name: "run unknown flag", args: []string{"run", "/repo/.kodama/build.yaml", "--title", "x"}},
 		{name: "pipeline apply without project", args: []string{"pipeline", "apply", directory}, config: func() cli.Config {
 			config := testConfig()
 			config.Project = ""

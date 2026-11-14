@@ -32,6 +32,7 @@ import (
 
 	"github.com/optimiware/kodama/internal/fault"
 	"github.com/optimiware/kodama/internal/id"
+	kerneldefinition "github.com/optimiware/kodama/internal/kernel/definition"
 	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
 	"github.com/optimiware/kodama/internal/shell/app/bridges"
 	"github.com/optimiware/kodama/internal/shell/authorize"
@@ -48,6 +49,14 @@ import (
 // activation-time execution credential. It is not a public registry operation.
 const activationCredentialOperation = "execution.credential.activate"
 
+// Reserved LLM proxy convenience environment variables injected into container
+// workloads when configured models/providers are enabled in the execution's
+// scope.
+const (
+	EnvLLMOpenAIBaseURL    = "KODAMA_LLM_OPENAI_BASE_URL"
+	EnvLLMAnthropicBaseURL = "KODAMA_LLM_ANTHROPIC_BASE_URL"
+)
+
 // activationMaterializer builds the secret values and the current execution
 // credential of one committed activation.
 type activationMaterializer struct {
@@ -60,6 +69,8 @@ type activationMaterializer struct {
 	controller  store.Controller
 	ids         *bridges.IDs
 	clock       Clock
+	models      *ModelsConfig
+	workloadURL string
 
 	// issuedMu guards issuedVersions, the execution-row version produced by this
 	// materializer's own credential commit. The preparation-failure rebase
@@ -102,6 +113,8 @@ func newActivationMaterializer(config activationMaterializerConfig) (*activation
 		controller:     config.Controller,
 		ids:            config.IDs,
 		clock:          config.Clock,
+		models:         config.Models,
+		workloadURL:    strings.TrimRight(strings.TrimSpace(config.WorkloadURL), "/"),
 		issuedVersions: make(map[id.ExecutionID]uint64),
 	}, nil
 }
@@ -117,6 +130,8 @@ type activationMaterializerConfig struct {
 	Controller  store.Controller
 	IDs         *bridges.IDs
 	Clock       Clock
+	Models      *ModelsConfig
+	WorkloadURL string
 }
 
 // prepare resolves the declared secret values and the committed execution
@@ -165,7 +180,30 @@ func (materializer *activationMaterializer) prepare(ctx context.Context, request
 		return request, err
 	}
 	request.Credential = credential
+	if materializer.models != nil && materializer.models.enabledForScope(scope) && materializer.workloadURL != "" {
+		request.Container.Env = injectModelProxyEnv(request.Container.Env, materializer.workloadURL)
+	}
 	return request, nil
+}
+
+func injectModelProxyEnv(existing []kerneldefinition.EnvVar, baseURL string) []kerneldefinition.EnvVar {
+	filtered := make([]kerneldefinition.EnvVar, 0, len(existing)+2)
+	for _, entry := range existing {
+		if string(entry.Name) == EnvLLMOpenAIBaseURL || string(entry.Name) == EnvLLMAnthropicBaseURL {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return append(filtered,
+		kerneldefinition.EnvVar{
+			Name:  id.EnvName(EnvLLMOpenAIBaseURL),
+			Value: baseURL + "/llm/openai/v1",
+		},
+		kerneldefinition.EnvVar{
+			Name:  id.EnvName(EnvLLMAnthropicBaseURL),
+			Value: baseURL + "/llm/anthropic",
+		},
+	)
 }
 
 // credential returns the committed execution credential, reconstructing it

@@ -250,6 +250,71 @@ func (result ServiceCredentialRevokeResult) Validate() error {
 	return nil
 }
 
+// ServiceListRequest is the service.list input. The project is carried
+// explicitly for MCP callers and is optional for REST callers whose route
+// supplies it.
+type ServiceListRequest struct {
+	ProjectID string `json:"project_id,omitempty" schema:"id"`
+	Page      *Page  `json:"page,omitempty"`
+}
+
+// Validate checks the optional project identity and page bounds.
+func (request ServiceListRequest) Validate() error {
+	if request.ProjectID != "" && !validID(request.ProjectID) {
+		return invalid("project_id is invalid")
+	}
+	if request.Page != nil {
+		return request.Page.Validate()
+	}
+	return nil
+}
+
+// ServiceSummaryView is one credential-free service account observation in
+// service.list.
+type ServiceSummaryView struct {
+	ServiceID string   `json:"service_id"`
+	State     string   `json:"state"`
+	Roles     []string `json:"roles"`
+	Version   uint64   `json:"version" schema:"version"`
+}
+
+// Validate checks the service identity, enabled/disabled state, non-Admin role
+// set and version.
+func (view ServiceSummaryView) Validate() error {
+	if !validID(view.ServiceID) {
+		return invalid("service_id is invalid")
+	}
+	if view.State != serviceStateEnabled && view.State != serviceStateDisabled {
+		return invalid("unknown service state %q", view.State)
+	}
+	if err := validateServiceRoles(view.Roles); err != nil {
+		return err
+	}
+	if view.Version == 0 {
+		return invalid("service version must be positive")
+	}
+	return nil
+}
+
+// ServiceListResult is the service.list result.
+type ServiceListResult struct {
+	Services   []ServiceSummaryView `json:"services"`
+	NextCursor string               `json:"next_cursor,omitempty"`
+}
+
+// Validate checks every service summary and the optional cursor bound.
+func (result ServiceListResult) Validate() error {
+	for _, service := range result.Services {
+		if err := service.Validate(); err != nil {
+			return err
+		}
+	}
+	if len(result.NextCursor) > MaxCursorBytes {
+		return invalid("next_cursor is %d bytes; at most %d are allowed", len(result.NextCursor), MaxCursorBytes)
+	}
+	return nil
+}
+
 // Service lifecycle state names.
 const (
 	serviceStateEnabled  = "enabled"

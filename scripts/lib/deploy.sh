@@ -263,7 +263,7 @@ render_helm_values_from_descriptor() {
   local descriptor_file="$1"
   local output_values_file="$2"
   local image_repo="${KODAMA_IMAGE_REPOSITORY:-registry.example.com/kodama}"
-  local image_tag="${KODAMA_IMAGE_TAG:-0.1.0}"
+  local image_tag="${KODAMA_IMAGE_TAG:-0.2.0-dev}"
   local image_digest="${KODAMA_IMAGE_DIGEST:-}"
   local oidc_issuer="${KODAMA_OIDC_ISSUER:-}"
   local oidc_audience="${KODAMA_OIDC_AUDIENCE:-}"

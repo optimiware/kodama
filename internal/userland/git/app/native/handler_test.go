@@ -26,7 +26,7 @@ func (fakeStorage) EnsureRepository(id.TenantID, string) (git.RepositoryLocation
 type fakePolicy struct{}
 
 func (fakePolicy) Current(context.Context) (git.Config, error) {
-	return git.ParseConfig([]byte("repo shop/web\nRW = @all\n"))
+	return git.ParseConfig([]byte("repo shop/web\noption resource = res-1\nRW = @all\n"))
 }
 
 type fakeExecutor struct{}
@@ -580,7 +580,7 @@ func TestHookHandlerGatesEveryPhaseOnTheCommittedPolicy(t *testing.T) {
 			At:             time.Now(),
 		},
 	}}
-	policy := &mutablePolicy{body: "repo admin\n    RW = @admin\n\nrepo shop/web\n    RW = @all\n"}
+	policy := &mutablePolicy{body: "repo admin\n    RW = @admin\n\nrepo shop/web\n    option resource = res-1\n    RW = @all\n"}
 	handler := testHookHandlerWithConfig(t, journal, HookHandlerConfig{Policy: policy})
 
 	// The duplicate delivery is otherwise acceptable: the accepted entry

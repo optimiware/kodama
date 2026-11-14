@@ -70,30 +70,36 @@ var operationCodecSpecs = map[string]operationCodecSpec{
 	"tenant.rotate_key": newOperationSpec[TenantRotateKeyRequest, TenantRotateKeyResult](true),
 	"project.create":    newOperationSpec[ProjectCreateRequest, ProjectCreateResult](true),
 	"project.update":    newOperationSpec[ProjectUpdateRequest, ProjectUpdateResult](true),
+	"project.list":      newOperationSpec[ProjectListRequest, ProjectListResult](false),
 	"membership.grant":  newOperationSpec[MembershipGrantRequest, MembershipGrantResult](true),
 	"membership.revoke": newOperationSpec[MembershipRevokeRequest, MembershipRevokeResult](true),
 	"membership.list":   newOperationSpec[MembershipListRequest, MembershipListResult](false),
+	"principal.whoami":  newOperationSpec[PrincipalWhoamiRequest, PrincipalWhoamiResult](false),
 
 	// Resource bindings.
 	"resource.binding.register": newOperationSpec[ResourceBindingRegisterRequest, ResourceBindingRegisterResult](true),
 	"resource.binding.update":   newOperationSpec[ResourceBindingUpdateRequest, ResourceBindingUpdateResult](true),
 	"resource.binding.delete":   newOperationSpec[ResourceBindingDeleteRequest, ResourceBindingDeleteResult](true),
 	"resource.binding.read":     newOperationSpec[ResourceBindingReadRequest, ResourceBindingReadResult](false),
+	"resource.binding.list":     newOperationSpec[ResourceBindingListRequest, ResourceBindingListResult](false),
 
 	// Pipelines and immutable execution start.
 	"pipeline.apply":  newOperationSpec[PipelineApplyRequest, PipelineApplyResult](true),
 	"pipeline.read":   newOperationSpec[PipelineReadRequest, PipelineReadResult](false),
+	"pipeline.list":   newOperationSpec[PipelineListRequest, PipelineListResult](false),
 	"pipeline.update": newOperationSpec[PipelineUpdateRequest, PipelineUpdateResult](true),
 	"pipeline.delete": newOperationSpec[PipelineDeleteRequest, PipelineDeleteResult](true),
 	"pipeline.start":  newOperationSpec[PipelineStartRequest, PipelineStartResult](true),
 
 	// Secret metadata and writes.
 	"secret.metadata.read": newOperationSpec[SecretMetadataReadRequest, SecretMetadataReadResult](false),
+	"secret.metadata.list": newOperationSpec[SecretMetadataListRequest, SecretMetadataListResult](false),
 	"secret.write":         newOperationSpec[SecretWriteRequest, SecretWriteResult](true),
 	"secret.delete":        newOperationSpec[SecretDeleteRequest, SecretDeleteResult](true),
 
 	// Service accounts and credential lifecycle.
 	"service.create":            newOperationSpec[ServiceCreateRequest, ServiceCreateResult](true),
+	"service.list":              newOperationSpec[ServiceListRequest, ServiceListResult](false),
 	"service.update":            newOperationSpec[ServiceUpdateRequest, ServiceUpdateResult](true),
 	"service.enable":            newOperationSpec[ServiceEnableRequest, ServiceEnableResult](true),
 	"service.disable":           newOperationSpec[ServiceDisableRequest, ServiceDisableResult](true),
@@ -104,6 +110,7 @@ var operationCodecSpecs = map[string]operationCodecSpec{
 	// Tasks and conversation handoffs.
 	"task.create":           newOperationSpec[TaskCreateRequest, TaskCreateResult](true),
 	"task.read":             newOperationSpec[TaskReadRequest, TaskReadResult](false),
+	"task.list":             newOperationSpec[TaskListRequest, TaskListResult](false),
 	"task.edit":             newOperationSpec[TaskEditRequest, TaskEditResult](true),
 	"task.comment":          newOperationSpec[TaskCommentRequest, TaskCommentResult](true),
 	"task.select_pipeline":  newOperationSpec[TaskSelectPipelineRequest, TaskSelectPipelineResult](true),
@@ -345,6 +352,9 @@ func YAMLOperations() []string {
 // document expands to about 1.4 MiB of base64; every other operation keeps the
 // default MaxRequestBytes. An unknown operation gets the default bound.
 func MaxEnvelopeBytes(operation string) int {
+	if resolved, ok := MCPToolOperationName(operation); ok {
+		operation = resolved
+	}
 	for _, candidate := range yamlOperations {
 		if candidate == operation {
 			return MaxYAMLRequestBytes

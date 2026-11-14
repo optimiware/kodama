@@ -380,14 +380,14 @@ func TestYAMLOperationsAndRoutesReturnCopies(t *testing.T) {
 	}
 
 	canonical := api.Routes()
-	if len(canonical) != 51 {
-		t.Fatalf("Routes() has %d rows; want 51", len(canonical))
+	if len(canonical) != 58 {
+		t.Fatalf("Routes() has %d rows; want 58", len(canonical))
 	}
 	canonical[0].Operation = "mutated"
 	_ = append(canonical, api.Route{Operation: "mutated"})
 	again := api.Routes()
-	if len(again) != 51 {
-		t.Errorf("Routes() after caller append has %d rows; want the unchanged 51", len(again))
+	if len(again) != 58 {
+		t.Errorf("Routes() after caller append has %d rows; want the unchanged 58", len(again))
 	}
 	if again[0].Operation != "tenant.create" {
 		t.Errorf("Routes()[0] after caller mutation = %q; want tenant.create", again[0].Operation)

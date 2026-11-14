@@ -49,6 +49,9 @@ type CommittedPolicyConfig struct {
 	// Executor resolves the ref and reads the committed blob through the same
 	// command seam the rest of the service uses.
 	Executor git.CommandExecutor
+	// ResourceIDs are the service's static repository resource pins. A
+	// proposed policy that contradicts one is refused.
+	ResourceIDs map[string]string
 }
 
 // CommittedPolicy implements git.PolicySource by resolving the trusted admin
@@ -58,6 +61,7 @@ type CommittedPolicyConfig struct {
 type CommittedPolicy struct {
 	repositoryPath string
 	executor       git.CommandExecutor
+	resourceIDs    map[string]string
 }
 
 var _ git.PolicySource = (*CommittedPolicy)(nil)
@@ -72,7 +76,7 @@ func NewCommittedPolicy(config CommittedPolicyConfig) (*CommittedPolicy, error) 
 	if config.Executor == nil {
 		return nil, fmt.Errorf("committed admin policy command executor is missing")
 	}
-	return &CommittedPolicy{repositoryPath: repositoryPath, executor: config.Executor}, nil
+	return &CommittedPolicy{repositoryPath: repositoryPath, executor: config.Executor, resourceIDs: config.ResourceIDs}, nil
 }
 
 // Current resolves the accepted admin commit and parses its policy blob. There
@@ -132,6 +136,16 @@ func (policy *CommittedPolicy) ValidateCommit(ctx context.Context, commit string
 	config, err := git.ParseConfig(data)
 	if err != nil {
 		return fmt.Errorf("proposed admin policy %s: %w", CommittedPolicyFile, err)
+	}
+	// The service refuses every request for a repository whose `option
+	// resource` contradicts its static pin, so accepting such a policy for
+	// the admin repository would also refuse the push that corrects it.
+	for repository, pinned := range policy.resourceIDs {
+		pinned = strings.TrimSpace(pinned)
+		proposed, _ := config.Policy(strings.TrimSpace(repository))
+		if pinned != "" && proposed.ResourceID != "" && proposed.ResourceID != pinned {
+			return fmt.Errorf("proposed admin policy %s declares a resource for the %q repository that disagrees with its configured resource id", CommittedPolicyFile, repository)
+		}
 	}
 	return requireAdminWriteOfPolicyRef(config)
 }

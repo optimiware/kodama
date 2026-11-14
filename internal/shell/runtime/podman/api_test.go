@@ -72,6 +72,7 @@
 //
 //	type Libpod interface {
 //	    CreateContainer(context.Context, ContainerSpec) (ContainerState, error)
+//	    InspectImage(context.Context, string) error
 //	    InspectContainer(context.Context, string) (ContainerState, error)
 //	    ListContainers(context.Context, map[string]string) ([]ContainerState, error)
 //	    StartContainer(context.Context, string) error

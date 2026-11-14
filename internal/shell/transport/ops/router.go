@@ -115,7 +115,11 @@ func (router *Router) Invoke(ctx context.Context, invocation Invocation) (api.Re
 	// Authentication is the first boundary: a failed authentication never
 	// reaches a scope lookup, input validation or a handler, so no resource
 	// lookup can expose scoped information.
-	principal, err := router.principals.Resolve(ctx, invocation.Credential)
+	authCtx := ctx
+	if entry.operation.Name == "principal.whoami" {
+		authCtx = authorize.WithUnassignedPrincipal(ctx)
+	}
+	principal, err := router.principals.Resolve(authCtx, invocation.Credential)
 	if err != nil {
 		return api.Result{}, sanitize(err)
 	}

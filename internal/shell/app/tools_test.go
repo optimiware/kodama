@@ -235,7 +235,7 @@ func mcpCallTool(t *testing.T, handler http.Handler, token, project, alias strin
 	request.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
-	if recorder.Code != api.HTTPStatusSuccess {
+	if recorder.Code != api.HTTPStatusSuccess && recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("MCP tool.invoke status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 	var response api.MCPResponse
@@ -249,8 +249,8 @@ func mcpCallTool(t *testing.T, handler http.Handler, token, project, alias strin
 		}
 		return api.Result{}, publicError
 	}
-	var result api.Result
-	if err := json.Unmarshal(response.Result, &result); err != nil {
+	result, err := api.DecodeMCPResult(response.Result)
+	if err != nil {
 		t.Fatalf("decode MCP result: %v; result=%s", err, string(response.Result))
 	}
 	return result, api.Error{}

@@ -284,3 +284,147 @@ func (result MembershipListResult) Validate() error {
 	}
 	return nil
 }
+
+// PrincipalWhoamiRequest is the principal.whoami input.
+type PrincipalWhoamiRequest struct{}
+
+// Validate accepts the empty principal.whoami request.
+func (request PrincipalWhoamiRequest) Validate() error {
+	return nil
+}
+
+// PrincipalMembershipView is one project membership observation in
+// principal.whoami.
+type PrincipalMembershipView struct {
+	ProjectID string   `json:"project_id"`
+	Roles     []string `json:"roles"`
+}
+
+// Validate checks the project identity and role set.
+func (view PrincipalMembershipView) Validate() error {
+	if !validID(view.ProjectID) {
+		return invalid("membership project_id is invalid")
+	}
+	if view.Roles == nil {
+		return invalid("membership roles are missing")
+	}
+	for _, role := range view.Roles {
+		if !validHumanRole(role) {
+			return invalid("unknown membership role %q", role)
+		}
+	}
+	return nil
+}
+
+// whoamiPrincipalKinds is the principal.whoami kind vocabulary. It accepts
+// workload (the container-facing term) as well as execution for compatibility.
+var whoamiPrincipalKinds = []string{"human", "service", "workload", "execution"}
+
+func validWhoamiPrincipalKind(kind string) bool {
+	for _, candidate := range whoamiPrincipalKinds {
+		if candidate == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// PrincipalWhoamiResult is the principal.whoami result.
+type PrincipalWhoamiResult struct {
+	PrincipalID string                    `json:"principal_id"`
+	Kind        string                    `json:"kind"`
+	TenantID    string                    `json:"tenant_id"`
+	ProjectID   string                    `json:"project_id,omitempty"`
+	Roles       []string                  `json:"roles"`
+	Memberships []PrincipalMembershipView `json:"memberships,omitempty"`
+}
+
+// Validate checks the authenticated identity, scope, roles and visible project
+// memberships.
+func (result PrincipalWhoamiResult) Validate() error {
+	if !validID(result.PrincipalID) {
+		return invalid("principal_id is invalid")
+	}
+	if !validWhoamiPrincipalKind(result.Kind) {
+		return invalid("principal kind %q is unknown", result.Kind)
+	}
+	if !validID(result.TenantID) {
+		return invalid("tenant_id is invalid")
+	}
+	if result.ProjectID != "" && !validID(result.ProjectID) {
+		return invalid("project_id is invalid")
+	}
+	if result.Roles == nil {
+		return invalid("principal roles are missing")
+	}
+	for _, role := range result.Roles {
+		if !validHumanRole(role) {
+			return invalid("unknown principal role %q", role)
+		}
+	}
+	for _, membership := range result.Memberships {
+		if err := membership.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ProjectListRequest is the project.list input. The tenant is carried
+// explicitly for MCP callers and is optional for REST callers whose route
+// supplies it.
+type ProjectListRequest struct {
+	TenantID string `json:"tenant_id,omitempty" schema:"id"`
+	Page     *Page  `json:"page,omitempty"`
+}
+
+// Validate checks the optional tenant identity and page bounds.
+func (request ProjectListRequest) Validate() error {
+	if request.TenantID != "" && !validID(request.TenantID) {
+		return invalid("tenant_id is invalid")
+	}
+	if request.Page != nil {
+		return request.Page.Validate()
+	}
+	return nil
+}
+
+// ProjectView is one project observation in project.list.
+type ProjectView struct {
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
+	Version   uint64 `json:"version" schema:"version"`
+}
+
+// Validate checks the project identity, non-empty name and version.
+func (view ProjectView) Validate() error {
+	if !validID(view.ProjectID) {
+		return invalid("project_id is invalid")
+	}
+	if view.Name == "" {
+		return invalid("project name is empty")
+	}
+	if view.Version == 0 {
+		return invalid("project version must be positive")
+	}
+	return nil
+}
+
+// ProjectListResult is the project.list result.
+type ProjectListResult struct {
+	Projects   []ProjectView `json:"projects"`
+	NextCursor string        `json:"next_cursor,omitempty"`
+}
+
+// Validate checks every project observation and the optional cursor bound.
+func (result ProjectListResult) Validate() error {
+	for _, project := range result.Projects {
+		if err := project.Validate(); err != nil {
+			return err
+		}
+	}
+	if len(result.NextCursor) > MaxCursorBytes {
+		return invalid("next_cursor is %d bytes; at most %d are allowed", len(result.NextCursor), MaxCursorBytes)
+	}
+	return nil
+}

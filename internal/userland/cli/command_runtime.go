@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"time"
 
@@ -19,7 +20,10 @@ import (
 // part of the Ports declaration. A zero CommandDeps keeps Run's legacy
 // entrypoint behavior; kodactl passes the real values through RunWithDeps.
 type CommandDeps struct {
-	Login LoginRuntime
+	Login       LoginRuntime
+	HTTP        http.RoundTripper
+	HomeDir     func() (string, error)
+	CommandPath string
 }
 
 // LoginRuntime is the injected production collaborator set for the

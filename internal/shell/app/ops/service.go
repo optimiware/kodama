@@ -6,6 +6,7 @@ import (
 	"github.com/optimiware/kodama/api"
 	"github.com/optimiware/kodama/internal/shell/receipt"
 	"github.com/optimiware/kodama/internal/shell/service"
+	"github.com/optimiware/kodama/internal/shell/store"
 	"github.com/optimiware/kodama/internal/shell/token"
 	"github.com/optimiware/kodama/internal/shell/transport/ops"
 )
@@ -34,6 +35,58 @@ func serviceHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 			return respond(call, api.ServiceCreateResult{
 				ServiceID: string(committed.ServiceID),
 				Version:   committed.Version,
+			})
+		}),
+		"service.list": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
+			request, err := decodeRequest[api.ServiceListRequest](call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			if err := confirmReadAuthority(ctx, deps, call, call.Scope); err != nil {
+				return api.Result{}, err
+			}
+			scanner, err := requireScanner(deps)
+			if err != nil {
+				return api.Result{}, err
+			}
+			page := pageOrDefault(request.Page)
+			committed, err := scanner.Query(ctx, call.Scope, store.ScanQuery{
+				Table:   "services",
+				OrderBy: []store.Order{{Column: "id"}},
+				After:   page.Cursor,
+				Limit:   page.EffectiveLimit(),
+			})
+			if err != nil {
+				return api.Result{}, err
+			}
+			services := make([]api.ServiceSummaryView, 0, len(committed.Rows))
+			for _, row := range committed.Rows {
+				serviceID, err := scanRowString(row, "id")
+				if err != nil {
+					return api.Result{}, err
+				}
+				state, err := scanRowString(row, "state")
+				if err != nil {
+					return api.Result{}, err
+				}
+				roles, err := scanDecodeRoles(row, true)
+				if err != nil {
+					return api.Result{}, err
+				}
+				version, err := scanRowUint(row, "version")
+				if err != nil {
+					return api.Result{}, err
+				}
+				services = append(services, api.ServiceSummaryView{
+					ServiceID: serviceID,
+					State:     state,
+					Roles:     nonNilStrings(roles),
+					Version:   version,
+				})
+			}
+			return respond(call, api.ServiceListResult{
+				Services:   services,
+				NextCursor: committed.Next,
 			})
 		}),
 		"service.update": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {

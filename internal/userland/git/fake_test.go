@@ -692,15 +692,16 @@ func newFixtureWithConfig(t *testing.T, body string) *fixture {
 func (f *fixture) newService() *git.Service {
 	f.t.Helper()
 	service, err := git.NewService(git.ServiceConfig{
-		TenantID:  f.tenant,
-		Storage:   f.storage,
-		Policies:  f.policies,
-		Executor:  f.executor,
-		Observer:  f.observer,
-		Journal:   f.journal,
-		Verify:    f.verifier,
-		Retention: f.retention,
-		Clock:     f.clock,
+		TenantID:    f.tenant,
+		Storage:     f.storage,
+		Policies:    f.policies,
+		Executor:    f.executor,
+		Observer:    f.observer,
+		Journal:     f.journal,
+		Verify:      f.verifier,
+		Retention:   f.retention,
+		Clock:       f.clock,
+		ResourceIDs: map[string]string{"shop/web": testResourceID, "shop/guarded": testResourceID},
 	})
 	if err != nil {
 		f.t.Fatalf("NewService: %v", err)

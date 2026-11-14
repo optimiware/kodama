@@ -5,7 +5,7 @@ SLOT := scripts/infra-slot.sh
 .DEFAULT_GOAL := check
 
 .PHONY: check fmt fmt-check vet test race arch-check docs-check \
-	build dist \
+	build dist image release-prepare \
 	baseline test-e2e-hermetic suites-stack suites-kind \
 	suites-parallel suite-podman suite-kind suite-stage
 
@@ -55,6 +55,18 @@ build:
 dist:
 	rm -rf dist
 	scripts/dist
+
+# make image builds the image `kodama up` starts by default for this checkout:
+# the released repository, tagged with this checkout's version.
+image:
+	scripts/image build --repository ghcr.io/optimiware/kodama/kodama --tag "$(VERSION)"
+
+# make release-prepare VERSION=0.2.0 sets the version of the checkout in every
+# file that carries it (docs/runbooks/release.md). Nothing is pushed.
+release-prepare:
+	@[ "$(origin VERSION)" = "command line" ] || { echo "usage: make release-prepare VERSION=<version>"; exit 2; }
+	scripts/release-prepare "$(VERSION)"
+	$(GO) test -count=1 -run TestReleaseVersionIsConsistent ./internal/installation/
 
 # ---------------------------------------------------------------------------
 # Baseline checks.

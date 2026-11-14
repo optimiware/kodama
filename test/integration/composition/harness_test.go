@@ -994,12 +994,9 @@ func (environment *runningEnv) mcpCall(token, operation string, input any, expec
 		}
 		return api.Result{}, publicError, nil
 	}
-	var result api.Result
-	if err := json.Unmarshal(response.Result, &result); err != nil {
+	result, err := api.DecodeMCPResult(response.Result)
+	if err != nil {
 		return api.Result{}, api.Error{}, fmt.Errorf("decode MCP result: %w; result=%s", err, string(response.Result))
-	}
-	if err := result.Validate(); err != nil {
-		return api.Result{}, api.Error{}, fmt.Errorf("invalid MCP result: %w", err)
 	}
 	return result, api.Error{}, nil
 }

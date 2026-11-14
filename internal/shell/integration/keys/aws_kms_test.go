@@ -1775,6 +1775,29 @@ func TestAWSKMSHonoursContextCancellation(t *testing.T) {
 			}}
 		}, 1, 1)
 	})
+
+	// The transport can still deliver a response that was sent as the caller
+	// cancelled. The server here cancels and answers at once, so either side
+	// may win; the reply must never be used.
+	t.Run("as the response arrives", func(t *testing.T) {
+		var cancel atomic.Pointer[context.CancelFunc]
+		fixture := newAWSTestFixture(t, awsTestOptions{sts: func(int, http.ResponseWriter, *http.Request) bool {
+			(*cancel.Load())()
+			return true
+		}})
+		for attempt := 0; attempt < 50; attempt++ {
+			ctx, stop := context.WithCancel(context.Background())
+			cancel.Store(&stop)
+			_, err := fixture.client.Decrypt(ctx, secret.KeyRef(awsTestRef), awsTestBlob())
+			stop()
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("attempt %d: cancelled Decrypt error = %v; want context.Canceled", attempt, err)
+			}
+			if class, ok := fault.ClassOf(err); ok {
+				t.Fatalf("attempt %d: cancelled Decrypt carried fault class %q; want the bare context error", attempt, class)
+			}
+		}
+	})
 }
 
 // TestAWSKMSCancelledExchangeIsNotCached proves a cancellation during the

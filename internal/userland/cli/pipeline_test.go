@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/optimiware/kodama/api"
 	"github.com/optimiware/kodama/client"
@@ -126,6 +127,22 @@ func TestRunPipelineApply(t *testing.T) {
 		if secondKeys[pipeline] != key {
 			t.Errorf("pipeline %q key changed across replay: %q vs %q", pipeline, key, secondKeys[pipeline])
 		}
+	}
+
+	// One file applies only that pipeline and prints the id task run needs.
+	single := &scriptedTransport{respond: func(_ context.Context, _ int, invocation api.Invocation) (api.Result, error) {
+		return api.Result{Operation: invocation.Operation, Body: json.RawMessage(`{"pipeline_id":"pipeline-z1","version":1}`)}, nil
+	}}
+	singlePorts, singleOut, singleErr := testPorts(single)
+	singlePorts.Files = filesystem
+	if code := cli.Run(context.Background(), testConfig(), []string{"pipeline", "apply", directory + "/z.yaml"}, singlePorts); code != cli.ExitSuccess {
+		t.Fatalf("single file exit code = %d (stderr: %s)", code, singleErr.String())
+	}
+	if keys := pipelineKeys(t, single.recorded()); len(keys) != 1 || keys["z"] != firstKeys["z"] {
+		t.Fatalf("single file keys = %v; want only z with its directory key", keys)
+	}
+	if singleOut.String() != "applied z (pipeline_id=pipeline-z1)\n" {
+		t.Fatalf("single file stdout = %q", singleOut.String())
 	}
 }
 
@@ -314,6 +331,180 @@ func TestRunPipelineApplyDirectoryFailures(t *testing.T) {
 		}
 		if got := len(transport.recorded()); got != 0 {
 			t.Fatalf("invocations = %d; want 0", got)
+		}
+	})
+}
+
+// TestRunFile pins `kodactl run <file>`: the inline pipeline.start input, the
+// container stdout in action order and the exit code and stderr per outcome.
+func TestRunFile(t *testing.T) {
+	const path = "/repo/hello.yaml"
+	document := []byte("actions:\n  - name: hello\n")
+	cases := []struct {
+		name string
+		// inspections are the successive execution.inspect bodies; the last repeats.
+		inspections []string
+		// logs are the successive stdout chunks of each action.
+		logs       map[string][]string
+		wantCode   int
+		wantOut    string
+		wantErr    []string
+		wantSleeps int
+	}{
+		{
+			name: "succeeded prints every container action in order",
+			inspections: []string{
+				`{"state":"queued","actions":[
+					{"action_id":"act-1","kind":"container","state":"pending"},
+					{"action_id":"act-2","kind":"request","state":"pending","assignment":"service/git-service"},
+					{"action_id":"act-3","kind":"container","state":"pending"}]}`,
+				`{"state":"running","actions":[
+					{"action_id":"act-1","kind":"container","state":"running"},
+					{"action_id":"act-2","kind":"request","state":"pending","assignment":"service/git-service"},
+					{"action_id":"act-3","kind":"container","state":"pending"}]}`,
+				`{"state":"running","actions":[
+					{"action_id":"act-1","kind":"container","state":"succeeded"},
+					{"action_id":"act-2","kind":"request","state":"running","assignment":"service/git-service"},
+					{"action_id":"act-3","kind":"container","state":"pending"}]}`,
+				`{"state":"succeeded","cleanup":{"state":"pending"},"actions":[
+					{"action_id":"act-1","kind":"container","state":"succeeded"},
+					{"action_id":"act-2","kind":"request","state":"succeeded","assignment":"service/git-service","decision":"pass"},
+					{"action_id":"act-3","kind":"container","state":"succeeded"}]}`,
+				`{"state":"succeeded","cleanup":{"state":"complete"},"actions":[
+					{"action_id":"act-1","kind":"container","state":"succeeded"},
+					{"action_id":"act-2","kind":"request","state":"succeeded","assignment":"service/git-service","decision":"pass"},
+					{"action_id":"act-3","kind":"container","state":"succeeded"}]}`,
+			},
+			logs:       map[string][]string{"act-1": {"one\n", "two\n"}, "act-3": {"three\n"}},
+			wantCode:   cli.ExitSuccess,
+			wantOut:    "one\ntwo\nthree\n",
+			wantErr:    []string{"execution exec-1 started\n", "execution exec-1 succeeded\n"},
+			wantSleeps: 4,
+		},
+		{
+			name: "failed reports the server failure",
+			inspections: []string{
+				`{"state":"failed","actions":[
+					{"action_id":"act-1","kind":"container","state":"failed"},
+					{"action_id":"act-2","kind":"container","state":"cancelled"}],
+				"failure":{"kind":"runtime","reason":"exit_code","detail":"container exited 3"}}`,
+			},
+			logs:     map[string][]string{"act-1": {"boom\n"}},
+			wantCode: cli.ExitFailure,
+			wantOut:  "boom\n",
+			wantErr:  []string{"execution exec-1 failed: runtime: exit_code: container exited 3\n"},
+		},
+		{
+			name: "cancelled exits 1",
+			inspections: []string{
+				`{"state":"cancelled","actions":[{"action_id":"act-1","kind":"container","state":"cancelled"}],
+				"failure":{"kind":"cancelled"}}`,
+			},
+			wantCode: cli.ExitFailure,
+			wantErr:  []string{"execution exec-1 cancelled: cancelled\n"},
+		},
+		{
+			name: "a request waiting for a human stops the follow",
+			inspections: []string{
+				`{"state":"running","actions":[
+					{"action_id":"act-1","kind":"container","state":"succeeded"},
+					{"action_id":"act-2","name":"approve","kind":"request","state":"running","assignment":"role/reviewer"},
+					{"action_id":"act-3","kind":"container","state":"pending"}]}`,
+			},
+			logs:     map[string][]string{"act-1": {"built\n"}},
+			wantCode: cli.ExitFailure,
+			wantErr:  []string{"execution exec-1 is waiting for role/reviewer", `"approve"`, "kodactl inbox", "kodactl approve exec-1"},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			inspects := 0
+			transport := &scriptedTransport{respond: func(_ context.Context, index int, invocation api.Invocation) (api.Result, error) {
+				if index > 20 {
+					t.Fatalf("call %d: run did not stop following", index)
+				}
+				body := json.RawMessage(`{"execution_id":"exec-1","version":1}`)
+				switch invocation.Operation {
+				case "pipeline.start":
+				case "execution.inspect":
+					body = json.RawMessage(testCase.inspections[min(inspects, len(testCase.inspections)-1)])
+					inspects++
+				case "execution.logs.read":
+					var request api.ExecutionLogsReadRequest
+					if err := json.Unmarshal(invocation.Request.Input, &request); err != nil || request.Stream != "stdout" {
+						t.Fatalf("logs request = %s (%v)", invocation.Request.Input, err)
+					}
+					var page api.ExecutionLogsReadResult
+					for index, chunk := range testCase.logs[request.ActionID] {
+						page.Chunks = append(page.Chunks, api.LogChunk{ActionID: request.ActionID, Stream: "stdout", Offset: uint64(index), Sequence: uint64(index + 1), Data: []byte(chunk)})
+					}
+					body, _ = json.Marshal(page)
+				default:
+					t.Fatalf("unexpected operation %s", invocation.Operation)
+				}
+				return api.Result{Operation: invocation.Operation, Body: body}, nil
+			}}
+			ports, out, errOut := testPorts(transport)
+			ports.Files.(*fakeFS).files[path] = document
+			sleeps := 0
+			ports.Sleep = func(time.Duration) { sleeps++ }
+			code := cli.Run(context.Background(), testConfig(), []string{"run", path, "--input", "branch=main"}, ports)
+			if code != testCase.wantCode {
+				t.Fatalf("exit code = %d; want %d (stderr: %s)", code, testCase.wantCode, errOut.String())
+			}
+			if out.String() != testCase.wantOut {
+				t.Fatalf("stdout = %q; want %q", out.String(), testCase.wantOut)
+			}
+			for _, want := range testCase.wantErr {
+				if !strings.Contains(errOut.String(), want) {
+					t.Fatalf("stderr = %q; want %q", errOut.String(), want)
+				}
+			}
+			if sleeps != testCase.wantSleeps {
+				t.Fatalf("sleeps = %d; want %d", sleeps, testCase.wantSleeps)
+			}
+			start := transport.recorded()[0]
+			var input api.PipelineStartRequest
+			if err := json.Unmarshal(start.Request.Input, &input); err != nil {
+				t.Fatalf("pipeline.start input: %v", err)
+			}
+			if start.Operation != "pipeline.start" || start.Request.IdempotencyKey == "" || input.ProjectID != "shop" ||
+				input.PipelineID != "" || string(input.YAML) != string(document) || input.Inputs["branch"] != "main" {
+				t.Fatalf("start = %s %+v (key %q)", start.Operation, input, start.Request.IdempotencyKey)
+			}
+		})
+	}
+
+	t.Run("interrupt names the execution left running", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		transport := &scriptedTransport{respond: func(ctx context.Context, _ int, invocation api.Invocation) (api.Result, error) {
+			if invocation.Operation == "execution.inspect" {
+				cancel()
+				return api.Result{}, ctx.Err()
+			}
+			return api.Result{Operation: invocation.Operation, Body: json.RawMessage(`{"execution_id":"exec-1","version":1}`)}, nil
+		}}
+		ports, _, errOut := testPorts(transport)
+		ports.Files.(*fakeFS).files[path] = document
+		if code := cli.Run(ctx, testConfig(), []string{"run", path}, ports); code != cli.ExitFailure {
+			t.Fatalf("exit code = %d; want %d", code, cli.ExitFailure)
+		}
+		if !strings.Contains(errOut.String(), "run interrupted: execution exec-1 is still running") {
+			t.Fatalf("stderr = %q; want the interrupted execution", errOut.String())
+		}
+	})
+
+	t.Run("missing file starts nothing", func(t *testing.T) {
+		transport := &scriptedTransport{}
+		ports, out, errOut := testPorts(transport)
+		if code := cli.Run(context.Background(), testConfig(), []string{"run", path}, ports); code != cli.ExitFailure {
+			t.Fatalf("exit code = %d; want %d", code, cli.ExitFailure)
+		}
+		if got := len(transport.recorded()); got != 0 {
+			t.Fatalf("invocations = %d; want 0", got)
+		}
+		if out.Len() != 0 || !strings.Contains(errOut.String(), "cannot read pipeline file") {
+			t.Fatalf("stdout = %q, stderr = %q; want only a file diagnostic", out.String(), errOut.String())
 		}
 	})
 }

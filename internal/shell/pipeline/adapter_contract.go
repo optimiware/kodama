@@ -11,6 +11,7 @@ package pipeline
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"strings"
 
 	"github.com/optimiware/kodama/internal/fault"
@@ -84,6 +85,13 @@ func (resolved ResolvedImage) Validate() error {
 	}
 	return nil
 }
+
+// ErrImageReference marks a resolver refusal of the reference text itself: the
+// text cannot name an image, so no retry can succeed. A resolver reports it as
+// the cause of an invalid_input fault whose message says what is wrong with the
+// reference. Admission treats every other resolver failure as an unavailable
+// registry.
+var ErrImageReference = errors.New("image reference is invalid")
 
 // Resolver resolves a reference to an immutable sha256 digest before admission.
 type Resolver interface {

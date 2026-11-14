@@ -53,6 +53,7 @@ func runGitProvisionRepositoryEntry(ctx context.Context, args []string, stdout, 
 		TenantID:    id.TenantID(*tenant),
 		StorageRoot: *storageRoot,
 		Repository:  *repository,
+		ResourceID:  *resource,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "kodama: %v\n", err)

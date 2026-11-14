@@ -871,6 +871,166 @@
         "content": "file content",
         "is_error": false
       }
+    },
+    {
+      "operation": "principal.whoami",
+      "request": {},
+      "result": {
+        "principal_id": "usr-1",
+        "kind": "human",
+        "tenant_id": "ten-1",
+        "roles": [
+          "admin"
+        ],
+        "memberships": [
+          {
+            "project_id": "prj-1",
+            "roles": [
+              "engineer",
+              "reviewer"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "operation": "project.list",
+      "request": {
+        "tenant_id": "ten-1",
+        "page": {
+          "limit": 25
+        }
+      },
+      "result": {
+        "projects": [
+          {
+            "project_id": "prj-1",
+            "name": "Core",
+            "version": 2
+          }
+        ],
+        "next_cursor": "djEKcHJqLTE"
+      }
+    },
+    {
+      "operation": "resource.binding.list",
+      "request": {
+        "project_id": "prj-1",
+        "kind": "git",
+        "page": {
+          "limit": 25
+        }
+      },
+      "result": {
+        "bindings": [
+          {
+            "binding_id": "bnd-1",
+            "resource_id": "res-1",
+            "enforcing_service": "svc-1",
+            "trusted_origins": [
+              "https://git.example.com"
+            ],
+            "operations": [
+              "git.read",
+              "git.ref.update"
+            ],
+            "reportable_events": [
+              "git.ref.updated"
+            ],
+            "metadata": {
+              "kind": "git"
+            },
+            "version": 1
+          }
+        ],
+        "next_cursor": "djEKYm5kLTE"
+      }
+    },
+    {
+      "operation": "pipeline.list",
+      "request": {
+        "project_id": "prj-1",
+        "page": {
+          "limit": 25
+        }
+      },
+      "result": {
+        "pipelines": [
+          {
+            "pipeline_id": "pipe-1",
+            "name": "build",
+            "version": 3
+          }
+        ],
+        "next_cursor": "djEKcGlwZS0x"
+      }
+    },
+    {
+      "operation": "secret.metadata.list",
+      "request": {
+        "project_id": "prj-1",
+        "page": {
+          "limit": 25
+        }
+      },
+      "result": {
+        "secrets": [
+          {
+            "secret_id": "sec-1",
+            "name": "DEPLOY_KEY",
+            "version": 2,
+            "updated_at": "2026-01-02T03:04:05Z"
+          }
+        ],
+        "next_cursor": "djEKc2VjLTE"
+      }
+    },
+    {
+      "operation": "service.list",
+      "request": {
+        "project_id": "prj-1",
+        "page": {
+          "limit": 25
+        }
+      },
+      "result": {
+        "services": [
+          {
+            "service_id": "svc-1",
+            "state": "enabled",
+            "roles": [
+              "engineer",
+              "viewer"
+            ],
+            "version": 4
+          }
+        ],
+        "next_cursor": "djEKc3ZjLTE"
+      }
+    },
+    {
+      "operation": "task.list",
+      "request": {
+        "project_id": "prj-1",
+        "status": "open",
+        "page": {
+          "limit": 25
+        }
+      },
+      "result": {
+        "tasks": [
+          {
+            "task_id": "tsk-1",
+            "title": "Ship release",
+            "state": "open",
+            "selected_pipeline": "pipe-1",
+            "current_execution": "exe-1",
+            "content_version": 2,
+            "lifecycle_version": 3
+          }
+        ],
+        "next_cursor": "djEKdHNrLTE"
+      }
     }
   ]
 }

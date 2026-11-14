@@ -72,8 +72,8 @@ func TestEveryRegistryOperationRoutesOnceThroughRESTAndMCP(t *testing.T) {
 	operations := authorize.Operations()
 	routes := api.Routes()
 
-	if len(operations) != 51 {
-		t.Fatalf("registry operations = %d; want 51", len(operations))
+	if len(operations) != 58 {
+		t.Fatalf("registry operations = %d; want 58", len(operations))
 	}
 	if len(routes) != len(operations) {
 		t.Fatalf("routes = %d; want %d", len(routes), len(operations))
@@ -82,8 +82,9 @@ func TestEveryRegistryOperationRoutesOnceThroughRESTAndMCP(t *testing.T) {
 		if string(operations[index].Name) != routes[index].Operation {
 			t.Fatalf("route %d = %q; want registry operation %q", index, routes[index].Operation, operations[index].Name)
 		}
-		if routes[index].MCPTool != string(operations[index].Name) {
-			t.Fatalf("route %q MCP tool = %q; want the operation name", routes[index].Operation, routes[index].MCPTool)
+		wantTool := strings.ReplaceAll(string(operations[index].Name), ".", "_")
+		if routes[index].MCPTool != wantTool {
+			t.Fatalf("route %q MCP tool = %q; want %q", routes[index].Operation, routes[index].MCPTool, wantTool)
 		}
 		if routes[index].InputSchema != string(operations[index].Name)+".input.v1" {
 			t.Fatalf("route %q input schema = %q; want the schema-name convention", routes[index].Operation, routes[index].InputSchema)
@@ -146,7 +147,7 @@ func TestEveryRegistryOperationRoutesOnceThroughRESTAndMCP(t *testing.T) {
 			"id":      index + 1,
 			"method":  "tools/call",
 			"params": map[string]any{
-				"name":      route.Operation,
+				"name":      route.MCPTool,
 				"arguments": request,
 			},
 		})
@@ -164,8 +165,8 @@ func TestEveryRegistryOperationRoutesOnceThroughRESTAndMCP(t *testing.T) {
 		if mcpResponse.Error != nil {
 			t.Fatalf("MCP %s refused: %+v", route.Operation, mcpResponse.Error)
 		}
-		var mcpResult api.Result
-		if err := json.Unmarshal(mcpResponse.Result, &mcpResult); err != nil {
+		mcpResult, err := api.DecodeMCPResult(mcpResponse.Result)
+		if err != nil {
 			t.Fatalf("decode MCP result for %s: %v", route.Operation, err)
 		}
 		if err := mcpResult.Validate(); err != nil {

@@ -165,8 +165,8 @@ func buildMCPToolsCall(id, operation string, request api.Request) ([]byte, error
 // code, or result naming another operation is a malformed response, not a
 // refusal.
 func decodeMCPToolsCall(body []byte, operation string) (api.Result, *APIError, error) {
-	if len(body) > api.MaxResponseBytes {
-		return api.Result{}, nil, fmt.Errorf("the MCP response exceeds %d bytes", api.MaxResponseBytes)
+	if len(body) > 3*api.MaxResponseBytes {
+		return api.Result{}, nil, fmt.Errorf("the MCP response exceeds %d bytes", 3*api.MaxResponseBytes)
 	}
 	var response api.MCPResponse
 	if err := json.Unmarshal(body, &response); err != nil {

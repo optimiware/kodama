@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -37,8 +38,9 @@ const (
 // authority reads, the receipt, audit, event publication intent and the exact
 // authored bytes commit together; no registry or other network effect belongs
 // in this unit. PushTriggers is the validated projection of the definition's
-// `on.push` triggers (repository, service and exact refs) that the adapter
-// persists to the pipelines.push_triggers column; adapters never parse YAML.
+// `on.push` triggers (repository, service and refs/ref prefixes) that the
+// adapter persists to the pipelines.push_triggers column; adapters never parse
+// YAML.
 type ChangeUnit struct {
 	Owner           tenancy.Scope
 	Kind            ChangeKind
@@ -755,8 +757,8 @@ func parseOn(node *yaml.Node) (*PushTrigger, error) {
 			if err != nil {
 				return nil, err
 			}
-			if !validExactRef(ref) {
-				return nil, invalidInputf("on.push ref %q is not an exact ref", ref)
+			if !validPushRef(ref) {
+				return nil, invalidInputf("on.push ref %q is not an exact ref or trailing-slash ref prefix", ref)
 			}
 			refs = append(refs, ref)
 		}
@@ -768,21 +770,33 @@ func parseOn(node *yaml.Node) (*PushTrigger, error) {
 	return push, nil
 }
 
-func validExactRef(value string) bool {
+func validPushRef(value string) bool {
 	if value == "" || len(value) > id.MaxIDLength*4 {
 		return false
 	}
-	if len(value) < len("refs/") || value[:len("refs/")] != "refs/" {
+	if !strings.HasPrefix(value, "refs/") || value == "refs/" {
+		return false
+	}
+	if strings.Contains(value, "..") {
+		return false
+	}
+	if strings.Count(value, "/") < 2 {
 		return false
 	}
 	for index := 0; index < len(value); index++ {
 		switch value[index] {
-		case '*', '?', '[', ']', '\\', ' ', '\t', '\r', '\n':
+		case '*', '?', '[', ']', '\\', ' ', '\t', '\r', '\n', 0x7f:
 			return false
 		default:
 			if value[index] < 0x20 {
 				return false
 			}
+		}
+	}
+	trimmed := strings.TrimSuffix(value, "/")
+	for segment := range strings.SplitSeq(trimmed, "/") {
+		if segment == "" || segment == "." {
+			return false
 		}
 	}
 	return true

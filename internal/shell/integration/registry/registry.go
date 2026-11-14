@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/optimiware/kodama/internal/fault"
@@ -185,11 +186,11 @@ func New(config Config) (*Resolver, error) {
 func (resolver *Resolver) Resolve(ctx context.Context, request pipeline.ResolveRequest) (pipeline.ResolvedImage, error) {
 	var zero pipeline.ResolvedImage
 	if err := request.Validate(); err != nil {
-		return zero, err
+		return zero, referenceFault(err)
 	}
 	reference, err := parseReference(request.Reference)
 	if err != nil {
-		return zero, err
+		return zero, referenceFault(err)
 	}
 	if err := ctx.Err(); err != nil {
 		return zero, deadlineFault(err)
@@ -456,6 +457,16 @@ type parsedReference struct {
 	pinned     bool
 }
 
+// referenceFault marks a refused reference text for admission. It keeps the
+// parse fault's class and public message and adds the shared cause.
+func referenceFault(err error) error {
+	message, ok := fault.MessageOf(err)
+	if !ok {
+		message = pipeline.ErrImageReference.Error()
+	}
+	return fault.Wrap(fault.InvalidInput, message, pipeline.ErrImageReference)
+}
+
 func parseReference(value string) (parsedReference, error) {
 	if value == "" || strings.ContainsAny(value, " \t\r\n") {
 		return parsedReference{}, fault.New(fault.InvalidInput, "image reference is empty or contains whitespace")
@@ -497,6 +508,9 @@ func parseReference(value string) (parsedReference, error) {
 		if !validTag(tag) {
 			return parsedReference{}, fault.New(fault.InvalidInput, "image reference tag is invalid")
 		}
+	}
+	if pinned && strings.Contains(path, ":") {
+		return parsedReference{}, fault.New(fault.InvalidInput, "image reference carries both a tag and a digest; use repository@sha256:<digest>")
 	}
 	if !validPath(path) {
 		return parsedReference{}, fault.New(fault.InvalidInput, "image reference repository path is invalid")
@@ -576,6 +590,14 @@ func validHost(value string) bool {
 		// host: refusing it also keeps net.SplitHostPort from stripping the
 		// brackets and mapping "[docker.io]:443" to Docker Hub.
 		return bracketedIPLiteral(value)
+	}
+	if name, port, found := strings.Cut(value, ":"); found {
+		// At most one colon, between a name and a port in 1..65535. Anything
+		// else would only fail later, as an unavailable registry.
+		number, err := strconv.ParseUint(port, 10, 16)
+		if name == "" || err != nil || number == 0 {
+			return false
+		}
 	}
 	for _, character := range value {
 		switch {

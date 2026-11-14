@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodama/internal/fault"
 	"github.com/optimiware/kodama/internal/shell/identity"
 	"github.com/optimiware/kodama/internal/shell/tenancy"
 )
@@ -133,6 +134,18 @@ func TestEventFamily(t *testing.T) {
 	}
 	if secondPage.HasMore {
 		t.Fatalf("second page unexpectedly has more")
+	}
+
+	// A cursor beyond the signed sequence range is refused as invalid input.
+	overflow, err := api.EncodeCursor("9223372036854775808")
+	if err != nil {
+		t.Fatalf("EncodeCursor: %v", err)
+	}
+	_, err = h.invoke(t, testToken, "event.read", jsonBody(t, map[string]any{
+		"page": map[string]any{"cursor": overflow},
+	}), projectParams)
+	if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
+		t.Fatalf("event.read overflowing cursor err = %v; want invalid_input", err)
 	}
 
 	// The subscription grant names the scope-qualified subject and resume point.
