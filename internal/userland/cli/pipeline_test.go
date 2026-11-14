@@ -127,6 +127,22 @@ func TestRunPipelineApply(t *testing.T) {
 			t.Errorf("pipeline %q key changed across replay: %q vs %q", pipeline, key, secondKeys[pipeline])
 		}
 	}
+
+	// One file applies only that pipeline and prints the id task run needs.
+	single := &scriptedTransport{respond: func(_ context.Context, _ int, invocation api.Invocation) (api.Result, error) {
+		return api.Result{Operation: invocation.Operation, Body: json.RawMessage(`{"pipeline_id":"pipeline-z1","version":1}`)}, nil
+	}}
+	singlePorts, singleOut, singleErr := testPorts(single)
+	singlePorts.Files = filesystem
+	if code := cli.Run(context.Background(), testConfig(), []string{"pipeline", "apply", directory + "/z.yaml"}, singlePorts); code != cli.ExitSuccess {
+		t.Fatalf("single file exit code = %d (stderr: %s)", code, singleErr.String())
+	}
+	if keys := pipelineKeys(t, single.recorded()); len(keys) != 1 || keys["z"] != firstKeys["z"] {
+		t.Fatalf("single file keys = %v; want only z with its directory key", keys)
+	}
+	if singleOut.String() != "applied z (pipeline_id=pipeline-z1)\n" {
+		t.Fatalf("single file stdout = %q", singleOut.String())
+	}
 }
 
 // TestRunPipelineApplyPartialFailure pins visible partial failure: every file

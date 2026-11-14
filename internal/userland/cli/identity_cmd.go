@@ -36,8 +36,9 @@ type whoamiView struct {
 	Subject     string   `json:"subject,omitempty"`
 }
 
-// runWhoami displays the caller's principal identity via principal.whoami when
-// registered on the server, with offline fallback to local session/JWT claims.
+// runWhoami displays the caller's principal identity via principal.whoami, or
+// from the local session/JWT claims with --offline. A failed server call is
+// reported, never replaced by the local claims.
 func runWhoami(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if hasHelpFlag(args) {
 		return runHelp(ports.Out, ports.Err, []string{"whoami"})
@@ -64,33 +65,36 @@ func runWhoami(ctx context.Context, config Config, args []string, ports Ports, d
 	offlineView, hasOffline := deriveOfflineWhoami(ctx, config, ports, deps, offlineFlag)
 
 	if !offlineFlag {
-		if _, hasRoute := api.LookupRoute("principal.whoami"); hasRoute && ports.Client != nil && config.Validate() == nil {
-			inputPayload := json.RawMessage(`{}`)
-			if operationRequiresRouteParam("principal.whoami", "project") {
-				if proj := resolveProject("", config, deps); proj != "" {
-					encoded, marshalErr := json.Marshal(map[string]string{"project_id": proj})
-					if marshalErr == nil {
-						inputPayload = encoded
-					}
-				}
-			}
-			invocation := api.Invocation{
-				Operation: "principal.whoami",
-				Request:   api.Request{Input: inputPayload},
-			}
-			if invocation.Validate() == nil {
-				result, callErr := ports.Client.Invoke(ctx, invocation)
-				if callErr == nil {
-					if err := renderWhoamiServerResult(ports.Out, format, result, offlineView); err != nil {
-						return failure(ports.Err, err)
-					}
-					return ExitSuccess
-				}
-				if !hasOffline {
-					return failure(ports.Err, callErr)
+		if err := config.Validate(); err != nil {
+			return usage(ports.Err, err.Error())
+		}
+		if ports.Client == nil {
+			return failure(ports.Err, fmt.Errorf("no public client is configured"))
+		}
+		inputPayload := json.RawMessage(`{}`)
+		if operationRequiresRouteParam("principal.whoami", "project") {
+			if proj := resolveProject("", config, deps); proj != "" {
+				encoded, marshalErr := json.Marshal(map[string]string{"project_id": proj})
+				if marshalErr == nil {
+					inputPayload = encoded
 				}
 			}
 		}
+		invocation := api.Invocation{
+			Operation: "principal.whoami",
+			Request:   api.Request{Input: inputPayload},
+		}
+		if err := invocation.Validate(); err != nil {
+			return usage(ports.Err, publicMessage(err))
+		}
+		result, err := ports.Client.Invoke(ctx, invocation)
+		if err != nil {
+			return failure(ports.Err, err)
+		}
+		if err := renderWhoamiServerResult(ports.Out, format, result, offlineView); err != nil {
+			return failure(ports.Err, err)
+		}
+		return ExitSuccess
 	}
 
 	if !hasOffline {

@@ -42,8 +42,8 @@ Flags:
 		usage:   "kodactl whoami [--offline]",
 		summary: "Show current principal identity, kind, scope, and roles",
 		description: `Displays the caller's Kodama principal identity (oidc-<hash>), kind, tenant,
-project, and roles. Queries principal.whoami when supported by the server and
-falls back offline to deriving oidc-<hash> from the saved session / JWT claims.
+project, and roles. Queries principal.whoami on the server; a failed query is an
+error. --offline derives oidc-<hash> from the saved session / JWT claims instead.
 
 Flags:
   --offline   Derive principal identity locally from session/JWT without calling the server`,
@@ -130,12 +130,12 @@ Flags:
 	"task list": {
 		usage:       "kodactl task list [--project <id>]",
 		summary:     "List tasks in a project",
-		description: `Lists tasks for --project (or KODAMA_PROJECT), falling back to execution.list when task.list is unavailable.`,
+		description: `Lists tasks for --project (or KODAMA_PROJECT).`,
 	},
 	"task show": {
 		usage:       "kodactl task show <task-id>",
-		summary:     "Read full task details, messages, and outstanding question",
-		description: `Invokes task.read for <task-id>.`,
+		summary:     "Read a task's state, versions, and outstanding question",
+		description: `Invokes task.read for <task-id>. --output json prints the full task, including its messages.`,
 	},
 	"task start": {
 		usage:       "kodactl task start <task-id> [--expected-version <v>]",
@@ -194,7 +194,8 @@ membership version via membership.list automatically when --expected-version is 
 		summary: "Run the authenticated JSON-RPC 2.0 stdio-to-HTTP MCP bridge",
 		description: `Reads newline-delimited JSON-RPC 2.0 messages from stdin, forwards each to
 <API_URL>/mcp with Bearer authentication (auto-refreshing OIDC sessions as needed)
-and --ca-file TLS trust, and writes non-empty JSON-RPC responses as single lines to stdout.`,
+and --ca-file TLS trust, and writes non-empty JSON-RPC responses as single lines to stdout.
+A request that cannot be delivered is answered with a JSON-RPC error; the bridge keeps running.`,
 	},
 	"mcp install": {
 		usage:   "kodactl mcp install [claude|cursor|codex] [--name kodama] [--config-file <path>] [--local] [--print]",
@@ -209,13 +210,14 @@ Targets:
 Flags:
   --name <name>          MCP server name (default: kodama)
   --config-file <path>   Explicit config file path to update
-  --local                Write .mcp.json in current directory (claude target)
+  --local                Write .mcp.json in current directory (claude target only)
   --print                Print configuration snippet to stdout without writing files`,
 	},
 	"pipeline": {
-		usage:       "kodactl pipeline apply <directory>",
-		summary:     "Apply all .yaml/.yml pipeline definitions in a directory",
-		description: `Applies every non-hidden .yaml/.yml file in <directory> to the configured project via pipeline.apply.`,
+		usage:   "kodactl pipeline apply <directory|file>",
+		summary: "Apply the .yaml/.yml pipeline definitions in a directory, or one file",
+		description: `Applies every non-hidden .yaml/.yml file in <directory>, or the one .yaml/.yml <file>, to the
+configured project via pipeline.apply and prints each applied pipeline's ID for 'task run --pipeline'.`,
 	},
 	"inspect": {
 		usage:       "kodactl inspect <execution-id>",

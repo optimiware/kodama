@@ -16,6 +16,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -532,6 +533,14 @@ func TestRunInboxApproveAndReject(t *testing.T) {
 		if code := cli.Run(context.Background(), testConfig(), []string{"reject", "exec-7"}, ports); code != cli.ExitUsage {
 			t.Fatalf("reject without --reason exit = %d; want %d", code, cli.ExitUsage)
 		}
+		// Only --output doubles as the CLI format; its aliases always carry a key=value pair.
+		for _, alias := range []string{"--response-output", "--action-output"} {
+			p, _, aliasErr := testPorts(&scriptedTransport{})
+			code := cli.Run(context.Background(), testConfig(), []string{"approve", "exec-7", alias, "json"}, p)
+			if code != cli.ExitUsage || !strings.Contains(aliasErr.String(), "must be key=value") {
+				t.Fatalf("approve %s json exit = %d; stderr=%q", alias, code, aliasErr.String())
+			}
+		}
 
 		transport := &scriptedTransport{respond: func(_ context.Context, idx int, inv api.Invocation) (api.Result, error) {
 			if idx == 0 {
@@ -737,6 +746,12 @@ func TestRunTaskCommands(t *testing.T) {
 			if req.ProjectID != "shop" || req.Status != "open" {
 				t.Fatalf("task.list req = %+v", req)
 			}
+			if req.Page != nil && req.Page.Cursor == "page-2" {
+				body, _ := json.Marshal(api.TaskListResult{
+					Tasks: []api.TaskSummaryView{{TaskID: "task-2", Title: "Second page", State: "open", ContentVersion: 1, LifecycleVersion: 1}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			}
 			body, _ := json.Marshal(api.TaskListResult{
 				Tasks: []api.TaskSummaryView{
 					{
@@ -749,6 +764,7 @@ func TestRunTaskCommands(t *testing.T) {
 						LifecycleVersion: 1,
 					},
 				},
+				NextCursor: "page-2",
 			})
 			return api.Result{Operation: inv.Operation, Body: body}, nil
 		}}
@@ -760,6 +776,9 @@ func TestRunTaskCommands(t *testing.T) {
 		}
 		if !strings.Contains(out.String(), "task-1") || !strings.Contains(out.String(), "exec-1") || !strings.Contains(out.String(), "Ship v0.2") {
 			t.Fatalf("stdout = %q", out.String())
+		}
+		if !strings.Contains(out.String(), "task-2") {
+			t.Fatalf("stdout = %q; want the second page", out.String())
 		}
 	})
 }
@@ -785,7 +804,7 @@ func TestWhoamiAndMemberZeroHashMagic(t *testing.T) {
 			Issuer:  issuer,
 		}}
 		ports, out, errOut := testPorts(nil)
-		code := cli.RunWithDeps(context.Background(), cli.Config{Output: cli.OutputTable}, []string{"whoami"}, ports, cli.CommandDeps{
+		code := cli.RunWithDeps(context.Background(), cli.Config{Output: cli.OutputTable}, []string{"whoami", "--offline"}, ports, cli.CommandDeps{
 			Login: cli.LoginRuntime{Store: store},
 		})
 		if code != cli.ExitSuccess {
@@ -796,6 +815,17 @@ func TestWhoamiAndMemberZeroHashMagic(t *testing.T) {
 		}
 		if strings.Contains(out.String(), jwt) {
 			t.Fatal("whoami leaked the raw JWT")
+		}
+
+		// Without --offline a failed server call is reported, never masked by the local claims.
+		ports, out, errOut = testPorts(&scriptedTransport{respond: func(context.Context, int, api.Invocation) (api.Result, error) {
+			return api.Result{}, fault.New(fault.Unauthenticated, "token rejected")
+		}})
+		code = cli.RunWithDeps(context.Background(), testConfig(), []string{"whoami"}, ports, cli.CommandDeps{
+			Login: cli.LoginRuntime{Store: store},
+		})
+		if code != cli.ExitFailure || out.Len() != 0 || !strings.Contains(errOut.String(), "token rejected") {
+			t.Fatalf("whoami with a failing server: exit = %d; stdout=%q stderr=%q", code, out.String(), errOut.String())
 		}
 	})
 
@@ -980,6 +1010,40 @@ func TestMCPStdioAndInstall(t *testing.T) {
 		}
 	})
 
+	t.Run("mcp stdio answers the pending id on a transport failure and keeps serving", func(t *testing.T) {
+		calls := 0
+		rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			switch calls {
+			case 1:
+				return nil, io.ErrUnexpectedEOF
+			case 2:
+				return &http.Response{StatusCode: http.StatusBadGateway, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}, nil
+			default:
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"jsonrpc":"2.0","id":3,"result":{}}`))}, nil
+			}
+		})
+		ports, out, errOut := testPorts(nil)
+		ports.In = strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + "\n" +
+			`{"jsonrpc":"2.0","id":"two","method":"tools/list"}` + "\n" +
+			`{"jsonrpc":"2.0","id":3,"method":"tools/list"}` + "\n")
+		ports.Credential = &scriptedSource{credentials: []client.Credential{humanCredential()}}
+
+		code := cli.RunWithDeps(context.Background(), testConfig(), []string{"mcp", "stdio"}, ports, cli.CommandDeps{HTTP: rt})
+		if code != cli.ExitSuccess {
+			t.Fatalf("mcp stdio exit = %d; stderr=%q", code, errOut.String())
+		}
+		want := `{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"MCP endpoint is unavailable"}}` + "\n" +
+			`{"jsonrpc":"2.0","id":"two","error":{"code":-32603,"message":"MCP endpoint returned HTTP 502"}}` + "\n" +
+			`{"jsonrpc":"2.0","id":3,"result":{}}` + "\n"
+		if out.String() != want {
+			t.Fatalf("stdout =\n%s\nwant:\n%s", out.String(), want)
+		}
+		if !strings.Contains(errOut.String(), "MCP endpoint is unavailable") {
+			t.Fatalf("stderr = %q; want the transport failure", errOut.String())
+		}
+	})
+
 	t.Run("mcp install --print and isolated file merge for claude, cursor, and codex", func(t *testing.T) {
 		cfg := cli.Config{
 			ServerURL: "https://kodama.example.com",
@@ -995,6 +1059,25 @@ func TestMCPStdioAndInstall(t *testing.T) {
 		wantTOML := "[mcp_servers.kodama-prod]\ncommand = \"kodactl\"\nargs = [\"--url\", \"https://kodama.example.com\", \"--ca-file\", \"/etc/kodama/ca.pem\", \"mcp\", \"stdio\"]\n"
 		if out.String() != wantTOML {
 			t.Fatalf("codex --print =\n%s\nwant:\n%s", out.String(), wantTOML)
+		}
+
+		// TOML has no \x or \a escape, and a relative --ca-file is written absolute.
+		relCfg := cfg
+		relCfg.CAFile = "ca.pem"
+		absCA, _ := filepath.Abs("ca.pem")
+		ports, out, errOut = testPorts(nil)
+		if code := cli.RunWithDeps(context.Background(), relCfg, []string{"mcp", "install", "codex", "--name", "a\x07\x7fb", "--print"}, ports, cli.CommandDeps{}); code != cli.ExitSuccess {
+			t.Fatalf("codex --print exit = %d; stderr=%q", code, errOut.String())
+		}
+		if !strings.HasPrefix(out.String(), "[mcp_servers.\"a\\u0007\\u007Fb\"]\n") || !strings.Contains(out.String(), `"--ca-file", "`+absCA+`"`) {
+			t.Fatalf("codex --print =\n%s", out.String())
+		}
+
+		for _, target := range []string{"cursor", "codex"} {
+			ports, _, _ = testPorts(nil)
+			if code := cli.RunWithDeps(context.Background(), cfg, []string{"mcp", "install", target, "--local"}, ports, cli.CommandDeps{}); code != cli.ExitUsage {
+				t.Fatalf("mcp install %s --local exit = %d; want %d", target, code, cli.ExitUsage)
+			}
 		}
 
 		// Isolated write & merge for claude, cursor, codex via fakeFS + injected HomeDir
@@ -1058,7 +1141,7 @@ func TestMCPStdioAndInstall(t *testing.T) {
 		}
 
 		// Verify Codex TOML in-place replacement preserves surrounding sections.
-		fs.files[fakeHome+"/.codex/config.toml"] = []byte("model = \"gpt-5\"\n\n[mcp_servers.kodama]\ncommand = \"old\"\nargs = []\n\n[mcp_servers.other]\ncommand = \"keep\"\n")
+		fs.files[fakeHome+"/.codex/config.toml"] = []byte("model = \"gpt-5\"\n\n[mcp_servers.kodama] # managed\ncommand = \"old\"\nargs = []\n\n[mcp_servers.kodama.env]\nSTALE = \"1\"\n\n[mcp_servers.other] # keep\ncommand = \"keep\"\n")
 		if code := cli.RunWithDeps(context.Background(), cfg, []string{"mcp", "install", "codex"}, cli.Ports{
 			Files: fs, Out: &customOut, Err: &customErr,
 		}, deps); code != cli.ExitSuccess {
@@ -1067,9 +1150,10 @@ func TestMCPStdioAndInstall(t *testing.T) {
 		updatedTOMLBytes, _ := fs.ReadFile(fakeHome + "/.codex/config.toml")
 		updatedTOML := string(updatedTOMLBytes)
 		if !strings.Contains(updatedTOML, `model = "gpt-5"`) ||
-			!strings.Contains(updatedTOML, `[mcp_servers.other]`) ||
+			!strings.Contains(updatedTOML, "[mcp_servers.other] # keep\ncommand = \"keep\"\n") ||
 			strings.Contains(updatedTOML, `command = "old"`) ||
-			strings.Count(updatedTOML, `[mcp_servers.kodama]`) != 1 {
+			strings.Contains(updatedTOML, "STALE") ||
+			strings.Count(updatedTOML, `[mcp_servers.kodama`) != 1 {
 			t.Fatalf("unexpected merged TOML:\n%s", updatedTOML)
 		}
 	})

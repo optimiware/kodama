@@ -219,6 +219,7 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 		expectedActVerRaw  string
 		idempotencyKeyFlag string
 		rawOutputs         []string
+		outputPairs        []string
 	)
 	spec := newArgSpec()
 	spec.stringFlag(&actionFlag, "--action", "-a")
@@ -227,7 +228,8 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 	} else {
 		spec.stringFlag(&reasonFlag, "--reason", "-r")
 	}
-	spec.listFlag(&rawOutputs, "--output", "--response-output", "--action-output")
+	spec.listFlag(&rawOutputs, "--output")
+	spec.listFlag(&outputPairs, "--response-output", "--action-output")
 	spec.stringFlag(&expectedVerRaw, "--expected-version")
 	spec.stringFlag(&expectedActVerRaw, "--expected-action-version")
 	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
@@ -247,7 +249,6 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 		return usage(ports.Err, "reject requires --reason <text>")
 	}
 	outputFlag := ""
-	var outputPairs []string
 	for _, raw := range rawOutputs {
 		if !strings.Contains(raw, "=") {
 			outputFlag = raw

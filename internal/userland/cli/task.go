@@ -583,13 +583,6 @@ func runTaskList(ctx context.Context, config Config, args []string, ports Ports,
 		return failure(ports.Err, fmt.Errorf("no public client is configured"))
 	}
 
-	if _, ok := api.LookupRoute("task.list"); ok {
-		return runRegisteredTaskList(ctx, ports, projectID, stateFlag, format)
-	}
-	return runFallbackTaskList(ctx, ports, projectID, stateFlag, format)
-}
-
-func runRegisteredTaskList(ctx context.Context, ports Ports, projectID, stateFlag string, format OutputFormat) int {
 	req := api.TaskListRequest{
 		ProjectID: projectID,
 		Status:    stateFlag,
@@ -597,21 +590,40 @@ func runRegisteredTaskList(ctx context.Context, ports Ports, projectID, stateFla
 	if err := req.Validate(); err != nil {
 		return usage(ports.Err, publicMessage(err))
 	}
-	input, err := json.Marshal(req)
+	tasks := []api.TaskSummaryView{}
+	for {
+		input, err := json.Marshal(req)
+		if err != nil {
+			return failure(ports.Err, err)
+		}
+		invocation := api.Invocation{
+			Operation: "task.list",
+			Request:   api.Request{Input: input},
+		}
+		if err := invocation.Validate(); err != nil {
+			return usage(ports.Err, publicMessage(err))
+		}
+		result, err := ports.Client.Invoke(ctx, invocation)
+		if err != nil {
+			return failure(ports.Err, err)
+		}
+		var page api.TaskListResult
+		if len(result.Body) > 0 {
+			if err := json.Unmarshal(result.Body, &page); err != nil {
+				return failure(ports.Err, fmt.Errorf("invalid task.list response: %w", err))
+			}
+		}
+		tasks = append(tasks, page.Tasks...)
+		if page.NextCursor == "" {
+			break
+		}
+		req.Page = &api.Page{Cursor: page.NextCursor}
+	}
+	body, err := json.Marshal(api.TaskListResult{Tasks: tasks})
 	if err != nil {
 		return failure(ports.Err, err)
 	}
-	invocation := api.Invocation{
-		Operation: "task.list",
-		Request:   api.Request{Input: input},
-	}
-	if err := invocation.Validate(); err != nil {
-		return usage(ports.Err, publicMessage(err))
-	}
-	result, err := ports.Client.Invoke(ctx, invocation)
-	if err != nil {
-		return failure(ports.Err, err)
-	}
+	result := api.Result{Operation: "task.list", Body: body}
 	if format == OutputJSON {
 		if err := renderResult(ports.Out, OutputJSON, result); err != nil {
 			return failure(ports.Err, err)
@@ -619,58 +631,6 @@ func runRegisteredTaskList(ctx context.Context, ports Ports, projectID, stateFla
 		return ExitSuccess
 	}
 	return renderTaskListTable(ports, result)
-}
-
-func runFallbackTaskList(ctx context.Context, ports Ports, projectID, stateFlag string, format OutputFormat) int {
-	req := api.ExecutionListRequest{
-		ProjectID: projectID,
-		State:     stateFlag,
-	}
-	if err := req.Validate(); err != nil {
-		return usage(ports.Err, publicMessage(err))
-	}
-	input, err := json.Marshal(req)
-	if err != nil {
-		return failure(ports.Err, err)
-	}
-	invocation := api.Invocation{
-		Operation: "execution.list",
-		Request:   api.Request{Input: input},
-	}
-	if err := invocation.Validate(); err != nil {
-		return usage(ports.Err, publicMessage(err))
-	}
-	result, err := ports.Client.Invoke(ctx, invocation)
-	if err != nil {
-		return failure(ports.Err, err)
-	}
-	if format == OutputJSON {
-		if err := renderResult(ports.Out, OutputJSON, result); err != nil {
-			return failure(ports.Err, err)
-		}
-		return ExitSuccess
-	}
-	var list api.ExecutionListResult
-	if len(result.Body) > 0 {
-		if err := json.Unmarshal(result.Body, &list); err != nil {
-			return renderTableFallback(ports, result)
-		}
-	}
-	tw := tabwriter.NewWriter(ports.Out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "TASK\tEXECUTION\tPIPELINE\tSTATE\tVERSION")
-	for _, exec := range list.Executions {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\n",
-			orDash(exec.TaskID),
-			orDash(exec.ExecutionID),
-			orDash(exec.PipelineID),
-			orDash(exec.State),
-			exec.Version,
-		)
-	}
-	if err := tw.Flush(); err != nil {
-		return failure(ports.Err, err)
-	}
-	return ExitSuccess
 }
 
 func renderTaskListTable(ports Ports, result api.Result) int {

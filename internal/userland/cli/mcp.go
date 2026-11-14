@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/optimiware/kodama/api"
@@ -81,6 +80,23 @@ func runMCPStdio(ctx context.Context, config Config, args []string, ports Ports,
 		},
 	}
 
+	// fail reports one undeliverable message and answers its request id, if it
+	// has one, with a JSON-RPC internal error so the MCP client is not left
+	// waiting. The bridge keeps serving.
+	fail := func(payload []byte, err error) {
+		fmt.Fprintf(ports.Err, "error: %v\n", err)
+		var request api.MCPRequest
+		if json.Unmarshal(payload, &request) != nil || len(request.ID) == 0 {
+			return
+		}
+		reply, _ := json.Marshal(api.MCPResponse{
+			JSONRPC: api.MCPJSONRPC,
+			ID:      request.ID,
+			Error:   &api.MCPError{Code: -32603, Message: err.Error()},
+		})
+		_, _ = ports.Out.Write(append(reply, '\n'))
+	}
+
 	scanner := bufio.NewScanner(ports.In)
 	scanner.Buffer(make([]byte, 64*1024), maxMCPStdioMessageBytes)
 
@@ -96,7 +112,8 @@ func runMCPStdio(ctx context.Context, config Config, args []string, ports Ports,
 
 		authHeader, err := client.Bearer(ctx, ports.Credential, ports.Now())
 		if err != nil {
-			return failure(ports.Err, err)
+			fail(payload, err)
+			continue
 		}
 
 		request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointURL, bytes.NewReader(payload))
@@ -111,36 +128,42 @@ func runMCPStdio(ctx context.Context, config Config, args []string, ports Ports,
 		response, err := httpClient.Do(request)
 		if err != nil {
 			if errors.Is(err, errMCPRedirectRefused) {
-				return failure(ports.Err, fmt.Errorf("MCP endpoint attempted a redirect"))
+				fail(payload, fmt.Errorf("MCP endpoint attempted a redirect"))
+				continue
 			}
 			if ctx.Err() != nil {
 				return failure(ports.Err, ctx.Err())
 			}
-			return failure(ports.Err, fmt.Errorf("MCP endpoint is unavailable"))
+			fail(payload, fmt.Errorf("MCP endpoint is unavailable"))
+			continue
 		}
 
 		respBody, readErr := readBoundedMCP(response.Body, api.MaxResponseBytes)
 		_ = response.Body.Close()
 		if readErr != nil {
-			return failure(ports.Err, fmt.Errorf("MCP response is unreadable or oversized"))
+			fail(payload, fmt.Errorf("MCP response is unreadable or oversized"))
+			continue
 		}
 
 		if response.StatusCode >= 300 && response.StatusCode < 400 {
-			return failure(ports.Err, fmt.Errorf("MCP endpoint attempted a redirect"))
+			fail(payload, fmt.Errorf("MCP endpoint attempted a redirect"))
+			continue
 		}
 		// Ignore 202 Accepted / 204 No Content and empty notification responses.
 		if response.StatusCode == http.StatusAccepted || response.StatusCode == http.StatusNoContent {
 			continue
 		}
 		trimmedResp := bytes.TrimSpace(respBody)
-		if len(trimmedResp) == 0 {
-			continue
-		}
 		if response.StatusCode < 200 || response.StatusCode > 299 {
 			if pubErr := decodePublicErrorSummary(trimmedResp); pubErr != "" {
-				return failure(ports.Err, fmt.Errorf("MCP endpoint returned HTTP %d: %s", response.StatusCode, pubErr))
+				fail(payload, fmt.Errorf("MCP endpoint returned HTTP %d: %s", response.StatusCode, pubErr))
+				continue
 			}
-			return failure(ports.Err, fmt.Errorf("MCP endpoint returned HTTP %d", response.StatusCode))
+			fail(payload, fmt.Errorf("MCP endpoint returned HTTP %d", response.StatusCode))
+			continue
+		}
+		if len(trimmedResp) == 0 {
+			continue
 		}
 
 		var singleLine bytes.Buffer
@@ -220,6 +243,9 @@ func runMCPInstall(_ context.Context, config Config, args []string, ports Ports,
 	default:
 		return usage(ports.Err, fmt.Sprintf("unknown mcp install target %q; want claude, cursor, or codex", target))
 	}
+	if localScope && target != "claude" {
+		return usage(ports.Err, "--local is only supported for the claude target")
+	}
 
 	serverName := strings.TrimSpace(nameFlag)
 	if serverName == "" {
@@ -243,7 +269,12 @@ func runMCPInstall(_ context.Context, config Config, args []string, ports Ports,
 	}
 	mcpArgs := []string{"--url", config.ServerURL}
 	if caPath := strings.TrimSpace(config.CAFile); caPath != "" {
-		mcpArgs = append(mcpArgs, "--ca-file", caPath)
+		// The editor starts kodactl from its own working directory.
+		absCAPath, err := filepath.Abs(caPath)
+		if err != nil {
+			return failure(ports.Err, fmt.Errorf("cannot resolve CA file %q: %w", caPath, err))
+		}
+		mcpArgs = append(mcpArgs, "--ca-file", absCAPath)
 	}
 	if credPath := strings.TrimSpace(config.CredentialFile); credPath != "" {
 		mcpArgs = append(mcpArgs, "--credential-file", credPath)
@@ -377,14 +408,34 @@ func mergeMCPJSONConfig(existing []byte, serverName, cmdName string, mcpArgs []s
 func formatCodexTOMLSection(serverName, cmdName string, mcpArgs []string) string {
 	key := serverName
 	if !isBareTOMLKey(serverName) {
-		key = strconv.Quote(serverName)
+		key = tomlString(serverName)
 	}
 	quotedArgs := make([]string, len(mcpArgs))
 	for i, arg := range mcpArgs {
-		quotedArgs[i] = strconv.Quote(arg)
+		quotedArgs[i] = tomlString(arg)
 	}
 	return fmt.Sprintf("[mcp_servers.%s]\ncommand = %s\nargs = [%s]\n",
-		key, strconv.Quote(cmdName), strings.Join(quotedArgs, ", "))
+		key, tomlString(cmdName), strings.Join(quotedArgs, ", "))
+}
+
+// tomlString renders a TOML basic string. strconv.Quote is not usable: TOML
+// has no \a, \v or \x escape.
+func tomlString(value string) string {
+	var out strings.Builder
+	out.WriteByte('"')
+	for _, r := range value {
+		switch {
+		case r == '"' || r == '\\':
+			out.WriteByte('\\')
+			out.WriteRune(r)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&out, `\u%04X`, r)
+		default:
+			out.WriteRune(r)
+		}
+	}
+	out.WriteByte('"')
+	return out.String()
 }
 
 func isBareTOMLKey(key string) bool {
@@ -411,26 +462,33 @@ func mergeMCPTOMLConfig(existing []byte, serverName, cmdName string, mcpArgs []s
 
 	key := serverName
 	if !isBareTOMLKey(serverName) {
-		key = strconv.Quote(serverName)
+		key = tomlString(serverName)
 	}
-	targetHeader := "[mcp_servers." + key + "]"
-	altHeader := "[mcp_servers." + strconv.Quote(serverName) + "]"
+	targetTable := "[mcp_servers." + key
+	altTable := "[mcp_servers." + tomlString(serverName)
 
 	lines := strings.Split(strings.ReplaceAll(string(existing), "\r\n", "\n"), "\n")
 	startIdx := -1
 	endIdx := len(lines)
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "[") {
+			continue
+		}
+		// What follows the server's table name in a header: "]", then perhaps
+		// a comment, for the table itself and "." for one of its sub-tables.
+		rest := strings.TrimPrefix(strings.TrimPrefix(trimmed, targetTable), altTable)
 		if startIdx < 0 {
-			if trimmed == targetHeader || trimmed == altHeader {
+			if strings.HasPrefix(rest, "]") {
 				startIdx = i
 			}
 			continue
 		}
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			endIdx = i
-			break
+		if strings.HasPrefix(rest, ".") {
+			continue
 		}
+		endIdx = i
+		break
 	}
 
 	if startIdx >= 0 {

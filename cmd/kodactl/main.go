@@ -200,10 +200,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 			Now:          now,
 		}
 	}
+	// Empty when unknown: `mcp install` then falls back to the bare name.
+	commandPath, _ := os.Executable()
 	return deps.runCLI(ctx, config, flags.Args(), ports, cli.CommandDeps{
-		Login:   runtimeDeps,
-		HTTP:    apiTransport,
-		HomeDir: homeDir,
+		Login:       runtimeDeps,
+		HTTP:        apiTransport,
+		HomeDir:     homeDir,
+		CommandPath: commandPath,
 	})
 }
 

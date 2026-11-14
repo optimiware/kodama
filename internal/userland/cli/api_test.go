@@ -75,7 +75,7 @@
 //	inspect <execution>
 //	watch <execution>
 //	login
-//	pipeline apply <directory>
+//	pipeline apply <directory|file>
 //	helper <get|store|erase> <url>
 //
 // Run never calls os.Exit. It returns ExitSuccess, ExitFailure or ExitUsage.
@@ -112,10 +112,12 @@
 // stable per-pipeline caller key derived from project, name and exact YAML
 // bytes. A file that is not valid UTF-8 is a visible failure and is not sent.
 // Every file is attempted in sorted order even after a failure; there is no
-// directory atomicity claim. Success writes "applied <name>\n" to Out; failure
-// writes "failed <name>: <public message>\n" to Err. Any failure is
-// ExitFailure. An empty directory is ExitSuccess with no requests. Replaying
-// the same directory sends the same keys.
+// directory atomicity claim. Success writes "applied <name>
+// (pipeline_id=<id>)\n" to Out, without the parenthesis when the result
+// carries no id; failure writes "failed <name>: <public message>\n" to Err.
+// Any failure is ExitFailure. An empty directory is ExitSuccess with no
+// requests. Replaying the same directory sends the same keys. A path that is
+// not a readable directory is applied as one file under the same name rules.
 //
 // `helper` reads Ports.Credential only for get and delegates to
 // HelperDecision. A successful get writes exactly
