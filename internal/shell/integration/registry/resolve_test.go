@@ -213,6 +213,8 @@ func TestResolveInvalidReferenceRefused(t *testing.T) {
 		{"non sha256 pin", repository + "@md5:" + strings.Repeat("a", 32)},
 		{"empty digest pin", repository + "@"},
 		{"empty tag", repository + ":"},
+		{"host with two colons", "bad:host:1234/" + repositoryPath + ":" + imageTag},
+		{"host port out of range", registryOrigin + ":99999/" + repositoryPath + ":" + imageTag},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

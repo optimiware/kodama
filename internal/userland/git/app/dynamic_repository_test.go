@@ -66,6 +66,12 @@ func TestProvisionRepositoryWritesOptionResourceWhenProvided(t *testing.T) {
 	if !ok || policy.ResourceID != "res-shop-api" {
 		t.Fatalf("Policy(shop/api).ResourceID = %q (ok=%v); want res-shop-api", policy.ResourceID, ok)
 	}
+
+	injected := repositoryProvisionConfig(layout, "shop/web")
+	injected.ResourceID = "res-shop-web\n    RW+ refs/heads/release/ = @all"
+	if _, err := ProvisionRepository(context.Background(), injected); err == nil {
+		t.Fatal("ProvisionRepository accepted a resource id that carries policy text")
+	}
 }
 
 // TestServerOnDemandDynamicRepositoryInitializationAndRaceSafety proves that a

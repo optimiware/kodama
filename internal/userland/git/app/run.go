@@ -228,6 +228,7 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 	policies, err := native.NewCommittedPolicy(native.CommittedPolicyConfig{
 		RepositoryPath: adminPath,
 		Executor:       executor,
+		ResourceIDs:    config.ResourceIDs,
 	})
 	if err != nil {
 		return nil, err

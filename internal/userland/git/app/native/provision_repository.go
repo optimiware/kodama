@@ -116,6 +116,11 @@ func requireDefaultRepositoryPolicy(repository, resourceID string) error {
 	if !ok {
 		return fmt.Errorf("default repository policy does not declare the %q repository", repository)
 	}
+	// The parser reads exactly one token as the resource id, so any other
+	// text in resourceID (a newline and a further rule) shows as a difference.
+	if policy.ResourceID != strings.TrimSpace(resourceID) {
+		return fmt.Errorf("repository provisioning resource id %q is invalid", resourceID)
+	}
 	engineer := git.Identity{Roles: []string{"engineer"}}
 	execution := git.Identity{Execution: true}
 	readDecision, err := policy.AuthorizeRead(git.ReadRequest{Identity: engineer})
@@ -654,6 +659,15 @@ func validateProvisionedRepository(ctx context.Context, repositoryPath string, e
 			return fmt.Errorf("%w: repository %q does not enable %s",
 				ErrRepositoryProvisionDestination, repositoryPath, name)
 		}
+	}
+	// No update hook is ever installed; an existing one is a foreign mutation
+	// path and is refused, never removed.
+	if _, err := os.Lstat(filepath.Join(repositoryPath, "hooks", "update")); err == nil {
+		return fmt.Errorf("%w: repository %q has an update hook",
+			ErrRepositoryProvisionDestination, repositoryPath)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("%w: inspect repository %q update hook: %v",
+			ErrRepositoryProvisionDestination, repositoryPath, err)
 	}
 	return nil
 }

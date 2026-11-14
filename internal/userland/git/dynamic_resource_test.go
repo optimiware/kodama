@@ -160,6 +160,18 @@ repo unmapped/no-option
 	if !errors.Is(err, git.ErrResourceMismatch) {
 		t.Fatalf("Update(dynamic/app with wrong resource) = %v; want ErrResourceMismatch", err)
 	}
+	// A repository with no binding at all accepts no resource id.
+	_, err = service.Update(ctx, git.UpdateRequest{
+		ResourceID:      "res-any",
+		Repository:      "unmapped/no-option",
+		Ref:             "refs/heads/work/a",
+		Candidate:       "cand-1",
+		ActorCredential: testCredential,
+		SourceEventID:   "evt-mismatch-3",
+	})
+	if !errors.Is(err, git.ErrResourceMismatch) {
+		t.Fatalf("Update(unmapped/no-option) = %v; want ErrResourceMismatch", err)
+	}
 
 	// Unmapped repositories (absent from policy or lacking option resource)
 	// return UnregisteredRepositoryError (fault.Unauthenticated).

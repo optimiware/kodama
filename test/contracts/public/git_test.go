@@ -301,6 +301,7 @@ func TestGitRuleParserRefusals(t *testing.T) {
 		{"invalid option resource slash", "repo admin\n    option resource = res/1\n    RW = @admin\n"},
 		{"invalid option resource dot", "repo admin\n    option resource = ..\n    RW = @admin\n"},
 		{"duplicate option resource", "repo admin\n    option resource = res-1\n    option resource = res-2\n    RW = @admin\n"},
+		{"option resource shared by two repos", "repo admin\n    option resource = res-1\n    RW = @admin\nrepo shop\n    option resource = res-1\n    R = @all\n"},
 		{"unknown option key", "repo admin\n    option unknown = res-1\n    RW = @admin\n"},
 	}
 	for _, testCase := range refusals {

@@ -13,6 +13,7 @@ import (
 // declarations refuse.
 func ParseConfig(data []byte) (Config, error) {
 	config := Config{policies: make(map[string]RepositoryPolicy)}
+	resources := make(map[string]string)
 	current := ""
 	for index, raw := range strings.Split(string(data), "\n") {
 		lineNumber := index + 1
@@ -39,6 +40,14 @@ func ParseConfig(data []byte) (Config, error) {
 			policy := config.policies[current]
 			if err := applyOption(lineNumber, current, strings.TrimSpace(strings.TrimPrefix(line, "option ")), &policy); err != nil {
 				return Config{}, err
+			}
+			// A report names only the resource, so two repositories must
+			// never share one.
+			if owner, taken := resources[policy.ResourceID]; taken && owner != current {
+				return Config{}, fmt.Errorf("line %d: resource %q is already declared by repository %q", lineNumber, policy.ResourceID, owner)
+			}
+			if policy.ResourceID != "" {
+				resources[policy.ResourceID] = current
 			}
 			config.policies[current] = policy
 		default:

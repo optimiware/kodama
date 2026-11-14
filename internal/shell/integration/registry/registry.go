@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/optimiware/kodama/internal/fault"
@@ -589,6 +590,14 @@ func validHost(value string) bool {
 		// host: refusing it also keeps net.SplitHostPort from stripping the
 		// brackets and mapping "[docker.io]:443" to Docker Hub.
 		return bracketedIPLiteral(value)
+	}
+	if name, port, found := strings.Cut(value, ":"); found {
+		// At most one colon, between a name and a port in 1..65535. Anything
+		// else would only fail later, as an unavailable registry.
+		number, err := strconv.ParseUint(port, 10, 16)
+		if name == "" || err != nil || number == 0 {
+			return false
+		}
 	}
 	for _, character := range value {
 		switch {

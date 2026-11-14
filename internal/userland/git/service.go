@@ -232,7 +232,8 @@ func (service *Service) ResolveResourceID(ctx context.Context, repository string
 
 // VerifyResourceBinding checks that a supplied resource identity agrees with
 // both the static ResourceIDs pin (if configured) and the repository policy's
-// `option resource` declaration (if configured).
+// `option resource` declaration (if configured). A repository with neither
+// binding is refused.
 func (service *Service) VerifyResourceBinding(repository, resourceID string, policy RepositoryPolicy) error {
 	staticID := service.resourceIDs[repository]
 	if staticID != "" && policy.ResourceID != "" && staticID != policy.ResourceID {
@@ -244,7 +245,7 @@ func (service *Service) VerifyResourceBinding(repository, resourceID string, pol
 	if expected == "" {
 		expected = policy.ResourceID
 	}
-	if expected != "" && resourceID != expected {
+	if expected == "" || resourceID != expected {
 		return fault.Wrap(fault.Forbidden,
 			fmt.Sprintf("repository %q resource id disagrees with configured binding", repository),
 			ErrResourceMismatch)
