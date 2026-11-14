@@ -359,6 +359,15 @@ func TestUpDownStatusCLICommands(t *testing.T) {
 	if capturedUp.Instance != "demo" || capturedUp.ListenAddr != "127.0.0.1:9443" {
 		t.Fatalf("capturedUp = %+v", capturedUp)
 	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("a loopback listen address printed: %s", errBuf.String())
+	}
+	if code := runUpEntry(context.Background(), []string{"--listen", "0.0.0.0:9443"}, &out, &errBuf); code != 0 {
+		t.Fatalf("runUpEntry exit = %d: %s", code, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "anyone who can reach this port can obtain an administrator token") {
+		t.Fatalf("a non-loopback listen address printed no warning: %q", errBuf.String())
+	}
 
 	out.Reset()
 	if code := runStatusEntry(context.Background(), []string{"--name", "demo", "--json"}, &out, &errBuf); code != 0 {

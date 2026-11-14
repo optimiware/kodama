@@ -309,14 +309,8 @@ func (issuer *DevIssuer) handleAuthorize(w http.ResponseWriter, r *http.Request)
 	case http.MethodGet:
 		values = r.URL.Query()
 	case http.MethodPost:
-		body, err := io.ReadAll(io.LimitReader(r.Body, maxOIDCFormBytes))
-		if err != nil {
-			writeOAuthError(w, http.StatusBadRequest, "invalid_request", "request body could not be read")
-			return
-		}
-		parsed, err := url.ParseQuery(string(body))
-		if err != nil {
-			writeOAuthError(w, http.StatusBadRequest, "invalid_request", "malformed form body")
+		parsed, ok := parseFormBody(w, r)
+		if !ok {
 			return
 		}
 		values = parsed

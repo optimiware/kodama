@@ -60,7 +60,7 @@ dist:
 # file that carries it (docs/runbooks/release.md). Nothing is pushed.
 release-prepare:
 	@[ "$(origin VERSION)" = "command line" ] || { echo "usage: make release-prepare VERSION=<version>"; exit 2; }
-	scripts/release-prepare $(VERSION)
+	scripts/release-prepare "$(VERSION)"
 	$(GO) test -count=1 -run TestReleaseVersionIsConsistent ./internal/installation/
 
 # ---------------------------------------------------------------------------

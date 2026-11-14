@@ -27,7 +27,7 @@ set -u
 } >> "$PODMAN_ARGV_LOG"
 case "${1:-}" in
   build) exit 0 ;;
-  tag) exit 0 ;;
+  tag|untag|image) exit 0 ;;
   manifest)
     case "${2:-}" in
       exists) exit 1 ;;
@@ -372,7 +372,8 @@ func TestImageScriptMultiArchAndAlsoTag(t *testing.T) {
 	}
 	joined := strings.Join(box.podmanArgv(t), "\n")
 	for _, expected := range []string{
-		"podman\tmanifest\tcreate\tregistry.example.com/kodama:0.2.0",
+		// The name is held by a single-arch image, which is untagged first.
+		"podman\tuntag\tregistry.example.com/kodama:0.2.0\tregistry.example.com/kodama:0.2.0\npodman\tmanifest\tcreate\tregistry.example.com/kodama:0.2.0",
 		"--platform\tlinux/amd64,linux/arm64\t--manifest\tregistry.example.com/kodama:0.2.0",
 		"podman\tmanifest\tpush\t--all\t--digestfile",
 		"docker://registry.example.com/kodama:0.2.0",

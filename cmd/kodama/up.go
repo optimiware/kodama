@@ -66,12 +66,14 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		usage(stderr, fmt.Sprintf("invalid --project: %v", err))
 		return 2
 	}
-	if _, _, err := up.PublicOriginFromListen(*listen); err != nil {
+	listenAddr, _, err := up.PublicOriginFromListen(*listen)
+	if err != nil {
 		usage(stderr, err.Error())
 		return 2
 	}
+	warnOpenSignIn(stderr, listenAddr)
 
-	_, err := runUpStack(ctx, up.UpConfig{
+	_, err = runUpStack(ctx, up.UpConfig{
 		Instance:              *name,
 		StateDir:              *stateDir,
 		ListenAddr:            *listen,
@@ -87,6 +89,14 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		return 1
 	}
 	return 0
+}
+
+// warnOpenSignIn says what a listen address beyond loopback exposes: the
+// built-in sign-in of `kodama dev` and `kodama up` asks for no credential.
+func warnOpenSignIn(stderr io.Writer, listenAddr string) {
+	if !loopbackListener(listenAddr) {
+		fmt.Fprintf(stderr, "kodama: warning: %s is not a loopback address. The built-in sign-in asks for no credential: anyone who can reach this port can obtain an administrator token.\n", listenAddr)
+	}
 }
 
 // runDownEntry runs `kodama down`.

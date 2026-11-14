@@ -17,9 +17,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -508,10 +511,14 @@ func TestSingleOriginGatewayRoutingHeadersAndSSE(t *testing.T) {
 		Timeout: 10 * time.Second,
 	}
 
-	// 1. Route /git/* -> git upstream with /git stripped and Authorization/Content-Type/X-Forwarded-* preserved.
+	// 1. Route /git/* -> git upstream with /git stripped and Authorization preserved.
+	// The gateway is the edge: X-Forwarded-* sent by the client is dropped.
 	gitReq, _ := http.NewRequest(http.MethodGet, baseURL+"/git/demo.git/info/refs?service=git-upload-pack", nil)
 	gitReq.Header.Set("Authorization", "Basic Z2l0OnRva2Vu")
 	gitReq.Header.Set("X-Forwarded-For", "203.0.113.9")
+	gitReq.Header.Set("X-Forwarded-Host", "spoofed.example")
+	gitReq.Header.Set("X-Forwarded-Proto", "http")
+	gitReq.Header.Set("X-Forwarded-Prefix", "/spoofed")
 	gitResp, err := client.Do(gitReq)
 	if err != nil {
 		t.Fatalf("GET /git/... failed: %v", err)
@@ -572,6 +579,22 @@ func TestSingleOriginGatewayRoutingHeadersAndSSE(t *testing.T) {
 	_, _ = io.ReadAll(reader)
 	_ = sseResp.Body.Close()
 
+	// 5. A path that is not clean is refused; a trailing slash is fine.
+	for p, want := range map[string]int{
+		"/git/../auth/token": http.StatusBadRequest,
+		"/auth//token":       http.StatusBadRequest,
+		"/git/":              http.StatusOK,
+	} {
+		resp, err := client.Get(baseURL + p)
+		if err != nil {
+			t.Fatalf("GET %s failed: %v", p, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Fatalf("GET %s status = %d, want %d", p, resp.StatusCode, want)
+		}
+	}
+
 	// Verify recorded upstream headers.
 	mu.Lock()
 	defer mu.Unlock()
@@ -582,8 +605,8 @@ func TestSingleOriginGatewayRoutingHeadersAndSSE(t *testing.T) {
 	if firstGit.upstream != "git" || firstGit.path != "/demo.git/info/refs" || firstGit.xfPrefix != "/git" {
 		t.Fatalf("unexpected git upstream observation: %+v", firstGit)
 	}
-	if firstGit.auth != "Basic Z2l0OnRva2Vu" || !strings.Contains(firstGit.xff, "203.0.113.9") || firstGit.xfp != "https" {
-		t.Fatalf("git forwarded headers lost: %+v", firstGit)
+	if firstGit.auth != "Basic Z2l0OnRva2Vu" || firstGit.xff != "127.0.0.1" || firstGit.xfh != ln.Addr().String() || firstGit.xfp != "https" {
+		t.Fatalf("git forwarded headers are not the gateway's own: %+v", firstGit)
 	}
 	if observed[1].upstream != "auth" || observed[1].path != "/auth/.well-known/openid-configuration" {
 		t.Fatalf("unexpected auth upstream observation: %+v", observed[1])
@@ -678,6 +701,17 @@ func TestDevIssuerPKCEAndDeviceFlow(t *testing.T) {
 	_ = tokenResp.Body.Close()
 	if tokenResp.StatusCode != http.StatusOK || tokPayload.AccessToken == "" || tokPayload.IDToken == "" || tokPayload.RefreshToken == "" {
 		t.Fatalf("token exchange failed: status=%d payload=%+v", tokenResp.StatusCode, tokPayload)
+	}
+
+	// An oversized authorize form is refused, not truncated and accepted.
+	oversized := q.Encode() + "&pad=" + strings.Repeat("a", maxOIDCFormBytes)
+	bigResp, err := noRedirectClient.Post(srv.URL+"/auth/authorize", "application/x-www-form-urlencoded", strings.NewReader(oversized))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = bigResp.Body.Close()
+	if bigResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("oversized authorize POST status = %d, want 400", bigResp.StatusCode)
 	}
 
 	// Replaying the single-use authorization code must fail.
@@ -860,14 +894,20 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 	}
 	testListen := fmt.Sprintf("127.0.0.1:%d", testPort)
 	var out strings.Builder
+	gatewayCtx, stopGateway := context.WithCancel(context.Background())
+	defer stopGateway()
 	desc, err := Up(context.Background(), UpConfig{
-		Instance:     "test",
-		ListenAddr:   testListen,
-		GOOS:         "darwin",
-		HomeDir:      home,
-		DetectOpts:   detectOpts,
-		EngineHTTP:   rewritingClient,
-		SpawnGateway: func(string) (int, error) { return os.Getpid(), nil },
+		Instance:   "test",
+		ListenAddr: testListen,
+		GOOS:       "darwin",
+		HomeDir:    home,
+		DetectOpts: detectOpts,
+		EngineHTTP: rewritingClient,
+		// Up waits for the gateway it spawned, so the test runs a real one.
+		SpawnGateway: func(stateDir string) (int, error) {
+			go func() { _ = ServeStackGateway(gatewayCtx, stateDir) }()
+			return os.Getpid(), nil
+		},
 	}, &out)
 	if err != nil {
 		t.Fatalf("Up failed: %v", err)
@@ -900,6 +940,22 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 			t.Fatalf("container %s not running in Status: %+v", comp, report.Containers[comp])
 		}
 	}
+
+	// A stale gateway.pid that now names another process is not signaled.
+	bystander := exec.Command("sleep", "60")
+	if err := bystander.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(desc.StateDir, "gateway.pid"), []byte(strconv.Itoa(bystander.Process.Pid)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = bystander.Process.Kill()
+		_ = bystander.Wait()
+		if bystander.ProcessState.Sys().(syscall.WaitStatus).Signal() == syscall.SIGTERM {
+			t.Error("Down signaled a process that is not the gateway")
+		}
+	}()
 
 	if err := Down(context.Background(), DownConfig{
 		Instance:   "test",

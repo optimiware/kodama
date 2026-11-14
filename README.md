@@ -32,11 +32,16 @@ Then follow the [Podman quickstart](docs/runbooks/podman-quickstart.md) to
 ### Try the API, MCP and `kodactl` without containers
 
 From a checkout, `kodama dev` starts an in-memory server on one HTTPS port with
-a built-in sign-in:
+a built-in sign-in. Start it and leave it running:
 
 ```sh
 make build
-bin/kodama dev &
+bin/kodama dev
+```
+
+Then, in a second terminal:
+
+```sh
 source ~/.kodama/dev/env.sh
 bin/kodactl whoami
 bin/kodactl task create --title "First task"

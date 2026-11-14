@@ -107,6 +107,10 @@ common_build_args=(
 if [[ "$multiarch" -eq 1 ]]; then
   if podman manifest exists "$ref" >/dev/null 2>&1; then
     podman manifest rm "$ref" >/dev/null
+  elif podman image exists "$ref"; then
+    # A single-arch image holds the name (the release workflow builds and
+    # tests one first); `podman manifest create` refuses a name in use.
+    podman untag "$ref" "$ref" >/dev/null
   fi
   podman manifest create "$ref" >/dev/null
   podman build "${common_build_args[@]}" --platform "$platforms" --manifest "$ref" "$repo_root" >/dev/null

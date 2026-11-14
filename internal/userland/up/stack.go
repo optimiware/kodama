@@ -506,6 +506,10 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 			return StackDescriptor{}, err
 		}
 		_ = writeFileAtomic(filepath.Join(stateDir, "gateway.pid"), []byte(strconv.Itoa(pid)+"\n"), 0o600)
+		// bootstrap-admin reads /auth/jwks.json from the gateway just spawned.
+		for i := 0; i < 50 && !probeReadyz(ctx, publicURL+"/auth/healthz", tlsBundle.CACertPath); i++ {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
 	bootstrapMarker := filepath.Join(stateDir, "bootstrap.done")
@@ -691,9 +695,11 @@ func ServeStackGateway(ctx context.Context, stateDir string) error {
 	if err != nil {
 		return err
 	}
+	// The same names as in Up: a reissued leaf must still cover the containers.
+	prefix := "kodama-" + desc.Instance
 	tlsBundle, err := EnsureTLS(TLSConfig{
 		Dir:   filepath.Join(stateDir, "tls"),
-		Hosts: []string{desc.ListenAddr},
+		Hosts: []string{desc.ListenAddr, prefix + "-server", prefix + "-git"},
 	})
 	if err != nil {
 		return err
@@ -1011,7 +1017,7 @@ func stopExistingGateway(stateDir string) {
 			pid = desc.GatewayPID
 		}
 	}
-	if pid > 0 && pid != os.Getpid() && processAlive(pid) {
+	if pid > 0 && pid != os.Getpid() && processAlive(pid) && gatewayProcess(pid) {
 		_ = syscall.Kill(pid, syscall.SIGTERM)
 		deadline := time.Now().Add(3 * time.Second)
 		for processAlive(pid) && time.Now().Before(deadline) {
@@ -1019,6 +1025,14 @@ func stopExistingGateway(stateDir string) {
 		}
 	}
 	_ = os.Remove(pidPath)
+}
+
+// gatewayProcess reports whether pid runs `kodama up --gateway-only`: after a
+// reboot the recorded PID may belong to another process. When ps cannot tell,
+// the PID is trusted.
+func gatewayProcess(pid int) bool {
+	out, err := exec.Command("ps", "-ww", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+	return err != nil || strings.Contains(string(out), "--gateway-only")
 }
 
 func readPIDFile(path string) int {

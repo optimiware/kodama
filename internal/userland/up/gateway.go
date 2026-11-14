@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	pathpkg "path"
 	"strings"
 	"time"
 )
@@ -114,6 +115,12 @@ func NewGateway(cfg GatewayConfig) (*Gateway, error) {
 //   - everything else   -> kodama server upstream
 func (gw *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
+	// Routing is by prefix, so a path with dot segments or doubled slashes is
+	// refused instead of reaching an upstream that would resolve it differently.
+	if cleaned := pathpkg.Clean(path); cleaned != path && cleaned+"/" != path {
+		http.Error(w, `{"code":"invalid_input","message":"request path is not canonical"}`, http.StatusBadRequest)
+		return
+	}
 	switch {
 	case path == "/git" || strings.HasPrefix(path, "/git/"):
 		if gw.gitProxy == nil {
@@ -221,7 +228,14 @@ func buildPrefixProxy(target *url.URL, stripPrefix string, rt http.RoundTripper)
 			}
 			pr.Out.Host = target.Host
 
-			preserveAndExtendForwardedHeaders(pr, stripPrefix)
+			// The gateway is the TLS edge: it states the X-Forwarded-* headers
+			// itself. ReverseProxy has already dropped the client's
+			// X-Forwarded-For, -Host and -Proto.
+			pr.SetXForwarded()
+			pr.Out.Header.Del("X-Forwarded-Prefix")
+			if stripPrefix != "" {
+				pr.Out.Header.Set("X-Forwarded-Prefix", stripPrefix)
+			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
 			w.Header().Set("Content-Type", "application/json")
@@ -249,43 +263,4 @@ func stripURLPrefix(path, rawPath, prefix string) (string, string) {
 		}
 	}
 	return strippedPath, strippedRaw
-}
-
-func preserveAndExtendForwardedHeaders(pr *httputil.ProxyRequest, strippedPrefix string) {
-	// ReverseProxy clears X-Forwarded-* on pr.Out before calling Rewrite; copy
-	// incoming X-Forwarded-* headers first so upstream callers never lose them.
-	for name, values := range pr.In.Header {
-		if strings.HasPrefix(strings.ToLower(name), "x-forwarded-") {
-			copied := make([]string, len(values))
-			copy(copied, values)
-			pr.Out.Header[name] = copied
-		}
-	}
-
-	clientIP := pr.In.RemoteAddr
-	if host, _, err := net.SplitHostPort(pr.In.RemoteAddr); err == nil && host != "" {
-		clientIP = host
-	}
-	if clientIP != "" {
-		prior := pr.In.Header.Values("X-Forwarded-For")
-		if len(prior) > 0 {
-			pr.Out.Header.Set("X-Forwarded-For", strings.Join(prior, ", ")+", "+clientIP)
-		} else {
-			pr.Out.Header.Set("X-Forwarded-For", clientIP)
-		}
-	}
-
-	if pr.Out.Header.Get("X-Forwarded-Host") == "" && pr.In.Host != "" {
-		pr.Out.Header.Set("X-Forwarded-Host", pr.In.Host)
-	}
-	if pr.Out.Header.Get("X-Forwarded-Proto") == "" {
-		if pr.In.TLS != nil {
-			pr.Out.Header.Set("X-Forwarded-Proto", "https")
-		} else {
-			pr.Out.Header.Set("X-Forwarded-Proto", "http")
-		}
-	}
-	if strippedPrefix != "" && pr.Out.Header.Get("X-Forwarded-Prefix") == "" {
-		pr.Out.Header.Set("X-Forwarded-Prefix", strippedPrefix)
-	}
 }

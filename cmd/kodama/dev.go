@@ -110,6 +110,7 @@ func runDev(ctx context.Context, args []string, stdout, stderr io.Writer, deps d
 		usage(stderr, err.Error())
 		return 2
 	}
+	warnOpenSignIn(stderr, listenBind)
 
 	if err := os.MkdirAll(filepath.Join(stateDir, "data"), 0o700); err != nil {
 		fmt.Fprintf(stderr, "kodama: dev state directory: %v\n", err)

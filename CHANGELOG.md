@@ -40,8 +40,9 @@ Known limitations:
   `--listen 0.0.0.0:<port>` and an explicit `--image`, and its administrator
   holds no project role, so tasks and pipelines are refused until roles are
   granted.
-- `kodactl pipeline apply` does not print the pipeline id that
-  `kodactl task run --pipeline` needs; read it with `kodactl call pipeline.list`.
+- The built-in sign-in of `kodama dev` and `kodama up` asks for no credential.
+  On a `--listen` address other than loopback, anyone who can reach the port
+  can obtain an administrator token; both commands print a warning.
 - An unauthenticated MCP `tools/list` answers 200; only tool calls answer 401.
 - No release has run the new release workflow yet: the multi-arch image, the
   `latest` tag and publishing on a `VERSION` change are unexercised.
