@@ -87,14 +87,11 @@ type authCodeEntry struct {
 
 type refreshEntry struct {
 	TokenHash [32]byte
-	FamilyID  string
 	ClientID  string
 	Scope     string
 	User      UserIdentity
 	CreatedAt time.Time
 	ExpiresAt time.Time
-	Rotated   bool
-	Revoked   bool
 }
 
 type deviceStatus int
@@ -132,7 +129,7 @@ type authStore struct {
 	socialTxs   map[[32]byte]*socialTx
 	ghSetupTxs  map[[32]byte]*githubSetupTx
 	authCodes   map[[32]byte]*authCodeEntry
-	refresh     map[[32]byte]*refreshEntry
+	refresh     map[string]*refreshEntry
 	devices     map[[32]byte]*deviceEntry
 	userCodes   map[string][32]byte
 	clients     map[string]*registeredClient
@@ -146,7 +143,7 @@ func newAuthStore() *authStore {
 		socialTxs:   make(map[[32]byte]*socialTx),
 		ghSetupTxs:  make(map[[32]byte]*githubSetupTx),
 		authCodes:   make(map[[32]byte]*authCodeEntry),
-		refresh:     make(map[[32]byte]*refreshEntry),
+		refresh:     make(map[string]*refreshEntry),
 		devices:     make(map[[32]byte]*deviceEntry),
 		userCodes:   make(map[string][32]byte),
 		clients:     make(map[string]*registeredClient),
@@ -392,8 +389,16 @@ func (store *authStore) consumeAuthCode(rawCode string, now time.Time) (authCode
 	return *entry, nil
 }
 
-func (store *authStore) issueRefreshToken(rawToken, familyID, clientID, scope string, user UserIdentity, ttl time.Duration, now time.Time) {
-	hash := secretDigest(rawToken)
+// refreshFamily returns the family ID that prefixes a "<family>.<secret>"
+// refresh token. The store keeps one entry per family, holding the digest of
+// the family's current token, so rotation never adds an entry and any other
+// token of a known family is a replay.
+func refreshFamily(rawToken string) string {
+	family, _, _ := strings.Cut(rawToken, ".")
+	return family
+}
+
+func (store *authStore) issueRefreshToken(rawToken, clientID, scope string, user UserIdentity, ttl time.Duration, now time.Time) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	for k, v := range store.refresh {
@@ -402,7 +407,7 @@ func (store *authStore) issueRefreshToken(rawToken, familyID, clientID, scope st
 		}
 	}
 	if len(store.refresh) >= maxRefreshTokens {
-		var oldestKey [32]byte
+		var oldestKey string
 		var oldestSet bool
 		var oldestTime time.Time
 		for k, v := range store.refresh {
@@ -416,9 +421,8 @@ func (store *authStore) issueRefreshToken(rawToken, familyID, clientID, scope st
 			delete(store.refresh, oldestKey)
 		}
 	}
-	store.refresh[hash] = &refreshEntry{
-		TokenHash: hash,
-		FamilyID:  familyID,
+	store.refresh[refreshFamily(rawToken)] = &refreshEntry{
+		TokenHash: secretDigest(rawToken),
 		ClientID:  clientID,
 		Scope:     scope,
 		User:      user,
@@ -427,69 +431,47 @@ func (store *authStore) issueRefreshToken(rawToken, familyID, clientID, scope st
 	}
 }
 
-// rotateRefreshToken atomically consumes rawOldToken, revoking the entire token
-// family if a previously rotated token is replayed, and records rawNewToken in
-// the same family.
+// rotateRefreshToken atomically replaces rawOldToken with rawNewToken, which
+// must carry the same family prefix, revoking the family if a previously
+// rotated token is replayed.
 func (store *authStore) rotateRefreshToken(rawOldToken, rawNewToken, clientID string, ttl time.Duration, now time.Time) (refreshEntry, error) {
-	oldHash := secretDigest(rawOldToken)
-	newHash := secretDigest(rawNewToken)
+	family := refreshFamily(rawOldToken)
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	entry, ok := store.refresh[oldHash]
+	entry, ok := store.refresh[family]
 	if !ok {
 		return refreshEntry{}, errInvalidGrant
 	}
 	if !now.Before(entry.ExpiresAt) {
-		delete(store.refresh, oldHash)
+		delete(store.refresh, family)
 		return refreshEntry{}, errInvalidGrant
 	}
 	if !constantTimeEqualStrings(entry.ClientID, clientID) {
 		return refreshEntry{}, errInvalidGrant
 	}
-	if entry.Revoked {
+	if entry.TokenHash != secretDigest(rawOldToken) {
+		// Replay of a rotated refresh token compromises the family; revoke it.
+		delete(store.refresh, family)
 		return refreshEntry{}, errInvalidGrant
 	}
-	if entry.Rotated {
-		// Replay of a rotated refresh token compromises the family; revoke all members.
-		family := entry.FamilyID
-		for _, member := range store.refresh {
-			if member.FamilyID == family {
-				member.Revoked = true
-			}
-		}
-		return refreshEntry{}, errInvalidGrant
-	}
-	entry.Rotated = true
-	next := &refreshEntry{
-		TokenHash: newHash,
-		FamilyID:  entry.FamilyID,
-		ClientID:  entry.ClientID,
-		Scope:     entry.Scope,
-		User:      entry.User,
-		CreatedAt: now,
-		ExpiresAt: now.Add(ttl),
-	}
-	store.refresh[newHash] = next
-	return *next, nil
+	entry.TokenHash = secretDigest(rawNewToken)
+	entry.CreatedAt = now
+	entry.ExpiresAt = now.Add(ttl)
+	return *entry, nil
 }
 
 func (store *authStore) revokeRefreshToken(rawToken, clientID string) bool {
-	hash := secretDigest(rawToken)
+	family := refreshFamily(rawToken)
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	entry, ok := store.refresh[hash]
+	entry, ok := store.refresh[family]
 	if !ok {
 		return false
 	}
 	if !constantTimeEqualStrings(entry.ClientID, clientID) {
 		return false
 	}
-	family := entry.FamilyID
-	for _, member := range store.refresh {
-		if member.FamilyID == family {
-			member.Revoked = true
-		}
-	}
+	delete(store.refresh, family)
 	return true
 }
 
@@ -505,10 +487,15 @@ func (store *authStore) revokeJTI(jti string, expiresAt time.Time, now time.Time
 		}
 	}
 	if len(store.revokedJTIs) >= maxRevokedJTIs {
-		for k := range store.revokedJTIs {
-			delete(store.revokedJTIs, k)
-			break
+		var soonestKey string
+		var soonestTime time.Time
+		for k, exp := range store.revokedJTIs {
+			if soonestKey == "" || exp.Before(soonestTime) {
+				soonestKey = k
+				soonestTime = exp
+			}
 		}
+		delete(store.revokedJTIs, soonestKey)
 	}
 	store.revokedJTIs[jti] = expiresAt
 }

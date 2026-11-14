@@ -33,6 +33,8 @@ type verifiedAccessClaims struct {
 	Tenant  string
 	Project string
 	JTI     string
+	Client  string
+	Expiry  time.Time
 }
 
 type upstreamIDClaims struct {
@@ -206,6 +208,7 @@ func (server *Server) verifyOwnAccessToken(raw string, now time.Time) (verifiedA
 	if server.config.ProjectClaim != "" {
 		project, _ = jsonStringClaim(claims, server.config.ProjectClaim)
 	}
+	clientID, _ := jsonStringClaim(claims, "client_id")
 	return verifiedAccessClaims{
 		Subject: sub,
 		Email:   email,
@@ -213,6 +216,8 @@ func (server *Server) verifyOwnAccessToken(raw string, now time.Time) (verifiedA
 		Tenant:  tenant,
 		Project: project,
 		JTI:     jti,
+		Client:  clientID,
+		Expiry:  time.Unix(exp, 0),
 	}, nil
 }
 
@@ -262,6 +267,14 @@ func verifyUpstreamIDToken(raw string, jwksRaw []byte, expectedIssuer, expectedC
 	}
 	if !jsonAudienceContains(claims["aud"], expectedClientID) {
 		return upstreamIDClaims{}, errors.New("upstream ID token audience mismatch")
+	}
+	// OIDC Core §3.1.3.7: azp must name this client, and is required when the
+	// token has several audiences.
+	azp, _ := jsonStringClaim(claims, "azp")
+	var audiences []string
+	_ = json.Unmarshal(claims["aud"], &audiences)
+	if (azp != "" || len(audiences) > 1) && azp != expectedClientID {
+		return upstreamIDClaims{}, errors.New("upstream ID token authorized party mismatch")
 	}
 	exp, present, valid := jsonInt64Claim(claims, "exp")
 	if !present || !valid || !now.Before(time.Unix(exp, 0).Add(jwtClockSkew)) {

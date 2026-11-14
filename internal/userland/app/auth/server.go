@@ -255,6 +255,16 @@ func (server *Server) isKnownClient(clientID string) bool {
 	return ok
 }
 
+// clientMayUseGrant reports whether clientID may use grantType: built-in
+// clients may use every grant, dynamic clients only those they registered.
+func (server *Server) clientMayUseGrant(clientID, grantType string) bool {
+	if server.isBuiltInClient(clientID) {
+		return true
+	}
+	reg, ok := server.store.lookupRegisteredClient(clientID)
+	return ok && slices.Contains(reg.GrantTypes, grantType)
+}
+
 func (server *Server) isAllowedRedirect(clientID, redirectURI string) bool {
 	if err := validateRedirectURI(redirectURI); err != nil {
 		return false

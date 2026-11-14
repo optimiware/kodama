@@ -70,6 +70,11 @@ func loadOrCreateMaterial(stateDir string, random io.Reader) (*signingMaterial, 
 		if err := os.MkdirAll(cleanDir, 0o700); err != nil {
 			return nil, fault.Wrap(fault.DependencyUnavailable, "create auth state directory", err)
 		}
+		if info, err := os.Stat(cleanDir); err == nil && info.Mode().Perm()&0o077 != 0 {
+			if err := os.Chmod(cleanDir, 0o700); err != nil {
+				return nil, fault.Wrap(fault.DependencyUnavailable, "restrict auth state directory", err)
+			}
+		}
 		keyPath := filepath.Join(cleanDir, signingKeyFilename)
 		priv, err = loadOrCreateSigningKey(keyPath, random)
 		if err != nil {

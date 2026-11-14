@@ -93,6 +93,10 @@ func TestStateDirPersistenceAndDeterministicKID(t *testing.T) {
 		}
 	}
 
+	// An existing state directory with loose permissions must be tightened.
+	if err := os.Chmod(stateDir, 0o755); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
 	srv2, err := auth.New(auth.Config{
 		Issuer:        "https://auth.example.com",
 		StateDir:      stateDir,
@@ -100,6 +104,9 @@ func TestStateDirPersistenceAndDeterministicKID(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("second auth.New: %v", err)
+	}
+	if info, err := os.Stat(stateDir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("state dir stat = %v, err = %v; want mode 0700", info, err)
 	}
 	if srv1.KeyID() == "" || srv1.KeyID() != srv2.KeyID() {
 		t.Fatalf("kid across restart = (%q, %q); want identical deterministic kid", srv1.KeyID(), srv2.KeyID())
@@ -127,15 +134,23 @@ func TestLocalPKCEFlowAccessCodeRefreshRotationAndRevocation(t *testing.T) {
 
 	var err error
 	srv, err = auth.New(auth.Config{
-		Issuer:        ts.URL,
-		TenantID:      "tenant-1",
-		ProjectID:     "project-1",
-		LocalPersonas: []string{"admin", "engineer", "reviewer"},
-		AccessCode:    "top-secret-code",
-		RedirectURIs:  []string{"https://app.example.com/oauth/cb"},
+		Issuer:              ts.URL,
+		TenantID:            "tenant-1",
+		ProjectID:           "project-1",
+		LocalPersonas:       []string{"admin", "engineer", "reviewer"},
+		AccessCode:          "top-secret-code",
+		RedirectURIs:        []string{"https://app.example.com/oauth/cb"},
+		AdditionalClientIDs: []string{"other-client"},
 	})
 	if err != nil {
 		t.Fatalf("auth.New: %v", err)
+	}
+
+	// Claims the server sets itself must be refused as the tenant claim name.
+	for _, name := range []string{"email", "name", "client_id", "scope"} {
+		if _, err := auth.New(auth.Config{Issuer: ts.URL, LocalPersonas: []string{"admin"}, TenantClaim: name}); err == nil {
+			t.Fatalf("tenant claim %q was accepted; want refusal", name)
+		}
 	}
 
 	// Healthz & Discovery & JWKS
@@ -403,6 +418,24 @@ func TestLocalPKCEFlowAccessCodeRefreshRotationAndRevocation(t *testing.T) {
 		t.Fatalf("rotated token in compromised family status = %d; want 400", afterCompromiseResp.StatusCode)
 	}
 
+	// Another client must not be able to revoke this client's access token.
+	foreignRevResp, err := ts.Client().PostForm(ts.URL+"/revoke", url.Values{
+		"token":     {tokens.AccessToken},
+		"client_id": {"other-client"},
+	})
+	if err != nil {
+		t.Fatalf("POST /revoke as another client: %v", err)
+	}
+	_ = foreignRevResp.Body.Close()
+	whoAfterForeignRev, err := ts.Client().Do(whoReq)
+	if err != nil {
+		t.Fatalf("GET /whoami after foreign revoke: %v", err)
+	}
+	_ = whoAfterForeignRev.Body.Close()
+	if whoAfterForeignRev.StatusCode != http.StatusOK {
+		t.Fatalf("/whoami after another client's revoke = %d; want 200", whoAfterForeignRev.StatusCode)
+	}
+
 	// Revoking an access token invalidates /whoami.
 	revResp, err := ts.Client().PostForm(ts.URL+"/revoke", url.Values{
 		"token":           {tokens.AccessToken},
@@ -456,7 +489,8 @@ func TestDynamicClientRegistrationMCPFlow(t *testing.T) {
 
 	// Valid MCP public PKCE client registration.
 	regBody, _ := json.Marshal(map[string]any{
-		"client_name":                "Claude Code MCP",
+		// 129 bytes: truncation to 128 must not split the trailing rune.
+		"client_name":                strings.Repeat("a", 127) + "é",
 		"redirect_uris":              []string{"http://127.0.0.1:38491/oauth/callback"},
 		"grant_types":                []string{"authorization_code", "refresh_token"},
 		"response_types":             []string{"code"},
@@ -467,12 +501,35 @@ func TestDynamicClientRegistrationMCPFlow(t *testing.T) {
 		t.Fatalf("POST /register = %v, %v", regResp, err)
 	}
 	var reg struct {
-		ClientID string `json:"client_id"`
+		ClientID   string `json:"client_id"`
+		ClientName string `json:"client_name"`
 	}
 	_ = json.NewDecoder(regResp.Body).Decode(&reg)
 	_ = regResp.Body.Close()
 	if !strings.HasPrefix(reg.ClientID, "mcp-") {
 		t.Fatalf("client_id = %q; want mcp-*", reg.ClientID)
+	}
+	if reg.ClientName != strings.Repeat("a", 127) {
+		t.Fatalf("client_name = %q; want it cut at a rune boundary", reg.ClientName)
+	}
+
+	// The client did not register the device grant, so it must not use it.
+	for path, form := range map[string]url.Values{
+		"/device": {"client_id": {reg.ClientID}},
+		"/token":  {"client_id": {reg.ClientID}, "grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "device_code": {"x"}},
+	} {
+		resp, err := ts.Client().PostForm(ts.URL+path, form)
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		var oauthErr struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&oauthErr)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest || oauthErr.Error != "unauthorized_client" {
+			t.Fatalf("POST %s without the device grant = %d %q; want 400 unauthorized_client", path, resp.StatusCode, oauthErr.Error)
+		}
 	}
 
 	// Authorize + exchange using the dynamically registered client_id.

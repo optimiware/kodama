@@ -360,7 +360,7 @@ func isValidClaimName(value string) bool {
 
 func isReservedJWTClaim(value string) bool {
 	switch value {
-	case "iss", "sub", "aud", "exp", "nbf", "iat", "jti", "nonce", "azp":
+	case "iss", "sub", "aud", "exp", "nbf", "iat", "jti", "nonce", "azp", "email", "name", "client_id", "scope":
 		return true
 	default:
 		return false

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/optimiware/kodama/internal/fault"
 	"github.com/optimiware/kodama/internal/userland/principal"
 )
 
@@ -441,6 +442,10 @@ func (server *Server) handleGitHubSetupCallback(w http.ResponseWriter, r *http.R
 		return
 	}
 	if err := server.installGitHubCredentials(strings.TrimSpace(converted.ClientID), strings.TrimSpace(converted.ClientSecret)); err != nil {
+		if class, _ := fault.ClassOf(err); class == fault.VersionConflict {
+			server.renderErrorPage(w, http.StatusConflict, "Already Configured", "GitHub login is already configured.")
+			return
+		}
 		server.renderErrorPage(w, http.StatusInternalServerError, "GitHub Setup Failed", "Could not save GitHub OAuth credentials.")
 		return
 	}

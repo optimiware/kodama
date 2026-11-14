@@ -310,6 +310,10 @@ func (server *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	now := server.config.Clock()
 	grantType := strings.TrimSpace(r.PostFormValue("grant_type"))
+	if !server.clientMayUseGrant(clientID, grantType) {
+		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "client is not registered for this grant_type")
+		return
+	}
 	switch grantType {
 	case "authorization_code":
 		code := strings.TrimSpace(r.PostFormValue("code"))
@@ -349,6 +353,7 @@ func (server *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "could not generate refresh token")
 			return
 		}
+		nextRefresh = refreshFamily(rawRefresh) + "." + nextRefresh
 		rotated, err := server.store.rotateRefreshToken(rawRefresh, nextRefresh, clientID, server.config.RefreshTokenTTL, now)
 		if err != nil {
 			writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "refresh token is invalid, expired or already rotated")
@@ -406,8 +411,8 @@ func (server *Server) issueTokenSet(w http.ResponseWriter, user UserIdentity, cl
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "could not generate token family")
 			return
 		}
-		server.store.issueRefreshToken(rawRefresh, familyID, clientID, scope, user, server.config.RefreshTokenTTL, now)
-		refreshToken = rawRefresh
+		refreshToken = familyID + "." + rawRefresh
+		server.store.issueRefreshToken(refreshToken, clientID, scope, user, server.config.RefreshTokenTTL, now)
 	}
 	expiresSec := int64(server.config.AccessTokenTTL / time.Second)
 	if expiresSec <= 0 {
@@ -442,6 +447,10 @@ func (server *Server) handleDeviceAuthorizePost(w http.ResponseWriter, r *http.R
 	clientID, ok := extractPublicClientID(r)
 	if !ok || !server.isKnownClient(clientID) {
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "unknown or invalid client_id")
+		return
+	}
+	if !server.clientMayUseGrant(clientID, "urn:ietf:params:oauth:grant-type:device_code") {
+		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "client is not registered for the device grant")
 		return
 	}
 	scope := normalizeScopeString(r.PostFormValue("scope"))
@@ -649,8 +658,9 @@ func (server *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 	now := server.config.Clock()
 	server.store.revokeRefreshToken(rawToken, clientID)
-	if claims, err := server.verifyOwnAccessToken(rawToken, now); err == nil && claims.JTI != "" {
-		server.store.revokeJTI(claims.JTI, now.Add(server.config.AccessTokenTTL), now)
+	if claims, err := server.verifyOwnAccessToken(rawToken, now); err == nil && claims.JTI != "" && claims.Client == clientID {
+		// Keep the revocation until the token stops verifying, clock skew included.
+		server.store.revokeJTI(claims.JTI, claims.Expiry.Add(jwtClockSkew), now)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{})
 }
@@ -754,7 +764,7 @@ func (server *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	now := server.config.Clock()
 	clientName := strings.TrimSpace(req.ClientName)
 	if len(clientName) > 128 {
-		clientName = clientName[:128]
+		clientName = strings.ToValidUTF8(clientName[:128], "")
 	}
 
 	server.store.registerClient(registeredClient{
