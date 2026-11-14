@@ -71,15 +71,16 @@ execution execution-a917c44ec73787377abaf074c6b6b61f succeeded
 The [quickstart](docs/runbooks/quickstart.md) continues with approvals, tasks,
 sign-in, Git and MCP.
 
-### Install the last release
+### The Podman bundle
 
-The last release predates `kodama up`. It installs with the Podman bundle
-(Podman 5, `git` 2.44, `jq`, `openssl`, `curl`, `socat`):
+The Podman bundle is a second single-host installation, with a separate
+identity provider; the release smoke test runs on it. It installs the released
+image (Podman 5, `git` 2.44, `jq`, `openssl`, `curl`, `socat`):
 
 ```sh
-git clone --branch v0.1.0 https://github.com/optimiware/kodama && cd kodama
-podman pull ghcr.io/optimiware/kodama/kodama:0.1.0
-KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.1.0 ./deploy/podman/install.sh
+git clone --branch v0.2.0 https://github.com/optimiware/kodama && cd kodama
+podman pull ghcr.io/optimiware/kodama/kodama:0.2.0
+KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.2.0 ./deploy/podman/install.sh
 ```
 
 Then follow the [Podman bundle runbook](docs/runbooks/podman-quickstart.md) to

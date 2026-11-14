@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 Added:
 
@@ -63,8 +63,9 @@ Fixed:
 Known limitations:
 
 - `kodama up` needs Podman; it refuses a Docker engine, because workloads run
-  through the Podman API. It has run on Linux only. From a checkout its image
-  is built with `make image`; no released image carries it yet.
+  through the Podman API. It has run on Linux only.
+- `kodama` is published as an image, not as a binary: `kodama up` is built
+  from a checkout with `make build`.
 - `kodama up` writes two administrator credentials that last 24 hours, and a
   Git service credential that lasts 8 hours. Running it again renews them.
   The default credential is scoped to the project; membership administration
@@ -79,8 +80,8 @@ Known limitations:
   no model or endpoint allowlist.
 - `kodama auth serve` does not limit the rate of sign-in attempts or client
   registrations.
-- No release has run the new release workflow yet: the multi-arch image, the
-  `latest` tag and publishing on a `VERSION` change are unexercised.
+- This is the first release the new release workflow publishes. Its
+  `linux/arm64` image is built and has not been run.
 
 ## 0.1.0
 
