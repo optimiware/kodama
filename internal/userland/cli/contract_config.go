@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,15 +14,18 @@ import (
 	"github.com/optimiware/kodama/client"
 )
 
-// Validate checks the trusted server URL, optional session file, output format
-// and registered trusted origins. Insecure, ambiguous and unknown configuration
-// refuses.
+// Validate checks the trusted server URL, optional session file, optional CA
+// bundle path, output format and registered trusted origins. Insecure,
+// ambiguous and unknown configuration refuses.
 func (config Config) Validate() error {
 	if _, err := parseServerURL(config.ServerURL); err != nil {
 		return err
 	}
 	if config.CredentialFile != "" && !filepath.IsAbs(config.CredentialFile) {
 		return fmt.Errorf("credential file %q must be an absolute path", config.CredentialFile)
+	}
+	if config.CAFile != "" && strings.TrimSpace(config.CAFile) == "" {
+		return fmt.Errorf("ca_file must not be blank")
 	}
 	if config.Output != "" && !config.Output.Valid() {
 		return fmt.Errorf("unknown output format %q", config.Output)
@@ -32,6 +36,23 @@ func (config Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// ParseCABundle loads PEM-encoded CA certificates into a root certificate pool
+// backed by the system trust store (or an empty pool when the system roots are
+// unavailable). Empty or non-certificate PEM bundles refuse.
+func ParseCABundle(pem []byte) (*x509.CertPool, error) {
+	if len(bytes.TrimSpace(pem)) == 0 {
+		return nil, fmt.Errorf("CA certificate bundle is empty")
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("CA certificate bundle contains no usable PEM certificates")
+	}
+	return pool, nil
 }
 
 // ParseConfig decodes and validates one kodactl configuration. Unknown fields,

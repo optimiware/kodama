@@ -272,6 +272,32 @@ func (resolver *Resolver) resolveBearer(ctx context.Context, presented string) (
 	if !verified.Enabled || verified.Kind != identity.KindHuman {
 		return authorize.Principal{}, resolverRefusal()
 	}
+	if authorize.AllowsUnassignedPrincipal(ctx) && resolver.principals != nil {
+		current, readErr := resolver.principals.ReadPrincipal(ctx, identity.PrincipalRequest{
+			Scope:       verified.Scope,
+			PrincipalID: verified.ID,
+		})
+		if readErr != nil {
+			if class, ok := fault.ClassOf(readErr); ok && class == fault.NotFound {
+				return authorize.Principal{
+					ID:      verified.ID,
+					Kind:    identity.KindHuman,
+					Scope:   verified.Scope,
+					Enabled: true,
+				}, nil
+			}
+			return authorize.Principal{}, resolverFailure(readErr)
+		}
+		if err := current.Validate(); err != nil || current.Scope != verified.Scope || current.ID != verified.ID || !current.Enabled {
+			return authorize.Principal{}, resolverRefusal()
+		}
+		if err := identity.CheckCurrent(verified, current); err != nil || current.Kind != identity.KindHuman {
+			return authorize.Principal{}, resolverRefusal()
+		}
+		principal := current
+		principal.Roles = append([]tenancy.Role(nil), current.Roles...)
+		return principal, nil
+	}
 	current, err := identity.Current(ctx, resolver.principals, identity.PrincipalRequest{
 		Scope:       verified.Scope,
 		PrincipalID: verified.ID,

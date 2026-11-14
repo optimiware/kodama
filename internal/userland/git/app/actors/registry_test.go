@@ -642,7 +642,7 @@ func (hookRetention) ReferencedCommits(context.Context, api.Page) (git.CommitRef
 }
 
 func TestHandleAcceptedByRealHook(t *testing.T) {
-	config, err := git.ParseConfig([]byte("repo shop/web\n    RW  refs/heads/main = @execution\n"))
+	config, err := git.ParseConfig([]byte("repo shop/web\n    option resource = res-i03b\n    RW  refs/heads/main = @execution\n"))
 	if err != nil {
 		t.Fatalf("ParseConfig: %v", err)
 	}

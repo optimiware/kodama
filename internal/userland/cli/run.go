@@ -45,27 +45,80 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 		ports.Sleep = time.Sleep
 	}
 	if len(args) == 0 {
-		return usage(ports.Err, "a command is required")
+		code := usage(ports.Err, "a command is required")
+		fmt.Fprintln(ports.Err)
+		writeCommandSummary(ports.Err)
+		return code
 	}
 	switch args[0] {
+	case "help", "--help", "-h":
+		return runHelp(ports.Out, ports.Err, args[1:])
 	case "call":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"call"})
+		}
 		return runCall(ctx, config, args[1:], ports)
 	case "inspect":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"inspect"})
+		}
 		return runInspect(ctx, config, args[1:], ports)
 	case "watch":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"watch"})
+		}
 		return runWatch(ctx, config, args[1:], ports)
+	case "logs":
+		return runLogs(ctx, config, args[1:], ports)
+	case "inbox":
+		return runInbox(ctx, config, args[1:], ports, deps)
+	case "approve":
+		return runApprove(ctx, config, args[1:], ports, deps)
+	case "reject":
+		return runReject(ctx, config, args[1:], ports, deps)
+	case "task":
+		return runTask(ctx, config, args[1:], ports, deps)
+	case "whoami":
+		return runWhoami(ctx, config, args[1:], ports, deps)
+	case "member":
+		return runMember(ctx, config, args[1:], ports, deps)
+	case "mcp":
+		return runMCP(ctx, config, args[1:], ports, deps)
 	case "login":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"login"})
+		}
 		return runLogin(ctx, config, args[1:], ports, deps.Login)
 	case "logout":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"logout"})
+		}
 		return runLogout(ctx, config, args[1:], ports, deps.Login)
 	case "refresh":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"refresh"})
+		}
 		return runRefresh(ctx, config, args[1:], ports, deps.Login)
 	case "status":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"status"})
+		}
 		return runStatus(ctx, config, args[1:], ports, deps.Login)
 	case "pipeline":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"pipeline"})
+		}
 		return runPipeline(ctx, config, args[1:], ports)
 	case "helper":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"helper"})
+		}
 		return runHelper(ctx, config, args[1:], ports)
+	case "version":
+		if hasHelpFlag(args[1:]) {
+			return runHelp(ports.Out, ports.Err, []string{"version"})
+		}
+		return usage(ports.Err, fmt.Sprintf("unknown command %q", args[0]))
 	default:
 		return usage(ports.Err, fmt.Sprintf("unknown command %q", args[0]))
 	}
@@ -307,6 +360,9 @@ func executionStatus(body json.RawMessage) (string, bool) {
 		return "", false
 	}
 	raw, ok := fields["status"]
+	if !ok {
+		raw, ok = fields["state"]
+	}
 	if !ok {
 		return "", false
 	}

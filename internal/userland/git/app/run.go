@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/optimiware/kodama/client"
+	"github.com/optimiware/kodama/internal/fault"
 	"github.com/optimiware/kodama/internal/id"
 	"github.com/optimiware/kodama/internal/userland/git"
 	"github.com/optimiware/kodama/internal/userland/git/app/native"
@@ -91,25 +92,32 @@ type Config struct {
 // Server is one constructed smart-HTTP Git service. It owns no goroutine until
 // Serve, StartHooks or StartRecovery is called.
 type Server struct {
-	handler http.Handler
-	hook    *git.Hook
-	service *git.Service
-	logger  *slog.Logger
-	storage git.Storage
-	tenant  id.TenantID
-	journal *git.FileJournal
-	clock   git.Clock
+	handler     http.Handler
+	hook        *git.Hook
+	service     *git.Service
+	logger      *slog.Logger
+	storage     git.Storage
+	storageRoot string
+	executor    git.CommandExecutor
+	tenant      id.TenantID
+	journal     *git.FileJournal
+	clock       git.Clock
 	// journalDirectory is the canonical receive-journal directory the recovery
 	// sweep scans. It is outside every served repository path by construction.
-	journalDirectory string
-	hookBinary       string
-	socketPath       string
-	hooks            *native.SocketServer
-	hooksMutex       sync.Mutex
-	hooksCancel      context.CancelFunc
-	hooksDone        chan error
-	hooksLive        bool
-	repositories     []string
+	journalDirectory  string
+	hookBinary        string
+	socketPath        string
+	hooks             *native.SocketServer
+	hooksMutex        sync.Mutex
+	hooksCancel       context.CancelFunc
+	hooksDone         chan error
+	hooksLive         bool
+	repositories      []string
+	staticResourceIDs map[string]string
+	provisionMu       sync.Mutex
+	provisionLocks    map[string]*sync.Mutex
+	dynamicReadyMu    sync.Mutex
+	dynamicReady      map[string]bool
 	// receiveMutex guards the active in-flight git-receive-pack exchange count
 	// per repository, so the recovery sweep never settles a fresh intent while
 	// receive-pack may still apply it.
@@ -188,11 +196,16 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 		return nil, fmt.Errorf("git serve: %w", err)
 	}
 
-	localStorage, err := git.NewLocalStorage(config.StorageRoot)
+	storageRoot, err := filepath.Abs(config.StorageRoot)
+	if err != nil {
+		return nil, fmt.Errorf("resolve git serve storage root: %w", err)
+	}
+	storageRoot = filepath.Clean(storageRoot)
+	localStorage, err := git.NewLocalStorage(storageRoot)
 	if err != nil {
 		return nil, err
 	}
-	storage, err := native.NewSafeStorage(localStorage, config.StorageRoot, config.TenantID)
+	storage, err := native.NewSafeStorage(localStorage, storageRoot, config.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +228,7 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 	policies, err := native.NewCommittedPolicy(native.CommittedPolicyConfig{
 		RepositoryPath: adminPath,
 		Executor:       executor,
+		ResourceIDs:    config.ResourceIDs,
 	})
 	if err != nil {
 		return nil, err
@@ -253,15 +267,16 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 	}
 
 	service, err := git.NewService(git.ServiceConfig{
-		TenantID:  config.TenantID,
-		Storage:   storage,
-		Policies:  policies,
-		Executor:  executor,
-		Observer:  observer,
-		Journal:   journal,
-		Verify:    verify,
-		Retention: retention,
-		Clock:     clock,
+		TenantID:    config.TenantID,
+		Storage:     storage,
+		Policies:    policies,
+		Executor:    executor,
+		Observer:    observer,
+		Journal:     journal,
+		Verify:      verify,
+		Retention:   retention,
+		Clock:       clock,
+		ResourceIDs: config.ResourceIDs,
 	})
 	if err != nil {
 		return nil, err
@@ -313,9 +328,13 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	staticResourceIDs := make(map[string]string, len(resourceIDs))
 	repositories := make([]string, 0, len(resourceIDs))
-	for repository := range resourceIDs {
+	for repository, resourceID := range resourceIDs {
 		repositories = append(repositories, repository)
+		if trimmed := strings.TrimSpace(resourceID); trimmed != "" {
+			staticResourceIDs[repository] = trimmed
+		}
 	}
 	sort.Strings(repositories)
 
@@ -323,6 +342,8 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 		service:            service,
 		logger:             logger,
 		storage:            storage,
+		storageRoot:        storageRoot,
+		executor:           executor,
 		tenant:             config.TenantID,
 		journal:            journal,
 		clock:              clock,
@@ -330,6 +351,9 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 		hookBinary:         hookBinary,
 		socketPath:         socketPath,
 		repositories:       repositories,
+		staticResourceIDs:  staticResourceIDs,
+		provisionLocks:     make(map[string]*sync.Mutex),
+		dynamicReady:       make(map[string]bool),
 		activeReceives:     make(map[string]int),
 		readHeaderTimeout:  defaultReadHeaderTimeout,
 		recoveryInterval:   defaultRecoveryInterval,
@@ -372,21 +396,22 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 	if sourceEvent == nil {
 		sourceEvent = git.NewSourceEventID()
 	}
+	actors := config.Actors
+	if readVerifier, ok := actors.(*git.ReadVerifier); ok {
+		actors, err = readVerifier.WithResourceResolver(service.ResolveResourceID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	smartHTTP, err := git.NewSmartHTTP(git.SmartHTTPConfig{
-		Service:      service,
-		Backend:      backend,
-		Actors:       config.Actors,
-		ActorHandles: config.ActorHandles,
-		ResourceID: func(repository string) (string, error) {
-			resourceID, ok := resourceIDs[repository]
-			if !ok || strings.TrimSpace(resourceID) == "" {
-				return "", git.UnregisteredRepositoryError(repository)
-			}
-			return resourceID, nil
-		},
-		SourceEvent:  sourceEvent,
-		MaxBodyBytes: config.MaxBodyBytes,
-		Timeout:      config.Timeout,
+		Service:           service,
+		Backend:           backend,
+		Actors:            actors,
+		ActorHandles:      config.ActorHandles,
+		ResourceIDContext: server.prepareServedRepository,
+		SourceEvent:       sourceEvent,
+		MaxBodyBytes:      config.MaxBodyBytes,
+		Timeout:           config.Timeout,
 	})
 	if err != nil {
 		return nil, err
@@ -402,6 +427,121 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 	server.hook = hook
 	server.hooks = hookServer
 	return server, nil
+}
+
+// prepareServedRepository resolves the repository's registered resource
+// identity and, for repositories dynamically declared in `admin/conf/git.conf`
+// via `option resource = <id>` rather than the startup ResourceIDs map,
+// idempotently initializes the bare repository and managed hooks on demand
+// before the backend runs.
+func (server *Server) prepareServedRepository(ctx context.Context, repository string) (string, error) {
+	resourceID, err := server.service.ResolveResourceID(ctx, repository)
+	if err != nil {
+		return "", err
+	}
+	if _, static := server.staticResourceIDs[repository]; static || repository == native.AdminRepository {
+		return resourceID, nil
+	}
+	if err := server.ensureDynamicRepository(ctx, repository); err != nil {
+		return "", err
+	}
+	return resourceID, nil
+}
+
+func (server *Server) repositoryProvisionLock(repository string) *sync.Mutex {
+	server.provisionMu.Lock()
+	defer server.provisionMu.Unlock()
+	if server.provisionLocks == nil {
+		server.provisionLocks = make(map[string]*sync.Mutex)
+	}
+	lock := server.provisionLocks[repository]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		server.provisionLocks[repository] = lock
+	}
+	return lock
+}
+
+func (server *Server) isDynamicReady(repository string) bool {
+	server.dynamicReadyMu.Lock()
+	defer server.dynamicReadyMu.Unlock()
+	return server.dynamicReady[repository]
+}
+
+func (server *Server) markDynamicReady(repository string) {
+	server.dynamicReadyMu.Lock()
+	if server.dynamicReady == nil {
+		server.dynamicReady = make(map[string]bool)
+	}
+	server.dynamicReady[repository] = true
+	server.dynamicReadyMu.Unlock()
+}
+
+// ensureDynamicRepository idempotently initializes a dynamic repository's bare
+// storage and managed pre-receive/post-receive hooks under a per-repository
+// mutex and the tenant provisioning lock.
+func (server *Server) ensureDynamicRepository(ctx context.Context, repository string) error {
+	repositoryPath, err := server.storage.RepositoryPath(server.tenant, repository)
+	if err != nil {
+		if errors.Is(err, git.ErrInvalidRepository) {
+			return fault.Wrap(fault.InvalidInput, "invalid repository path", err)
+		}
+		return fault.Wrap(fault.DependencyUnavailable, "repository storage is unavailable", err)
+	}
+	if err := requireJournalOutsidePaths(server.journalDirectory, map[string]string{repository: repositoryPath}); err != nil {
+		return fault.Wrap(fault.Forbidden, "repository path conflicts with service journal", err)
+	}
+	lock := server.repositoryProvisionLock(repository)
+	lock.Lock()
+	defer lock.Unlock()
+
+	if server.isDynamicReady(repository) && managedBareRepositoryPresent(repositoryPath) {
+		return nil
+	}
+	_, err = native.EnsureBareRepository(ctx, native.BareProvisionConfig{
+		TenantID:        server.tenant,
+		TenantDirectory: filepath.Join(server.storageRoot, string(server.tenant)),
+		RepositoryPath:  repositoryPath,
+		HookBinaryPath:  server.hookBinary,
+		Executor:        server.executor,
+	})
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if errors.Is(err, native.ErrRepositoryProvisionDestination) ||
+			errors.Is(err, native.ErrRepositoryProvisionContainment) ||
+			errors.Is(err, native.ErrForeignHook) ||
+			errors.Is(err, native.ErrHookSymlink) {
+			return fault.Wrap(fault.Forbidden, "repository storage cannot be initialized", err)
+		}
+		return fault.Wrap(fault.DependencyUnavailable, "repository initialization failed", err)
+	}
+	server.markDynamicReady(repository)
+	return nil
+}
+
+// managedBareRepositoryPresent checks without subprocesses that repositoryPath
+// still has its bare layout and managed hook files as regular, non-symlinked
+// entries. Any discrepancy falls back to EnsureBareRepository.
+func managedBareRepositoryPresent(repositoryPath string) bool {
+	info, err := os.Lstat(repositoryPath)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	for _, dir := range []string{"objects", "refs", "hooks"} {
+		child, err := os.Lstat(filepath.Join(repositoryPath, dir))
+		if err != nil || !child.IsDir() || child.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+	}
+	for _, file := range []string{"HEAD", filepath.Join("hooks", "pre-receive"), filepath.Join("hooks", "post-receive")} {
+		child, err := os.Lstat(filepath.Join(repositoryPath, file))
+		if err != nil || !child.Mode().IsRegular() {
+			return false
+		}
+	}
+	return true
 }
 
 // trackingBackend counts active in-flight git-receive-pack exchanges per

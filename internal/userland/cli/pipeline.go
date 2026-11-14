@@ -35,7 +35,7 @@ type pipelineFile struct {
 // visible on stderr.
 func runPipeline(ctx context.Context, config Config, args []string, ports Ports) int {
 	if len(args) != 2 || args[0] != "apply" {
-		return usage(ports.Err, "pipeline requires 'apply <directory>'")
+		return usage(ports.Err, "pipeline requires 'apply <directory|file>'")
 	}
 	if err := config.Validate(); err != nil {
 		return usage(ports.Err, err.Error())
@@ -52,9 +52,14 @@ func runPipeline(ctx context.Context, config Config, args []string, ports Ports)
 	}
 	entries, err := ports.Files.ReadDir(directory)
 	if err != nil {
-		return failure(ports.Err, fmt.Errorf("cannot read pipeline directory: %w", err))
+		// Not a readable directory: try it as one pipeline file.
+		entries = []DirEntry{{Name: filepath.Base(directory)}}
+		directory = filepath.Dir(directory)
 	}
 	files := acceptedPipelineFiles(directory, entries)
+	if err != nil && len(files) == 0 {
+		return failure(ports.Err, fmt.Errorf("cannot read pipeline directory: %w", err))
+	}
 	counts := make(map[string]int, len(files))
 	for _, file := range files {
 		counts[file.base]++
@@ -99,9 +104,15 @@ func runPipeline(ctx context.Context, config Config, args []string, ports Ports)
 			failed = true
 			continue
 		}
-		if _, err := ports.Client.Invoke(ctx, invocation); err != nil {
+		result, err := ports.Client.Invoke(ctx, invocation)
+		if err != nil {
 			fmt.Fprintf(ports.Err, "failed %s: %v\n", file.name, err)
 			failed = true
+			continue
+		}
+		var applied api.PipelineApplyResult
+		if json.Unmarshal(result.Body, &applied) == nil && applied.PipelineID != "" {
+			fmt.Fprintf(ports.Out, "applied %s (pipeline_id=%s)\n", file.base, applied.PipelineID)
 			continue
 		}
 		fmt.Fprintf(ports.Out, "applied %s\n", file.base)

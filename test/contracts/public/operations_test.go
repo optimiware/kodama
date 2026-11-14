@@ -20,7 +20,7 @@
 //	    EncodeResult   func(any) (json.RawMessage, error)
 //	}
 //	api.OperationCodecs() []api.OperationCodec
-//	        exactly the 51 registry operations in registry declaration order.
+//	        exactly the 58 registry operations in registry declaration order.
 //	api.OperationInputSchema(operation string) (json.RawMessage, error)
 //	        the MCP tools/list inputSchema: a field-level JSON Schema object for
 //	        the shared request envelope whose `input` member types the
@@ -82,30 +82,36 @@ var operationCases = []operationCase{
 	{operation: "tenant.rotate_key", request: api.TenantRotateKeyRequest{}, result: api.TenantRotateKeyResult{}},
 	{operation: "project.create", request: api.ProjectCreateRequest{}, result: api.ProjectCreateResult{}, identifiers: []string{"project_id"}},
 	{operation: "project.update", request: api.ProjectUpdateRequest{}, result: api.ProjectUpdateResult{}},
+	{operation: "project.list", request: api.ProjectListRequest{}, result: api.ProjectListResult{}},
 	{operation: "membership.grant", request: api.MembershipGrantRequest{}, result: api.MembershipGrantResult{}, enums: []enumProbe{{"roles", `["owner"]`}}},
 	{operation: "membership.revoke", request: api.MembershipRevokeRequest{}, result: api.MembershipRevokeResult{}},
 	{operation: "membership.list", request: api.MembershipListRequest{}, result: api.MembershipListResult{}},
+	{operation: "principal.whoami", request: api.PrincipalWhoamiRequest{}, result: api.PrincipalWhoamiResult{}},
 
 	// Resource bindings.
 	{operation: "resource.binding.register", request: api.ResourceBindingRegisterRequest{}, result: api.ResourceBindingRegisterResult{}, identifiers: []string{"binding_id", "resource_id", "enforcing_service"}, enums: []enumProbe{{"operations", `["git.ref.read"]`}, {"reportable_events", `["task.created"]`}}},
 	{operation: "resource.binding.update", request: api.ResourceBindingUpdateRequest{}, result: api.ResourceBindingUpdateResult{}, identifiers: []string{"resource_id", "enforcing_service"}, enums: []enumProbe{{"operations", `["git.ref.read"]`}}},
 	{operation: "resource.binding.delete", request: api.ResourceBindingDeleteRequest{}, result: api.ResourceBindingDeleteResult{}},
 	{operation: "resource.binding.read", request: api.ResourceBindingReadRequest{}, result: api.ResourceBindingReadResult{}},
+	{operation: "resource.binding.list", request: api.ResourceBindingListRequest{}, result: api.ResourceBindingListResult{}, identifiers: []string{"kind"}},
 
 	// Pipelines and immutable execution start.
 	{operation: "pipeline.apply", request: api.PipelineApplyRequest{}, result: api.PipelineApplyResult{}},
 	{operation: "pipeline.read", request: api.PipelineReadRequest{}, result: api.PipelineReadResult{}},
+	{operation: "pipeline.list", request: api.PipelineListRequest{}, result: api.PipelineListResult{}},
 	{operation: "pipeline.update", request: api.PipelineUpdateRequest{}, result: api.PipelineUpdateResult{}},
 	{operation: "pipeline.delete", request: api.PipelineDeleteRequest{}, result: api.PipelineDeleteResult{}},
 	{operation: "pipeline.start", request: api.PipelineStartRequest{}, result: api.PipelineStartResult{}},
 
 	// Secret metadata and writes.
 	{operation: "secret.metadata.read", request: api.SecretMetadataReadRequest{}, result: api.SecretMetadataReadResult{}},
+	{operation: "secret.metadata.list", request: api.SecretMetadataListRequest{}, result: api.SecretMetadataListResult{}},
 	{operation: "secret.write", request: api.SecretWriteRequest{}, result: api.SecretWriteResult{}},
 	{operation: "secret.delete", request: api.SecretDeleteRequest{}, result: api.SecretDeleteResult{}},
 
 	// Service accounts and credential lifecycle.
 	{operation: "service.create", request: api.ServiceCreateRequest{}, result: api.ServiceCreateResult{}, identifiers: []string{"service_id"}, enums: []enumProbe{{"roles", `["admin"]`}}},
+	{operation: "service.list", request: api.ServiceListRequest{}, result: api.ServiceListResult{}},
 	{operation: "service.update", request: api.ServiceUpdateRequest{}, result: api.ServiceUpdateResult{}, enums: []enumProbe{{"roles", `["admin"]`}}},
 	{operation: "service.enable", request: api.ServiceEnableRequest{}, result: api.ServiceEnableResult{}},
 	{operation: "service.disable", request: api.ServiceDisableRequest{}, result: api.ServiceDisableResult{}},
@@ -116,6 +122,7 @@ var operationCases = []operationCase{
 	// Tasks and conversation handoffs.
 	{operation: "task.create", request: api.TaskCreateRequest{}, result: api.TaskCreateResult{}, identifiers: []string{"pipeline_id"}},
 	{operation: "task.read", request: api.TaskReadRequest{}, result: api.TaskReadResult{}},
+	{operation: "task.list", request: api.TaskListRequest{}, result: api.TaskListResult{}, enums: []enumProbe{{"status", `"sleeping"`}}},
 	{operation: "task.edit", request: api.TaskEditRequest{}, result: api.TaskEditResult{}},
 	{operation: "task.comment", request: api.TaskCommentRequest{}, result: api.TaskCommentResult{}},
 	{operation: "task.select_pipeline", request: api.TaskSelectPipelineRequest{}, result: api.TaskSelectPipelineResult{}, identifiers: []string{"pipeline_id"}},
@@ -166,6 +173,12 @@ var zeroValidResultFields = map[string]bool{
 	"data":                true,
 	"content":             true,
 	"memberships":         true,
+	"projects":            true,
+	"bindings":            true,
+	"pipelines":           true,
+	"secrets":             true,
+	"services":            true,
+	"tasks":               true,
 	"entries":             true,
 	"items":               true,
 	"actions":             true,
@@ -587,7 +600,7 @@ func requireResultRefusal(t *testing.T, codec api.OperationCodec, raw json.RawMe
 }
 
 // TestOperationCodecsCoverTheFrozenRegistry pins that the table is exactly the
-// 51 registry operations, in declaration order, with the registry schema names
+// 58 registry operations, in declaration order, with the registry schema names
 // and one route binding each, and that every entry exposes all four codec
 // functions.
 func TestOperationCodecsCoverTheFrozenRegistry(t *testing.T) {

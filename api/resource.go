@@ -211,6 +211,66 @@ func (result ResourceBindingReadResult) Validate() error {
 	return nil
 }
 
+// ResourceBindingListRequest is the resource.binding.list input. The project
+// is carried explicitly for MCP callers and is optional for REST callers whose
+// route supplies it.
+type ResourceBindingListRequest struct {
+	ProjectID string `json:"project_id,omitempty" schema:"id"`
+	Kind      string `json:"kind,omitempty" schema:"id"`
+	Page      *Page  `json:"page,omitempty"`
+}
+
+// Validate checks the optional project identity, optional kind filter and page
+// bounds.
+func (request ResourceBindingListRequest) Validate() error {
+	if request.ProjectID != "" && !validID(request.ProjectID) {
+		return invalid("project_id is invalid")
+	}
+	if request.Kind != "" && !validID(request.Kind) {
+		return invalid("binding kind is invalid")
+	}
+	if request.Page != nil {
+		return request.Page.Validate()
+	}
+	return nil
+}
+
+// ResourceBindingView is one observed binding in resource.binding.list.
+type ResourceBindingView struct {
+	BindingID        string            `json:"binding_id"`
+	ResourceID       string            `json:"resource_id"`
+	EnforcingService string            `json:"enforcing_service"`
+	TrustedOrigins   []string          `json:"trusted_origins"`
+	Operations       []string          `json:"operations"`
+	ReportableEvents []string          `json:"reportable_events"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
+	Version          uint64            `json:"version" schema:"version"`
+}
+
+// Validate checks every observed binding member, including metadata bounds.
+func (view ResourceBindingView) Validate() error {
+	return ResourceBindingReadResult(view).Validate()
+}
+
+// ResourceBindingListResult is the resource.binding.list result.
+type ResourceBindingListResult struct {
+	Bindings   []ResourceBindingView `json:"bindings"`
+	NextCursor string                `json:"next_cursor,omitempty"`
+}
+
+// Validate checks every binding observation and the optional cursor bound.
+func (result ResourceBindingListResult) Validate() error {
+	for _, binding := range result.Bindings {
+		if err := binding.Validate(); err != nil {
+			return err
+		}
+	}
+	if len(result.NextCursor) > MaxCursorBytes {
+		return invalid("next_cursor is %d bytes; at most %d are allowed", len(result.NextCursor), MaxCursorBytes)
+	}
+	return nil
+}
+
 // validateTrustedOrigins checks the bounded trusted origin list. The list must
 // be present but may be empty: Binding.Validate accepts a binding with no
 // trusted origins.

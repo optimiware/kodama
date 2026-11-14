@@ -154,6 +154,11 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 		}
 	}
 
+	workloadCAFile, err := resolveTestWorkloadCAFile(options, values["KODAMA_TLS_DIR"], getenv)
+	if err != nil {
+		return productionBuild{}, err
+	}
+
 	libpod, err := podmandriver.NewLibpod(podmandriver.LibpodConfig{SocketPath: socket})
 	if err != nil {
 		return productionBuild{}, fmt.Errorf("podman client: %w", err)
@@ -164,11 +169,12 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 		return productionBuild{}, fmt.Errorf("podman runtime root under the data directory: %w", err)
 	}
 	adapter, err := runtimepodman.New(runtimepodman.Config{
-		Libpod:    libpod,
-		Files:     files,
-		Root:      runtimeRoot,
-		KodamaURL: workloadURL,
-		Cleanup:   runtimepodman.CleanupPolicy{Attempts: 3, Backoff: time.Second},
+		Libpod:         libpod,
+		Files:          files,
+		Root:           runtimeRoot,
+		KodamaURL:      workloadURL,
+		WorkloadCAFile: workloadCAFile,
+		Cleanup:        runtimepodman.CleanupPolicy{Attempts: 3, Backoff: time.Second},
 	})
 	if err != nil {
 		return productionBuild{}, fmt.Errorf("podman runtime: %w", err)
@@ -186,6 +192,7 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 		DefaultActionTimeout: shellapp.DefaultActionTimeout,
 		Discovery:            discovery,
 		Models:               models,
+		WorkloadURL:          workloadURL,
 		ToolProxy:            toolProxy,
 		Test: &shellapp.TestConfig{
 			Runtime:           adapter,
@@ -328,6 +335,44 @@ func testBrokerTLS(getenv productionEnv) (*natsdriver.TLSConfig, error) {
 		}
 	}
 	return &natsdriver.TLSConfig{CAFile: caFile, CertFile: certFile, KeyFile: keyFile}, nil
+}
+
+// resolveTestWorkloadCAFile selects the optional CA bundle materialized into
+// Podman workloads at /kodama/ca.crt. An explicit --workload-ca-file or
+// KODAMA_WORKLOAD_CA_FILE must be an absolute readable PEM certificate bundle;
+// when unset, <KODAMA_TLS_DIR>/ca.crt is adopted automatically if present.
+func resolveTestWorkloadCAFile(options serverOptions, tlsDir string, getenv productionEnv) (string, error) {
+	explicit := strings.TrimSpace(options.WorkloadCAFile)
+	if explicit == "" {
+		explicit = strings.TrimSpace(getenv("KODAMA_WORKLOAD_CA_FILE"))
+	}
+	if explicit != "" {
+		if !filepath.IsAbs(explicit) {
+			return "", fmt.Errorf("test profile workload CA (--workload-ca-file or KODAMA_WORKLOAD_CA_FILE) must be an absolute path")
+		}
+		info, err := os.Stat(explicit)
+		if err != nil || !info.Mode().IsRegular() {
+			return "", fmt.Errorf("test profile workload CA (--workload-ca-file or KODAMA_WORKLOAD_CA_FILE) is unreadable")
+		}
+		caPEM, err := os.ReadFile(explicit)
+		if err != nil {
+			return "", fmt.Errorf("test profile workload CA (--workload-ca-file or KODAMA_WORKLOAD_CA_FILE) is unreadable")
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(caPEM) {
+			return "", fmt.Errorf("test profile workload CA (--workload-ca-file or KODAMA_WORKLOAD_CA_FILE) is not a usable certificate")
+		}
+		return explicit, nil
+	}
+	defaultCA := filepath.Join(tlsDir, "ca.crt")
+	info, err := os.Stat(defaultCA)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", nil
+	}
+	caPEM, err := os.ReadFile(defaultCA)
+	if err != nil || !x509.NewCertPool().AppendCertsFromPEM(caPEM) {
+		return "", nil
+	}
+	return defaultCA, nil
 }
 
 // runTestProfile serves the durable test composition over TLS with the same

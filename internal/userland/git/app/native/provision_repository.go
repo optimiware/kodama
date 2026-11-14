@@ -41,6 +41,25 @@ type RepositoryProvisionConfig struct {
 	RepositoryPath string
 	// AdminRepositoryPath is the tenant's trusted admin repository.
 	AdminRepositoryPath string
+	// ResourceID is the optional registered resource id written as `option
+	// resource = <id>` in the appended default policy stanza.
+	ResourceID string
+	// HookBinaryPath is the absolute executable the installed hooks run.
+	HookBinaryPath string
+	// Executor is the exact native git command boundary.
+	Executor git.CommandExecutor
+}
+
+// BareProvisionConfig configures on-demand bare repository and hook
+// initialization for one tenant repository already declared in policy.
+type BareProvisionConfig struct {
+	// TenantID is the tenant the repository belongs to.
+	TenantID id.TenantID
+	// TenantDirectory is the tenant storage directory every tenant repository
+	// lives under.
+	TenantDirectory string
+	// RepositoryPath is the canonical tenant-relative repository destination.
+	RepositoryPath string
 	// HookBinaryPath is the absolute executable the installed hooks run.
 	HookBinaryPath string
 	// Executor is the exact native git command boundary.
@@ -69,7 +88,16 @@ func repositoryPolicyCommitMessage(repository string) string {
 // update of the default branch. The default branch is the same `main` the
 // provisioned admin repository and every bare repository use.
 func defaultRepositoryPolicy(repository string) string {
+	return defaultRepositoryPolicyWithResource(repository, "")
+}
+
+func defaultRepositoryPolicyWithResource(repository, resourceID string) string {
+	var optionResource string
+	if strings.TrimSpace(resourceID) != "" {
+		optionResource = "    option resource = " + strings.TrimSpace(resourceID) + "\n"
+	}
 	return "repo " + repository + "\n" +
+		optionResource +
 		"    R = @all\n" +
 		"    RW+ refs/heads/work/ = @engineer @execution\n" +
 		"    RW refs/heads/" + provisioningInitialBranch + " = @execution\n" +
@@ -79,14 +107,19 @@ func defaultRepositoryPolicy(repository string) string {
 // requireDefaultRepositoryPolicy proves the compile-time default block parses,
 // grants exactly the documented access and never widens it, before any of it
 // can become durable state.
-func requireDefaultRepositoryPolicy(repository string) error {
-	config, err := git.ParseConfig([]byte(defaultRepositoryPolicy(repository)))
+func requireDefaultRepositoryPolicy(repository, resourceID string) error {
+	config, err := git.ParseConfig([]byte(defaultRepositoryPolicyWithResource(repository, resourceID)))
 	if err != nil {
 		return fmt.Errorf("default repository policy does not parse: %w", err)
 	}
 	policy, ok := config.Policy(repository)
 	if !ok {
 		return fmt.Errorf("default repository policy does not declare the %q repository", repository)
+	}
+	// The parser reads exactly one token as the resource id, so any other
+	// text in resourceID (a newline and a further rule) shows as a difference.
+	if policy.ResourceID != strings.TrimSpace(resourceID) {
+		return fmt.Errorf("repository provisioning resource id %q is invalid", resourceID)
 	}
 	engineer := git.Identity{Roles: []string{"engineer"}}
 	execution := git.Identity{Execution: true}
@@ -250,14 +283,80 @@ func ProvisionRepository(ctx context.Context, config RepositoryProvisionConfig) 
 		// duplicate block or adding the defaults over an Admin's restriction.
 		return RepositoryProvisionResult{RepositoryPath: repositoryPath, Repository: repository, Created: created}, nil
 	}
-	if err := requireDefaultRepositoryPolicy(repository); err != nil {
+	if err := requireDefaultRepositoryPolicy(repository, config.ResourceID); err != nil {
 		return RepositoryProvisionResult{}, err
 	}
-	candidate := appendRepositoryPolicy(accepted, repository)
+	candidate := appendRepositoryPolicyWithResource(accepted, repository, config.ResourceID)
 	if _, err := policy.installCommittedPolicy(ctx, parent, candidate, repository); err != nil {
 		return RepositoryProvisionResult{RepositoryPath: repositoryPath, Repository: repository, Created: created}, err
 	}
 	return RepositoryProvisionResult{RepositoryPath: repositoryPath, Repository: repository, Created: created}, nil
+}
+
+// EnsureBareRepository idempotently initializes one bare tenant repository
+// with the files ref backend, `main` HEAD and managed hooks under the tenant
+// provisioning lock, or validates and updates the managed hooks of an existing
+// repository. Unlike ProvisionRepository, it never commits to the admin
+// repository.
+func EnsureBareRepository(ctx context.Context, config BareProvisionConfig) (RepositoryProvisionResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return RepositoryProvisionResult{}, err
+	}
+	if config.Executor == nil {
+		return RepositoryProvisionResult{}, fmt.Errorf("bare repository provisioning has no git command executor")
+	}
+	if strings.TrimSpace(config.HookBinaryPath) == "" {
+		return RepositoryProvisionResult{}, fmt.Errorf("bare repository provisioning has no hook binary path")
+	}
+	if _, err := id.ParseTenantID(string(config.TenantID)); err != nil {
+		return RepositoryProvisionResult{}, err
+	}
+	adminPath := filepath.Join(filepath.Clean(config.TenantDirectory), AdminRepository)
+	tenantDirectory, repositoryPath, _, repository, err := repositoryProvisionPaths(RepositoryProvisionConfig{
+		TenantID:            config.TenantID,
+		TenantDirectory:     config.TenantDirectory,
+		RepositoryPath:      config.RepositoryPath,
+		AdminRepositoryPath: adminPath,
+		HookBinaryPath:      config.HookBinaryPath,
+		Executor:            config.Executor,
+	})
+	if err != nil {
+		return RepositoryProvisionResult{}, err
+	}
+	if err := os.MkdirAll(tenantDirectory, 0o700); err != nil {
+		return RepositoryProvisionResult{}, fmt.Errorf("ensure tenant directory %q: %w", tenantDirectory, err)
+	}
+	info, err := os.Lstat(tenantDirectory)
+	if err != nil {
+		return RepositoryProvisionResult{}, fmt.Errorf("inspect tenant directory %q: %w", tenantDirectory, err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return RepositoryProvisionResult{}, fmt.Errorf("%w: tenant directory %q is not a directory", ErrRepositoryProvisionContainment, tenantDirectory)
+	}
+	release, err := acquireProvisionLock(ctx, tenantDirectory)
+	if err != nil {
+		return RepositoryProvisionResult{}, fmt.Errorf("lock tenant repository provisioning: %w", err)
+	}
+	defer release()
+
+	if err := requireRepositoryProvisionContainment(tenantDirectory, repositoryPath); err != nil {
+		return RepositoryProvisionResult{}, err
+	}
+	if err := refuseNestedRepositoryDestination(ctx, tenantDirectory, repositoryPath, config.Executor); err != nil {
+		return RepositoryProvisionResult{}, err
+	}
+	created, err := ensureProvisionedRepository(ctx, tenantDirectory, repositoryPath, config.HookBinaryPath, config.Executor)
+	if err != nil {
+		return RepositoryProvisionResult{}, err
+	}
+	return RepositoryProvisionResult{
+		RepositoryPath: repositoryPath,
+		Repository:     repository,
+		Created:        created,
+	}, nil
 }
 
 // repositoryProvisionPaths resolves and validates the three provisioning paths.
@@ -561,12 +660,25 @@ func validateProvisionedRepository(ctx context.Context, repositoryPath string, e
 				ErrRepositoryProvisionDestination, repositoryPath, name)
 		}
 	}
+	// No update hook is ever installed; an existing one is a foreign mutation
+	// path and is refused, never removed.
+	if _, err := os.Lstat(filepath.Join(repositoryPath, "hooks", "update")); err == nil {
+		return fmt.Errorf("%w: repository %q has an update hook",
+			ErrRepositoryProvisionDestination, repositoryPath)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("%w: inspect repository %q update hook: %v",
+			ErrRepositoryProvisionDestination, repositoryPath, err)
+	}
 	return nil
 }
 
 // appendRepositoryPolicy appends one default block to the accepted policy
 // bytes, keeping a blank separator and never altering the existing text.
 func appendRepositoryPolicy(accepted []byte, repository string) []byte {
+	return appendRepositoryPolicyWithResource(accepted, repository, "")
+}
+
+func appendRepositoryPolicyWithResource(accepted []byte, repository, resourceID string) []byte {
 	var builder strings.Builder
 	builder.Write(accepted)
 	if len(accepted) > 0 {
@@ -575,7 +687,7 @@ func appendRepositoryPolicy(accepted []byte, repository string) []byte {
 		}
 		builder.WriteString("\n")
 	}
-	builder.WriteString(defaultRepositoryPolicy(repository))
+	builder.WriteString(defaultRepositoryPolicyWithResource(repository, resourceID))
 	return []byte(builder.String())
 }
 

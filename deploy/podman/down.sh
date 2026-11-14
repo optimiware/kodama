@@ -85,12 +85,17 @@ if [ "$purge" -eq 1 ]; then
 			rm -f -- "$file"
 		fi
 	done
-	rm -f -- "$marker_file"
-	if ! rmdir -- "$STATE_DIR" 2>/dev/null; then
+	# The marker goes last, and only when nothing else is left. A directory
+	# that keeps unknown files also keeps its marker, so it still belongs to
+	# this installation: a later install or a second purge accepts it.
+	unknown="$(ls -A -- "$STATE_DIR" 2>/dev/null | grep -Fxv -- "$(basename -- "$marker_file")" || true)"
+	if [ -n "$unknown" ]; then
 		log "state directory ${STATE_DIR} still contains unknown files:"
-		ls -A -- "$STATE_DIR" >&2 || true
-		die "refusing to delete unknown content in ${STATE_DIR}"
+		printf '%s\n' "$unknown" >&2
+		die "refusing to delete unknown content in ${STATE_DIR}; move or remove these files, then run down.sh --purge again"
 	fi
+	rm -f -- "$marker_file"
+	rmdir -- "$STATE_DIR" || die "cannot remove the state directory ${STATE_DIR}"
 	log "purged"
 else
 	log "containers removed; state kept in ${STATE_DIR}"

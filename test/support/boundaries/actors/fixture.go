@@ -267,15 +267,16 @@ func NewFixture(config ServiceConfig) (*Fixture, error) {
 	journal := NewJournal()
 	verifier := NewActorVerifier()
 	service, err := git.NewService(git.ServiceConfig{
-		TenantID:  tenant,
-		Storage:   Storage{Root: "/kodama-i03b-fixture"},
-		Policies:  policy,
-		Executor:  executor,
-		Observer:  observer,
-		Journal:   journal,
-		Verify:    config.Verify,
-		Retention: Retention{},
-		Clock:     clock,
+		TenantID:    tenant,
+		Storage:     Storage{Root: "/kodama-i03b-fixture"},
+		Policies:    policy,
+		Executor:    executor,
+		Observer:    observer,
+		Journal:     journal,
+		Verify:      config.Verify,
+		Retention:   Retention{},
+		Clock:       clock,
+		ResourceIDs: map[string]string{Repository: ResourceID},
 	})
 	if err != nil {
 		return nil, err

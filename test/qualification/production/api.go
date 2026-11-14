@@ -191,14 +191,14 @@ func (client *API) PostMCP(ctx context.Context, token Secret, body []byte) ([]by
 		return nil, fmt.Errorf("the MCP endpoint is unavailable")
 	}
 	defer response.Body.Close()
-	data, err := readBounded(response.Body, client.maxResponse)
+	data, err := readBounded(response.Body, 3*client.maxResponse)
 	if err != nil {
 		return nil, err
 	}
 	if response.StatusCode >= 300 && response.StatusCode < 400 {
 		return nil, fmt.Errorf("the MCP endpoint redirected; redirects are never followed")
 	}
-	if response.StatusCode != api.HTTPStatusSuccess {
+	if response.StatusCode != api.HTTPStatusSuccess && response.StatusCode != http.StatusUnauthorized {
 		return nil, fmt.Errorf("the MCP endpoint returned status %d", response.StatusCode)
 	}
 	return data, nil

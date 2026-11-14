@@ -239,9 +239,9 @@ func TestRenewalNeverOutlivesDeadline(t *testing.T) {
 		before := renewalDurableCredential(t, shared.controller(), executionID)
 		freezeRenewalDispatch(t, app)
 
-		// Thirty seconds remain before the deadline, below the one-minute
+		// Ten seconds remain before the deadline, below the fifteen-second
 		// minimum lifetime, so no token may be minted.
-		shared.clock.Advance(2*time.Hour - 30*time.Second)
+		shared.clock.Advance(2*time.Hour - 10*time.Second)
 		time.Sleep(100 * time.Millisecond)
 		if attempts := shared.runtime.refreshAttemptsFor(execution); attempts != 0 {
 			t.Fatalf("renewal minted %d credentials shorter than the minimum lifetime", attempts)

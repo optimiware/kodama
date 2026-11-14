@@ -47,6 +47,7 @@ type modelGatewayDependencies struct {
 	Store          store.Executor
 	IDs            *bridges.IDs
 	Clock          Clock
+	Transport      http.RoundTripper
 }
 
 // configuredModels is the enabled opsapp.ModelInvocation port.
@@ -68,6 +69,9 @@ func newConfiguredModels(deps modelGatewayDependencies) (opsapp.ModelInvocation,
 	}
 	if err := deps.Config.validate(deps.Profile); err != nil {
 		return nil, nil, err
+	}
+	if len(deps.Config.Models) == 0 {
+		return disabledModels{}, nil, nil
 	}
 	switch {
 	case deps.InstallationID == "":
@@ -113,7 +117,11 @@ func newConfiguredModels(deps modelGatewayDependencies) (opsapp.ModelInvocation,
 	if err != nil {
 		return nil, nil, err
 	}
-	transport, stop := deps.Config.transportFor()
+	transport := deps.Transport
+	var stop func(context.Context) error
+	if transport == nil {
+		transport, stop = deps.Config.transportFor()
+	}
 	instance, err := gateway.New(deps.Config.gatewayConfig(), gateway.Dependencies{
 		Principals: deps.Credentials,
 		Authorizer: deps.Authorizer,

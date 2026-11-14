@@ -429,6 +429,60 @@ if check_state_dir "$1" "$2" "$3"; then exit 0; else exit 1; fi`
 	}
 }
 
+// TestInstallConfiguresDiscoveryEndpoints pins that install.sh wires every
+// KODAMA_DISCOVERY_* setting into the server environment so
+// GET /.well-known/kodama-configuration is served and interactive login works.
+func TestInstallConfiguresDiscoveryEndpoints(t *testing.T) {
+	install := readFile(t, filepath.Join(bundleRoot(t), "install.sh"))
+	for _, entry := range []string{
+		"KODAMA_DISCOVERY_ISSUER=${OIDC_ISSUER}",
+		"KODAMA_DISCOVERY_CLIENT_ID=${OIDC_CLIENT_ID}",
+		"KODAMA_DISCOVERY_AUDIENCE=${OIDC_AUDIENCE}",
+		"KODAMA_DISCOVERY_AUTHORIZATION_ENDPOINT=${DISCOVERY_AUTHORIZATION_ENDPOINT}",
+		"KODAMA_DISCOVERY_TOKEN_ENDPOINT=${DISCOVERY_TOKEN_ENDPOINT}",
+		"KODAMA_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT=${DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT}",
+		"KODAMA_DISCOVERY_REVOCATION_ENDPOINT=${DISCOVERY_REVOCATION_ENDPOINT}",
+		"KODAMA_DISCOVERY_SCOPES=${DISCOVERY_SCOPES}",
+		"KODAMA_DISCOVERY_API_URL=${PUBLIC_URL}",
+	} {
+		if !strings.Contains(install, entry) {
+			t.Fatalf("install.sh omits %q from the server environment", entry)
+		}
+	}
+
+	lib := filepath.Join(bundleRoot(t), "lib.sh")
+	env := shellEnv(t, "discovery-test")
+	script := `set -euo pipefail
+. "$1"
+printf '%s\n%s\n%s\n%s\n%s\n%s\n' \
+  "$OIDC_ISSUER" \
+  "$DISCOVERY_AUTHORIZATION_ENDPOINT" \
+  "$DISCOVERY_TOKEN_ENDPOINT" \
+  "$DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT" \
+  "$DISCOVERY_REVOCATION_ENDPOINT" \
+  "$DISCOVERY_SCOPES"`
+	out, errOut, code := runBash(t, env, script, lib)
+	if code != 0 {
+		t.Fatalf("sourcing lib.sh failed: %s %s", out, errOut)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 6 {
+		t.Fatalf("expected 6 discovery lines, got %v", lines)
+	}
+	issuer := lines[0]
+	for index, endpoint := range lines[1:5] {
+		if !strings.HasPrefix(endpoint, issuer+"/") {
+			t.Fatalf("discovery endpoint %d (%q) does not share issuer origin %q", index, endpoint, issuer)
+		}
+	}
+	if lines[1] != issuer+"/oauth2/auth" || lines[2] != issuer+"/oauth2/token" {
+		t.Fatalf("unexpected OAuthSonas authorization/token endpoints: %v", lines[1:3])
+	}
+	if lines[5] == "" {
+		t.Fatal("DISCOVERY_SCOPES is empty")
+	}
+}
+
 // TestDefaultStateDirIncludesPrefix pins the prefix-dependent default.
 func TestDefaultStateDirIncludesPrefix(t *testing.T) {
 	lib := filepath.Join(bundleRoot(t), "lib.sh")

@@ -1,12 +1,14 @@
 package registry_test
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/optimiware/kodama/internal/fault"
 	"github.com/optimiware/kodama/internal/shell/integration/registry"
+	"github.com/optimiware/kodama/internal/shell/pipeline"
 )
 
 // TestResolveTagToDigest pins the core admission read: a mutable tag is a
@@ -211,6 +213,8 @@ func TestResolveInvalidReferenceRefused(t *testing.T) {
 		{"non sha256 pin", repository + "@md5:" + strings.Repeat("a", 32)},
 		{"empty digest pin", repository + "@"},
 		{"empty tag", repository + ":"},
+		{"host with two colons", "bad:host:1234/" + repositoryPath + ":" + imageTag},
+		{"host port out of range", registryOrigin + ":99999/" + repositoryPath + ":" + imageTag},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -220,10 +224,52 @@ func TestResolveInvalidReferenceRefused(t *testing.T) {
 			image, err := resolveWith(t, resolver, testCase.reference)
 			requireFault(t, err, fault.InvalidInput)
 			requireNoDigest(t, image)
+			if !errors.Is(err, pipeline.ErrImageReference) {
+				t.Fatalf("refused reference %q is not marked as an image reference fault: %v", testCase.reference, err)
+			}
 			if requests := transport.captured(); len(requests) != 0 {
 				t.Fatalf("refused reference %q still issued %d registry requests", testCase.reference, len(requests))
 			}
 		})
+	}
+}
+
+// TestResolveTagAndDigestRefusalNamesTheFix pins the message for the reference
+// shape installers print (repository:tag@sha256:<digest>): the refusal says the
+// tag must go, instead of calling the repository path invalid.
+func TestResolveTagAndDigestRefusalNamesTheFix(t *testing.T) {
+	transport := &fakeTransport{}
+	resolver := newResolver(t, registry.Config{Transport: transport})
+
+	image, err := resolveWith(t, resolver, tagReference+"@"+digestOf(singleManifestBody))
+	requireFault(t, err, fault.InvalidInput)
+	requireNoDigest(t, image)
+	if !errors.Is(err, pipeline.ErrImageReference) {
+		t.Fatalf("a tag-and-digest reference is not marked as an image reference fault: %v", err)
+	}
+	message, _ := fault.MessageOf(err)
+	if !strings.Contains(message, "both a tag and a digest") || !strings.Contains(message, "repository@sha256:<digest>") {
+		t.Fatalf("refusal message = %q; want it to name the tag-and-digest shape and the accepted form", message)
+	}
+	if requests := transport.captured(); len(requests) != 0 {
+		t.Fatalf("a refused reference still issued %d registry requests", len(requests))
+	}
+}
+
+// TestResolveRegistryAnomalyIsNotAReferenceFault pins the other side: an
+// invalid_input fault about what the registry answered is not a refusal of the
+// reference text, so admission keeps treating it as an unavailable registry.
+func TestResolveRegistryAnomalyIsNotAReferenceFault(t *testing.T) {
+	body := singleManifestBody
+	transport := &fakeTransport{handle: func(_ int, request *http.Request) (*http.Response, error) {
+		return registryResponse(request, http.StatusOK, "application/vnd.example.unknown+json", body, digestOf(body)), nil
+	}}
+	resolver := newResolver(t, registry.Config{Transport: transport})
+
+	_, err := resolveWith(t, resolver, tagReference)
+	requireFault(t, err, fault.InvalidInput)
+	if errors.Is(err, pipeline.ErrImageReference) {
+		t.Fatalf("a registry response anomaly is marked as an image reference fault: %v", err)
 	}
 }
 

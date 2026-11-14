@@ -143,7 +143,8 @@ func decodeEventCursor(cursor string) (uint64, error) {
 	if err != nil {
 		return 0, wireRefusal(err)
 	}
-	sequence, err := strconv.ParseUint(sortKey, 10, 64)
+	// 63 bits: the store sequence is a signed 64-bit column.
+	sequence, err := strconv.ParseUint(sortKey, 10, 63)
 	if err != nil || strconv.FormatUint(sequence, 10) != sortKey {
 		return 0, fault.New(fault.InvalidInput, "event cursor does not carry a canonical decimal sequence")
 	}

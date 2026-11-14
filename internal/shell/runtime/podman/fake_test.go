@@ -496,11 +496,13 @@ type fakeLibpod struct {
 	mu sync.Mutex
 
 	containers map[string]ContainerState
+	images     map[string]bool
 	volumes    map[string]Volume
 	logs       map[string]map[engine.LogStream][]byte
 
 	calls               []string
 	createRequests      []ContainerSpec
+	imageRequests       []string
 	stopRequests        []string
 	removeRequests      []string
 	volumeRequests      []string
@@ -510,6 +512,7 @@ type fakeLibpod struct {
 	nextFailure    map[string]libpodFailure
 	removeFailures int
 	removeFailErr  error
+	imageErr       error
 	inspectErr     error
 	volumeErr      error
 	stopEffect     bool
@@ -525,12 +528,37 @@ type fakeLibpod struct {
 func newFakeLibpod() *fakeLibpod {
 	return &fakeLibpod{
 		containers:  map[string]ContainerState{},
+		images:      map[string]bool{},
 		volumes:     map[string]Volume{},
 		logs:        map[string]map[engine.LogStream][]byte{},
 		nextFailure: map[string]libpodFailure{},
 		stopEffect:  true,
 		gates:       map[string]*fakeGate{},
 	}
+}
+
+func (f *fakeLibpod) addImage(reference string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.images[reference] = true
+}
+
+func (f *fakeLibpod) deleteImage(reference string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.images, reference)
+}
+
+func (f *fakeLibpod) setImageError(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.imageErr = err
+}
+
+func (f *fakeLibpod) inspectedImages() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.imageRequests...)
 }
 
 func (f *fakeLibpod) addVolume(name string, labels map[string]string) {
@@ -967,6 +995,34 @@ func (f *fakeLibpod) InspectVolume(ctx context.Context, name string) (Volume, er
 	return volume, nil
 }
 
+func (f *fakeLibpod) InspectImage(ctx context.Context, reference string) error {
+	gate := f.begin("InspectImage")
+	f.mu.Lock()
+	f.imageRequests = append(f.imageRequests, reference)
+	failure, hasFailure := f.takeFailure("InspectImage")
+	imageErr := f.imageErr
+	f.mu.Unlock()
+
+	if err := waitGate(ctx, gate); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if hasFailure {
+		return failure.err
+	}
+	if imageErr != nil {
+		return imageErr
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.images[reference] {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (f *fakeLibpod) RemoveVolume(ctx context.Context, name string) error {
 	gate := f.begin("RemoveVolume")
 	f.mu.Lock()
@@ -1105,6 +1161,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatalf("WorkspaceVolumeName returned error: %v", err)
 	}
 	libpod.addVolume(volumeName, map[string]string{LabelWorkspace: string(testWorkspaceID())})
+	libpod.addImage(testImage)
 
 	adapter, err := New(Config{
 		Libpod:    libpod,

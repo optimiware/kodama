@@ -14,6 +14,9 @@ import (
 // the same table entry the REST edge decodes with. Unknown operations, empty
 // names and resource operations are refused with invalid_input.
 func OperationInputSchema(operation string) (json.RawMessage, error) {
+	if resolved, ok := MCPToolOperationName(operation); ok {
+		operation = resolved
+	}
 	spec, ok := operationCodecSpecs[operation]
 	if !ok {
 		return nil, invalid("unknown operation %q", operation)

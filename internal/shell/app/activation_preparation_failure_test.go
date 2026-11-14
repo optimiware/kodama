@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/optimiware/kodama/internal/kernel"
 	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
 	"github.com/optimiware/kodama/internal/kernel/flow"
+	"github.com/optimiware/kodama/internal/shell/store"
 )
 
 // TestActivationPreparationFailureAfterCredentialIssue covers the failure paths
@@ -289,6 +291,77 @@ func TestActivationCredentialRespectsActionDeadline(t *testing.T) {
 	recorder, _, _ = rawExecutionInspect(t, handler, credential, started.ExecutionID)
 	if recorder.Code == api.HTTPStatusSuccess {
 		t.Fatal("the activation credential authenticated past the action deadline")
+	}
+}
+
+// delayedDeadlineController advances the clock once when activation reads the
+// committed action deadline, modelling a few seconds of scheduling delay
+// between the Kernel activation commit (`deadline = activatedAt + 1m`) and
+// credential issuance.
+type delayedDeadlineController struct {
+	store.Controller
+	clock   *fakeClock
+	advance time.Duration
+	once    sync.Once
+}
+
+func (controller *delayedDeadlineController) Read(ctx context.Context, table, key string) (store.Row, error) {
+	row, err := controller.Controller.Read(ctx, table, key)
+	if err == nil && table == "actions" {
+		controller.once.Do(func() {
+			controller.clock.Advance(controller.advance)
+		})
+	}
+	return row, err
+}
+
+// TestOneMinuteActionTimeoutIssuesCredentialAfterClockAdvance is the regression
+// test for `timeout: 1m`: when an action declares the minimum 1m timeout and a
+// few seconds elapse between committing `deadline = activatedAt + 1m` and
+// minting the execution credential, issuance succeeds cleanly and caps expiry
+// at the action deadline instead of failing `MinTTL`.
+func TestOneMinuteActionTimeoutIssuesCredentialAfterClockAdvance(t *testing.T) {
+	shared := newActivationShared(t)
+	config := shared.config(t, nil)
+	config.DefaultActionTimeout = time.Minute
+	activatedAt := shared.clock.Now()
+	config.Adapters.Controller = &delayedDeadlineController{
+		Controller: config.Adapters.Controller,
+		clock:      shared.clock,
+		advance:    5 * time.Second,
+	}
+	app := startComposedApp(t, config)
+	t.Cleanup(func() { closeApp(t, app) })
+	handler := app.Handler()
+	grantProjectEngineer(t, handler, "dev-admin-token")
+
+	oneMinuteYAML := []byte("actions:\n" +
+		"  - name: quick-check\n" +
+		"    image: " + smokeImage + "\n" +
+		"    timeout: 1m\n" +
+		"    commands:\n" +
+		"      - echo quick\n")
+	applied := applyActivationPipeline(t, handler, "dev-project-token", oneMinuteYAML, "one-minute-timeout-pipeline")
+	started := startActivationTask(t, handler, "dev-project-token", applied.PipelineID, "one-minute-timeout-task")
+
+	prepares := waitForActivationPrepares(t, shared.runtime, 1)
+	credential := prepares[0].Credential
+	if credential == "" {
+		t.Fatal("the 1m action received no execution credential")
+	}
+
+	expiry := committedCredentialExpiry(t, shared, started.ExecutionID)
+	wantDeadline := activatedAt.Add(time.Minute)
+	if !expiry.Equal(wantDeadline) {
+		t.Fatalf("credential expiry = %v; want action deadline %v", expiry, wantDeadline)
+	}
+	if got := shared.clock.Now(); !got.Equal(activatedAt.Add(5 * time.Second)) {
+		t.Fatalf("clock after issuance = %v; want %v", got, activatedAt.Add(5*time.Second))
+	}
+
+	recorder, _, _ := rawExecutionInspect(t, handler, credential, started.ExecutionID)
+	if recorder.Code != api.HTTPStatusSuccess {
+		t.Fatalf("the 1m action credential did not authenticate: status=%d", recorder.Code)
 	}
 }
 

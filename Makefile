@@ -5,7 +5,7 @@ SLOT := scripts/infra-slot.sh
 .DEFAULT_GOAL := check
 
 .PHONY: check fmt fmt-check vet test race arch-check docs-check \
-	build dist \
+	build dist release-prepare \
 	baseline test-e2e-hermetic suites-stack suites-kind \
 	suites-parallel suite-podman suite-kind suite-stage
 
@@ -55,6 +55,13 @@ build:
 dist:
 	rm -rf dist
 	scripts/dist
+
+# make release-prepare VERSION=0.2.0 sets the version of the checkout in every
+# file that carries it (docs/runbooks/release.md). Nothing is pushed.
+release-prepare:
+	@[ "$(origin VERSION)" = "command line" ] || { echo "usage: make release-prepare VERSION=<version>"; exit 2; }
+	scripts/release-prepare "$(VERSION)"
+	$(GO) test -count=1 -run TestReleaseVersionIsConsistent ./internal/installation/
 
 # ---------------------------------------------------------------------------
 # Baseline checks.

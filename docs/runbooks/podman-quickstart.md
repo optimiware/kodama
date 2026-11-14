@@ -17,7 +17,8 @@ installation.
 ## Prerequisites
 
 - A Linux host with rootless Podman 5 or newer and the user API socket active:
-  `systemctl --user enable --now podman.socket` and `podman info` succeeds.
+  `systemctl --user enable --now podman.socket` and `podman info` succeeds
+  (`systemctl --user restart podman.socket` if the socket file is missing).
   The control plane, the Git companion and every workload share this one
   image store. The runtime does not pull workload images.
 - `bash`, `openssl`, `curl`, `jq`, `git` 2.44 or newer (required by
@@ -85,6 +86,15 @@ touch such a directory. Do not point two installations at one state directory.
 From the repository root:
 
 ```sh
+./deploy/podman/install.sh
+```
+
+To install the released image instead of building the checkout, pull it and
+name it. Keep the variable set on every later run of this installation:
+
+```sh
+podman pull ghcr.io/optimiware/kodama/kodama:0.1.0
+export KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.1.0
 ./deploy/podman/install.sh
 ```
 
@@ -199,6 +209,8 @@ export PROJECT="${KODAMA_LOCAL_PROJECT:-$TENANT}"
 export KODAMA_PUBLIC_URL="https://localhost:${KODAMA_LOCAL_HTTPS_PORT:-18443}"
 export GIT="https://localhost:${KODAMA_LOCAL_GIT_HTTPS_PORT:-18445}"
 export GIT_WORKLOAD="https://host.containers.internal:${KODAMA_LOCAL_GIT_HTTPS_PORT:-18445}"
+export WORK="$HOME/kodama-quickstart"   # your own files; $STATE belongs to the installation
+mkdir -p "$WORK"
 set -a
 . "$STATE/secrets/oauthsonas.env"
 set +a
@@ -234,8 +246,8 @@ header="$STATE/secrets/admin-header"
   printf 'Content-Type: application/json\n'
 ) > "$header"
 chmod 600 "$header"
-curl --silent --show-error --cacert "$STATE/tls/ca.crt" --header @"$header" \
-  "$KODAMA_PUBLIC_URL/api/v1/projects/$PROJECT/executions"
+curl --request GET --silent --show-error --cacert "$STATE/tls/ca.crt" --header @"$header" \
+  --data-binary '{"input":{}}' "$KODAMA_PUBLIC_URL/api/v1/projects/$PROJECT/executions"
 ```
 
 The admin OAuthSonas token is short-lived. The `git` and `engineer` service
@@ -298,9 +310,9 @@ ids to your `KODAMA_LOCAL_TENANT` and `KODAMA_LOCAL_PROJECT`.
        reportable_events: ["git.ref.updated"]
      },
      idempotency_key: "local-binding-git-demo"
-   }' > "$STATE/demo-binding.json"
+   }' > "$WORK/demo-binding.json"
    curl --silent --show-error --cacert "$STATE/tls/ca.crt" --header @"$STATE/secrets/admin-header" \
-     --data-binary @"$STATE/demo-binding.json" \
+     --data-binary @"$WORK/demo-binding.json" \
      "$KODAMA_PUBLIC_URL/api/v1/projects/$PROJECT/bindings"
    ```
 
@@ -327,8 +339,8 @@ ids to your `KODAMA_LOCAL_TENANT` and `KODAMA_LOCAL_PROJECT`.
    chmod 600 "$creds"
 
    git -c http.sslCAInfo="$STATE/tls/ca.crt" \
-     -c credential.helper="store --file=$creds" clone "$GIT/admin" "$STATE/admin-work"
-   cat "$STATE/admin-work/conf/git.conf"
+     -c credential.helper="store --file=$creds" clone "$GIT/admin" "$WORK/admin-work"
+   cat "$WORK/admin-work/conf/git.conf"
    ```
 
    `git credential-store` reads `key=value` lines, not a URL: a piped
@@ -343,8 +355,8 @@ ids to your `KODAMA_LOCAL_TENANT` and `KODAMA_LOCAL_PROJECT`.
    Never add a second `repo demo` block. `git.ParseConfig` refuses a repository
    declared twice, so a candidate commit that contains one is rejected before
    it is accepted. To grant anything extra, edit the existing `repo demo` block
-   in `$STATE/admin-work/conf/git.conf` in place, commit it with
-   `git -C "$STATE/admin-work"`, and push the admin repository's `main` through
+   in `$WORK/admin-work/conf/git.conf` in place, commit it with
+   `git -C "$WORK/admin-work"`, and push the admin repository's `main` through
    the policy path. That push is governed by the admin repository's own policy,
    which `provision-tenant` wrote as `repo admin` with `RW = @admin`: the admin role
    (the administrator persona's `admin` claim) may fast-forward the admin
@@ -390,13 +402,13 @@ ids to your `KODAMA_LOCAL_TENANT` and `KODAMA_LOCAL_PROJECT`.
    chmod 600 "$creds_engineer"
 
    git -c http.sslCAInfo="$STATE/tls/ca.crt" \
-     -c credential.helper="store --file=$creds_engineer" clone "$GIT/demo" "$STATE/demo-work"
-   git -C "$STATE/demo-work" -c user.name="Local Engineer" \
+     -c credential.helper="store --file=$creds_engineer" clone "$GIT/demo" "$WORK/demo-work"
+   git -C "$WORK/demo-work" -c user.name="Local Engineer" \
      -c user.email="engineer@localhost.test" commit --allow-empty -m "first work commit"
-   git -C "$STATE/demo-work" -c http.sslCAInfo="$STATE/tls/ca.crt" \
+   git -C "$WORK/demo-work" -c http.sslCAInfo="$STATE/tls/ca.crt" \
      -c credential.helper="store --file=$creds_engineer" \
      push origin HEAD:refs/heads/work/first
-   git -C "$STATE/demo-work" -c http.sslCAInfo="$STATE/tls/ca.crt" \
+   git -C "$WORK/demo-work" -c http.sslCAInfo="$STATE/tls/ca.crt" \
      -c credential.helper="store --file=$creds_engineer" \
      push origin HEAD:refs/heads/main   # refused: only an execution may update main, after reviewer approval
    ```
@@ -411,23 +423,25 @@ ids to your `KODAMA_LOCAL_TENANT` and `KODAMA_LOCAL_PROJECT`.
 
 The install writes an engineer service credential to
 `$STATE/secrets/engineer-token`. Service credentials act in project scope. Use
-the digest of the pre-pulled image so the workload cannot drift. This start
-uses the `pipeline.start` operation on the inline executions route:
+the digest of the pre-pulled image so the workload cannot drift (the
+descriptor records it as `repository:tag@sha256:...`; a pipeline takes
+`repository@sha256:...`, without the tag). This start uses the
+`pipeline.start` operation on the inline executions route:
 
 ```sh
-IMAGE="docker.io/library/buildpack-deps@$(podman image inspect --format '{{.Digest}}' docker.io/library/buildpack-deps:trixie-scm)"
-cat > "$STATE/first-pipeline.yaml" <<EOF
+IMAGE="$(jq -er '.images.tools' "$STATE/run/installation.json" | sed 's/:[^@/]*@/@/')"
+cat > "$WORK/first-pipeline.yaml" <<EOF
 actions:
   - name: hello
     image: "$IMAGE"
     timeout: 2m
     commands:
       - echo "hello from a Kodama workload"
-      - echo "action: \$KODAMA_ACTION"
+      - 'echo "action: \$KODAMA_ACTION"'
 EOF
-jq -n --arg project "$PROJECT" --arg yaml "$(base64 -w0 "$STATE/first-pipeline.yaml")" \
+jq -n --arg project "$PROJECT" --arg yaml "$(base64 -w0 "$WORK/first-pipeline.yaml")" \
   '{input: {project_id: $project, yaml: $yaml}, idempotency_key: "local-pipeline-first"}' \
-  > "$STATE/first-start.json"
+  > "$WORK/first-start.json"
 (
   umask 077
   printf 'Authorization: Bearer %s\nContent-Type: application/json\n' \
@@ -435,29 +449,35 @@ jq -n --arg project "$PROJECT" --arg yaml "$(base64 -w0 "$STATE/first-pipeline.y
 )
 chmod 600 "$STATE/secrets/engineer-header"
 curl --silent --show-error --cacert "$STATE/tls/ca.crt" \
-  --header @"$STATE/secrets/engineer-header" --data-binary @"$STATE/first-start.json" \
+  --header @"$STATE/secrets/engineer-header" --data-binary @"$WORK/first-start.json" \
   "$KODAMA_PUBLIC_URL/api/v1/projects/$PROJECT/executions"
 ```
 
-Read the execution id from the response (`body.execution_id`), poll
-`GET /api/v1/executions/<id>` until `body.state` is `succeeded` and
-`body.cleanup.state` is `complete`, then read the retained stdout:
+Quote a command that contains `: `, as above, or YAML reads it as a mapping.
+
+Read the execution id from the response (`body.execution_id`), then inspect the
+execution until `body.state` is `succeeded` and `body.cleanup.state` is
+`complete`. Reads are `GET` requests with a JSON body, so `curl` needs
+`--request GET`:
 
 ```sh
 execution=execution-...   # from the start response
-jq -n --arg execution "$execution" '{input: {execution_id: $execution}}' > "$STATE/inspect.json"
-curl --silent --show-error --cacert "$STATE/tls/ca.crt" \
-  --header @"$STATE/secrets/engineer-header" --data-binary @"$STATE/inspect.json" \
+jq -n --arg execution "$execution" '{input: {execution_id: $execution}}' > "$WORK/inspect.json"
+curl --request GET --silent --show-error --cacert "$STATE/tls/ca.crt" \
+  --header @"$STATE/secrets/engineer-header" --data-binary @"$WORK/inspect.json" \
   "$KODAMA_PUBLIC_URL/api/v1/executions/$execution"
 ```
 
 For the log, take `body.actions[0].action_id` and call
 `GET /api/v1/executions/<id>/logs` with
 `{"input":{"execution_id":"...","action_id":"...","stream":"stdout"}}`. The
-retained chunks are in `body.chunks[].data`.
+retained chunks are in `body.chunks[].data`, base64-encoded.
 
 Workload containers run from the same Podman daemon, so the image must already
-be in that store. The runtime never pulls one for an execution.
+be in that store. The runtime never pulls one for an execution; an image that
+is missing leaves the execution `running` until the action timeout. Name an
+image as `host/repository@sha256:...` (or `host/repository:tag`, which the
+server resolves through the registry).
 
 ## Run a first protected task
 
@@ -478,7 +498,7 @@ not project the CA into workloads (P15).
    review request. The prepare action declares no output and submits nothing:
 
    ```sh
-   cat > "$STATE/protected-pipeline.yaml" <<EOF
+   cat > "$WORK/protected-pipeline.yaml" <<EOF
    actions:
      - name: prepare
        image: "$IMAGE"
@@ -493,14 +513,14 @@ not project the CA into workloads (P15).
        timeout: 10m
    EOF
    jq -n --arg project "$PROJECT" --arg pipeline "protected-demo" \
-     --arg yaml "$(base64 -w0 "$STATE/protected-pipeline.yaml")" \
+     --arg yaml "$(base64 -w0 "$WORK/protected-pipeline.yaml")" \
      '{input: {project_id: $project, name: $pipeline, yaml: $yaml}, idempotency_key: "local-pipeline-protected-demo"}' \
-     > "$STATE/protected-apply.json"
+     > "$WORK/protected-apply.json"
    curl --request PUT --silent --show-error --cacert "$STATE/tls/ca.crt" \
-     --header @"$STATE/secrets/admin-header" --data-binary @"$STATE/protected-apply.json" \
+     --header @"$STATE/secrets/admin-header" --data-binary @"$WORK/protected-apply.json" \
      "$KODAMA_PUBLIC_URL/api/v1/projects/$PROJECT/pipelines/protected-demo" \
-     > "$STATE/protected-apply-response.json"
-   pipeline="$(jq -er '.body.pipeline_id' "$STATE/protected-apply-response.json")"
+     > "$WORK/protected-apply-response.json"
+   pipeline="$(jq -er '.body.pipeline_id' "$WORK/protected-apply-response.json")"
    ```
 
 2. Create and start the task, then read the execution id from the response:
@@ -508,12 +528,12 @@ not project the CA into workloads (P15).
    ```sh
    jq -n --arg project "$PROJECT" --arg pipeline "$pipeline" \
      '{input: {project_id: $project, title: "First protected task", pipeline_id: $pipeline}, idempotency_key: "local-task-protected-1"}' \
-     > "$STATE/protected-task.json"
+     > "$WORK/protected-task.json"
    curl --silent --show-error --cacert "$STATE/tls/ca.crt" \
-     --header @"$STATE/secrets/admin-header" --data-binary @"$STATE/protected-task.json" \
+     --header @"$STATE/secrets/admin-header" --data-binary @"$WORK/protected-task.json" \
      "$KODAMA_PUBLIC_URL/api/v1/projects/$PROJECT/tasks/create-and-start" \
-     > "$STATE/protected-task-response.json"
-   execution="$(jq -er '.body.execution_id' "$STATE/protected-task-response.json")"
+     > "$WORK/protected-task-response.json"
+   execution="$(jq -er '.body.execution_id' "$WORK/protected-task-response.json")"
    ```
 
 3. Read the waiting action's identity and version from the execution, then
@@ -522,14 +542,14 @@ not project the CA into workloads (P15).
    ```sh
    for _ in $(seq 1 60); do
      jq -n --arg execution "$execution" '{input: {execution_id: $execution}}' \
-       > "$STATE/protected-inspect.json"
-     curl --silent --show-error --cacert "$STATE/tls/ca.crt" \
+       > "$WORK/protected-inspect.json"
+     curl --request GET --silent --show-error --cacert "$STATE/tls/ca.crt" \
        --header @"$STATE/secrets/admin-header" \
-       --data-binary @"$STATE/protected-inspect.json" \
+       --data-binary @"$WORK/protected-inspect.json" \
        "$KODAMA_PUBLIC_URL/api/v1/executions/$execution" \
-       > "$STATE/protected-inspect-response.json"
-     action="$(jq -r '.body.actions[] | select(.name == "review" and .state == "running") | .action_id' "$STATE/protected-inspect-response.json" | head -n 1)"
-     version="$(jq -r --arg action "$action" '.body.actions[] | select(.action_id == $action) | .version' "$STATE/protected-inspect-response.json")"
+       > "$WORK/protected-inspect-response.json"
+     action="$(jq -r '.body.actions[] | select(.name == "review" and .state == "running") | .action_id' "$WORK/protected-inspect-response.json" | head -n 1)"
+     version="$(jq -r --arg action "$action" '.body.actions[] | select(.action_id == $action) | .version' "$WORK/protected-inspect-response.json")"
      [ -n "$action" ] && [ -n "$version" ] && break
      sleep 2
    done
@@ -538,9 +558,9 @@ not project the CA into workloads (P15).
    jq -n --arg execution "$execution" --arg action "$action" \
      --argjson version "$version" \
      '{input: {execution_id: $execution, action_id: $action, expected_action_version: $version, decision: "pass"}, idempotency_key: "local-resolve-1"}' \
-     > "$STATE/protected-resolve.json"
+     > "$WORK/protected-resolve.json"
    curl --silent --show-error --cacert "$STATE/tls/ca.crt" \
-     --header @"$STATE/secrets/admin-header" --data-binary @"$STATE/protected-resolve.json" \
+     --header @"$STATE/secrets/admin-header" --data-binary @"$WORK/protected-resolve.json" \
      "$KODAMA_PUBLIC_URL/api/v1/executions/$execution/actions/$action/resolve"
    ```
 

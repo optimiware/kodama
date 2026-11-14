@@ -574,3 +574,27 @@ func TestProductionRefusesTestEntrySettings(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTestProfileWiresWorkloadCAAndWorkloadURL(t *testing.T) {
+	fixture := newTestProfileFixture(t)
+	build, err := buildTestProfile(fixture.options, fixture.getenv)
+	if err != nil {
+		t.Fatalf("buildTestProfile: %v", err)
+	}
+	if build.Config.WorkloadURL != fixture.options.WorkloadURL {
+		t.Fatalf("WorkloadURL = %q; want %q", build.Config.WorkloadURL, fixture.options.WorkloadURL)
+	}
+	adapter, ok := build.Config.Test.Runtime.(*runtimepodman.Adapter)
+	if !ok {
+		t.Fatalf("Runtime = %T; want *runtimepodman.Adapter", build.Config.Test.Runtime)
+	}
+	if got := unexportedField(t, adapter, "workloadCAPEM").Len(); got == 0 {
+		t.Fatal("buildTestProfile did not wire <KODAMA_TLS_DIR>/ca.crt into the Podman runtime adapter")
+	}
+
+	badFixture := newTestProfileFixture(t)
+	badFixture.options.WorkloadCAFile = "relative/ca.crt"
+	if _, err := buildTestProfile(badFixture.options, badFixture.getenv); err == nil || !strings.Contains(err.Error(), "workload CA") {
+		t.Fatalf("relative WorkloadCAFile = %v; want workload CA refusal", err)
+	}
+}

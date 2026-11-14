@@ -478,14 +478,14 @@ func TestStaticDiscoveryReturnsIndependentCopies(t *testing.T) {
 }
 
 // TestDiscoveryWiringLeavesOperationsAndMCPUnchanged pins that the composition
-// still advertises exactly the 51 declared operations and the same MCP catalog.
+// still advertises exactly the 58 declared operations and the same MCP catalog.
 func TestDiscoveryWiringLeavesOperationsAndMCPUnchanged(t *testing.T) {
 	environment := newTestEnvironment(t)
 	environment.config.Discovery = discoveryTestConfig(discoveryTestIssuer)
 	app := environment.startApp(t)
 
-	if routes := api.Routes(); len(routes) != 51 {
-		t.Fatalf("api.Routes() has %d entries; want the 51 declared operations", len(routes))
+	if routes := api.Routes(); len(routes) != 58 {
+		t.Fatalf("api.Routes() has %d entries; want the 58 declared operations", len(routes))
 	}
 	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	request := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
@@ -504,12 +504,12 @@ func TestDiscoveryWiringLeavesOperationsAndMCPUnchanged(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode tools/list: %v", err)
 	}
-	if len(response.Result.Tools) != 51 {
-		t.Fatalf("tools/list returned %d tools; want 51", len(response.Result.Tools))
+	if len(response.Result.Tools) != 58 {
+		t.Fatalf("tools/list returned %d tools; want 58", len(response.Result.Tools))
 	}
 	for index, route := range api.Routes() {
-		if response.Result.Tools[index].Name != route.Operation {
-			t.Fatalf("tool %d = %q; want %q", index, response.Result.Tools[index].Name, route.Operation)
+		if response.Result.Tools[index].Name != route.MCPTool {
+			t.Fatalf("tool %d = %q; want %q", index, response.Result.Tools[index].Name, route.MCPTool)
 		}
 	}
 }

@@ -6,11 +6,14 @@ import (
 )
 
 // ParseConfig parses one tenant `admin/conf/git.conf`. The format is ordered
-// rules per repository plus `option approve.<ref> = <role>` lines. Comments and
-// blank lines are insignificant. Unknown permissions, principals, malformed
-// lines, glob or unanchored refs and duplicate repositories refuse.
+// rules per repository plus `option resource = <resource-id>` and
+// `option approve.<ref> = <role>` lines. Comments and blank lines are
+// insignificant. Unknown permissions, principals, malformed lines, glob or
+// unanchored refs and duplicate repositories or duplicate `option resource`
+// declarations refuse.
 func ParseConfig(data []byte) (Config, error) {
 	config := Config{policies: make(map[string]RepositoryPolicy)}
+	resources := make(map[string]string)
 	current := ""
 	for index, raw := range strings.Split(string(data), "\n") {
 		lineNumber := index + 1
@@ -32,14 +35,20 @@ func ParseConfig(data []byte) (Config, error) {
 			current = name
 		case strings.HasPrefix(line, "option "):
 			if current == "" {
-				return Config{}, fmt.Errorf("line %d: approval option before a repository", lineNumber)
-			}
-			approval, err := parseApproval(lineNumber, strings.TrimSpace(strings.TrimPrefix(line, "option ")))
-			if err != nil {
-				return Config{}, err
+				return Config{}, fmt.Errorf("line %d: option before a repository", lineNumber)
 			}
 			policy := config.policies[current]
-			policy.Approvals = append(policy.Approvals, approval)
+			if err := applyOption(lineNumber, current, strings.TrimSpace(strings.TrimPrefix(line, "option ")), &policy); err != nil {
+				return Config{}, err
+			}
+			// A report names only the resource, so two repositories must
+			// never share one.
+			if owner, taken := resources[policy.ResourceID]; taken && owner != current {
+				return Config{}, fmt.Errorf("line %d: resource %q is already declared by repository %q", lineNumber, policy.ResourceID, owner)
+			}
+			if policy.ResourceID != "" {
+				resources[policy.ResourceID] = current
+			}
 			config.policies[current] = policy
 		default:
 			if current == "" {
@@ -91,6 +100,37 @@ func parseRule(lineNumber int, line string) (Rule, error) {
 		principals = append(principals, principal)
 	}
 	return Rule{Line: lineNumber, Permission: permission, Ref: ref, Principals: principals}, nil
+}
+
+// applyOption parses one `resource = <resource-id>` or `approve.<ref> = <role>`
+// option body and updates policy in place.
+func applyOption(lineNumber int, repository, body string, policy *RepositoryPolicy) error {
+	parts := strings.Split(body, "=")
+	if len(parts) != 2 {
+		return fmt.Errorf("line %d: option must contain exactly one '='", lineNumber)
+	}
+	left := strings.Fields(parts[0])
+	right := strings.Fields(parts[1])
+	if len(left) != 1 || len(right) != 1 {
+		return fmt.Errorf("line %d: option needs one key and one value", lineNumber)
+	}
+	if left[0] == "resource" {
+		resourceID := right[0]
+		if !validJournalID(resourceID) {
+			return fmt.Errorf("line %d: invalid resource id %q", lineNumber, resourceID)
+		}
+		if policy.ResourceID != "" {
+			return fmt.Errorf("line %d: repository %q declares option resource twice", lineNumber, repository)
+		}
+		policy.ResourceID = resourceID
+		return nil
+	}
+	approval, err := parseApproval(lineNumber, body)
+	if err != nil {
+		return err
+	}
+	policy.Approvals = append(policy.Approvals, approval)
+	return nil
 }
 
 // parseApproval parses one `approve.<ref> = <role>` option body.

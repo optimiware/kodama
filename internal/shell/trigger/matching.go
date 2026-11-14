@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"slices"
+	"strings"
 
 	"github.com/optimiware/kodama/internal/fault"
 	"github.com/optimiware/kodama/internal/id"
@@ -120,12 +121,13 @@ func definitionPushTriggers(definition pipeline.Definition) []pipeline.PushTrigg
 	return []pipeline.PushTrigger{*definition.Push}
 }
 
-// matchingTrigger returns the exact on.push trigger of one current candidate
+// matchingTrigger returns the matching on.push trigger of one current candidate
 // that the accepted report targets: the binding scope, resource and reporting
 // service must match, the binding must declare the report type, and one
 // persisted trigger must declare the same repository, a reporting service and
-// the exact ref. The matched trigger supplies the automatic-start service, so
-// the selection never depends on the single parsed Push field.
+// an exact ref or trailing-slash ref prefix covering report.Ref. The matched
+// trigger supplies the automatic-start service, so the selection never depends
+// on the single parsed Push field.
 func matchingTrigger(candidate Candidate, envelope event.Envelope, report Report) (pipeline.PushTrigger, bool) {
 	binding := candidate.Binding
 	if !reportingBinding(binding, envelope, report) {
@@ -141,11 +143,25 @@ func matchingTrigger(candidate Candidate, envelope event.Envelope, report Report
 		if trigger.Service == "" {
 			continue
 		}
-		if slices.Contains(trigger.Refs, report.Ref) {
+		if slices.ContainsFunc(trigger.Refs, func(declared string) bool {
+			return pushRefMatches(declared, report.Ref)
+		}) {
 			return trigger, true
 		}
 	}
 	return pipeline.PushTrigger{}, false
+}
+
+// pushRefMatches reports whether a declared on.push ref entry matches the
+// reported ref: a trailing-slash entry is a prefix requiring a non-empty,
+// non-prefix remainder; any other entry must match the full ref verbatim.
+func pushRefMatches(declared, reported string) bool {
+	if strings.HasSuffix(declared, "/") {
+		return strings.HasPrefix(reported, declared) &&
+			len(reported) > len(declared) &&
+			!strings.HasSuffix(reported, "/")
+	}
+	return declared == reported
 }
 
 // reportingBinding reports whether a candidate's binding is the one the push

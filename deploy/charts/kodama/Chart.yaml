@@ -2,5 +2,5 @@ apiVersion: v2
 name: kodama
 description: Kodama single-replica control plane, tenant namespaces, RBAC, storage and default-deny network policies
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0-dev
+appVersion: "0.2.0-dev"

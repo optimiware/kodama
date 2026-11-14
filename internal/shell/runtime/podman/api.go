@@ -10,7 +10,9 @@ package podman
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"os"
 	"path/filepath"
@@ -30,6 +32,12 @@ const (
 	MaxLogBytes = 1 << 20
 	// Redacted replaces configured credential and secret values in log output.
 	Redacted = "[REDACTED]"
+	// WorkloadCAPath is the read-only mounted CA bundle path inside the
+	// container when Config.WorkloadCAFile is configured.
+	WorkloadCAPath = "/kodama/ca.crt"
+	// EnvWorkloadCAFile exposes WorkloadCAPath in the container environment
+	// when Config.WorkloadCAFile is configured.
+	EnvWorkloadCAFile = "KODAMA_CA_FILE"
 )
 
 // Container statuses the adapter interprets. Any other status stays unknown.
@@ -93,6 +101,10 @@ type Config struct {
 	Root string
 	// KodamaURL is the reserved KODAMA_URL value injected into workloads.
 	KodamaURL string
+	// WorkloadCAFile optionally names an absolute host PEM CA bundle mounted
+	// read-only at /kodama/ca.crt with KODAMA_CA_FILE=/kodama/ca.crt. Empty
+	// mounts no CA file and sets no KODAMA_CA_FILE variable.
+	WorkloadCAFile string
 	// Cleanup bounds cleanup attempts per Remove call.
 	Cleanup CleanupPolicy
 	// Clock is optional; nil means a real clock.
@@ -180,6 +192,9 @@ type Files interface {
 // Libpod is the only external effect surface of the adapter.
 type Libpod interface {
 	CreateContainer(context.Context, ContainerSpec) (ContainerState, error)
+	// InspectImage checks that a digest-pinned image reference is present in
+	// the local container store. An absent image is ErrNotFound.
+	InspectImage(context.Context, string) error
 	InspectContainer(context.Context, string) (ContainerState, error)
 	// ListContainers returns every container matching all supplied labels. It
 	// is how workspace ownership is checked before a volume is released.
@@ -196,12 +211,13 @@ type Libpod interface {
 
 // Adapter implements runtime.Client for the Podman container family.
 type Adapter struct {
-	libpod    Libpod
-	files     Files
-	root      string
-	kodamaURL string
-	cleanup   CleanupPolicy
-	clock     Clock
+	libpod        Libpod
+	files         Files
+	root          string
+	kodamaURL     string
+	workloadCAPEM []byte
+	cleanup       CleanupPolicy
+	clock         Clock
 
 	mu    sync.Mutex
 	locks map[id.WorkloadID]*sync.Mutex
@@ -231,21 +247,60 @@ func New(config Config) (*Adapter, error) {
 	if config.Cleanup.Backoff < 0 {
 		return nil, fault.New(fault.InvalidInput, "podman adapter cleanup backoff is negative")
 	}
+	var workloadCAPEM []byte
+	if caFile := strings.TrimSpace(config.WorkloadCAFile); caFile != "" {
+		loaded, err := loadWorkloadCAPEM(caFile)
+		if err != nil {
+			return nil, err
+		}
+		workloadCAPEM = loaded
+	}
 	clock := config.Clock
 	if clock == nil {
 		clock = realClock{}
 	}
 	return &Adapter{
-		libpod:    config.Libpod,
-		files:     config.Files,
-		root:      filepath.Clean(config.Root),
-		kodamaURL: config.KodamaURL,
-		cleanup:   config.Cleanup,
-		clock:     clock,
-		locks:     map[id.WorkloadID]*sync.Mutex{},
+		libpod:        config.Libpod,
+		files:         config.Files,
+		root:          filepath.Clean(config.Root),
+		kodamaURL:     config.KodamaURL,
+		workloadCAPEM: workloadCAPEM,
+		cleanup:       config.Cleanup,
+		clock:         clock,
+		locks:         map[id.WorkloadID]*sync.Mutex{},
 
 		workspaceLocks: map[id.WorkspaceID]*sync.Mutex{},
 	}, nil
+}
+
+func loadWorkloadCAPEM(path string) ([]byte, error) {
+	if !filepath.IsAbs(path) {
+		return nil, fault.New(fault.InvalidInput, "podman adapter workload CA file must be an absolute path")
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, fault.New(fault.InvalidInput, "podman adapter workload CA file is unreadable")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fault.New(fault.InvalidInput, "podman adapter workload CA file is unreadable")
+	}
+	// Workloads receive only the certificates: any other block in the file,
+	// such as a private key, is dropped.
+	var certs []byte
+	for block, rest := pem.Decode(data); block != nil; block, rest = pem.Decode(rest) {
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+			continue
+		}
+		certs = append(certs, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: block.Bytes})...)
+	}
+	if len(certs) == 0 {
+		return nil, fault.New(fault.InvalidInput, "podman adapter workload CA file is not a usable PEM certificate")
+	}
+	return certs, nil
 }
 
 // lockFor returns the per-workload mutex that serializes lifecycle effects on

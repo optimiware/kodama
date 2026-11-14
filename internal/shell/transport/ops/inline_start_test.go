@@ -29,7 +29,7 @@ func (publicPipelineStartCodec) Validate(raw json.RawMessage) error {
 	return err
 }
 
-// newInlineStartHarness builds the 51-operation harness with pipeline.start's
+// newInlineStartHarness builds the 58-operation harness with pipeline.start's
 // input codec replaced by the declared public codec. All other operations keep
 // the recording fakes so the router's generic boundary is unchanged.
 func newInlineStartHarness(t *testing.T) *harness {

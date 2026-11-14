@@ -15,6 +15,42 @@ conversation that starts executions.
 The current version is in [`VERSION`](VERSION). The changes and known
 limitations of each version are in [CHANGELOG.md](CHANGELOG.md).
 
+## Quick start
+
+A single-host test installation on rootless Podman (Podman 5, `git` 2.44, `jq`,
+`openssl`, `curl`, `socat`):
+
+```sh
+git clone --branch v0.1.0 https://github.com/optimiware/kodama && cd kodama
+podman pull ghcr.io/optimiware/kodama/kodama:0.1.0
+KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.1.0 ./deploy/podman/install.sh
+```
+
+Then follow the [Podman quickstart](docs/runbooks/podman-quickstart.md) to
+[run a first pipeline](docs/runbooks/podman-quickstart.md#run-a-first-pipeline).
+
+### Try the API, MCP and `kodactl` without containers
+
+From a checkout, `kodama dev` starts an in-memory server on one HTTPS port with
+a built-in sign-in. Start it and leave it running:
+
+```sh
+make build
+bin/kodama dev
+```
+
+Then, in a second terminal:
+
+```sh
+source ~/.kodama/dev/env.sh
+bin/kodactl whoami
+bin/kodactl task create --title "First task"
+bin/kodactl mcp install claude --print
+```
+
+It keeps nothing across restarts and cannot run executions yet; use the Podman
+installation above to run pipelines.
+
 ## Documentation
 
 | Document | Contents |

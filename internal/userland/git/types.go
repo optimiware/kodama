@@ -261,11 +261,13 @@ type ApprovalRule struct {
 	Role string `json:"role"`
 }
 
-// RepositoryPolicy is one repository's ordered rules and approval options.
+// RepositoryPolicy is one repository's ordered rules, optional resource
+// binding and approval options.
 type RepositoryPolicy struct {
-	Name      string         `json:"name"`
-	Rules     []Rule         `json:"rules"`
-	Approvals []ApprovalRule `json:"approvals,omitempty"`
+	Name       string         `json:"name"`
+	ResourceID string         `json:"resource_id,omitempty"`
+	Rules      []Rule         `json:"rules"`
+	Approvals  []ApprovalRule `json:"approvals,omitempty"`
 }
 
 // Config is one parsed tenant git.conf.

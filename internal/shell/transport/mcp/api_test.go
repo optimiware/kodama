@@ -28,7 +28,7 @@
 // api.Request envelope as arguments to the router with the presented
 // credential; the success result is the JSON api.Result and an error carries
 // the declared api.MCPErrorCode mapping plus the api.Error body in data.
-// tools/list returns exactly ToolCatalog(), whose entries are the 51 registry
+// tools/list returns exactly ToolCatalog(), whose entries are the 58 registry
 // operations in registry order with InputSchema the field-level
 // api.OperationInputSchema object: the strict shared envelope that keeps the
 // {"type":"object","title":"<operation>.input.v1"} identity, refuses unknown

@@ -207,7 +207,10 @@ func TestPushRefMustMatchExactly(t *testing.T) {
 	candidates := &fakeCandidates{}
 	candidates.set(testCandidate(def, testBinding(scope, "repo-1", "git-svc", 1)))
 	events := &fakeEvents{}
-	events.setRows(pushEvent(1, "event-1", "repo-1", "git-svc", "refs/heads/mainline", "base-1", "cand-1"))
+	events.setRows(
+		pushEvent(1, "event-1", "repo-1", "git-svc", "refs/heads/mainline", "base-1", "cand-1"),
+		pushEvent(2, "event-2", "repo-1", "git-svc", "refs/heads/main/sub", "base-1", "cand-2"),
+	)
 	selections := newFakeSelections()
 	processor := newProcessor(t, events, candidates, selections, &fakeAdmission{}, newFakeStart(selections), &fakeCompletion{})
 
@@ -216,6 +219,64 @@ func TestPushRefMustMatchExactly(t *testing.T) {
 	}
 	if selections.selectCount() != 0 {
 		t.Fatalf("Select called %d times for a non-exact ref; want zero", selections.selectCount())
+	}
+}
+
+func TestPushTrailingSlashRefPrefixMatchesBranchHierarchyOnly(t *testing.T) {
+	scope := testScope()
+	workYAML := pushYAML("repo-1", "start-svc-work", []string{"refs/heads/work/"}, []string{"repository", "ref", "commit"}, "")
+	tagsYAML := pushYAML("repo-1", "start-svc-tags", []string{"refs/tags/"}, []string{"ref"}, "")
+	workDef := testDefinition("pipeline-work", workYAML, 1, "repo-1", "start-svc-work", []string{"refs/heads/work/"})
+	tagsDef := testDefinition("pipeline-tags", tagsYAML, 1, "repo-1", "start-svc-tags", []string{"refs/tags/"})
+
+	candidates := &fakeCandidates{}
+	candidates.set(
+		testCandidate(workDef, testBinding(scope, "repo-1", "git-svc", 1)),
+		testCandidate(tagsDef, testBinding(scope, "repo-1", "git-svc", 1)),
+	)
+
+	events := &fakeEvents{}
+	events.setRows(
+		// Matches refs/heads/work/
+		pushEvent(1, "event-work-1", "repo-1", "git-svc", "refs/heads/work/task-42", "base-1", "cand-1"),
+		// Nested branch below refs/heads/work/ also matches
+		pushEvent(2, "event-work-2", "repo-1", "git-svc", "refs/heads/work/agent/task-99", "base-2", "cand-2"),
+		// Sibling without slash boundary does NOT match refs/heads/work/
+		pushEvent(3, "event-sibling", "repo-1", "git-svc", "refs/heads/work-notes/task-42", "base-3", "cand-3"),
+		// Exact prefix name without trailing slash or remainder does NOT match
+		pushEvent(4, "event-bare-work", "repo-1", "git-svc", "refs/heads/work", "base-4", "cand-4"),
+		// Prefix itself with empty remainder does NOT match
+		pushEvent(5, "event-empty-remainder", "repo-1", "git-svc", "refs/heads/work/", "base-5", "cand-5"),
+		// Matches refs/tags/
+		pushEvent(6, "event-tag", "repo-1", "git-svc", "refs/tags/v1.2.0", "", "cand-6"),
+	)
+	selections := newFakeSelections()
+	start := newFakeStart(selections)
+	completion := &fakeCompletion{}
+	processor := newProcessor(t, events, candidates, selections, &fakeAdmission{}, start, completion)
+
+	result, err := processor.Process(context.Background())
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if selections.selectCount() != 3 {
+		t.Fatalf("Select called %d times; want 3 (two work branches and one tag)", selections.selectCount())
+	}
+	if len(result.Started) != 3 {
+		t.Fatalf("started = %v; want 3 executions", result.Started)
+	}
+
+	gotFirst := selections.selectCall(0)
+	if gotFirst.PipelineID != "pipeline-work" || gotFirst.Selection.Inputs["ref"] != "refs/heads/work/task-42" {
+		t.Fatalf("first selection = %s (%v); want pipeline-work on refs/heads/work/task-42", gotFirst.PipelineID, gotFirst.Selection.Inputs)
+	}
+	gotSecond := selections.selectCall(1)
+	if gotSecond.PipelineID != "pipeline-work" || gotSecond.Selection.Inputs["ref"] != "refs/heads/work/agent/task-99" {
+		t.Fatalf("second selection = %s (%v); want pipeline-work on refs/heads/work/agent/task-99", gotSecond.PipelineID, gotSecond.Selection.Inputs)
+	}
+	gotThird := selections.selectCall(2)
+	if gotThird.PipelineID != "pipeline-tags" || gotThird.Selection.Inputs["ref"] != "refs/tags/v1.2.0" {
+		t.Fatalf("third selection = %s (%v); want pipeline-tags on refs/tags/v1.2.0", gotThird.PipelineID, gotThird.Selection.Inputs)
 	}
 }
 

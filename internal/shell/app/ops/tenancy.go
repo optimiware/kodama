@@ -7,6 +7,7 @@ import (
 	"github.com/optimiware/kodama/internal/fault"
 	"github.com/optimiware/kodama/internal/id"
 	"github.com/optimiware/kodama/internal/shell/authorize"
+	"github.com/optimiware/kodama/internal/shell/store"
 	"github.com/optimiware/kodama/internal/shell/tenancy"
 	tenancyadmin "github.com/optimiware/kodama/internal/shell/tenancy/admin"
 	"github.com/optimiware/kodama/internal/shell/transport/ops"
@@ -109,6 +110,57 @@ func tenancyHandlers(deps Dependencies) map[authorize.OperationName]ops.Handler 
 			}
 			return respond(call, api.ProjectUpdateResult{Version: committed.Version})
 		}),
+		"project.list": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
+			request, err := decodeRequest[api.ProjectListRequest](call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			scanScope := call.Scope
+			if call.Principal.Scope.ProjectScoped() {
+				scanScope = call.Principal.Scope
+			}
+			if err := confirmReadAuthority(ctx, deps, call, scanScope); err != nil {
+				return api.Result{}, err
+			}
+			scanner, err := requireScanner(deps)
+			if err != nil {
+				return api.Result{}, err
+			}
+			page := pageOrDefault(request.Page)
+			committed, err := scanner.Query(ctx, scanScope, store.ScanQuery{
+				Table:   "projects",
+				OrderBy: []store.Order{{Column: "id"}},
+				After:   page.Cursor,
+				Limit:   page.EffectiveLimit(),
+			})
+			if err != nil {
+				return api.Result{}, err
+			}
+			projects := make([]api.ProjectView, 0, len(committed.Rows))
+			for _, row := range committed.Rows {
+				projectID, err := scanRowString(row, "id")
+				if err != nil {
+					return api.Result{}, err
+				}
+				name, err := scanRowString(row, "name")
+				if err != nil {
+					return api.Result{}, err
+				}
+				version, err := scanRowUint(row, "version")
+				if err != nil {
+					return api.Result{}, err
+				}
+				projects = append(projects, api.ProjectView{
+					ProjectID: projectID,
+					Name:      name,
+					Version:   version,
+				})
+			}
+			return respond(call, api.ProjectListResult{
+				Projects:   projects,
+				NextCursor: committed.Next,
+			})
+		}),
 		"membership.grant": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
 			request, err := decodeRequest[api.MembershipGrantRequest](call)
 			if err != nil {
@@ -191,6 +243,23 @@ func tenancyHandlers(deps Dependencies) map[authorize.OperationName]ops.Handler 
 				})
 			}
 			return respond(call, result)
+		}),
+		"principal.whoami": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
+			if _, err := decodeRequest[api.PrincipalWhoamiRequest](call); err != nil {
+				return api.Result{}, err
+			}
+			roles, memberships, err := whoamiMembershipsAndRoles(ctx, deps, call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			return respond(call, api.PrincipalWhoamiResult{
+				PrincipalID: string(call.Principal.ID),
+				Kind:        whoamiKind(call.Principal.Kind),
+				TenantID:    string(call.Principal.Scope.TenantID),
+				ProjectID:   string(call.Principal.Scope.ProjectID),
+				Roles:       roles,
+				Memberships: memberships,
+			})
 		}),
 	}
 }

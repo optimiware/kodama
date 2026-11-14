@@ -129,6 +129,10 @@ func validatePinnedImage(image string) error {
 // activation file plus the resolved declared secrets. Validation is complete
 // before any effect so an unsafe declaration never reaches the filesystem.
 func buildPreparation(request engine.PrepareRequest) ([]preparedFile, []engine.SecretValue, error) {
+	return buildPreparationWithCA(request, nil)
+}
+
+func buildPreparationWithCA(request engine.PrepareRequest, workloadCAPEM []byte) ([]preparedFile, []engine.SecretValue, error) {
 	if err := validatePinnedImage(request.Container.Image); err != nil {
 		return nil, nil, err
 	}
@@ -213,6 +217,9 @@ func buildPreparation(request engine.PrepareRequest) ([]preparedFile, []engine.S
 	}
 
 	files = append(files, preparedFile{logical: entrypointScriptPath, data: []byte(renderedScript)})
+	if len(workloadCAPEM) > 0 {
+		files = append(files, preparedFile{logical: WorkloadCAPath, data: append([]byte(nil), workloadCAPEM...)})
+	}
 	sort.Slice(files, func(left, right int) bool { return files[left].logical < files[right].logical })
 	return files, secrets, nil
 }
@@ -268,8 +275,14 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 	if err != nil {
 		return ContainerSpec{}, err
 	}
-	env := make([]string, 0, len(prepared.Env)+4)
+	// Prepare records the CA file it wrote; the adapter's current
+	// configuration may have changed since.
+	hasCA := slices.Contains(prepared.Files, WorkloadCAPath)
+	env := make([]string, 0, len(prepared.Env)+5)
 	for _, entry := range prepared.Env {
+		if hasCA && string(entry.Name) == EnvWorkloadCAFile {
+			continue
+		}
 		env = append(env, string(entry.Name)+"="+entry.Value)
 	}
 	env = append(env,
@@ -279,6 +292,9 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 	)
 	if prepared.TaskID != "" {
 		env = append(env, id.EnvTask+"="+string(prepared.TaskID))
+	}
+	if hasCA {
+		env = append(env, EnvWorkloadCAFile+"="+WorkloadCAPath)
 	}
 	return ContainerSpec{
 		Name:       name,

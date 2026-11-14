@@ -16,6 +16,7 @@ import (
 func TestUserlandAppImportGraphIsPublicOnly(t *testing.T) {
 	root := repositoryRoot(t)
 	command := exec.Command("go", "list", "-deps",
+		"./internal/userland/app/auth",
 		"./internal/userland/git/app",
 		"./internal/userland/agent/app",
 		"./internal/userland/services/app",
@@ -45,6 +46,7 @@ func TestUserlandAppImportGraphIsPublicOnly(t *testing.T) {
 		}
 	}
 	for _, expected := range []string{
+		"github.com/optimiware/kodama/internal/userland/app/auth",
 		"github.com/optimiware/kodama/internal/userland/git/app",
 		"github.com/optimiware/kodama/internal/userland/agent/app",
 		"github.com/optimiware/kodama/internal/userland/services/app",

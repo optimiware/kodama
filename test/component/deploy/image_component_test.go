@@ -27,6 +27,28 @@ set -u
 } >> "$PODMAN_ARGV_LOG"
 case "${1:-}" in
   build) exit 0 ;;
+  tag|untag|image) exit 0 ;;
+  manifest)
+    case "${2:-}" in
+      exists) exit 1 ;;
+      create|rm) exit 0 ;;
+      push)
+        previous=""
+        for arg in "$@"; do
+          if [[ "$previous" == "--digestfile" ]]; then
+            if [[ "${PODMAN_BAD_DIGEST:-0}" == "1" ]]; then
+              printf 'not-a-digest\n' >"$arg"
+            else
+              printf 'sha256:%s\n' "2222222222222222222222222222222222222222222222222222222222222222" >"$arg"
+            fi
+          fi
+          previous="$arg"
+        done
+        exit 0
+        ;;
+    esac
+    exit 1
+    ;;
   push)
     previous=""
     for arg in "$@"; do
@@ -328,4 +350,37 @@ func TestImageScriptRejectsMissingRepositoryAndBadDigest(t *testing.T) {
 			t.Fatalf("scripts/image accepted an invalid pushed digest:\n%s", output)
 		}
 	})
+}
+
+// TestImageScriptMultiArchAndAlsoTag proves multi-arch manifest builds and
+// --also-tag latest work cleanly while printing the pushed manifest digest.
+func TestImageScriptMultiArchAndAlsoTag(t *testing.T) {
+	box := newImageSandbox(t)
+	code, output := box.run(t,
+		"build-push",
+		"--repository", "registry.example.com/kodama",
+		"--tag", "0.2.0",
+		"--platforms", "linux/amd64,linux/arm64",
+		"--also-tag", "latest",
+	)
+	if code != 0 {
+		t.Fatalf("scripts/image multi-arch build-push failed: exit %d\n%s", code, output)
+	}
+	want := "registry.example.com/kodama@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+	if strings.TrimSpace(output) != want {
+		t.Fatalf("output = %q; want %q", strings.TrimSpace(output), want)
+	}
+	joined := strings.Join(box.podmanArgv(t), "\n")
+	for _, expected := range []string{
+		// The name is held by a single-arch image, which is untagged first.
+		"podman\tuntag\tregistry.example.com/kodama:0.2.0\tregistry.example.com/kodama:0.2.0\npodman\tmanifest\tcreate\tregistry.example.com/kodama:0.2.0",
+		"--platform\tlinux/amd64,linux/arm64\t--manifest\tregistry.example.com/kodama:0.2.0",
+		"podman\tmanifest\tpush\t--all\t--digestfile",
+		"docker://registry.example.com/kodama:0.2.0",
+		"podman\tmanifest\tpush\t--all\tregistry.example.com/kodama:0.2.0\tdocker://registry.example.com/kodama:latest",
+	} {
+		if !strings.Contains(joined, expected) {
+			t.Errorf("multi-arch podman calls missing %q:\n%s", expected, joined)
+		}
+	}
 }

@@ -96,6 +96,9 @@ func TestPrepareMaterializesConfinedSnapshot(t *testing.T) {
 	if calls := fx.libpod.inspectedVolumes(); len(calls) != 1 || calls[0] != fx.volumeName {
 		t.Fatalf("Inspected volumes = %v, want the retained workspace volume %q", calls, fx.volumeName)
 	}
+	if calls := fx.libpod.inspectedImages(); len(calls) != 1 || calls[0] != testImage {
+		t.Fatalf("Inspected images = %v, want the workload image %q", calls, testImage)
+	}
 	if volume, ok := fx.libpod.volume(fx.volumeName); !ok {
 		t.Fatal("Prepare removed the retained workspace volume")
 	} else if volume.Labels[LabelWorkspace] != string(fx.request.WorkspaceID) {
@@ -131,6 +134,62 @@ func TestPrepareInspectsExistingWorkspaceVolume(t *testing.T) {
 		assertFaultClass(t, err, fault.Forbidden)
 		if calls := fx.files.callCount("WriteFile"); calls != 0 {
 			t.Fatalf("foreign workspace volume wrote %d files", calls)
+		}
+	})
+}
+
+func TestPrepareFailsFastWhenWorkloadImageIsAbsentLocally(t *testing.T) {
+	t.Run("missing image refuses before writing preparation", func(t *testing.T) {
+		fx := newFixture(t)
+		fx.libpod.deleteImage(testImage)
+
+		_, err := fx.adapter.Prepare(context.Background(), fx.request)
+		assertFaultClass(t, err, fault.DependencyUnavailable)
+		wantDetail := `workload image "` + testImage + `" is not present in the local container store; pull it before starting the execution`
+		if message, ok := fault.MessageOf(err); !ok || message != wantDetail {
+			t.Fatalf("Prepare error message = %q (ok=%v); want %q", message, ok, wantDetail)
+		}
+		if calls := fx.files.callCount("WriteFile"); calls != 0 {
+			t.Fatalf("missing workload image wrote %d files", calls)
+		}
+		if hostFileExists(t, fx.workloadRoot()) {
+			t.Fatal("missing workload image left a materialization root behind")
+		}
+		if calls := fx.libpod.callsFor("CreateContainer"); calls != 0 {
+			t.Fatalf("missing workload image called CreateContainer %d times", calls)
+		}
+
+		result, startErr := fx.startResult(t)
+		if startErr == nil {
+			t.Fatal("Start hid a missing workload image")
+		}
+		if result.Outcome != engine.StartUnknown {
+			t.Fatalf("start outcome = %q, want unknown", result.Outcome)
+		}
+		if calls := fx.libpod.callsFor("CreateContainer"); calls != 0 {
+			t.Fatal("Start created a container after preparation refused an absent image")
+		}
+
+		// Once the image is present locally, preparation and start succeed.
+		fx.libpod.addImage(testImage)
+		fx.prepare(t)
+		accepted := fx.start(t)
+		if accepted.Outcome != engine.StartAccepted {
+			t.Fatalf("start outcome after pulling image = %q, want accepted", accepted.Outcome)
+		}
+	})
+
+	t.Run("unreachable image store refuses as dependency unavailable", func(t *testing.T) {
+		fx := newFixture(t)
+		fx.libpod.setImageError(errFakeUnavailable)
+
+		_, err := fx.adapter.Prepare(context.Background(), fx.request)
+		assertFaultClass(t, err, fault.DependencyUnavailable)
+		if strings.Contains(err.Error(), errFakeUnavailable.Error()) {
+			t.Fatalf("Prepare leaked private image store error: %v", err)
+		}
+		if calls := fx.files.callCount("WriteFile"); calls != 0 {
+			t.Fatalf("unreachable image store wrote %d files", calls)
 		}
 	})
 }

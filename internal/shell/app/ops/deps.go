@@ -19,6 +19,7 @@ import (
 	"github.com/optimiware/kodama/internal/shell/resource"
 	"github.com/optimiware/kodama/internal/shell/secret"
 	"github.com/optimiware/kodama/internal/shell/service"
+	"github.com/optimiware/kodama/internal/shell/store"
 	"github.com/optimiware/kodama/internal/shell/task"
 	"github.com/optimiware/kodama/internal/shell/tenancy"
 	tenancyadmin "github.com/optimiware/kodama/internal/shell/tenancy/admin"
@@ -57,6 +58,9 @@ type Dependencies struct {
 	// Authority is the optional current-authority reader used by handlers whose
 	// underlying read seam does not confirm registry authority checks itself.
 	Authority authorize.AuthorityReader
+	// Scanner is the scoped multi-row read seam used by discovery and list read
+	// operations.
+	Scanner store.Scanner
 	// Services is the real service-account administration service.
 	Services ServiceAdministration
 	// Credentials is the real service-credential administration service.

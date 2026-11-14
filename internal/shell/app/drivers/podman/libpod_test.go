@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/optimiware/kodama/internal/fault"
 	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
 )
 
@@ -452,6 +453,54 @@ func TestCreateBodyRejectsMalformedEnvironment(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("malformed environment entry was accepted")
+	}
+}
+
+func TestInspectImageMapsPresentNotFoundAndErrors(t *testing.T) {
+	const pinned = "registry.example.com/tools/build@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	var (
+		status    = http.StatusNoContent
+		seenPaths []string
+	)
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected method %s", r.Method)
+		}
+		seenPaths = append(seenPaths, r.URL.EscapedPath())
+		w.WriteHeader(status)
+	}))
+
+	if err := client.InspectImage(context.Background(), pinned); err != nil {
+		t.Fatalf("InspectImage(204): %v", err)
+	}
+	wantEscaped := "/v5.0.0/libpod/images/" + url.PathEscape(pinned) + "/exists"
+	if len(seenPaths) != 1 || seenPaths[0] != wantEscaped {
+		t.Fatalf("InspectImage request paths = %v; want [%s]", seenPaths, wantEscaped)
+	}
+
+	status = http.StatusOK
+	if err := client.InspectImage(context.Background(), pinned); err != nil {
+		t.Fatalf("InspectImage(200): %v", err)
+	}
+
+	status = http.StatusNotFound
+	if err := client.InspectImage(context.Background(), pinned); !errors.Is(err, runtimepodman.ErrNotFound) {
+		t.Fatalf("InspectImage(404) = %v; want ErrNotFound", err)
+	}
+
+	status = http.StatusInternalServerError
+	err := client.InspectImage(context.Background(), pinned)
+	if class, ok := fault.ClassOf(err); !ok || class != fault.DependencyUnavailable {
+		t.Fatalf("InspectImage(500) = %v; want dependency_unavailable", err)
+	}
+
+	before := len(seenPaths)
+	err = client.InspectImage(context.Background(), "   ")
+	if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
+		t.Fatalf("InspectImage(empty) = %v; want invalid_input", err)
+	}
+	if len(seenPaths) != before {
+		t.Fatal("empty image reference sent an HTTP request")
 	}
 }
 

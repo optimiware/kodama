@@ -203,8 +203,8 @@ func TestMCPToolsCallYAMLEnvelopeBound(t *testing.T) {
 // advertises a oneOf, matching api.OperationInputSchema.
 func TestMCPPipelineStartOneOfParity(t *testing.T) {
 	catalog := mcp.ToolCatalog()
-	if len(catalog) != 51 {
-		t.Fatalf("catalog tools = %d; want 51", len(catalog))
+	if len(catalog) != 58 {
+		t.Fatalf("catalog tools = %d; want 58", len(catalog))
 	}
 
 	found := 0
@@ -220,7 +220,7 @@ func TestMCPPipelineStartOneOfParity(t *testing.T) {
 			t.Fatalf("%s input member: %v", tool.Name, err)
 		}
 		rawOneOf, hasOneOf := input["oneOf"]
-		if tool.Name != "pipeline.start" {
+		if tool.Name != "pipeline_start" {
 			if hasOneOf {
 				t.Fatalf("%s advertises an unexpected oneOf: %s", tool.Name, rawOneOf)
 			}

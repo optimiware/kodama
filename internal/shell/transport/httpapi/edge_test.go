@@ -531,3 +531,73 @@ func TestEdgeLogWriterRedactsNamedCredentialForms(t *testing.T) {
 		t.Fatalf("edge log lost the operator diagnostic: %s", text)
 	}
 }
+
+// TestEdgeAllowsEmptyBodyOnGetAndRefusesNonGet pins that GET routes accept an
+// empty or whitespace-only request body as "{}" while POST, PUT, PATCH and
+// DELETE continue to refuse empty bodies with 400 invalid_input.
+func TestEdgeAllowsEmptyBodyOnGetAndRefusesNonGet(t *testing.T) {
+	getCases := []struct {
+		name      string
+		path      string
+		body      []byte
+		operation string
+		params    map[string]string
+	}{
+		{"whoami nil body", "/api/v1/whoami", nil, "principal.whoami", map[string]string{}},
+		{"whoami empty body", "/api/v1/whoami", []byte(""), "principal.whoami", map[string]string{}},
+		{"whoami whitespace body", "/api/v1/whoami", []byte("  \n\t "), "principal.whoami", map[string]string{}},
+		{"task read nil body", "/api/v1/tasks/task-1", nil, "task.read", map[string]string{"task": "task-1"}},
+		{"pipeline list empty body", "/api/v1/projects/project-a/pipelines", []byte(""), "pipeline.list", map[string]string{"project": "project-a"}},
+	}
+	for _, testCase := range getCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			router := &fakeRouter{}
+			edge, err := httpapi.NewEdge(router)
+			if err != nil {
+				t.Fatalf("NewEdge: %v", err)
+			}
+			response := perform(t, edge, http.MethodGet, testCase.path, testCase.body, "Bearer token-1")
+			if response.status != http.StatusOK {
+				t.Fatalf("GET %s status = %d; want 200 (body %s)",
+					testCase.path, response.status, response.body.String())
+			}
+			invocation := router.lastInvocation()
+			if string(invocation.Operation) != testCase.operation {
+				t.Fatalf("operation = %q; want %q", invocation.Operation, testCase.operation)
+			}
+			if !reflect.DeepEqual(invocation.Params, testCase.params) {
+				t.Fatalf("params = %#v; want %#v", invocation.Params, testCase.params)
+			}
+		})
+	}
+
+	nonGetCases := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/api/v1/tasks/task-1/ask"},
+		{http.MethodPut, "/api/v1/projects/project-a/memberships/principal-1"},
+		{http.MethodPatch, "/api/v1/tasks/task-1"},
+		{http.MethodDelete, "/api/v1/projects/project-a/memberships/principal-1"},
+	}
+	for _, testCase := range nonGetCases {
+		t.Run(testCase.method+"_empty", func(t *testing.T) {
+			router := &fakeRouter{}
+			edge, err := httpapi.NewEdge(router)
+			if err != nil {
+				t.Fatalf("NewEdge: %v", err)
+			}
+			response := perform(t, edge, testCase.method, testCase.path, nil, "Bearer token-1")
+			if response.status != http.StatusBadRequest {
+				t.Fatalf("%s %s status = %d; want 400 (body %s)",
+					testCase.method, testCase.path, response.status, response.body.String())
+			}
+			if got := decodePublicError(t, response); got.Code != api.CodeInvalidInput {
+				t.Fatalf("code = %q; want %q", got.Code, api.CodeInvalidInput)
+			}
+			if got := router.callCount(); got != 0 {
+				t.Fatalf("router calls = %d; want 0", got)
+			}
+		})
+	}
+}

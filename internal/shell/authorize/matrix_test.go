@@ -11,7 +11,7 @@ import (
 )
 
 // TestHumanGrantMatrixAllowsExactlyTheDeclaredRoles walks the whole declared
-// 51-operation registry and asserts that a verified human holding exactly one
+// 58-operation registry and asserts that a verified human holding exactly one
 // role is allowed exactly when that role appears in the operation's human grant
 // set. Admin and Reviewer therefore never imply each other, and operations with
 // no human grant admit no human.
@@ -20,8 +20,8 @@ func TestHumanGrantMatrixAllowsExactlyTheDeclaredRoles(t *testing.T) {
 	ctx := context.Background()
 
 	operations := authorize.Operations()
-	if len(operations) != 51 {
-		t.Fatalf("registry has %d operations; want the declared 51", len(operations))
+	if len(operations) != 58 {
+		t.Fatalf("registry has %d operations; want the declared 58", len(operations))
 	}
 
 	for _, operation := range operations {
@@ -490,5 +490,45 @@ func TestMatrixDoesNotCacheGrants(t *testing.T) {
 	requireNoError(t, err)
 	if decision != authorize.DecisionDeny {
 		t.Fatal("a principal with no roles still allowed task.edit")
+	}
+}
+
+// TestPrincipalWhoamiAllowsAnyAuthenticatedPrincipal pins that principal.whoami
+// admits humans with zero roles (for example immediately after OIDC login),
+// project-scoped services and running executions inside their own tenant while
+// still refusing foreign tenants and disabled principals.
+func TestPrincipalWhoamiAllowsAnyAuthenticatedPrincipal(t *testing.T) {
+	matrix := authorize.NewMatrix()
+	ctx := context.Background()
+
+	unassignedHuman := authorize.Principal{
+		ID:      testPrincipal,
+		Kind:    identity.KindHuman,
+		Scope:   tenantScope(),
+		Enabled: true,
+	}
+	decision, err := matrix.Authorize(ctx, unassignedHuman, "principal.whoami", tenantScope())
+	requireNoError(t, err)
+	if decision != authorize.DecisionAllow {
+		t.Fatalf("zero-role human principal.whoami = %q; want allow", decision)
+	}
+	decision, err = matrix.Authorize(ctx, unassignedHuman, "principal.whoami", tenancy.Scope{TenantID: otherTenant})
+	requireNoError(t, err)
+	if decision != authorize.DecisionDeny {
+		t.Fatalf("foreign-tenant principal.whoami = %q; want deny", decision)
+	}
+
+	projectService := servicePrincipal(nil, projectScope())
+	decision, err = matrix.Authorize(ctx, projectService, "principal.whoami", tenantScope())
+	requireNoError(t, err)
+	if decision != authorize.DecisionAllow {
+		t.Fatalf("project-scoped service principal.whoami = %q; want allow", decision)
+	}
+
+	admitted := admittedExecution(authorize.ExecOwnTaskContent, projectScope())
+	decision, err = authorize.AuthorizeExecution(admitted, "principal.whoami", tenantScope())
+	requireNoError(t, err)
+	if decision != authorize.DecisionAllow {
+		t.Fatalf("admitted execution principal.whoami = %q; want allow", decision)
 	}
 }
