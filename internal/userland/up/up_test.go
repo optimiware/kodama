@@ -300,6 +300,10 @@ func TestResolveStateDirAndPurgeSafety(t *testing.T) {
 	if err := os.Remove(userFile); err != nil {
 		t.Fatal(err)
 	}
+	// The quickstart has the reader store a Git credential in the instance.
+	if err := os.WriteFile(filepath.Join(stateDir, "git-credentials"), []byte("https://kodama:token@127.0.0.1%3a8443\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := PurgeInstanceStateDir(stateDir, "alpha"); err != nil {
 		t.Fatalf("second PurgeInstanceStateDir after removing unknown file failed: %v", err)
 	}

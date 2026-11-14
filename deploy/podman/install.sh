@@ -459,7 +459,10 @@ start_postgres() {
 
 wait_for_postgres() {
 	local deadline=$((SECONDS + 60))
-	until podman exec "$container_postgres" psql -U postgres -d postgres -Atc 'SELECT 1' >/dev/null 2>&1; do
+	# Over TCP: on a new volume the image first runs a temporary server that
+	# answers on the socket only, then stops it. A probe over the socket can
+	# reach that one, and the next statement then fails.
+	until podman exec "$container_postgres" psql -h 127.0.0.1 -U postgres -d postgres -Atc 'SELECT 1' >/dev/null 2>&1; do
 		[ "$SECONDS" -lt "$deadline" ] || die "PostgreSQL did not accept connections within 60s"
 		sleep 0.5
 	done

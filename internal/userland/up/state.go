@@ -200,6 +200,8 @@ func PurgeInstanceStateDir(stateDir, instanceName string) error {
 		"bootstrap.done",
 		"project.done",
 		"personas.done",
+		// The quickstart stores the Git credential of this instance here.
+		"git-credentials",
 	}
 	for _, file := range knownFiles {
 		_ = os.Remove(filepath.Join(stateDir, file))

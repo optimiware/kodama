@@ -391,8 +391,10 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 	if err := waitPostgresReady(ctx, engine, postgresContainer); err != nil {
 		return StackDescriptor{}, err
 	}
-	if code, err := engine.Exec(ctx, postgresContainer, []string{"psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres", "-f", "/tmp/kodama-init.sql"}); err != nil || code != 0 {
-		return StackDescriptor{}, fmt.Errorf("initialize kodama_admin role failed (exit %d): %w", code, err)
+	if code, err := engine.Exec(ctx, postgresContainer, []string{"psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres", "-f", "/tmp/kodama-init.sql"}); err != nil {
+		return StackDescriptor{}, fmt.Errorf("initialize kodama_admin role: %w", err)
+	} else if code != 0 {
+		return StackDescriptor{}, fmt.Errorf("initialize kodama_admin role: psql exited %d", code)
 	}
 
 	_ = engine.RemoveContainer(ctx, natsContainer)
@@ -986,7 +988,10 @@ func waitPostgresReady(ctx context.Context, engine *EngineClient, containerName 
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		code, err := engine.Exec(ctx, containerName, []string{"psql", "-U", "postgres", "-d", "postgres", "-Atc", "SELECT 1"})
+		// Over TCP: on a new volume the image first runs a temporary server
+		// that answers on the socket only, then stops it. A probe over the
+		// socket can reach that one, and the next statement then fails.
+		code, err := engine.Exec(ctx, containerName, []string{"psql", "-h", "127.0.0.1", "-U", "postgres", "-d", "postgres", "-Atc", "SELECT 1"})
 		if err == nil && code == 0 {
 			return nil
 		}

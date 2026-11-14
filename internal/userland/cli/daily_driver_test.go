@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"math/big"
 	"net/http"
@@ -414,6 +415,66 @@ func TestRunLogsFollowDrainsAndExitsByTerminalStatus(t *testing.T) {
 			t.Fatalf("json logs = %v", parsed)
 		}
 	})
+}
+
+// TestRunLogsWaitsForRetainedOutput proves logs read right after an execution
+// ends are not empty: the server retains a workload's output when it removes
+// the workload, so the command waits while cleanup is pending.
+func TestRunLogsWaitsForRetainedOutput(t *testing.T) {
+	for _, args := range [][]string{
+		{"logs", "exec-1"},
+		{"logs", "exec-1", "--action", "prepare"},
+		{"logs", "exec-1", "--follow"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			cleanup := "pending"
+			transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+				switch inv.Operation {
+				case "execution.inspect":
+					body, _ := json.Marshal(map[string]any{
+						"execution_id": "exec-1",
+						"state":        "succeeded",
+						"cleanup":      map[string]any{"state": cleanup},
+						"actions": []map[string]any{
+							{"action_id": "act-1", "name": "prepare", "kind": "container", "state": "succeeded"},
+						},
+					})
+					return api.Result{Operation: inv.Operation, Body: body}, nil
+				case "execution.logs.read":
+					var req api.ExecutionLogsReadRequest
+					if err := json.Unmarshal(inv.Request.Input, &req); err != nil {
+						t.Fatalf("unmarshal logs request: %v", err)
+					}
+					if req.ActionID != "act-1" {
+						return api.Result{}, errors.New("not_found: no such action")
+					}
+					var chunks []api.LogChunk
+					if cleanup == "complete" {
+						chunks = []api.LogChunk{{ActionID: "act-1", Stream: "stdout", Sequence: 1, Data: []byte("prepared\n")}}
+					}
+					body, _ := json.Marshal(api.ExecutionLogsReadResult{Chunks: chunks})
+					return api.Result{Operation: inv.Operation, Body: body}, nil
+				default:
+					t.Fatalf("unexpected operation %s", inv.Operation)
+					return api.Result{}, nil
+				}
+			}}
+			ports, out, errOut := testPorts(transport)
+			sleeps := 0
+			ports.Sleep = func(time.Duration) {
+				sleeps++
+				cleanup = "complete"
+			}
+			cfg := testConfig()
+			cfg.Output = cli.OutputTable
+			if code := cli.Run(context.Background(), cfg, args, ports); code != cli.ExitSuccess {
+				t.Fatalf("exit = %d; stderr=%q", code, errOut.String())
+			}
+			if out.String() != "prepared\n" || sleeps != 1 {
+				t.Fatalf("stdout = %q after %d sleeps; want the retained output after one", out.String(), sleeps)
+			}
+		})
+	}
 }
 
 // TestRunInboxApproveAndReject pins Requirement 4.
