@@ -147,11 +147,18 @@ actions:
       - implement-and-push
       - |
         candidate="$(git rev-parse HEAD)"
-        curl --fail --silent --show-error \
-          --header "Authorization: Bearer $(cat /kodama/secrets/KODAMA_TOKEN)" \
-          --header "Content-Type: application/json" \
-          --request PUT --data "{\"candidate\":\"$candidate\"}" \
-          "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION/actions/$KODAMA_ACTION/outputs"
+        api="$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION"
+        auth="Authorization: Bearer $(cat /kodama/secrets/KODAMA_TOKEN)"
+        view="$(curl --fail --silent --show-error --header "$auth" "$api")"
+        action="$(printf '%s' "$view" | jq --raw-output --arg name "$KODAMA_ACTION" \
+          '.body.actions[] | select(.name == $name) | .action_id')"
+        version="$(printf '%s' "$view" | jq '.body.version')"
+        jq --null-input --arg candidate "$candidate" --argjson version "$version" \
+          '{input: {outputs: {candidate: $candidate}}, expected_version: $version,
+            idempotency_key: ("candidate:" + $candidate)}' |
+          curl --fail --silent --show-error \
+            --header "$auth" --header "Content-Type: application/json" \
+            --request PUT --data @- "$api/actions/$action/outputs"
 
   - name: test
     image: registry.example.com/test-tools:1
@@ -182,7 +189,7 @@ actions:
           "$(cat /kodama/inputs/expected_base)"
 ```
 
-The image supplies Git and curl; `implement-and-push` publishes the candidate before submitting its output. The test reads that settled candidate and exports the materialized placeholder secret. After confirmed test stop, review waits without a container. Passing advances to integration in the same execution and workspace, under the [Git access rules](#git-access-rules); rejection or timeout fails the execution, and cancellation cancels it. The happy path needs one pipeline and one execution.
+The image supplies Git, curl, and jq; `implement-and-push` publishes the candidate before submitting its output. The submission reads the execution for its own action ID and the execution version, then sends both with an idempotency key; after a `version_conflict` it reads again and retries with the same key. The test reads that settled candidate and exports the materialized placeholder secret. After confirmed test stop, review waits without a container. Passing advances to integration in the same execution and workspace, under the [Git access rules](#git-access-rules); rejection or timeout fails the execution, and cancellation cancels it. The happy path needs one pipeline and one execution.
 
 ### Lifecycle and recovery
 
