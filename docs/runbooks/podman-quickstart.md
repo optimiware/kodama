@@ -93,8 +93,8 @@ To install the released image instead of building the checkout, pull it and
 name it. Keep the variable set on every later run of this installation:
 
 ```sh
-podman pull ghcr.io/optimiware/kodama/kodama:0.1.0
-export KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.1.0
+podman pull ghcr.io/optimiware/kodama/kodama:0.2.0
+export KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.2.0
 ./deploy/podman/install.sh
 ```
 

@@ -84,7 +84,7 @@ kodama:
   replicaCount: 1
   image:
     repository: registry.example.com/kodama
-    tag: "0.2.0-dev"
+    tag: "0.2.0"
     digest: ""
     pullPolicy: IfNotPresent
   config:
