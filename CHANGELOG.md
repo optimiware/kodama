@@ -48,6 +48,8 @@ Fixed:
 
 - Podman bundle: a refused `down.sh --purge` left an installation that could
   be neither reinstalled nor purged.
+- Podman bundle: a first install could fail in rare cases, because it took
+  PostgreSQL for ready while the image was still initialising a new volume.
 - The first-pipeline steps of the Podman bundle runbook failed as written.
   They now use `kodactl run`.
 - An action with `timeout: 1m` could fail to get its execution credential,

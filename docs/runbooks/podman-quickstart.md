@@ -462,7 +462,8 @@ plain API, reads are `GET` requests with a JSON body (`curl --request GET
 
 Workload containers run from the same Podman daemon, so the image must already
 be in that store. The runtime never pulls one for an execution; an image that
-is missing leaves the execution `running` until the action timeout. Name an
+is missing fails the execution when it starts, with a message that names the
+image. Name an
 image as `host/repository@sha256:...` (or `host/repository:tag`, which the
 server resolves through the registry).
 

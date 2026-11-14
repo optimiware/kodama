@@ -122,14 +122,37 @@ func runLogs(ctx context.Context, config Config, args []string, ports Ports) int
 	return runLogsFollow(ctx, ports, executionID, strings.TrimSpace(actionFlag), stream, format)
 }
 
+// logsSettling reports whether the output of an ended execution may still be
+// on its way: the server retains a workload's output when it removes the
+// workload, which is after the outcome is known. It counts the waits in
+// waited and gives up after 30.
+func logsSettling(inspected inspectedExecution, waited *int) bool {
+	switch inspected.effectiveState() {
+	case "succeeded", "failed", "cancelled":
+	default:
+		return false
+	}
+	if inspected.Cleanup.State != "pending" || *waited >= 30 {
+		return false
+	}
+	*waited++
+	return true
+}
+
 // runLogsOnce resolves the target action when omitted and drains all pages.
 func runLogsOnce(ctx context.Context, ports Ports, executionID, actionFlag, stream string, format OutputFormat) int {
-	actionID := actionFlag
-	if actionID == "" {
-		inspected, err := fetchExecutionInspect(ctx, ports, executionID)
-		if err != nil {
+	var inspected inspectedExecution
+	for waited := 0; ; ports.Sleep(watchInterval) {
+		var err error
+		if inspected, err = fetchExecutionInspect(ctx, ports, executionID); err != nil {
 			return failure(ports.Err, err)
 		}
+		if !logsSettling(inspected, &waited) {
+			break
+		}
+	}
+	actionID := actionFlag
+	if actionID == "" {
 		selected, ok := selectLogAction(inspected)
 		if !ok {
 			if len(inspected.Actions) == 0 {
@@ -181,7 +204,7 @@ func runLogsOnce(ctx context.Context, ports Ports, executionID, actionFlag, stre
 // the target action or execution reaches a terminal status.
 func runLogsFollow(ctx context.Context, ports Ports, executionID, actionFlag, stream string, format OutputFormat) int {
 	var state *logStreamState
-	for {
+	for settling := 0; ; {
 		if ctx.Err() != nil {
 			fmt.Fprintln(ports.Err, "logs canceled")
 			return ExitFailure
@@ -249,6 +272,10 @@ func runLogsFollow(ctx context.Context, ports Ports, executionID, actionFlag, st
 			return failure(ports.Err, err)
 		}
 		if done {
+			if logsSettling(inspected, &settling) {
+				ports.Sleep(watchInterval)
+				continue
+			}
 			if terminalState == "succeeded" {
 				return ExitSuccess
 			}

@@ -207,10 +207,7 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 		state := inspected.effectiveState()
 		switch state {
 		case "succeeded", "failed", "cancelled":
-			// The server retains a workload's output when it removes the
-			// workload, which is after the outcome is known.
-			if inspected.Cleanup.State == "pending" && settling < 30 {
-				settling++
+			if logsSettling(inspected, &settling) {
 				ports.Sleep(watchInterval)
 				continue
 			}
