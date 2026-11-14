@@ -13,7 +13,16 @@ This runbook describes how a Kodama version is built, versioned and published.
 The [`VERSION`](../../VERSION) file holds the one release version of the tree.
 `TestReleaseVersionIsConsistent` (`internal/installation`) fails `make check`
 unless both charts, the stack chart's dependency, the default image tags and
-the default tag of `scripts/lib/deploy.sh` carry the same value.
+the default tag of `scripts/lib/deploy.sh` carry the same value. Set the
+version with `make release-prepare VERSION=<version>`, never by hand.
+
+A version has one of three forms:
+
+| Form | Example | Meaning |
+|---|---|---|
+| Release | `0.2.0` | Published. The README and the Podman quickstart install it, and the changelog has its section. |
+| Release candidate | `0.2.0-rc.1` | Published as a pre-release; `latest` does not move. The documents keep naming the last release. |
+| Development | `0.3.0-dev` | The state of `master` between releases. It is never published. |
 
 `0.1.0` is the first public release.
 
@@ -46,32 +55,43 @@ repository.
 
 ## Cut a release
 
-1. Set the version: edit `VERSION`, the `version` and `appVersion` of both
-   `Chart.yaml` files, the `kodama` dependency version in
-   `deploy/charts/kodama-stack/Chart.yaml`, the `image.tag` defaults of both
-   `values.yaml` files, the default tag in `scripts/lib/deploy.sh` and the
-   version in the README quick start and the Podman quickstart.
-   `go test ./internal/installation/ -run TestReleaseVersionIsConsistent`
-   names any place that was missed.
-2. Add the version's section to `CHANGELOG.md`.
-3. Push `master` and wait for CI. Its `artifacts` job builds every release
-   artifact, including the image, and pushes nothing.
-4. Tag the commit and push the tag:
+1. Prepare the version on a branch and open a pull request:
 
    ```sh
-   git tag -a v<version> -m "Kodama <version>" <commit>
-   git push origin v<version>
+   make release-prepare VERSION=0.2.0
    ```
 
-The tag starts the release workflow. It runs the CI jobs again, refuses a tag
-that differs from `v<VERSION>` or a commit that is not on `master`, and then
-publishes. A `0.0.x` version or a version with a `-suffix` is marked as a
-pre-release on GitHub.
+   It rewrites every file that carries the version. For a release it also
+   updates the version the README and the Podman quickstart install, and
+   renames the changelog's `Unreleased` section to the version. Review that
+   section before you commit.
+2. Merge the pull request. The change of `VERSION` on `master` starts the
+   release workflow. It runs the CI jobs, builds every artifact, installs the
+   image with the Podman bundle and runs a pipeline
+   ([`scripts/release-smoke`](../../scripts/release-smoke)), and only then
+   publishes and creates the tag `v<version>` on that commit.
+3. Set the next development version the same way, for example
+   `make release-prepare VERSION=0.3.0-dev`, and merge it. Builds and charts
+   from `master` then no longer carry the released version.
 
-To rehearse without publishing, start the workflow by hand on a branch:
+For a large change, publish a release candidate first (`0.2.0-rc.1`), try it,
+then prepare the release.
+
+A released version is never replaced. The workflow refuses a version whose
+GitHub release exists, and the repository rules in
+[`.github/rulesets`](../../.github/rulesets) refuse deleting or moving a `v*`
+tag and rewriting `master`. They are applied once per repository:
 
 ```sh
-gh workflow run release.yml --ref master
+gh api repos/optimiware/kodama/rulesets --method POST --input .github/rulesets/release-tags.json
+gh api repos/optimiware/kodama/rulesets --method POST --input .github/rulesets/master.json
+```
+
+To rehearse without publishing, start the workflow by hand on any branch. It
+builds everything, runs the installation check and publishes nothing:
+
+```sh
+gh workflow run release.yml --ref <branch>
 ```
 
 ## Use a release
@@ -95,10 +115,17 @@ so no image pull secret is needed.
 
 ## If the release workflow fails
 
-- Before the "Push the image" step nothing is published. Fix `master`, delete
-  the tag (`git push origin :refs/tags/v<version>`), and tag the fixed commit.
-- After it, re-run the failed job when the failure was transient: the image
-  and chart pushes replace the same version and an existing GitHub release
-  only gets its files replaced.
-- Never move the tag of a version that someone has already deployed. Publish
-  the fix as the next patch version.
+The GitHub release is created last, so it marks a complete publication.
+
+- Before the "Push the image" step nothing is published. Fix `master`, then
+  publish the same version by hand:
+
+  ```sh
+  gh workflow run release.yml --ref master -f publish=true
+  ```
+
+- After it, when the failure was transient, re-run the failed job. While the
+  GitHub release does not exist, the image and chart pushes replace the
+  incomplete publication of the same version.
+- Once the GitHub release exists the version is final. Publish a fix as the
+  next patch version.

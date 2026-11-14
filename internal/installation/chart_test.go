@@ -19,7 +19,7 @@ func TestChartMetadata(t *testing.T) {
 	body := readText(t, chartPath(t, "Chart.yaml"))
 	requirePattern(t, body, `(?m)^apiVersion:\s*v2\s*$`, "Chart.yaml apiVersion")
 	requirePattern(t, body, `(?m)^name:\s*kodama\s*$`, "Chart.yaml name")
-	requirePattern(t, body, `(?m)^version:\s*"?\d+\.\d+\.\d+"?\s*$`, "Chart.yaml version")
+	requirePattern(t, body, `(?m)^version:\s*"?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?"?\s*$`, "Chart.yaml version")
 	requirePattern(t, body, `(?m)^appVersion:\s*\S+`, "Chart.yaml appVersion")
 }
 

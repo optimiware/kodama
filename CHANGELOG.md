@@ -23,6 +23,11 @@ Added:
   missing from the local Podman store fails the execution at start.
 - The release workflow builds the image for `linux/amd64` and `linux/arm64`
   and moves the `latest` tag on a release that is not a pre-release.
+- Releases: `make release-prepare VERSION=<version>` sets the version
+  everywhere, a change of `VERSION` on `master` publishes it and creates the
+  tag, a released version is never replaced, and the image must install and
+  run a pipeline before anything is pushed. `master` carries a development
+  version between releases.
 
 Known limitations:
 
@@ -38,7 +43,8 @@ Known limitations:
 - `kodactl pipeline apply` does not print the pipeline id that
   `kodactl task run --pipeline` needs; read it with `kodactl call pipeline.list`.
 - An unauthenticated MCP `tools/list` answers 200; only tool calls answer 401.
-- No release has run the multi-arch image build or the `latest` tag yet.
+- No release has run the new release workflow yet: the multi-arch image, the
+  `latest` tag and publishing on a `VERSION` change are unexercised.
 
 ## 0.1.0
 

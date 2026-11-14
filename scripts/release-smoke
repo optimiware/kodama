@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# scripts/release-smoke: prove that an image installs and runs a pipeline.
+#
+#   scripts/release-smoke --image <reference in the local image store>
+#
+# It installs a throwaway installation of the image with the Podman bundle
+# (deploy/podman), starts the first pipeline of the Podman quickstart, requires
+# the execution to succeed with the expected log line, and removes the
+# installation again. The release workflow runs it before anything is pushed.
+#
+# The installation uses its own prefix, state directory and port set, so it
+# runs beside a real local installation. Set a KODAMA_LOCAL_*_PORT variable to
+# move one port, and KODAMA_LOCAL_PODMAN_SOCKET to name the Podman API socket.
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+die() { printf 'scripts/release-smoke: %s\n' "$*" >&2; exit 1; }
+log() { printf 'scripts/release-smoke: %s\n' "$*" >&2; }
+
+image=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --image) [[ $# -ge 2 ]] || die "--image requires a value"; image="$2"; shift 2 ;;
+    -h|--help) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+[[ -n "$image" ]] || die "--image is required"
+podman image exists "$image" || die "image ${image} is not in the local image store"
+
+work="$(mktemp -d)"
+export KODAMA_LOCAL_PREFIX="release-smoke-$$"
+export KODAMA_LOCAL_TENANT="tenant-smoke"
+export KODAMA_LOCAL_STATE_DIR="${work}/state"
+export KODAMA_LOCAL_KODAMA_IMAGE="$image"
+export KODAMA_LOCAL_HTTPS_PORT="${KODAMA_LOCAL_HTTPS_PORT:-38443}"
+export KODAMA_LOCAL_OIDC_PORT="${KODAMA_LOCAL_OIDC_PORT:-38444}"
+export KODAMA_LOCAL_GIT_PORT="${KODAMA_LOCAL_GIT_PORT:-38081}"
+export KODAMA_LOCAL_GIT_HTTPS_PORT="${KODAMA_LOCAL_GIT_HTTPS_PORT:-38445}"
+export KODAMA_LOCAL_POSTGRES_PORT="${KODAMA_LOCAL_POSTGRES_PORT:-35432}"
+export KODAMA_LOCAL_NATS_PORT="${KODAMA_LOCAL_NATS_PORT:-34222}"
+export KODAMA_LOCAL_NATS_MONITOR_PORT="${KODAMA_LOCAL_NATS_MONITOR_PORT:-38222}"
+export KODAMA_LOCAL_OAUTH_UPSTREAM_PORT="${KODAMA_LOCAL_OAUTH_UPSTREAM_PORT:-38181}"
+unset KODAMA_LOCAL_PROJECT KODAMA_LOCAL_GIT_RESOURCES
+
+state="$KODAMA_LOCAL_STATE_DIR"
+url="https://localhost:${KODAMA_LOCAL_HTTPS_PORT}"
+project="$KODAMA_LOCAL_TENANT"
+
+cleanup() {
+  status=$?
+  if [[ $status -ne 0 ]]; then
+    log "failed; the last server output follows"
+    podman logs --tail 30 "${KODAMA_LOCAL_PREFIX}-server" >&2 2>/dev/null || true
+  fi
+  "${repo_root}/deploy/podman/down.sh" --purge >"${work}/down.log" 2>&1 ||
+    { log "the installation could not be removed:"; tail -n 5 "${work}/down.log" >&2; }
+  rm -rf "$work"
+  exit "$status"
+}
+trap cleanup EXIT
+
+log "installing ${image} as ${KODAMA_LOCAL_PREFIX}"
+"${repo_root}/deploy/podman/install.sh" >"${work}/install.log" 2>&1 ||
+  { tail -n 25 "${work}/install.log" >&2; die "the installation failed"; }
+
+# call <method> <path> <body file>: one authenticated API call as the engineer.
+call() {
+  curl --request "$1" --silent --show-error --fail-with-body --cacert "${state}/tls/ca.crt" \
+    --header @"${work}/header" --data-binary @"$3" "${url}$2"
+}
+( umask 077
+  printf 'Authorization: Bearer %s\nContent-Type: application/json\n' \
+    "$(cat "${state}/secrets/engineer-token")" >"${work}/header" )
+
+tools="$(jq -er '.images.tools' "${state}/run/installation.json" | sed 's/:[^@/]*@/@/')"
+marker="release-smoke-${RANDOM}${RANDOM}"
+cat >"${work}/pipeline.yaml" <<EOF
+actions:
+  - name: hello
+    image: "${tools}"
+    timeout: 2m
+    commands:
+      - echo "${marker}"
+EOF
+jq -n --arg project "$project" --arg yaml "$(base64 <"${work}/pipeline.yaml" | tr -d '\n')" \
+  '{input: {project_id: $project, yaml: $yaml}, idempotency_key: "release-smoke"}' >"${work}/start.json"
+execution="$(call POST "/api/v1/projects/${project}/executions" "${work}/start.json" | jq -er '.body.execution_id')"
+log "started ${execution}"
+
+jq -n --arg execution "$execution" '{input: {execution_id: $execution}}' >"${work}/inspect.json"
+state_now=""
+for _ in $(seq 1 90); do
+  call GET "/api/v1/executions/${execution}" "${work}/inspect.json" >"${work}/inspect-response.json"
+  state_now="$(jq -r '[.body.state, .body.cleanup.state] | join("/")' "${work}/inspect-response.json")"
+  case "$state_now" in
+    succeeded/complete | failed/complete | cancelled/complete) break ;;
+  esac
+  sleep 2
+done
+[[ "$state_now" == "succeeded/complete" ]] || {
+  jq -c '.body | {state, failure, cleanup}' "${work}/inspect-response.json" >&2
+  die "the execution ended as ${state_now}, not succeeded/complete"
+}
+
+action="$(jq -er '.body.actions[0].action_id' "${work}/inspect-response.json")"
+jq -n --arg execution "$execution" --arg action "$action" \
+  '{input: {execution_id: $execution, action_id: $action, stream: "stdout"}}' >"${work}/logs.json"
+output="$(call GET "/api/v1/executions/${execution}/logs" "${work}/logs.json" | jq -r '.body.chunks[].data | @base64d')"
+[[ "$output" == *"$marker"* ]] || die "the retained log does not contain the pipeline's output: ${output}"
+
+log "ok: ${image} installed, ran a pipeline and returned its log"
