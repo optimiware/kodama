@@ -162,6 +162,10 @@ func runDev(ctx context.Context, args []string, stdout, stderr io.Writer, deps d
 		TenantID:       string(tenantID),
 		ProjectID:      string(projectID),
 		AccessTokenTTL: 24 * time.Hour,
+		// Project operations (tasks, pipelines, the inbox) require the actor's
+		// scope to equal the project scope, so the admin token names the dev
+		// project too.
+		IncludeProjectOnAdmin: true,
 	})
 	if err != nil {
 		_ = listener.Close()
@@ -173,6 +177,13 @@ func runDev(ctx context.Context, args []string, stdout, stderr io.Writer, deps d
 	if err != nil {
 		_ = listener.Close()
 		fmt.Fprintf(stderr, "kodama: mint dev admin token failed: %v\n", err)
+		return 1
+	}
+
+	tenantAdminToken, err := devIssuer.MintTenantAdminToken(24 * time.Hour)
+	if err != nil {
+		_ = listener.Close()
+		fmt.Fprintf(stderr, "kodama: mint dev tenant admin token failed: %v\n", err)
 		return 1
 	}
 
@@ -357,6 +368,9 @@ func runDev(ctx context.Context, args []string, stdout, stderr io.Writer, deps d
 		AdminToken:     adminToken,
 		TenantID:       string(tenantID),
 		ProjectID:      string(projectID),
+
+		TenantAdminTokenPath: filepath.Join(stateDir, "tenant-admin-token"),
+		TenantAdminToken:     tenantAdminToken,
 	}); err != nil {
 		_ = listener.Close()
 		_ = app.Close(context.Background())
@@ -438,6 +452,8 @@ func printDevBanner(stdout io.Writer, publicURL, stateDir, caPath, envPath, tena
 	fmt.Fprintf(stdout, "Quickstart:\n")
 	fmt.Fprintf(stdout, "  source %s\n", displayEnv)
 	fmt.Fprintf(stdout, "  kodactl --server %s login\n", publicURL)
+	fmt.Fprintf(stdout, "\nMembership administration uses the tenant-scoped credential:\n")
+	fmt.Fprintf(stdout, "  kodactl --credential-file \"$KODAMA_TENANT_ADMIN_CREDENTIAL_FILE\" member list\n")
 }
 
 func resolveDevStateDir(raw, home string) (string, error) {

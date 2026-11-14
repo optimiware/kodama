@@ -93,7 +93,15 @@ func TestKodamaDevSingleOriginOIDCRESTAndMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"KODAMA_URL=", "KODAMA_CA_FILE=", "KODAMA_TOKEN=", "KODAMA_PROJECT='project-local'"} {
+	tenantAdminPath := filepath.Join(filepath.Dir(ready.AdminTokenPath), "tenant-admin-token")
+	tenantAdminInfo, err := os.Stat(tenantAdminPath)
+	if err != nil {
+		t.Fatalf("stat tenant-admin-token: %v", err)
+	}
+	if tenantAdminInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("tenant-admin-token mode = %04o; want 0600", tenantAdminInfo.Mode().Perm())
+	}
+	for _, key := range []string{"KODAMA_URL=", "KODAMA_CA_FILE=", "KODAMA_TOKEN=", "KODAMA_PROJECT='project-local'", "KODAMA_TENANT_ADMIN_CREDENTIAL_FILE="} {
 		if !strings.Contains(string(envBytes), key) {
 			t.Fatalf("env.sh missing %q:\n%s", key, envBytes)
 		}
@@ -219,9 +227,29 @@ func TestKodamaDevSingleOriginOIDCRESTAndMCP(t *testing.T) {
 		}
 	}
 
+	// The default credential is project-scoped, so it can create a task.
+	taskReq, _ := http.NewRequest(http.MethodPost, ready.PublicURL+"/api/v1/projects/project-local/tasks",
+		strings.NewReader(`{"input":{"project_id":"project-local","title":"first task"},"idempotency_key":"dev-test-task-1"}`))
+	taskReq.Header.Set("Authorization", "Bearer "+adminToken)
+	taskReq.Header.Set("Content-Type", "application/json")
+	taskResp, err := httpClient.Do(taskReq)
+	if err != nil {
+		t.Fatalf("POST tasks failed: %v", err)
+	}
+	taskBody, _ := io.ReadAll(taskResp.Body)
+	_ = taskResp.Body.Close()
+	if taskResp.StatusCode != http.StatusOK {
+		t.Fatalf("task create with the default credential: status = %d: %s", taskResp.StatusCode, taskBody)
+	}
+
 	// Check pre-bootstrapped memberships (admin, engineer, reviewer, operator).
 	memReq, _ := http.NewRequest(http.MethodGet, ready.PublicURL+"/api/v1/projects/project-local/memberships", bytes.NewReader([]byte(`{"input":{"project_id":"project-local"}}`)))
-	memReq.Header.Set("Authorization", "Bearer "+adminToken)
+	// Memberships are a tenant operation: they need the tenant-scoped credential.
+	tenantAdminBytes, err := os.ReadFile(tenantAdminPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(tenantAdminBytes)))
 	memReq.Header.Set("Content-Type", "application/json")
 	memResp, err := httpClient.Do(memReq)
 	if err != nil {

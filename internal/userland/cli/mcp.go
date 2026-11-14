@@ -245,6 +245,9 @@ func runMCPInstall(_ context.Context, config Config, args []string, ports Ports,
 	if caPath := strings.TrimSpace(config.CAFile); caPath != "" {
 		mcpArgs = append(mcpArgs, "--ca-file", caPath)
 	}
+	if credPath := strings.TrimSpace(config.CredentialFile); credPath != "" {
+		mcpArgs = append(mcpArgs, "--credential-file", credPath)
+	}
 	mcpArgs = append(mcpArgs, "mcp", "stdio")
 
 	if printOnly {

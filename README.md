@@ -29,6 +29,23 @@ KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.1.0 ./deploy/podman
 Then follow the [Podman quickstart](docs/runbooks/podman-quickstart.md) to
 [run a first pipeline](docs/runbooks/podman-quickstart.md#run-a-first-pipeline).
 
+### Try the API, MCP and `kodactl` without containers
+
+From a checkout, `kodama dev` starts an in-memory server on one HTTPS port with
+a built-in sign-in:
+
+```sh
+make build
+bin/kodama dev &
+source ~/.kodama/dev/env.sh
+bin/kodactl whoami
+bin/kodactl task create --title "First task"
+bin/kodactl mcp install claude --print
+```
+
+It keeps nothing across restarts and cannot run executions yet; use the Podman
+installation above to run pipelines.
+
 ## Documentation
 
 | Document | Contents |

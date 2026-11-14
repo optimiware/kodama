@@ -365,6 +365,11 @@ func (c *EngineClient) RunOneShot(ctx context.Context, spec ContainerSpec) (stri
 	}
 	logs, _ := c.containerLogs(ctx, id)
 	if waitResp.StatusCode != 0 {
+		// The container is removed on return, so its output is the only
+		// evidence of why it failed.
+		if detail := lastLines(logs, 20); detail != "" {
+			return logs, fmt.Errorf("container %q exited with status %d:\n%s", spec.Name, waitResp.StatusCode, detail)
+		}
 		return logs, fmt.Errorf("container %q exited with status %d", spec.Name, waitResp.StatusCode)
 	}
 	return logs, nil
@@ -574,4 +579,13 @@ func engineErrMsg(body []byte) string {
 		return "unknown engine error"
 	}
 	return trimmed
+}
+
+// lastLines returns at most count trailing non-empty lines of text.
+func lastLines(text string, count int) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	if len(lines) > count {
+		lines = lines[len(lines)-count:]
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }

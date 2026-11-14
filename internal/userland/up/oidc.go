@@ -184,6 +184,17 @@ func (issuer *DevIssuer) DiscoveryDocument() api.DiscoveryDocument {
 // MintAccessToken signs an ES256 access token for persona ("admin", "engineer",
 // "reviewer" or "operator") with the given lifetime.
 func (issuer *DevIssuer) MintAccessToken(persona string, ttl time.Duration) (string, error) {
+	return issuer.mintAccessToken(persona, ttl, issuer.cfg.IncludeProjectOnAdmin)
+}
+
+// MintTenantAdminToken signs an admin access token without a project claim.
+// Tenant operations (memberships, projects) require a tenant-scoped actor;
+// project operations require a project-scoped one.
+func (issuer *DevIssuer) MintTenantAdminToken(ttl time.Duration) (string, error) {
+	return issuer.mintAccessToken("admin", ttl, false)
+}
+
+func (issuer *DevIssuer) mintAccessToken(persona string, ttl time.Duration, projectOnAdmin bool) (string, error) {
 	persona = normalizePersona(persona)
 	if persona == "" {
 		return "", errors.New("persona must be admin, engineer, reviewer or operator")
@@ -201,7 +212,7 @@ func (issuer *DevIssuer) MintAccessToken(persona string, ttl time.Duration) (str
 		"nbf":    now.Unix(),
 		"exp":    now.Add(ttl).Unix(),
 	}
-	if issuer.cfg.ProjectID != "" && (persona != "admin" || issuer.cfg.IncludeProjectOnAdmin) {
+	if issuer.cfg.ProjectID != "" && (persona != "admin" || projectOnAdmin) {
 		claims["project_id"] = issuer.cfg.ProjectID
 	}
 	return issuer.signJWT(claims)

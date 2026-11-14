@@ -15,10 +15,10 @@ import (
 const usageText = `usage: kodama <command> [flags]
 
 commands:
-  dev           run the instant single-origin local dev server (zero containers)
-  up            start the single-origin container stack (Podman or Docker)
-  down          stop the single-origin container stack (--purge removes state)
-  status        inspect the single-origin container stack
+  dev           run the instant local dev server (zero containers; it cannot run executions yet)
+  up            start the single-origin container stack (experimental)
+  down          stop the single-origin container stack (experimental; --purge removes state)
+  status        inspect the single-origin container stack (experimental)
   server        run the Shell composition (--profile development, test or production)
   git serve     run the independent Git smart-HTTP service
   git hook      run one native Git hook callback

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 	"text/tabwriter"
 
@@ -560,7 +559,7 @@ func runTaskList(ctx context.Context, config Config, args []string, ports Ports,
 	)
 	spec := newArgSpec()
 	spec.stringFlag(&projectFlag, "--project", "-p")
-	spec.stringFlag(&stateFlag, "--state")
+	spec.stringFlag(&stateFlag, "--state", "--status")
 	spec.stringFlag(&outputFlag, "--output")
 	positionals, _, err := spec.parse(args)
 	if err != nil {
@@ -591,11 +590,14 @@ func runTaskList(ctx context.Context, config Config, args []string, ports Ports,
 }
 
 func runRegisteredTaskList(ctx context.Context, ports Ports, projectID, stateFlag string, format OutputFormat) int {
-	payload := map[string]any{"project_id": projectID}
-	if stateFlag != "" && operationAcceptsField("task.list", "state") {
-		payload["state"] = stateFlag
+	req := api.TaskListRequest{
+		ProjectID: projectID,
+		Status:    stateFlag,
 	}
-	input, err := json.Marshal(payload)
+	if err := req.Validate(); err != nil {
+		return usage(ports.Err, publicMessage(err))
+	}
+	input, err := json.Marshal(req)
 	if err != nil {
 		return failure(ports.Err, err)
 	}
@@ -744,29 +746,4 @@ func renderTableFallback(ports Ports, result api.Result) int {
 		return failure(ports.Err, err)
 	}
 	return ExitSuccess
-}
-
-// operationAcceptsField inspects the registered OperationCodec RequestType for
-// a top-level JSON field name.
-func operationAcceptsField(operation, jsonName string) bool {
-	for _, codec := range api.OperationCodecs() {
-		if codec.Operation != operation || codec.RequestType == nil {
-			continue
-		}
-		typ := codec.RequestType
-		for typ.Kind() == reflect.Pointer {
-			typ = typ.Elem()
-		}
-		if typ.Kind() != reflect.Struct {
-			return false
-		}
-		for i := 0; i < typ.NumField(); i++ {
-			tag := typ.Field(i).Tag.Get("json")
-			name, _, _ := strings.Cut(tag, ",")
-			if name == jsonName {
-				return true
-			}
-		}
-	}
-	return false
 }

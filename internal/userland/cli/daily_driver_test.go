@@ -725,14 +725,29 @@ func TestRunTaskCommands(t *testing.T) {
 		}
 	})
 
-	t.Run("task list falls back gracefully when task.list is unregistered", func(t *testing.T) {
+	t.Run("task list invokes registered task.list", func(t *testing.T) {
 		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
-			if inv.Operation != "task.list" && inv.Operation != "execution.list" {
-				t.Fatalf("unexpected op %s", inv.Operation)
+			if inv.Operation != "task.list" {
+				t.Fatalf("unexpected op %s; want task.list", inv.Operation)
 			}
-			body, _ := json.Marshal(api.ExecutionListResult{
-				Executions: []api.ExecutionSummary{
-					{ExecutionID: "exec-1", TaskID: "task-1", PipelineID: "pipe-1", State: "running", Version: 1},
+			var req api.TaskListRequest
+			if err := json.Unmarshal(inv.Request.Input, &req); err != nil {
+				t.Fatalf("unmarshal task.list: %v", err)
+			}
+			if req.ProjectID != "shop" || req.Status != "open" {
+				t.Fatalf("task.list req = %+v", req)
+			}
+			body, _ := json.Marshal(api.TaskListResult{
+				Tasks: []api.TaskSummaryView{
+					{
+						TaskID:           "task-1",
+						Title:            "Ship v0.2",
+						State:            "open",
+						SelectedPipeline: "pipe-1",
+						CurrentExecution: "exec-1",
+						ContentVersion:   1,
+						LifecycleVersion: 1,
+					},
 				},
 			})
 			return api.Result{Operation: inv.Operation, Body: body}, nil
@@ -740,10 +755,10 @@ func TestRunTaskCommands(t *testing.T) {
 		ports, out, errOut := testPorts(transport)
 		cfg := testConfig()
 		cfg.Output = cli.OutputTable
-		if code := cli.Run(context.Background(), cfg, []string{"task", "list", "--project", "shop"}, ports); code != cli.ExitSuccess {
+		if code := cli.Run(context.Background(), cfg, []string{"task", "list", "--project", "shop", "--status", "open"}, ports); code != cli.ExitSuccess {
 			t.Fatalf("task list exit = %d; stderr=%q", code, errOut.String())
 		}
-		if !strings.Contains(out.String(), "task-1") || !strings.Contains(out.String(), "exec-1") {
+		if !strings.Contains(out.String(), "task-1") || !strings.Contains(out.String(), "exec-1") || !strings.Contains(out.String(), "Ship v0.2") {
 			t.Fatalf("stdout = %q", out.String())
 		}
 	})
