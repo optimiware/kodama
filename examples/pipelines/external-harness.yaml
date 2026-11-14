@@ -17,8 +17,9 @@ actions:
       - |
         export ANTHROPIC_BASE_URL="${KODAMA_LLM_ANTHROPIC_BASE_URL:-${KODAMA_URL}/llm/anthropic}"
         export OPENAI_BASE_URL="${KODAMA_LLM_OPENAI_BASE_URL:-${KODAMA_URL}/llm/openai/v1}"
-        IFS= read -r ANTHROPIC_API_KEY < /kodama/secrets/KODAMA_TOKEN
-        IFS= read -r OPENAI_API_KEY < /kodama/secrets/KODAMA_TOKEN
+        # The credential file has no trailing newline, so read assigns it and reports EOF.
+        IFS= read -r ANTHROPIC_API_KEY < /kodama/secrets/KODAMA_TOKEN || [ -n "$ANTHROPIC_API_KEY" ]
+        IFS= read -r OPENAI_API_KEY < /kodama/secrets/KODAMA_TOKEN || [ -n "$OPENAI_API_KEY" ]
         export ANTHROPIC_API_KEY OPENAI_API_KEY
         if [ -n "${KODAMA_CA_FILE:-}" ]; then
           export NODE_EXTRA_CA_CERTS="${KODAMA_CA_FILE}"

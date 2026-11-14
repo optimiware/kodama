@@ -275,9 +275,12 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 	if err != nil {
 		return ContainerSpec{}, err
 	}
+	// Prepare records the CA file it wrote; the adapter's current
+	// configuration may have changed since.
+	hasCA := slices.Contains(prepared.Files, WorkloadCAPath)
 	env := make([]string, 0, len(prepared.Env)+5)
 	for _, entry := range prepared.Env {
-		if len(a.workloadCAPEM) > 0 && string(entry.Name) == EnvWorkloadCAFile {
+		if hasCA && string(entry.Name) == EnvWorkloadCAFile {
 			continue
 		}
 		env = append(env, string(entry.Name)+"="+entry.Value)
@@ -290,7 +293,7 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 	if prepared.TaskID != "" {
 		env = append(env, id.EnvTask+"="+string(prepared.TaskID))
 	}
-	if len(a.workloadCAPEM) > 0 {
+	if hasCA {
 		env = append(env, EnvWorkloadCAFile+"="+WorkloadCAPath)
 	}
 	return ContainerSpec{

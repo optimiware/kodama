@@ -67,7 +67,6 @@ type llmProxyDependencies struct {
 	Controller     store.Controller
 	Executions     gateway.ExecutionReader
 	Principals     authorize.CurrentPrincipal
-	Authorizer     authorize.Authorizer
 	Authority      authorize.AuthorityReader
 	Lookup         secret.NameLookup
 	Cipher         secret.EnvelopeCipher
@@ -99,7 +98,6 @@ func (disabledLLMProxyHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Req
 type llmProxyHandler struct {
 	providers     map[providerScopeKey]resolvedProvider
 	principals    authorize.CurrentPrincipal
-	authorizer    authorize.Authorizer
 	authority     authorize.AuthorityReader
 	executions    gateway.ExecutionReader
 	secrets       secret.Resolver
@@ -128,8 +126,6 @@ func newLLMProxyHandler(deps llmProxyDependencies) (http.Handler, func(context.C
 		return nil, nil, fault.New(fault.InvalidInput, "LLM proxy requires a controller or execution reader")
 	case deps.Principals == nil:
 		return nil, nil, fault.New(fault.InvalidInput, "LLM proxy requires a principal resolver")
-	case deps.Authorizer == nil:
-		return nil, nil, fault.New(fault.InvalidInput, "LLM proxy requires an authorizer")
 	case deps.Authority == nil:
 		return nil, nil, fault.New(fault.InvalidInput, "LLM proxy requires an authority reader")
 	case deps.Lookup == nil:
@@ -214,7 +210,6 @@ func newLLMProxyHandler(deps llmProxyDependencies) (http.Handler, func(context.C
 	return &llmProxyHandler{
 		providers:     providers,
 		principals:    deps.Principals,
-		authorizer:    deps.Authorizer,
 		authority:     deps.Authority,
 		executions:    executions,
 		secrets:       secrets,
@@ -339,10 +334,11 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, remaining)
-	defer cancel()
-
 	stopWatch := handler.startExecutionWatch(callCtx, cancel, admitted.Principal.ID, admitted.ExecutionID, admitted.ActionID, admitted.Deadline, scope)
 	defer stopWatch()
+	// Deferred last so it runs first: stopWatch waits for the watcher, whose
+	// in-flight reads end only when callCtx is cancelled.
+	defer cancel()
 
 	targetURL, err := joinLLMProviderURL(provider.baseURL, upstreamPath, request.URL.RawQuery)
 	if err != nil {
@@ -366,11 +362,11 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 	copySafeOutboundHeaders(outbound.Header, request.Header, credential)
 	if provider.useXAPIKey {
 		outbound.Header.Set("x-api-key", providerSecret)
-		if outbound.Header.Get("anthropic-version") == "" && provider.anthropicVersion != "" {
-			outbound.Header.Set("anthropic-version", provider.anthropicVersion)
-		}
 	} else {
 		outbound.Header.Set("Authorization", "Bearer "+providerSecret)
+	}
+	if outbound.Header.Get("anthropic-version") == "" && provider.anthropicVersion != "" {
+		outbound.Header.Set("anthropic-version", provider.anthropicVersion)
 	}
 
 	response, err := handler.client.Do(outbound)
@@ -419,17 +415,19 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 		flusher.Flush()
 	}
 
+	// The status is already sent, so a truncated stream aborts the response
+	// instead of ending it as a clean EOF.
 	buffer := make([]byte, 32*1024)
 	var total int64
 	for {
 		n, readErr := response.Body.Read(buffer)
 		if n > 0 {
 			if callCtx.Err() != nil {
-				return
+				panic(http.ErrAbortHandler)
 			}
 			total += int64(n)
 			if total > maxLLMProxyResponseBytes {
-				return
+				panic(http.ErrAbortHandler)
 			}
 			chunk := buffer[:n]
 			if providerSecret != "" && bytes.Contains(chunk, []byte(providerSecret)) {
@@ -442,8 +440,11 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 				flusher.Flush()
 			}
 		}
-		if readErr != nil {
+		if readErr == io.EOF {
 			return
+		}
+		if readErr != nil {
+			panic(http.ErrAbortHandler)
 		}
 	}
 }
@@ -744,6 +745,9 @@ func joinLLMProviderURL(base *url.URL, upstreamPath, rawQuery string) (string, e
 }
 
 var strippedOutboundHeaders = map[string]bool{
+	// The transport negotiates and decodes gzip itself, so a caller cannot
+	// pick an encoding that hides the body from the response redaction scan.
+	"Accept-Encoding":     true,
 	"Authorization":       true,
 	"X-Api-Key":           true,
 	"Proxy-Authorization": true,

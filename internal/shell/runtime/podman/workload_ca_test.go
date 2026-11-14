@@ -45,11 +45,14 @@ func generateTestCAPEM(t *testing.T) []byte {
 func TestPodmanWorkloadCAMountsReadOnlyCertAndExposesEnvOptIn(t *testing.T) {
 	caPEM := generateTestCAPEM(t)
 	caFile := filepath.Join(t.TempDir(), "ca.crt")
-	if err := os.WriteFile(caFile, caPEM, 0o600); err != nil {
+	// A bundle that also carries a key must reach the workload without it.
+	bundle := append(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("key")}), caPEM...)
+	if err := os.WriteFile(caFile, bundle, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	fx := newFixture(t)
+	withoutCA := fx.adapter
 	adapter, err := New(Config{
 		Libpod:         fx.libpod,
 		Files:          fx.files,
@@ -78,7 +81,8 @@ func TestPodmanWorkloadCAMountsReadOnlyCertAndExposesEnvOptIn(t *testing.T) {
 		t.Fatalf("/kodama/ca.crt mode = %o; want 0444", mode)
 	}
 
-	if _, err := adapter.Start(context.Background(), engine.StartRequest{
+	// Start follows what Prepare wrote, not the adapter's current configuration.
+	if _, err := withoutCA.Start(context.Background(), engine.StartRequest{
 		Identity:    fx.request.Identity,
 		WorkspaceID: fx.request.WorkspaceID,
 	}); err != nil {

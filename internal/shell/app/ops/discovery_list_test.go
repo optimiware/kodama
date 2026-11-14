@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -304,6 +305,35 @@ func TestDiscoveryAndListOperationsEndToEnd(t *testing.T) {
 	decodeResult(t, gitBindingsRaw, &gitBindings)
 	if len(gitBindings.Bindings) != 1 || gitBindings.Bindings[0].BindingID != "bind-git" {
 		t.Fatalf("resource.binding.list kind=git = %+v; want [bind-git]", gitBindings)
+	}
+
+	// The filter pages correctly when the matching bindings sit behind more
+	// non-matching rows than one scanner batch holds.
+	for index := range store.MaxQueryLimit {
+		name := fmt.Sprintf("bind-custom-%d", index)
+		if _, err := h.invokeKey(t, "token-admin", "resource.binding.register",
+			`{"binding_id":"`+name+`","resource_id":"res-`+name+`","enforcing_service":"`+testService+`","trusted_origins":[],"operations":[],"reportable_events":[]}`,
+			"reg-"+name, map[string]string{"project": testProject}); err != nil {
+			t.Fatalf("resource.binding.register %s: %v", name, err)
+		}
+	}
+	if _, err := h.invokeKey(t, "token-admin", "resource.binding.register",
+		`{"binding_id":"bind-git-2","resource_id":"repo-2","enforcing_service":"`+testService+`","trusted_origins":[],"operations":[],"reportable_events":[],"metadata":{"kind":"git"}}`,
+		"reg-bind-git-2", map[string]string{"project": testProject}); err != nil {
+		t.Fatalf("resource.binding.register git 2: %v", err)
+	}
+	cursor := ""
+	for _, want := range []string{"bind-git", "bind-git-2"} {
+		raw, err := h.invoke(t, "token-admin", "resource.binding.list", `{"kind":"git","page":{"limit":1,"cursor":"`+cursor+`"}}`, map[string]string{"project": testProject})
+		if err != nil {
+			t.Fatalf("resource.binding.list kind=git page %s: %v", want, err)
+		}
+		var page api.ResourceBindingListResult
+		decodeResult(t, raw, &page)
+		if len(page.Bindings) != 1 || page.Bindings[0].BindingID != want || (page.NextCursor == "") != (want == "bind-git-2") {
+			t.Fatalf("resource.binding.list kind=git page = %+v; want [%s]", page, want)
+		}
+		cursor = page.NextCursor
 	}
 
 	// 5. service.list (must never leak credential tokens).

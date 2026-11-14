@@ -81,7 +81,7 @@ func TestMCPInitializeNegotiatesProtocolVersion(t *testing.T) {
 		t.Fatalf("fallback protocolVersion = %q; want %q", fallbackResult.ProtocolVersion, api.MCPProtocolVersion)
 	}
 
-	for _, bad := range []string{"", "1.0", "not-a-date", "2025-99-99", "1999-01-01"} {
+	for _, bad := range []string{"", "1.0", "not-a-date", "2025-99-99", "1999-01-01", "2025-+1-+1"} {
 		t.Run("bad_"+bad, func(t *testing.T) {
 			response := decodeResponse(t, edge.Handle(context.Background(), "", initializeRequest(bad)))
 			if err := response.Validate(); err != nil {

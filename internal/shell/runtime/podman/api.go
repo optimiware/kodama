@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"os"
 	"path/filepath"
@@ -284,10 +285,22 @@ func loadWorkloadCAPEM(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fault.New(fault.InvalidInput, "podman adapter workload CA file is unreadable")
 	}
-	if !x509.NewCertPool().AppendCertsFromPEM(data) {
+	// Workloads receive only the certificates: any other block in the file,
+	// such as a private key, is dropped.
+	var certs []byte
+	for block, rest := pem.Decode(data); block != nil; block, rest = pem.Decode(rest) {
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+			continue
+		}
+		certs = append(certs, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: block.Bytes})...)
+	}
+	if len(certs) == 0 {
 		return nil, fault.New(fault.InvalidInput, "podman adapter workload CA file is not a usable PEM certificate")
 	}
-	return data, nil
+	return certs, nil
 }
 
 // lockFor returns the per-workload mutex that serializes lifecycle effects on

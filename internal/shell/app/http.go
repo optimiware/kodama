@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -56,6 +57,10 @@ func (handler *publicHandler) ServeHTTP(writer http.ResponseWriter, request *htt
 }
 
 func (handler *publicHandler) serveMCP(writer http.ResponseWriter, request *http.Request) {
+	if request.Header.Get("Origin") != "" && !handler.mcpOwnOrigin(request) {
+		writeHTTPError(writer, fault.New(fault.Forbidden, "the MCP endpoint refuses requests from another origin"))
+		return
+	}
 	if request.URL.RawQuery != "" || request.URL.ForceQuery || request.URL.Fragment != "" {
 		writeHTTPError(writer, fault.New(fault.InvalidInput, "query strings and fragments are not part of the MCP path"))
 		return
@@ -67,6 +72,9 @@ func (handler *publicHandler) serveMCP(writer http.ResponseWriter, request *http
 			Message: "the MCP endpoint accepts only POST",
 		})
 		return
+	}
+	if request.Body == nil {
+		request.Body = http.NoBody
 	}
 	body, err := io.ReadAll(io.LimitReader(request.Body, api.MaxYAMLRequestBytes+1))
 	if err != nil {
@@ -88,6 +96,24 @@ func (handler *publicHandler) serveMCP(writer http.ResponseWriter, request *http
 	writer.Header().Set("Content-Type", api.MediaType)
 	writer.WriteHeader(api.HTTPStatusSuccess)
 	_, _ = writer.Write(response)
+}
+
+// mcpOwnOrigin reports whether the browser Origin of an MCP request is this
+// server's own: the configured public API origin or, when none is configured,
+// the request host. Only the configured origin also stops a DNS-rebinding page,
+// whose Host header names the attacker.
+func (handler *publicHandler) mcpOwnOrigin(request *http.Request) bool {
+	origin := request.Header.Get("Origin")
+	if handler.discovery != nil {
+		document, err := handler.discovery.Discovery(request.Context())
+		if err != nil {
+			return false
+		}
+		public, err := url.Parse(document.APIURL)
+		return err == nil && strings.EqualFold(origin, public.Scheme+"://"+public.Host)
+	}
+	parsed, err := url.Parse(origin)
+	return err == nil && strings.EqualFold(parsed.Host, request.Host)
 }
 
 func (handler *publicHandler) serveOAuthProtectedResource(writer http.ResponseWriter, request *http.Request) {

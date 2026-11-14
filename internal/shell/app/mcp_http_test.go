@@ -68,6 +68,18 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 			t.Fatalf("ping result = %s; want {}", string(pingResp.Result))
 		}
 
+		// A browser Origin other than the server's own is refused. With no
+		// configured public URL the request host is the server's own.
+		for origin, want := range map[string]int{"https://evil.example": http.StatusForbidden, "http://example.com": http.StatusOK} {
+			req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":7,"method":"ping"}`)))
+			req.Header.Set("Origin", origin)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != want {
+				t.Fatalf("ping with Origin %s status = %d; want %d", origin, rec.Code, want)
+			}
+		}
+
 		// Unauthenticated tools/call -> 401 Unauthorized with WWW-Authenticate: Bearer.
 		unauthReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"principal_whoami","arguments":{"input":{}}}}`)))
 		unauthReq.Header.Set("Content-Type", api.MediaType)
@@ -125,6 +137,18 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 		wantHeader := `Bearer resource_metadata="https://api.kodama.example:8443/.well-known/oauth-protected-resource"`
 		if got := unauthRec.Header().Get("WWW-Authenticate"); got != wantHeader {
 			t.Fatalf("WWW-Authenticate = %q; want %q", got, wantHeader)
+		}
+
+		// The configured public API origin is the server's own; the request
+		// host, which a DNS-rebinding page controls, is not.
+		for origin, want := range map[string]int{"http://example.com": http.StatusForbidden, "https://api.kodama.example:8443": http.StatusOK} {
+			req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":7,"method":"ping"}`)))
+			req.Header.Set("Origin", origin)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != want {
+				t.Fatalf("ping with Origin %s status = %d; want %d", origin, rec.Code, want)
+			}
 		}
 
 		// GET /.well-known/oauth-protected-resource returns RFC 9728 metadata.

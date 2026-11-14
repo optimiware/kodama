@@ -515,7 +515,6 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		InstallationID: cfg.InstallationID,
 		Controller:     environment.controller,
 		Principals:     bindingAuth,
-		Authorizer:     authorizer,
 		Authority:      identityAdapter,
 		Lookup:         secretLookup,
 		Cipher:         environment.cipher,

@@ -155,13 +155,10 @@ func resourceHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 			bindings := make([]api.ResourceBindingView, 0, wantLimit)
 			after := page.Cursor
 			var nextCursor string
+			// Scan in full batches. Once the page is full, keep scanning until
+			// one more matching binding shows that a next page exists.
+			batchLimit := store.MaxQueryLimit
 			for {
-				batchLimit := wantLimit - len(bindings)
-				if batchLimit <= 0 {
-					// Peek forward to determine whether at least one more
-					// matching binding exists after cursorAfterLastMatch.
-					batchLimit = store.MaxQueryLimit
-				}
 				committed, err := scanner.Query(ctx, call.Scope, store.ScanQuery{
 					Table:   "resource_bindings",
 					OrderBy: []store.Order{{Column: "id"}},
@@ -171,8 +168,10 @@ func resourceHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				if err != nil {
 					return api.Result{}, err
 				}
+				kept := len(bindings)
+				reread := false
 				foundExtra := false
-				for _, row := range committed.Rows {
+				for index, row := range committed.Rows {
 					view, err := decodeBindingRow(row)
 					if err != nil {
 						return api.Result{}, err
@@ -182,9 +181,19 @@ func resourceHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 					}
 					if len(bindings) < wantLimit {
 						bindings = append(bindings, view)
-						if len(bindings) == wantLimit {
-							nextCursor = committed.Next
+						if len(bindings) < wantLimit {
+							continue
 						}
+						if index < len(committed.Rows)-1 {
+							// The scanner has a cursor only for the end of a
+							// batch, so re-read this one ending on the
+							// binding that fills the page.
+							bindings = bindings[:kept]
+							batchLimit = index + 1
+							reread = true
+							break
+						}
+						nextCursor = committed.Next
 					} else {
 						foundExtra = true
 						break
@@ -193,6 +202,10 @@ func resourceHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				if foundExtra {
 					break
 				}
+				if reread {
+					continue
+				}
+				batchLimit = store.MaxQueryLimit
 				if !committed.HasMore {
 					nextCursor = ""
 					break

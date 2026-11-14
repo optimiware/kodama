@@ -60,8 +60,13 @@ func validMCPDateVersion(version string) bool {
 	if len(version) != 10 || !strings.HasPrefix(version, "202") {
 		return false
 	}
-	if version[3] < '0' || version[3] > '9' || version[4] != '-' || version[7] != '-' {
+	if version[4] != '-' || version[7] != '-' {
 		return false
+	}
+	for _, index := range []int{3, 5, 6, 8, 9} {
+		if version[index] < '0' || version[index] > '9' {
+			return false
+		}
 	}
 	month, err := strconv.Atoi(version[5:7])
 	if err != nil || month < 1 || month > 12 {

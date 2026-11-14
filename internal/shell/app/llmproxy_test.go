@@ -118,7 +118,6 @@ func newLLMProxyTestHandler(
 		Controller:     controller,
 		Executions:     executions,
 		Principals:     staticPrincipalResolver{byToken: principals},
-		Authorizer:     authorize.NewMatrix(),
 		Authority:      authority,
 		Lookup: mapSecretLookup{
 			cipher: cipher,
@@ -303,6 +302,8 @@ func TestLLMProxyOpenAIStreamingSSEAndEndpointDerivation(t *testing.T) {
 			Name:       "openai",
 			Endpoint:   upstream.URL + "/v1/chat/completions",
 			SecretName: llmProxyTestOpenAISecretName,
+			// Applies whichever credential header the provider uses.
+			AnthropicVersion: "2023-01-01",
 		}},
 		SecretRules: []secret.NameRule{{
 			Scope: scope,
@@ -327,6 +328,7 @@ func TestLLMProxyOpenAIStreamingSSEAndEndpointDerivation(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+llmProxyTestWorkloadToken)
 	req.Header.Set("x-api-key", llmProxyTestWorkloadToken)
+	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -352,6 +354,13 @@ func TestLLMProxyOpenAIStreamingSSEAndEndpointDerivation(t *testing.T) {
 	}
 	if got := seenHeaders.Get("x-api-key"); got != "" {
 		t.Fatalf("upstream x-api-key = %q; want stripped", got)
+	}
+	if got := seenHeaders.Get("anthropic-version"); got != "2023-01-01" {
+		t.Fatalf("upstream anthropic-version = %q; want the configured 2023-01-01", got)
+	}
+	// A caller-chosen encoding would hide the body from the redaction scan.
+	if got := seenHeaders.Get("Accept-Encoding"); got == "br" {
+		t.Fatal("upstream received the caller's Accept-Encoding")
 	}
 }
 
@@ -644,10 +653,10 @@ func TestLLMProxyTerminatesStreamImmediatelyOnDeadlineOrCancellation(t *testing.
 
 		<-streamStarted
 
-		done := make(chan struct{})
+		done := make(chan error, 1)
 		go func() {
-			_, _ = io.ReadAll(resp.Body)
-			close(done)
+			_, err := io.ReadAll(resp.Body)
+			done <- err
 		}()
 
 		select {
@@ -656,7 +665,10 @@ func TestLLMProxyTerminatesStreamImmediatelyOnDeadlineOrCancellation(t *testing.
 			t.Fatal("upstream SSE stream was not cancelled when action deadline expired")
 		}
 		select {
-		case <-done:
+		case err := <-done:
+			if err == nil {
+				t.Fatal("client saw a clean end of stream for a response truncated by the action deadline")
+			}
 		case <-time.After(2 * time.Second):
 			t.Fatal("client SSE stream did not terminate promptly on action deadline expiry")
 		}
