@@ -13,24 +13,45 @@ built-in sign-in that asks for no password. For production, see the
   `systemctl --user enable --now podman.socket`, and `podman info` succeeds.
   Docker is not supported, because Kodama starts workloads through the Podman
   API. macOS with a Podman machine is expected to work and has not been run.
-- Go (the version in [`.go-version`](../../.go-version)), `git` and `make`, to
-  build from a checkout.
+- `curl` and `tar`, for the installer.
 - Port 8443 free.
 
 ## Start
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/optimiware/kodama/master/install.sh | sh
+kodama up
+source ~/.kodama/instances/default/env.sh
+kodactl whoami
+```
+
+[`install.sh`](../../install.sh) installs `kodama` and `kodactl` into
+`~/.local/bin`, which must be on your `PATH`. It downloads the two archives of
+the latest release for your operating system and architecture, and installs
+nothing unless both match the release's `SHA256SUMS`. `KODAMA_VERSION` names
+another release (0.2.1 or newer) and `KODAMA_INSTALL_DIR` another directory.
+Run it again to upgrade.
+
+`kodama up` pulls the container image of its own version.
+
+### From a checkout
+
+With Go (the version in [`.go-version`](../../.go-version)), `git` and `make`:
 
 ```sh
 git clone https://github.com/optimiware/kodama && cd kodama
 make build image
 bin/kodama up
 source ~/.kodama/instances/default/env.sh
-bin/kodactl whoami
 ```
 
 `make build` builds `bin/kodama` and `bin/kodactl`. `make image` builds the
 container image of the same version, which is the image `kodama up` starts.
+The commands below are then `bin/kodama` and `bin/kodactl`.
 
-`kodama up` does this, and is safe to run again:
+## What `kodama up` does
+
+The command is safe to run again. It:
 
 1. Starts PostgreSQL, NATS, the Kodama server and the Git service as
    containers, and a gateway on `https://127.0.0.1:8443` that serves the API,
@@ -61,7 +82,7 @@ actions:
       - echo "hello from a Kodama workload"
 EOF
 
-bin/kodactl run hello.yaml
+kodactl run hello.yaml
 ```
 
 ```text
@@ -95,17 +116,17 @@ actions:
     timeout: 10m
 EOF
 
-bin/kodactl run review.yaml
+kodactl run review.yaml
 ```
 
 `run` stops when the execution waits for a person and names the execution.
 Answer it from the inbox:
 
 ```sh
-bin/kodactl inbox
-bin/kodactl approve <execution-id>      # or: kodactl reject <execution-id> --reason "…"
-bin/kodactl watch <execution-id>
-bin/kodactl logs <execution-id> --action prepare
+kodactl inbox
+kodactl approve <execution-id>      # or: kodactl reject <execution-id> --reason "…"
+kodactl watch <execution-id>
+kodactl logs <execution-id> --action prepare
 ```
 
 ## Store a pipeline and start it from a task
@@ -114,9 +135,9 @@ bin/kodactl logs <execution-id> --action prepare
 task:
 
 ```sh
-bin/kodactl pipeline apply hello.yaml          # prints the pipeline id
-bin/kodactl task run --title "First task" --pipeline <pipeline-id>
-bin/kodactl task list
+kodactl pipeline apply hello.yaml          # prints the pipeline id
+kodactl task run --title "First task" --pipeline <pipeline-id>
+kodactl task list
 ```
 
 ## Sign in as a person
@@ -126,8 +147,8 @@ the personas, sign in:
 
 ```sh
 unset KODAMA_CREDENTIAL_FILE
-bin/kodactl login            # or: kodactl login --device, without a browser
-bin/kodactl whoami
+kodactl login            # or: kodactl login --device, without a browser
+kodactl whoami
 ```
 
 The sign-in page offers the four personas and asks for no password. It answers
@@ -137,7 +158,7 @@ Project and membership administration needs the tenant-wide administrator
 token instead:
 
 ```sh
-bin/kodactl --credential-file "$KODAMA_TENANT_ADMIN_CREDENTIAL_FILE" member list
+kodactl --credential-file "$KODAMA_TENANT_ADMIN_CREDENTIAL_FILE" member list
 ```
 
 ## Git
@@ -160,16 +181,16 @@ git -c http.sslCAInfo="$KODAMA_CA_FILE" -c credential.helper="store --file=$cred
 ## Connect an MCP client
 
 ```sh
-bin/kodactl mcp install claude --print     # or cursor, codex; without --print it writes the client's config
+kodactl mcp install claude --print     # or cursor, codex; without --print it writes the client's config
 ```
 
 ## Operate
 
 ```sh
-bin/kodama status
-bin/kodama up              # again: renews the credentials below
-bin/kodama down            # stops it and keeps the state
-bin/kodama down --purge    # removes the containers, volumes and state
+kodama status
+kodama up              # again: renews the credentials below
+kodama down            # stops it and keeps the state
+kodama down --purge    # removes the containers, volumes and state
 ```
 
 - The administrator token in `env.sh` lasts 24 hours and the Git service

@@ -42,8 +42,13 @@ kodama 0.1.0 (revision <40 hex>, go1.27.3, linux/amd64)
 |---|---|
 | `kodama` image (`linux/amd64`, `linux/arm64`) | `ghcr.io/optimiware/kodama/kodama:<version>` (and `:latest` for non-prerelease versions); the release notes give the manifest index digest |
 | Charts `kodama` and `kodama-stack` | `oci://ghcr.io/optimiware/kodama/charts`, and attached to the GitHub release |
-| `kodactl` for linux and darwin, amd64 and arm64 | `kodactl_<version>_<os>_<arch>.tar.gz` attached to the GitHub release |
+| `kodama` and `kodactl` for linux and darwin, amd64 and arm64 | `kodama_<version>_<os>_<arch>.tar.gz` and `kodactl_<version>_<os>_<arch>.tar.gz` attached to the GitHub release |
 | `SHA256SUMS` | attached to the GitHub release; covers the archives and chart packages |
+
+[`install.sh`](../../install.sh) installs the two archives of the latest
+release from those attachments. It is read from `master`, not from a release,
+so a change to it reaches users when it is merged. Releases before 0.2.1 have
+no `kodama` archive.
 
 The packages are named after this repository because
 `ghcr.io/optimiware/kodama` holds the images of the archived v1 repository.
@@ -97,8 +102,11 @@ gh workflow run release.yml --ref <branch>
 ## Use a release
 
 ```sh
-# kodactl
-gh release download v<version> --pattern 'kodactl_*_linux_amd64.tar.gz' --pattern SHA256SUMS
+# kodama and kodactl, into ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/optimiware/kodama/master/install.sh | KODAMA_VERSION=<version> sh
+
+# or by hand
+gh release download v<version> --pattern '*_linux_amd64.tar.gz' --pattern SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
 
 # image, pinned by the digest from the release notes

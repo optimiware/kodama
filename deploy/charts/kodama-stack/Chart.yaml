@@ -2,9 +2,9 @@ apiVersion: v2
 name: kodama-stack
 description: Kodama stage/production stack chart bundling the Kodama control plane and TLS NATS JetStream, with an optional OAuthSonas development identity provider for stage and preview only
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.2.1
+appVersion: "0.2.1"
 dependencies:
   - name: kodama
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "file://../kodama"

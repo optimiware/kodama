@@ -38,7 +38,7 @@ docs-check:
 # Build and release artifacts (docs/runbooks/release.md).
 #
 #   make build   # bin/kodama and bin/kodactl for this host
-#   make dist    # dist/: kodactl archives per platform, both Helm charts, SHA256SUMS
+#   make dist    # dist/: kodama and kodactl archives per platform, both Helm charts, SHA256SUMS
 #
 # Both stamp the binaries with the VERSION file and the git revision, which
 # `kodama version` and `kodactl version` print. A plain `go build` reports

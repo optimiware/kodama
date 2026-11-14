@@ -38,16 +38,18 @@ limitations of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick start
 
-On Linux with rootless Podman 5 and Go, from a checkout:
+On Linux with rootless Podman 5:
 
 ```sh
-git clone https://github.com/optimiware/kodama && cd kodama
-make build image
-bin/kodama up
+curl -fsSL https://raw.githubusercontent.com/optimiware/kodama/master/install.sh | sh
+kodama up
 source ~/.kodama/instances/default/env.sh
 ```
 
-That starts a complete local Kodama. Run a pipeline file on it:
+The first line installs `kodama` and `kodactl` into `~/.local/bin`.
+[install.sh](install.sh) downloads them from the latest release for your
+system and checks them against the release's `SHA256SUMS`. `kodama up` then
+starts a complete local Kodama. Run a pipeline file on it:
 
 ```sh
 podman pull docker.io/library/alpine:3.24@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
@@ -59,7 +61,7 @@ actions:
     commands:
       - echo "hello from a Kodama workload"
 EOF
-bin/kodactl run hello.yaml
+kodactl run hello.yaml
 ```
 
 ```text
@@ -71,6 +73,21 @@ execution execution-a917c44ec73787377abaf074c6b6b61f succeeded
 The [quickstart](docs/runbooks/quickstart.md) continues with approvals, tasks,
 sign-in, Git and MCP.
 
+### Other ways to install
+
+Without the script: download the `kodama` and `kodactl` archives for your
+system and `SHA256SUMS` from the
+[latest release](https://github.com/optimiware/kodama/releases/latest), then:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS    # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
+tar -xzf kodama_*.tar.gz && tar -xzf kodactl_*.tar.gz
+install -m 0755 kodama_*/kodama kodactl_*/kodactl ~/.local/bin/
+```
+
+From a checkout, with Go: `make build` builds `bin/kodama` and `bin/kodactl`;
+see the [quickstart](docs/runbooks/quickstart.md#from-a-checkout).
+
 ### The Podman bundle
 
 The Podman bundle is a second single-host installation, with a separate
@@ -78,9 +95,9 @@ identity provider; the release smoke test runs on it. It installs the released
 image (Podman 5, `git` 2.44, `jq`, `openssl`, `curl`, `socat`):
 
 ```sh
-git clone --branch v0.2.0 https://github.com/optimiware/kodama && cd kodama
-podman pull ghcr.io/optimiware/kodama/kodama:0.2.0
-KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.2.0 ./deploy/podman/install.sh
+git clone --branch v0.2.1 https://github.com/optimiware/kodama && cd kodama
+podman pull ghcr.io/optimiware/kodama/kodama:0.2.1
+KODAMA_LOCAL_KODAMA_IMAGE=ghcr.io/optimiware/kodama/kodama:0.2.1 ./deploy/podman/install.sh
 ```
 
 Then follow the [Podman bundle runbook](docs/runbooks/podman-quickstart.md) to
@@ -117,7 +134,7 @@ The Go version is pinned in [`.go-version`](.go-version).
 make build    # bin/kodama and bin/kodactl, stamped with the version and revision
 make image    # the container image of this checkout, which `kodama up` starts
 make check    # gofmt, vet, unit tests, race tests, architecture and docs checks
-make dist     # dist/: kodactl archives, Helm chart packages, SHA256SUMS (needs helm)
+make dist     # dist/: kodama and kodactl archives, Helm chart packages, SHA256SUMS (needs helm)
 ```
 
 The suites that need real infrastructure (Podman, kind, the stage) are

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.1
+
+Added:
+
+- `install.sh`: one command installs `kodama` and `kodactl` into
+  `~/.local/bin` on Linux and macOS, amd64 and arm64, with no checkout and no
+  Go: `curl -fsSL https://raw.githubusercontent.com/optimiware/kodama/master/install.sh | sh`.
+  It installs nothing unless both downloads match the release's `SHA256SUMS`.
+- Releases attach a `kodama` archive per platform, beside the `kodactl`
+  archives. `kodama up` pulls the released image of its version, so the
+  quick start is the installer and `kodama up`.
+
+Known limitations:
+
+- `install.sh` installs 0.2.1 or newer; earlier releases have no `kodama`
+  archive.
+- The macOS binaries are built and have not been run. `kodama up` has run on
+  Linux only.
+
 ## 0.2.0
 
 Added:

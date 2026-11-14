@@ -46,6 +46,20 @@ jobs:
       - run: make dist
       - run: sha256sum --check SHA256SUMS
         working-directory: dist
+      # The archives are laid out as a release serves them, so a name
+      # install.sh and scripts/dist disagree on fails here, not after a release.
+      - name: install.sh installs the archives of this platform
+        run: |
+          version="$(cat VERSION)"
+          mkdir -p "${RUNNER_TEMP}/releases/download"
+          ln -s "${PWD}/dist" "${RUNNER_TEMP}/releases/download/v${version}"
+          KODAMA_RELEASES_URL="file://${RUNNER_TEMP}/releases" KODAMA_VERSION="$version" \
+            KODAMA_INSTALL_DIR="${RUNNER_TEMP}/bin" sh install.sh
+          for binary in kodama kodactl; do
+            line="$("${RUNNER_TEMP}/bin/${binary}" version)"
+            echo "$line"
+            [[ "$line" == "$binary $version (revision ${GITHUB_SHA},"* ]] || { echo "::error::the installed $binary reports another version or revision"; exit 1; }
+          done
       - name: Image builds and reports the version and revision
         run: |
           ref="$(scripts/image build --repository localhost/kodama --tag ci)"

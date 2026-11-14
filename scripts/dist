@@ -5,13 +5,15 @@
 #
 # For the version in the VERSION file it writes, into dist/ by default:
 #
+#   kodama_<version>_<os>_<arch>.tar.gz    kodama and LICENSE, one per platform
 #   kodactl_<version>_<os>_<arch>.tar.gz   kodactl and LICENSE, one per platform
 #   kodama-<version>.tgz                   the control-plane Helm chart
 #   kodama-stack-<version>.tgz             the stack Helm chart (bundles kodama)
 #   SHA256SUMS                             digests of every file above
 #
-# DIST_PLATFORMS overrides the kodactl platforms (space-separated os/arch).
-# The kodama server is released as a container image (scripts/image), not here.
+# DIST_PLATFORMS overrides the platforms (space-separated os/arch). install.sh
+# installs the two archives of a platform. The container image is built by
+# scripts/image, not here.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,7 +24,7 @@ output="${repo_root}/dist"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output) [[ $# -ge 2 ]] || die "--output requires a value"; output="$2"; shift 2 ;;
-    -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -54,15 +56,17 @@ trap 'rm -rf "$stage"' EXIT
 for platform in $platforms; do
   os="${platform%/*}"
   arch="${platform#*/}"
-  name="kodactl_${version}_${os}_${arch}"
-  mkdir "${stage}/${name}"
-  (cd "$repo_root" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-    go build -trimpath -buildvcs=false \
-      -ldflags "-s -w -X main.version=${version} -X main.revision=${revision}" \
-      -o "${stage}/${name}/kodactl" ./cmd/kodactl)
-  cp "${repo_root}/LICENSE" "${stage}/${name}/LICENSE"
-  tar -C "$stage" --sort=name --owner=0 --group=0 --numeric-owner --mtime="@${commit_time}" \
-    -cf - "$name" | gzip -n >"${output}/${name}.tar.gz"
+  for binary in kodama kodactl; do
+    name="${binary}_${version}_${os}_${arch}"
+    mkdir "${stage}/${name}"
+    (cd "$repo_root" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+      go build -trimpath -buildvcs=false \
+        -ldflags "-s -w -X main.version=${version} -X main.revision=${revision}" \
+        -o "${stage}/${name}/${binary}" "./cmd/${binary}")
+    cp "${repo_root}/LICENSE" "${stage}/${name}/LICENSE"
+    tar -C "$stage" --sort=name --owner=0 --group=0 --numeric-owner --mtime="@${commit_time}" \
+      -cf - "$name" | gzip -n >"${output}/${name}.tar.gz"
+  done
 done
 
 # The stack chart's dependency is file://../kodama. Package a copy, so the

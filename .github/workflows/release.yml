@@ -1,9 +1,9 @@
 name: Release
 
 # A change of the VERSION file on master publishes that version: the kodama
-# image and both Helm charts to GHCR, and a GitHub release with the kodactl
-# archives, the chart packages and SHA256SUMS. The workflow creates the tag
-# v<VERSION> itself. A development version (-dev) and a manual run build
+# image and both Helm charts to GHCR, and a GitHub release with the kodama and
+# kodactl archives, the chart packages and SHA256SUMS. The workflow creates the
+# tag v<VERSION> itself. A development version (-dev) and a manual run build
 # everything and publish nothing, unless the manual run asks to publish from
 # master. A version that is already released is never replaced.
 # See docs/runbooks/release.md.
@@ -172,7 +172,7 @@ jobs:
             echo "| Image (\`linux/amd64\`, \`linux/arm64\`) | \`${IMAGE_REFERENCE}\` (${image_tags}) |"
             echo "| Chart \`kodama\` | \`${CHART_REGISTRY}/kodama\` version \`${VERSION}\` |"
             echo "| Chart \`kodama-stack\` | \`${CHART_REGISTRY}/kodama-stack\` version \`${VERSION}\` |"
-            echo "| \`kodactl\` | the archives below; verify with \`sha256sum --check SHA256SUMS\` |"
+            echo "| \`kodama\` and \`kodactl\` | the archives below; verify with \`sha256sum --check SHA256SUMS\` |"
             echo
             echo "Source revision: \`${GITHUB_SHA}\`. Changes and known limitations: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/v${VERSION}/CHANGELOG.md)."
           } >"${RUNNER_TEMP}/notes.md"
