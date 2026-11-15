@@ -5,6 +5,10 @@
 <h1 align="center">Kodama</h1>
 
 <p align="center">
+  <strong>Run coding agents as a team, at enterprise scale, on your own Kubernetes</strong>
+</p>
+
+<p align="center">
   <sub><strong>The wood remembers</strong></sub>
 </p>
 
@@ -21,20 +25,107 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/optimiware/kodama" alt="License: Apache-2.0"></a>
 </p>
 
-Kodama is an API-first, multi-tenant software factory. Engineers configure
-projects, pipelines, credentials and guidance; users submit tasks. Container
-pipelines, agents and ordinary tools produce source changes, tested artifacts
-and deployed software. Humans answer questions and approve candidates through
-a role inbox.
+Kodama is an open-source software factory for engineering organizations. It
+takes a task to a tested, merged change: a coding agent does the work in a
+container, the people you choose approve it, and all of it runs on the
+Kubernetes cluster you already operate.
 
-A pipeline is an ordered list of actions; an action runs a container or
-requests an answer; an execution runs a pipeline once; a task is a
-conversation that starts executions.
+A coding agent in a terminal serves one developer on one laptop. A company has
+hundreds of repositories, people who start work and others who must review it,
+and teams that must never see each other's code. Kodama is built for that
+shape:
+
+- **Any harness.** Claude Code, Codex, OpenCode, Pi or a shell script is a
+  container command. Kodama gives each of them the same workspace, task,
+  credential and model access, so changing harness changes an image, not the
+  pipeline or its rules.
+- **Enterprise scale.** Multi-tenant, role-based and audited. Each action is a
+  plain Kubernetes Job, so capacity is your cluster's, and work that waits for
+  a person holds a volume and no CPU.
+- **People where you choose.** A pipeline can ask a role for a decision. The
+  Git service refuses a push to a protected branch without a passed review of
+  that exact commit.
+- **Yours.** Apache-2.0, written in Go, self-hosted. Your code, pipelines and
+  decisions stay in your cluster and your database.
+
+> A pipeline is an ordered list of actions; an action runs a container or
+> requests an answer; an execution runs a pipeline once; a task is a
+> conversation that starts executions.
+
+## One contract for every harness
+
+Kodama has no plugin per agent. A harness is an image and a command, and every
+container action is given the same things:
+
+| A harness needs | Kodama provides |
+|---|---|
+| The code | `/workspace`, shared by the actions of one execution and kept across approval waits. |
+| The task | `/kodama/task.json`, the task's conversation, with the inputs and the outputs of earlier actions as files. |
+| An identity | `/kodama/secrets/KODAMA_TOKEN`, an execution credential that is revoked while the execution waits for a decision and when it ends. |
+| A model | The optional model proxy. The harness points `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` at Kodama and sends the execution credential as its API key; the provider key stays in the control plane. |
+| A person | A question on its task, addressed to a role or a service. The reply starts a fresh execution with the whole conversation. |
+
+```yaml
+inputs: [repository, target_ref, expected_base]
+actions:
+  - name: implement
+    image: registry.example.com/coding-agent@sha256:…   # the harness is this image
+    outputs: [candidate]
+    commands:
+      - implement-and-push
+  - name: test
+    image: registry.example.com/test-tools@sha256:…
+    commands:
+      - test-candidate "$(cat /kodama/outputs/implement/candidate)"
+  - name: review
+    request: role/reviewer
+    timeout: 72h
+    subject:
+      operation: git.ref.update
+      resource: {from: inputs.repository}
+      ref: {from: inputs.target_ref}
+      candidate: {from: implement.outputs.candidate}
+      expected_base: {from: inputs.expected_base}
+```
+
+Each action names its own image, so one pipeline can implement with one
+harness and check the result with another. The review, the Git rules and the
+audit trail do not depend on which harness ran.
+[KODAMA.md](KODAMA.md#environment-and-materialized-files) has the contract in
+full, and [external-harness.yaml](examples/pipelines/external-harness.yaml) is
+the recipe for model access.
+
+## Built for enterprise scale
+
+| A company needs | What Kodama does |
+|---|---|
+| Teams that cannot see each other | A tenant is an isolated organization: a business unit, a subsidiary, a customer. The boundary is drawn again at every layer: forced row-level security in PostgreSQL, a namespace with a default-deny network policy per tenant on Kubernetes, a derivation key per tenant for credentials, and Git workers and volumes per tenant. |
+| Its own sign-in and roles | People sign in through your OIDC provider. Five roles (Admin, Engineer, Reviewer, Operator, Viewer) are granted per tenant and per project, and a role change applies on the next call. The Admin role grants no review authority. |
+| Control over what agents merge | Access rules live in a Git repository, in the spirit of gitolite. Per repository and per branch, a person decides, a program decides, or nobody does. |
+| Secrets that stay secret | Values are envelope-encrypted under a key in your cloud KMS. The management API returns metadata, never a value. A container gets a secret as a file, and only if its action declares it. |
+| To say what ran, and who allowed it | One function authorizes every operation. A decision keeps its actor and time. An execution keeps the exact pipeline bytes it was admitted with, their SHA-256 and the image digests. |
+| Capacity for thousands of tasks | An execution is a row in PostgreSQL and its work is Kubernetes Jobs, with no CRDs and no operator. Your scheduler and autoscaler decide how many run at once. |
+| To survive a failure | PostgreSQL records facts and NATS only distributes them, so a broker outage delays integrations and does not stop executions. After a crash the controller observes what it had started; it never reruns a command it cannot prove did not run. |
+| To install it like everything else | One Helm chart for the control plane, and OpenTofu roots for Scaleway, AWS and Google Cloud that create the cluster, managed PostgreSQL and the KMS key. |
+
+The [production deployment guide](docs/runbooks/production-deployment.md) has
+the procedure for your own cluster.
 
 ## Status
 
 The current version is in [`VERSION`](VERSION). The changes and known
-limitations of each version are in [CHANGELOG.md](CHANGELOG.md).
+limitations of each version are in [CHANGELOG.md](CHANGELOG.md). Kodama is
+young, and the design is ahead of the evidence in these places:
+
+- The control plane and the NATS broker each run as one replica. An upgrade of
+  the control plane is a short outage.
+- Scaleway is the only cloud on which a deployment has run. The AWS and Google
+  Cloud deployments are implemented and have not been validated on a real
+  cloud.
+- The reference deployment is a starting point, not a sizing guarantee:
+  load-test your own mix of work.
+- Isolation is around ordinary containers, for teams that trust their own
+  engineers. It is not a sandbox for untrusted code.
 
 ## Quick start
 
