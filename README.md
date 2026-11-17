@@ -234,10 +234,10 @@ described in
 
 ## The name
 
-A kodema (木霊) is a tree spirit of Japanese folklore: it lives in a tree and
-is seldom seen. The haiku above says what this one does. Pipelines and agents
-commit to branches while you are away, and when you return you find the
-result, and whatever waits for your approval.
+Kodema takes its name from the kodama (木霊), a tree spirit of Japanese folklore:
+it lives in a tree and is seldom seen. The haiku above says what this one does.
+Pipelines and agents commit to branches while you are away, and when you return
+you find the result, and whatever waits for your approval.
 
 Ours is a gopher, because Kodema is written in Go. The mascot is inspired by
 the [Go gopher](https://go.dev/blog/gopher), designed by Renee French and
