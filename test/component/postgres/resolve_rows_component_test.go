@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/request"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/shell/request"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestRequestResolveWholeRowsOnPostgreSQL proves a pass resolution writes every

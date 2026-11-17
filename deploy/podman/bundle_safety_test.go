@@ -3,7 +3,7 @@ package podman
 // These tests pin the safety rules of the local Podman bundle: the
 // documented Git credential-store snippet stores key=value lines (not a URL),
 // the installer's admin header is invocation-private, the disposable smoke
-// derives its identity only from KODAMA_SMOKE_* values and never reuses or
+// derives its identity only from KODEMA_SMOKE_* values and never reuses or
 // purges another installation, a failing installation descriptor is refused
 // instead of written empty, the TLS forwarders close inherited descriptors, and
 // the release runbook describes the preflight and the limitations that the
@@ -184,7 +184,7 @@ func TestInstallerHeaderIsInvocationPrivate(t *testing.T) {
 	lib := filepath.Join(bundleRoot(t), "lib.sh")
 	for _, outcome := range []string{"success", "fail"} {
 		env := shellEnv(t, "header-test")
-		state := env["KODAMA_LOCAL_STATE_DIR"]
+		state := env["KODEMA_LOCAL_STATE_DIR"]
 		if err := os.MkdirAll(filepath.Join(state, "run"), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -251,18 +251,18 @@ func smokeEnv(t *testing.T, run string) map[string]string {
 	root := t.TempDir()
 	return map[string]string{
 		"HOME":                             root,
-		"KODAMA_SLOT":                      "stack-1",
-		"KODAMA_SMOKE_RUN":                 run,
-		"KODAMA_SMOKE_STATE_DIR":           filepath.Join(root, "nested", "state"),
+		"KODEMA_SLOT":                      "stack-1",
+		"KODEMA_SMOKE_RUN":                 run,
+		"KODEMA_SMOKE_STATE_DIR":           filepath.Join(root, "nested", "state"),
 		"Q01_EVIDENCE_DIR":                 filepath.Join(root, "evidence"),
-		"KODAMA_LOCAL_HTTPS_PORT":          "27443",
-		"KODAMA_LOCAL_OIDC_PORT":           "27444",
-		"KODAMA_LOCAL_GIT_PORT":            "27081",
-		"KODAMA_LOCAL_GIT_HTTPS_PORT":      "27445",
-		"KODAMA_LOCAL_POSTGRES_PORT":       "25432",
-		"KODAMA_LOCAL_NATS_PORT":           "24222",
-		"KODAMA_LOCAL_NATS_MONITOR_PORT":   "28222",
-		"KODAMA_LOCAL_OAUTH_UPSTREAM_PORT": "28181",
+		"KODEMA_LOCAL_HTTPS_PORT":          "27443",
+		"KODEMA_LOCAL_OIDC_PORT":           "27444",
+		"KODEMA_LOCAL_GIT_PORT":            "27081",
+		"KODEMA_LOCAL_GIT_HTTPS_PORT":      "27445",
+		"KODEMA_LOCAL_POSTGRES_PORT":       "25432",
+		"KODEMA_LOCAL_NATS_PORT":           "24222",
+		"KODEMA_LOCAL_NATS_MONITOR_PORT":   "28222",
+		"KODEMA_LOCAL_OAUTH_UPSTREAM_PORT": "28181",
 	}
 }
 
@@ -275,7 +275,7 @@ func TestSmokeRequiresAnEmptyStateDirectory(t *testing.T) {
 	if err := os.Mkdir(owned, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(owned, ".kodama-local"), []byte("prefix=fresh-state\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(owned, ".kodema-local"), []byte("prefix=fresh-state\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, code := runBash(t, env, script, lib, owned, "fresh-state"); code == 0 {
@@ -339,7 +339,7 @@ func TestSmokeCleanupOnlyPurgesItsOwnRun(t *testing.T) {
 	if err := os.MkdirAll(state, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(state, ".kodama-local"), []byte("prefix=smoke-owned\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(state, ".kodema-local"), []byte("prefix=smoke-owned\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, errOut, code := runBash(t, env, write, lib, state, "run-a"); code != 0 {
@@ -362,7 +362,7 @@ func TestSmokeCleanupOnlyPurgesItsOwnRun(t *testing.T) {
 	if err := os.MkdirAll(foreign, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(foreign, ".kodama-local"), []byte("prefix=other-install\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(foreign, ".kodema-local"), []byte("prefix=other-install\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, errOut, code := runBash(t, env, write, lib, foreign, "run-a"); code != 0 {
@@ -374,7 +374,7 @@ func TestSmokeCleanupOnlyPurgesItsOwnRun(t *testing.T) {
 }
 
 // TestSmokeIgnoresInheritedOperatorIdentity proves an exported operator
-// environment (KODAMA_LOCAL_PREFIX/STATE_DIR/GIT_RESOURCES from a sourced
+// environment (KODEMA_LOCAL_PREFIX/STATE_DIR/GIT_RESOURCES from a sourced
 // secrets/operator.env) cannot steer the disposable run into another
 // installation's prefix or state.
 func TestSmokeIgnoresInheritedOperatorIdentity(t *testing.T) {
@@ -384,16 +384,16 @@ func TestSmokeIgnoresInheritedOperatorIdentity(t *testing.T) {
 	if err := os.MkdirAll(sentinelState, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(sentinelState, ".kodama-local"), []byte("prefix=real-install\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(sentinelState, ".kodema-local"), []byte("prefix=real-install\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	sentinel := filepath.Join(sentinelState, "sentinel")
 	if err := os.WriteFile(sentinel, []byte("keep me\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env["KODAMA_LOCAL_PREFIX"] = "real-install"
-	env["KODAMA_LOCAL_STATE_DIR"] = sentinelState
-	env["KODAMA_LOCAL_GIT_RESOURCES"] = "admin=git-admin,operator=git-operator"
+	env["KODEMA_LOCAL_PREFIX"] = "real-install"
+	env["KODEMA_LOCAL_STATE_DIR"] = sentinelState
+	env["KODEMA_LOCAL_GIT_RESOURCES"] = "admin=git-admin,operator=git-operator"
 	pathValue, log := podmanStub(t, "case \"$1\" in ps) exit 0;; volume) exit 1;; info) echo 'cannot use podman' >&2; exit 1;; esac\nexit 1")
 	env["PATH"] = pathValue
 
@@ -404,7 +404,7 @@ func TestSmokeIgnoresInheritedOperatorIdentity(t *testing.T) {
 	if strings.Contains(errOut, sentinelState) {
 		t.Fatalf("smoke.sh used the inherited operator state directory:\n%s", errOut)
 	}
-	if !strings.Contains(errOut, env["KODAMA_SMOKE_STATE_DIR"]) {
+	if !strings.Contains(errOut, env["KODEMA_SMOKE_STATE_DIR"]) {
 		t.Fatalf("smoke.sh did not name its own state directory in its failure report:\n%s", errOut)
 	}
 	data, err := os.ReadFile(sentinel)
@@ -415,7 +415,7 @@ func TestSmokeIgnoresInheritedOperatorIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(calls), "ps -a --filter label=kodama.local.prefix=smoke-conta") {
+	if !strings.Contains(string(calls), "ps -a --filter label=kodema.local.prefix=smoke-conta") {
 		t.Fatalf("smoke.sh did not scope its container check to its own prefix:\n%s", calls)
 	}
 	if strings.Contains(string(calls), "real-install") {
@@ -428,9 +428,9 @@ func TestSmokeIgnoresInheritedOperatorIdentity(t *testing.T) {
 func TestSmokeDerivesIdentityOnlyFromSmokeValues(t *testing.T) {
 	smoke := readFile(t, filepath.Join(bundleRoot(t), "smoke.sh"))
 	for _, phrase := range []string{
-		"KODAMA_SMOKE_PREFIX",
-		"KODAMA_SMOKE_STATE_DIR",
-		"KODAMA_LOCAL_GIT_RESOURCES",
+		"KODEMA_SMOKE_PREFIX",
+		"KODEMA_SMOKE_STATE_DIR",
+		"KODEMA_LOCAL_GIT_RESOURCES",
 		"unset ",
 		"smoke_require_no_podman_resources",
 		"smoke_cleanup_allowed",
@@ -440,15 +440,15 @@ func TestSmokeDerivesIdentityOnlyFromSmokeValues(t *testing.T) {
 			t.Fatalf("smoke.sh omits %q", phrase)
 		}
 	}
-	if strings.Contains(smoke, `export KODAMA_LOCAL_PREFIX="${KODAMA_LOCAL_PREFIX:-`) {
-		t.Fatal("smoke.sh still inherits KODAMA_LOCAL_PREFIX")
+	if strings.Contains(smoke, `export KODEMA_LOCAL_PREFIX="${KODEMA_LOCAL_PREFIX:-`) {
+		t.Fatal("smoke.sh still inherits KODEMA_LOCAL_PREFIX")
 	}
-	if strings.Contains(smoke, `export KODAMA_LOCAL_STATE_DIR="${KODAMA_LOCAL_STATE_DIR:-`) {
-		t.Fatal("smoke.sh still inherits KODAMA_LOCAL_STATE_DIR")
+	if strings.Contains(smoke, `export KODEMA_LOCAL_STATE_DIR="${KODEMA_LOCAL_STATE_DIR:-`) {
+		t.Fatal("smoke.sh still inherits KODEMA_LOCAL_STATE_DIR")
 	}
 	runbook := readFile(t, filepath.Join(repoRoot(t), "docs", "runbooks", "podman-quickstart.md"))
 	flat := strings.Join(strings.Fields(runbook), " ")
-	for _, phrase := range []string{"KODAMA_SMOKE_PREFIX", "KODAMA_SMOKE_STATE_DIR", "never inherits"} {
+	for _, phrase := range []string{"KODEMA_SMOKE_PREFIX", "KODEMA_SMOKE_STATE_DIR", "never inherits"} {
 		if !strings.Contains(flat, phrase) {
 			t.Fatalf("the quickstart does not document the smoke identity rule: missing %q", phrase)
 		}
@@ -467,7 +467,7 @@ func TestSmokeDerivesIdentityOnlyFromSmokeValues(t *testing.T) {
 func TestInstallationDescriptorWriteChecksTheGenerator(t *testing.T) {
 	lib := filepath.Join(bundleRoot(t), "lib.sh")
 	env := shellEnv(t, "descriptor-fault")
-	state := env["KODAMA_LOCAL_STATE_DIR"]
+	state := env["KODEMA_LOCAL_STATE_DIR"]
 	if err := os.MkdirAll(filepath.Join(state, "run"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -667,11 +667,11 @@ func TestSmokePreflightSelectionGoesThroughTheVerifier(t *testing.T) {
 	smoke := filepath.Join(bundleRoot(t), "smoke.sh")
 	env := smokeEnv(t, "select")
 	for key := range env {
-		if strings.HasPrefix(key, "KODAMA_LOCAL_") && strings.HasSuffix(key, "_PORT") {
+		if strings.HasPrefix(key, "KODEMA_LOCAL_") && strings.HasSuffix(key, "_PORT") {
 			delete(env, key)
 		}
 	}
-	delete(env, "KODAMA_SLOT")
+	delete(env, "KODEMA_SLOT")
 	stdout, stderr, code := runBash(t, env, `bash "$1" --print-selection --preflight`, smoke)
 	if code != 0 {
 		t.Fatalf("printing the preflight selection failed: %s %s", stdout, stderr)
@@ -710,8 +710,8 @@ func TestSmokePreflightSelectionGoesThroughTheVerifier(t *testing.T) {
 	}
 
 	narrowed := smokeEnv(t, "narrow")
-	narrowed["KODAMA_SMOKE_TEST_RUN"] = "^$"
-	narrowed["KODAMA_SMOKE_EXPECT"] = "TestE2E_AC01InstalledPipeline"
+	narrowed["KODEMA_SMOKE_TEST_RUN"] = "^$"
+	narrowed["KODEMA_SMOKE_EXPECT"] = "TestE2E_AC01InstalledPipeline"
 	stdout, stderr, code = runBash(t, narrowed, `bash "$1" --print-selection`, smoke)
 	if code != 0 {
 		t.Fatalf("printing the narrowed selection failed: %s %s", stdout, stderr)
@@ -727,7 +727,7 @@ func TestSmokePreflightSelectionGoesThroughTheVerifier(t *testing.T) {
 	// wrapper always runs the verifier, and the verifier fails a zero-test run.
 	verifier := filepath.Join(repoRoot(t), "test", "e2e", "internal", "harness", "verify-go-test.sh")
 	result := filepath.Join(t.TempDir(), "go-test.json")
-	if err := os.WriteFile(result, []byte(`{"Action":"pass","Package":"github.com/optimiware/kodama/test/e2e"}`+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(result, []byte(`{"Action":"pass","Package":"github.com/optimiware/kodema/test/e2e"}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, errOut, code := runBash(t, map[string]string{"HOME": t.TempDir()},

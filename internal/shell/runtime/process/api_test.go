@@ -41,7 +41,7 @@
 //	type Config struct {
 //	    Root          string        // adapter-owned resource root; absolute
 //	    WorkspaceRoot string        // parent of existing workspace dirs; absolute
-//	    KodamaURL     string        // reserved KODAMA_URL value
+//	    KodemaURL     string        // reserved KODEMA_URL value
 //	    Executor      Executor      // process effect boundary
 //	    Observer      Observer      // process-group evidence boundary
 //	    Files         Files         // host file/directory boundary
@@ -121,16 +121,16 @@
 // Resource layout for one stable identity, rooted at
 // ResourceRoot(Config.Root, Identity.WorkloadID):
 //
-//	<root>/kodama/inputs/<key>              exact admitted input bytes
-//	<root>/kodama/outputs/<action>/<key>    earlier succeeded outputs only
-//	<root>/kodama/task.json                 only when the request has a task
-//	<root>/kodama/secrets/<NAME>            declared activation-time values
-//	<root>/kodama/secrets/KODAMA_TOKEN      the sole mutable mounted file
+//	<root>/kodema/inputs/<key>              exact admitted input bytes
+//	<root>/kodema/outputs/<action>/<key>    earlier succeeded outputs only
+//	<root>/kodema/task.json                 only when the request has a task
+//	<root>/kodema/secrets/<NAME>            declared activation-time values
+//	<root>/kodema/secrets/KODEMA_TOKEN      the sole mutable mounted file
 //	<root>/script                           internal/kernel/script.Render output
 //	<root>/logs/stdout, <root>/logs/stderr  the process group's log streams
 //	<root>/group                            persisted spawn intent/bookkeeping
 //
-// Every materialized logical path P under /kodama is written at
+// Every materialized logical path P under /kodema is written at
 // filepath.Join(ResourceRoot(...), P). The generated script is
 // <root>/script, logs are <root>/logs/{stdout,stderr} and group bookkeeping is
 // <root>/group. Prepared files are regular files with mode 0o444; the mutable
@@ -149,8 +149,8 @@
 //     the declared commands (byte/order/quoting preserving, no tracing) and the
 //     argv is exactly {script.ShellPath, <root>/script}. The environment is the
 //     admitted literal environment in declaration order followed by the
-//     unshadowable reserved context KODAMA_URL, KODAMA_EXECUTION,
-//     KODAMA_ACTION (the action slug, never the action id) and KODAMA_TASK
+//     unshadowable reserved context KODEMA_URL, KODEMA_EXECUTION,
+//     KODEMA_ACTION (the action slug, never the action id) and KODEMA_TASK
 //     (omitted when task-free); a declaration that tries to set a reserved name
 //     is refused. Secrets and the credential never appear in argv, environment,
 //     workspace files, log output or diagnostics.
@@ -194,8 +194,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/runtime"
 )
 
 // TestAdapterSatisfiesRuntimeClient is a compile-time proof that the adapter
@@ -305,7 +305,7 @@ func TestCheckRequirementsRefusesUnsupportedWork(t *testing.T) {
 
 // TestNewRefusesIncompleteConfiguration proves the adapter cannot be composed
 // without an executor, observer, file boundary, disjoint absolute roots, a
-// Kodama URL or a positive cleanup bound.
+// Kodema URL or a positive cleanup bound.
 func TestNewRefusesIncompleteConfiguration(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -325,7 +325,7 @@ func TestNewRefusesIncompleteConfiguration(t *testing.T) {
 		{name: "workspace root inside root", mutate: func(config *Config) {
 			config.WorkspaceRoot = filepath.Join(config.Root, "workspaces")
 		}},
-		{name: "empty url", mutate: func(config *Config) { config.KodamaURL = "" }},
+		{name: "empty url", mutate: func(config *Config) { config.KodemaURL = "" }},
 		{name: "zero cleanup attempts", mutate: func(config *Config) { config.Cleanup.Attempts = 0 }},
 	}
 	for _, testCase := range cases {

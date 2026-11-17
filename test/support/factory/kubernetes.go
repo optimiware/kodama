@@ -20,7 +20,7 @@ package factory
 //     host.containers.internal (pods have no DNS) all fail;
 //   - a listener bound only to loopback is refused.
 //
-// The Job's KODAMA_URL is therefore the literal http://169.254.1.2:<port>
+// The Job's KODEMA_URL is therefore the literal http://169.254.1.2:<port>
 // address, and the edge forwarder keeps its host-only peer filter: pasta
 // presents the pod's connection as the host's own address.
 
@@ -31,11 +31,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
+	"github.com/optimiware/kodema/internal/id"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
 )
 
 const (
@@ -80,11 +80,11 @@ type kubernetesRuntime struct {
 // for its readiness barrier, exports its isolated kubeconfig, creates the
 // tenant namespace and builds the production driver and runtime adapter.
 //
-// Missing infrastructure follows the shared KODAMA_REQUIRE_INFRA policy: a
+// Missing infrastructure follows the shared KODEMA_REQUIRE_INFRA policy: a
 // missing kind binary or a cluster that cannot start skips unless the
 // environment requires infrastructure, in which case it fails. A broken
 // composition fixture always fails.
-func newKubernetesRuntime(t *testing.T, ctx context.Context, namespace string, tenant id.TenantID, kodamaURL string, clock *TestClock) *kubernetesRuntime {
+func newKubernetesRuntime(t *testing.T, ctx context.Context, namespace string, tenant id.TenantID, kodemaURL string, clock *TestClock) *kubernetesRuntime {
 	t.Helper()
 
 	kind, err := kubesupport.NewKind(kubesupport.WithLogger(t.Logf))
@@ -133,7 +133,7 @@ func newKubernetesRuntime(t *testing.T, ctx context.Context, namespace string, t
 		Cluster:   client,
 		Namespace: namespace,
 		TenantID:  tenant,
-		KodamaURL: kodamaURL,
+		KodemaURL: kodemaURL,
 		Policy: runtimekube.Policy{
 			CPURequest:    "50m",
 			CPULimit:      "200m",
@@ -166,5 +166,5 @@ metadata:
 // requireKubernetesInfra reports whether missing kind/Podman infrastructure
 // must fail instead of skipping, matching the shared harness policy.
 func requireKubernetesInfra() bool {
-	return os.Getenv("KODAMA_REQUIRE_INFRA") == "1"
+	return os.Getenv("KODEMA_REQUIRE_INFRA") == "1"
 }

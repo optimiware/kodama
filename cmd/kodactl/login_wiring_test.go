@@ -28,13 +28,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 const (
 	seedClientID   = "kodactl"
-	seedAudience   = "kodama-api"
+	seedAudience   = "kodema-api"
 	loginAccess    = "login-access-token-canary"
 	loginRefresh   = "login-refresh-token-canary"
 	freshAccess    = "fresh-access-token-canary"
@@ -1009,8 +1009,8 @@ func TestKodactlSessionFlagAndServerAliases(t *testing.T) {
 	deps := defaultCLIDeps()
 	deps.oidc = &cli.HTTPOIDCClient{RoundTripper: provider.client().Transport}
 	deps.clock = fixedClock{now: time.Now()}
-	t.Setenv("KODAMA_SERVER", apiServer.URL)
-	t.Setenv("KODAMA_SESSION", sessionPath)
+	t.Setenv("KODEMA_SERVER", apiServer.URL)
+	t.Setenv("KODEMA_SESSION", sessionPath)
 	code, _, stderr := runEntry(t, []string{"call", "task.read", "--input={\"task_id\":\"task-1\"}"}, deps)
 	if code != cli.ExitSuccess {
 		t.Fatalf("environment aliases exit = %d; stderr=%q", code, stderr)

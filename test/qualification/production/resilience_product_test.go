@@ -26,13 +26,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // resilienceProductionEnv is the complete environment the production entrypoint
@@ -41,31 +41,31 @@ import (
 // before it contacts a cluster, a database or a KMS.
 func resilienceProductionEnv(dir string) map[string]string {
 	return map[string]string{
-		"KODAMA_DATABASE_URL":                "postgres://kodama_runtime:pw@database:5432/kodama?sslmode=verify-full",
-		"KODAMA_CONTROLLER_DATABASE_URL":     "postgres://kodama_controller:pw@database:5432/kodama?sslmode=verify-full",
-		"KODAMA_PUBLISHER_DATABASE_URL":      "postgres://kodama_publisher:pw@database:5432/kodama?sslmode=verify-full",
-		"KODAMA_AUTH_DATABASE_URL":           "postgres://kodama_auth:pw@database:5432/kodama?sslmode=verify-full",
-		"KODAMA_NATS_URL":                    "tls://nats:4222",
-		"KODAMA_NATS_CA_FILE":                filepath.Join(dir, "ca.crt"),
-		"KODAMA_NATS_CERT_FILE":              filepath.Join(dir, "tls.crt"),
-		"KODAMA_NATS_KEY_FILE":               filepath.Join(dir, "tls.key"),
-		"KODAMA_KEY_ADAPTER":                 "scw-kms",
-		"KODAMA_KEY_REF":                     "scw-kms:key-1",
-		"KODAMA_KEY_BLOBS_DIR":               dir,
-		"KODAMA_KEY_CURRENT_VERSION":         "1",
+		"KODEMA_DATABASE_URL":                "postgres://kodema_runtime:pw@database:5432/kodema?sslmode=verify-full",
+		"KODEMA_CONTROLLER_DATABASE_URL":     "postgres://kodema_controller:pw@database:5432/kodema?sslmode=verify-full",
+		"KODEMA_PUBLISHER_DATABASE_URL":      "postgres://kodema_publisher:pw@database:5432/kodema?sslmode=verify-full",
+		"KODEMA_AUTH_DATABASE_URL":           "postgres://kodema_auth:pw@database:5432/kodema?sslmode=verify-full",
+		"KODEMA_NATS_URL":                    "tls://nats:4222",
+		"KODEMA_NATS_CA_FILE":                filepath.Join(dir, "ca.crt"),
+		"KODEMA_NATS_CERT_FILE":              filepath.Join(dir, "tls.crt"),
+		"KODEMA_NATS_KEY_FILE":               filepath.Join(dir, "tls.key"),
+		"KODEMA_KEY_ADAPTER":                 "scw-kms",
+		"KODEMA_KEY_REF":                     "scw-kms:key-1",
+		"KODEMA_KEY_BLOBS_DIR":               dir,
+		"KODEMA_KEY_CURRENT_VERSION":         "1",
 		"SCW_SECRET_KEY":                     "dummy-scaleway-secret",
-		"KODAMA_TLS_DIR":                     dir,
-		"KODAMA_OIDC_ISSUER":                 "https://issuer.example",
-		"KODAMA_OIDC_AUDIENCE":               "kodama",
-		"KODAMA_OIDC_JWKS_URL":               "https://issuer.example/jwks",
-		"KODAMA_OIDC_TENANT_CLAIM":           "org_id",
-		"KODAMA_WORKSPACE_PVC_STORAGE_CLASS": "standard",
-		"KODAMA_WORKSPACE_PVC_SIZE":          "1Gi",
-		"KODAMA_WORKSPACE_PVC_ACCESS_MODE":   "ReadWriteOnce",
-		"KODAMA_TENANT":                      "tenant-a",
-		"KODAMA_INSTALLATION_ID":             "installation-qualification",
-		"KODAMA_DATA_DIR":                    dir,
-		"KODAMA_PUBLIC_URL":                  "https://kodama.example",
+		"KODEMA_TLS_DIR":                     dir,
+		"KODEMA_OIDC_ISSUER":                 "https://issuer.example",
+		"KODEMA_OIDC_AUDIENCE":               "kodema",
+		"KODEMA_OIDC_JWKS_URL":               "https://issuer.example/jwks",
+		"KODEMA_OIDC_TENANT_CLAIM":           "org_id",
+		"KODEMA_WORKSPACE_PVC_STORAGE_CLASS": "standard",
+		"KODEMA_WORKSPACE_PVC_SIZE":          "1Gi",
+		"KODEMA_WORKSPACE_PVC_ACCESS_MODE":   "ReadWriteOnce",
+		"KODEMA_TENANT":                      "tenant-a",
+		"KODEMA_INSTALLATION_ID":             "installation-qualification",
+		"KODEMA_DATA_DIR":                    dir,
+		"KODEMA_PUBLIC_URL":                  "https://kodema.example",
 	}
 }
 
@@ -82,7 +82,7 @@ func writeEntrypointTLSDir(t *testing.T) string {
 	now := time.Now()
 	ca := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "kodama qualification CA"},
+		Subject:               pkix.Name{CommonName: "kodema qualification CA"},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(time.Hour),
 		IsCA:                  true,
@@ -99,7 +99,7 @@ func writeEntrypointTLSDir(t *testing.T) string {
 	}
 	leaf := &x509.Certificate{
 		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: "kodama.kodama-system.svc"},
+		Subject:      pkix.Name{CommonName: "kodema.kodema-system.svc"},
 		NotBefore:    now.Add(-time.Hour),
 		NotAfter:     now.Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
@@ -126,7 +126,7 @@ func writeEntrypointTLSDir(t *testing.T) string {
 	return dir
 }
 
-// resilienceBuildEntrypoint builds the real `kodama` command once. A missing go
+// resilienceBuildEntrypoint builds the real `kodema` command once. A missing go
 // toolchain is a named skip; it is never a pass.
 func resilienceBuildEntrypoint(t *testing.T) string {
 	t.Helper()
@@ -134,15 +134,15 @@ func resilienceBuildEntrypoint(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("resolve the module root: %v", err)
 	}
-	binary := filepath.Join(t.TempDir(), "kodama-qualification")
-	command := exec.Command("go", "build", "-o", binary, "./cmd/kodama")
+	binary := filepath.Join(t.TempDir(), "kodema-qualification")
+	command := exec.Command("go", "build", "-o", binary, "./cmd/kodema")
 	command.Dir = root
 	command.Env = os.Environ()
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			if os.Getenv("Q02_REQUIRE_STAGE") == "1" || os.Getenv("KODAMA_REQUIRE_INFRA") == "1" {
+			if os.Getenv("Q02_REQUIRE_STAGE") == "1" || os.Getenv("KODEMA_REQUIRE_INFRA") == "1" {
 				t.Fatalf("unconfigured Q02 tool: go toolchain is not on PATH: %v", err)
 			}
 			t.Skip("unconfigured Q02 tool: go toolchain is not on PATH")
@@ -152,7 +152,7 @@ func resilienceBuildEntrypoint(t *testing.T) string {
 	return binary
 }
 
-// resilienceRunEntrypoint runs `kodama server --profile=production` with the
+// resilienceRunEntrypoint runs `kodema server --profile=production` with the
 // exact environment and returns its exit code and stderr. A process that does
 // not refuse within the bound fails the probe.
 func resilienceRunEntrypoint(t *testing.T, binary string, env map[string]string) (int, string) {
@@ -204,43 +204,43 @@ func TestHarnessProductionEntrypointRefusals(t *testing.T) {
 	}{
 		{
 			name:   "test keyfile adapter",
-			mutate: func(env map[string]string) { env["KODAMA_KEY_ADAPTER"] = "keyfile" },
-			want:   "KODAMA_KEY_ADAPTER",
+			mutate: func(env map[string]string) { env["KODEMA_KEY_ADAPTER"] = "keyfile" },
+			want:   "KODEMA_KEY_ADAPTER",
 		},
 		{
 			name:   "development ephemeral adapter",
-			mutate: func(env map[string]string) { env["KODAMA_KEY_ADAPTER"] = "ephemeral" },
-			want:   "KODAMA_KEY_ADAPTER",
+			mutate: func(env map[string]string) { env["KODEMA_KEY_ADAPTER"] = "ephemeral" },
+			want:   "KODEMA_KEY_ADAPTER",
 		},
 		{
 			name:   "plaintext broker",
-			mutate: func(env map[string]string) { env["KODAMA_NATS_URL"] = "nats://nats:4222" },
+			mutate: func(env map[string]string) { env["KODEMA_NATS_URL"] = "nats://nats:4222" },
 			want:   "NATS URL",
 		},
 		{
 			name:   "empty OIDC issuer",
-			mutate: func(env map[string]string) { env["KODAMA_OIDC_ISSUER"] = "" },
-			want:   "KODAMA_OIDC_ISSUER",
+			mutate: func(env map[string]string) { env["KODEMA_OIDC_ISSUER"] = "" },
+			want:   "KODEMA_OIDC_ISSUER",
 		},
 		{
 			name:   "empty OIDC audience",
-			mutate: func(env map[string]string) { env["KODAMA_OIDC_AUDIENCE"] = "" },
-			want:   "KODAMA_OIDC_AUDIENCE",
+			mutate: func(env map[string]string) { env["KODEMA_OIDC_AUDIENCE"] = "" },
+			want:   "KODEMA_OIDC_AUDIENCE",
 		},
 		{
 			name:   "empty OIDC JWKS",
-			mutate: func(env map[string]string) { env["KODAMA_OIDC_JWKS_URL"] = "" },
-			want:   "KODAMA_OIDC_JWKS_URL",
+			mutate: func(env map[string]string) { env["KODEMA_OIDC_JWKS_URL"] = "" },
+			want:   "KODEMA_OIDC_JWKS_URL",
 		},
 		{
 			name:   "empty OIDC tenant claim",
-			mutate: func(env map[string]string) { env["KODAMA_OIDC_TENANT_CLAIM"] = "" },
-			want:   "KODAMA_OIDC_TENANT_CLAIM",
+			mutate: func(env map[string]string) { env["KODEMA_OIDC_TENANT_CLAIM"] = "" },
+			want:   "KODEMA_OIDC_TENANT_CLAIM",
 		},
 		{
 			name:   "empty key reference",
-			mutate: func(env map[string]string) { env["KODAMA_KEY_REF"] = "" },
-			want:   "KODAMA_KEY_REF",
+			mutate: func(env map[string]string) { env["KODEMA_KEY_REF"] = "" },
+			want:   "KODEMA_KEY_REF",
 		},
 	}
 	for _, testCase := range cases {
@@ -254,7 +254,7 @@ func TestHarnessProductionEntrypointRefusals(t *testing.T) {
 			if !strings.Contains(stderr, testCase.want) {
 				t.Fatalf("refusal for %s = %q; want it to name %q", testCase.name, stderr, testCase.want)
 			}
-			for _, secret := range []string{"dummy-scaleway-secret", "kodama_runtime:pw", "kodama_controller:pw"} {
+			for _, secret := range []string{"dummy-scaleway-secret", "kodema_runtime:pw", "kodema_controller:pw"} {
 				if strings.Contains(stderr, secret) {
 					t.Fatalf("refusal for %s rendered a configured secret", testCase.name)
 				}

@@ -1,28 +1,28 @@
 # PostgreSQL component support
 
 `pgtest` starts one pinned `docker.io/library/postgres:18-alpine` container per
-shard through the I02a harness, creates one `kodama` database, and exposes the
+shard through the I02a harness, creates one `kodema` database, and exposes the
 I01c pgx wrapper for every conformance read and write. Authentication is
 `trust` on the shard's private network only; containers are 1 CPU / 1 GiB and
 carry the harness cleanup labels.
 
 ## Bootstrap facts installation must provision
 
-- Migration `0001_roles.sql` creates `kodama_owner` as `NOLOGIN` and
-  `kodama_runtime` as the non-owner runtime login. `0001` does not grant the
+- Migration `0001_roles.sql` creates `kodema_owner` as `NOLOGIN` and
+  `kodema_runtime` as the non-owner runtime login. `0001` does not grant the
   owner `CREATE` on schema `public`, and PostgreSQL 15+ makes `public` owned by
   `pg_database_owner` with `CREATE` revoked from `PUBLIC`. A deployment that
-  applies migrations as the owner must therefore make `kodama_owner` the
-  database owner (`ALTER DATABASE ... OWNER TO kodama_owner`) or explicitly
+  applies migrations as the owner must therefore make `kodema_owner` the
+  database owner (`ALTER DATABASE ... OWNER TO kodema_owner`) or explicitly
   grant `CREATE ON SCHEMA public`. This runner does the former once, immediately
   after `0001`; the migration set itself cannot do it because the role does not
   exist before `0001` and the connecting administrator creates the database.
 - `0001` and `0009_system_roles.sql` run as the administrator because
   `CREATE ROLE` needs `CREATEROLE` and the owner is deliberately
   `NOCREATEROLE`. Every other migration runs through `SET LOCAL ROLE
-  kodama_owner` inside the wrapper transaction, so `0008`'s NO FORCE/FORCE
+  kodema_owner` inside the wrapper transaction, so `0008`'s NO FORCE/FORCE
   bracket is exercised as the non-bypass owner.
-- The migration ledger lives in the test-only `kodama_test_meta` schema, not
+- The migration ledger lives in the test-only `kodema_test_meta` schema, not
   `public`, so `0007`'s `GRANT ... ON ALL TABLES IN SCHEMA public` does not
   require the owner to have grant authority over a table it does not own.
   Re-running an applied identical migration is a no-op; a changed body is
@@ -66,9 +66,9 @@ separately prove the constraint exists in the frozen catalog.
 
 ## Evidence
 
-`KODAMA_EVIDENCE_DIR` is a **parent**: each test process resolves one unique
+`KODEMA_EVIDENCE_DIR` is a **parent**: each test process resolves one unique
 child `run-<pid>-<random>/` under it, publishes that actual run path to the
-harness through `KODAMA_EVIDENCE_DIR`, and writes everything for that process
+harness through `KODEMA_EVIDENCE_DIR`, and writes everything for that process
 there. Concurrent runs that share one parent therefore land in separate run
 directories instead of overwriting each other. When unset, the parent is the
 ignored `.harness/evidence/I02b` path, so no unowned source path is created.
@@ -84,7 +84,7 @@ staging path and readers never observe a partial document.
 ## Publisher effective protections (r11 observation)
 
 Production runs the event outbox **unscoped**: `internal/shell/store/postgres/outbox.go`
-uses `beginUnscoped` and never sets `kodama.tenant_id`/`project_id`. In that
+uses `beginUnscoped` and never sets `kodema.tenant_id`/`project_id`. In that
 shape the PUBLIC `events_scope FOR ALL` policy evaluates to NULL, so only the
 publisher's declared `any` SELECT and `publish_state IN ('pending','published')`
 UPDATE WITH CHECK admit rows. An out-of-set `publish_state` update is therefore
@@ -107,7 +107,7 @@ required regression test.
   UNIQUE before foreign keys; the frozen store vector's cross-scope seed was
   corrected. `TestMigrationsApplyOnEmptyDatabase` and
   `TestFrozenStoreVectorsOnPostgreSQL` cover both.
-- Fixed (C-ADAPTER r11, migration 0014): the declared `kodama_controller`
+- Fixed (C-ADAPTER r11, migration 0014): the declared `kodema_controller`
   INSERT policies on `events` and `audit` are rendered and present;
   `TestDeclaredControllerInsertPoliciesPresent` is the required proof.
 - Fixed (master fb876d7, P13): `Controller.Read` closes its rows iterator before

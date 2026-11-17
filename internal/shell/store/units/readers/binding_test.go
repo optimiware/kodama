@@ -5,16 +5,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/service"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/memory"
-	"github.com/optimiware/kodama/internal/shell/store/units/platform"
-	"github.com/optimiware/kodama/internal/shell/store/units/readers"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/verify"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/service"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/memory"
+	"github.com/optimiware/kodema/internal/shell/store/units/platform"
+	"github.com/optimiware/kodema/internal/shell/store/units/readers"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/verify"
 )
 
 // currentPrincipal resolves one presented actor credential.

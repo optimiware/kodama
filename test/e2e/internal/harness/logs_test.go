@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestHarnessLogReassemblyDecodesBase64Data proves retained chunks carry

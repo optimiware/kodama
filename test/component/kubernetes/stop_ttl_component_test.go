@@ -26,11 +26,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // finishedJobTTL returns a pointer for a Job spec TTL.
@@ -48,7 +48,7 @@ func TestSuspensionClearsFinishedJobTTL(t *testing.T) {
 	// cluster's TTL controller. If this never happened, the survival assertion
 	// below would prove nothing about the clear.
 	control, err := fx.Client.CreateJob(ctx, runtimekube.Job{
-		Name:      "kodama-ttl-control",
+		Name:      "kodema-ttl-control",
 		Namespace: fx.Namespace,
 		Spec: runtimekube.JobSpec{
 			Image:                   workloadImage,

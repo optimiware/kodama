@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/transport/mcp"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/transport/mcp"
 )
 
 // paddedMCPMessage pads one valid JSON-RPC message with insignificant JSON

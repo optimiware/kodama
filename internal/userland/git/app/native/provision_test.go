@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // provisionVersionExecutor scripts `git --version` and refuses every other

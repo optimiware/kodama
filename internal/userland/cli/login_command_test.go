@@ -15,17 +15,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 const (
 	commandIssuer = "https://issuer.example"
-	commandAPI    = "https://kodama.example.com"
+	commandAPI    = "https://kodema.example.com"
 	commandClient = "kodactl"
-	commandAud    = "kodama-api"
+	commandAud    = "kodema-api"
 
 	accessCanary  = "access-token-canary-1"
 	refreshCanary = "refresh-token-canary-1"
@@ -1088,7 +1088,7 @@ func TestRunHelperUsesRefreshingSessionSource(t *testing.T) {
 	if code != cli.ExitSuccess || errOut.Len() != 0 {
 		t.Fatalf("exit/stderr = %d/%q", code, errOut.String())
 	}
-	if out.String() != "username=kodama\npassword=fresh-helper-canary\n" {
+	if out.String() != "username=kodema\npassword=fresh-helper-canary\n" {
 		t.Fatalf("helper output = %q", out.String())
 	}
 	if len(oidc.tokenRequests()) != 1 {

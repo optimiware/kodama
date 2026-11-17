@@ -54,7 +54,7 @@ func TestConversationHandoffReadinessMarkerPrecedesPublish(t *testing.T) {
 
 	workspace := t.TempDir()
 	taskFile := filepath.Join(workspace, "task.json")
-	tokenFile := filepath.Join(workspace, "KODAMA_TOKEN")
+	tokenFile := filepath.Join(workspace, "KODEMA_TOKEN")
 	writeFile(t, taskFile, "[]\n")
 	writeFile(t, tokenFile, "hermetic-execution-token\n")
 
@@ -100,8 +100,8 @@ func TestConversationHandoffReadinessMarkerPrecedesPublish(t *testing.T) {
 		"SMOKE_WORKSPACE="+workspace,
 		"SMOKE_TASK_FILE="+taskFile,
 		"SMOKE_TOKEN_PATH="+tokenFile,
-		"KODAMA_EXECUTION=execution-hermetic",
-		"KODAMA_URL="+server.URL,
+		"KODEMA_EXECUTION=execution-hermetic",
+		"KODEMA_URL="+server.URL,
 	)
 	stdout := &syncBuffer{}
 	stderr := &syncBuffer{}

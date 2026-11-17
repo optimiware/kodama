@@ -5,12 +5,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func historyCommand(actor authorize.Principal, limit int, cursor string) task.HistoryCommand {

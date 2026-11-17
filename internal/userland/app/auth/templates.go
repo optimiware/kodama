@@ -214,12 +214,12 @@ var (
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in to Kodama</title>
+<title>Sign in to Kodema</title>
 <style>` + sharedStyles + `</style>
 </head>
 <body>
 <main>
-  <h1>Sign in to Kodama</h1>
+  <h1>Sign in to Kodema</h1>
   <p class="sub">Client <strong>{{.ClientID}}</strong> &middot; Tenant <strong>{{.TenantID}}</strong></p>
   {{if .ErrorMessage}}<div class="alert" role="alert">{{.ErrorMessage}}</div>{{end}}
 
@@ -281,7 +281,7 @@ var (
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Authorize Kodama Device</title>
+<title>Authorize Kodema Device</title>
 <style>` + sharedStyles + `</style>
 </head>
 <body>
@@ -392,7 +392,7 @@ var (
   <p class="sub">{{.Message}}</p>
   {{if .PrincipalID}}
   <div class="meta-box">
-    <div>Kodama Principal ID:</div>
+    <div>Kodema Principal ID:</div>
     <code class="pid">{{.PrincipalID}}</code>
     {{if .Subject}}<div style="margin-top:6px;">Subject: <code class="pid">{{.Subject}}</code></div>{{end}}
   </div>

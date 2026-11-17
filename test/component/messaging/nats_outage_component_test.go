@@ -9,11 +9,11 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	broker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/token"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	broker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/token"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // TestOutagePublicationBacklogCatchUp proves a broker outage turns publication

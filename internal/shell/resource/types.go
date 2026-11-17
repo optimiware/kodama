@@ -3,7 +3,7 @@
 //
 // A binding records a stable resource identity, its ownership scope, the
 // enforcing service, trusted endpoint origins, the operations the service may
-// verify and the event types it may report, plus bounded metadata. Kodama
+// verify and the event types it may report, plus bounded metadata. Kodema
 // stores metadata, not resource bytes, access rules or provisioning jobs. Each
 // change increments the binding version and commits audit and events with the
 // metadata change.
@@ -13,13 +13,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/service"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/service"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Binding metadata bounds. Metadata is bounded display/selector data, never

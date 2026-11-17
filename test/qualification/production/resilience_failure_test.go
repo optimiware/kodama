@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // resilienceExplicitInput names one probe input that is validated in the probe
@@ -271,7 +271,7 @@ func TestStageResilienceWorkloadPodLoss(t *testing.T) {
 		t.Fatalf("force-delete workload pod %q for execution %q: %v", pod, executionID, err)
 	}
 	_, err = (resilienceWaiter{Timeout: time.Minute}).Wait(ctx, func(ctx context.Context) (bool, error) {
-		names, err := stage.Cluster.PodNames(ctx, config.TenantNamespace, "kodama.dev/execution="+executionID)
+		names, err := stage.Cluster.PodNames(ctx, config.TenantNamespace, "kodema.dev/execution="+executionID)
 		if err != nil {
 			return false, nil
 		}
@@ -419,7 +419,7 @@ func TestStageResilienceCleanupCrashAttribution(t *testing.T) {
 	// while pre-stop log checkpointing retains the marker.
 	time.Sleep(2 * time.Second)
 
-	beforePods, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodamaSelector)
+	beforePods, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodemaSelector)
 	if err != nil || len(beforePods) != 1 {
 		t.Fatalf("controller pods before the cleanup crash for execution %q = %v, err = %v; want one", executionID, beforePods, err)
 	}
@@ -481,7 +481,7 @@ func TestStageResilienceCleanupCrashAttribution(t *testing.T) {
 	// credited. With a forced deletion this is immediate; a pod that outlives
 	// the bound leaves the attribution unprovable.
 	_, err = (resilienceWaiter{Timeout: 2 * time.Minute}).Wait(ctx, func(ctx context.Context) (bool, error) {
-		names, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodamaSelector)
+		names, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodemaSelector)
 		if err != nil {
 			return false, nil
 		}
@@ -498,7 +498,7 @@ func TestStageResilienceCleanupCrashAttribution(t *testing.T) {
 	}
 	replacement := ""
 	_, err = (resilienceWaiter{Timeout: 4 * time.Minute}).Wait(ctx, func(ctx context.Context) (bool, error) {
-		names, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodamaSelector)
+		names, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodemaSelector)
 		if err != nil {
 			return false, nil
 		}
@@ -560,7 +560,7 @@ func TestStageResilienceCleanupCrashAttribution(t *testing.T) {
 		t.Fatalf("completed cleanup for execution %q is not the pre-crash obligation: %v; pre-crash %+v, completed %+v",
 			executionID, err, snapshot.Cleanup, completed.Cleanup)
 	}
-	surviving, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodamaSelector)
+	surviving, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodemaSelector)
 	if err != nil {
 		t.Fatalf("read the controller pods after the attributed cleanup of execution %q: %v", executionID, err)
 	}
@@ -629,7 +629,7 @@ func TestStageResilienceGitDependencyOutage(t *testing.T) {
 	if err := guard.Scale(ctx, ReleaseNamespace, "statefulsets", config.GitServiceA, 0); err != nil {
 		t.Fatalf("scale tenant Git statefulset %q to zero: %v", config.GitServiceA, err)
 	}
-	selector := "app.kubernetes.io/name=kodama,app.kubernetes.io/component=git-service,kodama.dev/tenant=" + config.TenantID
+	selector := "app.kubernetes.io/name=kodema,app.kubernetes.io/component=git-service,kodema.dev/tenant=" + config.TenantID
 	_, err = (resilienceWaiter{Timeout: 2 * time.Minute}).Wait(ctx, func(ctx context.Context) (bool, error) {
 		names, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, selector)
 		if err != nil {

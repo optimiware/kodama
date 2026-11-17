@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/agent"
-	"github.com/optimiware/kodama/internal/userland/agent/app"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/agent"
+	"github.com/optimiware/kodema/internal/userland/agent/app"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // nativeHandoffModel is the deterministic ModelPort fixture for the handoff.

@@ -1,7 +1,7 @@
 # Delivery examples
 
 These recipes show how a project ships bytes from an **external registry** and
-promotes them without Kodama owning the image store.
+promotes them without Kodema owning the image store.
 
 ## Registry ownership
 
@@ -10,9 +10,9 @@ bytes there first and then submits a digest-pinned declared output. Every image
 reference is pinned as `repository@sha256:<digest>`; a mutable tag is never an
 admitted reference.
 
-An image digest is an ordinary output value, not a kodama entity. There is no
+An image digest is an ordinary output value, not a kodema entity. There is no
 artifact table, registration API or catalog: artifacts are strings that point at
-external registry bytes. Kodama attributes the exact candidate and digest that a
+external registry bytes. Kodema attributes the exact candidate and digest that a
 recipe claims, but the registry owner remains authoritative for publication.
 
 ## Promotion
@@ -55,10 +55,10 @@ or a healthy deployment.
 
 ## Unshadowable execution context
 
-The Shell supplies `KODAMA_URL`, `KODAMA_EXECUTION` and `KODAMA_ACTION` (the
-current action slug) to every action. `KODAMA_TASK` carries the associated task
+The Shell supplies `KODEMA_URL`, `KODEMA_EXECUTION` and `KODEMA_ACTION` (the
+current action slug) to every action. `KODEMA_TASK` carries the associated task
 ID and is present only when the execution has an associated task; it is unset
 for task-free runs such as [plain](../pipelines/plain.yaml). Those names cannot
 be declared in pipeline or action env. The execution credential is mounted as
-`KODAMA_TOKEN`; stored secret names cannot shadow it and values never appear in
+`KODEMA_TOKEN`; stored secret names cannot shadow it and values never appear in
 logs, events or receipts.

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 type recorderResponse struct {
@@ -40,7 +40,7 @@ func helperBackend(t *testing.T) *HTTPBackend {
 	t.Helper()
 	backend, err := NewHTTPBackend(BackendConfig{
 		GitPath: os.Args[0],
-		Env:     append(MinimalEnvironment(), "KODAMA_GIT_EXEC_HELPER=1"),
+		Env:     append(MinimalEnvironment(), "KODEMA_GIT_EXEC_HELPER=1"),
 	})
 	if err != nil {
 		t.Fatalf("NewHTTPBackend: %v", err)
@@ -90,8 +90,8 @@ func TestHTTPBackendServesPostService(t *testing.T) {
 		Repository: "repo",
 		Path:       repository,
 		Environment: []string{
-			"KODAMA_ACTOR_REF=handle-1",
-			"KODAMA_SOURCE_EVENT=event-1",
+			"KODEMA_ACTOR_REF=handle-1",
+			"KODEMA_SOURCE_EVENT=event-1",
 		},
 		Headers: http.Header{"Content-Type": []string{"application/x-git-receive-pack-request"}},
 	}, strings.NewReader("payload"), response)
@@ -115,7 +115,7 @@ func TestHTTPBackendServesPostService(t *testing.T) {
 func TestHTTPBackendRefusesOversizedBody(t *testing.T) {
 	backend, err := NewHTTPBackend(BackendConfig{
 		GitPath:      os.Args[0],
-		Env:          append(MinimalEnvironment(), "KODAMA_GIT_EXEC_HELPER=1"),
+		Env:          append(MinimalEnvironment(), "KODEMA_GIT_EXEC_HELPER=1"),
 		MaxBodyBytes: 4,
 	})
 	if err != nil {
@@ -146,7 +146,7 @@ func TestHTTPBackendKeepsExplicitEmptyEnvironmentNonNil(t *testing.T) {
 
 // TestKeepRefHideEnvironmentHidesBothAdvertisementDirections pins the exact
 // pinned Git configuration the served backend receives: upload-pack and
-// transfer both hide the whole refs/kodama namespace, so a client can neither
+// transfer both hide the whole refs/kodema namespace, so a client can neither
 // fetch retention bookkeeping nor discover it in a ref advertisement.
 func TestKeepRefHideEnvironmentHidesBothAdvertisementDirections(t *testing.T) {
 	environment := KeepRefHideEnvironment()
@@ -167,8 +167,8 @@ func TestKeepRefHideEnvironmentHidesBothAdvertisementDirections(t *testing.T) {
 		if values[name] != key {
 			t.Fatalf("%s = %q; want %q", name, values[name], key)
 		}
-		if values[value] != "refs/kodama" {
-			t.Fatalf("%s = %q; want refs/kodama", value, values[value])
+		if values[value] != "refs/kodema" {
+			t.Fatalf("%s = %q; want refs/kodema", value, values[value])
 		}
 	}
 }
@@ -196,7 +196,7 @@ func TestHTTPBackendSpoolsLargeRequestBodyAndBoundsBeforeChild(t *testing.T) {
 	const bodySize = (1 << 20) + 8192
 	backend, err := NewHTTPBackend(BackendConfig{
 		GitPath:      os.Args[0],
-		Env:          append(MinimalEnvironment(), "KODAMA_GIT_EXEC_HELPER=1", "KODAMA_HELPER_READ_STDIN=1"),
+		Env:          append(MinimalEnvironment(), "KODEMA_GIT_EXEC_HELPER=1", "KODEMA_HELPER_READ_STDIN=1"),
 		MaxBodyBytes: bodySize,
 	})
 	if err != nil {
@@ -240,7 +240,7 @@ func TestHTTPBackendStreamsLargeResponseAndEnforcesMaxResponseBytes(t *testing.T
 	t.Run("small bound refuses before WriteHeader", func(t *testing.T) {
 		backend, err := NewHTTPBackend(BackendConfig{
 			GitPath:          os.Args[0],
-			Env:              append(MinimalEnvironment(), "KODAMA_GIT_EXEC_HELPER=1"),
+			Env:              append(MinimalEnvironment(), "KODEMA_GIT_EXEC_HELPER=1"),
 			MaxResponseBytes: 32,
 		})
 		if err != nil {
@@ -266,8 +266,8 @@ func TestHTTPBackendStreamsLargeResponseAndEnforcesMaxResponseBytes(t *testing.T
 		backend, err := NewHTTPBackend(BackendConfig{
 			GitPath: os.Args[0],
 			Env: append(MinimalEnvironment(),
-				"KODAMA_GIT_EXEC_HELPER=1",
-				"KODAMA_HELPER_BODY_SIZE="+strconv.Itoa(streamBody),
+				"KODEMA_GIT_EXEC_HELPER=1",
+				"KODEMA_HELPER_BODY_SIZE="+strconv.Itoa(streamBody),
 			),
 			MaxResponseBytes: streamBody + (64 << 10),
 		})

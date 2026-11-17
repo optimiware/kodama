@@ -4,28 +4,28 @@
 
 Added:
 
-- `install.sh`: one command installs `kodama` and `kodactl` into
+- `install.sh`: one command installs `kodema` and `kodactl` into
   `~/.local/bin` on Linux and macOS, amd64 and arm64, with no checkout and no
-  Go: `curl -fsSL https://raw.githubusercontent.com/optimiware/kodama/master/install.sh | sh`.
+  Go: `curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | sh`.
   It installs nothing unless both downloads match the release's `SHA256SUMS`.
-- Releases attach a `kodama` archive per platform, beside the `kodactl`
-  archives. `kodama up` pulls the released image of its version, so the
-  quick start is the installer and `kodama up`.
+- Releases attach a `kodema` archive per platform, beside the `kodactl`
+  archives. `kodema up` pulls the released image of its version, so the
+  quick start is the installer and `kodema up`.
 
 Known limitations:
 
-- `install.sh` installs 0.2.1 or newer; earlier releases have no `kodama`
+- `install.sh` installs 0.2.1 or newer; earlier releases have no `kodema`
   archive.
-- The macOS binaries are built and have not been run. `kodama up` has run on
+- The macOS binaries are built and have not been run. `kodema up` has run on
   Linux only.
 
 ## 0.2.0
 
 Added:
 
-- `kodama up`: a complete local Kodama on rootless Podman in one command
+- `kodema up`: a complete local Kodema on rootless Podman in one command
   (PostgreSQL, NATS, the server, Git, a built-in sign-in), with its project,
-  roles and credentials ready. `kodama down` and `kodama status` go with it.
+  roles and credentials ready. `kodema down` and `kodema status` go with it.
   See the [quickstart](docs/runbooks/quickstart.md).
 - `kodactl run <file>`: runs a pipeline file, follows it to its end and prints
   its output and outcome.
@@ -37,8 +37,8 @@ Added:
   unauthenticated tool call.
 - Discovery operations: `principal.whoami` and list operations for projects,
   pipelines, tasks, bindings and services. A read accepts an empty body.
-- A built-in OIDC provider and social sign-in broker (`kodama auth serve`),
-  and `kodama auth principal-id`.
+- A built-in OIDC provider and social sign-in broker (`kodema auth serve`),
+  and `kodema auth principal-id`.
 - Git: a new repository is served without restarting `git serve`; a push
   trigger may name a ref prefix ending in `/`.
 - A streaming model proxy for workloads, and the installation CA mounted into
@@ -81,15 +81,15 @@ Fixed:
 
 Known limitations:
 
-- `kodama up` needs Podman; it refuses a Docker engine, because workloads run
+- `kodema up` needs Podman; it refuses a Docker engine, because workloads run
   through the Podman API. It has run on Linux only.
-- `kodama` is published as an image, not as a binary: `kodama up` is built
+- `kodema` is published as an image, not as a binary: `kodema up` is built
   from a checkout with `make build`.
-- `kodama up` writes two administrator credentials that last 24 hours, and a
+- `kodema up` writes two administrator credentials that last 24 hours, and a
   Git service credential that lasts 8 hours. Running it again renews them.
   The default credential is scoped to the project; membership administration
-  needs the tenant-scoped one in `KODAMA_TENANT_ADMIN_CREDENTIAL_FILE`.
-- The built-in sign-in of `kodama up` asks for no password and answers its
+  needs the tenant-scoped one in `KODEMA_TENANT_ADMIN_CREDENTIAL_FILE`.
+- The built-in sign-in of `kodema up` asks for no password and answers its
   own machine only. On Linux the gateway listens on every address and refuses
   peers that are not this machine.
 - `kodactl run` prints a workload's output when the execution ends, not while
@@ -97,7 +97,7 @@ Known limitations:
 - An unauthenticated MCP `tools/list` answers 200; only tool calls answer 401.
 - The workload model proxy forwards any path of a configured provider; it has
   no model or endpoint allowlist.
-- `kodama auth serve` does not limit the rate of sign-in attempts or client
+- `kodema auth serve` does not limit the rate of sign-in attempts or client
   registrations.
 - This is the first release the new release workflow publishes. Its
   `linux/arm64` image is built and has not been run.

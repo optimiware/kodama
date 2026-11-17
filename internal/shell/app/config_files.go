@@ -2,8 +2,8 @@ package app
 
 // Trusted-file configuration of the optional Shell gateways.
 //
-// `kodama server` reads the model gateway and the external MCP tool proxy from
-// operator-owned files named by KODAMA_MODELS_FILE and KODAMA_TOOL_PROXY_FILE.
+// `kodema server` reads the model gateway and the external MCP tool proxy from
+// operator-owned files named by KODEMA_MODELS_FILE and KODEMA_TOOL_PROXY_FILE.
 // The files are trusted configuration: they carry project scopes, provider or
 // upstream endpoints, secret names and bounds, never a secret value, a
 // permission or a transport. An unnamed surface stays disabled with the
@@ -23,19 +23,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/gateway"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/gateway"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 const (
 	// ModelsFileSetting names the trusted model-gateway configuration file.
-	ModelsFileSetting = "KODAMA_MODELS_FILE"
+	ModelsFileSetting = "KODEMA_MODELS_FILE"
 	// ToolProxyFileSetting names the trusted external MCP tool-proxy
 	// configuration file.
-	ToolProxyFileSetting = "KODAMA_TOOL_PROXY_FILE"
+	ToolProxyFileSetting = "KODEMA_TOOL_PROXY_FILE"
 
 	// ToolArgumentValidatorJSONObject is the configured argument validator that
 	// admits exactly one JSON object. It is the only validator a file may name;
@@ -56,7 +56,7 @@ const (
 // a sentinel so the caller can keep the dedicated trailing-content refusal.
 var errTrustedConfigTrailing = errors.New("trailing content after the document")
 
-// modelsFile is the strict JSON shape of KODAMA_MODELS_FILE.
+// modelsFile is the strict JSON shape of KODEMA_MODELS_FILE.
 type modelsFile struct {
 	Models      []modelFile         `json:"models"`
 	Providers   []modelProviderFile `json:"providers"`
@@ -93,7 +93,7 @@ type modelProviderFile struct {
 	Timeout          string `json:"timeout"`
 }
 
-// toolProxyFile is the strict JSON shape of KODAMA_TOOL_PROXY_FILE.
+// toolProxyFile is the strict JSON shape of KODEMA_TOOL_PROXY_FILE.
 type toolProxyFile struct {
 	Projects    []toolProjectFile `json:"projects"`
 	SecretRules []secretRuleFile  `json:"secret_rules"`

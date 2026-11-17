@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/authorize"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/authorize"
 )
 
 // schemaObject asserts that value is a JSON object and returns it.

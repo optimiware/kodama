@@ -17,36 +17,36 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/runtime"
 )
 
 // Pinned manifest vocabulary shared by the generated manifests and the pod
 // selectors, so a tenant network policy and the adapter agree.
 const (
 	// LabelTenant names the owning tenant.
-	LabelTenant = "kodama.dev/tenant"
+	LabelTenant = "kodema.dev/tenant"
 	// LabelExecution names the execution.
-	LabelExecution = "kodama.dev/execution"
+	LabelExecution = "kodema.dev/execution"
 	// LabelAction names the action.
-	LabelAction = "kodama.dev/action"
+	LabelAction = "kodema.dev/action"
 	// LabelWorkload names the stable runtime workload identity.
-	LabelWorkload = "kodama.dev/workload"
+	LabelWorkload = "kodema.dev/workload"
 	// LabelWorkspace names the retained execution workspace.
-	LabelWorkspace = "kodama.dev/workspace"
+	LabelWorkspace = "kodema.dev/workspace"
 	// LabelRetained marks a workspace claim whose retention must survive a
 	// stale release.
-	LabelRetained = "kodama.dev/retained"
+	LabelRetained = "kodema.dev/retained"
 	// LabelPreparation carries the deterministic preparation declaration
 	// digest on the immutable activation ConfigMap.
-	LabelPreparation = "kodama.dev/preparation"
+	LabelPreparation = "kodema.dev/preparation"
 	// AnnotationIdempotencyKey carries the persisted idempotency key so a
 	// retry can be attributed to the original effect.
-	AnnotationIdempotencyKey = "kodama.dev/idempotency-key"
+	AnnotationIdempotencyKey = "kodema.dev/idempotency-key"
 	// AnnotationRetained carries the durable workspace-retention marker.
-	AnnotationRetained = "kodama.dev/retained"
+	AnnotationRetained = "kodema.dev/retained"
 )
 
 const (
@@ -62,7 +62,7 @@ const (
 	// bundle. Secret keys are not path-encoded.
 	WorkloadCAKey = "ca.crt"
 	// WorkloadCAMountPath is the fixed read-only mount root of the workload CA.
-	WorkloadCAMountPath = "/etc/kodama/ca"
+	WorkloadCAMountPath = "/etc/kodema/ca"
 	// WorkloadCAPath is the fixed absolute path of the mounted CA bundle.
 	WorkloadCAPath = WorkloadCAMountPath + "/" + WorkloadCAKey
 )
@@ -103,8 +103,8 @@ type Config struct {
 	Namespace string
 	// TenantID is the tenant ownership label expected on that namespace.
 	TenantID id.TenantID
-	// KodamaURL is the reserved KODAMA_URL value injected into workloads.
-	KodamaURL string
+	// KodemaURL is the reserved KODEMA_URL value injected into workloads.
+	KodemaURL string
 	// Policy carries the tenant resource limits and finished-Job TTL.
 	Policy Policy
 	// Cleanup bounds cleanup attempts per Remove call.
@@ -376,7 +376,7 @@ type Adapter struct {
 	cluster          Cluster
 	namespace        string
 	tenant           id.TenantID
-	kodamaURL        string
+	kodemaURL        string
 	policy           Policy
 	cleanup          CleanupPolicy
 	workloadCA       WorkloadCAConfig
@@ -411,8 +411,8 @@ func New(config Config) (*Adapter, error) {
 	if _, err := id.ParseTenantID(string(config.TenantID)); err != nil {
 		return nil, fault.Wrap(fault.InvalidInput, "kubernetes adapter tenant id is invalid", err)
 	}
-	if strings.TrimSpace(config.KodamaURL) == "" {
-		return nil, fault.New(fault.InvalidInput, "kubernetes adapter requires the Kodama URL")
+	if strings.TrimSpace(config.KodemaURL) == "" {
+		return nil, fault.New(fault.InvalidInput, "kubernetes adapter requires the Kodema URL")
 	}
 	for name, value := range map[string]string{
 		"cpu request":    config.Policy.CPURequest,
@@ -449,7 +449,7 @@ func New(config Config) (*Adapter, error) {
 		cluster:          config.Cluster,
 		namespace:        config.Namespace,
 		tenant:           config.TenantID,
-		kodamaURL:        config.KodamaURL,
+		kodemaURL:        config.KodemaURL,
 		policy:           config.Policy,
 		cleanup:          config.Cleanup,
 		workloadCA:       config.WorkloadCA,
@@ -551,7 +551,7 @@ func WorkspaceClaimName(workspace id.WorkspaceID) (string, error) {
 	if _, err := id.ParseWorkspaceID(string(workspace)); err != nil {
 		return "", fault.Wrap(fault.InvalidInput, "workspace id is invalid", err)
 	}
-	return "kodama-workspace-" + stableDigest(string(workspace)), nil
+	return "kodema-workspace-" + stableDigest(string(workspace)), nil
 }
 
 // stableDigest returns a short deterministic, DNS-safe digest of a stable

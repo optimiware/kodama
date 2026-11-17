@@ -77,9 +77,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // TestInClusterConfigurationRequiresHTTPSCAAndToken proves an in-cluster
@@ -495,7 +495,7 @@ func TestInClusterTrustAndCredentialConfinement(t *testing.T) {
 
 	t.Run("wrong server name", func(t *testing.T) {
 		const token = "tok-wrong-san"
-		certificate, caPEM := serverCertificate(t, []string{"api.kodama.test"}, nil)
+		certificate, caPEM := serverCertificate(t, []string{"api.kodema.test"}, nil)
 		api := newAPIWithTLS(t, func(http.ResponseWriter, *http.Request) {
 			t.Error("request reached a server whose certificate does not cover the endpoint")
 		}, &tls.Config{Certificates: []tls.Certificate{certificate}})
@@ -556,7 +556,7 @@ func TestInClusterTrustAndCredentialConfinement(t *testing.T) {
 		// so the in-cluster request below is a real test of the driver's
 		// Proxy=nil transport rather than a cache miss.
 		control := &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment}}
-		response, err := control.Get("http://proxy-probe.kodama.invalid/")
+		response, err := control.Get("http://proxy-probe.kodema.invalid/")
 		if err != nil {
 			t.Fatalf("control request through the proxy: %v", err)
 		}
@@ -596,7 +596,7 @@ func TestInClusterTrustAndCredentialConfinement(t *testing.T) {
 
 // kubeProxyChildEnv marks the isolated child process that runs the environment
 // proxy subtest. It also stops that child from spawning another child.
-const kubeProxyChildEnv = "KODAMA_KUBE_PROXY_TEST_CHILD"
+const kubeProxyChildEnv = "KODEMA_KUBE_PROXY_TEST_CHILD"
 
 // environmentProxySubtest is exactly the subtest the child executes.
 const environmentProxySubtest = "^TestInClusterTrustAndCredentialConfinement$/^environment_proxy$"
@@ -883,7 +883,7 @@ func serverCertificate(t *testing.T, dnsNames []string, ips []net.IP) (tls.Certi
 	}
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "kodama-test-api"},
+		Subject:               pkix.Name{CommonName: "kodema-test-api"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,

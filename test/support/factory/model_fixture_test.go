@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 const (

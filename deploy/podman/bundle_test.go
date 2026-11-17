@@ -68,7 +68,7 @@ func runBash(t *testing.T, env map[string]string, script string, args ...string)
 		}
 	}
 	delete(merged, "XDG_STATE_HOME")
-	delete(merged, "KODAMA_LOCAL_STATE_DIR")
+	delete(merged, "KODEMA_LOCAL_STATE_DIR")
 	maps.Copy(merged, env)
 	environment := make([]string, 0, len(merged))
 	for key, value := range merged {
@@ -108,8 +108,8 @@ func shellEnv(t *testing.T, prefix string) map[string]string {
 	state := filepath.Join(home, "state")
 	return map[string]string{
 		"HOME":                   home,
-		"KODAMA_LOCAL_PREFIX":    prefix,
-		"KODAMA_LOCAL_STATE_DIR": state,
+		"KODEMA_LOCAL_PREFIX":    prefix,
+		"KODEMA_LOCAL_STATE_DIR": state,
 	}
 }
 
@@ -159,8 +159,8 @@ func TestInstallKeepsSecretsOutOfArgv(t *testing.T) {
 	}
 	forbidden := []string{
 		"POSTGRES_PASSWORD=",
-		"KODAMA_ADMIN_DATABASE_URL=",
-		"KODAMA_DATABASE_URL=",
+		"KODEMA_ADMIN_DATABASE_URL=",
+		"KODEMA_DATABASE_URL=",
 		"OAUTHSONAS_ACCESS_CODE=",
 	}
 	for _, pattern := range forbidden {
@@ -191,7 +191,7 @@ func TestInstallKeepsSecretsOutOfArgv(t *testing.T) {
 // prunes the host or removes a computed path with rm -rf.
 func TestDownRemovesOnlyOwnResources(t *testing.T) {
 	down := readFile(t, filepath.Join(bundleRoot(t), "down.sh"))
-	if !strings.Contains(down, "label=kodama.local.prefix=") {
+	if !strings.Contains(down, "label=kodema.local.prefix=") {
 		t.Fatal("down.sh does not select containers by the installation label")
 	}
 	for _, forbidden := range []string{
@@ -226,16 +226,16 @@ func TestInstallAndStatusAreConfigurable(t *testing.T) {
 	install := readFile(t, filepath.Join(bundleRoot(t), "install.sh"))
 	status := readFile(t, filepath.Join(bundleRoot(t), "status.sh"))
 	for _, name := range []string{
-		"KODAMA_LOCAL_PREFIX",
-		"KODAMA_LOCAL_STATE_DIR",
-		"KODAMA_LOCAL_HTTPS_PORT",
-		"KODAMA_LOCAL_OIDC_PORT",
-		"KODAMA_LOCAL_GIT_PORT",
-		"KODAMA_LOCAL_GIT_HTTPS_PORT",
-		"KODAMA_LOCAL_POSTGRES_PORT",
-		"KODAMA_LOCAL_NATS_PORT",
-		"KODAMA_LOCAL_TENANT",
-		"KODAMA_LOCAL_WORKLOAD_IMAGE",
+		"KODEMA_LOCAL_PREFIX",
+		"KODEMA_LOCAL_STATE_DIR",
+		"KODEMA_LOCAL_HTTPS_PORT",
+		"KODEMA_LOCAL_OIDC_PORT",
+		"KODEMA_LOCAL_GIT_PORT",
+		"KODEMA_LOCAL_GIT_HTTPS_PORT",
+		"KODEMA_LOCAL_POSTGRES_PORT",
+		"KODEMA_LOCAL_NATS_PORT",
+		"KODEMA_LOCAL_TENANT",
+		"KODEMA_LOCAL_WORKLOAD_IMAGE",
 	} {
 		if !strings.Contains(install, name) || !strings.Contains(status, name) {
 			t.Fatalf("%s is not documented as configurable by install.sh and status.sh", name)
@@ -273,15 +273,15 @@ func TestBundleDefaultsAreDigestPinned(t *testing.T) {
 	if strings.Contains(lib, ":latest") {
 		t.Fatal("lib.sh uses a :latest image tag")
 	}
-	if !strings.Contains(lib, "kodama/podman/${PREFIX}") {
+	if !strings.Contains(lib, "kodema/podman/${PREFIX}") {
 		t.Fatal("the default state directory does not include the installation prefix")
 	}
 	for _, portVariable := range []string{
-		"KODAMA_LOCAL_HTTPS_PORT",
-		"KODAMA_LOCAL_OIDC_PORT",
-		"KODAMA_LOCAL_GIT_PORT",
-		"KODAMA_LOCAL_POSTGRES_PORT",
-		"KODAMA_LOCAL_NATS_PORT",
+		"KODEMA_LOCAL_HTTPS_PORT",
+		"KODEMA_LOCAL_OIDC_PORT",
+		"KODEMA_LOCAL_GIT_PORT",
+		"KODEMA_LOCAL_POSTGRES_PORT",
+		"KODEMA_LOCAL_NATS_PORT",
 	} {
 		if !strings.Contains(lib, portVariable) {
 			t.Fatalf("lib.sh does not declare %s", portVariable)
@@ -337,7 +337,7 @@ func TestGitResourcesValidation(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		env := shellEnv(t, "resources-test")
-		env["KODAMA_LOCAL_GIT_RESOURCES"] = testCase.value
+		env["KODEMA_LOCAL_GIT_RESOURCES"] = testCase.value
 		_, _, code := runBash(t, env, script, lib)
 		if testCase.ok && code != 0 {
 			t.Fatalf("valid GIT_RESOURCES %q was refused", testCase.value)
@@ -388,7 +388,7 @@ if check_state_dir "$1" "$2" "$3"; then exit 0; else exit 1; fi`
 	}
 
 	foreign := t.TempDir()
-	if err := os.WriteFile(filepath.Join(foreign, ".kodama-local"), []byte("prefix=other-install\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(foreign, ".kodema-local"), []byte("prefix=other-install\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, code := runBash(t, env, script, lib, foreign, "marker-test", "install"); code == 0 {
@@ -399,7 +399,7 @@ if check_state_dir "$1" "$2" "$3"; then exit 0; else exit 1; fi`
 	}
 
 	matching := t.TempDir()
-	if err := os.WriteFile(filepath.Join(matching, ".kodama-local"), []byte("prefix=marker-test\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(matching, ".kodema-local"), []byte("prefix=marker-test\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, code := runBash(t, env, script, lib, matching, "marker-test", "install"); code != 0 {
@@ -418,7 +418,7 @@ if check_state_dir "$1" "$2" "$3"; then exit 0; else exit 1; fi`
 	}
 
 	multi := t.TempDir()
-	if err := os.WriteFile(filepath.Join(multi, ".kodama-local"), []byte("prefix=marker-test\nextra\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(multi, ".kodema-local"), []byte("prefix=marker-test\nextra\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, code := runBash(t, env, script, lib, multi, "marker-test", "install"); code == 0 {
@@ -430,20 +430,20 @@ if check_state_dir "$1" "$2" "$3"; then exit 0; else exit 1; fi`
 }
 
 // TestInstallConfiguresDiscoveryEndpoints pins that install.sh wires every
-// KODAMA_DISCOVERY_* setting into the server environment so
-// GET /.well-known/kodama-configuration is served and interactive login works.
+// KODEMA_DISCOVERY_* setting into the server environment so
+// GET /.well-known/kodema-configuration is served and interactive login works.
 func TestInstallConfiguresDiscoveryEndpoints(t *testing.T) {
 	install := readFile(t, filepath.Join(bundleRoot(t), "install.sh"))
 	for _, entry := range []string{
-		"KODAMA_DISCOVERY_ISSUER=${OIDC_ISSUER}",
-		"KODAMA_DISCOVERY_CLIENT_ID=${OIDC_CLIENT_ID}",
-		"KODAMA_DISCOVERY_AUDIENCE=${OIDC_AUDIENCE}",
-		"KODAMA_DISCOVERY_AUTHORIZATION_ENDPOINT=${DISCOVERY_AUTHORIZATION_ENDPOINT}",
-		"KODAMA_DISCOVERY_TOKEN_ENDPOINT=${DISCOVERY_TOKEN_ENDPOINT}",
-		"KODAMA_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT=${DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT}",
-		"KODAMA_DISCOVERY_REVOCATION_ENDPOINT=${DISCOVERY_REVOCATION_ENDPOINT}",
-		"KODAMA_DISCOVERY_SCOPES=${DISCOVERY_SCOPES}",
-		"KODAMA_DISCOVERY_API_URL=${PUBLIC_URL}",
+		"KODEMA_DISCOVERY_ISSUER=${OIDC_ISSUER}",
+		"KODEMA_DISCOVERY_CLIENT_ID=${OIDC_CLIENT_ID}",
+		"KODEMA_DISCOVERY_AUDIENCE=${OIDC_AUDIENCE}",
+		"KODEMA_DISCOVERY_AUTHORIZATION_ENDPOINT=${DISCOVERY_AUTHORIZATION_ENDPOINT}",
+		"KODEMA_DISCOVERY_TOKEN_ENDPOINT=${DISCOVERY_TOKEN_ENDPOINT}",
+		"KODEMA_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT=${DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT}",
+		"KODEMA_DISCOVERY_REVOCATION_ENDPOINT=${DISCOVERY_REVOCATION_ENDPOINT}",
+		"KODEMA_DISCOVERY_SCOPES=${DISCOVERY_SCOPES}",
+		"KODEMA_DISCOVERY_API_URL=${PUBLIC_URL}",
 	} {
 		if !strings.Contains(install, entry) {
 			t.Fatalf("install.sh omits %q from the server environment", entry)
@@ -489,7 +489,7 @@ func TestDefaultStateDirIncludesPrefix(t *testing.T) {
 	home := t.TempDir()
 	env := map[string]string{
 		"HOME":                home,
-		"KODAMA_LOCAL_PREFIX": "prefix-test",
+		"KODEMA_LOCAL_PREFIX": "prefix-test",
 	}
 	script := `set -euo pipefail
 . "$1"
@@ -498,7 +498,7 @@ printf '%s\n' "$STATE_DIR"`
 	if code != 0 {
 		t.Fatalf("sourcing lib.sh failed: %s %s", out, errOut)
 	}
-	want := filepath.Join(home, ".local/state/kodama/podman/prefix-test")
+	want := filepath.Join(home, ".local/state/kodema/podman/prefix-test")
 	if strings.TrimSpace(out) != want {
 		t.Fatalf("default state directory = %q; want %q", strings.TrimSpace(out), want)
 	}
@@ -533,14 +533,14 @@ func TestCredentialRefreshIsSupported(t *testing.T) {
 	}
 }
 
-func TestBundleIsLinkedFromDeployAndKodama(t *testing.T) {
+func TestBundleIsLinkedFromDeployAndKodema(t *testing.T) {
 	deployReadme := readFile(t, filepath.Join(repoRoot(t), "deploy", "README.md"))
 	if !strings.Contains(deployReadme, "docs/runbooks/podman-quickstart.md") {
 		t.Fatal("deploy/README.md does not link the Podman quickstart")
 	}
-	product := readFile(t, filepath.Join(repoRoot(t), "KODAMA.md"))
+	product := readFile(t, filepath.Join(repoRoot(t), "KODEMA.md"))
 	if !strings.Contains(product, "docs/runbooks/podman-quickstart.md") {
-		t.Fatal("KODAMA.md does not link the Podman quickstart from the test environment")
+		t.Fatal("KODEMA.md does not link the Podman quickstart from the test environment")
 	}
 }
 
@@ -617,7 +617,7 @@ func TestQuickstartNeverRedeclaresTheProvisionedRepository(t *testing.T) {
 	// Prove the detector catches the exact defect: a heredoc that appends
 	// a second block for the repository provision-repository just declared.
 	broken := "```sh\n" +
-		"podman exec server kodama git provision-repository --tenant t --storage-root s --repository demo --resource git-demo\n" +
+		"podman exec server kodema git provision-repository --tenant t --storage-root s --repository demo --resource git-demo\n" +
 		"```\n\n" +
 		"```sh\n" +
 		"cat >> conf/git.conf <<'EOF'\n\nrepo demo\n    RW+ = @admin\nEOF\n" +
@@ -843,7 +843,7 @@ func TestRunbookCoversTheInstallSequence(t *testing.T) {
 	runbook := readFile(t, filepath.Join(repoRoot(t), "docs", "runbooks", "podman-quickstart.md"))
 	for _, command := range []string{
 		"./deploy/podman/install.sh",
-		"kodama migrate",
+		"kodema migrate",
 		"bootstrap-admin --profile test --init-keyfile",
 		"scripts/oauthsonas-token",
 		"git provision-tenant",

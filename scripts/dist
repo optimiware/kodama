@@ -5,10 +5,10 @@
 #
 # For the version in the VERSION file it writes, into dist/ by default:
 #
-#   kodama_<version>_<os>_<arch>.tar.gz    kodama and LICENSE, one per platform
+#   kodema_<version>_<os>_<arch>.tar.gz    kodema and LICENSE, one per platform
 #   kodactl_<version>_<os>_<arch>.tar.gz   kodactl and LICENSE, one per platform
-#   kodama-<version>.tgz                   the control-plane Helm chart
-#   kodama-stack-<version>.tgz             the stack Helm chart (bundles kodama)
+#   kodema-<version>.tgz                   the control-plane Helm chart
+#   kodema-stack-<version>.tgz             the stack Helm chart (bundles kodema)
 #   SHA256SUMS                             digests of every file above
 #
 # DIST_PLATFORMS overrides the platforms (space-separated os/arch). install.sh
@@ -42,7 +42,7 @@ platforms="${DIST_PLATFORMS:-linux/amd64 linux/arm64 darwin/amd64 darwin/arm64}"
 
 # helm package takes the chart version from Chart.yaml; refuse a chart that
 # disagrees with VERSION instead of publishing two versions under one tag.
-for chart in kodama kodama-stack; do
+for chart in kodema kodema-stack; do
   chart_version="$(sed -n 's/^version: *//p' "${repo_root}/deploy/charts/${chart}/Chart.yaml")"
   [[ "$chart_version" == "$version" ]] || die "chart ${chart} is version '${chart_version}', VERSION is '${version}'"
 done
@@ -56,7 +56,7 @@ trap 'rm -rf "$stage"' EXIT
 for platform in $platforms; do
   os="${platform%/*}"
   arch="${platform#*/}"
-  for binary in kodama kodactl; do
+  for binary in kodema kodactl; do
     name="${binary}_${version}_${os}_${arch}"
     mkdir "${stage}/${name}"
     (cd "$repo_root" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
@@ -69,11 +69,11 @@ for platform in $platforms; do
   done
 done
 
-# The stack chart's dependency is file://../kodama. Package a copy, so the
+# The stack chart's dependency is file://../kodema. Package a copy, so the
 # vendored subchart never lands in the checkout.
 cp -R "${repo_root}/deploy/charts" "${stage}/charts"
-helm package "${stage}/charts/kodama" --destination "$output" >/dev/null
-helm package --dependency-update "${stage}/charts/kodama-stack" --destination "$output" >/dev/null
+helm package "${stage}/charts/kodema" --destination "$output" >/dev/null
+helm package --dependency-update "${stage}/charts/kodema-stack" --destination "$output" >/dev/null
 
 (cd "$output" && sha256sum -- * >SHA256SUMS)
 printf 'scripts/dist: version %s, revision %s\n' "$version" "$revision"

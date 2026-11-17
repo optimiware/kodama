@@ -13,11 +13,11 @@ import (
 	"os"
 	"slices"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // materializedFileMode is the explicit regular, read-only mode of every
@@ -130,8 +130,8 @@ func BuildMaterialization(ctx context.Context, request engine.PrepareRequest, co
 }
 
 // Environment merges the already action-precedence-merged literal container
-// environment with the reserved execution context in the order KODAMA_URL,
-// KODAMA_EXECUTION, KODAMA_ACTION, then KODAMA_TASK only when the request has a
+// environment with the reserved execution context in the order KODEMA_URL,
+// KODEMA_EXECUTION, KODEMA_ACTION, then KODEMA_TASK only when the request has a
 // task id. It never emits the credential or a secret value and refuses a
 // literal environment name that shadows reserved context.
 func Environment(request engine.PrepareRequest, url string) ([]string, error) {

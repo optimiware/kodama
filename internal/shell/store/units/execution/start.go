@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/execution"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/units/execution/snapshotdoc"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/execution"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
 )
 
 // Start applies one complete task-free execution-start commit unit: the queued

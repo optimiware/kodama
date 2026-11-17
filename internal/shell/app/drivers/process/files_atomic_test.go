@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // TestWriteFileIsAtomicForConcurrentReaders proves the credential-refresh
@@ -19,7 +19,7 @@ import (
 // replacement, never a truncated or mixed version.
 func TestWriteFileIsAtomicForConcurrentReaders(t *testing.T) {
 	driver := newTestDriver(t, 0)
-	path := filepath.Join(t.TempDir(), "KODAMA_TOKEN")
+	path := filepath.Join(t.TempDir(), "KODEMA_TOKEN")
 	first := bytes.Repeat([]byte("a"), 1<<20)
 	second := bytes.Repeat([]byte("b"), 1<<20)
 	if err := driver.WriteFile(context.Background(), path, first, 0o444); err != nil {
@@ -87,7 +87,7 @@ func TestWriteFileIsAtomicForConcurrentReaders(t *testing.T) {
 // complete payload, because the last completed rename wins atomically.
 func TestWriteFileConcurrentWritersNeverTear(t *testing.T) {
 	driver := newTestDriver(t, 0)
-	path := filepath.Join(t.TempDir(), "KODAMA_TOKEN")
+	path := filepath.Join(t.TempDir(), "KODEMA_TOKEN")
 	first := bytes.Repeat([]byte("c"), 512<<10)
 	second := bytes.Repeat([]byte("d"), 512<<10)
 	if err := driver.WriteFile(context.Background(), path, first, 0o444); err != nil {

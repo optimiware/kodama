@@ -29,8 +29,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
 )
 
 const (
@@ -299,7 +299,7 @@ func clientCertificate(t *testing.T) (certPEM, keyPEM, caPEM []byte) {
 	}
 	caTemplate := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "kodama-test-ca"},
+		Subject:               pkix.Name{CommonName: "kodema-test-ca"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		IsCA:                  true,
@@ -321,7 +321,7 @@ func clientCertificate(t *testing.T) (certPEM, keyPEM, caPEM []byte) {
 	}
 	clientTemplate := &x509.Certificate{
 		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: "kodama-test-client"},
+		Subject:      pkix.Name{CommonName: "kodema-test-client"},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,

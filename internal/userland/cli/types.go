@@ -12,7 +12,7 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/optimiware/kodama/client"
+	"github.com/optimiware/kodema/client"
 )
 
 // OutputFormat is one kodactl output format.

@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	shellidentity "github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	shellidentity "github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func TestReadPrincipalHumanFromMembership(t *testing.T) {

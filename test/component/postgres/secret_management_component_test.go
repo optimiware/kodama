@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/internal/shell/store/units/platform"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/shell/store/units/platform"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // secretIDs allocates deterministic identities for the secret management unit.

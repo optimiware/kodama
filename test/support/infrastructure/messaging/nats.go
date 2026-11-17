@@ -16,9 +16,9 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	broker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	broker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // Published container ports and the stream names this suite creates. The
@@ -28,11 +28,11 @@ const (
 	NATSClientPort  = 4222
 	NATSMonitorPort = 8222
 
-	EventsStream        = "KODAMA_EVENTS"
-	InvalidationsStream = "KODAMA_INVALIDATIONS"
+	EventsStream        = "KODEMA_EVENTS"
+	InvalidationsStream = "KODEMA_INVALIDATIONS"
 
-	EventsStreamSubjects        = "kodama.v1.*.*.events"
-	InvalidationsStreamSubjects = "kodama.v1.*.*.invalidations"
+	EventsStreamSubjects        = "kodema.v1.*.*.events"
+	InvalidationsStreamSubjects = "kodema.v1.*.*.invalidations"
 )
 
 // NATS is one real JetStream-enabled broker started through the infrastructure

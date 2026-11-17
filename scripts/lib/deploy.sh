@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Shared multi-cloud OpenTofu + Helm deployment helpers for Kodama.
+# Shared multi-cloud OpenTofu + Helm deployment helpers for Kodema.
 
 set -euo pipefail
 
 LC_ALL=C
 export LC_ALL
 
-KODAMA_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-readonly KODAMA_REPO_ROOT
+KODEMA_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+readonly KODEMA_REPO_ROOT
 
 log_info() {
-  printf '[kodama-deploy] %s\n' "$*" >&2
+  printf '[kodema-deploy] %s\n' "$*" >&2
 }
 
 log_error() {
-  printf '[kodama-deploy] ERROR: %s\n' "$*" >&2
+  printf '[kodema-deploy] ERROR: %s\n' "$*" >&2
 }
 
 die() {
@@ -70,7 +70,7 @@ validate_state_project_or_account() {
 validate_image_digest() {
   local digest="${1:-}"
   if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-    die "invalid KODAMA_IMAGE_DIGEST '${digest}': want sha256:<64 lowercase hex>"
+    die "invalid KODEMA_IMAGE_DIGEST '${digest}': want sha256:<64 lowercase hex>"
   fi
 }
 
@@ -96,7 +96,7 @@ key_adapter_for_cloud() {
 
 deploy_state_root() {
   local default_state_home="${XDG_STATE_HOME:-${HOME}/.local/state}"
-  printf '%s\n' "${KODAMA_DEPLOY_STATE_DIR:-${default_state_home}/kodama/deploy}"
+  printf '%s\n' "${KODEMA_DEPLOY_STATE_DIR:-${default_state_home}/kodema/deploy}"
 }
 
 cluster_work_dir() {
@@ -112,12 +112,12 @@ cloud_work_dir() {
 
 cloud_iac_dir() {
   local cloud="$1"
-  printf '%s/deploy/%s\n' "$KODAMA_REPO_ROOT" "$cloud"
+  printf '%s/deploy/%s\n' "$KODEMA_REPO_ROOT" "$cloud"
 }
 
 cloud_bootstrap_dir() {
   local cloud="$1"
-  printf '%s/deploy/%s/bootstrap\n' "$KODAMA_REPO_ROOT" "$cloud"
+  printf '%s/deploy/%s/bootstrap\n' "$KODEMA_REPO_ROOT" "$cloud"
 }
 
 ensure_cluster_work_dir() {
@@ -209,7 +209,7 @@ load_state_backend_env() {
     fi
     key="${line%%=*}"
     value="${line#*=}"
-    if [[ ! "$key" =~ ^KODAMA_STATE_(CLOUD|BUCKET|REGION|PROJECT_OR_ACCOUNT)$ ]]; then
+    if [[ ! "$key" =~ ^KODEMA_STATE_(CLOUD|BUCKET|REGION|PROJECT_OR_ACCOUNT)$ ]]; then
       die "disallowed key '${key}' in state backend env file ${env_file}"
     fi
     if [[ "${#value}" -ge 2 && "$value" == \"*\" && "$value" == *\" ]]; then
@@ -218,22 +218,22 @@ load_state_backend_env() {
       value="${value:1:${#value}-2}"
     fi
     case "$key" in
-      KODAMA_STATE_CLOUD)
+      KODEMA_STATE_CLOUD)
         validate_cloud "$value"
-        [[ "$value" == "$cloud" ]] || die "KODAMA_STATE_CLOUD '${value}' in ${env_file} does not match target cloud '${cloud}'"
-        KODAMA_STATE_CLOUD="$value"
+        [[ "$value" == "$cloud" ]] || die "KODEMA_STATE_CLOUD '${value}' in ${env_file} does not match target cloud '${cloud}'"
+        KODEMA_STATE_CLOUD="$value"
         ;;
-      KODAMA_STATE_BUCKET)
+      KODEMA_STATE_BUCKET)
         validate_state_bucket "$value"
-        KODAMA_STATE_BUCKET="$value"
+        KODEMA_STATE_BUCKET="$value"
         ;;
-      KODAMA_STATE_REGION)
+      KODEMA_STATE_REGION)
         validate_state_region "$value"
-        KODAMA_STATE_REGION="$value"
+        KODEMA_STATE_REGION="$value"
         ;;
-      KODAMA_STATE_PROJECT_OR_ACCOUNT)
+      KODEMA_STATE_PROJECT_OR_ACCOUNT)
         validate_state_project_or_account "$value"
-        KODAMA_STATE_PROJECT_OR_ACCOUNT="$value"
+        KODEMA_STATE_PROJECT_OR_ACCOUNT="$value"
         ;;
     esac
   done <"$env_file"
@@ -262,22 +262,22 @@ verify_descriptor_identity() {
 render_helm_values_from_descriptor() {
   local descriptor_file="$1"
   local output_values_file="$2"
-  local image_repo="${KODAMA_IMAGE_REPOSITORY:-registry.example.com/kodama}"
-  local image_tag="${KODAMA_IMAGE_TAG:-0.2.1}"
-  local image_digest="${KODAMA_IMAGE_DIGEST:-}"
-  local oidc_issuer="${KODAMA_OIDC_ISSUER:-}"
-  local oidc_audience="${KODAMA_OIDC_AUDIENCE:-}"
-  local oidc_jwks_url="${KODAMA_OIDC_JWKS_URL:-}"
-  local oidc_tenant_claim="${KODAMA_OIDC_TENANT_CLAIM:-}"
-  local oidc_subject_claim="${KODAMA_OIDC_SUBJECT_CLAIM:-}"
-  local oidc_project_claim="${KODAMA_OIDC_PROJECT_CLAIM:-}"
-  local oidc_ca_file="${KODAMA_OIDC_CA_FILE:-}"
+  local image_repo="${KODEMA_IMAGE_REPOSITORY:-registry.example.com/kodema}"
+  local image_tag="${KODEMA_IMAGE_TAG:-0.2.1}"
+  local image_digest="${KODEMA_IMAGE_DIGEST:-}"
+  local oidc_issuer="${KODEMA_OIDC_ISSUER:-}"
+  local oidc_audience="${KODEMA_OIDC_AUDIENCE:-}"
+  local oidc_jwks_url="${KODEMA_OIDC_JWKS_URL:-}"
+  local oidc_tenant_claim="${KODEMA_OIDC_TENANT_CLAIM:-}"
+  local oidc_subject_claim="${KODEMA_OIDC_SUBJECT_CLAIM:-}"
+  local oidc_project_claim="${KODEMA_OIDC_PROJECT_CLAIM:-}"
+  local oidc_ca_file="${KODEMA_OIDC_CA_FILE:-}"
   # One stage-wide value for the broker callout account. The chart's values.yaml
   # also anchors this name; scripts/bootstrap-secrets writes the same value into
-  # the kodama-nats-auth Secret. The rendered-chart and bootstrap-contract tests
+  # the kodema-nats-auth Secret. The rendered-chart and bootstrap-contract tests
   # fail if any of the three drift.
-  local nats_auth_secret="kodama-nats-auth"
-  local nats_auth_account="KODAMA"
+  local nats_auth_secret="kodema-nats-auth"
+  local nats_auth_account="KODEMA"
 
   if [[ -n "$image_digest" ]]; then
     validate_image_digest "$image_digest"
@@ -302,13 +302,13 @@ render_helm_values_from_descriptor() {
       --arg oidc_ca_file "$oidc_ca_file" \
       '(
         {}
-        | if $oidc_issuer != "" then . + {KODAMA_OIDC_ISSUER: $oidc_issuer} else . end
-        | if $oidc_audience != "" then . + {KODAMA_OIDC_AUDIENCE: $oidc_audience} else . end
-        | if $oidc_jwks_url != "" then . + {KODAMA_OIDC_JWKS_URL: $oidc_jwks_url} else . end
-        | if $oidc_tenant_claim != "" then . + {KODAMA_OIDC_TENANT_CLAIM: $oidc_tenant_claim} else . end
-        | if $oidc_subject_claim != "" then . + {KODAMA_OIDC_SUBJECT_CLAIM: $oidc_subject_claim} else . end
-        | if $oidc_project_claim != "" then . + {KODAMA_OIDC_PROJECT_CLAIM: $oidc_project_claim} else . end
-        | if $oidc_ca_file != "" then . + {KODAMA_OIDC_CA_FILE: $oidc_ca_file} else . end
+        | if $oidc_issuer != "" then . + {KODEMA_OIDC_ISSUER: $oidc_issuer} else . end
+        | if $oidc_audience != "" then . + {KODEMA_OIDC_AUDIENCE: $oidc_audience} else . end
+        | if $oidc_jwks_url != "" then . + {KODEMA_OIDC_JWKS_URL: $oidc_jwks_url} else . end
+        | if $oidc_tenant_claim != "" then . + {KODEMA_OIDC_TENANT_CLAIM: $oidc_tenant_claim} else . end
+        | if $oidc_subject_claim != "" then . + {KODEMA_OIDC_SUBJECT_CLAIM: $oidc_subject_claim} else . end
+        | if $oidc_project_claim != "" then . + {KODEMA_OIDC_PROJECT_CLAIM: $oidc_project_claim} else . end
+        | if $oidc_ca_file != "" then . + {KODEMA_OIDC_CA_FILE: $oidc_ca_file} else . end
       ) as $extra_env |
       {
         nats: {
@@ -316,7 +316,7 @@ render_helm_values_from_descriptor() {
           replicaCount: 1,
           port: 4222,
           tls: {
-            existingSecret: "kodama-broker-tls"
+            existingSecret: "kodema-broker-tls"
           },
           auth: {
             mode: "callout",
@@ -332,7 +332,7 @@ render_helm_values_from_descriptor() {
             size: "10Gi"
           }
         },
-        kodama: {
+        kodema: {
           environment: .environment,
           replicaCount: 1,
           image: {
@@ -343,8 +343,8 @@ render_helm_values_from_descriptor() {
           },
           config: ({
             installationID: .installation_id,
-            publicURL: ("https://kodama." + .release_namespace + ".svc.cluster.local:8443"),
-            databaseURL: "postgres://kodama_runtime@database:5432/kodama?sslmode=verify-full&sslrootcert=/etc/kodama/pg-ca/ca.crt",
+            publicURL: ("https://kodema." + .release_namespace + ".svc.cluster.local:8443"),
+            databaseURL: "postgres://kodema_runtime@database:5432/kodema?sslmode=verify-full&sslrootcert=/etc/kodema/pg-ca/ca.crt",
             natsURL: ("tls://nats." + .release_namespace + ".svc.cluster.local:4222"),
             keyAdapter: .kms.key_adapter,
             keyReference: .kms.key_ref,
@@ -356,26 +356,26 @@ render_helm_values_from_descriptor() {
               accessMode: "ReadWriteOnce"
             },
             workloadCA: {
-              secretName: "kodama-workload-ca"
+              secretName: "kodema-workload-ca"
             }
           } + (if ($extra_env | length) > 0 then {extraEnv: $extra_env} else {} end)),
           # Only Scaleway has a static KMS credential: scripts/bootstrap-secrets
-          # creates kodama-kms-credentials for scw alone. AWS (IRSA) and GCP
+          # creates kodema-kms-credentials for scw alone. AWS (IRSA) and GCP
           # (Workload Identity) authenticate through the ServiceAccount
           # annotation rendered below, and the chart references no credential
           # Secret for their adapters.
           secrets: ({
-            database: { existingSecret: "kodama-database" },
-            broker:   { existingSecret: "kodama-broker" },
-            keys:     { existingSecret: "kodama-keys" },
-            tls:      { existingSecret: "kodama-tls" },
+            database: { existingSecret: "kodema-database" },
+            broker:   { existingSecret: "kodema-broker" },
+            keys:     { existingSecret: "kodema-keys" },
+            tls:      { existingSecret: "kodema-tls" },
             natsAuth: {
               existingSecret: $nats_auth_secret,
               account: $nats_auth_account
             }
           } + (
             if .cloud == "scw" then
-              { kmsCredentials: { existingSecret: "kodama-kms-credentials" } }
+              { kmsCredentials: { existingSecret: "kodema-kms-credentials" } }
             else
               {}
             end
@@ -383,7 +383,7 @@ render_helm_values_from_descriptor() {
           tenants: .tenants,
           networkPolicy: {
             defaultDeny: true,
-            permitKodama: true,
+            permitKodema: true,
             permitGit: true
           },
           securityContext: {
@@ -397,7 +397,7 @@ render_helm_values_from_descriptor() {
           },
           serviceAccount: {
             create: true,
-            name: "kodama",
+            name: "kodema",
             annotations: (
               if .cloud == "gcp" and (.kubernetes.workload_identity_ref // "") != "" then
                 { "iam.gke.io/gcp-service-account": .kubernetes.workload_identity_ref }
@@ -417,7 +417,7 @@ render_helm_values_from_descriptor() {
               storageClass: .kubernetes.storage_class,
               size: "10Gi",
               accessMode: "ReadWriteOnce",
-              mountPath: "/var/lib/kodama"
+              mountPath: "/var/lib/kodema"
             }
           },
           probes: {

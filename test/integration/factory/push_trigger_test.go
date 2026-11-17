@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 	pushTriggerStartTimeout = 5 * time.Minute
 )
 
-// TestFactoryHumanPushStartsSubscribedPipeline proves the KODAMA.md push path
+// TestFactoryHumanPushStartsSubscribedPipeline proves the KODEMA.md push path
 // end to end: external Git push → Git service → verified report ingress →
 // event table → on.push → queued execution. A human push through the served
 // Git service starts the pipeline subscribed to the pushed ref with the pushed
@@ -59,9 +59,9 @@ actions:
     image: %s
     timeout: 10m
     commands:
-      - 'test "$(cat /kodama/inputs/repository)" = %s'
-      - 'test "$(cat /kodama/inputs/ref)" = %s'
-      - 'test "$(cat /kodama/inputs/commit)" = %s'
+      - 'test "$(cat /kodema/inputs/repository)" = %s'
+      - 'test "$(cat /kodema/inputs/ref)" = %s'
+      - 'test "$(cat /kodema/inputs/commit)" = %s'
 `, resourceID, starter, pushTriggerExecutionRef, pushTriggerHumanRef,
 		fixture.Image.Reference, resourceID, pushTriggerHumanRef, humanCommit)
 	applied := fixture.applyPipeline("trigger-push", []byte(document))
@@ -283,9 +283,9 @@ actions:
     image: %s
     timeout: 10m
     commands:
-      - 'test "$(cat /kodama/inputs/repository)" = %s'
-      - 'test "$(cat /kodama/inputs/ref)" = %s'
-      - 'test "$(cat /kodama/inputs/commit)" = %s'
+      - 'test "$(cat /kodema/inputs/repository)" = %s'
+      - 'test "$(cat /kodema/inputs/ref)" = %s'
+      - 'test "$(cat /kodema/inputs/commit)" = %s'
 `, resourceID, starter, pushTriggerExecutionRef, pushTriggerHumanRef, image, resourceID, pushTriggerHumanRef, commit)
 }
 

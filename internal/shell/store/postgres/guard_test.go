@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func TestGuardedLockRefusesStaleAuthorityVersion(t *testing.T) {
@@ -482,7 +482,7 @@ func TestWriteExpectNilRendersIsNullAndMatchesInEmulator(t *testing.T) {
 
 	t.Run("emulator sql equality rejects nil while update and delete Expect nil match", func(t *testing.T) {
 		ctx := context.Background()
-		db := newEmuDB("kodama_runtime", testTime())
+		db := newEmuDB("kodema_runtime", testTime())
 		scope := testProjectScope()
 		db.seed("tasks", map[string]any{
 			"id":                   "task-null",

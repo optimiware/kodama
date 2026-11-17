@@ -95,13 +95,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // collectionOrder records the observable side-effect order of one fixture:
@@ -2295,7 +2295,7 @@ func TestLogCollectionCheckpointsBeforeKubernetesSuspension(t *testing.T) {
 		Cluster:   cluster,
 		Namespace: kubeStopNamespace,
 		TenantID:  id.TenantID(kubeStopTenant),
-		KodamaURL: "https://kodama.example.com",
+		KodemaURL: "https://kodema.example.com",
 		Policy: runtimekube.Policy{
 			CPURequest:    "100m",
 			CPULimit:      "1",
@@ -2430,7 +2430,7 @@ func TestLogCollectionKubernetesStopDoesNotLeakSplitCredential(t *testing.T) {
 		Cluster:   cluster,
 		Namespace: kubeStopNamespace,
 		TenantID:  id.TenantID(kubeStopTenant),
-		KodamaURL: "https://kodama.example.com",
+		KodemaURL: "https://kodema.example.com",
 		Policy: runtimekube.Policy{
 			CPURequest:    "100m",
 			CPULimit:      "1",

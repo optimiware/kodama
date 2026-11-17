@@ -102,7 +102,7 @@
 //	          VerificationClient, RetentionQuery, Clock
 //
 //	internal/userland/session (durable checkpoint reference)
-//	  RefPrefix "kodama-checkpoint/"; RefVersion "v1"; MaxRefBytes 512
+//	  RefPrefix "kodema-checkpoint/"; RefVersion "v1"; MaxRefBytes 512
 //	  Ref string; ParseRef; (Ref).Version()
 //	  Reason missing/version_mismatch/corrupt/context_missing; RestoreError
 //	  Message{Role, Content}; Record{Version, TaskID, ExecutionID, Messages,
@@ -168,9 +168,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/authorize"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
 )
 
 // wantRoute is the frozen public route inventory. Paths use `{name}` parameter
@@ -570,7 +570,7 @@ func TestMCPOperationMapping(t *testing.T) {
 		t.Fatal("ping with id reported IsNotification()")
 	}
 
-	initialize, err := api.DecodeMCPRequest([]byte(`{"jsonrpc":"2.0","id":"init-1","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"kodama-test","version":"1.0.0"}}}`))
+	initialize, err := api.DecodeMCPRequest([]byte(`{"jsonrpc":"2.0","id":"init-1","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"kodema-test","version":"1.0.0"}}}`))
 	if err != nil {
 		t.Fatalf("DecodeMCPRequest(initialize): %v", err)
 	}
@@ -594,7 +594,7 @@ func TestMCPOperationMapping(t *testing.T) {
 	}
 
 	refusals := []string{
-		`{"jsonrpc":"1.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"kodama-test","version":"1.0.0"}}}`,
+		`{"jsonrpc":"1.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"kodema-test","version":"1.0.0"}}}`,
 		`{"jsonrpc":"2.0","id":1,"method":"prompts/list","params":{}}`,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"cursor":"next"}}`,
 		`{"jsonrpc":"2.0","id":1,"method":"notifications/initialized","params":{}}`,
@@ -691,7 +691,7 @@ func TestMCPHandshakeAndResult(t *testing.T) {
 	initializeBody := `{"jsonrpc":"2.0","id":"init-1","method":"initialize","params":{` +
 		`"protocolVersion":"` + api.MCPProtocolVersion + `",` +
 		`"capabilities":{"roots":{}},` +
-		`"clientInfo":{"name":"kodama-cli","version":"1.0.0"}}}`
+		`"clientInfo":{"name":"kodema-cli","version":"1.0.0"}}}`
 	request, err := api.DecodeMCPRequest([]byte(initializeBody))
 	if err != nil {
 		t.Fatalf("conforming initialize refused: %v", err)
@@ -703,12 +703,12 @@ func TestMCPHandshakeAndResult(t *testing.T) {
 	if params.ProtocolVersion != api.MCPProtocolVersion {
 		t.Fatalf("initialize protocol version = %q; want %q", params.ProtocolVersion, api.MCPProtocolVersion)
 	}
-	if params.ClientInfo.Name != "kodama-cli" || params.ClientInfo.Version != "1.0.0" {
-		t.Fatalf("initialize clientInfo = %+v; want kodama-cli/1.0.0", params.ClientInfo)
+	if params.ClientInfo.Name != "kodema-cli" || params.ClientInfo.Version != "1.0.0" {
+		t.Fatalf("initialize clientInfo = %+v; want kodema-cli/1.0.0", params.ClientInfo)
 	}
 
 	for _, version := range api.SupportedMCPProtocolVersions() {
-		body := `{"jsonrpc":"2.0","id":"init-v","method":"initialize","params":{"protocolVersion":"` + version + `","capabilities":{},"clientInfo":{"name":"kodama-cli","version":"1.0.0"}}}`
+		body := `{"jsonrpc":"2.0","id":"init-v","method":"initialize","params":{"protocolVersion":"` + version + `","capabilities":{},"clientInfo":{"name":"kodema-cli","version":"1.0.0"}}}`
 		if _, err := api.DecodeMCPRequest([]byte(body)); err != nil {
 			t.Errorf("supported protocol version %q refused: %v", version, err)
 		}
@@ -720,12 +720,12 @@ func TestMCPHandshakeAndResult(t *testing.T) {
 
 	initializeRefusals := []string{
 		// Unsupported malformed protocol version.
-		`{"jsonrpc":"2.0","id":"init-2","method":"initialize","params":{"protocolVersion":"not-a-date","capabilities":{},"clientInfo":{"name":"kodama-cli","version":"1.0.0"}}}`,
-		`{"jsonrpc":"2.0","id":"init-2b","method":"initialize","params":{"protocolVersion":"","capabilities":{},"clientInfo":{"name":"kodama-cli","version":"1.0.0"}}}`,
+		`{"jsonrpc":"2.0","id":"init-2","method":"initialize","params":{"protocolVersion":"not-a-date","capabilities":{},"clientInfo":{"name":"kodema-cli","version":"1.0.0"}}}`,
+		`{"jsonrpc":"2.0","id":"init-2b","method":"initialize","params":{"protocolVersion":"","capabilities":{},"clientInfo":{"name":"kodema-cli","version":"1.0.0"}}}`,
 		// Missing client identity.
 		`{"jsonrpc":"2.0","id":"init-3","method":"initialize","params":{"protocolVersion":"` + api.MCPProtocolVersion + `","capabilities":{}}}`,
 		// Non-object capabilities.
-		`{"jsonrpc":"2.0","id":"init-4","method":"initialize","params":{"protocolVersion":"` + api.MCPProtocolVersion + `","capabilities":[],"clientInfo":{"name":"kodama-cli","version":"1.0.0"}}}`,
+		`{"jsonrpc":"2.0","id":"init-4","method":"initialize","params":{"protocolVersion":"` + api.MCPProtocolVersion + `","capabilities":[],"clientInfo":{"name":"kodema-cli","version":"1.0.0"}}}`,
 	}
 	for _, body := range initializeRefusals {
 		if _, err := api.DecodeMCPRequest([]byte(body)); err == nil {
@@ -736,7 +736,7 @@ func TestMCPHandshakeAndResult(t *testing.T) {
 	initializeResult := api.MCPInitializeResult{
 		ProtocolVersion: api.MCPProtocolVersion,
 		Capabilities:    json.RawMessage(`{"tools":{}}`),
-		ServerInfo:      api.MCPImplementation{Name: "kodama", Version: "1.0.0"},
+		ServerInfo:      api.MCPImplementation{Name: "kodema", Version: "1.0.0"},
 	}
 	if err := initializeResult.Validate(); err != nil {
 		t.Fatalf("initialize result refused: %v", err)

@@ -14,12 +14,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // fullRow reads one entire row as jsonb text, so any changed column value after

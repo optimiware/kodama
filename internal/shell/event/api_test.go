@@ -134,7 +134,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/event"
 )
 
 // Compile-time port shapes.

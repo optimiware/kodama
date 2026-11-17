@@ -9,9 +9,9 @@ package engine
 import (
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 )
 
 // ScanKind selects the due-work or unfinished-work recovery scan.
@@ -81,10 +81,10 @@ type SecretValue struct {
 type PrepareRequest struct {
 	Identity    EffectIdentity
 	WorkspaceID id.WorkspaceID
-	// ActionName is the admitted action slug supplied as KODAMA_ACTION. It is
+	// ActionName is the admitted action slug supplied as KODEMA_ACTION. It is
 	// deliberately not the action id.
 	ActionName id.ActionName
-	// TaskID is the admitted task identity supplied as KODAMA_TASK. It is empty
+	// TaskID is the admitted task identity supplied as KODEMA_TASK. It is empty
 	// when the execution is task-free, in which case the adapter omits it.
 	TaskID id.TaskID
 	// Container is the admitted declaration with a pinned image and the

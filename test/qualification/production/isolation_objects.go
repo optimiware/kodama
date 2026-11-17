@@ -20,10 +20,10 @@ import (
 )
 
 const (
-	isolationNamespacePrefix     = "kodama-tenant-"
-	isolationLimitRangeName      = "kodama-tenant-limits"
-	isolationNetworkPolicyName   = "kodama-tenant-default-deny"
-	isolationLabelTenant         = "kodama.dev/tenant"
+	isolationNamespacePrefix     = "kodema-tenant-"
+	isolationLimitRangeName      = "kodema-tenant-limits"
+	isolationNetworkPolicyName   = "kodema-tenant-default-deny"
+	isolationLabelTenant         = "kodema.dev/tenant"
 	isolationNamespaceNameLabel  = "kubernetes.io/metadata.name"
 	isolationPodSecurityEnforce  = "pod-security.kubernetes.io/enforce"
 	isolationPodSecurityWarn     = "pod-security.kubernetes.io/warn"
@@ -243,7 +243,7 @@ func parseIsolationNetworkPolicy(data []byte) (isolationNetworkPolicy, error) {
 }
 
 // validateTenantNetworkPolicy proves the tenant policy is a default deny in
-// both directions, permits only cluster DNS and the release namespace's Kodama
+// both directions, permits only cluster DNS and the release namespace's Kodema
 // service (plus the optional Git namespace), and contains no peer that selects
 // another tenant or every namespace. Ingress may only come from the release
 // namespace: kube-system and git are egress-only destinations, and every rule
@@ -275,7 +275,7 @@ func validateTenantNetworkPolicy(object isolationNetworkPolicy, tenantID, tenant
 		return fmt.Errorf("network policy %q does not deny both ingress and egress", object.Metadata.Name)
 	}
 	if len(object.Spec.Ingress) == 0 {
-		return fmt.Errorf("network policy %q admits no Kodama ingress", object.Metadata.Name)
+		return fmt.Errorf("network policy %q admits no Kodema ingress", object.Metadata.Name)
 	}
 	if len(object.Spec.Egress) == 0 {
 		return fmt.Errorf("network policy %q admits no cluster DNS egress", object.Metadata.Name)
@@ -298,13 +298,13 @@ func validateTenantNetworkPolicy(object isolationNetworkPolicy, tenantID, tenant
 		}
 	}
 	if !isolationPolicyAllows(object.Spec.Ingress, releaseNamespace, 8443, true) {
-		return fmt.Errorf("network policy %q does not admit Kodama ingress on 8443 from %q", object.Metadata.Name, releaseNamespace)
+		return fmt.Errorf("network policy %q does not admit Kodema ingress on 8443 from %q", object.Metadata.Name, releaseNamespace)
 	}
 	if !isolationPolicyAllows(object.Spec.Egress, isolationReleaseDNSNamespace, 53, false) {
 		return fmt.Errorf("network policy %q does not admit cluster DNS egress on 53", object.Metadata.Name)
 	}
 	if !isolationPolicyAllows(object.Spec.Egress, releaseNamespace, 8443, false) {
-		return fmt.Errorf("network policy %q does not admit Kodama egress on 8443 to %q", object.Metadata.Name, releaseNamespace)
+		return fmt.Errorf("network policy %q does not admit Kodema egress on 8443 to %q", object.Metadata.Name, releaseNamespace)
 	}
 	return nil
 }
@@ -376,9 +376,9 @@ func validateIsolationPeer(peer isolationPeerSelector, tenantNamespace, otherNam
 
 // isolationRulePortAllowed pins one NetworkPolicy port to the chart's published
 // route: cluster DNS answers UDP/TCP 53, the Git service answers TCP 443, and
-// the release namespace answers the Kodama ports 8443 and 8080. Egress may also
+// the release namespace answers the Kodema ports 8443 and 8080. Egress may also
 // use the chart's configurable unprivileged Git service port in the release
-// namespace. Ingress never reaches beyond the Kodama ports.
+// namespace. Ingress never reaches beyond the Kodema ports.
 func isolationRulePortAllowed(ingress bool, namespace string, port isolationPort) bool {
 	protocol := strings.ToUpper(port.Protocol)
 	if protocol == "" {

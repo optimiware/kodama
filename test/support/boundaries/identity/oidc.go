@@ -21,17 +21,17 @@ import (
 	"sync"
 	"time"
 
-	shellidentity "github.com/optimiware/kodama/internal/shell/identity"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
+	shellidentity "github.com/optimiware/kodema/internal/shell/identity"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
 )
 
 // Default fixture claim names and values.
 const (
-	DefaultAudience     = "kodama-api"
-	DefaultTenantClaim  = "https://kodama/tenant"
-	DefaultProjectClaim = "https://kodama/project"
+	DefaultAudience     = "kodema-api"
+	DefaultTenantClaim  = "https://kodema/tenant"
+	DefaultProjectClaim = "https://kodema/project"
 	DefaultSubjectClaim = "sub"
-	DefaultRoleClaim    = "https://kodama/roles"
+	DefaultRoleClaim    = "https://kodema/roles"
 )
 
 // DefaultOtherIDTokenClientID is the foreign client id the hostile
@@ -39,7 +39,7 @@ const (
 const DefaultOtherIDTokenClientID = "another-client"
 
 // DefaultArrayIDTokenAudience is the second audience the array mode adds.
-const DefaultArrayIDTokenAudience = "kodama-other-audience"
+const DefaultArrayIDTokenAudience = "kodema-other-audience"
 
 // IDTokenAudienceMode selects the aud claim of minted ID tokens. OIDC Core
 // 3.1.3.7 requires the ID token audience to contain the OAuth client_id; the
@@ -306,7 +306,7 @@ func (provider *Provider) Clock() *Clock { return provider.clock }
 // Issuer is the HTTPS issuer URL of the fixture.
 func (provider *Provider) Issuer() string { return provider.issuer }
 
-// Audience is the configured Kodama audience.
+// Audience is the configured Kodema audience.
 func (provider *Provider) Audience() string { return provider.audience }
 
 // TenantClaim returns the configured tenant claim name.

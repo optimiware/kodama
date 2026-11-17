@@ -1,5 +1,5 @@
 locals {
-  kms_key_ref = "${module.context.key_ref_prefix}${aws_kms_key.kodama.arn}"
+  kms_key_ref = "${module.context.key_ref_prefix}${aws_kms_key.kodema.arn}"
 
   deployment_descriptor = {
     cloud                 = module.context.cloud
@@ -19,8 +19,8 @@ locals {
       apiserver_url         = aws_eks_cluster.main.endpoint
       cni                   = "amazon-vpc-cni-networkpolicy"
       storage_class         = var.workspace_storage_class
-      service_account_name  = "kodama"
-      workload_identity_ref = aws_iam_role.kodama_controller.arn
+      service_account_name  = "kodema"
+      workload_identity_ref = aws_iam_role.kodema_controller.arn
     }
     postgres = {
       instance_id   = aws_db_instance.main.id
@@ -33,9 +33,9 @@ locals {
     }
     kms = {
       key_adapter  = module.context.key_adapter
-      key_id       = aws_kms_key.kodama.arn
+      key_id       = aws_kms_key.kodema.arn
       key_ref      = local.kms_key_ref
-      iam_identity = aws_iam_role.kodama_controller.arn
+      iam_identity = aws_iam_role.kodema_controller.arn
     }
   }
 }
@@ -52,6 +52,6 @@ output "database_ca_certificate" {
 }
 
 output "kms_key_ref" {
-  description = "Kodama KMS key reference string."
+  description = "Kodema KMS key reference string."
   value       = local.kms_key_ref
 }

@@ -10,7 +10,7 @@
 //     own durable transcript through the same storage adapter.
 //
 // A restoring attempt resolves a durable checkpoint reference from the admitted
-// /kodama/task.json conversation (the reply that started the fresh execution) or
+// /kodema/task.json conversation (the reply that started the fresh execution) or
 // from the explicit -restore flag. A fixture-local workspace.write tool gives
 // both modes a real correlated tool call and result in the durable transcript.
 // The native runtime skips a completed effect by its durable identity; the
@@ -47,20 +47,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/agent"
-	agentapp "github.com/optimiware/kodama/internal/userland/agent/app"
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/agent"
+	agentapp "github.com/optimiware/kodema/internal/userland/agent/app"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 const (
-	defaultCredentialFile           = "/kodama/secrets/KODAMA_TOKEN"
-	defaultCheckpointCredentialFile = "/kodama/secrets/KODAMA_CHECKPOINT_TOKEN"
-	defaultMarkerFile               = "/etc/kodama-agent-workload-marker"
-	defaultCAFile                   = "/kodama/fixture-ca.pem"
-	defaultTaskFile                 = "/kodama/task.json"
+	defaultCredentialFile           = "/kodema/secrets/KODEMA_TOKEN"
+	defaultCheckpointCredentialFile = "/kodema/secrets/KODEMA_CHECKPOINT_TOKEN"
+	defaultMarkerFile               = "/etc/kodema-agent-workload-marker"
+	defaultCAFile                   = "/kodema/fixture-ca.pem"
+	defaultTaskFile                 = "/kodema/task.json"
 
 	workspaceRoot = "/workspace"
 

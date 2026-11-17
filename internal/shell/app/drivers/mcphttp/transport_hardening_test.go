@@ -35,12 +35,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/app/drivers/mcphttp"
-	"github.com/optimiware/kodama/internal/shell/mcpproxy"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/app/drivers/mcphttp"
+	"github.com/optimiware/kodema/internal/shell/mcpproxy"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // requireNoLeak fails when a diagnostic contains any forbidden value. Empty
@@ -445,7 +445,7 @@ func TestMCPHTTPIdempotencyHeaderNeverReplaysPost(t *testing.T) {
 
 // proxyIsolationSubprocessEnv marks the re-executed child that owns a fresh
 // process-wide proxy environment cache.
-const proxyIsolationSubprocessEnv = "KODAMA_MCPHTTP_PROXY_ISOLATION"
+const proxyIsolationSubprocessEnv = "KODEMA_MCPHTTP_PROXY_ISOLATION"
 
 // proxyControlObservedMarker is printed by the child only after its positive
 // control request reached the recording proxy.
@@ -502,7 +502,7 @@ func runProxyIsolationChild(t *testing.T) {
 		Transport: &http.Transport{Proxy: http.ProxyFromEnvironment},
 		Timeout:   2 * time.Second,
 	}
-	response, err := control.Get("http://proxy-control.kodama.invalid/")
+	response, err := control.Get("http://proxy-control.kodema.invalid/")
 	if err != nil {
 		t.Fatalf("positive control request through the environment proxy: %v", err)
 	}
@@ -622,7 +622,7 @@ func TestMCPHTTPCallerProxySuppressedAndUnmodified(t *testing.T) {
 	if callerTransport.Proxy == nil {
 		t.Fatal("New cleared the caller transport's proxy policy")
 	}
-	controlResponse, err := caller.Get("http://caller-proxy-control.kodama.invalid/")
+	controlResponse, err := caller.Get("http://caller-proxy-control.kodema.invalid/")
 	if err != nil {
 		t.Fatalf("the caller's unchanged proxy policy no longer works: %v", err)
 	}

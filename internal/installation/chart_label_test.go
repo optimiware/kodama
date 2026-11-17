@@ -5,7 +5,7 @@ package installation
 // The Kubernetes runtime adapter is the reference for the tenant label key:
 // internal/shell/runtime/kube/api.go declares
 //
-//	LabelTenant = "kodama.dev/tenant"
+//	LabelTenant = "kodema.dev/tenant"
 //
 // and the adapter refuses a tenant namespace whose labels do not carry that key
 // with the tenant id (internal/shell/runtime/kube/adapter.go checkTenantNamespace
@@ -28,10 +28,10 @@ import (
 
 // pinnedTenantLabel mirrors kube.LabelTenant at
 // internal/shell/runtime/kube/api.go:30.
-const pinnedTenantLabel = "kodama.dev/tenant"
+const pinnedTenantLabel = "kodema.dev/tenant"
 
 // tenantLabelTokenPattern matches any label-like token whose final segment
-// contains "tenant" (for example kodama.io/tenant or kodama.dev/tenant).
+// contains "tenant" (for example kodema.io/tenant or kodema.dev/tenant).
 var tenantLabelTokenPattern = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]*[Tt]enant[A-Za-z0-9._-]*`)
 
 // adapterTenantLabel reads the runtime adapter's LabelTenant declaration from
@@ -96,8 +96,8 @@ func TestTenantNamespaceUsesRuntimeAdapterLabel(t *testing.T) {
 
 	// The namespace name is the value the operator binds to kube.Config.Namespace;
 	// the chart and the policy template must keep agreeing on it.
-	if !regexp.MustCompile(`(?m)^[ \t]*name:[ \t]*kodama-tenant-\{\{[ \t]*\$tenant[ \t]*\}\}[ \t]*$`).MatchString(body) {
-		t.Errorf("%s: tenant namespace name is not kodama-tenant-{{ $tenant }}", name)
+	if !regexp.MustCompile(`(?m)^[ \t]*name:[ \t]*kodema-tenant-\{\{[ \t]*\$tenant[ \t]*\}\}[ \t]*$`).MatchString(body) {
+		t.Errorf("%s: tenant namespace name is not kodema-tenant-{{ $tenant }}", name)
 	}
 }
 

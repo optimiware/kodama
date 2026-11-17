@@ -11,7 +11,7 @@ import "encoding/json"
 // ToolInvokeRequest is the tool.invoke input. The project is carried explicitly
 // for MCP callers and is optional for REST callers whose route supplies it. The
 // tool route segment is a configured tool name, so it is an opaque bounded name
-// rather than a Kodama identity.
+// rather than a Kodema identity.
 type ToolInvokeRequest struct {
 	ProjectID string          `json:"project_id,omitempty" schema:"id"`
 	Tool      string          `json:"tool,omitempty"`

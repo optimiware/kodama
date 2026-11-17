@@ -9,7 +9,7 @@
 package bridges
 
 import (
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // NewWorkloadNamePolicy builds the activation-path policy.

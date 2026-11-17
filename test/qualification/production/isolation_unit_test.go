@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // The fixtures below mirror the chart's rendered tenant namespace, LimitRange,
@@ -22,10 +22,10 @@ import (
 
 const isolationNamespaceFixture = `{
   "metadata": {
-    "name": "kodama-tenant-tenant-a",
+    "name": "kodema-tenant-tenant-a",
     "uid": "0d9e6b2a-5d15-4d35-9a65-62e2f2b2b3a1",
     "labels": {
-      "kodama.dev/tenant": "tenant-a",
+      "kodema.dev/tenant": "tenant-a",
       "pod-security.kubernetes.io/enforce": "baseline",
       "pod-security.kubernetes.io/warn": "restricted",
       "pod-security.kubernetes.io/audit": "restricted"
@@ -35,9 +35,9 @@ const isolationNamespaceFixture = `{
 
 const isolationLimitRangeFixture = `{
   "metadata": {
-    "name": "kodama-tenant-limits",
-    "namespace": "kodama-tenant-tenant-a",
-    "labels": {"kodama.dev/tenant": "tenant-a"}
+    "name": "kodema-tenant-limits",
+    "namespace": "kodema-tenant-tenant-a",
+    "labels": {"kodema.dev/tenant": "tenant-a"}
   },
   "spec": {"limits": [{
     "type": "Container",
@@ -48,17 +48,17 @@ const isolationLimitRangeFixture = `{
 
 const isolationNetworkPolicyFixture = `{
   "metadata": {
-    "name": "kodama-tenant-default-deny",
-    "namespace": "kodama-tenant-tenant-a",
-    "labels": {"kodama.dev/tenant": "tenant-a"}
+    "name": "kodema-tenant-default-deny",
+    "namespace": "kodema-tenant-tenant-a",
+    "labels": {"kodema.dev/tenant": "tenant-a"}
   },
   "spec": {
     "podSelector": {},
     "policyTypes": ["Ingress", "Egress"],
     "ingress": [{
       "from": [{
-        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kodama-system"}},
-        "podSelector": {"matchLabels": {"app.kubernetes.io/name": "kodama"}}
+        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kodema-system"}},
+        "podSelector": {"matchLabels": {"app.kubernetes.io/name": "kodema"}}
       }],
       "ports": [{"protocol": "TCP", "port": 8443}, {"protocol": "TCP", "port": 8080}]
     }],
@@ -72,8 +72,8 @@ const isolationNetworkPolicyFixture = `{
       },
       {
         "to": [{
-          "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kodama-system"}},
-          "podSelector": {"matchLabels": {"app.kubernetes.io/name": "kodama"}}
+          "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kodema-system"}},
+          "podSelector": {"matchLabels": {"app.kubernetes.io/name": "kodema"}}
         }],
         "ports": [{"protocol": "TCP", "port": 8443}, {"protocol": "TCP", "port": 8080}]
       }
@@ -83,9 +83,9 @@ const isolationNetworkPolicyFixture = `{
 
 const isolationPodFixture = `{
   "metadata": {
-    "name": "kodama-job-abc-1",
-    "namespace": "kodama-tenant-tenant-a",
-    "labels": {"kodama.dev/tenant": "tenant-a", "kodama.dev/execution": "execution-a"}
+    "name": "kodema-job-abc-1",
+    "namespace": "kodema-tenant-tenant-a",
+    "labels": {"kodema.dev/tenant": "tenant-a", "kodema.dev/execution": "execution-a"}
   },
   "spec": {
     "hostNetwork": false,
@@ -111,10 +111,10 @@ func TestHarnessIsolationObjectsAcceptCompliantDeployment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse namespace: %v", err)
 	}
-	if err := validateTenantNamespace(namespace, "tenant-a", "kodama-tenant-tenant-a", "kodama-tenant-tenant-b"); err != nil {
+	if err := validateTenantNamespace(namespace, "tenant-a", "kodema-tenant-tenant-a", "kodema-tenant-tenant-b"); err != nil {
 		t.Fatalf("the compliant namespace was refused: %v", err)
 	}
-	limits, err := parseIsolationLimitRange([]byte(isolationLimitRangeFixture), "tenant-a", "kodama-tenant-tenant-a")
+	limits, err := parseIsolationLimitRange([]byte(isolationLimitRangeFixture), "tenant-a", "kodema-tenant-tenant-a")
 	if err != nil {
 		t.Fatalf("parse limit range: %v", err)
 	}
@@ -122,14 +122,14 @@ func TestHarnessIsolationObjectsAcceptCompliantDeployment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse network policy: %v", err)
 	}
-	if err := validateTenantNetworkPolicy(policy, "tenant-a", "kodama-tenant-tenant-a", "kodama-tenant-tenant-b", ReleaseNamespace); err != nil {
+	if err := validateTenantNetworkPolicy(policy, "tenant-a", "kodema-tenant-tenant-a", "kodema-tenant-tenant-b", ReleaseNamespace); err != nil {
 		t.Fatalf("the compliant network policy was refused: %v", err)
 	}
 	pods, err := parseIsolationPods([]byte(`{"items":[` + isolationPodFixture + `]}`))
 	if err != nil || len(pods) != 1 {
 		t.Fatalf("parse pod list: %v, %d pods", err, len(pods))
 	}
-	if err := validateIsolationPod(pods[0], "tenant-a", "kodama-tenant-tenant-a", limits); err != nil {
+	if err := validateIsolationPod(pods[0], "tenant-a", "kodema-tenant-tenant-a", limits); err != nil {
 		t.Fatalf("the compliant workload pod was refused: %v", err)
 	}
 }
@@ -143,14 +143,14 @@ func TestHarnessIsolationObjectsRejectForeignNetworkPeer(t *testing.T) {
 		rule := ingress[0].(map[string]any)
 		from := rule["from"].([]any)
 		rule["from"] = append(from, map[string]any{
-			"namespaceSelector": map[string]any{"matchLabels": map[string]any{isolationNamespaceNameLabel: "kodama-tenant-tenant-b"}},
+			"namespaceSelector": map[string]any{"matchLabels": map[string]any{isolationNamespaceNameLabel: "kodema-tenant-tenant-b"}},
 		})
 	})
 	policy, err := parseIsolationNetworkPolicy(document)
 	if err != nil {
 		t.Fatalf("parse network policy: %v", err)
 	}
-	if err := validateTenantNetworkPolicy(policy, "tenant-a", "kodama-tenant-tenant-a", "kodama-tenant-tenant-b", ReleaseNamespace); err == nil {
+	if err := validateTenantNetworkPolicy(policy, "tenant-a", "kodema-tenant-tenant-a", "kodema-tenant-tenant-b", ReleaseNamespace); err == nil {
 		t.Fatal("a policy admitting the other tenant namespace was accepted")
 	} else if !strings.Contains(err.Error(), "other tenant") {
 		t.Fatalf("the foreign-peer refusal does not name the other tenant: %v", err)
@@ -207,12 +207,12 @@ func TestHarnessIsolationObjectsRejectAllNamespacePeer(t *testing.T) {
 				"ports": []any{map[string]any{"protocol": "TCP", "port": 443}},
 			}}
 		},
-		"ingress on a non kodama port": func(policy map[string]any) {
+		"ingress on a non kodema port": func(policy map[string]any) {
 			spec := policy["spec"].(map[string]any)
 			rule := spec["ingress"].([]any)[0].(map[string]any)
 			rule["ports"] = []any{map[string]any{"protocol": "TCP", "port": 443}}
 		},
-		"dns egress on the kodama port": func(policy map[string]any) {
+		"dns egress on the kodema port": func(policy map[string]any) {
 			spec := policy["spec"].(map[string]any)
 			rule := spec["egress"].([]any)[0].(map[string]any)
 			rule["ports"] = []any{map[string]any{"protocol": "TCP", "port": 8443}}
@@ -236,7 +236,7 @@ func TestHarnessIsolationObjectsRejectAllNamespacePeer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse network policy: %v", err)
 			}
-			if err := validateTenantNetworkPolicy(policy, "tenant-a", "kodama-tenant-tenant-a", "kodama-tenant-tenant-b", ReleaseNamespace); err == nil {
+			if err := validateTenantNetworkPolicy(policy, "tenant-a", "kodema-tenant-tenant-a", "kodema-tenant-tenant-b", ReleaseNamespace); err == nil {
 				t.Fatal("a policy with an all-namespace, ipBlock or wrong-port boundary was accepted")
 			}
 		})
@@ -293,7 +293,7 @@ func TestHarnessIsolationObjectsRejectUnboundedWorkload(t *testing.T) {
 			if err != nil || len(pods) != 1 {
 				t.Fatalf("parse pod: %v", err)
 			}
-			if err := validateIsolationPod(pods[0], "tenant-a", "kodama-tenant-tenant-a", limits); err == nil {
+			if err := validateIsolationPod(pods[0], "tenant-a", "kodema-tenant-tenant-a", limits); err == nil {
 				t.Fatal("an unbounded workload Pod was accepted")
 			}
 		})
@@ -310,13 +310,13 @@ func TestHarnessIsolationObjectsRejectMissingTenantLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse namespace: %v", err)
 	}
-	if err := validateTenantNamespace(namespace, "tenant-a", "kodama-tenant-tenant-a", ""); err == nil {
+	if err := validateTenantNamespace(namespace, "tenant-a", "kodema-tenant-tenant-a", ""); err == nil {
 		t.Fatal("a namespace without the tenant label was accepted")
 	}
 	limitDocument := mutateIsolationFixture(t, isolationLimitRangeFixture, func(limit map[string]any) {
 		delete(limit["metadata"].(map[string]any)["labels"].(map[string]any), isolationLabelTenant)
 	})
-	if _, err := parseIsolationLimitRange(limitDocument, "tenant-a", "kodama-tenant-tenant-a"); err == nil {
+	if _, err := parseIsolationLimitRange(limitDocument, "tenant-a", "kodema-tenant-tenant-a"); err == nil {
 		t.Fatal("a LimitRange without the tenant label was accepted")
 	}
 }
@@ -341,7 +341,7 @@ func TestHarnessIsolationObjectsRejectPrivilegedPodSecurity(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse namespace: %v", err)
 			}
-			if err := validateTenantNamespace(namespace, "tenant-a", "kodama-tenant-tenant-a", "kodama-tenant-tenant-b"); err == nil {
+			if err := validateTenantNamespace(namespace, "tenant-a", "kodema-tenant-tenant-a", "kodema-tenant-tenant-b"); err == nil {
 				t.Fatal("a namespace with a weakened pod-security profile was accepted")
 			}
 		})
@@ -414,7 +414,7 @@ func TestHarnessIsolationGitRefusal(t *testing.T) {
 func TestHarnessIsolationGitAdvertisementScopesCredentials(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		username, password, ok := request.BasicAuth()
-		if ok && username == "kodama" && password == "token-a" && request.URL.Path == "/repo-a/info/refs" {
+		if ok && username == "kodema" && password == "token-a" && request.URL.Path == "/repo-a/info/refs" {
 			writer.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
 			writer.WriteHeader(http.StatusOK)
 			return
@@ -442,11 +442,11 @@ func TestHarnessIsolationGitAdvertisementScopesCredentials(t *testing.T) {
 }
 
 // TestHarnessIsolationNetworkCommands pins the live cross-tenant commands: the
-// client must target the other tenant's address, reach Kodama and refuse the
+// client must target the other tenant's address, reach Kodema and refuse the
 // Kubernetes API; the server must fail when nc is absent.
 func TestHarnessIsolationNetworkCommands(t *testing.T) {
-	client := string(isolationNetworkClientPipeline("image@sha256:"+strings.Repeat("a", 64), "10.0.0.17", "kodama", "isolated-marker"))
-	for _, want := range []string{"http://10.0.0.17:18080/", "https://kodama.kodama-system.svc.cluster.local:8443/healthz", "https://kubernetes.default.svc/api", "isolated-marker"} {
+	client := string(isolationNetworkClientPipeline("image@sha256:"+strings.Repeat("a", 64), "10.0.0.17", "kodema", "isolated-marker"))
+	for _, want := range []string{"http://10.0.0.17:18080/", "https://kodema.kodema-system.svc.cluster.local:8443/healthz", "https://kubernetes.default.svc/api", "isolated-marker"} {
 		if !strings.Contains(client, want) {
 			t.Fatalf("the network client command does not contain %q:\n%s", want, client)
 		}
@@ -466,21 +466,21 @@ func TestHarnessIsolationNetworkCommands(t *testing.T) {
 func TestHarnessIsolationClaimsRequireOwnWorkspace(t *testing.T) {
 	claim := isolationPVC{}
 	claim.Metadata.Name = "workspace-abc"
-	claim.Metadata.Namespace = "kodama-tenant-tenant-a"
+	claim.Metadata.Namespace = "kodema-tenant-tenant-a"
 	claim.Metadata.Labels = map[string]string{isolationLabelTenant: "tenant-a"}
-	names, err := isolationValidateClaims([]isolationPVC{claim}, "tenant-a", "kodama-tenant-tenant-a", "tenant-b")
+	names, err := isolationValidateClaims([]isolationPVC{claim}, "tenant-a", "kodema-tenant-tenant-a", "tenant-b")
 	if err != nil {
 		t.Fatalf("a compliant claim was refused: %v", err)
 	}
 	if !names["workspace-abc"] {
 		t.Fatal("a compliant claim was not returned by name")
 	}
-	if _, err := isolationValidateClaims(nil, "tenant-a", "kodama-tenant-tenant-a", "tenant-b"); err == nil {
+	if _, err := isolationValidateClaims(nil, "tenant-a", "kodema-tenant-tenant-a", "tenant-b"); err == nil {
 		t.Fatal("a namespace with no workspace claim was accepted")
 	}
 	foreign := claim
 	foreign.Metadata.Labels = map[string]string{isolationLabelTenant: "tenant-b"}
-	if _, err := isolationValidateClaims([]isolationPVC{foreign}, "tenant-a", "kodama-tenant-tenant-a", "tenant-b"); err == nil {
+	if _, err := isolationValidateClaims([]isolationPVC{foreign}, "tenant-a", "kodema-tenant-tenant-a", "tenant-b"); err == nil {
 		t.Fatal("a claim owned by the other tenant was accepted")
 	}
 }
@@ -506,12 +506,12 @@ func mutateIsolationFixture(t *testing.T, fixture string, mutate func(map[string
 // server applies, so a fixture-only mistake (a below-minimum action timeout, an
 // unbounded name) fails here instead of surfacing as a stage invalid_input.
 func TestHarnessIsolationDocumentsAreAdmitted(t *testing.T) {
-	image := "rg.example.test/kodama@sha256:" + strings.Repeat("a", 64)
+	image := "rg.example.test/kodema@sha256:" + strings.Repeat("a", 64)
 	documents := map[string][]byte{
 		"cross-tenant": isolationPipelineDocument(image, "q02-record"),
 		"workspace":    isolationWorkspacePipeline(image, "own", "tenant-a", "other", "log", "isolated"),
 		"listener":     isolationNetworkServerPipeline(image, "ready", "done"),
-		"client":       isolationNetworkClientPipeline(image, "10.0.0.1", "kodama.kodama-system.svc.cluster.local", "isolated"),
+		"client":       isolationNetworkClientPipeline(image, "10.0.0.1", "kodema.kodema-system.svc.cluster.local", "isolated"),
 	}
 	for name, document := range documents {
 		if _, err := pipeline.Decode(document, pipeline.DefaultLimits); err != nil {
@@ -530,7 +530,7 @@ func TestHarnessIsolationGitSecretTokenTrimsTrailingNewline(t *testing.T) {
 		base64.StdEncoding.EncodeToString([]byte(raw + "\n")),
 		base64.StdEncoding.EncodeToString([]byte(raw + "\r\n")),
 	} {
-		token, err := parseIsolationGitSecretToken("kodama-git-tenant-a", encoded)
+		token, err := parseIsolationGitSecretToken("kodema-git-tenant-a", encoded)
 		if err != nil || token.Reveal() != raw {
 			t.Fatalf("parseIsolationGitSecretToken = %q, err = %v; want %q", token.Reveal(), err, raw)
 		}
@@ -541,7 +541,7 @@ func TestHarnessIsolationGitSecretTokenTrimsTrailingNewline(t *testing.T) {
 		base64.StdEncoding.EncodeToString([]byte("kodsvc.git.abc def\n")),
 		base64.StdEncoding.EncodeToString([]byte("kodex.exec-1.abcDEF\n")),
 	} {
-		if _, err := parseIsolationGitSecretToken("kodama-git-tenant-a", bad); err == nil {
+		if _, err := parseIsolationGitSecretToken("kodema-git-tenant-a", bad); err == nil {
 			t.Fatalf("parseIsolationGitSecretToken accepted %q", bad)
 		}
 	}

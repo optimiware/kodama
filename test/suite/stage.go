@@ -127,14 +127,14 @@ func stageEnvironment(options Options, getenv func(string) string) (stageEnv, er
 
 	environment := stageEnv{
 		e2e: []string{
-			"KODAMA_REQUIRE_INFRA=1",
+			"KODEMA_REQUIRE_INFRA=1",
 			"Q01_REQUIRE_STAGE=1",
 			"Q01_REQUIRE_INSTALLATION=1",
 			"Q01_SMOKE_GIT=1",
 			setting("Q01_INSTALLATION_FILE", options.Installation),
 			setting("Q01_EVIDENCE_DIR", options.evidence("stage-e2e")),
 		},
-		probe:    []string{"KODAMA_REQUIRE_INFRA=1"},
+		probe:    []string{"KODEMA_REQUIRE_INFRA=1"},
 		revision: first(getenv("Q01_DEPLOYED_REVISION"), document.Revision, getenv("Q01_HARNESS_REVISION")),
 		evidence: options.evidence,
 	}
@@ -157,8 +157,8 @@ func stageEnvironment(options Options, getenv func(string) string) (stageEnv, er
 	derive("Q02_HARNESS_REVISION", getenv("Q01_HARNESS_REVISION"))
 	derive("Q02_GIT_REPOSITORY_A", document.ordinaryRepository())
 	if tenant != "" {
-		derive("Q02_TENANT_NAMESPACE", "kodama-tenant-"+tenant)
-		derive("Q02_GIT_SERVICE_A", "kodama-git-"+tenant)
+		derive("Q02_TENANT_NAMESPACE", "kodema-tenant-"+tenant)
+		derive("Q02_GIT_SERVICE_A", "kodema-git-"+tenant)
 	}
 	// The probes read their credentials from the same private files as the e2e
 	// proofs. A caller that exported a token value keeps it.

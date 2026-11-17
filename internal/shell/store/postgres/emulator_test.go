@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 // emuRow is one committed row. values carries every column; tenant_id,
@@ -48,7 +48,7 @@ type emuDB struct {
 	now  time.Time
 	rows map[string][]*emuRow
 
-	// controllerRLS models the forced-RLS policies of the kodama_controller
+	// controllerRLS models the forced-RLS policies of the kodema_controller
 	// role for the statement shapes the adapter emits. It is enabled by default
 	// for that role, so a controller test cannot pass a statement real
 	// PostgreSQL would filter. It is not a general RLS implementation.
@@ -185,12 +185,12 @@ func (conn *emuConn) exec(sql string, args []any) (store.Result, error) {
 	case strings.HasPrefix(lower, "set transaction"):
 		return store.Result{RowsAffected: 1}, nil
 	case strings.HasPrefix(lower, "select set_config"):
-		if strings.Contains(lower, "kodama.tenant_id") {
+		if strings.Contains(lower, "kodema.tenant_id") {
 			conn.scopeSet = true
 			conn.tenant = emuString(args[0])
 			conn.project = emuString(args[1])
 		}
-		if strings.Contains(lower, "kodama.credential_id") {
+		if strings.Contains(lower, "kodema.credential_id") {
 			conn.credential = emuString(args[0])
 		}
 		return store.Result{RowsAffected: 1}, nil
@@ -485,7 +485,7 @@ func (conn *emuConn) selectRows(sql string, args []any) (store.Rows, error) {
 // exact_row policy can only see the bound identity; every other role sees the
 // rows its explicit table authority allows.
 func (conn *emuConn) rowVisible(table string, row *emuRow) bool {
-	if conn.db.role != "kodama_auth" {
+	if conn.db.role != "kodema_auth" {
 		return true
 	}
 	switch table {

@@ -10,7 +10,7 @@ missing input into a failure.
 
 | Probe | Invariants |
 |---|---|
-| `TestStageRuntimeIsolation` | Each tenant namespace is `kodama-tenant-<tenant>`, carries the tenant label and the baseline/restricted pod-security profile; the `kodama-tenant-limits` LimitRange publishes positive CPU/memory defaults; the `kodama-tenant-default-deny` NetworkPolicy denies both directions and selects no foreign or all-namespace peer, while admitting cluster DNS and Kodama; a live workload Pod has positive requests/limits within the namespace defaults, no host namespace, no host path and no privileged container; a live tenant-A workload cannot reach a tenant-B listener, can reach Kodama, and cannot reach the Kubernetes API. |
+| `TestStageRuntimeIsolation` | Each tenant namespace is `kodema-tenant-<tenant>`, carries the tenant label and the baseline/restricted pod-security profile; the `kodema-tenant-limits` LimitRange publishes positive CPU/memory defaults; the `kodema-tenant-default-deny` NetworkPolicy denies both directions and selects no foreign or all-namespace peer, while admitting cluster DNS and Kodema; a live workload Pod has positive requests/limits within the namespace defaults, no host namespace, no host path and no privileged container; a live tenant-A workload cannot reach a tenant-B listener, can reach Kodema, and cannot reach the Kubernetes API. |
 | `TestStageCrossTenantIsolation` | Two onboarded tenants cannot read or mutate each other's pipelines, tasks, executions, inbox, events, secret metadata, memberships or logs; foreign admin tokens and foreign service and execution credentials refuse with `404 not_found`, except two cases that refuse with `403 forbidden` before any store read: an execution credential inspecting another execution, and a human calling `execution.action.outputs`; a tenant's own admin, service and execution credentials still work; the other tenant's namespace contains no pod, workspace claim or execution credential Secret for the execution; neither tenant's `/workspace` contains the other's marker; the per-tenant Git service serves only its own service credential (when the Git fixture is configured). |
 
 ## Stage prerequisites
@@ -18,7 +18,7 @@ missing input into a failure.
 1. The stage values list both tenants (`tenants: [tenant-a, tenant-b]`) so
    the chart renders both tenant namespaces, LimitRanges and NetworkPolicies
    and the server binds both Kubernetes runtime adapters. The chart derives the
-   namespace as `kodama-tenant-<tenant>`.
+   namespace as `kodema-tenant-<tenant>`.
 2. Each tenant has an onboarded project and an admin credential. Supply the
    second tenant through `Q02_SECOND_TENANT_ID`, `Q02_SECOND_PROJECT_ID`,
    `Q02_SECOND_TENANT_NAMESPACE`, and either a second OAuthSonas persona
@@ -37,7 +37,7 @@ missing input into a failure.
    `gitService` for both tenants, run `scripts/stage-git --provision` for each,
    and set `Q02_GIT_REPOSITORY_A`, `Q02_GIT_REPOSITORY_B`,
    `Q02_GIT_SERVICE_A` and `Q02_GIT_SERVICE_B`. The probe reads the service
-   credentials from the `kodama-git-<tenant>` Secrets in `kodama-system`; it
+   credentials from the `kodema-git-<tenant>` Secrets in `kodema-system`; it
    never logs their values. A missing Git fixture fails the probe by default.
    `Q02_ALLOW_GIT_SKIP=1` deliberately runs the rest of the probe without Git
    and writes an explicit `skipped` evidence record, so the skip is never
@@ -51,7 +51,7 @@ missing input into a failure.
   window, and the probe requires tenant B's execution to still be non-terminal
   once tenant A's client is terminal. A listener that is missing or exits early
   fails instead of turning every refused connection into a vacuous pass. The
-  client also reaches Kodama and fails to reach the Kubernetes API, which proves
+  client also reaches Kodema and fails to reach the Kubernetes API, which proves
   the policy is not a blanket deny or a blanket allow.
 - The cross-tenant API assertions require `404 not_found`, not `403`, so a
   foreign resource's existence is not disclosed. The two `403` cases above are

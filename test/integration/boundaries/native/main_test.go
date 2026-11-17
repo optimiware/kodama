@@ -9,25 +9,25 @@ import (
 	"testing"
 )
 
-// kodamaBinary is the real CLI built once for the native hook processes.
-var kodamaBinary string
+// kodemaBinary is the real CLI built once for the native hook processes.
+var kodemaBinary string
 
 func TestMain(m *testing.M) {
-	directory, err := os.MkdirTemp("", "kodama-native-bin-")
+	directory, err := os.MkdirTemp("", "kodema-native-bin-")
 	if err != nil {
 		os.Stderr.WriteString("create binary directory: " + err.Error() + "\n")
 		os.Exit(1)
 	}
-	binary := filepath.Join(directory, "kodama")
-	command := exec.Command("go", "build", "-o", binary, "./cmd/kodama")
+	binary := filepath.Join(directory, "kodema")
+	command := exec.Command("go", "build", "-o", binary, "./cmd/kodema")
 	command.Dir = repositoryRoot()
 	output, err := command.CombinedOutput()
 	if err != nil {
-		os.Stderr.WriteString("build kodama: " + err.Error() + "\n" + string(output))
+		os.Stderr.WriteString("build kodema: " + err.Error() + "\n" + string(output))
 		os.RemoveAll(directory)
 		os.Exit(1)
 	}
-	kodamaBinary = binary
+	kodemaBinary = binary
 	code := m.Run()
 	os.RemoveAll(directory)
 	os.Exit(code)
@@ -50,12 +50,12 @@ func repositoryRoot() string {
 	}
 }
 
-func TestKodamaBinaryBuilt(t *testing.T) {
-	info, err := os.Stat(kodamaBinary)
+func TestKodemaBinaryBuilt(t *testing.T) {
+	info, err := os.Stat(kodemaBinary)
 	if err != nil {
-		t.Fatalf("kodama binary: %v", err)
+		t.Fatalf("kodema binary: %v", err)
 	}
 	if info.Mode().Perm()&0o111 == 0 {
-		t.Fatalf("kodama binary mode = %04o; want executable", info.Mode().Perm())
+		t.Fatalf("kodema binary mode = %04o; want executable", info.Mode().Perm())
 	}
 }

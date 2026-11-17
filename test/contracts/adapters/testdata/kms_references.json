@@ -19,7 +19,7 @@
         },
         {
           "name": "arn alias",
-          "reference": "aws-kms:arn:aws:kms:ap-southeast-2:210987654321:alias/kodama-kek",
+          "reference": "aws-kms:arn:aws:kms:ap-southeast-2:210987654321:alias/kodema-kek",
           "reference_region": "ap-southeast-2",
           "reference_account": "210987654321"
         },
@@ -31,17 +31,17 @@
         },
         {
           "name": "arn cn partition",
-          "reference": "aws-kms:arn:aws-cn:kms:cn-north-1:111122223333:alias/kodama",
+          "reference": "aws-kms:arn:aws-cn:kms:cn-north-1:111122223333:alias/kodema",
           "reference_region": "cn-north-1",
           "reference_account": "111122223333"
         },
         {
           "name": "configured-region alias",
-          "reference": "aws-kms:alias/kodama-kek"
+          "reference": "aws-kms:alias/kodema-kek"
         },
         {
           "name": "alias with slash and mixed case",
-          "reference": "aws-kms:alias/Kodama/Team_Kek-1"
+          "reference": "aws-kms:alias/Kodema/Team_Kek-1"
         }
       ],
       "refused": [
@@ -60,13 +60,13 @@
         {"name": "missing resource", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012"},
         {"name": "query string", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab?x=1"},
         {"name": "fragment", "reference": "aws-kms:arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab#frag"},
-        {"name": "space in alias", "reference": "aws-kms:alias/kodama kek"},
+        {"name": "space in alias", "reference": "aws-kms:alias/kodema kek"},
         {"name": "percent escape in alias", "reference": "aws-kms:alias/%2e%2e"},
         {"name": "traversal in alias", "reference": "aws-kms:alias/.."},
-        {"name": "alias name repeats prefix", "reference": "aws-kms:alias/alias/kodama"},
-        {"name": "uppercase scheme prefix", "reference": "AWS-KMS:alias/kodama"},
-        {"name": "space after prefix", "reference": "aws-kms: alias/kodama"},
-        {"name": "trailing space", "reference": "aws-kms:alias/kodama "},
+        {"name": "alias name repeats prefix", "reference": "aws-kms:alias/alias/kodema"},
+        {"name": "uppercase scheme prefix", "reference": "AWS-KMS:alias/kodema"},
+        {"name": "space after prefix", "reference": "aws-kms: alias/kodema"},
+        {"name": "trailing space", "reference": "aws-kms:alias/kodema "},
         {"name": "empty reference", "reference": "aws-kms:"}
       ]
     },
@@ -76,52 +76,52 @@
       "accepted": [
         {
           "name": "full key resource",
-          "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek",
+          "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek",
           "reference_project": "demo-project",
           "reference_location": "europe-west1",
-          "reference_key_ring": "kodama",
+          "reference_key_ring": "kodema",
           "reference_crypto_key": "kek"
         },
         {
           "name": "project number and global location",
-          "reference": "gcp-kms:projects/123456789012/locations/global/keyRings/kodama-ring/cryptoKeys/kek_1",
+          "reference": "gcp-kms:projects/123456789012/locations/global/keyRings/kodema-ring/cryptoKeys/kek_1",
           "reference_project": "123456789012",
           "reference_location": "global",
-          "reference_key_ring": "kodama-ring",
+          "reference_key_ring": "kodema-ring",
           "reference_crypto_key": "kek_1"
         },
         {
           "name": "multi-region location",
-          "reference": "gcp-kms:projects/my-proj-1/locations/us/keyRings/ring-kodama/cryptoKeys/key-1",
+          "reference": "gcp-kms:projects/my-proj-1/locations/us/keyRings/ring-kodema/cryptoKeys/key-1",
           "reference_project": "my-proj-1",
           "reference_location": "us",
-          "reference_key_ring": "ring-kodama",
+          "reference_key_ring": "ring-kodema",
           "reference_crypto_key": "key-1"
         }
       ],
       "refused": [
-        {"name": "incomplete key ring", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama"},
-        {"name": "empty crypto key", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/"},
-        {"name": "crypto key version", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/cryptoKeyVersions/1"},
-        {"name": "extra segment", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/extra"},
+        {"name": "incomplete key ring", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema"},
+        {"name": "empty crypto key", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/"},
+        {"name": "crypto key version", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek/cryptoKeyVersions/1"},
+        {"name": "extra segment", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek/extra"},
         {"name": "empty segment", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings//cryptoKeys/kek"},
-        {"name": "leading slash", "reference": "gcp-kms:/projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
-        {"name": "trailing slash", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/"},
-        {"name": "upper-case project", "reference": "gcp-kms:projects/Demo-Project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
-        {"name": "underscore project", "reference": "gcp-kms:projects/demo_project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
-        {"name": "traversal location", "reference": "gcp-kms:projects/demo-project/locations/../keyRings/kodama/cryptoKeys/kek"},
-        {"name": "percent escape", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/%2e%2e"},
-        {"name": "query string", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek?x=1"},
-        {"name": "fragment", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek#frag"},
-        {"name": "wrong label case", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyrings/kodama/cryptoKeys/kek"},
-        {"name": "missing locations", "reference": "gcp-kms:projects/demo-project/keyRings/kodama/cryptoKeys/kek"},
+        {"name": "leading slash", "reference": "gcp-kms:/projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek"},
+        {"name": "trailing slash", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek/"},
+        {"name": "upper-case project", "reference": "gcp-kms:projects/Demo-Project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek"},
+        {"name": "underscore project", "reference": "gcp-kms:projects/demo_project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek"},
+        {"name": "traversal location", "reference": "gcp-kms:projects/demo-project/locations/../keyRings/kodema/cryptoKeys/kek"},
+        {"name": "percent escape", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/%2e%2e"},
+        {"name": "query string", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek?x=1"},
+        {"name": "fragment", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek#frag"},
+        {"name": "wrong label case", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyrings/kodema/cryptoKeys/kek"},
+        {"name": "missing locations", "reference": "gcp-kms:projects/demo-project/keyRings/kodema/cryptoKeys/kek"},
         {"name": "missing key ring", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/cryptoKeys/kek"},
-        {"name": "invalid ring character", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama.ring/cryptoKeys/kek"},
+        {"name": "invalid ring character", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema.ring/cryptoKeys/kek"},
         {"name": "ring starts with digit", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/1ring/cryptoKeys/kek"},
-        {"name": "space in crypto key", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/ke k"},
-        {"name": "uppercase scheme prefix", "reference": "GCP-KMS:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
-        {"name": "space after prefix", "reference": "gcp-kms: projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"},
-        {"name": "trailing space", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek "},
+        {"name": "space in crypto key", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/ke k"},
+        {"name": "uppercase scheme prefix", "reference": "GCP-KMS:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek"},
+        {"name": "space after prefix", "reference": "gcp-kms: projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek"},
+        {"name": "trailing space", "reference": "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek "},
         {"name": "empty reference", "reference": "gcp-kms:"}
       ]
     },
@@ -146,7 +146,7 @@
       {"name": "empty reference", "reference": "ephemeral:"}
     ]},
     {"name": "test keyfile", "provider": "keyfile", "environment": "test", "adapter": "keyfile", "accepted": [
-      {"name": "keyfile name", "reference": "keyfile:kodama"}
+      {"name": "keyfile name", "reference": "keyfile:kodema"}
     ], "refused": [
       {"name": "empty reference", "reference": "keyfile:"}
     ]}

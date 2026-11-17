@@ -3,8 +3,8 @@ package factory
 // Per-fixture resource scope.
 //
 // One test process can run several factory fixtures (for example two real
-// compositions in one test). The process-wide run labels (`kodama.test` and
-// `kodama.owner-pid`) are still what crash recovery sweeps, but they select
+// compositions in one test). The process-wide run labels (`kodema.test` and
+// `kodema.owner-pid`) are still what crash recovery sweeps, but they select
 // every fixture in the process. A fixture identifier is minted before any
 // resource exists and added next to those labels on every container, workspace
 // volume and positive-control probe, so closing one fixture removes only its
@@ -25,14 +25,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // FixtureLabel scopes one fixture's resources inside a test process. It is a
 // test-support label; the process labels above it remain the crash-recovery
 // scope.
-const FixtureLabel = "kodama.fixture"
+const FixtureLabel = "kodema.fixture"
 
 // fixtureIDBytes is the entropy of one fixture identifier. Eight random bytes
 // make a collision between two fixtures in one process negligible.

@@ -30,19 +30,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	kerneldefinition "github.com/optimiware/kodama/internal/kernel/definition"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/service"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	kerneldefinition "github.com/optimiware/kodema/internal/kernel/definition"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/service"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // activationCredentialOperation is the receipt operation identity of one
@@ -53,8 +53,8 @@ const activationCredentialOperation = "execution.credential.activate"
 // workloads when configured models/providers are enabled in the execution's
 // scope.
 const (
-	EnvLLMOpenAIBaseURL    = "KODAMA_LLM_OPENAI_BASE_URL"
-	EnvLLMAnthropicBaseURL = "KODAMA_LLM_ANTHROPIC_BASE_URL"
+	EnvLLMOpenAIBaseURL    = "KODEMA_LLM_OPENAI_BASE_URL"
+	EnvLLMAnthropicBaseURL = "KODEMA_LLM_ANTHROPIC_BASE_URL"
 )
 
 // activationMaterializer builds the secret values and the current execution

@@ -36,12 +36,12 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/userland/git"
-	identityfixture "github.com/optimiware/kodama/test/support/boundaries/identity"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/userland/git"
+	identityfixture "github.com/optimiware/kodema/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -242,9 +242,9 @@ func pushPipelineDocumentRefs(repository, service, image string, refs []string, 
 			Image:   image,
 			Timeout: "10m",
 			Commands: []string{
-				fmt.Sprintf(`test "$(cat /kodama/inputs/repository)" = %s`, repository),
-				fmt.Sprintf(`test "$(cat /kodama/inputs/ref)" = %s`, refs[0]),
-				fmt.Sprintf(`test "$(cat /kodama/inputs/commit)" = %s`, commit),
+				fmt.Sprintf(`test "$(cat /kodema/inputs/repository)" = %s`, repository),
+				fmt.Sprintf(`test "$(cat /kodema/inputs/ref)" = %s`, refs[0]),
+				fmt.Sprintf(`test "$(cat /kodema/inputs/commit)" = %s`, commit),
 			},
 		}},
 	}

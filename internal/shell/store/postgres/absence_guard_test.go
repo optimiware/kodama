@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 // enableAbsenceGuard turns the declaration-derived absence plan on for one

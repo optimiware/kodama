@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Inline Vite acceptance driver for the Kodama Scaleway stage (M2).
+# Inline Vite acceptance driver for the Kodema Scaleway stage (M2).
 #
 # Submits exactly the checked-in YAML bytes once on the task-free
 # pipeline.start alternate binding, waits for success AND complete cleanup,
@@ -9,37 +9,37 @@
 # file: it never appears in argv, output or the summary.
 #
 # Required inputs:
-#   KODAMA_STAGE_API_URL          https public API base URL
-#   KODAMA_STAGE_CA_FILE          readable public CA file
-#   KODAMA_STAGE_ADMIN_TOKEN_FILE mode 0600 token file
-#   KODAMA_STAGE_EVIDENCE_DIR     absolute private evidence directory
-#   KODAMA_STAGE_RUN_ID           bounded per-run acceptance identity; required
+#   KODEMA_STAGE_API_URL          https public API base URL
+#   KODEMA_STAGE_CA_FILE          readable public CA file
+#   KODEMA_STAGE_ADMIN_TOKEN_FILE mode 0600 token file
+#   KODEMA_STAGE_EVIDENCE_DIR     absolute private evidence directory
+#   KODEMA_STAGE_RUN_ID           bounded per-run acceptance identity; required
 #                                 unless Q01_DEPLOYED_REVISION supplies the
 #                                 run discriminator (or replay is allowed)
 # Optional:
 #   Q01_DEPLOYED_REVISION         deployed revision recorded in the summary
-#   KODAMA_STAGE_REVISION         explicit revision alias, wins over Q01_...
-#   KODAMA_STAGE_ALLOW_REPLAY     set to 1 to accept a replayed execution and
+#   KODEMA_STAGE_REVISION         explicit revision alias, wins over Q01_...
+#   KODEMA_STAGE_ALLOW_REPLAY     set to 1 to accept a replayed execution and
 #                                 to reuse the YAML-only key when no run or
 #                                 revision identity is available
-#   KODAMA_STAGE_PROJECT_ID       project id (default tenant-a)
-#   KODAMA_STAGE_PIPELINE_FILE    inline YAML (default deploy/stage/vite-acceptance.yaml)
-#   KODAMA_STAGE_ACCEPT_TIMEOUT   overall poll bound in seconds (default 900)
-#   KODAMA_STAGE_IMAGE_DIGEST     optional server image digest recorded in the summary
+#   KODEMA_STAGE_PROJECT_ID       project id (default tenant-a)
+#   KODEMA_STAGE_PIPELINE_FILE    inline YAML (default deploy/stage/vite-acceptance.yaml)
+#   KODEMA_STAGE_ACCEPT_TIMEOUT   overall poll bound in seconds (default 900)
+#   KODEMA_STAGE_IMAGE_DIGEST     optional server image digest recorded in the summary
 #
 # The submit idempotency key is derived from the pipeline YAML hash and a
 # run/revision discriminator, so a new deployed revision or run never replays
 # the previous execution. A submit response carrying replayed=true fails
-# unless KODAMA_STAGE_ALLOW_REPLAY=1.
+# unless KODEMA_STAGE_ALLOW_REPLAY=1.
 
 set -euo pipefail
 set +x
 umask 077
 
 readonly VITE_VERSION='8.3.6'
-readonly BUILD_MARKER='KODAMA_VITE_OK'
-readonly POLL_INTERVAL="${KODAMA_STAGE_ACCEPT_POLL_SECONDS:-5}"
-readonly POLL_TIMEOUT="${KODAMA_STAGE_ACCEPT_TIMEOUT:-900}"
+readonly BUILD_MARKER='KODEMA_VITE_OK'
+readonly POLL_INTERVAL="${KODEMA_STAGE_ACCEPT_POLL_SECONDS:-5}"
+readonly POLL_TIMEOUT="${KODEMA_STAGE_ACCEPT_TIMEOUT:-900}"
 readonly MAX_LOG_BYTES=$((8 * 1024 * 1024))
 readonly MAX_LOG_PAGES=200
 
@@ -67,56 +67,56 @@ stat_mode() {
 
 # --- Guards ------------------------------------------------------------------
 
-api_url="${KODAMA_STAGE_API_URL:-}"
-[[ -n "$api_url" ]] || refuse 'KODAMA_STAGE_API_URL is required'
-[[ "$api_url" == https://* ]] || refuse "KODAMA_STAGE_API_URL must be an https URL, got '$api_url'"
+api_url="${KODEMA_STAGE_API_URL:-}"
+[[ -n "$api_url" ]] || refuse 'KODEMA_STAGE_API_URL is required'
+[[ "$api_url" == https://* ]] || refuse "KODEMA_STAGE_API_URL must be an https URL, got '$api_url'"
 api_url="${api_url%/}"
 
-ca_file="${KODAMA_STAGE_CA_FILE:-}"
-[[ -n "$ca_file" ]] || refuse 'KODAMA_STAGE_CA_FILE is required'
+ca_file="${KODEMA_STAGE_CA_FILE:-}"
+[[ -n "$ca_file" ]] || refuse 'KODEMA_STAGE_CA_FILE is required'
 [[ -f "$ca_file" && -r "$ca_file" ]] || refuse "CA file '$ca_file' is not readable"
 
-token_file="${KODAMA_STAGE_ADMIN_TOKEN_FILE:-}"
-[[ -n "$token_file" ]] || refuse 'KODAMA_STAGE_ADMIN_TOKEN_FILE is required'
+token_file="${KODEMA_STAGE_ADMIN_TOKEN_FILE:-}"
+[[ -n "$token_file" ]] || refuse 'KODEMA_STAGE_ADMIN_TOKEN_FILE is required'
 [[ -f "$token_file" && -r "$token_file" ]] || refuse "token file '$token_file' is not readable"
 token_mode="$(stat_mode "$token_file")"
 [[ "$token_mode" == '600' ]] || refuse "token file '$token_file' has mode $token_mode; want 0600"
 [[ -s "$token_file" ]] || refuse "token file '$token_file' is empty"
 
-project="${KODAMA_STAGE_PROJECT_ID:-tenant-a}"
-[[ "$project" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || refuse "KODAMA_STAGE_PROJECT_ID '$project' is not a bounded project identity"
+project="${KODEMA_STAGE_PROJECT_ID:-tenant-a}"
+[[ "$project" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || refuse "KODEMA_STAGE_PROJECT_ID '$project' is not a bounded project identity"
 
-run_id="${KODAMA_STAGE_RUN_ID:-}"
+run_id="${KODEMA_STAGE_RUN_ID:-}"
 if [[ -n "$run_id" ]]; then
   [[ "$run_id" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$ ]] ||
-    refuse "KODAMA_STAGE_RUN_ID '$run_id' is not a bounded run identity"
+    refuse "KODEMA_STAGE_RUN_ID '$run_id' is not a bounded run identity"
 fi
 
-allow_replay="${KODAMA_STAGE_ALLOW_REPLAY:-}"
+allow_replay="${KODEMA_STAGE_ALLOW_REPLAY:-}"
 [[ -z "$allow_replay" || "$allow_replay" == '1' ]] ||
-  refuse "KODAMA_STAGE_ALLOW_REPLAY must be '1' when set, got '$allow_replay'"
+  refuse "KODEMA_STAGE_ALLOW_REPLAY must be '1' when set, got '$allow_replay'"
 
-revision="${KODAMA_STAGE_REVISION:-${Q01_DEPLOYED_REVISION:-}}"
+revision="${KODEMA_STAGE_REVISION:-${Q01_DEPLOYED_REVISION:-}}"
 if [[ -n "$revision" ]]; then
   [[ "$revision" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ ]] ||
     refuse "deployed revision '$revision' is not a bounded revision identity"
 fi
 [[ -n "$run_id" || -n "$revision" || "$allow_replay" == '1' ]] ||
-  refuse 'KODAMA_STAGE_RUN_ID or Q01_DEPLOYED_REVISION is required so the acceptance key is per revision (set KODAMA_STAGE_ALLOW_REPLAY=1 to reuse the YAML-only key)'
+  refuse 'KODEMA_STAGE_RUN_ID or Q01_DEPLOYED_REVISION is required so the acceptance key is per revision (set KODEMA_STAGE_ALLOW_REPLAY=1 to reuse the YAML-only key)'
 
-image_digest="${KODAMA_STAGE_IMAGE_DIGEST:-}"
+image_digest="${KODEMA_STAGE_IMAGE_DIGEST:-}"
 
-pipeline="${KODAMA_STAGE_PIPELINE_FILE:-$DEFAULT_PIPELINE}"
+pipeline="${KODEMA_STAGE_PIPELINE_FILE:-$DEFAULT_PIPELINE}"
 [[ -f "$pipeline" && -r "$pipeline" ]] || refuse "pipeline file '$pipeline' is not readable"
 
-evidence="${KODAMA_STAGE_EVIDENCE_DIR:-}"
-[[ -n "$evidence" ]] || refuse 'KODAMA_STAGE_EVIDENCE_DIR is required'
-[[ "$evidence" == /* ]] || refuse "KODAMA_STAGE_EVIDENCE_DIR must be an absolute path, got '$evidence'"
-[[ "$evidence" != '/' ]] || refuse 'KODAMA_STAGE_EVIDENCE_DIR must not be the filesystem root'
-[[ ! -e "$evidence" || -d "$evidence" ]] || refuse "KODAMA_STAGE_EVIDENCE_DIR '$evidence' is not a directory"
+evidence="${KODEMA_STAGE_EVIDENCE_DIR:-}"
+[[ -n "$evidence" ]] || refuse 'KODEMA_STAGE_EVIDENCE_DIR is required'
+[[ "$evidence" == /* ]] || refuse "KODEMA_STAGE_EVIDENCE_DIR must be an absolute path, got '$evidence'"
+[[ "$evidence" != '/' ]] || refuse 'KODEMA_STAGE_EVIDENCE_DIR must not be the filesystem root'
+[[ ! -e "$evidence" || -d "$evidence" ]] || refuse "KODEMA_STAGE_EVIDENCE_DIR '$evidence' is not a directory"
 
-[[ "$POLL_INTERVAL" =~ ^[1-9][0-9]*$ ]] || refuse 'KODAMA_STAGE_ACCEPT_POLL_SECONDS must be a positive integer'
-[[ "$POLL_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || refuse 'KODAMA_STAGE_ACCEPT_TIMEOUT must be a positive integer'
+[[ "$POLL_INTERVAL" =~ ^[1-9][0-9]*$ ]] || refuse 'KODEMA_STAGE_ACCEPT_POLL_SECONDS must be a positive integer'
+[[ "$POLL_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || refuse 'KODEMA_STAGE_ACCEPT_TIMEOUT must be a positive integer'
 
 require_cmd curl
 require_cmd python3
@@ -214,7 +214,7 @@ fi
 IFS=$'\t' read -r execution_id submit_replayed <<<"$submit_meta"
 [[ -n "${execution_id:-}" ]] || fail 'the submit response carried an empty execution id'
 if [[ "$submit_replayed" == 'true' && "$allow_replay" != '1' ]]; then
-  fail "pipeline.start replayed execution $execution_id (replayed=true); refusing a replayed acceptance (set KODAMA_STAGE_ALLOW_REPLAY=1 to accept)"
+  fail "pipeline.start replayed execution $execution_id (replayed=true); refusing a replayed acceptance (set KODEMA_STAGE_ALLOW_REPLAY=1 to accept)"
 fi
 
 # --- Poll until succeeded AND cleanup complete -------------------------------
@@ -376,8 +376,8 @@ for marker in ("kodex.", "kodsvc."):
         raise SystemExit("retained log contains the credential marker %r" % marker)
 if "8.3.6" not in text:
     raise SystemExit("retained log does not show Vite 8.3.6")
-if "KODAMA_VITE_OK" not in text:
-    raise SystemExit("retained log does not show the KODAMA_VITE_OK build marker")
+if "KODEMA_VITE_OK" not in text:
+    raise SystemExit("retained log does not show the KODEMA_VITE_OK build marker")
 if not any("dist/" in line for line in text.splitlines()):
     raise SystemExit("retained log has no dist/ artifact line")
 
@@ -403,7 +403,7 @@ summary = {
     "state": state,
     "cleanup_state": cleanup_state,
     "vite_version": "8.3.6",
-    "build_marker": "KODAMA_VITE_OK",
+    "build_marker": "KODEMA_VITE_OK",
     "sanitized_excerpt": excerpt,
 }
 with open(summary_path, "w", encoding="utf-8") as target:

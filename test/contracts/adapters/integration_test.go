@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // TestNATSSubjectScoping pins the scope-qualified subject layout. A subscriber
@@ -85,9 +85,9 @@ func TestNATSSubjectScoping(t *testing.T) {
 
 	invalid := []nats.Subject{
 		"",
-		"kodama.v1.tenant-1.*.events",
-		"kodama.v1.tenant-1.>.events",
-		"kodama.v1.tenant-1..events",
+		"kodema.v1.tenant-1.*.events",
+		"kodema.v1.tenant-1.>.events",
+		"kodema.v1.tenant-1..events",
 	}
 	for _, subject := range invalid {
 		if err := subject.Validate(); err == nil {
@@ -101,17 +101,17 @@ func TestNATSSubjectScoping(t *testing.T) {
 func TestOIDCConfigAndRequest(t *testing.T) {
 	config := identity.OIDCConfig{
 		Issuer:    "https://issuer.example",
-		Audience:  "kodama",
+		Audience:  "kodema",
 		ClockSkew: 30 * time.Second,
 	}
 	if err := config.Validate(); err != nil {
 		t.Fatalf("valid OIDC config refused: %v", err)
 	}
 	invalidConfigs := []identity.OIDCConfig{
-		{Issuer: "http://issuer.example", Audience: "kodama"},
-		{Issuer: "", Audience: "kodama"},
+		{Issuer: "http://issuer.example", Audience: "kodema"},
+		{Issuer: "", Audience: "kodema"},
 		{Issuer: "https://issuer.example", Audience: ""},
-		{Issuer: "https://issuer.example", Audience: "kodama", ClockSkew: -time.Second},
+		{Issuer: "https://issuer.example", Audience: "kodema", ClockSkew: -time.Second},
 	}
 	for _, candidate := range invalidConfigs {
 		if err := candidate.Validate(); err == nil {
@@ -184,9 +184,9 @@ func TestOAuthClientConfig(t *testing.T) {
 // optional audit context and never substitutes for the two-claim match.
 func TestOAuthClaimsMatch(t *testing.T) {
 	claims := identity.OAuthClaims{
-		TenantClaim: "https://kodama/tenant",
+		TenantClaim: "https://kodema/tenant",
 		Tenant:      "tenant-1",
-		RoleClaim:   "https://kodama/roles",
+		RoleClaim:   "https://kodema/roles",
 		Role:        "operator",
 		Subject:     "auth0|subject-1",
 	}
@@ -281,9 +281,9 @@ func TestRBACTable(t *testing.T) {
 // carries the same protocol plus the application's RBAC decision.
 func TestHostedAuthorityOAuth(t *testing.T) {
 	claims := identity.OAuthClaims{
-		TenantClaim: "https://kodama/tenant",
+		TenantClaim: "https://kodema/tenant",
 		Tenant:      "tenant-1",
-		RoleClaim:   "https://kodama/roles",
+		RoleClaim:   "https://kodema/roles",
 		Role:        "operator",
 	}
 	request := authorize.HostedAuthorityRequest{

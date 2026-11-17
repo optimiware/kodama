@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 func normalizeSQL(sql string) string {
@@ -384,11 +384,11 @@ func TestMigrationsForceRLSWithNonOwnerRuntimeRole(t *testing.T) {
 				t.Errorf("table %q has no row-level security policy", table.Name)
 			} else {
 				segment := statementAt(sql, location[0])
-				if !strings.Contains(segment, "kodama.tenant_id") {
+				if !strings.Contains(segment, "kodema.tenant_id") {
 					t.Errorf("policy on table %q does not read the transaction-local tenant setting", table.Name)
 				}
 				if hasSchemaColumn(table, "project_id") {
-					if !strings.Contains(segment, "kodama.project_id") {
+					if !strings.Contains(segment, "kodema.project_id") {
 						t.Errorf("policy on table %q does not read the transaction-local project setting", table.Name)
 					}
 					if !strings.Contains(segment, "project_id") {

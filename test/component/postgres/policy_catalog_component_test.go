@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // livePolicy is one row of pg_policies for the public schema.
@@ -82,15 +82,15 @@ func declaredPolicyFailures(ctx context.Context, t *testing.T, shard *pgtest.Sha
 	live := readLivePolicies(ctx, t, shard)
 
 	systemRoles := map[string]bool{
-		"kodama_controller": true,
-		"kodama_publisher":  true,
-		"kodama_auth":       true,
+		"kodema_controller": true,
+		"kodema_publisher":  true,
+		"kodema_auth":       true,
 	}
 	for _, policy := range live {
 		for _, role := range policy.Roles {
 			lower := strings.ToLower(role)
-			if lower == "kodama_runtime" {
-				fail("policy %q targets kodama_runtime; the application role must rely only on the PUBLIC scope policies", policy.Name)
+			if lower == "kodema_runtime" {
+				fail("policy %q targets kodema_runtime; the application role must rely only on the PUBLIC scope policies", policy.Name)
 			}
 			if lower == "public" {
 				if policy.Name != policy.Table+"_scope" {
@@ -99,7 +99,7 @@ func declaredPolicyFailures(ctx context.Context, t *testing.T, shard *pgtest.Sha
 				if !strings.EqualFold(policy.Command, "ALL") {
 					fail("PUBLIC scope policy %q command = %q; want ALL", policy.Name, policy.Command)
 				}
-				if !strings.Contains(normalizeSQL(policy.Using), "current_setting('kodama.tenant_id'") {
+				if !strings.Contains(normalizeSQL(policy.Using), "current_setting('kodema.tenant_id'") {
 					fail("PUBLIC scope policy %q USING = %q; want the transaction tenant scope", policy.Name, policy.Using)
 				}
 			}
@@ -225,14 +225,14 @@ func expectedPredicate(descriptor, column string, values []string) ([]string, bo
 		return []string{"TRUE"}, true
 	case "scope_matches_txn_scope":
 		return []string{
-			"EQ:COL:tenant_id:SETTING:kodama.tenant_id",
-			"EQ:COL:project_id:SETTING:kodama.project_id",
+			"EQ:COL:tenant_id:SETTING:kodema.tenant_id",
+			"EQ:COL:project_id:SETTING:kodema.project_id",
 		}, true
 	case "exact_row":
 		if column == "" {
 			return nil, false
 		}
-		return []string{"EQ:COL:" + column + ":SETTING:kodama.credential_id"}, true
+		return []string{"EQ:COL:" + column + ":SETTING:kodema.credential_id"}, true
 	case "column_in_set":
 		if column == "" || len(values) == 0 {
 			return nil, false

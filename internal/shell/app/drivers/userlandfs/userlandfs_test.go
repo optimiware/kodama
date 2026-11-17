@@ -68,12 +68,12 @@ func TestReplaceFileCreatesMissingParent(t *testing.T) {
 	if err := os.Chmod(existing, 0o750); err != nil {
 		t.Fatalf("Chmod: %v", err)
 	}
-	target := filepath.Join(existing, "config", "kodama", "session.json")
+	target := filepath.Join(existing, "config", "kodema", "session.json")
 	files := FileSystem{}
 	if err := files.ReplaceFile(target, []byte(`{"token":"x"}`), 0o600); err != nil {
 		t.Fatalf("ReplaceFile: %v", err)
 	}
-	for _, dir := range []string{filepath.Join(existing, "config"), filepath.Join(existing, "config", "kodama")} {
+	for _, dir := range []string{filepath.Join(existing, "config"), filepath.Join(existing, "config", "kodema")} {
 		info, err := os.Stat(dir)
 		if err != nil {
 			t.Fatalf("Stat(%s): %v", dir, err)

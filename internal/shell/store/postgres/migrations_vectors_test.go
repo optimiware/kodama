@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 func rawMigrationSQL() string {
@@ -266,7 +266,7 @@ func TestMigrationsMatchSchemaVectors(t *testing.T) {
 					t.Errorf("policy %s does not render the any predicate: %s", key, segment)
 				}
 			case store.PredicateScopeMatchesTxnScope:
-				if !strings.Contains(segment, "kodama.tenant_id") || !strings.Contains(segment, "kodama.project_id") {
+				if !strings.Contains(segment, "kodema.tenant_id") || !strings.Contains(segment, "kodema.project_id") {
 					t.Errorf("policy %s does not render the transaction scope predicate: %s", key, segment)
 				}
 			case store.PredicateColumnInSet:
@@ -276,13 +276,13 @@ func TestMigrationsMatchSchemaVectors(t *testing.T) {
 					}
 				}
 			case store.PredicateExactRow:
-				if !strings.Contains(segment, "kodama.credential_id") {
+				if !strings.Contains(segment, "kodema.credential_id") {
 					t.Errorf("policy %s does not render the exact-row predicate: %s", key, segment)
 				}
 			}
 		}
 	}
-	renderedPolicies := regexp.MustCompile(`create\s+policy\s+[a-z0-9_]+\s+on\s+[a-z0-9_]+\s+[^;]*\s+to\s+(kodama_controller|kodama_publisher|kodama_auth)`).FindAllString(sql, -1)
+	renderedPolicies := regexp.MustCompile(`create\s+policy\s+[a-z0-9_]+\s+on\s+[a-z0-9_]+\s+[^;]*\s+to\s+(kodema_controller|kodema_publisher|kodema_auth)`).FindAllString(sql, -1)
 	if len(renderedPolicies) != len(expectedPolicies) {
 		t.Errorf("rendered %d system-role policies; want exactly the %d declared", len(renderedPolicies), len(expectedPolicies))
 	}
@@ -308,7 +308,7 @@ func TestMigrationsMatchSchemaVectors(t *testing.T) {
 			}
 		}
 	}
-	renderedGrants := regexp.MustCompile(`(?i)grant\s+(?:select|insert|update|delete)\b[^;]*\s+to\s+(kodama_controller|kodama_publisher|kodama_auth);`).FindAllString(raw, -1)
+	renderedGrants := regexp.MustCompile(`(?i)grant\s+(?:select|insert|update|delete)\b[^;]*\s+to\s+(kodema_controller|kodema_publisher|kodema_auth);`).FindAllString(raw, -1)
 	if len(renderedGrants) != expectedGrants {
 		t.Errorf("rendered %d system-role grants; want exactly the %d declared", len(renderedGrants), expectedGrants)
 	}

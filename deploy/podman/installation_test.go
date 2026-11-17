@@ -130,7 +130,7 @@ func writeDescriptor(t *testing.T, env map[string]string, revision, serverDigest
 	lib := filepath.Join(bundleRoot(t), "lib.sh")
 	directory := t.TempDir()
 	out := filepath.Join(directory, "installation.json")
-	state := env["KODAMA_LOCAL_STATE_DIR"]
+	state := env["KODEMA_LOCAL_STATE_DIR"]
 	if err := os.MkdirAll(filepath.Join(state, "secrets"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ printf '%s' "$3"`)
 
 func TestInstallationDescriptorIsCompleteAndPrivate(t *testing.T) {
 	env := shellEnv(t, "descriptor-test")
-	env["KODAMA_LOCAL_GIT_RESOURCES"] = "admin=git-admin,demo=git-demo"
+	env["KODEMA_LOCAL_GIT_RESOURCES"] = "admin=git-admin,demo=git-demo"
 	revision := strings.Repeat("a", 40)
 	serverDigest := "sha256:" + strings.Repeat("b", 64)
 	path, raw := writeDescriptor(t, env, revision, serverDigest)
@@ -192,7 +192,7 @@ func TestInstallationDescriptorIsCompleteAndPrivate(t *testing.T) {
 	if descriptor.ServerImageDigest != serverDigest {
 		t.Fatalf("server_image_digest = %q; want observed %q", descriptor.ServerImageDigest, serverDigest)
 	}
-	state := env["KODAMA_LOCAL_STATE_DIR"]
+	state := env["KODEMA_LOCAL_STATE_DIR"]
 	if descriptor.TenantID != "tenant-local" || descriptor.ProjectID != "tenant-local" {
 		t.Fatalf("tenant/project = %q/%q", descriptor.TenantID, descriptor.ProjectID)
 	}
@@ -327,7 +327,7 @@ if reason="$(validate_installation_descriptor "$1")"; then echo ok; else printf 
 func membershipHarness(t *testing.T, mode, principal string) ([]string, string) {
 	t.Helper()
 	env := shellEnv(t, "membership-test")
-	state := env["KODAMA_LOCAL_STATE_DIR"]
+	state := env["KODEMA_LOCAL_STATE_DIR"]
 	if err := os.MkdirAll(filepath.Join(state, "secrets"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -475,13 +475,13 @@ func TestGitHTTPSPortCollisionAndLeafSAN(t *testing.T) {
 		t.Fatalf("sourcing lib.sh failed: %s", errOut)
 	}
 	if strings.TrimSpace(out) != "18445" {
-		t.Fatalf("default KODAMA_LOCAL_GIT_HTTPS_PORT = %q; want 18445", strings.TrimSpace(out))
+		t.Fatalf("default KODEMA_LOCAL_GIT_HTTPS_PORT = %q; want 18445", strings.TrimSpace(out))
 	}
 
 	collision := map[string]string{}
 	maps.Copy(collision, base)
-	collision["KODAMA_LOCAL_GIT_PORT"] = "19445"
-	collision["KODAMA_LOCAL_GIT_HTTPS_PORT"] = "19445"
+	collision["KODEMA_LOCAL_GIT_PORT"] = "19445"
+	collision["KODEMA_LOCAL_GIT_HTTPS_PORT"] = "19445"
 	if _, _, code := runBash(t, collision, print, lib); code == 0 {
 		t.Fatal("a colliding Git HTTPS port was accepted")
 	}
@@ -497,7 +497,7 @@ func TestGitHTTPSPortCollisionAndLeafSAN(t *testing.T) {
 	}
 
 	install := readFile(t, filepath.Join(bundleRoot(t), "install.sh"))
-	for _, phrase := range []string{"KODAMA_LOCAL_GIT_HTTPS_PORT", "forwarder_san", "git_socat_pid_file", "GIT_WORKLOAD_URL"} {
+	for _, phrase := range []string{"KODEMA_LOCAL_GIT_HTTPS_PORT", "forwarder_san", "git_socat_pid_file", "GIT_WORKLOAD_URL"} {
 		if !strings.Contains(install, phrase) {
 			t.Fatalf("install.sh does not implement the Git HTTPS front end: missing %q", phrase)
 		}
@@ -610,7 +610,7 @@ func TestFreshStateCheckRefusesForeignContent(t *testing.T) {
 	if err := os.Mkdir(foreign, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(foreign, ".kodama-local"), []byte("prefix=other\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(foreign, ".kodema-local"), []byte("prefix=other\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, code := runBash(t, env, script, lib, foreign, "fresh-state"); code == 0 {
@@ -630,7 +630,7 @@ func TestFreshStateCheckRefusesForeignContent(t *testing.T) {
 	if err := os.Mkdir(owned, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(owned, ".kodama-local"), []byte("prefix=fresh-state\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(owned, ".kodema-local"), []byte("prefix=fresh-state\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// A stopped installation keeps its CA, keyfile and volumes under this
@@ -669,32 +669,32 @@ func TestCombineStatusPreservesTheTestFailure(t *testing.T) {
 func TestSmokeRequiresSlotAndCompletePortSet(t *testing.T) {
 	smoke := filepath.Join(bundleRoot(t), "smoke.sh")
 	ports := map[string]string{
-		"KODAMA_LOCAL_HTTPS_PORT":          "20443",
-		"KODAMA_LOCAL_OIDC_PORT":           "20444",
-		"KODAMA_LOCAL_GIT_PORT":            "20081",
-		"KODAMA_LOCAL_GIT_HTTPS_PORT":      "20445",
-		"KODAMA_LOCAL_POSTGRES_PORT":       "20432",
-		"KODAMA_LOCAL_NATS_PORT":           "20222",
-		"KODAMA_LOCAL_NATS_MONITOR_PORT":   "20282",
-		"KODAMA_LOCAL_OAUTH_UPSTREAM_PORT": "20181",
+		"KODEMA_LOCAL_HTTPS_PORT":          "20443",
+		"KODEMA_LOCAL_OIDC_PORT":           "20444",
+		"KODEMA_LOCAL_GIT_PORT":            "20081",
+		"KODEMA_LOCAL_GIT_HTTPS_PORT":      "20445",
+		"KODEMA_LOCAL_POSTGRES_PORT":       "20432",
+		"KODEMA_LOCAL_NATS_PORT":           "20222",
+		"KODEMA_LOCAL_NATS_MONITOR_PORT":   "20282",
+		"KODEMA_LOCAL_OAUTH_UPSTREAM_PORT": "20181",
 	}
 	env := shellEnv(t, "smoke-test")
 	maps.Copy(env, ports)
 	_, errOut, code := runBash(t, env, `bash "$1"`, smoke)
 	if code == 0 {
-		t.Fatal("smoke.sh ran without KODAMA_SLOT")
+		t.Fatal("smoke.sh ran without KODEMA_SLOT")
 	}
-	if !strings.Contains(errOut, "KODAMA_SLOT") {
+	if !strings.Contains(errOut, "KODEMA_SLOT") {
 		t.Fatalf("smoke.sh did not name the missing slot: %s", errOut)
 	}
 
-	env["KODAMA_SLOT"] = "stack-1"
-	delete(env, "KODAMA_LOCAL_NATS_PORT")
+	env["KODEMA_SLOT"] = "stack-1"
+	delete(env, "KODEMA_LOCAL_NATS_PORT")
 	_, errOut, code = runBash(t, env, `bash "$1"`, smoke)
 	if code == 0 {
 		t.Fatal("smoke.sh ran with an incomplete port set")
 	}
-	if !strings.Contains(errOut, "KODAMA_LOCAL_NATS_PORT") {
+	if !strings.Contains(errOut, "KODEMA_LOCAL_NATS_PORT") {
 		t.Fatalf("smoke.sh did not name the missing port: %s", errOut)
 	}
 }
@@ -702,7 +702,7 @@ func TestSmokeRequiresSlotAndCompletePortSet(t *testing.T) {
 func TestSmokeScriptOwnsItsOrchestration(t *testing.T) {
 	smoke := readFile(t, filepath.Join(bundleRoot(t), "smoke.sh"))
 	for _, phrase := range []string{
-		"KODAMA_SLOT",
+		"KODEMA_SLOT",
 		"--preflight",
 		"run-installation.sh",
 		"git provision-repository",
@@ -714,7 +714,7 @@ func TestSmokeScriptOwnsItsOrchestration(t *testing.T) {
 		"Q01_INSTALLATION_FILE",
 		"combine_status",
 		"require_fresh_state_dir",
-		"KODAMA_LOCAL_GIT_RESOURCES",
+		"KODEMA_LOCAL_GIT_RESOURCES",
 		"smoke_repository",
 		`add_smoke_repository "$installation_file" "$repository" "$resource" "$resource"`,
 	} {
@@ -728,9 +728,9 @@ func TestSmokeScriptOwnsItsOrchestration(t *testing.T) {
 }
 
 func TestProjectImageCarriesTheGitHTTPBackend(t *testing.T) {
-	containerfile := readFile(t, filepath.Join(repoRoot(t), "deploy", "images", "kodama", "Containerfile"))
+	containerfile := readFile(t, filepath.Join(repoRoot(t), "deploy", "images", "kodema", "Containerfile"))
 	if !strings.Contains(containerfile, "git-daemon") {
-		t.Fatal("deploy/images/kodama/Containerfile does not install Alpine's git-daemon package")
+		t.Fatal("deploy/images/kodema/Containerfile does not install Alpine's git-daemon package")
 	}
 	if !strings.Contains(containerfile, "git-http-backend") {
 		t.Fatal("the Containerfile does not explain why git-daemon is required")
@@ -827,7 +827,7 @@ func TestBundlePrechecksBothWorkloadImages(t *testing.T) {
 func TestQuickstartDocumentsGitHTTPSAndPersonas(t *testing.T) {
 	runbook := readFile(t, filepath.Join(repoRoot(t), "docs", "runbooks", "podman-quickstart.md"))
 	for _, phrase := range []string{
-		"KODAMA_LOCAL_GIT_HTTPS_PORT",
+		"KODEMA_LOCAL_GIT_HTTPS_PORT",
 		"18445",
 		"host.containers.internal:18445",
 		"git provision-repository",

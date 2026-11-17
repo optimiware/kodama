@@ -22,9 +22,9 @@ import (
 // Container labels used to scope cleanup. Every container, network and volume
 // created by this package carries all three.
 const (
-	LabelTest     = "kodama.test"
-	LabelShard    = "kodama.shard"
-	LabelOwnerPID = "kodama.owner-pid"
+	LabelTest     = "kodema.test"
+	LabelShard    = "kodema.shard"
+	LabelOwnerPID = "kodema.owner-pid"
 )
 
 const (
@@ -203,7 +203,7 @@ func NewPodman(opts ...Option) *Podman {
 		env:            BaseEnv(),
 		clock:          RealClock{},
 		logf:           func(string, ...any) {},
-		evidenceDir:    os.Getenv("KODAMA_EVIDENCE_DIR"),
+		evidenceDir:    os.Getenv("KODEMA_EVIDENCE_DIR"),
 		processAlive:   ProcessAlive,
 		operationLimit: 2 * time.Minute,
 		stopLimit:      30 * time.Second,

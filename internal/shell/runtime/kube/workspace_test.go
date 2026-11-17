@@ -15,9 +15,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 func requireFaultClass(t *testing.T, err error, want fault.Class) {

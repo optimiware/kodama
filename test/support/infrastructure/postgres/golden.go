@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Null is the explicit SQL NULL sentinel in a golden row expectation.
@@ -109,7 +109,7 @@ func (s *Shard) RequireGoldenRow(t *testing.T, ctx context.Context, db *pgdriver
 	}
 	defer func() { _ = conn.Rollback(context.WithoutCancel(ctx)) }()
 	if _, err := conn.Exec(ctx,
-		`SELECT set_config('kodama.tenant_id', $1, true), set_config('kodama.project_id', $2, true)`,
+		`SELECT set_config('kodema.tenant_id', $1, true), set_config('kodema.project_id', $2, true)`,
 		string(scope.TenantID), string(scope.ProjectID)); err != nil {
 		t.Fatalf("golden row %s: set scope: %v", table, err)
 	}

@@ -13,7 +13,7 @@ const runSuffixBytes = 4
 
 // Scope is one suite run's identity namespace. Every literal fixture identity
 // is mapped through a scope exactly once, so the Podman adapter's deterministic
-// kodama-workload-<digest> and kodama-workspace-<digest> names are unique per
+// kodema-workload-<digest> and kodema-workspace-<digest> names are unique per
 // run instead of colliding between two concurrent runs that use the same
 // literals. A scope is a value: reconstructing it from the same suffix yields
 // the same identities, which is what a retry inside one fixture needs.
@@ -47,7 +47,7 @@ func ScopeWithSuffix(suffix string) Scope { return Scope{suffix: suffix} }
 func (s Scope) Suffix() string { return s.suffix }
 
 // ID returns base suffixed with this run's namespace. The result stays a valid
-// Kodama identity because the suffix is lowercase hex and the dash is allowed.
+// Kodema identity because the suffix is lowercase hex and the dash is allowed.
 func (s Scope) ID(base string) string { return base + "-" + s.suffix }
 
 func mintRunSuffix() string {

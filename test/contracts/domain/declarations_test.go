@@ -35,12 +35,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/flow"
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/flow"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 var (

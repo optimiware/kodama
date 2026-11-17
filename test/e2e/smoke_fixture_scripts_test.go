@@ -32,7 +32,7 @@ func TestSmokeFixtureScripts(t *testing.T) {
 	runHostGit(t, "", "init", "--quiet", seed)
 	writeFile(t, filepath.Join(seed, "README.md"), "seed\n")
 	runHostGit(t, seed, "add", "--", "README.md")
-	runHostGit(t, seed, "-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+	runHostGit(t, seed, "-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "--quiet", "-m", "seed")
 	base := strings.TrimSpace(runHostGit(t, seed, "rev-parse", "HEAD"))
 	runHostGit(t, seed, "push", "--quiet", remote, base+":refs/heads/main")
@@ -41,7 +41,7 @@ func TestSmokeFixtureScripts(t *testing.T) {
 	// The protected ref refuses every update with the product's exact public
 	// hook message; work refs are accepted.
 	hook := filepath.Join(remote, "hooks", "update")
-	writeFile(t, hook, "#!/bin/sh\ncase \"$1\" in\nrefs/heads/main) printf 'kodama git: update rejected\\n' >&2; exit 1 ;;\nesac\nexit 0\n")
+	writeFile(t, hook, "#!/bin/sh\ncase \"$1\" in\nrefs/heads/main) printf 'kodema git: update rejected\\n' >&2; exit 1 ;;\nesac\nexit 0\n")
 	if err := os.Chmod(hook, 0o755); err != nil {
 		t.Fatalf("make the update hook executable: %v", err)
 	}
@@ -54,8 +54,8 @@ func TestSmokeFixtureScripts(t *testing.T) {
 			"SMOKE_INPUTS_ROOT="+filepath.Join(workspace, "inputs"),
 			"SMOKE_OUTPUTS_ROOT="+filepath.Join(workspace, "outputs"),
 			"SMOKE_CA_FILE=",
-			"KODAMA_EXECUTION=execution-hermetic",
-			"KODAMA_TASK=task-hermetic",
+			"KODEMA_EXECUTION=execution-hermetic",
+			"KODEMA_TASK=task-hermetic",
 			"SMOKE_RUN_MARKER=run-hermetic",
 		)
 	}
@@ -163,7 +163,7 @@ func TestSmokeFixtureScripts(t *testing.T) {
 		runHostGit(t, "", "init", "--quiet", seedRepo)
 		writeFile(t, filepath.Join(seedRepo, "seed.txt"), "seed\n")
 		runHostGit(t, seedRepo, "add", "--", "seed.txt")
-		runHostGit(t, seedRepo, "-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		runHostGit(t, seedRepo, "-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 			"commit", "--quiet", "-m", "seed")
 		seedCommit := strings.TrimSpace(runHostGit(t, seedRepo, "rev-parse", "HEAD"))
 		runHostGit(t, seedRepo, "push", "--quiet", empty, seedCommit+":refs/heads/work/seed")
@@ -218,7 +218,7 @@ func TestSmokeFixtureScripts(t *testing.T) {
 		runHostGit(t, "", "clone", "--quiet", remote, humanRepo)
 		writeFile(t, filepath.Join(humanRepo, "human.txt"), "human\n")
 		runHostGit(t, humanRepo, "add", "--", "human.txt")
-		runHostGit(t, humanRepo, "-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		runHostGit(t, humanRepo, "-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 			"commit", "--quiet", "-m", "human")
 		humanCommit := strings.TrimSpace(runHostGit(t, humanRepo, "rev-parse", "HEAD"))
 		runHostGit(t, humanRepo, "push", "--quiet", remote, "HEAD:"+humanRef)

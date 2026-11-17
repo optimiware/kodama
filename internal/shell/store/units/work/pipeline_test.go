@@ -6,13 +6,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // definitionFromRow decodes one pipelines row for the round-trip assertions.
@@ -350,7 +350,7 @@ func TestPipelineCandidatesRequireMatchingBinding(t *testing.T) {
 	}
 }
 
-// TestPipelineCandidatesSelectBindingByRepository pins KODAMA.md's push
+// TestPipelineCandidatesSelectBindingByRepository pins KODEMA.md's push
 // trigger: `service` names the automatic-start principal, not the reporting
 // Git service, so the candidate binding is the repository's binding whatever
 // its enforcing service. Every binding of the repository is a candidate; the

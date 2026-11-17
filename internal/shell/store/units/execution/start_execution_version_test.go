@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/flow"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/units/execution/snapshotdoc"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/flow"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
 )
 
 // TestStartExecutionVersionPersistsAndReplays pins the committed execution

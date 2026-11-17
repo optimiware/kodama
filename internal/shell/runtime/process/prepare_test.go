@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/kernel/script"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/script"
 )
 
 // TestPrepareMaterializesConfinedActivationSnapshot proves one complete,
@@ -37,11 +37,11 @@ func TestPrepareMaterializesConfinedActivationSnapshot(t *testing.T) {
 		t.Fatal("Prepare spawned a process")
 	}
 
-	assertHostFile(t, fx.hostPath(t, "/kodama/inputs/input-a"), "line1\nline2")
-	assertHostFile(t, fx.hostPath(t, "/kodama/outputs/build/out-a"), "out")
-	assertHostFile(t, fx.hostPath(t, "/kodama/task.json"), `{"id":"task-1"}`)
-	assertHostFile(t, fx.hostPath(t, "/kodama/secrets/API_KEY"), "s3cr3t")
-	assertHostFile(t, fx.hostPath(t, "/kodama/secrets/KODAMA_TOKEN"), "tok-abc")
+	assertHostFile(t, fx.hostPath(t, "/kodema/inputs/input-a"), "line1\nline2")
+	assertHostFile(t, fx.hostPath(t, "/kodema/outputs/build/out-a"), "out")
+	assertHostFile(t, fx.hostPath(t, "/kodema/task.json"), `{"id":"task-1"}`)
+	assertHostFile(t, fx.hostPath(t, "/kodema/secrets/API_KEY"), "s3cr3t")
+	assertHostFile(t, fx.hostPath(t, "/kodema/secrets/KODEMA_TOKEN"), "tok-abc")
 
 	wantScript, err := script.Render(fx.request.Container.Commands)
 	if err != nil {
@@ -107,16 +107,16 @@ func TestSpawnRequestCarriesGeneratedScriptAndReservedContext(t *testing.T) {
 	wantEnv := []string{
 		"BUILD_MODE=release",
 		"EXTRA=1",
-		"KODAMA_URL=" + testKodamaURL,
-		"KODAMA_EXECUTION=exec-1",
-		"KODAMA_ACTION=build",
-		"KODAMA_TASK=task-1",
+		"KODEMA_URL=" + testKodemaURL,
+		"KODEMA_EXECUTION=exec-1",
+		"KODEMA_ACTION=build",
+		"KODEMA_TASK=task-1",
 	}
 	if !slices.Equal(spawn.Env, wantEnv) {
 		t.Fatalf("spawn env = %q; want %q", spawn.Env, wantEnv)
 	}
 	if got := spawn.Env[4]; strings.Contains(got, "action-1") {
-		t.Fatalf("KODAMA_ACTION leaked the action id: %q", got)
+		t.Fatalf("KODEMA_ACTION leaked the action id: %q", got)
 	}
 
 	wantScript, err := script.Render(fx.request.Container.Commands)
@@ -141,7 +141,7 @@ func TestSpawnRequestCarriesGeneratedScriptAndReservedContext(t *testing.T) {
 	}
 
 	for _, value := range append(append([]string(nil), spawn.Command...), spawn.Env...) {
-		for _, secret := range []string{"s3cr3t", "tok-abc", "KODAMA_TOKEN"} {
+		for _, secret := range []string{"s3cr3t", "tok-abc", "KODEMA_TOKEN"} {
 			if strings.Contains(value, secret) {
 				t.Fatalf("spawn input leaked %q in %q", secret, value)
 			}
@@ -150,22 +150,22 @@ func TestSpawnRequestCarriesGeneratedScriptAndReservedContext(t *testing.T) {
 }
 
 // TestPrepareOmitsTaskContextWhenTaskFree proves a task-free execution writes no
-// task file and omits KODAMA_TASK.
+// task file and omits KODEMA_TASK.
 func TestPrepareOmitsTaskContextWhenTaskFree(t *testing.T) {
 	fx := newFixture(t)
 	fx.request.TaskID = ""
 	fx.request.Task = nil
 
 	prepareTestWorkload(t, fx.adapter, fx.request)
-	assertNoPath(t, fx.hostPath(t, "/kodama/task.json"))
+	assertNoPath(t, fx.hostPath(t, "/kodema/task.json"))
 
 	startTestWorkload(t, fx.adapter, fx.request.Identity, fx.request.WorkspaceID)
 	spawn := fx.executor.spawnRequests()[0]
 	wantEnv := []string{
 		"BUILD_MODE=release",
-		"KODAMA_URL=" + testKodamaURL,
-		"KODAMA_EXECUTION=exec-1",
-		"KODAMA_ACTION=build",
+		"KODEMA_URL=" + testKodemaURL,
+		"KODEMA_EXECUTION=exec-1",
+		"KODEMA_ACTION=build",
 	}
 	if !slices.Equal(spawn.Env, wantEnv) {
 		t.Fatalf("task-free env = %q; want %q", spawn.Env, wantEnv)
@@ -246,7 +246,7 @@ func TestPrepareRefusesTraversalSymlinkAndReservedCollision(t *testing.T) {
 		if err := os.MkdirAll(resourceRoot, 0o755); err != nil {
 			t.Fatalf("creating resource root: %v", err)
 		}
-		if err := os.Symlink(outside, filepath.Join(resourceRoot, "kodama")); err != nil {
+		if err := os.Symlink(outside, filepath.Join(resourceRoot, "kodema")); err != nil {
 			t.Fatalf("creating symlink: %v", err)
 		}
 
@@ -287,7 +287,7 @@ func TestPrepareRefusesTraversalSymlinkAndReservedCollision(t *testing.T) {
 // a start and a later retry completes the same identity.
 func TestPrepareRefusesPartialPreparation(t *testing.T) {
 	fx := newFixture(t)
-	fx.files.injectBefore("WriteFile", "/kodama/task.json", errors.New("disk full"))
+	fx.files.injectBefore("WriteFile", "/kodema/task.json", errors.New("disk full"))
 
 	_, err := fx.adapter.Prepare(context.Background(), fx.request)
 	if err == nil {
@@ -305,9 +305,9 @@ func TestPrepareRefusesPartialPreparation(t *testing.T) {
 		t.Fatal("partial preparation spawned a process")
 	}
 
-	fx.files.clear("WriteFile", "/kodama/task.json")
+	fx.files.clear("WriteFile", "/kodema/task.json")
 	prepareTestWorkload(t, fx.adapter, fx.request)
-	assertHostFile(t, fx.hostPath(t, "/kodama/task.json"), `{"id":"task-1"}`)
+	assertHostFile(t, fx.hostPath(t, "/kodema/task.json"), `{"id":"task-1"}`)
 	if fx.executor.spawnCount() != 0 {
 		t.Fatal("re-preparation spawned a process")
 	}
@@ -352,7 +352,7 @@ func TestPrepareRefusesChangedContent(t *testing.T) {
 	_, err := fx.adapter.Prepare(context.Background(), changed)
 	assertRefusedClass(t, err, fault.ChangedIdempotencyContent)
 
-	assertHostFile(t, fx.hostPath(t, "/kodama/inputs/input-a"), "line1\nline2")
+	assertHostFile(t, fx.hostPath(t, "/kodema/inputs/input-a"), "line1\nline2")
 	startTestWorkload(t, fx.adapter, fx.request.Identity, fx.request.WorkspaceID)
 	if fx.executor.spawnCount() != 1 {
 		t.Fatalf("start after a refused re-prepare spawned %d processes; want 1", fx.executor.spawnCount())

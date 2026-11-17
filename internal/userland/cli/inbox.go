@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // runInbox queries task.inbox and renders a human-readable table or raw JSON.
@@ -40,7 +40,7 @@ func runInbox(ctx context.Context, config Config, args []string, ports Ports, de
 	}
 	projectID := resolveProject(projectFlag, config, deps)
 	if projectID == "" {
-		return usage(ports.Err, "inbox requires --project <id> or KODAMA_PROJECT")
+		return usage(ports.Err, "inbox requires --project <id> or KODEMA_PROJECT")
 	}
 	var kinds []string
 	for _, raw := range kindFlags {

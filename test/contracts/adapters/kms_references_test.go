@@ -16,10 +16,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // kmsReferenceVector is one accepted or refused reference.
@@ -92,9 +92,9 @@ func kmsReferenceConfig(t *testing.T, environment, adapter, reference string) in
 			Messaging:   installation.MessagingNATS,
 			Runtime:     installation.RuntimeKubernetes,
 			Keys:        installation.KeyAdapter(adapter),
-			DatabaseURL: "postgres://kodama@database:5432/kodama?sslmode=verify-full",
+			DatabaseURL: "postgres://kodema@database:5432/kodema?sslmode=verify-full",
 			NATSURL:     "tls://nats:4222",
-			PublicURL:   "https://kodama.example",
+			PublicURL:   "https://kodema.example",
 			KeyRef:      reference,
 		}
 	case "development":
@@ -113,9 +113,9 @@ func kmsReferenceConfig(t *testing.T, environment, adapter, reference string) in
 			Messaging:   installation.MessagingNATS,
 			Runtime:     installation.RuntimePodman,
 			Keys:        installation.KeyAdapter(adapter),
-			DatabaseURL: "postgres://localhost/kodama",
+			DatabaseURL: "postgres://localhost/kodema",
 			NATSURL:     "nats://localhost:4222",
-			PublicURL:   "https://kodama.example",
+			PublicURL:   "https://kodema.example",
 			KeyRef:      reference,
 		}
 	default:

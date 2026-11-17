@@ -2,6 +2,6 @@ package flow
 
 import (
 	_ "context"
-	_ "kodama/internal/fault"
-	_ "kodama/internal/kernel/definition"
+	_ "kodema/internal/fault"
+	_ "kodema/internal/kernel/definition"
 )

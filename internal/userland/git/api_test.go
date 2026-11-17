@@ -182,8 +182,8 @@ package git_test
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	git "github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/id"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 // Compile-time pins for the new implementation surface.

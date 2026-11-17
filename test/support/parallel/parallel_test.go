@@ -43,7 +43,7 @@ func TestGateLimit(t *testing.T) {
 // TestGateBoundsConcurrency proves the gate admits several tests at once but
 // never more than its limit.
 func TestGateBoundsConcurrency(t *testing.T) {
-	gate := &Gate{Env: "KODAMA_TEST_UNSET_PARALLEL_LIMIT", Default: 2, Max: 4}
+	gate := &Gate{Env: "KODEMA_TEST_UNSET_PARALLEL_LIMIT", Default: 2, Max: 4}
 	var active, peak atomic.Int32
 	t.Run("group", func(t *testing.T) {
 		for range 6 {
@@ -73,15 +73,15 @@ func TestGateBoundsConcurrency(t *testing.T) {
 // TestGateSequentialLimitNeverParallelizes proves a limit of 1 leaves a test
 // sequential: t.Setenv panics in a parallel test.
 func TestGateSequentialLimitNeverParallelizes(t *testing.T) {
-	gate := &Gate{Env: "KODAMA_TEST_UNSET_PARALLEL_LIMIT", Default: 1, Max: 4}
+	gate := &Gate{Env: "KODEMA_TEST_UNSET_PARALLEL_LIMIT", Default: 1, Max: 4}
 	gate.Parallel(t)
 	gate.Enter(t)
-	t.Setenv("KODAMA_TEST_SEQUENTIAL_PROBE", "1")
+	t.Setenv("KODEMA_TEST_SEQUENTIAL_PROBE", "1")
 }
 
 func TestGateRejectsAMalformedLimit(t *testing.T) {
-	t.Setenv("KODAMA_TEST_MALFORMED_LIMIT", "many")
-	gate := &Gate{Env: "KODAMA_TEST_MALFORMED_LIMIT", Default: 2, Max: 4}
+	t.Setenv("KODEMA_TEST_MALFORMED_LIMIT", "many")
+	gate := &Gate{Env: "KODEMA_TEST_MALFORMED_LIMIT", Default: 2, Max: 4}
 	if err := gate.load(); err == nil {
 		t.Fatal("a malformed limit was accepted")
 	}

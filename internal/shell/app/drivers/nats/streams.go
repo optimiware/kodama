@@ -9,7 +9,7 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // Stream names and subject filters. They are the single source of truth shared
@@ -17,11 +17,11 @@ import (
 // adapter publishes to concrete scope-qualified subjects and these wildcard
 // filters are the only streams that capture them.
 const (
-	EventsStreamName        = "KODAMA_EVENTS"
-	InvalidationsStreamName = "KODAMA_INVALIDATIONS"
+	EventsStreamName        = "KODEMA_EVENTS"
+	InvalidationsStreamName = "KODEMA_INVALIDATIONS"
 
-	EventsStreamSubjects        = "kodama.v1.*.*.events"
-	InvalidationsStreamSubjects = "kodama.v1.*.*.invalidations"
+	EventsStreamSubjects        = "kodema.v1.*.*.events"
+	InvalidationsStreamSubjects = "kodema.v1.*.*.invalidations"
 )
 
 // Default stream retention. Events are kept for a week; invalidations are

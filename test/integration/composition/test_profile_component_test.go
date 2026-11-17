@@ -1,7 +1,7 @@
 //go:build component
 
 // This file proves the installable `test` profile end to end: the real
-// `kodama` binary runs `migrate`, `bootstrap-admin --profile test
+// `kodema` binary runs `migrate`, `bootstrap-admin --profile test
 // --init-keyfile` with a signed tenant-wide OIDC token, and `server --profile
 // test` over real PostgreSQL, JetStream NATS and a private Podman API service.
 // One inline pipeline runs in a real Podman container that reaches the server
@@ -37,14 +37,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/id"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/boundaries/identity"
-	"github.com/optimiware/kodama/test/support/infrastructure/messaging"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/id"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/test/support/infrastructure/messaging"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 const (
@@ -57,7 +57,7 @@ const (
 	testProfileLogMarker  = "profile-workload-log-marker"
 	testProfileKeyRef     = "keyfile:kek-v1"
 	testProfileInstall    = "installation-profile"
-	testProfileDatabase   = "kodama_profile"
+	testProfileDatabase   = "kodema_profile"
 	testProfileHostAlias  = "host.containers.internal"
 	testProfileAPITimeout = 10 * time.Second
 )
@@ -99,7 +99,7 @@ func testProfileTLS(t *testing.T, dir, host string) []byte {
 		t.Fatal(err)
 	}
 	caTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Kodama Test Profile CA"},
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Kodema Test Profile CA"},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(6 * time.Hour),
 		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 	}
@@ -147,7 +147,7 @@ func testProfileSecret(t *testing.T) string {
 	return hex.EncodeToString(buffer)
 }
 
-// testProfileRun runs one short kodama command and returns its streams and
+// testProfileRun runs one short kodema command and returns its streams and
 // exit code.
 func testProfileRun(t *testing.T, binary string, env map[string]string, timeout time.Duration, args ...string) (string, string, int) {
 	t.Helper()
@@ -159,20 +159,20 @@ func testProfileRun(t *testing.T, binary string, env map[string]string, timeout 
 	command.Stdout, command.Stderr = &stdout, &stderr
 	err := command.Run()
 	if ctx.Err() != nil {
-		t.Fatalf("kodama %s timed out after %s", args[0], timeout)
+		t.Fatalf("kodema %s timed out after %s", args[0], timeout)
 	}
 	code := 0
 	if err != nil {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) {
-			t.Fatalf("run kodama %s: %v", args[0], err)
+			t.Fatalf("run kodema %s: %v", args[0], err)
 		}
 		code = exit.ExitCode()
 	}
 	return stdout.String(), stderr.String(), code
 }
 
-// testProfileServer is one running `kodama server --profile test` process.
+// testProfileServer is one running `kodema server --profile test` process.
 type testProfileServer struct {
 	command *exec.Cmd
 	output  *lockedOutput
@@ -205,7 +205,7 @@ func testProfileStartServer(t *testing.T, binary string, env map[string]string) 
 	output := &lockedOutput{}
 	command.Stdout, command.Stderr = output, output
 	if err := command.Start(); err != nil {
-		t.Fatalf("start kodama server: %v", err)
+		t.Fatalf("start kodema server: %v", err)
 	}
 	server := &testProfileServer{command: command, output: output, done: make(chan error, 1)}
 	go func() { server.done <- command.Wait() }()
@@ -243,7 +243,7 @@ func testProfileWaitReady(t *testing.T, server *testProfileServer, httpClient *h
 		select {
 		case err := <-server.done:
 			server.exited, server.exitErr = true, err
-			t.Fatalf("kodama server exited before ready: %v\n%s", err, server.output.String())
+			t.Fatalf("kodema server exited before ready: %v\n%s", err, server.output.String())
 		default:
 		}
 		response, err := httpClient.Get(base + "/readyz")
@@ -255,7 +255,7 @@ func testProfileWaitReady(t *testing.T, server *testProfileServer, httpClient *h
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	t.Fatalf("kodama server was not ready within 60s\n%s", server.output.String())
+	t.Fatalf("kodema server was not ready within 60s\n%s", server.output.String())
 }
 
 type testProfileCredential struct {
@@ -312,11 +312,11 @@ func testProfileDecode[T any](t *testing.T, result api.Result, err error, operat
 }
 
 // testProfileWorkloadCommands write the public CA inside the workspace, prove
-// the mounted execution credential authenticates through $KODAMA_URL, submit
+// the mounted execution credential authenticates through $KODEMA_URL, submit
 // the declared output with a 409 retry from a fresh inspection and print one
 // log marker. Nothing but public status codes and the marker is printed.
 func testProfileWorkloadCommands(caPEM []byte) []string {
-	const token = "/kodama/secrets/KODAMA_TOKEN"
+	const token = "/kodema/secrets/KODEMA_TOKEN"
 	const ca = "/workspace/profile-ca.crt"
 	return []string{
 		"for tool in curl grep head cut cat; do command -v \"$tool\" >/dev/null 2>&1 || { echo \"profile: missing $tool\" >&2; exit 1; }; done",
@@ -324,19 +324,19 @@ func testProfileWorkloadCommands(caPEM []byte) []string {
 		"test -s " + token,
 		"echo profile-workspace-data > /workspace/profile.txt",
 		`attempt=0; submitted=0; while [ "$attempt" -lt 10 ]; do attempt=$((attempt+1)); ` +
-			`INSPECT=$(curl -sS --fail -X GET --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION") || { echo "profile: inspection refused" >&2; exit 1; }; ` +
+			`INSPECT=$(curl -sS --fail -X GET --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION") || { echo "profile: inspection refused" >&2; exit 1; }; ` +
 			`VERSION=$(printf '%s' "$INSPECT" | grep -o '"version":[0-9]*' | head -n 1 | cut -d: -f2); ` +
 			`ACTION=$(printf '%s' "$INSPECT" | grep -o '"action_id":"[^"]*"' | head -n 1 | cut -d'"' -f4); ` +
 			`test -n "$VERSION" && test -n "$ACTION" || { echo "profile: inspection carried no version or action" >&2; exit 1; }; ` +
 			`BODY=$(printf '{"input":{"outputs":{"` + testProfileOutput + `":"` + testProfileOutputVal + `"}},"expected_version":%s,"idempotency_key":"profile-out-%s"}' "$VERSION" "$attempt"); ` +
-			`CODE=$(curl -sS -X PUT -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary "$BODY" "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION/actions/$ACTION/outputs"); ` +
+			`CODE=$(curl -sS -X PUT -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary "$BODY" "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION/actions/$ACTION/outputs"); ` +
 			`case "$CODE" in 200) submitted=1; break ;; 409) continue ;; *) echo "profile: output submission status $CODE" >&2; exit 1 ;; esac; done`,
 		`test "$submitted" = "1" || { echo "profile: output submission did not converge" >&2; exit 1; }`,
 		"echo " + testProfileLogMarker,
 	}
 }
 
-func TestKodamaTestProfileRealPodman(t *testing.T) {
+func TestKodemaTestProfileRealPodman(t *testing.T) {
 	shard := pgtest.Start(t)
 	broker := messaging.StartNATS(t)
 	podman := runtimesupport.StartService(t)
@@ -348,7 +348,7 @@ func TestKodamaTestProfileRealPodman(t *testing.T) {
 		t.Fatalf("start the OIDC fixture: %v", err)
 	}
 	t.Cleanup(provider.Close)
-	binary := kodamaCLI(t)
+	binary := kodemaCLI(t)
 
 	// Isolated installation directories; the data directory is daemon-visible
 	// because the Podman service runs on this host as this user.
@@ -371,38 +371,38 @@ func TestKodamaTestProfileRealPodman(t *testing.T) {
 
 	adminPassword := testProfileSecret(t)
 	if _, err := pgtest.ExecSQL(context.Background(), shard.Admin(),
-		`CREATE ROLE kodama_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS PASSWORD '`+adminPassword+`'`); err != nil {
+		`CREATE ROLE kodema_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS PASSWORD '`+adminPassword+`'`); err != nil {
 		t.Fatalf("create the non-superuser administrator: %v", err)
 	}
 	dbHost, dbPort := hostPort(t, shard.Addr)
 	env := map[string]string{
-		"KODAMA_PROFILE":            "test",
-		"KODAMA_ADMIN_DATABASE_URL": roleURL(t, dbHost, dbPort, "kodama_admin", adminPassword, "postgres"),
-		"KODAMA_NATS_URL":           broker.URL,
-		"KODAMA_PODMAN_SOCKET":      podman.Socket(),
-		"KODAMA_KEY_ADAPTER":        "keyfile",
-		"KODAMA_KEY_REF":            testProfileKeyRef,
-		"KODAMA_KEYFILE":            keyfile,
-		"KODAMA_TLS_DIR":            tlsDir,
-		"KODAMA_OIDC_ISSUER":        provider.Issuer(),
-		"KODAMA_OIDC_AUDIENCE":      provider.Audience(),
-		"KODAMA_OIDC_JWKS_URL":      provider.JWKSURL(),
-		"KODAMA_OIDC_CA_FILE":       oidcCA,
-		"KODAMA_OIDC_TENANT_CLAIM":  provider.TenantClaim(),
-		"KODAMA_OIDC_SUBJECT_CLAIM": provider.SubjectClaim(),
-		"KODAMA_OIDC_PROJECT_CLAIM": provider.ProjectClaim(),
-		"KODAMA_INSTALLATION_ID":    testProfileInstall,
-		"KODAMA_DATA_DIR":           dataDir,
-		"KODAMA_ADDRESS":            net.JoinHostPort(hostIP, port),
-		"KODAMA_PUBLIC_URL":         "https://" + net.JoinHostPort(testProfileHostAlias, port),
-		"KODAMA_WORKLOAD_URL":       "https://" + net.JoinHostPort(testProfileHostAlias, port),
+		"KODEMA_PROFILE":            "test",
+		"KODEMA_ADMIN_DATABASE_URL": roleURL(t, dbHost, dbPort, "kodema_admin", adminPassword, "postgres"),
+		"KODEMA_NATS_URL":           broker.URL,
+		"KODEMA_PODMAN_SOCKET":      podman.Socket(),
+		"KODEMA_KEY_ADAPTER":        "keyfile",
+		"KODEMA_KEY_REF":            testProfileKeyRef,
+		"KODEMA_KEYFILE":            keyfile,
+		"KODEMA_TLS_DIR":            tlsDir,
+		"KODEMA_OIDC_ISSUER":        provider.Issuer(),
+		"KODEMA_OIDC_AUDIENCE":      provider.Audience(),
+		"KODEMA_OIDC_JWKS_URL":      provider.JWKSURL(),
+		"KODEMA_OIDC_CA_FILE":       oidcCA,
+		"KODEMA_OIDC_TENANT_CLAIM":  provider.TenantClaim(),
+		"KODEMA_OIDC_SUBJECT_CLAIM": provider.SubjectClaim(),
+		"KODEMA_OIDC_PROJECT_CLAIM": provider.ProjectClaim(),
+		"KODEMA_INSTALLATION_ID":    testProfileInstall,
+		"KODEMA_DATA_DIR":           dataDir,
+		"KODEMA_ADDRESS":            net.JoinHostPort(hostIP, port),
+		"KODEMA_PUBLIC_URL":         "https://" + net.JoinHostPort(testProfileHostAlias, port),
+		"KODEMA_WORKLOAD_URL":       "https://" + net.JoinHostPort(testProfileHostAlias, port),
 	}
 	var passwords []string
 	for _, role := range []struct{ env, name string }{
-		{"KODAMA_DATABASE_URL", "kodama_runtime"},
-		{"KODAMA_CONTROLLER_DATABASE_URL", "kodama_controller"},
-		{"KODAMA_PUBLISHER_DATABASE_URL", "kodama_publisher"},
-		{"KODAMA_AUTH_DATABASE_URL", "kodama_auth"},
+		{"KODEMA_DATABASE_URL", "kodema_runtime"},
+		{"KODEMA_CONTROLLER_DATABASE_URL", "kodema_controller"},
+		{"KODEMA_PUBLISHER_DATABASE_URL", "kodema_publisher"},
+		{"KODEMA_AUTH_DATABASE_URL", "kodema_auth"},
 	} {
 		password := testProfileSecret(t)
 		passwords = append(passwords, password)

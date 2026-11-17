@@ -7,7 +7,7 @@ package services
 // The whole path is real except the public assignment itself, which is created
 // through the served factory edge exactly like the other merge scenarios:
 //
-//   - the `kodama services --kind merge_coordinator` binary is the real entry;
+//   - the `kodema services --kind merge_coordinator` binary is the real entry;
 //   - the Git effects run the real native git binary against a scratch bare
 //     repository and push the observed result;
 //   - the durable state directory is a real file coordination store.
@@ -29,8 +29,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -117,12 +117,12 @@ func mergeRealBuildBinary(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("resolve module root: %v", err)
 	}
-	binary := filepath.Join(t.TempDir(), "kodama")
-	build := exec.Command("go", "build", "-o", binary, "./cmd/kodama")
+	binary := filepath.Join(t.TempDir(), "kodema")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/kodema")
 	build.Dir = root
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build kodama: %v\n%s", err, output)
+		t.Fatalf("build kodema: %v\n%s", err, output)
 	}
 	return binary
 }
@@ -155,7 +155,7 @@ func mergeRealApplyPipeline(t *testing.T, harness *factory.Harness, name, base, 
 	return applied
 }
 
-// mergeRealProcess is one running `kodama services` child.
+// mergeRealProcess is one running `kodema services` child.
 type mergeRealProcess struct {
 	command *exec.Cmd
 	output  *mergeRealOutput

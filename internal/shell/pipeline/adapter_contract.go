@@ -14,7 +14,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // ImageReference is one parsed immutable image reference. Reference is the

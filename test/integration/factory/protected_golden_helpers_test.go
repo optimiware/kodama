@@ -38,11 +38,11 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/userland/git"
-	identityfixture "github.com/optimiware/kodama/test/support/boundaries/identity"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/userland/git"
+	identityfixture "github.com/optimiware/kodema/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -65,17 +65,17 @@ const (
 
 	// protectedGoldenMarkerPath is the execution-owned workspace marker the
 	// authored commands write and later actions require.
-	protectedGoldenMarkerPath = "/workspace/.kodama-workspace-marker"
+	protectedGoldenMarkerPath = "/workspace/.kodema-workspace-marker"
 	// protectedGoldenRepositoryDirectory is the retained checkout inside the
 	// shared workspace. It mirrors the authored command's fixed path.
 	protectedGoldenRepositoryDirectory = "/workspace/git-protected-repository"
 	// protectedGoldenImplementCandidatePath and the test paths are the
 	// product-materialized declared outputs.
-	protectedGoldenImplementCandidatePath = "/kodama/outputs/implement/candidate"
-	protectedGoldenTestCandidatePath      = "/kodama/outputs/test/candidate"
-	protectedGoldenTestResultPath         = "/kodama/outputs/test/test_result"
+	protectedGoldenImplementCandidatePath = "/kodema/outputs/implement/candidate"
+	protectedGoldenTestCandidatePath      = "/kodema/outputs/test/candidate"
+	protectedGoldenTestResultPath         = "/kodema/outputs/test/test_result"
 	// protectedGoldenTaskFile is the product task snapshot path.
-	protectedGoldenTaskFile = "/kodama/task.json"
+	protectedGoldenTaskFile = "/kodema/task.json"
 
 	// protectedGoldenActionTimeout keeps the real PostgreSQL statement clock
 	// far from the action deadline while a gate holds a container open.
@@ -289,19 +289,19 @@ func runProtectedGoldenScenario(t *testing.T, fixture *gitHarness) protectedGold
 			startedRead.ExecutionHistory, started.ExecutionID)
 	}
 
-	// Step 2: the implement container. Its commands verify KODAMA_TASK and the
+	// Step 2: the implement container. Its commands verify KODEMA_TASK and the
 	// task snapshot themselves; the test independently observes the same task
 	// context, proves the execution credential is usable before the first push,
 	// and only then releases the gate.
 	waitProtectedActionRunning(t, fixture, evidence.executionID, "implement")
 	implementContainer := waitProtectedGoldenContainer(t, fixture, evidence.executionID, "implement")
 	evidence.executionToken = waitProtectedGoldenCredential(t, fixture, evidence.executionID, "implement")
-	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODAMA_TASK"); got != evidence.taskID {
-		t.Fatalf("implement KODAMA_TASK = %q; want the task %q", got, evidence.taskID)
+	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODEMA_TASK"); got != evidence.taskID {
+		t.Fatalf("implement KODEMA_TASK = %q; want the task %q", got, evidence.taskID)
 	}
 	taskSnapshot := protectedGoldenRead(t, fixture, implementContainer, protectedGoldenTaskFile)
 	if !json.Valid([]byte(taskSnapshot)) {
-		t.Fatalf("implement /kodama/task.json is not valid JSON: %q", taskSnapshot)
+		t.Fatalf("implement /kodema/task.json is not valid JSON: %q", taskSnapshot)
 	}
 	requireProtectedGoldenCredentialUsable(t, fixture, evidence.executionID, evidence.executionToken)
 	releaseProtectedGoldenGate(t, fixture, implementContainer, protectedGoldenImplementGate)
@@ -1124,7 +1124,7 @@ func assertProtectedGoldenEvidence(t *testing.T, evidence protectedGoldenEvidenc
 	secrets := make([]string, 0, 3*len(executionTokens)+3)
 	for _, token := range executionTokens {
 		// The raw value, the bare Basic credential value
-		// (`base64("kodama:"+token)`) and its header form. The bare form matters
+		// (`base64("kodema:"+token)`) and its header form. The bare form matters
 		// because the runtime redacts the mounted raw value from retained logs
 		// but not a derived encoding, so an echoed header's base64 is the real
 		// residual leak vector.

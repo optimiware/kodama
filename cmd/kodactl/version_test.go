@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestKodactlVersionNeedsNoConfiguration proves `kodactl version` and

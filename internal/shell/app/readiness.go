@@ -31,11 +31,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/fault"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
 )
 
 // readinessBudget bounds one complete readiness probe. Every check shares it,

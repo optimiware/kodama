@@ -17,8 +17,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // TestDeliveryPlainPipelineWithoutOptionalServices proves a plain pipeline
@@ -35,8 +35,8 @@ func TestDeliveryPlainPipelineWithoutOptionalServices(t *testing.T) {
 			Timeout: deliveryActionTimeout,
 			Outputs: []string{"done"},
 			Commands: []string{
-				`test ! -e /kodama/task.json`,
-				`test -z "${KODAMA_TASK:-}"`,
+				`test ! -e /kodema/task.json`,
+				`test -z "${KODEMA_TASK:-}"`,
 				`test "$LOG_LEVEL" = info`,
 				`printf 'plain\n' > /workspace/marker`,
 				`DONE="plain:$(cat /workspace/marker)"`,

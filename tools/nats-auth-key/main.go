@@ -2,7 +2,7 @@
 // the broker authorization callout.
 //
 // scripts/bootstrap-secrets calls it to create the issuer.seed and issuer.pub
-// keys of the kodama-nats-auth Secret. Both values are written to caller-owned
+// keys of the kodema-nats-auth Secret. Both values are written to caller-owned
 // temporary files; nothing is printed, so the seed never reaches stdout, argv
 // or a log.
 //

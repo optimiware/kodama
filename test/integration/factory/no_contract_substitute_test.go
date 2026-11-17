@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // TestFactoryUsesNoContractSubstitute pins both the source composition and the

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // DefaultMCPPath is the composition HTTP path of the MCP JSON-RPC edge. The
@@ -155,7 +155,7 @@ func (client *MCP) Call(ctx context.Context, call MCPCall) (api.Result, []byte, 
 func (client *MCP) Tools(ctx context.Context) ([]api.MCPTool, [][]byte, error) {
 	initializeParams, err := json.Marshal(api.MCPInitializeParams{
 		ProtocolVersion: api.MCPProtocolVersion,
-		ClientInfo:      api.MCPImplementation{Name: "kodama-e2e", Version: "1.0.0"},
+		ClientInfo:      api.MCPImplementation{Name: "kodema-e2e", Version: "1.0.0"},
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("encode the MCP initialize parameters")

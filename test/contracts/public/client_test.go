@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // TestCredentialValidationAndRedaction pins the credential value: a bounded

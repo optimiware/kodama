@@ -5,7 +5,7 @@
 // Modes:
 //
 //	plan    - observe the instance and print the exact planned argv; no effect
-//	restore - restore one backup into a new kodama-restore-<run-id> database and
+//	restore - restore one backup into a new kodema-restore-<run-id> database and
 //	          confirm instance readiness, backup retention, database listing and
 //	          SQL state
 //	drop    - drop only the exact database a recorded restore run created and
@@ -31,7 +31,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	restorequal "github.com/optimiware/kodama/test/qualification/restore"
+	restorequal "github.com/optimiware/kodema/test/qualification/restore"
 )
 
 const (
@@ -57,7 +57,7 @@ type restoreRecord struct {
 
 func main() {
 	ctx := context.Background()
-	mode := strings.TrimSpace(os.Getenv("KODAMA_Q03_STAGE_MODE"))
+	mode := strings.TrimSpace(os.Getenv("KODEMA_Q03_STAGE_MODE"))
 	if mode == "" {
 		mode = "plan"
 	}
@@ -69,15 +69,15 @@ func main() {
 }
 
 func run(ctx context.Context, mode string) error {
-	instanceID := os.Getenv("KODAMA_Q03_STAGE_INSTANCE_ID")
+	instanceID := os.Getenv("KODEMA_Q03_STAGE_INSTANCE_ID")
 	if strings.TrimSpace(instanceID) == "" {
-		return errors.New("KODAMA_Q03_STAGE_INSTANCE_ID is required")
+		return errors.New("KODEMA_Q03_STAGE_INSTANCE_ID is required")
 	}
-	sourceDatabase := os.Getenv("KODAMA_Q03_STAGE_SOURCE_DATABASE")
-	managedDatabase := os.Getenv("KODAMA_Q03_STAGE_MANAGED_DATABASE")
-	evidenceDir := os.Getenv("KODAMA_Q03_EVIDENCE_DIR")
+	sourceDatabase := os.Getenv("KODEMA_Q03_STAGE_SOURCE_DATABASE")
+	managedDatabase := os.Getenv("KODEMA_Q03_STAGE_MANAGED_DATABASE")
+	evidenceDir := os.Getenv("KODEMA_Q03_EVIDENCE_DIR")
 	if mode != "plan" && evidenceDir == "" {
-		return errors.New("KODAMA_Q03_EVIDENCE_DIR is required for restore and drop")
+		return errors.New("KODEMA_Q03_EVIDENCE_DIR is required for restore and drop")
 	}
 
 	switch mode {
@@ -91,10 +91,10 @@ func run(ctx context.Context, mode string) error {
 		return err
 	}
 
-	runID := strings.TrimSpace(os.Getenv("KODAMA_Q03_STAGE_RUN_ID"))
+	runID := strings.TrimSpace(os.Getenv("KODEMA_Q03_STAGE_RUN_ID"))
 	if runID == "" {
 		if mode == "drop" {
-			return errors.New("KODAMA_Q03_STAGE_RUN_ID is required for drop")
+			return errors.New("KODEMA_Q03_STAGE_RUN_ID is required for drop")
 		}
 		runID, err = restorequal.NewRunID()
 		if err != nil {
@@ -105,9 +105,9 @@ func run(ctx context.Context, mode string) error {
 		return dropRecordedRun(ctx, instanceID, sourceDatabase, managedDatabase, runID, existing, evidenceDir)
 	}
 
-	backupID := os.Getenv("KODAMA_Q03_STAGE_BACKUP_ID")
+	backupID := os.Getenv("KODEMA_Q03_STAGE_BACKUP_ID")
 	if backupID == "" {
-		return errors.New("KODAMA_Q03_STAGE_BACKUP_ID is required")
+		return errors.New("KODEMA_Q03_STAGE_BACKUP_ID is required")
 	}
 	destination := restorequal.DestinationRequest{
 		Destination: restorequal.Destination{
@@ -130,8 +130,8 @@ func run(ctx context.Context, mode string) error {
 	if mode == "plan" {
 		return nil
 	}
-	if os.Getenv("KODAMA_Q03_STAGE_APPLY") != "1" {
-		return errors.New("restore requires KODAMA_Q03_STAGE_APPLY=1")
+	if os.Getenv("KODEMA_Q03_STAGE_APPLY") != "1" {
+		return errors.New("restore requires KODEMA_Q03_STAGE_APPLY=1")
 	}
 	if !credentialsPresent() {
 		return errors.New("SCW_ACCESS_KEY and SCW_SECRET_KEY must be set for restore")
@@ -149,7 +149,7 @@ func run(ctx context.Context, mode string) error {
 		Database:       destination.Destination.DatabaseName,
 		InstanceID:     instanceID,
 		BackupID:       backupID,
-		SourceRevision: os.Getenv("KODAMA_Q03_SOURCE_REVISION"),
+		SourceRevision: os.Getenv("KODEMA_Q03_SOURCE_REVISION"),
 		RestoreOutcome: string(restorequal.OutcomeAccepted),
 		At:             time.Now().UTC(),
 	}
@@ -212,8 +212,8 @@ func dropRecordedRun(ctx context.Context, instanceID, sourceDatabase, managedDat
 		return err
 	}
 	fmt.Printf("q03 stage drill: %s %s\n", command.Name, strings.Join(command.Argv, " "))
-	if os.Getenv("KODAMA_Q03_STAGE_APPLY") != "1" {
-		return errors.New("drop requires KODAMA_Q03_STAGE_APPLY=1")
+	if os.Getenv("KODEMA_Q03_STAGE_APPLY") != "1" {
+		return errors.New("drop requires KODEMA_Q03_STAGE_APPLY=1")
 	}
 	if !credentialsPresent() {
 		return errors.New("SCW_ACCESS_KEY and SCW_SECRET_KEY must be set for drop")

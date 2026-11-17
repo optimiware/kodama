@@ -1,7 +1,7 @@
 // Package gitkeep implements the retained-commit keeper over the Userland
 // Git service's managed keep refs. It is the composition driver that turns the
 // authoritative commit set from the retention store into refs under
-// refs/kodama/keep/<sha> in every served repository of a tenant.
+// refs/kodema/keep/<sha> in every served repository of a tenant.
 //
 // The driver carries no retention window: the caller supplies the retained
 // commits. It lives in the composition layer because it wires a Userland
@@ -14,9 +14,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
 )
 
 // ErrStorageRootUnavailable reports a configured Git storage root that does

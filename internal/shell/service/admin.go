@@ -5,7 +5,7 @@
 // token.MutationUnit, and the operation registry owns authorization decisions.
 package service
 
-import "github.com/optimiware/kodama/internal/shell/tenancy"
+import "github.com/optimiware/kodema/internal/shell/tenancy"
 
 // CreateRequest is one service-account creation input. A created service starts
 // at version 1 with no credential pair.

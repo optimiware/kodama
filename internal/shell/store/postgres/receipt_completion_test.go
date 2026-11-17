@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 func TestReceiptCompletionZeroRowReclassifiesAsReplay(t *testing.T) {

@@ -6,7 +6,7 @@
 // The integration-tagged composition suite is memory-backed apart from its live
 // log test, and is never built together with these files.
 //
-// This file is the proof for `kodama migrate`'s administrator handover
+// This file is the proof for `kodema migrate`'s administrator handover
 // sequence against a real PostgreSQL server.
 package composition
 
@@ -24,12 +24,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/optimiware/kodama/internal/fault"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/app/migrate"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/app/migrate"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestMain installs the harness signal handler and orphan sweep for this
@@ -78,7 +78,7 @@ func roleVerifier(t *testing.T, admin *pgdriver.DB, role string) string {
 func migrationNames(t *testing.T, db *pgdriver.DB) []string {
 	t.Helper()
 	rows, err := pgtest.QueryStringsN(context.Background(), db, 1,
-		`SELECT name FROM kodama_meta.schema_migrations ORDER BY name`)
+		`SELECT name FROM kodema_meta.schema_migrations ORDER BY name`)
 	if err != nil {
 		t.Fatalf("read migration ledger: %v", err)
 	}
@@ -92,7 +92,7 @@ func migrationNames(t *testing.T, db *pgdriver.DB) []string {
 func migrationChecksums(t *testing.T, db *pgdriver.DB) map[string]string {
 	t.Helper()
 	rows, err := pgtest.QueryStringsN(context.Background(), db, 2,
-		`SELECT name, checksum FROM kodama_meta.schema_migrations ORDER BY name`)
+		`SELECT name, checksum FROM kodema_meta.schema_migrations ORDER BY name`)
 	if err != nil {
 		t.Fatalf("read migration ledger: %v", err)
 	}
@@ -115,7 +115,7 @@ func databaseOwner(t *testing.T, admin *pgdriver.DB, database string) string {
 
 // TestMigrateRealPostgresNonSuperuserAdministrator is the real proof of the
 // stage database setup: a CREATEROLE/CREATEDB, non-super user administrator
-// creates the database, applies migration 0001 and the rest as kodama_owner,
+// creates the database, applies migration 0001 and the rest as kodema_owner,
 // hands the database over, and a second run is a no-op that keeps the same
 // passwords. After the handover the administrator can no longer create objects.
 func TestMigrateRealPostgresNonSuperuserAdministrator(t *testing.T) {
@@ -123,10 +123,10 @@ func TestMigrateRealPostgresNonSuperuserAdministrator(t *testing.T) {
 	shard := pgtest.Start(t)
 	admin := shard.Admin()
 
-	if _, err := pgtest.ExecSQL(ctx, admin, `CREATE ROLE kodama_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS`); err != nil {
+	if _, err := pgtest.ExecSQL(ctx, admin, `CREATE ROLE kodema_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS`); err != nil {
 		t.Fatalf("create the non-superuser administrator: %v", err)
 	}
-	super, err := pgtest.ScalarString(ctx, admin, `SELECT rolsuper::text FROM pg_roles WHERE rolname = 'kodama_admin'`)
+	super, err := pgtest.ScalarString(ctx, admin, `SELECT rolsuper::text FROM pg_roles WHERE rolname = 'kodema_admin'`)
 	if err != nil || super != "false" {
 		t.Fatalf("administrator is superuser=%q (err=%v); the proof needs a non-superuser", super, err)
 	}
@@ -147,11 +147,11 @@ func TestMigrateRealPostgresNonSuperuserAdministrator(t *testing.T) {
 		t.Fatalf("close the configuration session: %v", err)
 	}
 
-	const database = "kodama_admin_owned"
-	if err := pgdriver.EnsureDatabase(ctx, componentDSN(t, shard, "kodama_admin", "postgres"), database); err != nil {
+	const database = "kodema_admin_owned"
+	if err := pgdriver.EnsureDatabase(ctx, componentDSN(t, shard, "kodema_admin", "postgres"), database); err != nil {
 		t.Fatalf("create the application database as the administrator: %v", err)
 	}
-	appDB := componentDB(t, shard, "kodama_admin", database)
+	appDB := componentDB(t, shard, "kodema_admin", database)
 	superDB := componentDB(t, shard, "postgres", database)
 
 	const (
@@ -161,12 +161,12 @@ func TestMigrateRealPostgresNonSuperuserAdministrator(t *testing.T) {
 		authPassword       = "auth-SENTINEL"
 	)
 	passwords := map[string]string{
-		"kodama_runtime":    runtimePassword,
-		"kodama_controller": controllerPassword,
-		"kodama_publisher":  publisherPassword,
-		"kodama_auth":       authPassword,
+		"kodema_runtime":    runtimePassword,
+		"kodema_controller": controllerPassword,
+		"kodema_publisher":  publisherPassword,
+		"kodema_auth":       authPassword,
 	}
-	config := migrate.Config{Database: database, Admin: "kodama_admin", Passwords: passwords}
+	config := migrate.Config{Database: database, Admin: "kodema_admin", Passwords: passwords}
 
 	applied, err := migrate.Apply(ctx, appDB, config)
 	if err != nil {
@@ -181,8 +181,8 @@ func TestMigrateRealPostgresNonSuperuserAdministrator(t *testing.T) {
 			t.Fatalf("applied[%d] = %q; want %q", index, name, want[index].Name)
 		}
 	}
-	if owner := databaseOwner(t, superDB, database); owner != "kodama_owner" {
-		t.Fatalf("database owner = %q; want kodama_owner after the handover", owner)
+	if owner := databaseOwner(t, superDB, database); owner != "kodema_owner" {
+		t.Fatalf("database owner = %q; want kodema_owner after the handover", owner)
 	}
 	if rows := migrationNames(t, superDB); len(rows) != len(want) {
 		t.Fatalf("ledger has %d rows; want %d", len(rows), len(want))
@@ -202,9 +202,9 @@ func TestMigrateRealPostgresNonSuperuserAdministrator(t *testing.T) {
 			t.Fatalf("role %s verifier = %q; want the configured password's verifier", role, got)
 		}
 	}
-	owner, err := pgtest.ScalarString(ctx, admin, `SELECT concat_ws(',', rolcanlogin::text, rolsuper::text, rolbypassrls::text) FROM pg_roles WHERE rolname = 'kodama_owner'`)
+	owner, err := pgtest.ScalarString(ctx, admin, `SELECT concat_ws(',', rolcanlogin::text, rolsuper::text, rolbypassrls::text) FROM pg_roles WHERE rolname = 'kodema_owner'`)
 	if err != nil || owner != "false,false,false" {
-		t.Fatalf("kodama_owner attributes = %q (err=%v); want a NOLOGIN non-superuser NOBYPASSRLS owner", owner, err)
+		t.Fatalf("kodema_owner attributes = %q (err=%v); want a NOLOGIN non-superuser NOBYPASSRLS owner", owner, err)
 	}
 
 	// A second run is a no-op and must not rotate the passwords: the Secret did
@@ -236,7 +236,7 @@ func TestMigrateRealPostgresNonSuperuserAdministrator(t *testing.T) {
 	} else {
 		pgtest.RequirePermissionDenied(t, err, "administrator create table")
 	}
-	if _, err := pgtest.ExecSQL(ctx, appDB, `CREATE SCHEMA kodama_admin_probe`); err == nil {
+	if _, err := pgtest.ExecSQL(ctx, appDB, `CREATE SCHEMA kodema_admin_probe`); err == nil {
 		t.Fatal("the administrator created a schema after the handover")
 	}
 }
@@ -254,15 +254,15 @@ func TestMigrateRealPostgresPartialFailureResumes(t *testing.T) {
 	shard := pgtest.Start(t)
 	admin := shard.Admin()
 
-	if _, err := pgtest.ExecSQL(ctx, admin, `CREATE ROLE kodama_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS`); err != nil {
+	if _, err := pgtest.ExecSQL(ctx, admin, `CREATE ROLE kodema_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS`); err != nil {
 		t.Fatalf("create the non-superuser administrator: %v", err)
 	}
-	const database = "kodama_recovery"
-	if err := pgdriver.EnsureDatabase(ctx, componentDSN(t, shard, "kodama_admin", "postgres"), database); err != nil {
+	const database = "kodema_recovery"
+	if err := pgdriver.EnsureDatabase(ctx, componentDSN(t, shard, "kodema_admin", "postgres"), database); err != nil {
 		t.Fatalf("create the recovery database: %v", err)
 	}
 	superDB := componentDB(t, shard, "postgres", database)
-	appDB := componentDB(t, shard, "kodama_admin", database)
+	appDB := componentDB(t, shard, "kodema_admin", database)
 
 	// 0002 creates the tenants table. A pre-existing table of the same name
 	// makes exactly that migration fail after 0001 committed.
@@ -270,8 +270,8 @@ func TestMigrateRealPostgresPartialFailureResumes(t *testing.T) {
 		t.Fatalf("pre-create the conflicting table: %v", err)
 	}
 	config := migrate.Config{
-		Database: database, Admin: "kodama_admin",
-		Passwords: map[string]string{"kodama_runtime": "SENTINEL-RECOVERY-PASSWORD"},
+		Database: database, Admin: "kodema_admin",
+		Passwords: map[string]string{"kodema_runtime": "SENTINEL-RECOVERY-PASSWORD"},
 	}
 	applied, err := migrate.Apply(ctx, appDB, config)
 	if err == nil {
@@ -311,20 +311,20 @@ func TestMigrateRealPostgresRefusesAdministratorWithoutCreateRole(t *testing.T) 
 	shard := pgtest.Start(t)
 	admin := shard.Admin()
 
-	if _, err := pgtest.ExecSQL(ctx, admin, `CREATE ROLE kodama_weak LOGIN CREATEDB NOSUPERUSER NOCREATEROLE`); err != nil {
+	if _, err := pgtest.ExecSQL(ctx, admin, `CREATE ROLE kodema_weak LOGIN CREATEDB NOSUPERUSER NOCREATEROLE`); err != nil {
 		t.Fatalf("create the weak administrator: %v", err)
 	}
-	const database = "kodama_weak_admin"
-	weakURL := componentDSN(t, shard, "kodama_weak", "postgres")
+	const database = "kodema_weak_admin"
+	weakURL := componentDSN(t, shard, "kodema_weak", "postgres")
 	if err := pgdriver.EnsureDatabase(ctx, weakURL, database); err != nil {
 		t.Fatalf("create the database as the weak administrator: %v", err)
 	}
-	appDB := componentDB(t, shard, "kodama_weak", database)
+	appDB := componentDB(t, shard, "kodema_weak", database)
 
 	const password = "SENTINEL-WEAK-ADMIN-PASSWORD"
 	_, err := migrate.Apply(ctx, appDB, migrate.Config{
-		Database: database, Admin: "kodama_weak",
-		Passwords: map[string]string{"kodama_runtime": password},
+		Database: database, Admin: "kodema_weak",
+		Passwords: map[string]string{"kodema_runtime": password},
 	})
 	if err == nil {
 		t.Fatal("migrate succeeded as an administrator without CREATEROLE")

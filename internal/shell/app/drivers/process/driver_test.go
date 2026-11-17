@@ -16,15 +16,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/runtime/process"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/runtime/process"
 )
 
 // TestHelperProcess is re-executed as a harmless child by the spawn tests. It
 // does nothing during a normal test run.
 func TestHelperProcess(t *testing.T) {
-	if os.Getenv("KODAMA_DRIVER_HELPER") != "1" {
+	if os.Getenv("KODEMA_DRIVER_HELPER") != "1" {
 		return
 	}
 	switch os.Getenv("HELPER_MODE") {
@@ -65,7 +65,7 @@ func helperRequestEnv(t *testing.T, group string, mode string, extraEnv []string
 	t.Helper()
 	command := []string{os.Args[0], "-test.run=TestHelperProcess"}
 	command = append(command, args...)
-	env := []string{"KODAMA_DRIVER_HELPER=1", "HELPER_MODE=" + mode}
+	env := []string{"KODEMA_DRIVER_HELPER=1", "HELPER_MODE=" + mode}
 	env = append(env, extraEnv...)
 	return process.SpawnRequest{
 		Group:      process.GroupID(group),
@@ -595,7 +595,7 @@ func TestParseProcStatStartTime(t *testing.T) {
 func startUnrelatedProcessGroup(t *testing.T) *exec.Cmd {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
-	cmd.Env = []string{"KODAMA_DRIVER_HELPER=1", "HELPER_MODE=sleep"}
+	cmd.Env = []string{"KODEMA_DRIVER_HELPER=1", "HELPER_MODE=sleep"}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start unrelated sleeper: %v", err)

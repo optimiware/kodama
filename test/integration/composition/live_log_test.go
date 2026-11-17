@@ -10,16 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	natsbroker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
-	messaging "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	natsbroker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
+	messaging "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 const (

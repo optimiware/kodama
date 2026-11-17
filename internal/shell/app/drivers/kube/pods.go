@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/optimiware/kodama/internal/fault"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // Pod response bodies.

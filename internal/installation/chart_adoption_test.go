@@ -19,12 +19,12 @@ package installation
 //     carries the DNS rule in the same policy, and never names a wildcard;
 //   - values.schema.json validates every egressFQDNs entry as a DNS name, so an
 //     empty, wildcard, scheme, port or path entry is refused before rendering;
-//   - the cloud KMS credential is referenced through the kodama-kms-credentials
+//   - the cloud KMS credential is referenced through the kodema-kms-credentials
 //     Secret by name only (never inlined), separate from the binary KEK Secret;
 //   - the Deployment sets exactly the environment names the production
-//     composition reads, including KODAMA_NATS_CERT_FILE/KEY_FILE and the
-//     tenant configuration: KODAMA_TENANTS for an explicit tenant list, or
-//     KODAMA_TENANT for the singleton compatibility form.
+//     composition reads, including KODEMA_NATS_CERT_FILE/KEY_FILE and the
+//     tenant configuration: KODEMA_TENANTS for an explicit tenant list, or
+//     KODEMA_TENANT for the singleton compatibility form.
 
 import (
 	"fmt"
@@ -36,42 +36,42 @@ import (
 
 // chartDirectEnvNames is the exact set of environment variables the chart
 // templates set directly on the server container. The names are taken from the
-// production composition (cmd/kodama/production.go) and the server option
-// overlay (cmd/kodama/server.go).
+// production composition (cmd/kodema/production.go) and the server option
+// overlay (cmd/kodema/server.go).
 // Secrets arrive through secretKeyRef/envFrom; OIDC and discovery settings are
 // opt-in through config.extraEnv and are not listed here.
 var chartDirectEnvNames = []string{
-	"KODAMA_AUTH_DATABASE_URL",
-	"KODAMA_CONTROLLER_DATABASE_URL",
-	"KODAMA_DATABASE_URL",
-	"KODAMA_DATA_DIR",
-	"KODAMA_GIT_STORAGE_ROOT",
-	"KODAMA_INSTALLATION_ID",
-	"KODAMA_KEY_ADAPTER",
-	"KODAMA_KEY_BLOBS_DIR",
-	"KODAMA_KEY_CURRENT_VERSION",
-	"KODAMA_KEY_REF",
-	"KODAMA_MCP_PATH",
-	"KODAMA_NATS_CA_FILE",
-	"KODAMA_NATS_CALLOUT_ACCOUNT",
-	"KODAMA_NATS_CALLOUT_ISSUER_SEED",
-	"KODAMA_NATS_CALLOUT_PASSWORD",
-	"KODAMA_NATS_CALLOUT_USER",
-	"KODAMA_NATS_CERT_FILE",
-	"KODAMA_NATS_KEY_FILE",
-	"KODAMA_NATS_PASSWORD",
-	"KODAMA_NATS_URL",
-	"KODAMA_NATS_USER",
-	"KODAMA_PROFILE",
-	"KODAMA_PUBLIC_URL",
-	"KODAMA_PUBLISHER_DATABASE_URL",
-	"KODAMA_TENANT",
-	"KODAMA_TENANTS",
-	"KODAMA_TLS_DIR",
-	"KODAMA_WORKLOAD_CA_SECRET",
-	"KODAMA_WORKSPACE_PVC_ACCESS_MODE",
-	"KODAMA_WORKSPACE_PVC_SIZE",
-	"KODAMA_WORKSPACE_PVC_STORAGE_CLASS",
+	"KODEMA_AUTH_DATABASE_URL",
+	"KODEMA_CONTROLLER_DATABASE_URL",
+	"KODEMA_DATABASE_URL",
+	"KODEMA_DATA_DIR",
+	"KODEMA_GIT_STORAGE_ROOT",
+	"KODEMA_INSTALLATION_ID",
+	"KODEMA_KEY_ADAPTER",
+	"KODEMA_KEY_BLOBS_DIR",
+	"KODEMA_KEY_CURRENT_VERSION",
+	"KODEMA_KEY_REF",
+	"KODEMA_MCP_PATH",
+	"KODEMA_NATS_CA_FILE",
+	"KODEMA_NATS_CALLOUT_ACCOUNT",
+	"KODEMA_NATS_CALLOUT_ISSUER_SEED",
+	"KODEMA_NATS_CALLOUT_PASSWORD",
+	"KODEMA_NATS_CALLOUT_USER",
+	"KODEMA_NATS_CERT_FILE",
+	"KODEMA_NATS_KEY_FILE",
+	"KODEMA_NATS_PASSWORD",
+	"KODEMA_NATS_URL",
+	"KODEMA_NATS_USER",
+	"KODEMA_PROFILE",
+	"KODEMA_PUBLIC_URL",
+	"KODEMA_PUBLISHER_DATABASE_URL",
+	"KODEMA_TENANT",
+	"KODEMA_TENANTS",
+	"KODEMA_TLS_DIR",
+	"KODEMA_WORKLOAD_CA_SECRET",
+	"KODEMA_WORKSPACE_PVC_ACCESS_MODE",
+	"KODEMA_WORKSPACE_PVC_SIZE",
+	"KODEMA_WORKSPACE_PVC_STORAGE_CLASS",
 }
 
 // chartExtraEnvNames is the optional config.extraEnv surface. production.go
@@ -79,55 +79,55 @@ var chartDirectEnvNames = []string{
 // binary (it is); the chart only provides the pass-through. Discovery settings
 // feed the public login document from server.go.
 var chartExtraEnvNames = []string{
-	"KODAMA_DISCOVERY_API_URL",
-	"KODAMA_DISCOVERY_AUDIENCE",
-	"KODAMA_DISCOVERY_AUTHORIZATION_ENDPOINT",
-	"KODAMA_DISCOVERY_CLIENT_ID",
-	"KODAMA_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT",
-	"KODAMA_DISCOVERY_ISSUER",
-	"KODAMA_DISCOVERY_REVOCATION_ENDPOINT",
-	"KODAMA_DISCOVERY_SCOPES",
-	"KODAMA_DISCOVERY_TOKEN_ENDPOINT",
-	"KODAMA_OIDC_AUDIENCE",
-	"KODAMA_OIDC_CA_FILE",
-	"KODAMA_OIDC_ISSUER",
-	"KODAMA_OIDC_JWKS_URL",
-	"KODAMA_OIDC_PROJECT_CLAIM",
-	"KODAMA_OIDC_SUBJECT_CLAIM",
-	"KODAMA_OIDC_TENANT_CLAIM",
-	"KODAMA_TENANT_NAMESPACE",
-	"KODAMA_WORKLOAD_CPU_LIMIT",
-	"KODAMA_WORKLOAD_CPU_REQUEST",
-	"KODAMA_WORKLOAD_MEMORY_LIMIT",
-	"KODAMA_WORKLOAD_MEMORY_REQUEST",
+	"KODEMA_DISCOVERY_API_URL",
+	"KODEMA_DISCOVERY_AUDIENCE",
+	"KODEMA_DISCOVERY_AUTHORIZATION_ENDPOINT",
+	"KODEMA_DISCOVERY_CLIENT_ID",
+	"KODEMA_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT",
+	"KODEMA_DISCOVERY_ISSUER",
+	"KODEMA_DISCOVERY_REVOCATION_ENDPOINT",
+	"KODEMA_DISCOVERY_SCOPES",
+	"KODEMA_DISCOVERY_TOKEN_ENDPOINT",
+	"KODEMA_OIDC_AUDIENCE",
+	"KODEMA_OIDC_CA_FILE",
+	"KODEMA_OIDC_ISSUER",
+	"KODEMA_OIDC_JWKS_URL",
+	"KODEMA_OIDC_PROJECT_CLAIM",
+	"KODEMA_OIDC_SUBJECT_CLAIM",
+	"KODEMA_OIDC_TENANT_CLAIM",
+	"KODEMA_TENANT_NAMESPACE",
+	"KODEMA_WORKLOAD_CPU_LIMIT",
+	"KODEMA_WORKLOAD_CPU_REQUEST",
+	"KODEMA_WORKLOAD_MEMORY_LIMIT",
+	"KODEMA_WORKLOAD_MEMORY_REQUEST",
 }
 
 // chartRequiredProductionEnvNames are the names production.go refuses to start
 // without. The chart must set each one directly or document it as an
 // config.extraEnv input; a rename in either place breaks a real deployment.
 var chartRequiredProductionEnvNames = []string{
-	"KODAMA_AUTH_DATABASE_URL",
-	"KODAMA_CONTROLLER_DATABASE_URL",
-	"KODAMA_DATABASE_URL",
-	"KODAMA_KEY_BLOBS_DIR",
-	"KODAMA_KEY_REF",
-	"KODAMA_NATS_CA_FILE",
-	"KODAMA_NATS_CALLOUT_ACCOUNT",
-	"KODAMA_NATS_CALLOUT_ISSUER_SEED",
-	"KODAMA_NATS_CALLOUT_PASSWORD",
-	"KODAMA_NATS_CALLOUT_USER",
-	"KODAMA_NATS_CERT_FILE",
-	"KODAMA_NATS_KEY_FILE",
-	"KODAMA_NATS_PASSWORD",
-	"KODAMA_NATS_URL",
-	"KODAMA_NATS_USER",
-	"KODAMA_PUBLISHER_DATABASE_URL",
-	"KODAMA_TENANT",
-	"KODAMA_TENANTS",
-	"KODAMA_TLS_DIR",
-	"KODAMA_WORKSPACE_PVC_ACCESS_MODE",
-	"KODAMA_WORKSPACE_PVC_SIZE",
-	"KODAMA_WORKSPACE_PVC_STORAGE_CLASS",
+	"KODEMA_AUTH_DATABASE_URL",
+	"KODEMA_CONTROLLER_DATABASE_URL",
+	"KODEMA_DATABASE_URL",
+	"KODEMA_KEY_BLOBS_DIR",
+	"KODEMA_KEY_REF",
+	"KODEMA_NATS_CA_FILE",
+	"KODEMA_NATS_CALLOUT_ACCOUNT",
+	"KODEMA_NATS_CALLOUT_ISSUER_SEED",
+	"KODEMA_NATS_CALLOUT_PASSWORD",
+	"KODEMA_NATS_CALLOUT_USER",
+	"KODEMA_NATS_CERT_FILE",
+	"KODEMA_NATS_KEY_FILE",
+	"KODEMA_NATS_PASSWORD",
+	"KODEMA_NATS_URL",
+	"KODEMA_NATS_USER",
+	"KODEMA_PUBLISHER_DATABASE_URL",
+	"KODEMA_TENANT",
+	"KODEMA_TENANTS",
+	"KODEMA_TLS_DIR",
+	"KODEMA_WORKSPACE_PVC_ACCESS_MODE",
+	"KODEMA_WORKSPACE_PVC_SIZE",
+	"KODEMA_WORKSPACE_PVC_STORAGE_CLASS",
 }
 
 func containsName(values []string, want string) bool {
@@ -197,8 +197,8 @@ func checkDeploymentEnvironment(body string) error {
 		known[name] = true
 	}
 	for _, name := range names {
-		if name == "KODAMA_ENVIRONMENT" {
-			return fmt.Errorf("Deployment sets %s, which no Go entrypoint reads; the production profile comes from KODAMA_PROFILE and the --profile flag", name)
+		if name == "KODEMA_ENVIRONMENT" {
+			return fmt.Errorf("Deployment sets %s, which no Go entrypoint reads; the production profile comes from KODEMA_PROFILE and the --profile flag", name)
 		}
 		if !known[name] {
 			return fmt.Errorf("Deployment sets %s, which is not part of the production environment contract", name)
@@ -209,7 +209,7 @@ func checkDeploymentEnvironment(body string) error {
 			return fmt.Errorf("Deployment does not set required production variable %s", name)
 		}
 	}
-	for _, name := range []string{"KODAMA_NATS_CERT_FILE", "KODAMA_NATS_KEY_FILE", "KODAMA_TENANT"} {
+	for _, name := range []string{"KODEMA_NATS_CERT_FILE", "KODEMA_NATS_KEY_FILE", "KODEMA_TENANT"} {
 		if !containsName(names, name) {
 			return fmt.Errorf("Deployment does not set %s", name)
 		}
@@ -245,12 +245,12 @@ func TestDeploymentEnvironmentMatchesProductionComposition(t *testing.T) {
 
 	// The tenant configuration renders from the chart's tenant list: the
 	// explicit list form carries every configured tenant as JSON, and the
-	// singleton compatibility branch carries the only tenant as KODAMA_TENANT.
+	// singleton compatibility branch carries the only tenant as KODEMA_TENANT.
 	// A render with more than one tenant must never fall back to the first
 	// one.
 	requirePattern(t, body, `(?ms)if[ \t]+gt[ \t]+\(len[ \t]+\.Values\.tenants\)[ \t]+1`, "deployment.yaml tenant-count branch")
-	requirePattern(t, body, `(?ms)- name: KODAMA_TENANTS\s*\r?\n\s*value: \{\{ \.Values\.tenants \| toJson \| quote \}\}`, "deployment.yaml KODAMA_TENANTS from the whole tenant list")
-	requirePattern(t, body, `(?ms)- name: KODAMA_TENANT\s*\r?\n\s*value: \{\{ index \.Values\.tenants 0 \| quote \}\}`, "deployment.yaml singleton KODAMA_TENANT from the only tenant")
+	requirePattern(t, body, `(?ms)- name: KODEMA_TENANTS\s*\r?\n\s*value: \{\{ \.Values\.tenants \| toJson \| quote \}\}`, "deployment.yaml KODEMA_TENANTS from the whole tenant list")
+	requirePattern(t, body, `(?ms)- name: KODEMA_TENANT\s*\r?\n\s*value: \{\{ index \.Values\.tenants 0 \| quote \}\}`, "deployment.yaml singleton KODEMA_TENANT from the only tenant")
 }
 
 // TestEnvironmentContractIsComplete keeps the three tables above coherent:
@@ -268,40 +268,40 @@ func TestEnvironmentContractIsComplete(t *testing.T) {
 			t.Errorf("required production variable %s is neither set by the chart nor documented for config.extraEnv", required)
 		}
 	}
-	for _, name := range []string{"KODAMA_OIDC_ISSUER", "KODAMA_OIDC_AUDIENCE", "KODAMA_OIDC_JWKS_URL", "KODAMA_OIDC_TENANT_CLAIM"} {
+	for _, name := range []string{"KODEMA_OIDC_ISSUER", "KODEMA_OIDC_AUDIENCE", "KODEMA_OIDC_JWKS_URL", "KODEMA_OIDC_TENANT_CLAIM"} {
 		if !containsName(chartExtraEnvNames, name) {
 			t.Errorf("production-required %s is not documented as a config.extraEnv input", name)
 		}
 	}
-	if containsName(chartDirectEnvNames, "KODAMA_ENVIRONMENT") {
-		t.Error("KODAMA_ENVIRONMENT is listed as part of the production contract but no Go entrypoint reads it")
+	if containsName(chartDirectEnvNames, "KODEMA_ENVIRONMENT") {
+		t.Error("KODEMA_ENVIRONMENT is listed as part of the production contract but no Go entrypoint reads it")
 	}
 }
 
 func TestDeploymentEnvironmentRejectsRenamedVariable(t *testing.T) {
 	body := readText(t, chartPath(t, "templates", "deployment.yaml"))
-	mutated := strings.Replace(body, "- name: KODAMA_NATS_CERT_FILE", "- name: KODAMA_NATS_CLIENT_CERT_FILE", 1)
+	mutated := strings.Replace(body, "- name: KODEMA_NATS_CERT_FILE", "- name: KODEMA_NATS_CLIENT_CERT_FILE", 1)
 	if mutated == body {
-		t.Fatal("test mutation did not rename KODAMA_NATS_CERT_FILE")
+		t.Fatal("test mutation did not rename KODEMA_NATS_CERT_FILE")
 	}
 	if err := checkDeploymentEnvironment(mutated); err == nil {
 		t.Fatal("checker accepted a renamed NATS client certificate variable")
 	}
 
-	removed := strings.Replace(body, "            - name: KODAMA_TENANTS\n              value: {{ .Values.tenants | toJson | quote }}\n", "", 1)
+	removed := strings.Replace(body, "            - name: KODEMA_TENANTS\n              value: {{ .Values.tenants | toJson | quote }}\n", "", 1)
 	if removed == body {
-		t.Fatal("test mutation did not remove KODAMA_TENANTS")
+		t.Fatal("test mutation did not remove KODEMA_TENANTS")
 	}
 	if err := checkDeploymentEnvironment(removed); err == nil {
-		t.Fatal("checker accepted a Deployment without the multi-tenant KODAMA_TENANTS")
+		t.Fatal("checker accepted a Deployment without the multi-tenant KODEMA_TENANTS")
 	}
 
-	removed = strings.Replace(body, "            - name: KODAMA_TENANT\n              value: {{ index .Values.tenants 0 | quote }}\n", "", 1)
+	removed = strings.Replace(body, "            - name: KODEMA_TENANT\n              value: {{ index .Values.tenants 0 | quote }}\n", "", 1)
 	if removed == body {
-		t.Fatal("test mutation did not remove KODAMA_TENANT")
+		t.Fatal("test mutation did not remove KODEMA_TENANT")
 	}
 	if err := checkDeploymentEnvironment(removed); err == nil {
-		t.Fatal("checker accepted a Deployment without the singleton KODAMA_TENANT")
+		t.Fatal("checker accepted a Deployment without the singleton KODEMA_TENANT")
 	}
 }
 
@@ -395,8 +395,8 @@ func checkCiliumFQDNPolicyTemplate(body string) error {
 	if !regexp.MustCompile(`(?m)^[ \t]*apiVersion:[ \t]*cilium\.io/v2[ \t]*$`).MatchString(body) {
 		return fmt.Errorf("policy does not use cilium.io/v2")
 	}
-	if !regexp.MustCompile(`(?m)^[ \t]*namespace:[ \t]*kodama-tenant-\{\{[ \t]*\$tenant[ \t]*\}\}[ \t]*$`).MatchString(body) {
-		return fmt.Errorf("policy is not rendered into kodama-tenant-{{ $tenant }}")
+	if !regexp.MustCompile(`(?m)^[ \t]*namespace:[ \t]*kodema-tenant-\{\{[ \t]*\$tenant[ \t]*\}\}[ \t]*$`).MatchString(body) {
+		return fmt.Errorf("policy is not rendered into kodema-tenant-{{ $tenant }}")
 	}
 	if !regexp.MustCompile(`(?m)^[ \t]*endpointSelector:[ \t]*\{[ \t]*\}[ \t]*$`).MatchString(body) {
 		return fmt.Errorf("policy does not select every tenant endpoint")
@@ -480,24 +480,24 @@ func TestCiliumFQDNPolicyMutationSensitivity(t *testing.T) {
 func fqdnValues(entries []any) map[string]any {
 	return map[string]any{
 		"environment":  "production",
-		"image":        map[string]any{"repository": "registry.example.com/kodama", "tag": "0.1.0"},
+		"image":        map[string]any{"repository": "registry.example.com/kodema", "tag": "0.1.0"},
 		"replicaCount": float64(1),
 		"config": map[string]any{
 			"extraEnv": map[string]any{
-				"KODAMA_OIDC_ISSUER":       "https://issuer.example",
-				"KODAMA_OIDC_AUDIENCE":     "kodama",
-				"KODAMA_OIDC_JWKS_URL":     "https://issuer.example/jwks",
-				"KODAMA_OIDC_TENANT_CLAIM": "org_id",
+				"KODEMA_OIDC_ISSUER":       "https://issuer.example",
+				"KODEMA_OIDC_AUDIENCE":     "kodema",
+				"KODEMA_OIDC_JWKS_URL":     "https://issuer.example/jwks",
+				"KODEMA_OIDC_TENANT_CLAIM": "org_id",
 			},
 		},
 		"secrets": map[string]any{
-			"database":       map[string]any{"existingSecret": "kodama-database"},
-			"kmsCredentials": map[string]any{"existingSecret": "kodama-kms-credentials"},
+			"database":       map[string]any{"existingSecret": "kodema-database"},
+			"kmsCredentials": map[string]any{"existingSecret": "kodema-kms-credentials"},
 		},
 		"tenants": []any{"tenant-a"},
 		"networkPolicy": map[string]any{
 			"defaultDeny":  true,
-			"permitKodama": true,
+			"permitKodema": true,
 			"permitGit":    true,
 			"egressFQDNs":  entries,
 		},
@@ -616,8 +616,8 @@ func checkKMSCredentialsCustody(values, deployment string) error {
 		}
 		name = strings.Trim(strings.TrimSpace(value), `"'`)
 	}
-	if name != "kodama-kms-credentials" {
-		return fmt.Errorf("secrets.kmsCredentials.existingSecret = %q, want kodama-kms-credentials", name)
+	if name != "kodema-kms-credentials" {
+		return fmt.Errorf("secrets.kmsCredentials.existingSecret = %q, want kodema-kms-credentials", name)
 	}
 
 	envFrom, ok := indentedBlock(deployment, "envFrom:")
@@ -640,7 +640,7 @@ func checkKMSCredentialsCustody(values, deployment string) error {
 	if inline.MatchString(deployment) {
 		return fmt.Errorf("Deployment inlines a cloud credential as an environment value")
 	}
-	// The KEK blob Secret must still be mounted as a file for KODAMA_KEY_BLOBS_DIR.
+	// The KEK blob Secret must still be mounted as a file for KODEMA_KEY_BLOBS_DIR.
 	if !regexp.MustCompile(`(?ms)^[ \t]*-[ \t]*name:[ \t]*keys[ \t]*\r?\n[ \t]*secret:[ \t]*\r?\n[ \t]*secretName:[ \t]*\{\{[ \t]*\.Values\.secrets\.keys\.existingSecret[ \t]*\}\}`).MatchString(deployment) {
 		return fmt.Errorf("Deployment does not mount the keys Secret as the KEK blob volume")
 	}
@@ -666,7 +666,7 @@ func TestKMSCredentialsMutationSensitivity(t *testing.T) {
 	values := readText(t, chartPath(t, "values.yaml"))
 	deployment := readText(t, chartPath(t, "templates", "deployment.yaml"))
 
-	inlined := strings.Replace(values, "  kmsCredentials:\n    existingSecret: kodama-kms-credentials\n", "  kmsCredentials:\n    existingSecret: kodama-kms-credentials\n    value: hunter2\n", 1)
+	inlined := strings.Replace(values, "  kmsCredentials:\n    existingSecret: kodema-kms-credentials\n", "  kmsCredentials:\n    existingSecret: kodema-kms-credentials\n    value: hunter2\n", 1)
 	if inlined == values {
 		t.Fatal("test mutation did not inline a KMS credential value")
 	}
@@ -692,7 +692,7 @@ func TestKMSCredentialsMutationSensitivity(t *testing.T) {
 }
 
 // TestTenantListSchemaGrammar pins the values contract of the tenant list the
-// Deployment renders as KODAMA_TENANTS. Every entry derives a namespace, so a
+// Deployment renders as KODEMA_TENANTS. Every entry derives a namespace, so a
 // non-DNS-label id, an empty id or a wrong type is refused before rendering; a
 // multi-tenant installation additionally refuses the singleton namespace
 // override, which cannot describe more than one namespace.
@@ -747,7 +747,7 @@ func TestTenantListSchemaGrammar(t *testing.T) {
 		}
 	}
 
-	// A tenant id so long that kodama-tenant-<id> exceeds the 63-character
+	// A tenant id so long that kodema-tenant-<id> exceeds the 63-character
 	// Kubernetes namespace limit is refused.
 	tooLong := strings.Repeat("a", 50)
 	if err := validateAgainstSchema(schema, tenantValues([]any{tooLong}), "values"); err == nil {
@@ -755,16 +755,16 @@ func TestTenantListSchemaGrammar(t *testing.T) {
 	}
 
 	// A multi-tenant installation derives every namespace; the singleton
-	// KODAMA_TENANT_NAMESPACE override is ambiguous and refused.
+	// KODEMA_TENANT_NAMESPACE override is ambiguous and refused.
 	multi := fqdnValues([]any{})
 	multi["tenants"] = []any{"tenant-a", "tenant-b"}
-	multi["config"].(map[string]any)["extraEnv"].(map[string]any)["KODAMA_TENANT_NAMESPACE"] = "kodama-tenant-explicit"
+	multi["config"].(map[string]any)["extraEnv"].(map[string]any)["KODEMA_TENANT_NAMESPACE"] = "kodema-tenant-explicit"
 	if err := validateAgainstSchema(schema, multi, "values"); err == nil {
-		t.Error("schema accepted KODAMA_TENANT_NAMESPACE with more than one tenant")
+		t.Error("schema accepted KODEMA_TENANT_NAMESPACE with more than one tenant")
 	}
 
 	single := fqdnValues([]any{})
-	single["config"].(map[string]any)["extraEnv"].(map[string]any)["KODAMA_TENANT_NAMESPACE"] = "kodama-tenant-explicit"
+	single["config"].(map[string]any)["extraEnv"].(map[string]any)["KODEMA_TENANT_NAMESPACE"] = "kodema-tenant-explicit"
 	if err := validateAgainstSchema(schema, single, "values"); err != nil {
 		t.Errorf("schema refused the singleton namespace override: %v", err)
 	}
@@ -786,7 +786,7 @@ func checkTenantListGuard(guard string) error {
 		{`tenants repeats`, "duplicate tenant refusal"},
 		{`set[ \t]+\$tenantNames[ \t]+\$name[ \t]+true`, "duplicate tracking insert"},
 		{`gt[ \t]+\(len[ \t]+\.Values\.tenants\)[ \t]+1`, "multi-tenant branch"},
-		{`hasKey[ \t]+\.Values\.config\.extraEnv[ \t]+"KODAMA_TENANT_NAMESPACE"`, "singleton namespace override refusal"},
+		{`hasKey[ \t]+\.Values\.config\.extraEnv[ \t]+"KODEMA_TENANT_NAMESPACE"`, "singleton namespace override refusal"},
 	}
 	for _, requirement := range requirements {
 		if !regexp.MustCompile(requirement.expression).MatchString(guard) {
@@ -824,14 +824,14 @@ func TestTenantListGuardRejectsDuplicatesAndOverrides(t *testing.T) {
 		{
 			name: "tenant id grammar",
 			remove: `{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]{0,47}[a-z0-9])?$" $name) }}
-{{- fail (printf "tenants entry %q is not a lowercase DNS label; the chart derives the namespace kodama-tenant-<tenant> from it" $name) }}
+{{- fail (printf "tenants entry %q is not a lowercase DNS label; the chart derives the namespace kodema-tenant-<tenant> from it" $name) }}
 {{- end }}
 `,
 		},
 		{
 			name: "multi-tenant namespace override",
-			remove: `{{- if and (gt (len .Values.tenants) 1) .Values.config .Values.config.extraEnv (hasKey .Values.config.extraEnv "KODAMA_TENANT_NAMESPACE") }}
-{{- fail "config.extraEnv.KODAMA_TENANT_NAMESPACE is a singleton override; a multi-tenant installation derives one namespace per tenant" }}
+			remove: `{{- if and (gt (len .Values.tenants) 1) .Values.config .Values.config.extraEnv (hasKey .Values.config.extraEnv "KODEMA_TENANT_NAMESPACE") }}
+{{- fail "config.extraEnv.KODEMA_TENANT_NAMESPACE is a singleton override; a multi-tenant installation derives one namespace per tenant" }}
 {{- end }}
 `,
 		},

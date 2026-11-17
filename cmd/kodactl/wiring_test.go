@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // isolateUserConfig points the default kodactl config directory at an empty
@@ -37,7 +37,7 @@ func writeSessionFile(t *testing.T, path, apiURL, token string, expires time.Tim
 		"refresh_token":       "refresh-" + token,
 		"issuer":              "https://issuer.example",
 		"client_id":           "kodactl",
-		"audience":            "kodama-api",
+		"audience":            "kodema-api",
 		"api_url":             apiURL,
 		"token_endpoint":      "https://issuer.example/oauth/token",
 		"revocation_endpoint": "https://issuer.example/oauth/revoke",
@@ -129,7 +129,7 @@ func newTestResultServer(t *testing.T, operation string, recorder *resultRecorde
 			document, marshalErr := json.Marshal(api.DiscoveryDocument{
 				Issuer:                      "https://issuer.example",
 				ClientID:                    "kodactl",
-				Audience:                    "kodama-api",
+				Audience:                    "kodema-api",
 				AuthorizationEndpoint:       "https://issuer.example/oauth/authorize",
 				TokenEndpoint:               "https://issuer.example/oauth/token",
 				DeviceAuthorizationEndpoint: "https://issuer.example/oauth/device",
@@ -507,7 +507,7 @@ func TestKodactlHelperUsesConfiguredTrustedOrigins(t *testing.T) {
 				if stdout.Len() != 0 {
 					t.Fatalf("stdout = %q; want an empty refusal", stdout.String())
 				}
-			} else if want := "username=kodama\npassword=" + testCase.want + "\n"; stdout.String() != want {
+			} else if want := "username=kodema\npassword=" + testCase.want + "\n"; stdout.String() != want {
 				t.Fatalf("stdout = %q; want %q", stdout.String(), want)
 			}
 			if strings.Contains(stderr.String(), "kodex.execution-1.token") {
@@ -556,7 +556,7 @@ func TestKodactlHelperUsesTrustedOriginFlag(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
 	}
-	if want := "username=kodama\npassword=kodex.execution-1.token\n"; stdout.String() != want {
+	if want := "username=kodema\npassword=kodex.execution-1.token\n"; stdout.String() != want {
 		t.Fatalf("stdout = %q; want %q", stdout.String(), want)
 	}
 
@@ -572,7 +572,7 @@ func TestKodactlHelperUsesTrustedOriginFlag(t *testing.T) {
 	}
 }
 
-// TestKodactlReadsConfigFromEnvironment pins the KODAMA_CONFIG environment
+// TestKodactlReadsConfigFromEnvironment pins the KODEMA_CONFIG environment
 // path.
 func TestKodactlReadsConfigFromEnvironment(t *testing.T) {
 	isolateUserConfig(t)
@@ -586,7 +586,7 @@ func TestKodactlReadsConfigFromEnvironment(t *testing.T) {
 	if err := os.WriteFile(configFile, []byte(config), 0o600); err != nil {
 		t.Fatalf("WriteFile config: %v", err)
 	}
-	t.Setenv("KODAMA_CONFIG", configFile)
+	t.Setenv("KODEMA_CONFIG", configFile)
 
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{
@@ -596,7 +596,7 @@ func TestKodactlReadsConfigFromEnvironment(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
 	}
-	if want := "username=kodama\npassword=kodex.execution-1.token\n"; stdout.String() != want {
+	if want := "username=kodema\npassword=kodex.execution-1.token\n"; stdout.String() != want {
 		t.Fatalf("stdout = %q; want %q", stdout.String(), want)
 	}
 }

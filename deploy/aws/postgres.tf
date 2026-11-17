@@ -30,7 +30,7 @@ resource "aws_db_instance" "main" {
   storage_type               = "gp3"
   storage_encrypted          = true
   ca_cert_identifier         = var.postgres_ca_cert_identifier
-  db_name                    = "kodama"
+  db_name                    = "kodema"
   username                   = var.postgres_admin_user
   password_wo                = var.postgres_admin_password
   password_wo_version        = var.postgres_password_wo_version

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
 )
 
 // TestE2E_WorkloadScriptsKeepTokensOutOfArgv proves every generated workload
@@ -31,14 +31,14 @@ func TestE2E_WorkloadScriptsKeepTokensOutOfArgv(t *testing.T) {
 		for _, forbidden := range []string{
 			`-H "Authorization: Bearer $(`,
 			`--header "Authorization: Bearer $(`,
-			`Authorization: Bearer $KODAMA`,
+			`Authorization: Bearer $KODEMA`,
 			`Authorization: Bearer ${`,
 		} {
 			if strings.Contains(script, forbidden) {
 				t.Fatalf("%s puts the execution token in a command argument (%s)", name, forbidden)
 			}
 		}
-		if strings.Contains(script, "cat /kodama/secrets/KODAMA_TOKEN") &&
+		if strings.Contains(script, "cat /kodema/secrets/KODEMA_TOKEN") &&
 			!strings.Contains(script, "GIT_ASKPASS") && !strings.Contains(script, "printf") {
 			t.Fatalf("%s reads the token without a safe file/askpass/stdin path", name)
 		}

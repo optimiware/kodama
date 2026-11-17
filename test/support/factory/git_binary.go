@@ -2,8 +2,8 @@ package factory
 
 // Hook binary construction for the host Git composition.
 //
-// The installed native hooks exec an absolute `kodama` binary. The Go test
-// binary is not that binary, so the fixture builds the real `./cmd/kodama` from
+// The installed native hooks exec an absolute `kodema` binary. The Go test
+// binary is not that binary, so the fixture builds the real `./cmd/kodema` from
 // this checkout into a fixture-private directory and passes its absolute path
 // as gitapp.Config.HookBinary.
 
@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-// buildHookBinary builds the real kodama command from the assigned checkout.
+// buildHookBinary builds the real kodema command from the assigned checkout.
 func buildHookBinary(ctx context.Context, directory string) (string, error) {
 	if strings.TrimSpace(directory) == "" {
 		return "", fmt.Errorf("hook binary directory is empty")
@@ -28,13 +28,13 @@ func buildHookBinary(ctx context.Context, directory string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	binary := filepath.Join(directory, "kodama")
-	command := exec.CommandContext(ctx, "go", "build", "-o", binary, "./cmd/kodama")
+	binary := filepath.Join(directory, "kodema")
+	command := exec.CommandContext(ctx, "go", "build", "-o", binary, "./cmd/kodema")
 	command.Dir = root
 	command.Env = append(os.Environ(), "CGO_ENABLED=0")
 	output, err := command.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("build kodama hook binary: %w: %s", err, strings.TrimSpace(string(output)))
+		return "", fmt.Errorf("build kodema hook binary: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	info, err := os.Stat(binary)
 	if err != nil {

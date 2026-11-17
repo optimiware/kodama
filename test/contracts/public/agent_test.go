@@ -12,23 +12,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/agent"
-	"github.com/optimiware/kodama/internal/userland/session"
-	"github.com/optimiware/kodama/internal/userland/skill"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/agent"
+	"github.com/optimiware/kodema/internal/userland/session"
+	"github.com/optimiware/kodema/internal/userland/skill"
 )
 
 // TestCheckpointReferenceFormat pins the versioned durable checkpoint reference
 // and the restoration error vocabulary. A checkpoint is an external reference,
 // never a process-local session ID or a worktree path.
 func TestCheckpointReferenceFormat(t *testing.T) {
-	if session.RefPrefix != "kodama-checkpoint/" || session.RefVersion != "v1" {
-		t.Fatalf("checkpoint prefix/version = %q/%q; want kodama-checkpoint//v1", session.RefPrefix, session.RefVersion)
+	if session.RefPrefix != "kodema-checkpoint/" || session.RefVersion != "v1" {
+		t.Fatalf("checkpoint prefix/version = %q/%q; want kodema-checkpoint//v1", session.RefPrefix, session.RefVersion)
 	}
 	if session.MaxRefBytes != 512 {
 		t.Fatalf("MaxRefBytes = %d; want 512", session.MaxRefBytes)
 	}
-	ref, err := session.ParseRef("kodama-checkpoint/v1/ctx-0001")
+	ref, err := session.ParseRef("kodema-checkpoint/v1/ctx-0001")
 	if err != nil {
 		t.Fatalf("ParseRef refused a valid reference: %v", err)
 	}
@@ -38,13 +38,13 @@ func TestCheckpointReferenceFormat(t *testing.T) {
 	refusals := []string{
 		"",
 		"ctx-0001",
-		"kodama-checkpoint/v2/ctx-0001",
-		"kodama-checkpoint/v1/",
-		"kodama-checkpoint/v1/ctx/0001",
-		"kodama-checkpoint/v1/CTX-0001",
-		"kodama-checkpoint/v1/..",
+		"kodema-checkpoint/v2/ctx-0001",
+		"kodema-checkpoint/v1/",
+		"kodema-checkpoint/v1/ctx/0001",
+		"kodema-checkpoint/v1/CTX-0001",
+		"kodema-checkpoint/v1/..",
 		"checkpoint/v1/ctx-0001",
-		"kodama-checkpoint/v1/" + strings.Repeat("a", session.MaxRefBytes),
+		"kodema-checkpoint/v1/" + strings.Repeat("a", session.MaxRefBytes),
 	}
 	for _, value := range refusals {
 		if parsed, err := session.ParseRef(value); err == nil {
@@ -110,7 +110,7 @@ type fakeSessionStore struct {
 
 func (store *fakeSessionStore) Save(_ context.Context, record session.Record) (session.Ref, error) {
 	store.next++
-	ref, err := session.ParseRef(fmt.Sprintf("kodama-checkpoint/v1/ctx-%d", store.next))
+	ref, err := session.ParseRef(fmt.Sprintf("kodema-checkpoint/v1/ctx-%d", store.next))
 	if err != nil {
 		return "", err
 	}
@@ -154,7 +154,7 @@ func TestSessionStoreRestoration(t *testing.T) {
 	if !reflect.DeepEqual(restored, record) {
 		t.Fatalf("restored record = %+v; want %+v", restored, record)
 	}
-	missing, err := session.ParseRef("kodama-checkpoint/v1/ctx-missing")
+	missing, err := session.ParseRef("kodema-checkpoint/v1/ctx-missing")
 	if err != nil {
 		t.Fatalf("ParseRef(missing): %v", err)
 	}

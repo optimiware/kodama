@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // loginFakeRandom is a deterministic cli.Random. It records every requested
@@ -418,7 +418,7 @@ func loginDiscovery() api.DiscoveryDocument {
 	return api.DiscoveryDocument{
 		Issuer:                      "https://auth.example.com",
 		ClientID:                    "kodactl",
-		Audience:                    "kodama-api",
+		Audience:                    "kodema-api",
 		AuthorizationEndpoint:       "https://auth.example.com/authorize",
 		TokenEndpoint:               "https://auth.example.com/token",
 		DeviceAuthorizationEndpoint: "https://auth.example.com/device",

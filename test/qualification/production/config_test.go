@@ -107,7 +107,7 @@ func TestHarnessMalformedConfigFails(t *testing.T) {
 			name:  "tls server name must be a dns name",
 			input: InputTLSServerName,
 			mutate: func(env map[string]string) {
-				env[string(InputTLSServerName)] = "kodama.test:8443"
+				env[string(InputTLSServerName)] = "kodema.test:8443"
 			},
 		},
 		{
@@ -205,7 +205,7 @@ func TestHarnessMalformedConfigFails(t *testing.T) {
 			name:  "a git service must be a dns label",
 			input: InputGitServiceA,
 			mutate: func(env map[string]string) {
-				env[string(InputGitServiceA)] = "kodama_git"
+				env[string(InputGitServiceA)] = "kodema_git"
 			},
 		},
 		{
@@ -219,7 +219,7 @@ func TestHarnessMalformedConfigFails(t *testing.T) {
 			name:  "an image must be digest pinned",
 			input: InputImage,
 			mutate: func(env map[string]string) {
-				env[string(InputImage)] = "rg.example.test/kodama:latest"
+				env[string(InputImage)] = "rg.example.test/kodema:latest"
 			},
 		},
 		{

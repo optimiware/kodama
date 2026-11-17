@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/agent"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/agent"
 )
 
 // providerNameFor translates one native dotted tool name for an assertion.
@@ -533,7 +533,7 @@ func TestRuntimeMissingRequiredContextCallsNoDependencies(t *testing.T) {
 			tool := &fakeTool{}
 			public := &fakePublic{}
 			store := newFakeCheckpoints()
-			const ref = "kodama-checkpoint/v1/ctx-bad"
+			const ref = "kodema-checkpoint/v1/ctx-bad"
 			store.store[ref] = checkpoint
 			runtime := newTestRuntime(t, agent.RuntimeConfig{
 				Model: model, Tools: tool, Checkpoints: store,
@@ -1207,7 +1207,7 @@ type aliasingRestoreStore struct {
 
 func (store *aliasingRestoreStore) Save(_ context.Context, checkpoint agent.Checkpoint) (string, error) {
 	store.saves++
-	return "kodama-checkpoint/v1/ctx-alias", nil
+	return "kodema-checkpoint/v1/ctx-alias", nil
 }
 
 func (store *aliasingRestoreStore) Restore(_ context.Context, _ string) (agent.Checkpoint, error) {
@@ -1248,7 +1248,7 @@ func TestRuntimeCopiesRestoredMessagesAndAdvertisedTools(t *testing.T) {
 		TaskID: "tsk-1", ExecutionID: "exec-2", Model: "fixture-model",
 		Messages:   []agent.Message{{Role: "user", Content: "the reply"}},
 		Tools:      []string{"repo.read"},
-		RestoreRef: "kodama-checkpoint/v1/ctx-alias",
+		RestoreRef: "kodema-checkpoint/v1/ctx-alias",
 	})
 	if err != nil || outcome.Status != agent.OutcomeSucceeded {
 		t.Fatalf("restored run = %+v, %v", outcome, err)

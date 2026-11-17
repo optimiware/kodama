@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // schemaVector mirrors the adapter schema conformance input. The test reads
@@ -450,7 +450,7 @@ func grantsByRoleTable(ctx context.Context, t *testing.T, shard *pgtest.Shard) m
 		`SELECT grantee.rolname, c.relname, p.privilege_type
 		 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) p
 		 JOIN pg_roles grantee ON grantee.oid = p.grantee
-		 WHERE c.relkind = 'r' AND grantee.rolname IN ('kodama_controller','kodama_publisher','kodama_auth')
+		 WHERE c.relkind = 'r' AND grantee.rolname IN ('kodema_controller','kodema_publisher','kodema_auth')
 		 ORDER BY 1,2,3`)
 	if err != nil {
 		t.Fatalf("table privileges: %v", err)
@@ -467,7 +467,7 @@ func grantsByRoleTable(ctx context.Context, t *testing.T, shard *pgtest.Shard) m
 		 CROSS JOIN LATERAL aclexplode(a.attacl) p
 		 JOIN pg_roles grantee ON grantee.oid = p.grantee
 		 WHERE c.relkind = 'r' AND a.attacl IS NOT NULL
-		   AND grantee.rolname IN ('kodama_controller','kodama_publisher','kodama_auth')
+		   AND grantee.rolname IN ('kodema_controller','kodema_publisher','kodema_auth')
 		 ORDER BY 1,2,3,4`)
 	if err != nil {
 		t.Fatalf("column privileges: %v", err)

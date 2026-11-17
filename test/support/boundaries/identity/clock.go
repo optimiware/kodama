@@ -7,7 +7,7 @@
 //     TLS. It publishes a discovery document and JWKS, mints signed access
 //     tokens with controllable claims and offers deterministic failure
 //     injection.
-//   - DiscoveryServer serves the fixed Kodama public discovery route over
+//   - DiscoveryServer serves the fixed Kodema public discovery route over
 //     loopback TLS with a replaceable document and failure injection.
 //   - ContractServer is a fixture of the Shell verification/report facts. It
 //     implements the public actor.verify and resource.report endpoints over

@@ -164,8 +164,8 @@ func loadOrCreateCA(certPath, keyPath string, now time.Time) (*x509.Certificate,
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName:   "Kodama Local CA",
-			Organization: []string{"Kodama"},
+			CommonName:   "Kodema Local CA",
+			Organization: []string{"Kodema"},
 		},
 		NotBefore:             now.Add(-5 * time.Minute),
 		NotAfter:              now.Add(caValidity),
@@ -300,7 +300,7 @@ func issueLeafCertificate(certPath, keyPath string, caCert *x509.Certificate, ca
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName:   commonName,
-			Organization: []string{"Kodama"},
+			Organization: []string{"Kodema"},
 		},
 		NotBefore:             now.Add(-5 * time.Minute),
 		NotAfter:              now.Add(leafValidity),

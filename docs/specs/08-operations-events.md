@@ -1,6 +1,6 @@
 # S08 — Operations, public edges, events, and push starts
 
-Source: [events](../../KODAMA.md#events-and-operations), [push](../../KODAMA.md#pipeline-push-triggers-and-userland-services), [public operations](../../KODAMA.md#public-operations). Owners: P07, P08, P18, P21, P22. AC: 3, 14, 15, 19.
+Source: [events](../../KODEMA.md#events-and-operations), [push](../../KODEMA.md#pipeline-push-triggers-and-userland-services), [public operations](../../KODEMA.md#public-operations). Owners: P07, P08, P18, P21, P22. AC: 3, 14, 15, 19.
 
 ## 1. One operation router
 

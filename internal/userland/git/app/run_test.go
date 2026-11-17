@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 func wiredConfig(t *testing.T) Config {
@@ -210,7 +210,7 @@ func requireStartupEffectsAbsent(t *testing.T, config Config, listener *probeLis
 }
 
 // TestGitStartupProbesDefaultExecutorBeforeEffects pins the production startup
-// path: cmd/kodama leaves Config.Executor nil, so Run and New must probe the
+// path: cmd/kodema leaves Config.Executor nil, so Run and New must probe the
 // default executor built for the server rather than skip the check. The only
 // native Git here is a PATH fake answering `--version` with 2.43.0, so a
 // skipped probe (or a probe that consults another executable) lets startup
@@ -822,7 +822,7 @@ func TestGitServeIsolatesExecutorAndBackendEnvironment(t *testing.T) {
 	defer func() { _ = server.Close() }()
 
 	request := httptest.NewRequest(http.MethodGet, "/repo/info/refs?service=git-upload-pack", nil)
-	request.SetBasicAuth("kodama", "credential-1")
+	request.SetBasicAuth("kodema", "credential-1")
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
@@ -859,8 +859,8 @@ func TestGitServeIsolatesExecutorAndBackendEnvironment(t *testing.T) {
 		backendInvocation.env["GIT_CONFIG_VALUE_1"] != git.KeepRefNamespace {
 		t.Fatalf("backend did not pin both keep-ref hides: %v", backendInvocation.env)
 	}
-	if got := backendInvocation.env["KODAMA_HOOK_SOCKET"]; got != server.HookSocketPath() {
-		t.Fatalf("backend KODAMA_HOOK_SOCKET = %q; want the preserved hook socket %q", got, server.HookSocketPath())
+	if got := backendInvocation.env["KODEMA_HOOK_SOCKET"]; got != server.HookSocketPath() {
+		t.Fatalf("backend KODEMA_HOOK_SOCKET = %q; want the preserved hook socket %q", got, server.HookSocketPath())
 	}
 	if got := backendInvocation.env["GIT_PROJECT_ROOT"]; got == "" {
 		t.Fatal("backend environment has no GIT_PROJECT_ROOT")

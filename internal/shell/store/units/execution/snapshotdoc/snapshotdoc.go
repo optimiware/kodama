@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/request"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/request"
 )
 
 // documentVersion is the only document schema this codec reads or writes.

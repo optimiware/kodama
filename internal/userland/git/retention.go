@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // maxRetentionPages bounds retained-reference discovery so a broken cursor

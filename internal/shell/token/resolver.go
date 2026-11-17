@@ -32,13 +32,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/service"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/service"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // CredentialAuthenticator is the derived-credential authentication boundary the
@@ -98,7 +98,7 @@ func NewResolver(config ResolverConfig) (*Resolver, error) {
 	// The dummy key and canonical input exist only to spend the same HMAC work
 	// on a lookup miss as on a hit. No token can authenticate against them and
 	// the comparison result is discarded.
-	sum := sha256.Sum256([]byte("kodama-credential-resolver-dummy-key-v1"))
+	sum := sha256.Sum256([]byte("kodema-credential-resolver-dummy-key-v1"))
 	dummyInput, err := encodeMACInput(ExecutionDomain, "tenant-dummy", "execution-dummy",
 		make([]byte, MinNonceBytes), time.Unix(1, 0))
 	if err != nil {

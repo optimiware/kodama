@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // beginReadOnlySQL is the first statement of a scanner transaction. It runs

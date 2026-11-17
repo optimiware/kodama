@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // servedInvocation is one embedded `kodactl call <operation>` request body from
@@ -149,9 +149,9 @@ func TestExampleHandoffRetainsDurableReferencesAndVersion(t *testing.T) {
 		t.Fatalf("%s task.ask printf has %d arguments; want task id, context commit and digest", rel, len(askInvocation.Arguments))
 	}
 	wantArguments := []string{
-		"$KODAMA_TASK",
-		"$(cat /kodama/outputs/persist/context_commit)",
-		"$(cat /kodama/inputs/digest)",
+		"$KODEMA_TASK",
+		"$(cat /kodema/outputs/persist/context_commit)",
+		"$(cat /kodema/inputs/digest)",
 	}
 	for index, want := range wantArguments {
 		if askInvocation.Arguments[index] != want {
@@ -169,15 +169,15 @@ func TestExampleHandoffRetainsDurableReferencesAndVersion(t *testing.T) {
 	}
 	pipelineCommands := strings.Join(allCommands, "\n")
 	for _, input := range []string{"commit", "digest"} {
-		if !strings.Contains(pipelineCommands, "/kodama/inputs/"+input) {
-			t.Fatalf("%s must pass the admitted durable input /kodama/inputs/%s", rel, input)
+		if !strings.Contains(pipelineCommands, "/kodema/inputs/"+input) {
+			t.Fatalf("%s must pass the admitted durable input /kodema/inputs/%s", rel, input)
 		}
 	}
-	if !strings.Contains(commands, "/kodama/inputs/digest") {
-		t.Fatalf("%s task.ask must pass the admitted durable input /kodama/inputs/digest", rel)
+	if !strings.Contains(commands, "/kodema/inputs/digest") {
+		t.Fatalf("%s task.ask must pass the admitted durable input /kodema/inputs/digest", rel)
 	}
-	if !strings.Contains(commands, "/kodama/outputs/persist/context_commit") {
-		t.Fatalf("%s task.ask must pass the durable output /kodama/outputs/persist/context_commit", rel)
+	if !strings.Contains(commands, "/kodema/outputs/persist/context_commit") {
+		t.Fatalf("%s task.ask must pass the durable output /kodema/outputs/persist/context_commit", rel)
 	}
 	readIndex := strings.Index(commands, "kodactl call task.read")
 	askIndex := strings.Index(commands, "kodactl call task.ask")
@@ -190,11 +190,11 @@ func TestExampleHandoffRetainsDurableReferencesAndVersion(t *testing.T) {
 	if !strings.Contains(commands, `--expected-version="$task_version"`) {
 		t.Fatalf("%s task.ask must pass the version read from task.read as --expected-version", rel)
 	}
-	if strings.Contains(commands, "/kodama/task.json") {
-		t.Fatalf("%s must not read the lifecycle version from the versionless /kodama/task.json snapshot", rel)
+	if strings.Contains(commands, "/kodema/task.json") {
+		t.Fatalf("%s must not read the lifecycle version from the versionless /kodema/task.json snapshot", rel)
 	}
-	if !strings.Contains(commands, `--idempotency-key="ask:${KODAMA_TASK}:$(cat /kodama/outputs/persist/context_commit)"`) {
-		t.Fatalf("%s task.ask must derive a stable --idempotency-key from $KODAMA_TASK and the durable context commit", rel)
+	if !strings.Contains(commands, `--idempotency-key="ask:${KODEMA_TASK}:$(cat /kodema/outputs/persist/context_commit)"`) {
+		t.Fatalf("%s task.ask must derive a stable --idempotency-key from $KODEMA_TASK and the durable context commit", rel)
 	}
 	for _, disposable := range []string{"/workspace/", "file://", "/tmp/", "/var/tmp/"} {
 		if strings.Contains(commands, disposable) {
@@ -375,7 +375,7 @@ func renderServedInput(t *testing.T, rel, action, operation, format string, argu
 // the codecs only need a valid non-empty value to exercise the wire shape.
 func exampleArgumentValue(argument string, index int) string {
 	switch {
-	case argument == "$KODAMA_TASK":
+	case argument == "$KODEMA_TASK":
 		return "task-handoff-1"
 	case strings.Contains(argument, "context_commit"):
 		return "0123456789abcdef0123456789abcdef01234567"

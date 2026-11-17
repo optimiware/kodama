@@ -36,10 +36,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -310,11 +310,11 @@ func runProtectedRefScenario(t *testing.T, fixture *gitHarness, spec protectedRe
 	waitProtectedActionRunning(t, fixture, evidence.executionID, "implement")
 	implementContainer := waitProtectedGoldenContainer(t, fixture, evidence.executionID, "implement")
 	evidence.executionToken = waitProtectedGoldenCredential(t, fixture, evidence.executionID, "implement")
-	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODAMA_TASK"); got != evidence.taskID {
-		t.Fatalf("implement KODAMA_TASK = %q; want the task %q", got, evidence.taskID)
+	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODEMA_TASK"); got != evidence.taskID {
+		t.Fatalf("implement KODEMA_TASK = %q; want the task %q", got, evidence.taskID)
 	}
 	if snapshot := protectedGoldenRead(t, fixture, implementContainer, protectedGoldenTaskFile); !json.Valid([]byte(snapshot)) {
-		t.Fatalf("implement /kodama/task.json is not valid JSON: %q", snapshot)
+		t.Fatalf("implement /kodema/task.json is not valid JSON: %q", snapshot)
 	}
 	requireProtectedGoldenCredentialUsable(t, fixture, evidence.executionID, evidence.executionToken)
 	releaseProtectedGoldenGate(t, fixture, implementContainer, evidence.gates.implement)
@@ -586,7 +586,7 @@ func replaceProtectedRefPush(t *testing.T, standard []string, replacement string
 	t.Helper()
 	index := -1
 	for position, command := range standard {
-		if !strings.HasPrefix(command, "git_kodama push") {
+		if !strings.HasPrefix(command, "git_kodema push") {
 			continue
 		}
 		if index >= 0 {
@@ -608,15 +608,15 @@ func replaceProtectedRefPush(t *testing.T, standard []string, replacement string
 func protectedRefPolicyIntegrate(t *testing.T, standard []string, base string) []string {
 	t.Helper()
 	lease := "--force-with-lease=" + gitMainRef + ":" + base
-	script := "if git_kodama push --quiet " + lease +
-		" origin \"$kodama_integrate_candidate\":" + gitMainRef + " 2>" + protectedRefPolicyErrorPath + "; then\n" +
+	script := "if git_kodema push --quiet " + lease +
+		" origin \"$kodema_integrate_candidate\":" + gitMainRef + " 2>" + protectedRefPolicyErrorPath + "; then\n" +
 		"  printf 'policy-change-rule-ignored\\n' >&2\n" +
 		"  exit 1\n" +
 		"fi\n" +
 		"printf 'policy-change-refused\\n' > " + protectedRefPolicyRefusedPath + "\n" +
 		"while [ ! -e " + protectedRefPolicyRestoreGate + " ]; do sleep 1; done\n" +
-		"git_kodama push --quiet " + lease +
-		" origin \"$kodama_integrate_candidate\":" + gitMainRef
+		"git_kodema push --quiet " + lease +
+		" origin \"$kodema_integrate_candidate\":" + gitMainRef
 	return replaceProtectedRefPush(t, standard, script)
 }
 
@@ -626,13 +626,13 @@ func protectedRefPolicyIntegrate(t *testing.T, standard []string, base string) [
 func protectedRefMovedIntegrate(t *testing.T, standard []string, base string) []string {
 	t.Helper()
 	lease := "--force-with-lease=" + gitMainRef + ":" + base
-	script := "if git_kodama push --quiet " + lease +
-		" origin \"$kodama_integrate_candidate\":" + gitMainRef + " 2>" + protectedRefMovedLeaseError + "; then\n" +
+	script := "if git_kodema push --quiet " + lease +
+		" origin \"$kodema_integrate_candidate\":" + gitMainRef + " 2>" + protectedRefMovedLeaseError + "; then\n" +
 		"  printf 'moved-target-lease-ignored\\n' >&2\n" +
 		"  exit 1\n" +
 		"fi\n" +
 		"printf 'lease-refused\\n' > " + protectedRefMovedLeaseRefused + "\n" +
-		"if git_kodama push --quiet --force origin \"$kodama_integrate_candidate\":" + gitMainRef +
+		"if git_kodema push --quiet --force origin \"$kodema_integrate_candidate\":" + gitMainRef +
 		" 2>" + protectedRefMovedHookError + "; then\n" +
 		"  printf 'moved-target-hook-allowed\\n' >&2\n" +
 		"  exit 1\n" +
@@ -669,7 +669,7 @@ func startProtectedRefApprovalExecution(t *testing.T, fixture *gitHarness, name 
 				Image:   fixture.Image.Reference,
 				Timeout: protectedGoldenActionTimeout,
 				Commands: []string{
-					`test ! -e /kodama/task.json`,
+					`test ! -e /kodema/task.json`,
 					`while [ ! -e /workspace/release ]; do sleep 1; done`,
 				},
 			},

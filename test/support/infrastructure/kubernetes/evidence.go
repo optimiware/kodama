@@ -39,7 +39,7 @@ func (c *Cluster) EvidenceRecord() ClusterRecord {
 }
 
 // RecordCluster registers a cleanup that writes the scenario result to
-// <KODAMA_EVIDENCE_DIR>/kubernetes-results.jsonl and logs it. A missing evidence
+// <KODEMA_EVIDENCE_DIR>/kubernetes-results.jsonl and logs it. A missing evidence
 // directory leaves logging only; it never fabricates a file.
 func RecordCluster(t testing.TB, record ClusterRecord) {
 	t.Helper()
@@ -59,7 +59,7 @@ func RecordCluster(t testing.TB, record ClusterRecord) {
 			return
 		}
 		t.Logf("kubernetes evidence: %s", encoded)
-		dir := os.Getenv("KODAMA_EVIDENCE_DIR")
+		dir := os.Getenv("KODEMA_EVIDENCE_DIR")
 		if dir == "" {
 			return
 		}

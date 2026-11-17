@@ -12,22 +12,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	shellidentity "github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepostgres "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	tenancyadmin "github.com/optimiware/kodama/internal/shell/tenancy/admin"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	shellidentity "github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepostgres "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	tenancyadmin "github.com/optimiware/kodema/internal/shell/tenancy/admin"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // TestProductionPassesBrokerTLSConfigurationToEveryDial proves the broker TLS
@@ -39,9 +39,9 @@ func TestProductionPassesBrokerTLSConfigurationToEveryDial(t *testing.T) {
 	server := &fakeNATSServer{}
 	config := productionConfigWithServer(t, server).resolved()
 	tlsConfig := &natsdriver.TLSConfig{
-		CAFile:   "/etc/kodama/broker-tls/ca.crt",
-		CertFile: "/etc/kodama/broker-tls/tls.crt",
-		KeyFile:  "/etc/kodama/broker-tls/tls.key",
+		CAFile:   "/etc/kodema/broker-tls/ca.crt",
+		CertFile: "/etc/kodema/broker-tls/tls.crt",
+		KeyFile:  "/etc/kodema/broker-tls/tls.key",
 	}
 	config.Production.NATSTLS = tlsConfig
 
@@ -163,10 +163,10 @@ func TestProductionBuildsEachPoolFromItsOwnRoleDSN(t *testing.T) {
 	server := &fakeNATSServer{}
 	config := productionConfigWithServer(t, server).resolved()
 	const (
-		runtimeDSN    = "postgres://kodama_runtime:SENTINEL-RUNTIME-PW@runtime-host:5432/kodama?sslmode=verify-full"
-		controllerDSN = "postgres://kodama_controller:SENTINEL-CONTROLLER-PW@controller-host:5432/kodama?sslmode=verify-full"
-		publisherDSN  = "postgres://kodama_publisher:SENTINEL-PUBLISHER-PW@publisher-host:5432/kodama?sslmode=verify-full"
-		authDSN       = "postgres://kodama_auth:SENTINEL-AUTH-PW@auth-host:5432/kodama?sslmode=verify-full"
+		runtimeDSN    = "postgres://kodema_runtime:SENTINEL-RUNTIME-PW@runtime-host:5432/kodema?sslmode=verify-full"
+		controllerDSN = "postgres://kodema_controller:SENTINEL-CONTROLLER-PW@controller-host:5432/kodema?sslmode=verify-full"
+		publisherDSN  = "postgres://kodema_publisher:SENTINEL-PUBLISHER-PW@publisher-host:5432/kodema?sslmode=verify-full"
+		authDSN       = "postgres://kodema_auth:SENTINEL-AUTH-PW@auth-host:5432/kodema?sslmode=verify-full"
 	)
 	config.Installation.DatabaseURL = runtimeDSN
 	config.Production.ControllerURL = controllerDSN
@@ -683,7 +683,7 @@ func TestProductionComposesMultiTenantRouting(t *testing.T) {
 	template := func(tenant id.TenantID) *WorkspacePVC {
 		value := kubeTestTemplate()
 		value.TenantID = tenant
-		value.Namespace = "kodama-tenant-" + string(tenant)
+		value.Namespace = "kodema-tenant-" + string(tenant)
 		return &value
 	}
 	runtimeA, runtimeB := &fakeRuntime{}, &fakeRuntime{}
@@ -730,7 +730,7 @@ func TestProductionComposesMultiTenantRouting(t *testing.T) {
 		if provisioning.claim.TenantID != tenant {
 			t.Fatalf("tenant %s claim template tenant = %s; want its own tenant", tenant, provisioning.claim.TenantID)
 		}
-		if provisioning.claim.Namespace != "kodama-tenant-"+string(tenant) {
+		if provisioning.claim.Namespace != "kodema-tenant-"+string(tenant) {
 			t.Fatalf("tenant %s claim namespace = %s; want its own namespace", tenant, provisioning.claim.Namespace)
 		}
 		if provisioning.provisioner != provisioner {

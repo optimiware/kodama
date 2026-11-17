@@ -15,8 +15,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // AWSReference is a validated aws-kms: reference.

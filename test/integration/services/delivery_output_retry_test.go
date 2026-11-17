@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // TestDeliveryOutputRetryConvergesWithoutRebuild proves the delivery retry
@@ -27,7 +27,7 @@ import (
 func TestDeliveryOutputRetryConvergesWithoutRebuild(t *testing.T) {
 	harness := factory.Start(t)
 	registry := support.StartRegistry(t, false)
-	published := deliveryPublishManifest(t, registry, "kodama/delivery-retry", "build-1")
+	published := deliveryPublishManifest(t, registry, "kodema/delivery-retry", "build-1")
 
 	applied := deliveryApply(t, harness, "delivery-retry", deliveryPipelineDoc{
 		Actions: []deliveryActionDoc{{
@@ -36,7 +36,7 @@ func TestDeliveryOutputRetryConvergesWithoutRebuild(t *testing.T) {
 			Timeout: deliveryActionTimeout,
 			Outputs: []string{"image"},
 			Commands: []string{
-				`test ! -e /kodama/task.json`,
+				`test ! -e /kodema/task.json`,
 				// Hold the action open until the test releases it. The test
 				// then owns the whole retry sequence deterministically.
 				`while [ ! -f /workspace/release ]; do sleep 1; done`,

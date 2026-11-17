@@ -25,10 +25,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/services"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/services"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const responderServiceID = "responder-svc"

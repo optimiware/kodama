@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // unavailableRegistry defers every image resolution. It keeps the push
@@ -58,18 +58,18 @@ func TestOperationsMetricsExposeBacklogLagCleanupAndRefusals(t *testing.T) {
 
 	body := environment.scrapeMetrics()
 	for _, line := range []string{
-		"# TYPE kodama_publication_backlog gauge",
-		"# TYPE kodama_consumer_lag gauge",
-		"# TYPE kodama_pending_cleanup gauge",
-		"# TYPE kodama_refused_pushes_total counter",
-		"# TYPE kodama_refused_reports_total counter",
-		"# TYPE kodama_dependency_errors_total counter",
+		"# TYPE kodema_publication_backlog gauge",
+		"# TYPE kodema_consumer_lag gauge",
+		"# TYPE kodema_pending_cleanup gauge",
+		"# TYPE kodema_refused_pushes_total counter",
+		"# TYPE kodema_refused_reports_total counter",
+		"# TYPE kodema_dependency_errors_total counter",
 	} {
 		if !strings.Contains(body, line) {
 			t.Fatalf("metrics body has no %q:\n%s", line, body)
 		}
 	}
-	if value := metricValue(t, body, "kodama_pending_cleanup"); value != 0 {
+	if value := metricValue(t, body, "kodema_pending_cleanup"); value != 0 {
 		t.Fatalf("pending cleanup before any execution = %v; want 0", value)
 	}
 
@@ -118,7 +118,7 @@ on:
   push: [%s]
 actions:
   - name: check
-    image: registry.example.com/kodama/base@sha256:cae662172fd450bb0cd710a769079c05bfc5d8e35efa6576edc7d0377afdd4a2
+    image: registry.example.com/kodema/base@sha256:cae662172fd450bb0cd710a769079c05bfc5d8e35efa6576edc7d0377afdd4a2
     commands:
       - echo "metrics push refusal"
 `, repository, starter, ref)
@@ -185,8 +185,8 @@ actions:
 
 	environment.eventually(10*time.Second, func() bool {
 		body := environment.scrapeMetrics()
-		return metricValue(t, body, "kodama_refused_pushes_total") >= 1 &&
-			metricValue(t, body, "kodama_refused_reports_total") >= 1
+		return metricValue(t, body, "kodema_refused_pushes_total") >= 1 &&
+			metricValue(t, body, "kodema_refused_reports_total") >= 1
 	})
 
 	// With the broker down, a committed mutation leaves a pending publication
@@ -194,20 +194,20 @@ actions:
 	harness.publisher.setDown(true)
 	environment.applyPipeline("metrics-backlog")
 	environment.eventually(10*time.Second, func() bool {
-		return metricValue(t, environment.scrapeMetrics(), "kodama_publication_backlog") > 0
+		return metricValue(t, environment.scrapeMetrics(), "kodema_publication_backlog") > 0
 	})
 	environment.eventually(10*time.Second, func() bool {
-		return metricValue(t, environment.scrapeMetrics(), "kodama_dependency_errors_total") > 0
+		return metricValue(t, environment.scrapeMetrics(), "kodema_dependency_errors_total") > 0
 	})
 
 	body = environment.scrapeMetrics()
 	for _, name := range []string{
-		"kodama_publication_backlog",
-		"kodama_consumer_lag",
-		"kodama_pending_cleanup",
-		"kodama_refused_pushes_total",
-		"kodama_refused_reports_total",
-		"kodama_dependency_errors_total",
+		"kodema_publication_backlog",
+		"kodema_consumer_lag",
+		"kodema_pending_cleanup",
+		"kodema_refused_pushes_total",
+		"kodema_refused_reports_total",
+		"kodema_dependency_errors_total",
 	} {
 		metricValue(t, body, name)
 	}

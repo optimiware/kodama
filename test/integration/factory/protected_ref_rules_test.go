@@ -39,9 +39,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -190,10 +190,10 @@ func TestProtectedFactoryMovedTargetRequiresFreshReview(t *testing.T) {
 	if !strings.Contains(lowerLease, "stale") && !strings.Contains(lowerLease, "rejected") {
 		t.Fatalf("the original lease was not refused client-side: %s", leaseError)
 	}
-	if strings.Contains(leaseError, "kodama git") {
+	if strings.Contains(leaseError, "kodema git") {
 		t.Fatalf("the lease attempt reached the server hook; want a client-side stale-info refusal: %s", leaseError)
 	}
-	if !strings.Contains(hookError, "kodama git: update rejected") {
+	if !strings.Contains(hookError, "kodema git: update rejected") {
 		t.Fatalf("the forced stale-base push did not reach the managed hook: %s", hookError)
 	}
 
@@ -290,7 +290,7 @@ func TestProtectedFactoryCurrentRulesOverrideEarlierApproval(t *testing.T) {
 	protectedEdgeWaitContainerFile(t, fixture, evidence.executionID, container,
 		protectedRefPolicyRefusedPath, "policy-change refusal")
 	policyError := protectedGoldenRead(t, fixture, container, protectedRefPolicyErrorPath)
-	if !strings.Contains(policyError, "kodama git: update rejected") {
+	if !strings.Contains(policyError, "kodema git: update rejected") {
 		t.Fatalf("the approved push after the rule change did not reach the managed hook: %s", policyError)
 	}
 	if main := fixture.git.RemoteRef(t, factory.GitProjectRepository, gitMainRef); main != evidence.base {
@@ -368,7 +368,7 @@ func TestProtectedFactoryDirectHumanGuardedPushIsRefused(t *testing.T) {
 
 	stderr, code := fixture.push(directory, fixture.engineerToken, "HEAD:"+gitMainRef)
 	stderr = requireRefusal(t, "direct human push to the approval-guarded main", stderr, code)
-	if !strings.Contains(stderr, "kodama git: update rejected") {
+	if !strings.Contains(stderr, "kodema git: update rejected") {
 		t.Fatalf("the direct human push did not reach the managed hook: %s", stderr)
 	}
 	if main := fixture.git.RemoteRef(t, factory.GitProjectRepository, gitMainRef); main != base {
@@ -447,7 +447,7 @@ func TestProtectedFactoryRWRefusesRewindAndDelete(t *testing.T) {
 				Image:   fixture.Image.Reference,
 				Timeout: protectedGoldenActionTimeout,
 				Commands: []string{
-					`test ! -e /kodama/task.json`,
+					`test ! -e /kodema/task.json`,
 					`while [ ! -e ` + protectedRefRWFirstGate + ` ]; do sleep 1; done`,
 				},
 			},
@@ -462,7 +462,7 @@ func TestProtectedFactoryRWRefusesRewindAndDelete(t *testing.T) {
 				Image:   fixture.Image.Reference,
 				Timeout: protectedGoldenActionTimeout,
 				Commands: []string{
-					`test ! -e /kodama/task.json`,
+					`test ! -e /kodema/task.json`,
 					`while [ ! -e ` + protectedRefRWSecondGate + ` ]; do sleep 1; done`,
 				},
 			},
@@ -513,7 +513,7 @@ func TestProtectedFactoryRWRefusesRewindAndDelete(t *testing.T) {
 	// RW (no plus) refuses the rewind after the valid approval was recorded.
 	rewindError, code := fixture.push(rewindDirectory, secondToken, "--force", "HEAD:"+gitMainRef)
 	rewindError = requireRefusal(t, "approved non-fast-forward main push", rewindError, code)
-	if !strings.Contains(rewindError, "kodama git: update rejected") {
+	if !strings.Contains(rewindError, "kodema git: update rejected") {
 		t.Fatalf("the approved rewind did not reach the managed hook: %s", rewindError)
 	}
 	if main := fixture.git.RemoteRef(t, factory.GitProjectRepository, gitMainRef); main != first {
@@ -561,7 +561,7 @@ func TestProtectedFactoryRWRefusesRewindAndDelete(t *testing.T) {
 	updateRowsBefore := protectedRefUpdateVerificationCount(t, fixture)
 	deleteError, code := fixture.push(firstDirectory, secondToken, "--delete", protectedRefRWDeleteRef)
 	deleteError = requireRefusal(t, "delete of an RW+ work ref", deleteError, code)
-	if !strings.Contains(deleteError, "kodama git: update rejected") {
+	if !strings.Contains(deleteError, "kodema git: update rejected") {
 		t.Fatalf("the delete did not reach the managed hook: %s", deleteError)
 	}
 	if remote := fixture.git.RemoteRef(t, factory.GitProjectRepository, protectedRefRWDeleteRef); remote != first {
@@ -687,7 +687,7 @@ func TestProtectedFactoryRuleExactVersusPrefix(t *testing.T) {
 		commit := fixture.commit(t, directory, "protected exact-prefix refused "+ref)
 		text, code := fixture.push(directory, fixture.engineerToken, "HEAD:"+ref)
 		text = requireRefusal(t, "ungranted ref "+ref, text, code)
-		if !strings.Contains(text, "kodama git: update rejected") {
+		if !strings.Contains(text, "kodema git: update rejected") {
 			t.Fatalf("ungranted ref %s did not reach the managed hook: %s", ref, text)
 		}
 		if remote := fixture.git.RemoteRef(t, factory.GitProjectRepository, ref); remote != "" {
@@ -712,7 +712,7 @@ func TestProtectedFactoryRuleExactVersusPrefix(t *testing.T) {
 	locked := fixture.commit(t, directory, "protected exact deny first")
 	text, code := fixture.push(directory, fixture.engineerToken, "HEAD:"+protectedRefRuleLockedRef)
 	text = requireRefusal(t, "exact deny before prefix allow", text, code)
-	if !strings.Contains(text, "kodama git: update rejected") {
+	if !strings.Contains(text, "kodema git: update rejected") {
 		t.Fatalf("the exact-deny-first attempt did not reach the managed hook: %s", text)
 	}
 	if remote := fixture.git.RemoteRef(t, factory.GitProjectRepository, protectedRefRuleLockedRef); remote != "" {

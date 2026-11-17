@@ -94,15 +94,15 @@ func writeDescriptor(t *testing.T, mutate func(map[string]any)) (path string) {
 		"api": map[string]any{
 			"url":             "https://127.0.0.1:18443",
 			"ca_file":         "/run/stage/ca.pem",
-			"tls_server_name": "kodama.kodama-system.svc.cluster.local",
+			"tls_server_name": "kodema.kodema-system.svc.cluster.local",
 		},
 		"images": map[string]any{"tools": "registry.test/tools@sha256:" + strings.Repeat("a", 64)},
 		"oauthsonas": map[string]any{
-			"issuer":           "https://oauthsonas.kodama-system.svc.cluster.local:8443",
+			"issuer":           "https://oauthsonas.kodema-system.svc.cluster.local:8443",
 			"ca_file":          "/run/stage/ca.pem",
 			"client_id":        "kodactl",
 			"redirect_uri":     "http://127.0.0.1:52790/callback",
-			"resolve":          "oauthsonas.kodama-system.svc.cluster.local:8443:127.0.0.1",
+			"resolve":          "oauthsonas.kodema-system.svc.cluster.local:8443:127.0.0.1",
 			"access_code_file": "/run/stage/access-code",
 		},
 		"git": map[string]any{"repositories": []map[string]any{
@@ -126,10 +126,10 @@ func writeDescriptor(t *testing.T, mutate func(map[string]any)) (path string) {
 
 func stageEnvironmentValues() map[string]string {
 	return map[string]string{
-		"Q01_KUBE_CONTEXT":             "admin@kodama-stage-k8s",
+		"Q01_KUBE_CONTEXT":             "admin@kodema-stage-k8s",
 		"Q01_ADMIN_TOKEN_FILE":         "/run/stage/admin-token",
 		"Q01_HARNESS_REVISION":         "53b9ede8",
-		"KODAMA_Q03_STAGE_INSTANCE_ID": "11111111-2222-3333-4444-555555555555",
+		"KODEMA_Q03_STAGE_INSTANCE_ID": "11111111-2222-3333-4444-555555555555",
 	}
 }
 
@@ -172,7 +172,7 @@ func TestStagePlanOrdersWavesByBlastRadius(t *testing.T) {
 	requireValue(t, e2e, "Q01_REQUIRE_INSTALLATION", "1")
 	requireValue(t, e2e, "Q01_SMOKE_GIT", "1")
 	requireValue(t, e2e, "Q01_EVIDENCE_DIR", "/evidence/stage-e2e")
-	requireValue(t, e2e, "KODAMA_E2E_CONCURRENCY", "6")
+	requireValue(t, e2e, "KODEMA_E2E_CONCURRENCY", "6")
 
 	probes := laneNamed(t, plan, "stage-probes")
 	requireVerifiedGoTest(t, probes, 0, StageWave1Probes)
@@ -183,19 +183,19 @@ func TestStagePlanOrdersWavesByBlastRadius(t *testing.T) {
 		"Q02_REQUIRE_STAGE":           "1",
 		"Q02_API_URL":                 "https://127.0.0.1:18443",
 		"Q02_CA_PEM":                  "/run/stage/ca.pem",
-		"Q02_TLS_SERVER_NAME":         "kodama.kodama-system.svc.cluster.local",
+		"Q02_TLS_SERVER_NAME":         "kodema.kodema-system.svc.cluster.local",
 		"Q02_PROJECT_ID":              "project-a",
 		"Q02_TENANT_ID":               "tenant-a",
-		"Q02_TENANT_NAMESPACE":        "kodama-tenant-tenant-a",
-		"Q02_GIT_SERVICE_A":           "kodama-git-tenant-a",
+		"Q02_TENANT_NAMESPACE":        "kodema-tenant-tenant-a",
+		"Q02_GIT_SERVICE_A":           "kodema-git-tenant-a",
 		"Q02_GIT_REPOSITORY_A":        "smoke/selected",
-		"Q02_KUBE_CONTEXT":            "admin@kodama-stage-k8s",
+		"Q02_KUBE_CONTEXT":            "admin@kodema-stage-k8s",
 		"Q02_DEPLOYED_REVISION":       "3b438282",
 		"Q02_HARNESS_REVISION":        "53b9ede8",
 		"Q02_ADMIN_TOKEN_FILE":        "/run/stage/admin-token",
 		"Q02_SECOND_ADMIN_TOKEN_FILE": "/run/suite/second-admin.token",
 		"Q02_EVIDENCE_DIR":            "/evidence/stage-probes",
-		"KODAMA_STAGE_CONCURRENCY":    "6",
+		"KODEMA_STAGE_CONCURRENCY":    "6",
 	} {
 		requireValue(t, probes, name, want)
 	}
@@ -204,8 +204,8 @@ func TestStagePlanOrdersWavesByBlastRadius(t *testing.T) {
 	if got, want := drill.Argv, []string{"scripts/q03-stage-drill", "restore"}; !slices.Equal(got, want) {
 		t.Errorf("stage-rdb-drill command = %v; want %v", got, want)
 	}
-	requireValue(t, drill, "KODAMA_Q03_EVIDENCE_DIR", "/evidence/stage-rdb-drill")
-	requireValue(t, drill, "KODAMA_Q03_SOURCE_REVISION", "3b438282")
+	requireValue(t, drill, "KODEMA_Q03_EVIDENCE_DIR", "/evidence/stage-rdb-drill")
+	requireValue(t, drill, "KODEMA_Q03_SOURCE_REVISION", "3b438282")
 
 	chaos := laneNamed(t, plan, "stage-chaos")
 	requireVerifiedGoTest(t, chaos, 0, StageWave2ChaosProbes)
@@ -216,7 +216,7 @@ func TestStagePlanOrdersWavesByBlastRadius(t *testing.T) {
 		t.Errorf("stage-chaos -parallel = %q; want 1", got)
 	}
 	requireValue(t, chaos, "Q02_EVIDENCE_DIR", "/evidence/stage-chaos")
-	if _, ok := value(chaos, "KODAMA_STAGE_CONCURRENCY"); ok {
+	if _, ok := value(chaos, "KODEMA_STAGE_CONCURRENCY"); ok {
 		t.Error("stage-chaos sets a wave 1 concurrency")
 	}
 
@@ -239,8 +239,8 @@ func TestStagePlanKeepsExportedInputs(t *testing.T) {
 	values["Q02_TENANT_NAMESPACE"] = "custom-namespace"
 	values["Q02_KUBE_CONTEXT"] = "probe-context"
 	values["Q02_REQUIRE_STAGE"] = "0"
-	values["KODAMA_Q03_EVIDENCE_DIR"] = "/elsewhere/q03"
-	values["KODAMA_Q03_SOURCE_REVISION"] = "exported-revision"
+	values["KODEMA_Q03_EVIDENCE_DIR"] = "/elsewhere/q03"
+	values["KODEMA_Q03_SOURCE_REVISION"] = "exported-revision"
 	plan, err := BuildPlan(Options{
 		Target:       TargetStage,
 		Installation: writeDescriptor(t, func(document map[string]any) { delete(document, "smoke_repository") }),
@@ -256,10 +256,10 @@ func TestStagePlanKeepsExportedInputs(t *testing.T) {
 		}
 	}
 	requireValue(t, probes, "Q02_GIT_REPOSITORY_A", "smoke/first")
-	if got, ok := value(laneNamed(t, plan, "stage-rdb-drill"), "KODAMA_Q03_EVIDENCE_DIR"); ok {
+	if got, ok := value(laneNamed(t, plan, "stage-rdb-drill"), "KODEMA_Q03_EVIDENCE_DIR"); ok {
 		t.Errorf("stage-rdb-drill overrides the exported evidence directory with %q", got)
 	}
-	if got, ok := value(laneNamed(t, plan, "stage-rdb-drill"), "KODAMA_Q03_SOURCE_REVISION"); ok {
+	if got, ok := value(laneNamed(t, plan, "stage-rdb-drill"), "KODEMA_Q03_SOURCE_REVISION"); ok {
 		t.Errorf("stage-rdb-drill overrides the exported source revision with %q", got)
 	}
 	if got := laneNamed(t, plan, "stage-rdb-drill").Argv[1]; got != "plan" {
@@ -292,7 +292,7 @@ func TestStagePlanRefusesASilentlyNarrowedRun(t *testing.T) {
 	}{
 		{"no descriptor", Options{}, environment(stageEnvironmentValues()), "installation descriptor"},
 		{"no cluster context", Options{Installation: installation}, without("Q01_KUBE_CONTEXT"), "Q01_KUBE_CONTEXT"},
-		{"no drill input", Options{Installation: installation}, without("KODAMA_Q03_STAGE_INSTANCE_ID"), "--skip-q03"},
+		{"no drill input", Options{Installation: installation}, without("KODEMA_Q03_STAGE_INSTANCE_ID"), "--skip-q03"},
 		{"unknown drill mode", Options{Installation: installation, Q03Mode: "apply"}, environment(stageEnvironmentValues()), "Q03 mode"},
 		{"unsupported descriptor", Options{Installation: writeDescriptor(t, func(document map[string]any) { document["schema_version"] = 2 })},
 			environment(stageEnvironmentValues()), "schema_version"},
@@ -306,7 +306,7 @@ func TestStagePlanRefusesASilentlyNarrowedRun(t *testing.T) {
 
 	plan, err := BuildPlan(Options{
 		Target: TargetStage, Installation: installation, EvidenceDir: "/evidence", SkipQ03: true, SkipChaos: true,
-	}, without("KODAMA_Q03_STAGE_INSTANCE_ID"))
+	}, without("KODEMA_Q03_STAGE_INSTANCE_ID"))
 	if err != nil {
 		t.Fatalf("BuildPlan with explicit skips: %v", err)
 	}
@@ -335,9 +335,9 @@ func TestPodmanPlanSelectsAnInstallation(t *testing.T) {
 	requireVerifiedGoTest(t, lane, 3, PortableE2ETests)
 	requireValue(t, lane, "Q01_SMOKE_GIT", "1")
 	requireValue(t, lane, "Q01_INSTALLATION_FILE", "/state/installation.json")
-	requireValue(t, lane, "KODAMA_EVIDENCE_DIR", "/evidence/portable-e2e-podman")
-	requireValue(t, lane, "KODAMA_E2E_CONCURRENCY", "8")
-	requireValue(t, laneNamed(t, existing, "qualification-restore-local"), "KODAMA_EVIDENCE_DIR", "/evidence/qualification-restore-local")
+	requireValue(t, lane, "KODEMA_EVIDENCE_DIR", "/evidence/portable-e2e-podman")
+	requireValue(t, lane, "KODEMA_E2E_CONCURRENCY", "8")
+	requireValue(t, laneNamed(t, existing, "qualification-restore-local"), "KODEMA_EVIDENCE_DIR", "/evidence/qualification-restore-local")
 
 	ports := map[string]string{}
 	for index, name := range podmanPortEnv {
@@ -352,19 +352,19 @@ func TestPodmanPlanSelectsAnInstallation(t *testing.T) {
 		t.Errorf("disposable lane command = %v; want %v", lane.Argv, want)
 	}
 	requireValue(t, lane, "Q01_SMOKE_GIT", "1")
-	requireValue(t, lane, "KODAMA_SMOKE_TEST_RUN", PortableE2ERunPattern)
-	requireValue(t, lane, "KODAMA_SMOKE_EXPECT", strings.Join(PortableE2ETests, " "))
-	requireValue(t, lane, "KODAMA_SMOKE_SHARD_REPOS", "2")
-	requireValue(t, lane, "KODAMA_EVIDENCE_DIR", "/evidence/portable-e2e-podman")
+	requireValue(t, lane, "KODEMA_SMOKE_TEST_RUN", PortableE2ERunPattern)
+	requireValue(t, lane, "KODEMA_SMOKE_EXPECT", strings.Join(PortableE2ETests, " "))
+	requireValue(t, lane, "KODEMA_SMOKE_SHARD_REPOS", "2")
+	requireValue(t, lane, "KODEMA_EVIDENCE_DIR", "/evidence/portable-e2e-podman")
 	requireValue(t, lane, "Q01_NATS_URL", "nats://127.0.0.1:26106")
 	if len(disposable.Waves[0].Lanes) != 1 {
 		t.Errorf("--skip-q03 kept the restore lane: %v", laneNames(disposable.Waves[0]))
 	}
 
-	delete(ports, "KODAMA_LOCAL_GIT_PORT")
+	delete(ports, "KODEMA_LOCAL_GIT_PORT")
 	_, err = BuildPlan(Options{Target: TargetPodman, EvidenceDir: "/evidence"}, environment(ports))
-	if err == nil || !strings.Contains(err.Error(), "KODAMA_LOCAL_GIT_PORT") || strings.Contains(err.Error(), "KODAMA_LOCAL_NATS_PORT") {
-		t.Errorf("incomplete port set error = %v; want one naming only KODAMA_LOCAL_GIT_PORT", err)
+	if err == nil || !strings.Contains(err.Error(), "KODEMA_LOCAL_GIT_PORT") || strings.Contains(err.Error(), "KODEMA_LOCAL_NATS_PORT") {
+		t.Errorf("incomplete port set error = %v; want one naming only KODEMA_LOCAL_GIT_PORT", err)
 	}
 }
 
@@ -382,8 +382,8 @@ func TestKindPlanSelectsTheLocalSuitesOrTheInstallation(t *testing.T) {
 		t.Errorf("integration-lifecycle-kind command = %v; want ^TestKubernetes in a kind slot", lifecycle.Argv)
 	}
 	requireVerifiedGoTest(t, lifecycle, 3, KindLifecycleTests)
-	requireValue(t, lifecycle, "KODAMA_EVIDENCE_DIR", "/evidence/integration-lifecycle-kind")
-	requireValue(t, laneNamed(t, local, "component-kubernetes-deploy"), "KODAMA_EVIDENCE_DIR", "/evidence/component-kubernetes-deploy")
+	requireValue(t, lifecycle, "KODEMA_EVIDENCE_DIR", "/evidence/integration-lifecycle-kind")
+	requireValue(t, laneNamed(t, local, "component-kubernetes-deploy"), "KODEMA_EVIDENCE_DIR", "/evidence/component-kubernetes-deploy")
 
 	installed, err := BuildPlan(Options{Target: TargetKind, Installation: "/kind/installation.json", EvidenceDir: "/evidence"}, noEnvironment)
 	if err != nil {
@@ -395,7 +395,7 @@ func TestKindPlanSelectsTheLocalSuitesOrTheInstallation(t *testing.T) {
 	portableKind := laneNamed(t, installed, "portable-e2e-kind")
 	requireVerifiedGoTest(t, portableKind, 3, PortableE2ETests)
 	requireValue(t, portableKind, "Q01_SMOKE_GIT", "1")
-	requireValue(t, portableKind, "KODAMA_EVIDENCE_DIR", "/evidence/portable-e2e-kind")
+	requireValue(t, portableKind, "KODEMA_EVIDENCE_DIR", "/evidence/portable-e2e-kind")
 }
 
 // TestLocalAllSplitsTheLifecyclePackageByRuntime proves the lifecycle package
@@ -409,9 +409,9 @@ func TestLocalAllSplitsTheLifecyclePackageByRuntime(t *testing.T) {
 		t.Fatalf("local-all = %d wave(s), lanes %v; want one wave of 9 lanes", len(plan.Waves), laneNames(plan.Waves[0]))
 	}
 	for _, lane := range plan.Waves[0].Lanes {
-		requireValue(t, lane, "KODAMA_EVIDENCE_DIR", "/evidence/"+lane.Name)
+		requireValue(t, lane, "KODEMA_EVIDENCE_DIR", "/evidence/"+lane.Name)
 	}
-	requireValue(t, laneNamed(t, plan, "qualification-restore-local"), "KODAMA_Q03_SOURCE_REVISION", "deadbeef")
+	requireValue(t, laneNamed(t, plan, "qualification-restore-local"), "KODEMA_Q03_SOURCE_REVISION", "deadbeef")
 	podman := laneNamed(t, plan, "integration-lifecycle-podman")
 	if podman.Argv[1] != "stack" || flagValue(podman, "-skip") != "^TestKubernetes" {
 		t.Errorf("integration-lifecycle-podman command = %v; want -skip ^TestKubernetes in a stack slot", podman.Argv)
@@ -434,8 +434,8 @@ func TestConcurrencyOverrideStaysWithinEachPackageBound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildPlan(local-all, concurrency 32): %v", err)
 	}
-	requireValue(t, laneNamed(t, plan, "integration-lifecycle-kind"), "KODAMA_LIFECYCLE_KIND_CONCURRENCY", "6")
-	requireValue(t, laneNamed(t, plan, "qualification-restore-local"), "KODAMA_Q03_CONCURRENCY", "8")
+	requireValue(t, laneNamed(t, plan, "integration-lifecycle-kind"), "KODEMA_LIFECYCLE_KIND_CONCURRENCY", "6")
+	requireValue(t, laneNamed(t, plan, "qualification-restore-local"), "KODEMA_Q03_CONCURRENCY", "8")
 
 	stage, err := BuildPlan(Options{
 		Target: TargetStage, Installation: writeDescriptor(t, nil), EvidenceDir: "/evidence", Concurrency: 32,
@@ -443,8 +443,8 @@ func TestConcurrencyOverrideStaysWithinEachPackageBound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildPlan(stage, concurrency 32): %v", err)
 	}
-	requireValue(t, laneNamed(t, stage, "stage-e2e"), "KODAMA_E2E_CONCURRENCY", "32")
-	requireValue(t, laneNamed(t, stage, "stage-probes"), "KODAMA_STAGE_CONCURRENCY", "24")
+	requireValue(t, laneNamed(t, stage, "stage-e2e"), "KODEMA_E2E_CONCURRENCY", "32")
+	requireValue(t, laneNamed(t, stage, "stage-probes"), "KODEMA_STAGE_CONCURRENCY", "24")
 	if got := flagValue(laneNamed(t, stage, "stage-probes"), "-parallel"); got != "24" {
 		t.Errorf("stage-probes -parallel = %q; want 24", got)
 	}
@@ -453,7 +453,7 @@ func TestConcurrencyOverrideStaysWithinEachPackageBound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildPlan(local-all, concurrency 1): %v", err)
 	}
-	requireValue(t, laneNamed(t, serial, "integration-lifecycle-kind"), "KODAMA_LIFECYCLE_KIND_CONCURRENCY", "1")
+	requireValue(t, laneNamed(t, serial, "integration-lifecycle-kind"), "KODEMA_LIFECYCLE_KIND_CONCURRENCY", "1")
 }
 
 func TestBuildPlanRefusesInvalidOptions(t *testing.T) {

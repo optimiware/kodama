@@ -13,7 +13,7 @@ package factorytest
 //     ask cancels that execution, clears its credential and records one
 //     question with a durable Git reference. The assigned reviewer answers
 //     from its own inbox; the reply queues exactly one fresh execution with a
-//     new workspace and the updated /kodama/task.json. Its first action loads
+//     new workspace and the updated /kodema/task.json. Its first action loads
 //     the referenced Git ref and fails when it is absent. The fresh execution
 //     then produces its own candidate and must obtain its own human review
 //     before the protected ref moves; the cancelled execution's answer is not
@@ -36,8 +36,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -351,7 +351,7 @@ func testProtectedHandoffReplacesExecution(t *testing.T) {
 	implementToken := waitProtectedGoldenCredential(t, fixture, freshExecutionID, "implement")
 	snapshot := protectedGoldenRead(t, fixture, implementContainer, protectedGoldenTaskFile)
 	if !strings.Contains(snapshot, `"body":"`+protectedHandoffAnswerRef+`"`) {
-		t.Fatalf("fresh /kodama/task.json does not carry the reply answer: %s", snapshot)
+		t.Fatalf("fresh /kodema/task.json does not carry the reply answer: %s", snapshot)
 	}
 	restored := protectedGoldenRead(t, fixture, implementContainer, protectedHandoffRestored)
 	if !strings.Contains(restored, protectedHandoffAnswerRef) {
@@ -676,15 +676,15 @@ func runProtectedHandoffScenario(t *testing.T, fixture *gitHarness, pipelineName
 		t.Fatalf("read the handoff execution workspace: %v (%q)", err, workspace)
 	}
 	evidence.workspaceID = workspace
-	if got := protectedGoldenExec(t, fixture, container, "printenv", "KODAMA_TASK"); got != evidence.taskID {
-		t.Fatalf("handoff KODAMA_TASK = %q; want the task %q", got, evidence.taskID)
+	if got := protectedGoldenExec(t, fixture, container, "printenv", "KODEMA_TASK"); got != evidence.taskID {
+		t.Fatalf("handoff KODEMA_TASK = %q; want the task %q", got, evidence.taskID)
 	}
 	snapshot := protectedGoldenRead(t, fixture, container, protectedGoldenTaskFile)
 	if !strings.Contains(snapshot, "[]") {
-		t.Fatalf("initial /kodama/task.json = %q; want the empty conversation array", snapshot)
+		t.Fatalf("initial /kodema/task.json = %q; want the empty conversation array", snapshot)
 	}
 	if strings.Contains(snapshot, `"body":"`) {
-		t.Fatalf("initial /kodama/task.json already carries an answer: %s", snapshot)
+		t.Fatalf("initial /kodema/task.json already carries an answer: %s", snapshot)
 	}
 	evidence.scratch = protectedEdgeWaitContainerFile(t, fixture, evidence.executionID, container,
 		protectedHandoffScratch, "live handoff checkpoint execution="+evidence.executionID)
@@ -708,17 +708,17 @@ func protectedHandoffLiveCommands(t *testing.T, fixture *gitHarness, answerRef s
 	}
 	url := fixture.git.WorkloadRepositoryURL(factory.GitProjectRepository)
 	return []string{
-		"cat > /workspace/protected-ca.pem <<'KODAMA_HANDOFF_CA'\n" + ca + "KODAMA_HANDOFF_CA",
+		"cat > /workspace/protected-ca.pem <<'KODEMA_HANDOFF_CA'\n" + ca + "KODEMA_HANDOFF_CA",
 		"export GIT_SSL_CAINFO=/workspace/protected-ca.pem",
 		"export GIT_CONFIG_NOSYSTEM=1",
 		"export GIT_CONFIG_GLOBAL=/dev/null",
 		"export GIT_ATTR_NOSYSTEM=1",
 		"export GIT_TERMINAL_PROMPT=0",
 		"git_handoff() {\n" +
-			"  KODAMA_HANDOFF_AUTH=\"Authorization: Basic $(printf 'kodama:%s' \"$(cat /kodama/secrets/KODAMA_TOKEN)\" | base64 -w0)\" \\\n" +
-			"  git -c http.followRedirects=false --config-env=http.extraHeader=KODAMA_HANDOFF_AUTH \"$@\"\n" +
+			"  KODEMA_HANDOFF_AUTH=\"Authorization: Basic $(printf 'kodema:%s' \"$(cat /kodema/secrets/KODEMA_TOKEN)\" | base64 -w0)\" \\\n" +
+			"  git -c http.followRedirects=false --config-env=http.extraHeader=KODEMA_HANDOFF_AUTH \"$@\"\n" +
 			"}",
-		"if grep -Fq " + shellQuoteForSubject(`"body":"`+answerRef+`"`) + " /kodama/task.json 2>/dev/null; then\n" +
+		"if grep -Fq " + shellQuoteForSubject(`"body":"`+answerRef+`"`) + " /kodema/task.json 2>/dev/null; then\n" +
 			"  test ! -e " + protectedHandoffScratch + " || { printf 'fresh attempt inherited cancelled scratch\\n' >&2; exit 1; }\n" +
 			"  matches=$(git_handoff ls-remote --heads " + shellQuoteForSubject(url) + ")\n" +
 			"  if printf '%s\\n' \"$matches\" | grep -F " + shellQuoteForSubject(answerRef) + " > " + protectedHandoffRestored + "; then\n" +

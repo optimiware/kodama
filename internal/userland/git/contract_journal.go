@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // JournalVersion is the durable receive-journal format version.
@@ -152,7 +152,7 @@ func (entry JournalEntry) Reportable() bool {
 }
 
 // ReportRequest builds the deterministic verified report for an accepted entry.
-// The approval subject uses the canonical KODAMA field names: `operation`,
+// The approval subject uses the canonical KODEMA field names: `operation`,
 // `resource` (the registered repository resource identity), `ref`,
 // `expected_base` and `candidate`. There is no `repository` alias. A retry
 // repeats the same report identity and content; it never repeats the ref

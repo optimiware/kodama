@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/receipt"
 )
 
 // TestReceiptMatchWithoutStoredRecordIsNew asserts a first invocation is new,

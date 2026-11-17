@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/shell/app/drivers/userlandfs"
-	"github.com/optimiware/kodama/internal/userland/cli"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/shell/app/drivers/userlandfs"
+	"github.com/optimiware/kodema/internal/userland/cli"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 // diagnosticCanary is planted in a failing flow as the unknown service

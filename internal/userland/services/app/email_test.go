@@ -18,8 +18,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // emailAppHandler is a minimal deterministic public operation boundary.

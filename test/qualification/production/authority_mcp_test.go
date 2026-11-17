@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestStageAuthorityMCPReads is the live MCP authority probe: the admin token

@@ -1,6 +1,6 @@
 package installation
 
-// The optional OAuthSonas development identity provider in the kodama-stack
+// The optional OAuthSonas development identity provider in the kodema-stack
 // chart.
 //
 // OAuthSonas exists so stage and preview installations can sign in with a
@@ -18,7 +18,7 @@ package installation
 //     scripts/bootstrap-secrets creates; a value, a command argument or a
 //     literal environment value would be visible in values files, Helm
 //     history, `ps` and /proc, so the chart refuses them.
-//  3. Kodama accepts only https issuers. The provider listens on loopback and
+//  3. Kodema accepts only https issuers. The provider listens on loopback and
 //     a Caddy sidecar terminates TLS with the certificate bootstrap-secrets
 //     issues from the installation CA into the `oauthsonas-tls` Secret
 //     (tls.crt/tls.key). The issuer therefore has to be exactly
@@ -115,7 +115,7 @@ func TestStackOAuthSonasDisabledByDefault(t *testing.T) {
 }
 
 // TestStackOAuthSonasClusterIPOnly pins the service surface: the provider is
-// reached by the Kodama server and the token script inside the cluster. An
+// reached by the Kodema server and the token script inside the cluster. An
 // Ingress, NodePort or LoadBalancer would publish a development identity
 // provider that accepts an access code; the template must have no such knob.
 func TestStackOAuthSonasClusterIPOnly(t *testing.T) {
@@ -457,17 +457,17 @@ func TestStackOAuthSonasValuesSchemaRejectsLiteralAccessCode(t *testing.T) {
 
 	publicClient := make(map[string]any, len(valid))
 	maps.Copy(publicClient, valid)
-	publicClient["config"] = "issuer: https://oauthsonas.kodama-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n"
+	publicClient["config"] = "issuer: https://oauthsonas.kodema-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n"
 	if err := validateAgainstSchema(oauth, publicClient, "oauthsonas"); err != nil {
 		t.Errorf("values.schema.json rejected a public OAuthSonas client config: %v", err)
 	}
 
 	for name, inlineSecretConfig := range map[string]string{
-		"unquoted secret":      "issuer: https://oauthsonas.kodama-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    secret: INLINE-SECRET\n",
-		"double-quoted secret": "issuer: https://oauthsonas.kodama-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    secret: \"INLINE-SECRET\"\n",
-		"single-quoted secret": "issuer: https://oauthsonas.kodama-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    secret: 'INLINE-SECRET'\n",
-		"client_secret key":    "issuer: https://oauthsonas.kodama-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    client_secret: INLINE-SECRET\n",
-		"clientSecret key":     "issuer: https://oauthsonas.kodama-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    clientSecret: INLINE-SECRET\n",
+		"unquoted secret":      "issuer: https://oauthsonas.kodema-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    secret: INLINE-SECRET\n",
+		"double-quoted secret": "issuer: https://oauthsonas.kodema-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    secret: \"INLINE-SECRET\"\n",
+		"single-quoted secret": "issuer: https://oauthsonas.kodema-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    secret: 'INLINE-SECRET'\n",
+		"client_secret key":    "issuer: https://oauthsonas.kodema-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    client_secret: INLINE-SECRET\n",
+		"clientSecret key":     "issuer: https://oauthsonas.kodema-system.svc.cluster.local:8443\nclients:\n  - id: kodactl\n    clientSecret: INLINE-SECRET\n",
 	} {
 		inline := make(map[string]any, len(valid))
 		maps.Copy(inline, valid)

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // Cluster is one created kind cluster with its own isolated kubeconfig.

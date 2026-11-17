@@ -4,13 +4,13 @@ variable "project_id" {
 }
 
 variable "cluster_name" {
-  description = "Logical Kodama cluster name (defaults to stage)."
+  description = "Logical Kodema cluster name (defaults to stage)."
   type        = string
   default     = "stage"
 }
 
 variable "environment" {
-  description = "Kodama runtime environment profile (production for stage and prod clusters)."
+  description = "Kodema runtime environment profile (production for stage and prod clusters)."
   type        = string
   default     = "production"
 }
@@ -40,9 +40,9 @@ variable "enable_apis" {
 }
 
 variable "release_namespace" {
-  description = "Kubernetes namespace for the Kodama control-plane release."
+  description = "Kubernetes namespace for the Kodema control-plane release."
   type        = string
-  default     = "kodama-system"
+  default     = "kodema-system"
 }
 
 variable "tenants" {
@@ -133,7 +133,7 @@ variable "k8s_api_allowed_cidrs" {
 }
 
 variable "workspace_storage_class" {
-  description = "Kubernetes StorageClass used by Kodama for execution workspace PVCs and retained logs."
+  description = "Kubernetes StorageClass used by Kodema for execution workspace PVCs and retained logs."
   type        = string
   default     = "standard-rwo"
 }
@@ -159,7 +159,7 @@ variable "postgres_disk_size_gb" {
 variable "postgres_admin_user" {
   description = "Bootstrap administrator username for Cloud SQL PostgreSQL."
   type        = string
-  default     = "kodama_bootstrap_admin"
+  default     = "kodema_bootstrap_admin"
 }
 
 variable "postgres_admin_password" {

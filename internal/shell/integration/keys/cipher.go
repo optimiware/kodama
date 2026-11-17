@@ -6,8 +6,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // Cipher is the envelope primitive over one key provider. It encrypts secret

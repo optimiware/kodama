@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/optimiware/kodama/internal/userland/skill"
+	"github.com/optimiware/kodema/internal/userland/skill"
 )
 
 // fakeSource is a deterministic knowledge source with a scripted enumeration

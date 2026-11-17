@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	git "github.com/optimiware/kodama/internal/userland/git"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 var (
@@ -18,7 +18,7 @@ var (
 )
 
 // TestKeepRefsCreatesRefreshesAndReleases pins the keep-ref sweep: a retained
-// commit gets a ref under refs/kodama/keep/<sha>, a missing commit is skipped,
+// commit gets a ref under refs/kodema/keep/<sha>, a missing commit is skipped,
 // a ref no longer named by the retained set is released, and a repeated sweep
 // with the same set writes nothing.
 func TestKeepRefsCreatesRefreshesAndReleases(t *testing.T) {

@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // RejectionMessage is the single sanitized diagnostic every hook refusal
 // prints. Every refusal, including an unknown, forged or expired handle, is
 // identical so the callback is not an oracle.
-const RejectionMessage = "kodama git: update rejected"
+const RejectionMessage = "kodema git: update rejected"
 
 // Handler handles one decoded hook callback request.
 type Handler interface {

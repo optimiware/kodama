@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	git "github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/fault"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 func TestParseConfigOptionResourceValidation(t *testing.T) {

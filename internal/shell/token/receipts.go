@@ -19,8 +19,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/receipt"
 )
 
 // ReceiptLookup reads the durable receipt for one scoped idempotency key. A

@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestHarnessResilienceReplicaRestoreAfterMidwayFailure is the safety-critical
@@ -219,16 +219,16 @@ func TestHarnessResilienceClusterCommands(t *testing.T) {
 		if err := cluster.Scale(ctx, ReleaseNamespace, "statefulsets", "nats", 0); err != nil {
 			t.Fatalf("scale: %v", err)
 		}
-		if err := cluster.DeletePods(ctx, ReleaseNamespace, "kodama.dev/execution=exec-1"); err != nil {
+		if err := cluster.DeletePods(ctx, ReleaseNamespace, "kodema.dev/execution=exec-1"); err != nil {
 			t.Fatalf("delete pods: %v", err)
 		}
 		if err := cluster.DeletePod(ctx, ReleaseNamespace, "nats-0"); err != nil {
 			t.Fatalf("delete pod: %v", err)
 		}
-		if err := cluster.WaitPodReady(ctx, ReleaseNamespace, "kodama-abc", 90*time.Second); err != nil {
+		if err := cluster.WaitPodReady(ctx, ReleaseNamespace, "kodema-abc", 90*time.Second); err != nil {
 			t.Fatalf("wait pod ready: %v", err)
 		}
-		if _, err := cluster.ResourceNames(ctx, "kodama-tenant-tenant-a", "jobs", "kodama.dev/execution=exec-1"); err != nil {
+		if _, err := cluster.ResourceNames(ctx, "kodema-tenant-tenant-a", "jobs", "kodema.dev/execution=exec-1"); err != nil {
 			t.Fatalf("list jobs: %v", err)
 		}
 		if _, err := cluster.PodNames(ctx, ReleaseNamespace, "app.kubernetes.io/name=nats"); err != nil {
@@ -240,10 +240,10 @@ func TestHarnessResilienceClusterCommands(t *testing.T) {
 		recorded := resilienceReadFileString(t, argv)
 		for _, want := range []string{
 			"scale statefulsets nats --replicas=0",
-			"delete pods -l kodama.dev/execution=exec-1",
+			"delete pods -l kodema.dev/execution=exec-1",
 			"delete pods nats-0",
-			"wait pods kodama-abc --for=condition=Ready --timeout=90s",
-			"get jobs -l kodama.dev/execution=exec-1 -o name",
+			"wait pods kodema-abc --for=condition=Ready --timeout=90s",
+			"get jobs -l kodema.dev/execution=exec-1 -o name",
 			"get pods -l app.kubernetes.io/name=nats -o jsonpath={.items[*].metadata.name}",
 			"get pods nats-0 -o jsonpath={.metadata.uid}",
 		} {
@@ -508,7 +508,7 @@ func TestHarnessResilienceEvidenceFields(t *testing.T) {
 		Finished:    finished,
 		Fields: map[string]any{
 			"execution_id": "exec-1",
-			"resource_id":  "kodama-abc",
+			"resource_id":  "kodema-abc",
 		},
 	})
 	if err != nil {
@@ -719,7 +719,7 @@ func TestHarnessResilienceMarkersAndParsers(t *testing.T) {
 // valid YAML with the pinned image, timeout and shell commands the probes rely
 // on.
 func TestHarnessResiliencePipelineYAML(t *testing.T) {
-	image := "rg.example.test/kodama@sha256:" + repeat("a", 64)
+	image := "rg.example.test/kodema@sha256:" + repeat("a", 64)
 	document := resiliencePipelineYAML(image, "resist", "90s", []string{"echo marker\nsleep 5"})
 	if len(document) == 0 {
 		t.Fatal("pipeline yaml is empty")
@@ -785,7 +785,7 @@ case "$*" in
 esac
 exit 0
 `)
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
@@ -805,7 +805,7 @@ case "$*" in
 esac
 exit 0
 `)
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
@@ -885,13 +885,13 @@ printf '%s\n' "$*" >> "$RES_PVC_ARGV"
 if [ -f "$RES_PVC_FAIL" ]; then exit 1; fi
 cat "$RES_PVC_RESPONSE"
 `)
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
 	cluster := resilienceNewCluster(&Kubectl{Guard: guard, Path: "kubectl", Timeout: 5 * time.Second})
 	ctx := context.Background()
-	const ns = "kodama-tenant-tenant-a"
+	const ns = "kodema-tenant-tenant-a"
 
 	if gone, err := cluster.ClaimGoneOrTerminating(ctx, ns, "../bad-name"); err == nil || gone {
 		t.Fatalf("unsafe claim name = %v, %v; want false, error", gone, err)
@@ -984,19 +984,19 @@ func resilienceSameStrings(left, right []string) bool {
 // TestHarnessResilienceFreshAccessService proves the fresh controller-deletion
 // access path uses a bounded service name and the documented stage default.
 func TestHarnessResilienceFreshAccessService(t *testing.T) {
-	t.Setenv("Q02_KODAMA_SERVICE", "")
-	service, err := resilienceKodamaService()
-	if err != nil || service != "kodama" {
-		t.Fatalf("default service = %q, err = %v; want kodama", service, err)
+	t.Setenv("Q02_KODEMA_SERVICE", "")
+	service, err := resilienceKodemaService()
+	if err != nil || service != "kodema" {
+		t.Fatalf("default service = %q, err = %v; want kodema", service, err)
 	}
-	t.Setenv("Q02_KODAMA_SERVICE", "kodama-api")
-	service, err = resilienceKodamaService()
-	if err != nil || service != "kodama-api" {
-		t.Fatalf("configured service = %q, err = %v; want kodama-api", service, err)
+	t.Setenv("Q02_KODEMA_SERVICE", "kodema-api")
+	service, err = resilienceKodemaService()
+	if err != nil || service != "kodema-api" {
+		t.Fatalf("configured service = %q, err = %v; want kodema-api", service, err)
 	}
-	for _, value := range []string{"Bad_Service", "kodama/other", "--namespace=other"} {
-		t.Setenv("Q02_KODAMA_SERVICE", value)
-		if _, err := resilienceKodamaService(); err == nil {
+	for _, value := range []string{"Bad_Service", "kodema/other", "--namespace=other"} {
+		t.Setenv("Q02_KODEMA_SERVICE", value)
+		if _, err := resilienceKodemaService(); err == nil {
 			t.Fatalf("service %q was accepted", value)
 		}
 	}
@@ -1139,11 +1139,11 @@ func TestHarnessResilienceOutageRestoreSurvivesCancellation(t *testing.T) {
 // TestHarnessResilienceBrokerEntryGuard proves the outage refuses to scale a
 // statefulset already left at zero and prints the exact manual restore command.
 func TestHarnessResilienceBrokerEntryGuard(t *testing.T) {
-	command := "kubectl --context kodama-stage-k8s -n kodama-system scale statefulset nats --replicas=<n>"
-	if err := resilienceCheckBrokerEntry(1, "kodama-stage-k8s"); err != nil {
+	command := "kubectl --context kodema-stage-k8s -n kodema-system scale statefulset nats --replicas=<n>"
+	if err := resilienceCheckBrokerEntry(1, "kodema-stage-k8s"); err != nil {
 		t.Fatalf("a healthy statefulset was refused: %v", err)
 	}
-	err := resilienceCheckBrokerEntry(0, "kodama-stage-k8s")
+	err := resilienceCheckBrokerEntry(0, "kodema-stage-k8s")
 	if err == nil {
 		t.Fatal("a statefulset already at zero replicas was accepted")
 	}
@@ -1160,7 +1160,7 @@ func TestHarnessResilienceBrokerEntryGuard(t *testing.T) {
 	if saveErr != nil {
 		t.Fatalf("save zero replicas: %v", saveErr)
 	}
-	if err := resilienceCheckBrokerEntry(saved, "kodama-stage-k8s"); err == nil {
+	if err := resilienceCheckBrokerEntry(saved, "kodema-stage-k8s"); err == nil {
 		t.Fatal("the probe entry accepted a statefulset already at zero replicas")
 	}
 	if got := state.argCount(t, "scale "); got != 0 {
@@ -1226,29 +1226,29 @@ func TestHarnessResilienceReplicaSaveReadFailure(t *testing.T) {
 // selector is admitted by the guard's selector grammar and excludes a
 // non-control-plane pod.
 func TestHarnessResilienceControllerSelector(t *testing.T) {
-	if !selectorPattern.MatchString(resilienceKodamaSelector) {
-		t.Fatalf("controller selector %q is not admitted by the guard selector grammar", resilienceKodamaSelector)
+	if !selectorPattern.MatchString(resilienceKodemaSelector) {
+		t.Fatalf("controller selector %q is not admitted by the guard selector grammar", resilienceKodemaSelector)
 	}
-	if !strings.Contains(resilienceKodamaSelector, "app.kubernetes.io/component=control-plane") {
-		t.Fatalf("controller selector %q does not narrow to the control-plane component", resilienceKodamaSelector)
+	if !strings.Contains(resilienceKodemaSelector, "app.kubernetes.io/component=control-plane") {
+		t.Fatalf("controller selector %q does not narrow to the control-plane component", resilienceKodemaSelector)
 	}
-	if err := resilienceValidateSelector(resilienceKodamaSelector); err != nil {
-		t.Fatalf("controller selector %q is refused by the harness: %v", resilienceKodamaSelector, err)
+	if err := resilienceValidateSelector(resilienceKodemaSelector); err != nil {
+		t.Fatalf("controller selector %q is refused by the harness: %v", resilienceKodemaSelector, err)
 	}
 }
 
 // TestHarnessResilienceRetainedClaim proves retained-claim parsing tolerates
 // the documented retention marker and refuses an unreadable object.
 func TestHarnessResilienceRetainedClaim(t *testing.T) {
-	retained, err := resilienceClaimRetained([]byte(`{"metadata":{"labels":{"kodama.dev/retained":"true"}}}`))
+	retained, err := resilienceClaimRetained([]byte(`{"metadata":{"labels":{"kodema.dev/retained":"true"}}}`))
 	if err != nil || !retained {
 		t.Fatalf("retained claim = %v, err = %v; want true", retained, err)
 	}
-	retained, err = resilienceClaimRetained([]byte(`{"metadata":{"labels":{"kodama.dev/workspace":"ws-1"}}}`))
+	retained, err = resilienceClaimRetained([]byte(`{"metadata":{"labels":{"kodema.dev/workspace":"ws-1"}}}`))
 	if err != nil || retained {
 		t.Fatalf("unretained claim = %v, err = %v; want false", retained, err)
 	}
-	retained, err = resilienceClaimRetained([]byte(`{"metadata":{"labels":{"kodama.dev/workspace":"ws-1"},"annotations":{"kodama.dev/retained":"true"}}}`))
+	retained, err = resilienceClaimRetained([]byte(`{"metadata":{"labels":{"kodema.dev/workspace":"ws-1"},"annotations":{"kodema.dev/retained":"true"}}}`))
 	if err != nil || !retained {
 		t.Fatalf("annotation-retained claim = %v, err = %v; want true", retained, err)
 	}
@@ -1361,7 +1361,7 @@ func TestHarnessResilienceHandoffReadOrder(t *testing.T) {
 // margin. A 60s cleanup action failed live preparation because the credential
 // lifetime was shorter than token.DefaultBounds.MinTTL.
 func TestHarnessResilienceProbePipelineTimeouts(t *testing.T) {
-	image := "rg.example.test/kodama@sha256:" + repeat("a", 64)
+	image := "rg.example.test/kodema@sha256:" + repeat("a", 64)
 	documents := resilienceProbePipelineDocuments(image)
 	for name, document := range documents {
 		timeouts, err := resiliencePipelineTimeouts(document)
@@ -1718,7 +1718,7 @@ func TestHarnessResilienceAPIEndpointPort(t *testing.T) {
 		})
 	}
 	for _, raw := range []string{
-		"https://kodama.example.test:18443",
+		"https://kodema.example.test:18443",
 		"https://127.0.0.1",
 		"http://127.0.0.1:18443",
 		"https://127.0.0.1:0",
@@ -1856,7 +1856,7 @@ func TestHarnessResilienceReplyRoleEnforcement(t *testing.T) {
 // facts that distinguish a pod loss (gone or new UID) from a workload kill
 // (terminated exit 137 in the same pod), without reading logs.
 func TestHarnessResiliencePodFacts(t *testing.T) {
-	document := []byte(`{"items":[{"metadata":{"name":"kodama-job-abc-1","uid":"2f1c7b9e-0f5a-4a5c-9a54-0f6f4a1c8d21","deletionTimestamp":"2026-11-08T01:02:03Z"},"status":{"phase":"Failed","containerStatuses":[{"name":"workload","state":{"terminated":{"reason":"Error","exitCode":137}},"lastState":{"running":{}}}]}}]}`)
+	document := []byte(`{"items":[{"metadata":{"name":"kodema-job-abc-1","uid":"2f1c7b9e-0f5a-4a5c-9a54-0f6f4a1c8d21","deletionTimestamp":"2026-11-08T01:02:03Z"},"status":{"phase":"Failed","containerStatuses":[{"name":"workload","state":{"terminated":{"reason":"Error","exitCode":137}},"lastState":{"running":{}}}]}}]}`)
 	facts, err := resilienceParsePodFacts(document)
 	if err != nil {
 		t.Fatalf("parse pod facts: %v", err)
@@ -1865,7 +1865,7 @@ func TestHarnessResiliencePodFacts(t *testing.T) {
 		t.Fatalf("pod facts = %+v, want one pod", facts)
 	}
 	pod := facts[0]
-	if pod.Name != "kodama-job-abc-1" || pod.UID != "2f1c7b9e-0f5a-4a5c-9a54-0f6f4a1c8d21" ||
+	if pod.Name != "kodema-job-abc-1" || pod.UID != "2f1c7b9e-0f5a-4a5c-9a54-0f6f4a1c8d21" ||
 		pod.Phase != "Failed" || pod.DeletionTimestamp != "2026-11-08T01:02:03Z" {
 		t.Fatalf("pod identity facts = %+v", pod)
 	}
@@ -1875,7 +1875,7 @@ func TestHarnessResiliencePodFacts(t *testing.T) {
 		t.Fatalf("container facts = %+v", pod.Containers)
 	}
 	formatted := resilienceFormatPodFacts("after", facts)
-	for _, want := range []string{"after=name=kodama-job-abc-1", "uid=2f1c7b9e", "phase=Failed", "deletion=2026-11-08T01:02:03Z", "state=terminated", "reason=Error", "exit=137"} {
+	for _, want := range []string{"after=name=kodema-job-abc-1", "uid=2f1c7b9e", "phase=Failed", "deletion=2026-11-08T01:02:03Z", "state=terminated", "reason=Error", "exit=137"} {
 		if !strings.Contains(formatted, want) {
 			t.Fatalf("formatted facts %q do not contain %q", formatted, want)
 		}
@@ -1939,7 +1939,7 @@ func TestHarnessResilienceLiveEvidencePins(t *testing.T) {
 		`resilienceRecordPodFacts(probe, executionID, "after"`,
 		"workload facts before:",
 		"workload facts after:",
-		"kodama.dev/execution=",
+		"kodema.dev/execution=",
 	} {
 		if !strings.Contains(controllerText, want) {
 			t.Fatalf("controller probe does not contain %q", want)

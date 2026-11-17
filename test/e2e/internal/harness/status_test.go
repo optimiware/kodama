@@ -5,7 +5,7 @@ package harness
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // apiAction builds one valid action observation.

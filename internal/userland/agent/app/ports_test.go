@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/agent"
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/agent"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 type fakeTransport struct {
@@ -218,7 +218,7 @@ func TestRunRefusesMissingCheckpoint(t *testing.T) {
 			ExecutionID: "execution-1",
 			Model:       "model-1",
 			Messages:    []agent.Message{{Role: "user", Content: "hi"}},
-			RestoreRef:  "kodama-checkpoint/v1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1",
+			RestoreRef:  "kodema-checkpoint/v1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1",
 		},
 		ProjectID:      "project-1",
 		Transport:      transport,
@@ -494,7 +494,7 @@ type fakeCheckpoints struct {
 
 func (checkpoints *fakeCheckpoints) Save(_ context.Context, checkpoint agent.Checkpoint) (string, error) {
 	checkpoints.saved = true
-	return "kodama-checkpoint/v1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1", nil
+	return "kodema-checkpoint/v1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1", nil
 }
 
 func (checkpoints *fakeCheckpoints) Restore(context.Context, string) (agent.Checkpoint, error) {

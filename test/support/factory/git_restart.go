@@ -30,9 +30,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/internal/userland/git"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 // Restart stops the running Git composition and starts a fresh one over the

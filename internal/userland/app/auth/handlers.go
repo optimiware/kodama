@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/principal"
+	"github.com/optimiware/kodema/internal/userland/principal"
 )
 
 type tokenSuccessResponse struct {

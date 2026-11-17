@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 const differentialRandomIterations = 60_000

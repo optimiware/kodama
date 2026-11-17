@@ -15,7 +15,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/services"
+	"github.com/optimiware/kodema/internal/userland/services"
 )
 
 var (

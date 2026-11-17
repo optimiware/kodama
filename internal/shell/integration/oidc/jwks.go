@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // p256CoordinateBytes is the width of one P-256 affine coordinate.

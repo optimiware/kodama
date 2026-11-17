@@ -8,7 +8,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestFileSystemSeamShape pins the consumer-owned kodactl filesystem seam:
@@ -53,7 +53,7 @@ func TestFileSystemSeamShape(t *testing.T) {
 func TestFileSystemReplaceFileSemantics(t *testing.T) {
 	files := newReferenceFileSystem()
 	var seam cli.FileSystem = files
-	target := "/home/engineer/.config/kodama/session.json"
+	target := "/home/engineer/.config/kodema/session.json"
 
 	// An existing ancestor keeps its mode; only missing components are 0700.
 	files.dirs["/home"] = 0o755
@@ -61,7 +61,7 @@ func TestFileSystemReplaceFileSemantics(t *testing.T) {
 	if err := seam.ReplaceFile(target, []byte(`{"token":"first"}`), 0o600); err != nil {
 		t.Fatalf("ReplaceFile(first login): %v", err)
 	}
-	for _, dir := range []string{"/home/engineer/.config", "/home/engineer/.config/kodama"} {
+	for _, dir := range []string{"/home/engineer/.config", "/home/engineer/.config/kodema"} {
 		if mode, ok := files.dirs[dir]; !ok {
 			t.Errorf("ReplaceFile did not create missing parent %s", dir)
 		} else if mode != 0o700 {

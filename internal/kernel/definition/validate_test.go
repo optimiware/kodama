@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 const k01PinnedImage = "registry.example.com/tool@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

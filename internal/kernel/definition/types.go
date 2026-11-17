@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // ActionKind is the single kind of an admitted action.
@@ -426,7 +426,7 @@ func (s *Snapshot) Task() ([]byte, bool) {
 	return cloneOptionalBytes(s.task), true
 }
 
-// TaskID returns the admitted task identity for KODAMA_TASK context. It is
+// TaskID returns the admitted task identity for KODEMA_TASK context. It is
 // empty when the execution is task-free.
 func (s *Snapshot) TaskID() id.TaskID {
 	if s == nil {

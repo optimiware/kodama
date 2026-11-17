@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // recordedCommand is one fake process invocation.
@@ -200,7 +200,7 @@ func TestNewKindPinsVersionAndEnvironment(t *testing.T) {
 // TestNewClusterNameIsScopedAndUnique proves generated names carry the prefix
 // and owner pid and that protected or foreign names are refused.
 func TestNewClusterNameIsScopedAndUnique(t *testing.T) {
-	pattern := regexp.MustCompile(`^kodama-t-[0-9]+-[0-9a-f]{8}$`)
+	pattern := regexp.MustCompile(`^kodema-t-[0-9]+-[0-9a-f]{8}$`)
 	first := NewClusterName()
 	second := NewClusterName()
 	if !pattern.MatchString(first) {
@@ -212,7 +212,7 @@ func TestNewClusterNameIsScopedAndUnique(t *testing.T) {
 	if !strings.HasPrefix(first, ClusterPrefix+strconv.Itoa(os.Getpid())+"-") {
 		t.Fatalf("generated name %q does not carry the owner pid", first)
 	}
-	for _, name := range []string{ProtectedCluster, "kind", "kodama-t-abc", "kodama-t-0-abcdef01", "kodama-t-12-ABCDEF01", ""} {
+	for _, name := range []string{ProtectedCluster, "kind", "kodema-t-abc", "kodema-t-0-abcdef01", "kodema-t-12-ABCDEF01", ""} {
 		if err := validateClusterName(name); err == nil {
 			t.Errorf("validateClusterName(%q) = nil; want a refusal", name)
 		}
@@ -308,7 +308,7 @@ nodes:
 // create or touch a cluster it does not own.
 func TestCreateClusterRefusesProtectedOrForeignName(t *testing.T) {
 	kind, runner := newTestKind(t, nil)
-	for _, name := range []string{ProtectedCluster, "kind", "prod", "kodama-t-1-nothex00"} {
+	for _, name := range []string{ProtectedCluster, "kind", "prod", "kodema-t-1-nothex00"} {
 		if _, err := kind.CreateCluster(context.Background(), ClusterOptions{Name: name, Dir: t.TempDir()}); err == nil {
 			t.Errorf("CreateCluster(%q) = nil; want a refusal", name)
 		}
@@ -573,10 +573,10 @@ func TestSweepDeadOwnersDeletesOnlyDeadGeneratedClusters(t *testing.T) {
 		case hasArgs(command.Args, "get", "clusters"):
 			return harness.Result{Stdout: []byte(strings.Join([]string{
 				ProtectedCluster,
-				"kodama-t-123-abcdef01",
-				"kodama-t-999999-abcdef01",
+				"kodema-t-123-abcdef01",
+				"kodema-t-999999-abcdef01",
 				"foreign-cluster",
-				"kodama-t-777777-ABCDEF01",
+				"kodema-t-777777-ABCDEF01",
 			}, "\n") + "\n")}, nil
 		case hasArgs(command.Args, "delete", "cluster"):
 			deleted = append(deleted, argValue(command.Args, "--name"))
@@ -591,10 +591,10 @@ func TestSweepDeadOwnersDeletesOnlyDeadGeneratedClusters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SweepDeadOwners: %v", err)
 	}
-	if len(removed) != 1 || removed[0] != "kodama-t-999999-abcdef01" {
+	if len(removed) != 1 || removed[0] != "kodema-t-999999-abcdef01" {
 		t.Fatalf("removed = %v; want only the dead-owner cluster", removed)
 	}
-	if len(deleted) != 1 || deleted[0] != "kodama-t-999999-abcdef01" {
+	if len(deleted) != 1 || deleted[0] != "kodema-t-999999-abcdef01" {
 		t.Fatalf("delete commands = %v; want only the dead-owner cluster", deleted)
 	}
 	for _, command := range runner.snapshot() {

@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // provisionRealExecutor is the real native Git command boundary the umask test

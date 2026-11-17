@@ -1,3 +1,3 @@
 package api
 
-import _ "kodama/internal/kernel/flow"
+import _ "kodema/internal/kernel/flow"

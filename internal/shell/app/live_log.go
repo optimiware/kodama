@@ -44,9 +44,9 @@ import (
 	"context"
 	"time"
 
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 const (

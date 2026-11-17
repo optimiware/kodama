@@ -1,6 +1,6 @@
 package cli
 
 import (
-	_ "kodama/internal/kernel/flow"
-	_ "kodama/internal/shell/store/postgres"
+	_ "kodema/internal/kernel/flow"
+	_ "kodema/internal/shell/store/postgres"
 )

@@ -9,19 +9,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	shellidentity "github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store/memory"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	shellidentity "github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store/memory"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // tenantScopeReader is the durable execution-to-tenant ownership seam a real

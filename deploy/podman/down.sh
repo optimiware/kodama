@@ -8,7 +8,7 @@
 # marker does not name this exact prefix.
 #
 # Nothing here prunes the host or another run's containers: the selection is
-# the explicit `kodama.local.prefix` label and this installation's own names.
+# the explicit `kodema.local.prefix` label and this installation's own names.
 set -euo pipefail
 
 # shellcheck source=lib.sh
@@ -27,12 +27,12 @@ USAGE
 --purge) purge=1 ;;
 "") ;;
 *)
-	printf 'kodama-local: unknown argument %s\n' "$1" >&2
+	printf 'kodema-local: unknown argument %s\n' "$1" >&2
 	exit 2
 	;;
 esac
 [ "$#" -le 1 ] || {
-	printf 'kodama-local: unexpected extra arguments\n' >&2
+	printf 'kodema-local: unexpected extra arguments\n' >&2
 	exit 2
 }
 
@@ -46,7 +46,7 @@ fi
 stop_forwarder "$socat_pid_file" "$socat_conf_file" "OPENSSL-LISTEN:${OIDC_PORT}," "OAuthSonas TLS terminator"
 stop_forwarder "$git_socat_pid_file" "$git_socat_conf_file" "OPENSSL-LISTEN:${GIT_HTTPS_PORT}," "Git HTTPS front end"
 
-log "removing containers labelled kodama.local.prefix=${PREFIX}"
+log "removing containers labelled kodema.local.prefix=${PREFIX}"
 podman_rm_own
 # Exact names cover a container created by an older revision of this bundle
 # before it carried the label; they are still this installation's names.
@@ -61,9 +61,9 @@ remove_own_volume() {
 	if ! podman volume exists "$name" >/dev/null 2>&1; then
 		return 0
 	fi
-	label="$(podman volume inspect --format '{{index .Labels "kodama.local.prefix"}}' "$name" 2>/dev/null || true)"
+	label="$(podman volume inspect --format '{{index .Labels "kodema.local.prefix"}}' "$name" 2>/dev/null || true)"
 	[ "$label" = "$PREFIX" ] ||
-		die "refusing to remove volume ${name}: it is not labelled kodama.local.prefix=${PREFIX}"
+		die "refusing to remove volume ${name}: it is not labelled kodema.local.prefix=${PREFIX}"
 	podman volume rm -f "$name" >/dev/null
 }
 
@@ -101,12 +101,12 @@ else
 	log "containers removed; state kept in ${STATE_DIR}"
 fi
 
-remaining="$(podman ps -a --filter "label=kodama.local.prefix=${PREFIX}" --format '{{.Names}}' 2>/dev/null || true)"
+remaining="$(podman ps -a --filter "label=kodema.local.prefix=${PREFIX}" --format '{{.Names}}' 2>/dev/null || true)"
 if [ -n "$remaining" ]; then
 	die "resources with prefix ${PREFIX} remain: ${remaining}"
 fi
 if [ "$purge" -eq 1 ]; then
-	remaining_volumes="$(podman volume ls -q --filter "label=kodama.local.prefix=${PREFIX}" 2>/dev/null || true)"
+	remaining_volumes="$(podman volume ls -q --filter "label=kodema.local.prefix=${PREFIX}" 2>/dev/null || true)"
 	if [ -n "$remaining_volumes" ]; then
 		die "volumes with prefix ${PREFIX} remain: ${remaining_volumes}"
 	fi

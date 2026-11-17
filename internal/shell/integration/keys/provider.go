@@ -22,8 +22,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // Provider is one key provider plus the key reference it serves.

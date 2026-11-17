@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	identityfixture "github.com/optimiware/kodama/test/support/boundaries/identity"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	identityfixture "github.com/optimiware/kodema/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // TestFactoryTLSWorkloadRoundTrip proves the opt-in harness serves real HTTPS

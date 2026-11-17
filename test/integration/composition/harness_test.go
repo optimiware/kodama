@@ -16,21 +16,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/kernel"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/app"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/memory"
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/kernel"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/app"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/memory"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // Fixture identities and credentials. The token values are deliberately
@@ -1076,7 +1076,7 @@ func (environment *runningEnv) applyPipeline(name string) string {
 // smokePipeline is a small valid container pipeline the fake runtime runs.
 const smokePipeline = `actions:
   - name: inspect
-    image: registry.example.com/kodama/base@sha256:cae662172fd450bb0cd710a769079c05bfc5d8e35efa6576edc7d0377afdd4a2
+    image: registry.example.com/kodema/base@sha256:cae662172fd450bb0cd710a769079c05bfc5d8e35efa6576edc7d0377afdd4a2
     commands:
       - echo "integration composition work completed"
 `

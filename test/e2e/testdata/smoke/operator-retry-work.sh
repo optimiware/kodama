@@ -8,12 +8,12 @@ repair=${SMOKE_REPAIR_MARKER:?}
 success=${SMOKE_SUCCESS_MARKER:?}
 failure=${SMOKE_FAILURE_MARKER:?}
 scratch=/workspace/retry-scratch
-test -f /kodama/task.json
+test -f /kodema/task.json
 if python3 - "$repair" <<'PY'
 import json
 import sys
 
-messages = json.load(open("/kodama/task.json"))
+messages = json.load(open("/kodema/task.json"))
 want = sys.argv[1]
 raise SystemExit(0 if any(isinstance(m, dict) and m.get("body") == want for m in messages) else 1)
 PY

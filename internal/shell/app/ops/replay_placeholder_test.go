@@ -5,14 +5,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	opsapp "github.com/optimiware/kodama/internal/shell/app/ops"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	tenancyadmin "github.com/optimiware/kodama/internal/shell/tenancy/admin"
-	"github.com/optimiware/kodama/internal/shell/token"
-	"github.com/optimiware/kodama/internal/shell/transport/ops"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	opsapp "github.com/optimiware/kodema/internal/shell/app/ops"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	tenancyadmin "github.com/optimiware/kodema/internal/shell/tenancy/admin"
+	"github.com/optimiware/kodema/internal/shell/token"
+	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
 // TestReceiptReplayReturnsTheOriginalResult pins the idempotency mapping: an

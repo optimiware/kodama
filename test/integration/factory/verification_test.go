@@ -4,7 +4,7 @@ package factorytest
 
 // Served approval verification without Git.
 //
-// Coverage map (KODAMA.md, S05 §4):
+// Coverage map (KODEMA.md, S05 §4):
 //   - exact same-execution request evidence approves one live execution actor
 //     for one exact operation/resource/ref/expected_base/candidate;
 //   - a changed subject field never matches, another execution's evidence never
@@ -30,7 +30,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestServedApprovalRequiresExactExecutionAndSubject proves the positive exact

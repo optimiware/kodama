@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 // policyDenyEngineer removes the engineer write rule for shop/web main while
@@ -80,7 +80,7 @@ func commitAdminPolicy(t *testing.T, harness *nativefix.Harness, directory, mess
 		t.Fatalf("git add admin policy: %s", stderr)
 	}
 	if _, stderr, code := harness.GitIn(t, directory,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "-m", message); code != 0 {
 		t.Fatalf("git commit admin policy: %s", stderr)
 	}
@@ -429,7 +429,7 @@ func TestAdminPolicyDiscoveryDoesNotWalkUp(t *testing.T) {
 		t.Fatalf("git add ancestor policy: %s", stderr)
 	}
 	if _, stderr, code := harness.GitIn(t, tenantPath,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "-m", "ancestor policy"); code != 0 {
 		t.Fatalf("commit ancestor policy: %s", stderr)
 	}

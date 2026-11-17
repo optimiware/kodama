@@ -11,7 +11,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 func TestRestoreOrderFrozen(t *testing.T) {

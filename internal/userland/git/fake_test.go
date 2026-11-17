@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	git "github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 var testNow = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)

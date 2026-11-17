@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/app/migrate"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/shell/app/migrate"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
 )
 
 // fakeDB is an in-memory ledger plus a statement log. It stands in for the
@@ -37,7 +37,7 @@ func (db *fakeDB) Begin(context.Context) (storepg.Conn, error) {
 func (c *fakeConn) Exec(_ context.Context, sql string, args ...any) (store.Result, error) {
 	short, _, _ := strings.Cut(strings.TrimSpace(sql), "\n")
 	c.db.log = append(c.db.log, short)
-	if strings.HasPrefix(sql, "CREATE SCHEMA kodama_meta") {
+	if strings.HasPrefix(sql, "CREATE SCHEMA kodema_meta") {
 		if c.db.ledgerCreated {
 			return store.Result{}, errors.New("permission denied for database: the ledger is created once")
 		}
@@ -90,7 +90,7 @@ func (r *fakeRows) Close() error           { return nil }
 
 func TestApplyRunsEveryMigrationOnceThenOnlyPasswords(t *testing.T) {
 	db := &fakeDB{ledger: map[string]string{}}
-	cfg := migrate.Config{Database: "kodama", Admin: "admin", Passwords: map[string]string{"kodama_runtime": "p'w"}}
+	cfg := migrate.Config{Database: "kodema", Admin: "admin", Passwords: map[string]string{"kodema_runtime": "p'w"}}
 	applied, err := migrate.Apply(context.Background(), db, cfg)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
@@ -100,15 +100,15 @@ func TestApplyRunsEveryMigrationOnceThenOnlyPasswords(t *testing.T) {
 	}
 	joined := strings.Join(db.log, "\n")
 	for _, want := range []string{
-		`GRANT kodama_owner TO "admin" WITH INHERIT FALSE, SET TRUE`,
-		`ALTER DATABASE "kodama" OWNER TO kodama_owner`,
-		`ALTER ROLE "kodama_runtime" PASSWORD E'p''w'`,
+		`GRANT kodema_owner TO "admin" WITH INHERIT FALSE, SET TRUE`,
+		`ALTER DATABASE "kodema" OWNER TO kodema_owner`,
+		`ALTER ROLE "kodema_runtime" PASSWORD E'p''w'`,
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing statement %q in:\n%s", want, joined)
 		}
 	}
-	if strings.Count(joined, "SET LOCAL ROLE kodama_owner") != len(applied)-1 {
+	if strings.Count(joined, "SET LOCAL ROLE kodema_owner") != len(applied)-1 {
 		t.Fatalf("only the role-creating migration may run as the administrator:\n%s", joined)
 	}
 
@@ -120,12 +120,12 @@ func TestApplyRunsEveryMigrationOnceThenOnlyPasswords(t *testing.T) {
 
 func TestApplyRefusesRewrittenMigrationAndBadRoles(t *testing.T) {
 	db := &fakeDB{ledger: map[string]string{"0001_roles.sql": "sha256:old"}}
-	if _, err := migrate.Apply(context.Background(), db, migrate.Config{Database: "kodama", Admin: "admin"}); err == nil {
+	if _, err := migrate.Apply(context.Background(), db, migrate.Config{Database: "kodema", Admin: "admin"}); err == nil {
 		t.Fatal("a rewritten applied migration was accepted")
 	}
-	for _, role := range []string{"postgres", "kodama_", "kodama_x; DROP", "kodama_Runtime"} {
+	for _, role := range []string{"postgres", "kodema_", "kodema_x; DROP", "kodema_Runtime"} {
 		db := &fakeDB{ledger: map[string]string{}}
-		_, err := migrate.Apply(context.Background(), db, migrate.Config{Database: "kodama", Admin: "admin", Passwords: map[string]string{role: "x"}})
+		_, err := migrate.Apply(context.Background(), db, migrate.Config{Database: "kodema", Admin: "admin", Passwords: map[string]string{role: "x"}})
 		if err == nil {
 			t.Fatalf("role %q was accepted", role)
 		}
@@ -136,16 +136,16 @@ func TestApplyRefusesRewrittenMigrationAndBadRoles(t *testing.T) {
 	db = &fakeDB{
 		ledger:  map[string]string{},
 		failOn:  "ALTER ROLE",
-		failErr: errors.New(`syntax error at or near "ALTER ROLE kodama_runtime PASSWORD '` + leaked + `'"`),
+		failErr: errors.New(`syntax error at or near "ALTER ROLE kodema_runtime PASSWORD '` + leaked + `'"`),
 	}
-	_, err := migrate.Apply(context.Background(), db, migrate.Config{Database: "kodama", Admin: "admin", Passwords: map[string]string{"kodama_runtime": "secret-pw"}})
+	_, err := migrate.Apply(context.Background(), db, migrate.Config{Database: "kodema", Admin: "admin", Passwords: map[string]string{"kodema_runtime": "secret-pw"}})
 	if err == nil || strings.Contains(err.Error(), "secret-pw") {
 		t.Fatalf("password failure must not echo the password: %v", err)
 	}
 	if strings.Contains(err.Error(), leaked) || strings.Contains(err.Error(), "ALTER ROLE") {
 		t.Fatalf("password failure rendered the driver cause: %v", err)
 	}
-	if !strings.Contains(err.Error(), "set password of role kodama_runtime failed") {
+	if !strings.Contains(err.Error(), "set password of role kodema_runtime failed") {
 		t.Fatalf("error = %v; want it to name only the failed step", err)
 	}
 }
@@ -158,11 +158,11 @@ func TestApplyNeverRendersADriverStatementOrPassword(t *testing.T) {
 	db := &fakeDB{
 		ledger:  map[string]string{},
 		failOn:  "CREATE ROLE",
-		failErr: errors.New(`syntax error at or near "ALTER ROLE kodama_runtime PASSWORD '` + sentinel + `'"`),
+		failErr: errors.New(`syntax error at or near "ALTER ROLE kodema_runtime PASSWORD '` + sentinel + `'"`),
 	}
 	_, err := migrate.Apply(context.Background(), db, migrate.Config{
-		Database: "kodama", Admin: "admin",
-		Passwords: map[string]string{"kodama_runtime": sentinel},
+		Database: "kodema", Admin: "admin",
+		Passwords: map[string]string{"kodema_runtime": sentinel},
 	})
 	if err == nil {
 		t.Fatal("Apply accepted a failing driver statement")
@@ -183,14 +183,14 @@ func TestApplyValidatesRolesBeforeOpeningTheLedger(t *testing.T) {
 		name      string
 		passwords map[string]string
 	}{
-		{"non-kodama role", map[string]string{"postgres": "x"}},
-		{"empty password", map[string]string{"kodama_runtime": ""}},
-		{"nul password", map[string]string{"kodama_runtime": "a\x00b"}},
+		{"non-kodema role", map[string]string{"postgres": "x"}},
+		{"empty password", map[string]string{"kodema_runtime": ""}},
+		{"nul password", map[string]string{"kodema_runtime": "a\x00b"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &fakeDB{ledger: map[string]string{}}
 			_, err := migrate.Apply(context.Background(), db, migrate.Config{
-				Database: "kodama", Admin: "admin",
+				Database: "kodema", Admin: "admin",
 				Passwords: tc.passwords,
 			})
 			if err == nil {
@@ -209,7 +209,7 @@ func TestApplyValidatesRolesBeforeOpeningTheLedger(t *testing.T) {
 func TestApplyUsesTheConfiguredPasswordOnEveryRun(t *testing.T) {
 	db := &fakeDB{ledger: map[string]string{}}
 	const password = "SENTINEL-STABLE-PASSWORD"
-	cfg := migrate.Config{Database: "kodama", Admin: "admin", Passwords: map[string]string{"kodama_runtime": password}}
+	cfg := migrate.Config{Database: "kodema", Admin: "admin", Passwords: map[string]string{"kodema_runtime": password}}
 
 	if _, err := migrate.Apply(context.Background(), db, cfg); err != nil {
 		t.Fatalf("first Apply: %v", err)
@@ -217,7 +217,7 @@ func TestApplyUsesTheConfiguredPasswordOnEveryRun(t *testing.T) {
 	if _, err := migrate.Apply(context.Background(), db, cfg); err != nil {
 		t.Fatalf("second Apply: %v", err)
 	}
-	wantStatement := `ALTER ROLE "kodama_runtime" PASSWORD E'SENTINEL-STABLE-PASSWORD'`
+	wantStatement := `ALTER ROLE "kodema_runtime" PASSWORD E'SENTINEL-STABLE-PASSWORD'`
 	seen := 0
 	for _, statement := range db.log {
 		if strings.HasPrefix(statement, "ALTER ROLE") {
@@ -275,7 +275,7 @@ func (db *failingLockDB) LockSession(context.Context, int64) (func(context.Conte
 func TestApplyTakesTheSetupLockBeforeTheLedger(t *testing.T) {
 	db := &lockingFakeDB{fakeDB: &fakeDB{ledger: map[string]string{}}}
 	if _, err := migrate.Apply(context.Background(), db, migrate.Config{
-		Database: "kodama", Admin: "admin", Passwords: map[string]string{"kodama_runtime": "pw"},
+		Database: "kodema", Admin: "admin", Passwords: map[string]string{"kodema_runtime": "pw"},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestApplyTakesTheSetupLockBeforeTheLedger(t *testing.T) {
 func TestApplyLockFailureStopsBeforeAnyMigration(t *testing.T) {
 	db := &failingLockDB{fakeDB: &fakeDB{ledger: map[string]string{}}}
 	if _, err := migrate.Apply(context.Background(), db, migrate.Config{
-		Database: "kodama", Admin: "admin", Passwords: map[string]string{"kodama_runtime": "pw"},
+		Database: "kodema", Admin: "admin", Passwords: map[string]string{"kodema_runtime": "pw"},
 	}); err == nil {
 		t.Fatal("Apply ignored a failed setup lock")
 	}
@@ -313,7 +313,7 @@ func TestApplyLockFailureStopsBeforeAnyMigration(t *testing.T) {
 // form is what ALTER DATABASE/GRANT use for the operator-configured names.
 func TestQuoteIdentDoublesEmbeddedQuotes(t *testing.T) {
 	for _, tc := range []struct{ name, want string }{
-		{"kodama", `"kodama"`},
+		{"kodema", `"kodema"`},
 		{`a"b`, `"a""b"`},
 		{`"`, `""""`},
 		{`a"; DROP DATABASE x; --`, `"a""; DROP DATABASE x; --"`},
@@ -328,7 +328,7 @@ func TestQuotePasswordIsInjectionSafeUnderBothStringSettings(t *testing.T) {
 	for _, tc := range []struct{ password, want string }{
 		{"plain", `E'plain'`},
 		{"p'w", `E'p''w'`},
-		{`\'; CREATE ROLE kodama_evil; --`, `E'\\''; CREATE ROLE kodama_evil; --'`},
+		{`\'; CREATE ROLE kodema_evil; --`, `E'\\''; CREATE ROLE kodema_evil; --'`},
 		{`back\slash`, `E'back\\slash'`},
 	} {
 		if got := migrate.QuotePasswordForTest(tc.password); got != tc.want {

@@ -1,9 +1,9 @@
 // Package script generates the fail-fast entrypoint script required by S07 §2
-// and KODAMA.md "Container actions".
+// and KODEMA.md "Container actions".
 //
 // The adapter replaces the image entrypoint with the rendered script. Commands
 // are opaque bytes: the renderer never trims, splits, escapes, deduplicates or
-// reorders them, adds no tracing and injects no Kodama runner. It also never
+// reorders them, adds no tracing and injects no Kodema runner. It also never
 // starts a shell or a process; real exit behavior belongs to the runtime
 // adapters.
 package script
@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // ShellPath is the shell used to run the fail-fast entrypoint script.

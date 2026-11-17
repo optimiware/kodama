@@ -14,17 +14,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git"
-	recoveryfix "github.com/optimiware/kodama/test/support/boundaries/recovery"
+	"github.com/optimiware/kodema/internal/userland/git"
+	recoveryfix "github.com/optimiware/kodema/test/support/boundaries/recovery"
 )
 
 // nativeRejectionMessage mirrors the product's single sanitized diagnostic.
-const nativeRejectionMessage = "kodama git: update rejected"
+const nativeRejectionMessage = "kodema git: update rejected"
 
 func newHarness(t *testing.T, options recoveryfix.Options) *recoveryfix.Harness {
 	t.Helper()
 	if options.BinaryPath == "" {
-		options.BinaryPath = kodamaBinary
+		options.BinaryPath = kodemaBinary
 	}
 	harness, err := recoveryfix.NewHarness(t, options)
 	if err != nil {

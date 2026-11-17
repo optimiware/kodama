@@ -7,7 +7,7 @@ resource "aws_s3_bucket" "tofu_state" {
   force_destroy = var.force_destroy
 
   tags = {
-    app        = "kodama"
+    app        = "kodema"
     component  = "tofu-state"
     managed-by = "opentofu"
   }

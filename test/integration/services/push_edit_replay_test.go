@@ -21,8 +21,8 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // TestPushEditReplayKeepsFirstSelection proves config, pipeline and binding
@@ -152,7 +152,7 @@ func pushWrongCommitDocument(repository, service, image, firstRef, secondRef str
 			Image:   image,
 			Timeout: "10m",
 			Commands: []string{
-				`test "$(cat /kodama/inputs/commit)" = edited-never-runs`,
+				`test "$(cat /kodema/inputs/commit)" = edited-never-runs`,
 				`exit 1`,
 			},
 		}},

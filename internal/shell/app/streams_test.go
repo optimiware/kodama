@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	"github.com/optimiware/kodama/internal/shell/event"
-	natsbroker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	"github.com/optimiware/kodema/internal/shell/event"
+	natsbroker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // fakeNATSServer models the stream state and connection lifecycle behind the
@@ -321,7 +321,7 @@ func TestProductionPublicationDialsOnlyAfterStreamProvisioning(t *testing.T) {
 func TestProductionStartupRefusesStreamConflictAndCleansUp(t *testing.T) {
 	server := &fakeNATSServer{
 		ensureErr: fault.New(fault.VersionConflict,
-			`existing stream "KODAMA_EVENTS" conflicts with the required configuration (subjects)`),
+			`existing stream "KODEMA_EVENTS" conflicts with the required configuration (subjects)`),
 	}
 	config := productionConfigWithServer(t, server)
 	var (
@@ -373,7 +373,7 @@ func TestProductionStartupRefusesStreamConflictAndCleansUp(t *testing.T) {
 func TestProductionStartupRefusesDialFailureSecretFree(t *testing.T) {
 	server := &fakeNATSServer{
 		dialErr: fault.Wrap(fault.DependencyUnavailable, "broker connection failed",
-			errors.New("dial tcp nats://kodama:supersecret@broker.internal:4222: connection refused")),
+			errors.New("dial tcp nats://kodema:supersecret@broker.internal:4222: connection refused")),
 	}
 	config := productionConfigWithServer(t, server)
 
@@ -388,7 +388,7 @@ func TestProductionStartupRefusesDialFailureSecretFree(t *testing.T) {
 		t.Fatalf("startup error class = %q (found=%v); want dependency_unavailable", class, ok)
 	}
 	rendered := err.Error()
-	for _, secret := range []string{"nats://", "supersecret", "kodama:", "broker.internal", "4222"} {
+	for _, secret := range []string{"nats://", "supersecret", "kodema:", "broker.internal", "4222"} {
 		if strings.Contains(rendered, secret) {
 			t.Fatalf("startup error leaked %q: %s", secret, rendered)
 		}

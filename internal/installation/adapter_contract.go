@@ -6,7 +6,7 @@
 package installation
 
 import (
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // Preflight refuses an environment whose adapter composition or required

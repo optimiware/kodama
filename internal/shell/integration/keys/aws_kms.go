@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // The AWS KMS decrypt call is one SigV4-signed JSON POST, and the EKS IRSA
@@ -38,7 +38,7 @@ type AWSKMSConfig struct {
 	// construction; its content is never cached, logged, returned or rendered
 	// in an error.
 	WebIdentityTokenFile string
-	// RoleSessionName names the STS session. Empty selects "kodama".
+	// RoleSessionName names the STS session. Empty selects "kodema".
 	RoleSessionName string
 	// KMSEndpoint overrides the KMS origin. Empty selects
 	// https://kms.<region>.amazonaws.com (amazonaws.com.cn for a cn- region).

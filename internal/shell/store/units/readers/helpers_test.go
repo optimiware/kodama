@@ -9,16 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/memory"
-	"github.com/optimiware/kodama/internal/shell/store/units/work"
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/memory"
+	"github.com/optimiware/kodema/internal/shell/store/units/work"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 var testNow = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)

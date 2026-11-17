@@ -8,13 +8,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/platform"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/platform"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 type platformSource struct {
@@ -51,7 +51,7 @@ func platformClient() identity.OAuthClientConfig {
 		ClientSecretRef: "secret/platform-client",
 		Audience:        "platform-api",
 		Scopes:          []string{"openid", "profile"},
-		RedirectURL:     "https://kodama.example/oauth/callback",
+		RedirectURL:     "https://kodema.example/oauth/callback",
 	}
 }
 

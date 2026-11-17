@@ -1,6 +1,6 @@
 # S05 — Identity, authority, and verification
 
-Source: [authorization](../../KODAMA.md#authorization-and-verification), [human identity](../../KODAMA.md#human-identity), [tokens](../../KODAMA.md#bearer-token-security-model). Owners: P01–P03, P17–P19, P22. AC: 5, 7, 19.
+Source: [authorization](../../KODEMA.md#authorization-and-verification), [human identity](../../KODEMA.md#human-identity), [tokens](../../KODEMA.md#bearer-token-security-model). Owners: P01–P03, P17–P19, P22. AC: 5, 7, 19.
 
 ## 1. Principals and grants
 
@@ -22,18 +22,18 @@ Execution authority excludes request resolution, assigned task replies, membersh
 
 ## 2. Human verification
 
-OIDC/OAuth access tokens must match configured issuer, signature algorithm/key, Kodama audience, and expiry. Resolve current memberships on every authorized call. Test stale/unknown keys, rotated keys, bad issuer/audience, malformed claims, expiry and current role removal. Identity-provider disablement is bounded by short access-token lifetime; do not claim instantaneous IdP revocation unless implemented by the provider.
+OIDC/OAuth access tokens must match configured issuer, signature algorithm/key, Kodema audience, and expiry. Resolve current memberships on every authorized call. Test stale/unknown keys, rotated keys, bad issuer/audience, malformed claims, expiry and current role removal. Identity-provider disablement is bounded by short access-token lifetime; do not claim instantaneous IdP revocation unless implemented by the provider.
 
-Hosted authority/entitlement checks use the configured Platform contract. Failure refuses hosted authorization; no fallback to standalone grants. Cached discovery/key material may improve availability within its declared bounds but cannot replace current Kodama membership/service/execution state.
+Hosted authority/entitlement checks use the configured Platform contract. Failure refuses hosted authorization; no fallback to standalone grants. Cached discovery/key material may improve availability within its declared bounds but cannot replace current Kodema membership/service/execution state.
 
 ## 3. Derived tokens
 
 ```text
 kodex.<execution-id>.<base64url-no-padding(HMAC-SHA256(tenant-key,
-  encode("kodama-execution-v1", tenant-id, execution-id, nonce, expiry)))>
+  encode("kodema-execution-v1", tenant-id, execution-id, nonce, expiry)))>
 
 kodsvc.<service-id>.<base64url-no-padding(HMAC-SHA256(tenant-key,
-  encode("kodama-service-v1", tenant-id, service-id, nonce, expiry)))>
+  encode("kodema-service-v1", tenant-id, service-id, nonce, expiry)))>
 ```
 
 C01 freezes an unambiguous canonical binary encoding and exact test vectors, including lengths/time representation. IDs are lookup hints until constant-time MAC verification. Wrong token kind/domain, missing nonce/expiry, malformed encoding, expired token, and inactive principal are refused.
@@ -74,7 +74,7 @@ The verification record captures service, actor, execution/action, resource, ope
 
 ## 5. Transport and trust boundaries
 
-Tokens use HTTPS Bearer. Git helper supplies a current token as password for username `kodama` only to registered trusted Git origins/paths. Reject origin/path confusion, insecure redirects, and unregistered targets. Tokens never enter URLs, repository configuration, logs, task metadata, or upstream providers. Read the mounted token file for each authentication so renewal takes effect.
+Tokens use HTTPS Bearer. Git helper supplies a current token as password for username `kodema` only to registered trusted Git origins/paths. Reject origin/path confusion, insecure redirects, and unregistered targets. Tokens never enter URLs, repository configuration, logs, task metadata, or upstream providers. Read the mounted token file for each authentication so renewal takes effect.
 
 ## 6. Unit test obligations
 

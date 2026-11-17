@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // recoveryEntry returns one accepted, reportable journal entry. The identity
@@ -207,7 +207,7 @@ func TestRecoverySweepLeavesInFlightIntendedUntouchedAndRecoversIdleIntended(t *
 	go func() {
 		request := httptest.NewRequest(http.MethodPost, "/repo/git-receive-pack", strings.NewReader("pack"))
 		request.Header.Set("Content-Type", "application/x-git-receive-pack-request")
-		request.SetBasicAuth("kodama", "credential-1")
+		request.SetBasicAuth("kodema", "credential-1")
 		recorder := httptest.NewRecorder()
 		server.Handler().ServeHTTP(recorder, request)
 		pushDone <- recorder.Code

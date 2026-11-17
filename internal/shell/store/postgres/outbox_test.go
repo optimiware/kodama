@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 func seedOutboxEvent(t *testing.T, db *emuDB, eventID string, sequence int64, state string) {
@@ -33,7 +33,7 @@ func seedOutboxEvent(t *testing.T, db *emuDB, eventID string, sequence int64, st
 }
 
 func TestOutboxPendingIncludesLateLowerSequenceRows(t *testing.T) {
-	db := newEmuDB("kodama_publisher", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	db := newEmuDB("kodema_publisher", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	seedOutboxEvent(t, db, "event-high", 5, "pending")
 	seedOutboxEvent(t, db, "event-late", 2, "pending")
 	seedOutboxEvent(t, db, "event-published", 1, "published")
@@ -58,7 +58,7 @@ func TestOutboxPendingIncludesLateLowerSequenceRows(t *testing.T) {
 }
 
 func TestOutboxPendingCursorIsBoundedAndRestartScansFromZero(t *testing.T) {
-	db := newEmuDB("kodama_publisher", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	db := newEmuDB("kodema_publisher", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	seedOutboxEvent(t, db, "event-1", 1, "pending")
 	seedOutboxEvent(t, db, "event-2", 2, "pending")
 	seedOutboxEvent(t, db, "event-3", 3, "pending")
@@ -81,7 +81,7 @@ func TestOutboxPendingCursorIsBoundedAndRestartScansFromZero(t *testing.T) {
 }
 
 func TestOutboxMarkPublishedAcknowledgesExactIdentity(t *testing.T) {
-	db := newEmuDB("kodama_publisher", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	db := newEmuDB("kodema_publisher", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	seedOutboxEvent(t, db, "event-1", 1, "pending")
 	seedOutboxEvent(t, db, "event-2", 2, "pending")
 	outbox := NewOutbox(db)
@@ -109,7 +109,7 @@ func TestOutboxMarkPublishedAcknowledgesExactIdentity(t *testing.T) {
 }
 
 func TestOutboxPendingRefusesNonPositiveLimit(t *testing.T) {
-	outbox := NewOutbox(newEmuDB("kodama_publisher", time.Now()))
+	outbox := NewOutbox(newEmuDB("kodema_publisher", time.Now()))
 	if _, err := outbox.Pending(context.Background(), 0, 0); err == nil {
 		t.Fatal("a zero limit was accepted")
 	} else if class, _ := fault.ClassOf(err); class != fault.InvalidInput {

@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 func writeCertBundlePEM(t *testing.T, servers ...*httptest.Server) string {
@@ -40,7 +40,7 @@ func writeCertBundlePEM(t *testing.T, servers ...*httptest.Server) string {
 
 // TestKodactlCAFileTrustsBothOIDCAndAPITransports drives the real OIDC login,
 // refresh, logout, REST call, and MCP stdio bridge over real TLS servers
-// WITHOUT injecting fake HTTP transports, proving --ca-file and KODAMA_CA_FILE
+// WITHOUT injecting fake HTTP transports, proving --ca-file and KODEMA_CA_FILE
 // wire RootCAs into both transports while keeping InsecureSkipVerify false.
 func TestKodactlCAFileTrustsBothOIDCAndAPITransports(t *testing.T) {
 	isolateUserConfig(t)
@@ -131,15 +131,15 @@ func TestKodactlCAFileTrustsBothOIDCAndAPITransports(t *testing.T) {
 		t.Fatalf("login stdout = %q", stdout)
 	}
 
-	// 3. With KODAMA_CA_FILE env var, REST call trusts TLS server.
-	t.Setenv("KODAMA_CA_FILE", caPath)
+	// 3. With KODEMA_CA_FILE env var, REST call trusts TLS server.
+	t.Setenv("KODEMA_CA_FILE", caPath)
 	code, _, stderr = runEntry(t, []string{
 		"--url", apiServer.URL,
 		"--session", sessionPath,
 		"call", "task.read", `--input={"task_id":"task-1"}`,
 	}, deps)
 	if code != cli.ExitSuccess {
-		t.Fatalf("REST call with KODAMA_CA_FILE exit = %d; stderr=%q", code, stderr)
+		t.Fatalf("REST call with KODEMA_CA_FILE exit = %d; stderr=%q", code, stderr)
 	}
 	if recorder.count() != 1 || recorder.authorization(0) != "Bearer "+loginAccess {
 		t.Fatalf("REST recorder = %d / %q", recorder.count(), recorder.authorization(0))
@@ -168,7 +168,7 @@ func TestKodactlCAFileTrustsBothOIDCAndAPITransports(t *testing.T) {
 		t.Fatalf("mcp Authorization = %q; want refreshed token", mcpAuth)
 	}
 
-	// 5. Logout over TLS with KODAMA_CA_FILE.
+	// 5. Logout over TLS with KODEMA_CA_FILE.
 	code, _, stderr = runEntry(t, []string{
 		"--url", apiServer.URL,
 		"--session", sessionPath,
@@ -180,7 +180,7 @@ func TestKodactlCAFileTrustsBothOIDCAndAPITransports(t *testing.T) {
 }
 
 // TestKodactlRefusesInvalidCAFileBeforeNetwork pins ExitUsage on missing,
-// directory, empty, or malformed --ca-file / KODAMA_CA_FILE.
+// directory, empty, or malformed --ca-file / KODEMA_CA_FILE.
 func TestKodactlRefusesInvalidCAFileBeforeNetwork(t *testing.T) {
 	isolateUserConfig(t)
 	dir := t.TempDir()
@@ -209,7 +209,7 @@ func TestKodactlRefusesInvalidCAFileBeforeNetwork(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			code := run(context.Background(), []string{
 				"--ca-file", tc.path,
-				"--server", "https://kodama.example.com",
+				"--server", "https://kodema.example.com",
 				"call", "task.read",
 			}, &stdout, &stderr, deps)
 			if code != cli.ExitUsage {

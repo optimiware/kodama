@@ -1,3 +1,3 @@
 package client
 
-import _ "kodama/internal/shell/identity"
+import _ "kodema/internal/shell/identity"

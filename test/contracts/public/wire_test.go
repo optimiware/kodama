@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/verify"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/verify"
 )
 
 // requirePublicError asserts that a refusal is an api.Error with the wanted

@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestHarnessAPIEnvelope proves the helper sends the frozen public envelope to
@@ -57,7 +57,7 @@ func TestHarnessAPIEnvelope(t *testing.T) {
 	client, err := NewAPI(Config{
 		APIURL:        server.URL,
 		CAPEM:         caPath,
-		TLSServerName: "kodama.test",
+		TLSServerName: "kodema.test",
 	})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
@@ -113,7 +113,7 @@ func TestHarnessAPIRejectsRedirects(t *testing.T) {
 	server.StartTLS()
 	defer server.Close()
 
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestHarnessAPIRejectsRedirects(t *testing.T) {
 // marks idempotent is refused before any request when no key is supplied.
 func TestHarnessAPIMutationRequiresKey(t *testing.T) {
 	caPath, _ := testPKI(t)
-	client, err := NewAPI(Config{APIURL: "https://127.0.0.1:1", CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: "https://127.0.0.1:1", CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestHarnessAPIRejectsUntrustedCA(t *testing.T) {
 	server.StartTLS()
 	defer server.Close()
 
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: otherCA, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: otherCA, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestHarnessAPIEnvelopePrecedesAuthentication(t *testing.T) {
 	server.StartTLS()
 	defer server.Close()
 
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestHarnessAPIRefusalIsPublic(t *testing.T) {
 	server.StartTLS()
 	defer server.Close()
 
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}

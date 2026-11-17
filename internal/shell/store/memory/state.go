@@ -5,9 +5,9 @@ import (
 	"maps"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // state is the one committed state a Store owns. Business rows, durable

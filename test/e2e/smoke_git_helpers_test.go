@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
-	"github.com/optimiware/kodama/test/e2e/internal/smoke"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/smoke"
 )
 
 // This file holds the host-side Git and accepted-report plumbing shared by S2
@@ -40,7 +40,7 @@ type hostGit struct {
 // hostGitAskpass answers only a credential prompt for the configured served
 // origin (scheme, host and port). Git asks the username as
 // "Username for 'https://host:port'" and the password as
-// "Password for 'https://kodama@host:port'"; the second form is scoped by the
+// "Password for 'https://kodema@host:port'"; the second form is scoped by the
 // same host:port with a closing quote. Any other prompt gets an empty answer,
 // so the persona token never reaches another origin.
 const hostGitAskpass = `#!/bin/sh
@@ -48,7 +48,7 @@ W49_GIT_AUTHORITY=${W49_GIT_ORIGIN#*://}
 case "$1" in
 *"${W49_GIT_ORIGIN:?}'"*|*"@${W49_GIT_AUTHORITY:?}'"*)
 	case "$1" in
-	*[Uu]sername*) printf 'kodama\n' ;;
+	*[Uu]sername*) printf 'kodema\n' ;;
 	*) cat -- "${W49_GIT_TOKEN_FILE:?}" ;;
 	esac
 	;;
@@ -189,7 +189,7 @@ func (git *hostGit) commit(ctx context.Context, t *testing.T, directory, name, c
 	}
 	git.mustRun(ctx, t, directory, "add", "--", name)
 	git.mustRun(ctx, t, directory,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "--quiet", "-m", message)
 	return git.revParse(ctx, t, directory, "HEAD")
 }
@@ -395,7 +395,7 @@ func smokeOutputSubmissionCommands(t *testing.T, outputs map[string]string, caFi
 		t.Fatalf("build the output submission helper: %v", err)
 	}
 	const (
-		submitPath = `"${TMPDIR:-/tmp}/kodama-e2e-submit.$$.py"`
+		submitPath = `"${TMPDIR:-/tmp}/kodema-e2e-submit.$$.py"`
 		run        = "\npython3 " + submitPath
 	)
 	index := strings.LastIndex(script, run)

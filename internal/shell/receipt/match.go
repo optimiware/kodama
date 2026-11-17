@@ -3,7 +3,7 @@ package receipt
 import (
 	"fmt"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // Outcome is the closed receipt-matching decision for one retry.

@@ -37,10 +37,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/test/support/factory"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/test/support/factory"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 const (
@@ -61,7 +61,7 @@ func TestDeliveryProtectedDeployPromotion(t *testing.T) {
 	harness, gitFixture := deliveryStartDeployHarness(t)
 	image := gitFixture.EnsureWorkloadImage(t)
 	registry := support.StartRegistry(t, false)
-	published := deliveryPublishImage(t, registry, harness.Image, "kodama/delivery-deploy", "build-1")
+	published := deliveryPublishImage(t, registry, harness.Image, "kodema/delivery-deploy", "build-1")
 	base := deliveryDeployBase(t, gitFixture)
 
 	// Run the exact published bytes first. This execution proves the digest is
@@ -74,7 +74,7 @@ func TestDeliveryProtectedDeployPromotion(t *testing.T) {
 			Timeout: deliveryActionTimeout,
 			Commands: []string{
 				`test -f /etc/alpine-release`,
-				`test "$(cat /kodama-delivery-marker)" = '` + published.Marker + `'`,
+				`test "$(cat /kodema-delivery-marker)" = '` + published.Marker + `'`,
 			},
 		}},
 	})
@@ -255,7 +255,7 @@ func TestDeliveryDeployLostResponseConverges(t *testing.T) {
 	harness, gitFixture := deliveryStartDeployHarness(t)
 	image := gitFixture.EnsureWorkloadImage(t)
 	registry := support.StartRegistry(t, false)
-	published := deliveryPublishManifest(t, registry, "kodama/delivery-deploy-lost", "deploy-1")
+	published := deliveryPublishManifest(t, registry, "kodema/delivery-deploy-lost", "deploy-1")
 	base := deliveryDeployBase(t, gitFixture)
 
 	lostBase, receivePacks := deliveryLostDeployRelay(t, harness.TLS, gitFixture.HostURL)

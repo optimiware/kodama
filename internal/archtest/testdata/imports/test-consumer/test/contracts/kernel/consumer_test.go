@@ -6,7 +6,7 @@ import (
 
 	_ "example.com/testify/require"
 
-	_ "kodama/internal/id"
-	_ "kodama/internal/kernel"
-	_ "kodama/internal/shell/store/postgres"
+	_ "kodema/internal/id"
+	_ "kodema/internal/kernel"
+	_ "kodema/internal/shell/store/postgres"
 )

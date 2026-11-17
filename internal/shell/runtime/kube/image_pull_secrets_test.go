@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // TestImagePullSecretsAppearOnlyWhenConfigured pins the optional private
@@ -30,7 +30,7 @@ func TestImagePullSecretsAppearOnlyWhenConfigured(t *testing.T) {
 		addTestClaim(t, fake, testWorkspaceID())
 		clock := newFakeClock()
 		config := testConfig(fake, clock)
-		config.ImagePullSecrets = []string{"kodama-registry", "backup-registry"}
+		config.ImagePullSecrets = []string{"kodema-registry", "backup-registry"}
 		adapter, err := New(config)
 		if err != nil {
 			t.Fatalf("New with image pull secrets returned error: %v", err)
@@ -40,7 +40,7 @@ func TestImagePullSecretsAppearOnlyWhenConfigured(t *testing.T) {
 		startTestWorkload(t, adapter, request.Identity, request.WorkspaceID)
 
 		job := fake.jobsSnapshot()[0]
-		want := []string{"kodama-registry", "backup-registry"}
+		want := []string{"kodema-registry", "backup-registry"}
 		if len(job.Spec.ImagePullSecrets) != len(want) {
 			t.Fatalf("Job imagePullSecrets = %v, want %v", job.Spec.ImagePullSecrets, want)
 		}
@@ -61,8 +61,8 @@ func TestImagePullSecretsRefuseInvalidConfiguration(t *testing.T) {
 		name    string
 		secrets []string
 	}{
-		{"uppercase", []string{"Kodama-Registry"}},
-		{"underscore", []string{"kodama_registry"}},
+		{"uppercase", []string{"Kodema-Registry"}},
+		{"underscore", []string{"kodema_registry"}},
 		{"empty name", []string{""}},
 		{"leading hyphen", []string{"-registry"}},
 		{"duplicate", []string{"registry", "registry"}},
@@ -85,7 +85,7 @@ func TestImagePullSecretsRefuseInvalidConfiguration(t *testing.T) {
 	// dots) remains usable.
 	fake := newFakeCluster()
 	config := testConfig(fake, newFakeClock())
-	config.ImagePullSecrets = []string{"kodama.registry"}
+	config.ImagePullSecrets = []string{"kodema.registry"}
 	if _, err := New(config); err != nil {
 		t.Fatalf("New refused a valid DNS-1123 secret name: %v", err)
 	}

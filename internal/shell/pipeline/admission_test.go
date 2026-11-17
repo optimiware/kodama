@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func TestAdmissionBuildsImmutableSnapshotAndActions(t *testing.T) {
@@ -761,7 +761,7 @@ func TestAdmissionCollectsSecretNamesOnly(t *testing.T) {
 	reserved := []byte(`actions:
   - name: first
     image: registry.example.com/first:latest
-    secrets: [KODAMA_TOKEN]
+    secrets: [KODEMA_TOKEN]
 `)
 	_, err = admission.Admit(t.Context(), pipeline.AdmitRequest{
 		Scope:          projectScope("tenant-a", "project-a"),
@@ -862,7 +862,7 @@ actions:
 // TestAdmissionSnapshotCarriesDefinitionEnvironmentDefaults pins the admitted
 // environment defaults: only the pipeline-level literal `env` mapping reaches
 // the snapshot, in declaration order, while action environment stays in the
-// action declaration for the activation-time merge. Reserved KODAMA_* context
+// action declaration for the activation-time merge. Reserved KODEMA_* context
 // is supplied at runtime and can never be admitted as a default.
 func TestAdmissionSnapshotCarriesDefinitionEnvironmentDefaults(t *testing.T) {
 	scope := projectScope("tenant-a", "project-a")
@@ -926,7 +926,7 @@ actions:
 
 	// Reserved context cannot be shadowed through the definition.
 	reserved := []byte(`env:
-  KODAMA_URL: https://attacker.invalid
+  KODEMA_URL: https://attacker.invalid
 actions:
   - name: build
     image: registry.example.com/build:latest

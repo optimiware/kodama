@@ -25,10 +25,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
 )
 
 // logReleaseWorkspace records the workspace release that must follow the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-installation.sh: run the e2e suite against any documented Kodama
+# run-installation.sh: run the e2e suite against any documented Kodema
 # installation.
 #
 #   scripts/infra-slot.sh stack -- \

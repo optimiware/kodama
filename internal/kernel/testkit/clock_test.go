@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 var _ engine.Clock = (*Clock)(nil)

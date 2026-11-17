@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/services"
+	"github.com/optimiware/kodema/internal/userland/services"
 )
 
 // DefaultGitOutputBytes bounds one native Git stream when the configuration
@@ -133,10 +133,10 @@ func gitBaseEnvironment() []string {
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_GLOBAL=" + os.DevNull,
-		"GIT_AUTHOR_NAME=Kodama Merge Coordinator",
-		"GIT_AUTHOR_EMAIL=merge-coordinator@kodama.invalid",
-		"GIT_COMMITTER_NAME=Kodama Merge Coordinator",
-		"GIT_COMMITTER_EMAIL=merge-coordinator@kodama.invalid",
+		"GIT_AUTHOR_NAME=Kodema Merge Coordinator",
+		"GIT_AUTHOR_EMAIL=merge-coordinator@kodema.invalid",
+		"GIT_COMMITTER_NAME=Kodema Merge Coordinator",
+		"GIT_COMMITTER_EMAIL=merge-coordinator@kodema.invalid",
 	}
 	if path, ok := os.LookupEnv("PATH"); ok && path != "" {
 		environment = append(environment, "PATH="+path)

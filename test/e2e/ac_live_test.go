@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
 )
 
 // TestE2E_AC01InstalledPipeline proves a pipeline executes on an installed
-// Kodama through the public API with an ordinary shell command: an inline
+// Kodema through the public API with an ordinary shell command: an inline
 // task-free start reaches succeeded with cleanup=complete, and its retained
 // logs are still readable through execution.logs.read after cleanup.
 func TestE2E_AC01InstalledPipeline(t *testing.T) {
@@ -300,8 +300,8 @@ func TestE2E_AC11Materialization(t *testing.T) {
 					`test -w /workspace`,
 					`echo "ac11-env=$AC11_ENV"`,
 					`echo "ac11-pwd=$(pwd)"`,
-					`echo "ac11-execution=$KODAMA_EXECUTION"`,
-					`echo "ac11-action=$KODAMA_ACTION"`,
+					`echo "ac11-execution=$KODEMA_EXECUTION"`,
+					`echo "ac11-action=$KODEMA_ACTION"`,
 					`echo "ac11-materialized" > /workspace/ac11.txt`,
 				},
 			},

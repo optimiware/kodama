@@ -25,12 +25,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // newFixtureAdapter reconstructs the production adapter over the same cluster,
@@ -49,7 +49,7 @@ func newFixtureAdapterWithTTL(t *testing.T, fx *fixture, ttlSeconds int) *runtim
 		Cluster:   fx.Client,
 		Namespace: testNamespace,
 		TenantID:  testTenant(),
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Policy: runtimekube.Policy{
 			CPURequest:    "50m",
 			CPULimit:      "200m",

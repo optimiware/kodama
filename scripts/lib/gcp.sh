@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Google Cloud Platform (gcp) backend, kubeconfig, and KMS helpers for Kodama deployments.
+# Google Cloud Platform (gcp) backend, kubeconfig, and KMS helpers for Kodema deployments.
 
 set -euo pipefail
 
 gcp_resolve_project_id() {
-  local project_id="${KODAMA_GCP_PROJECT_ID:-${GOOGLE_PROJECT:-${CLOUDSDK_CORE_PROJECT:-${TF_VAR_project_id:-}}}}"
-  [[ -n "$project_id" ]] || die "GCP project ID is required (set GOOGLE_PROJECT, KODAMA_GCP_PROJECT_ID, or --project)"
+  local project_id="${KODEMA_GCP_PROJECT_ID:-${GOOGLE_PROJECT:-${CLOUDSDK_CORE_PROJECT:-${TF_VAR_project_id:-}}}}"
+  [[ -n "$project_id" ]] || die "GCP project ID is required (set GOOGLE_PROJECT, KODEMA_GCP_PROJECT_ID, or --project)"
   printf '%s\n' "$project_id"
 }
 
@@ -13,7 +13,7 @@ gcp_state_prefix_for_cluster() {
   local project_id="$1"
   local region="$2"
   local cluster="$3"
-  printf 'kodama/gcp/%s/%s/%s\n' "$project_id" "$region" "$cluster"
+  printf 'kodema/gcp/%s/%s/%s\n' "$project_id" "$region" "$cluster"
 }
 
 gcp_write_backend_config() {

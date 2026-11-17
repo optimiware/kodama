@@ -5,17 +5,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/memory"
-	identitystore "github.com/optimiware/kodama/internal/shell/store/units/identity"
-	"github.com/optimiware/kodama/internal/shell/store/units/readers"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/memory"
+	identitystore "github.com/optimiware/kodema/internal/shell/store/units/identity"
+	"github.com/optimiware/kodema/internal/shell/store/units/readers"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // commitEvent writes one valid committed event in scope through the neutral

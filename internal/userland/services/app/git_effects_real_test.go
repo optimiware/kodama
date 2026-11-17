@@ -3,7 +3,7 @@ package app_test
 // The concrete Git effects against the real native Git binary and a
 // scratch repository. This is the fast unit-level proof that the command
 // sequence is valid; the build-tagged services test proves the same effects
-// through the real `kodama services` entry and the public assignment edge.
+// through the real `kodema services` entry and the public assignment edge.
 //
 // It lives beside the userland app that owns the OS Git executor: only an app
 // package may compose the concrete executor with the userland effects, so the
@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/services"
-	servicesapp "github.com/optimiware/kodama/internal/userland/services/app"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/services"
+	servicesapp "github.com/optimiware/kodema/internal/userland/services/app"
 )
 
 // runScratchGit runs one native Git command in one scratch directory.

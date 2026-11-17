@@ -21,8 +21,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // ErrSocketPathTooLong reports a Podman API socket path beyond the product's
@@ -82,7 +82,7 @@ func (b *outputBuffer) String() string {
 // Podman is unavailable.
 func StartService(t testing.TB) *Service {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "kodama-podman-")
+	dir, err := os.MkdirTemp("", "kodema-podman-")
 	if err != nil {
 		t.Fatalf("create the podman service directory: %v", err)
 	}
@@ -94,7 +94,7 @@ func StartService(t testing.TB) *Service {
 	service := newService(socket)
 	service.podman = harness.NewPodman(
 		harness.WithLogger(t.Logf),
-		harness.WithEvidenceDir(os.Getenv("KODAMA_EVIDENCE_DIR")),
+		harness.WithEvidenceDir(os.Getenv("KODEMA_EVIDENCE_DIR")),
 	)
 	if err := service.cmd.Start(); err != nil {
 		harness.SkipOrFail(t, requireInfra(), fmt.Errorf("start podman system service: %w", err))
@@ -269,4 +269,4 @@ func waitForAPI(service *Service, name string) error {
 
 // requireInfra reports whether missing infrastructure must fail rather than
 // skip.
-func requireInfra() bool { return os.Getenv("KODAMA_REQUIRE_INFRA") == "1" }
+func requireInfra() bool { return os.Getenv("KODEMA_REQUIRE_INFRA") == "1" }

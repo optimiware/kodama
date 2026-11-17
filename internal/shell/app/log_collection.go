@@ -69,14 +69,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // logCollectionUnavailableMarker is the fixed, secret-free stdout chunk stored

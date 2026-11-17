@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
 )
 
 // ErrAppliedMigrationRewritten reports a ledger entry whose recorded checksum no
@@ -23,10 +23,10 @@ var MigrationNamePattern = regexp.MustCompile(`^\d{4}_[a-z0-9_]+\.sql$`)
 
 // ledgerSQL creates the migration ledger. It is the test-side runner's durable
 // record that an applied migration is never applied twice.
-const ledgerSchema = "kodama_test_meta"
+const ledgerSchema = "kodema_test_meta"
 
 const ledgerSQL = `CREATE SCHEMA IF NOT EXISTS ` + ledgerSchema + `;
-CREATE TABLE IF NOT EXISTS ` + ledgerSchema + `.kodama_schema_migrations (
+CREATE TABLE IF NOT EXISTS ` + ledgerSchema + `.kodema_schema_migrations (
 	name text PRIMARY KEY,
 	checksum text NOT NULL,
 	applied_at timestamptz NOT NULL DEFAULT now()
@@ -95,7 +95,7 @@ func (runner *MigrationRunner) Apply(ctx context.Context, through int) ([]Applie
 
 func (runner *MigrationRunner) lookup(ctx context.Context, name string) (string, bool, error) {
 	rows, err := QueryStringsN(ctx, runner.shard.Admin(), 1,
-		`SELECT checksum FROM `+ledgerSchema+`.kodama_schema_migrations WHERE name = $1`, name)
+		`SELECT checksum FROM `+ledgerSchema+`.kodema_schema_migrations WHERE name = $1`, name)
 	if err != nil {
 		return "", false, err
 	}
@@ -148,7 +148,7 @@ func (runner *MigrationRunner) applyOne(ctx context.Context, migration storepg.M
 		return err
 	}
 	if _, err := conn.Exec(ctx,
-		`INSERT INTO `+ledgerSchema+`.kodama_schema_migrations (name, checksum) VALUES ($1, $2)`,
+		`INSERT INTO `+ledgerSchema+`.kodema_schema_migrations (name, checksum) VALUES ($1, $2)`,
 		migration.Name, checksum); err != nil {
 		return err
 	}
@@ -191,7 +191,7 @@ func migrationChecksum(sql string) string {
 // Applied lists the ledger in application order.
 func (runner *MigrationRunner) Applied(ctx context.Context) ([]AppliedMigration, error) {
 	rows, err := QueryStringsN(ctx, runner.shard.Admin(), 2,
-		`SELECT name, checksum FROM `+ledgerSchema+`.kodama_schema_migrations ORDER BY name`)
+		`SELECT name, checksum FROM `+ledgerSchema+`.kodema_schema_migrations ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}

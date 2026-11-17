@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 func newTestFiles(t *testing.T) *Files {
@@ -25,7 +25,7 @@ func newTestFiles(t *testing.T) *Files {
 func TestFilesWriteIsAtomicAndPreservesMode(t *testing.T) {
 	files := newTestFiles(t)
 	ctx := context.Background()
-	path := filepath.Join(files.Root(), "workload", "kodama", "inputs", "key")
+	path := filepath.Join(files.Root(), "workload", "kodema", "inputs", "key")
 	if err := files.MkdirAll(ctx, filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}

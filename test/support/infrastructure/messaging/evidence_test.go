@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 	}
 	scratch := ""
 	if os.Getenv(EvidenceDirEnv) == "" {
-		parent, err := os.MkdirTemp("", "kodama-i02c-evidence-")
+		parent, err := os.MkdirTemp("", "kodema-i02c-evidence-")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "messaging evidence: create unit evidence parent: %v\n", err)
 			os.Exit(1)
@@ -83,7 +83,7 @@ func runAndCleanup(m *testing.M, scratch string) (code int) {
 }
 
 // TestMessagingEvidenceRootsAreRunUnique proves that each process creates its
-// own run directory under the supplied parent (KODAMA_EVIDENCE_DIR) and keeps a
+// own run directory under the supplied parent (KODEMA_EVIDENCE_DIR) and keeps a
 // complete summary. Two concurrent child processes share one parent.
 func TestMessagingEvidenceRootsAreRunUnique(t *testing.T) {
 	if os.Getenv(runHelperEnv) == "1" {

@@ -10,15 +10,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 // requiredDatabaseRoles are the cluster-level roles the reviewed migrations
 // create and a database dump references in object ownership and grants. They
 // are cluster objects, not database objects: pg_dump records owners and ACLs
-// but never creates roles, so a target must already carry them. `kodama
+// but never creates roles, so a target must already carry them. `kodema
 // migrate` is that bootstrap step (migration 0001). Restore refuses
 // before pg_restore rather than restoring a database the runtime roles cannot
 // use.

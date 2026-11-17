@@ -10,13 +10,13 @@ import (
 
 	natsgo "github.com/nats-io/nats.go"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	broker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	broker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 func liveScope(project string) tenancy.Scope {
@@ -307,7 +307,7 @@ func TestLiveLogSubscriptionScopeAndInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("log subject: %v", err)
 	}
-	if want := "kodama.v1.tenant-a.logs.logs.exec-1"; string(logSubject) != want {
+	if want := "kodema.v1.tenant-a.logs.logs.exec-1"; string(logSubject) != want {
 		t.Fatalf("log subject = %q; want %q", logSubject, want)
 	}
 	raw := instance.Raw(t)

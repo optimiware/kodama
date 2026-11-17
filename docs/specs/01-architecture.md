@@ -1,6 +1,6 @@
 # S01 — Architecture and contracts
 
-Source: [architecture](../../KODAMA.md#1-product-and-architecture), [implementation discipline](../../KODAMA.md#implementation-discipline).
+Source: [architecture](../../KODEMA.md#1-product-and-architecture), [implementation discipline](../../KODEMA.md#implementation-discipline).
 
 ## 1. Ownership
 
@@ -54,7 +54,7 @@ Paths below are exact ownership targets. A listed directory may contain a few co
 | P32 | `internal/shell/store/units/platform` | Event outbox/ingress/read, verification, secret-lookup, gateway, and MCP store adapters |
 | P33 | `internal/shell/store/units/readers` | Store-backed readers for task execution views, log ownership, event cursors/validity, token receipts, and verification |
 
-`api` contains public DTOs/schemas only and is frozen by C03. `internal/installation` is configuration/tooling, not a fourth product layer or alternate composition root. `internal/shell/app`, Userland app wiring, `cmd/kodama`, `cmd/kodactl`, and `test/{component,integration,e2e,qualification}` are reserved for integration tasks after G2.
+`api` contains public DTOs/schemas only and is frozen by C03. `internal/installation` is configuration/tooling, not a fourth product layer or alternate composition root. `internal/shell/app`, Userland app wiring, `cmd/kodema`, `cmd/kodactl`, and `test/{component,integration,e2e,qualification}` are reserved for integration tasks after G2.
 
 ## 3. Import rules
 

@@ -56,7 +56,7 @@ func TestHarnessNATSURLIsOptionalAndValidated(t *testing.T) {
 		t.Fatalf("unconfigured NATS URL = %q; want empty", config.NATSURL)
 	}
 
-	for _, valid := range []string{"nats://127.0.0.1:20222", "tls://nats.kodama-system.svc:4222"} {
+	for _, valid := range []string{"nats://127.0.0.1:20222", "tls://nats.kodema-system.svc:4222"} {
 		env := validConfigEnv(t)
 		env[string(InputNATSURL)] = valid
 		loaded, err := LoadConfig(envGetter(env))
@@ -125,11 +125,11 @@ func TestHarnessImageDefaults(t *testing.T) {
 		t.Fatal("the default image is not digest-pinned")
 	}
 	digest := "sha256:" + repeat("a", 64)
-	config.Image = "rg.example.test/kodama@" + digest
+	config.Image = "rg.example.test/kodema@" + digest
 	if config.ImageDigest() != digest {
 		t.Fatalf("pinned image digest = %q; want %q", config.ImageDigest(), digest)
 	}
-	config.Image = "rg.example.test/kodama:latest"
+	config.Image = "rg.example.test/kodema:latest"
 	if config.ImageDigest() != "" {
 		t.Fatalf("tag-referenced image reported digest %q", config.ImageDigest())
 	}
@@ -168,7 +168,7 @@ func TestHarnessMalformedConfigFails(t *testing.T) {
 			name:  "tls server name must be a dns name",
 			input: InputTLSServerName,
 			mutate: func(env map[string]string) {
-				env[string(InputTLSServerName)] = "kodama.test:8443"
+				env[string(InputTLSServerName)] = "kodema.test:8443"
 			},
 		},
 		{

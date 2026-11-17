@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // unauthorizedResponse answers a manifest request with the given
@@ -229,7 +229,7 @@ func TestResolveBearerRealmRefused(t *testing.T) {
 		"missing host":    {realm: "https:///token", wantClass: fault.InvalidInput},
 		"unsupported":     {realm: "ftp://auth.example.com/token", wantClass: fault.InvalidInput},
 		"scheme relative": {realm: "//auth.example.com/token", wantClass: fault.Unauthenticated},
-		"relative name":   {realm: "kodama-test", wantClass: fault.Unauthenticated},
+		"relative name":   {realm: "kodema-test", wantClass: fault.Unauthenticated},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -691,7 +691,7 @@ func TestResolveBearerChallengeParsing(t *testing.T) {
 func TestResolveBearerScopeEncoding(t *testing.T) {
 	var tokenQuery url.Values
 	var tokenRawQuery string
-	challenge := `Bearer realm="https://auth.example.com/token?client_id=kodama&service=evil",service="registry.example.com&debug=1",scope="repository:team/image:pull&admin=1 repository:other:pull",scope="repository:third:pull"`
+	challenge := `Bearer realm="https://auth.example.com/token?client_id=kodema&service=evil",service="registry.example.com&debug=1",scope="repository:team/image:pull&admin=1 repository:other:pull",scope="repository:third:pull"`
 	transport := &fakeTransport{handle: func(_ int, request *http.Request) (*http.Response, error) {
 		if request.URL.Host == "auth.example.com" {
 			tokenQuery = request.URL.Query()
@@ -708,7 +708,7 @@ func TestResolveBearerScopeEncoding(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 
-	if got := tokenQuery.Get("client_id"); got != "kodama" {
+	if got := tokenQuery.Get("client_id"); got != "kodema" {
 		t.Fatalf("client_id = %q; the realm's own query was not preserved", got)
 	}
 	if got := tokenQuery["service"]; len(got) != 1 || got[0] != "registry.example.com&debug=1" {

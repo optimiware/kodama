@@ -6,12 +6,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func createCommand(actor authorize.Principal, title string) task.CreateCommand {
@@ -34,7 +34,7 @@ func TestCreateBuildsOpenTaskWithoutStarting(t *testing.T) {
 	command := createCommand(actor, "Investigate failure")
 	// Metadata is opaque userland state. These keys would look like a lifecycle
 	// instruction to an implementation that interpreted them.
-	command.Metadata = []byte(`{"stage":"done","kodama.state":"cancelled","priority":"high"}`)
+	command.Metadata = []byte(`{"stage":"done","kodema.state":"cancelled","priority":"high"}`)
 
 	result, err := env.service.Create(t.Context(), command)
 	requireNoError(t, err, "Create")
@@ -82,7 +82,7 @@ func TestCreateBuildsOpenTaskWithoutStarting(t *testing.T) {
 	}
 	// Metadata is stored verbatim and never interpreted: the "done"/"cancelled"
 	// values did not start or settle anything.
-	if unit.Metadata["stage"] != "done" || unit.Metadata["kodama.state"] != "cancelled" || unit.Metadata["priority"] != "high" {
+	if unit.Metadata["stage"] != "done" || unit.Metadata["kodema.state"] != "cancelled" || unit.Metadata["priority"] != "high" {
 		t.Fatalf("unit metadata = %+v; want the caller's exact object", unit.Metadata)
 	}
 	if len(unit.Metadata) != 3 {

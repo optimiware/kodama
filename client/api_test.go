@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // fixedNow is the authoritative test clock.
@@ -136,7 +136,7 @@ func TestFileCredentialSourceReadsFreshEachCall(t *testing.T) {
 	var paths []string
 	calls := 0
 	source := client.FileCredentialSource{
-		Path: "/run/kodama/token",
+		Path: "/run/kodema/token",
 		ReadFile: func(path string) ([]byte, error) {
 			paths = append(paths, path)
 			content := contents[calls]
@@ -165,7 +165,7 @@ func TestFileCredentialSourceReadsFreshEachCall(t *testing.T) {
 	if !first.Usable(fixedNow()) {
 		t.Fatal("mounted execution credential is not usable")
 	}
-	if len(paths) != 2 || paths[0] != "/run/kodama/token" || paths[1] != "/run/kodama/token" {
+	if len(paths) != 2 || paths[0] != "/run/kodema/token" || paths[1] != "/run/kodema/token" {
 		t.Fatalf("read paths = %v", paths)
 	}
 }
@@ -179,10 +179,10 @@ func TestFileCredentialSourceRefusals(t *testing.T) {
 		content string
 		readErr error
 	}{
-		{name: "read error", path: "/run/kodama/token", readErr: fault.New(fault.DependencyUnavailable, "read failed")},
-		{name: "empty", path: "/run/kodama/token", content: ""},
-		{name: "whitespace", path: "/run/kodama/token", content: " \r\n\t"},
-		{name: "oversized", path: "/run/kodama/token", content: strings.Repeat("x", api.MaxCredentialBytes+1)},
+		{name: "read error", path: "/run/kodema/token", readErr: fault.New(fault.DependencyUnavailable, "read failed")},
+		{name: "empty", path: "/run/kodema/token", content: ""},
+		{name: "whitespace", path: "/run/kodema/token", content: " \r\n\t"},
+		{name: "oversized", path: "/run/kodema/token", content: strings.Repeat("x", api.MaxCredentialBytes+1)},
 		{name: "empty path", path: "", content: "token"},
 	}
 	for _, testCase := range cases {
@@ -208,7 +208,7 @@ func TestFileCredentialSourceRefusals(t *testing.T) {
 		}
 	}
 
-	source := client.FileCredentialSource{Path: "/run/kodama/token", ReadFile: func(string) ([]byte, error) {
+	source := client.FileCredentialSource{Path: "/run/kodema/token", ReadFile: func(string) ([]byte, error) {
 		return []byte("token"), nil
 	}}
 	ctx, cancel := context.WithCancel(context.Background())

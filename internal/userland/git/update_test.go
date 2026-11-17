@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	git "github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/api"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 func updateRequestFor(repository, ref, expected, candidate, sourceEventID string) git.UpdateRequest {

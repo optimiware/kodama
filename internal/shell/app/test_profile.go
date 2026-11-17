@@ -7,18 +7,18 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
 )
 
-// TestConfig is the durable form of ProfileTest: KODAMA.md's single-host test
+// TestConfig is the durable form of ProfileTest: KODEMA.md's single-host test
 // environment with PostgreSQL, NATS, the Podman runtime and a local keyfile.
 // It shares the durable builder with production (role pools, broker, token and
 // OIDC resolver, registry, file log sink, stream provisioning) and differs only

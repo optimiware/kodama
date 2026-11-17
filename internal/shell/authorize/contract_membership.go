@@ -1,6 +1,6 @@
 package authorize
 
-import "github.com/optimiware/kodama/internal/shell/tenancy"
+import "github.com/optimiware/kodema/internal/shell/tenancy"
 
 // Membership authority targets.
 //

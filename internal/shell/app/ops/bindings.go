@@ -3,9 +3,9 @@ package opsapp
 import (
 	"fmt"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/transport/ops"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
 // Bindings returns the complete immutable binding table: exactly one binding

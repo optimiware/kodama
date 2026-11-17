@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func newControllerRegressionHarness(t *testing.T, rows []seamSeedRow) *Controller {
 	t.Helper()
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	db := newEmuDB("kodama_controller", now)
+	db := newEmuDB("kodema_controller", now)
 	seedEmulator(t, db, seamSeed{Rows: rows}, now)
 	return NewController(db)
 }
@@ -123,7 +123,7 @@ func TestControllerOtherScopeRowIsForbidden(t *testing.T) {
 // derived scope matches a tenant-wide row, while a project scope does not.
 func TestControllerReclassifyTenantWideProject(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	db := newEmuDB("kodama_controller", now)
+	db := newEmuDB("kodema_controller", now)
 	seedEmulator(t, db, seamSeed{Rows: []seamSeedRow{{
 		Table: "events", TenantID: "tenant-1", ProjectID: "", ID: "event-1", Version: 1,
 		Values: map[string]any{"type": "project.created", "publish_sequence": 1},

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/client"
+	"github.com/optimiware/kodema/client"
 )
 
 // TestClientCredentialExpiryUsesTheClientWallClock pins the clock boundary this

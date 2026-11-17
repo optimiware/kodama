@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 func migratedShard(t *testing.T) *pgtest.Shard {
@@ -43,7 +43,7 @@ func TestNonOwnerForcedRLS(t *testing.T) {
 	defer runtime.Close()
 	// A superuser or a BYPASSRLS role would make every refusal below pass for
 	// the wrong reason, so prove the session identity first.
-	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodama_runtime")
+	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodema_runtime")
 
 	// Scope is established by the product adapter, not by a test helper, so a
 	// broken establishScopeSQL is observable here.
@@ -74,9 +74,9 @@ func TestNonOwnerForcedRLS(t *testing.T) {
 	}
 
 	// The app role cannot become the owner or otherwise bypass RLS.
-	_, err = pgtest.ExecSQL(ctx, runtime, `SET ROLE kodama_owner`)
-	pgtest.RequirePermissionDenied(t, err, "runtime SET ROLE kodama_owner")
-	attrs := roleAttributesValue(ctx, t, shard, "kodama_runtime")
+	_, err = pgtest.ExecSQL(ctx, runtime, `SET ROLE kodema_owner`)
+	pgtest.RequirePermissionDenied(t, err, "runtime SET ROLE kodema_owner")
+	attrs := roleAttributesValue(ctx, t, shard, "kodema_runtime")
 	if attrs.Super || attrs.BypassRLS {
 		t.Fatalf("runtime role attributes = %+v; want non-super, NOBYPASSRLS", attrs)
 	}
@@ -129,7 +129,7 @@ func TestCompositeOwnershipConstraints(t *testing.T) {
 
 	runtime := shard.Runtime(1)
 	defer runtime.Close()
-	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodama_runtime")
+	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodema_runtime")
 
 	// A task selecting a pipeline that exists under the same tenant but in
 	// another project. tasks.pipeline_id is an evidence identity and no
@@ -295,7 +295,7 @@ func TestSystemRoleGrantsAreLeastPrivilege(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auth begin: %v", err)
 	}
-	if _, err := conn.Exec(ctx, `SELECT set_config('kodama.credential_id', $1, true)`, "execution-1"); err != nil {
+	if _, err := conn.Exec(ctx, `SELECT set_config('kodema.credential_id', $1, true)`, "execution-1"); err != nil {
 		t.Fatalf("set credential: %v", err)
 	}
 	rows, err = pgtest.QueryRows(ctx, conn, 2, `SELECT id, principal_id FROM executions`)
@@ -327,7 +327,7 @@ func TestPooledConnectionScopeReset(t *testing.T) {
 
 	runtime := shard.Runtime(1)
 	defer runtime.Close()
-	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodama_runtime")
+	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodema_runtime")
 	scoped := storepg.New(runtime)
 
 	for iteration := range 3 {
@@ -406,8 +406,8 @@ func requirePooledScopeReset(ctx context.Context, t *testing.T, runtime *pgdrive
 	}
 	defer func() { _ = conn.Rollback(context.WithoutCancel(ctx)) }()
 	rows, err := pgtest.QueryRows(ctx, conn, 3,
-		`SELECT COALESCE(current_setting('kodama.tenant_id', true), ''),
-		        COALESCE(current_setting('kodama.project_id', true), ''),
+		`SELECT COALESCE(current_setting('kodema.tenant_id', true), ''),
+		        COALESCE(current_setting('kodema.project_id', true), ''),
 		        count(*)::text
 		 FROM tasks`)
 	if err != nil {

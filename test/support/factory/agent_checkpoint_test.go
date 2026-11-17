@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 // agentCheckpointTestRecord builds one valid session record for the service
@@ -339,7 +339,7 @@ func TestAgentCheckpointServiceWirePinsExactJSON(t *testing.T) {
 	if err := json.Unmarshal(body, &response); err != nil {
 		t.Fatalf("decode wire save response: %v; body=%s", err, body)
 	}
-	if !strings.HasPrefix(response.Ref, "kodama-checkpoint/v1/") {
+	if !strings.HasPrefix(response.Ref, "kodema-checkpoint/v1/") {
 		t.Fatalf("wire reference = %q", response.Ref)
 	}
 

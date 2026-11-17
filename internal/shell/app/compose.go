@@ -7,22 +7,22 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	processdriver "github.com/optimiware/kodama/internal/shell/app/drivers/process"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/runtime/process"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/memory"
-	"github.com/optimiware/kodama/internal/shell/store/units/readers"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	processdriver "github.com/optimiware/kodema/internal/shell/app/drivers/process"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/runtime/process"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/memory"
+	"github.com/optimiware/kodema/internal/shell/store/units/readers"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // environment is the explicit adapter bundle every profile must supply.
@@ -226,14 +226,14 @@ func buildDevelopmentEnvironment(ctx context.Context, builder *builder) (*enviro
 		if err != nil {
 			return nil, err
 		}
-		kodamaURL := cfg.Installation.PublicURL
-		if kodamaURL == "" {
-			kodamaURL = "http://127.0.0.1:8080"
+		kodemaURL := cfg.Installation.PublicURL
+		if kodemaURL == "" {
+			kodemaURL = "http://127.0.0.1:8080"
 		}
 		adapter, err := process.New(process.Config{
 			Root:          filepath.Join(cfg.DataDir, "runtime"),
 			WorkspaceRoot: filepath.Join(cfg.DataDir, "workspaces"),
-			KodamaURL:     kodamaURL,
+			KodemaURL:     kodemaURL,
 			Executor:      driver,
 			Observer:      driver,
 			Files:         driver,

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
 )
 
 // TestE2E_InstallationAccess is the explicit installation preflight: the four
@@ -177,7 +177,7 @@ func preflightCommand(projectID, gitWorkloadURL, repository, caPath string) []st
 	script := fmt.Sprintf(`set -eu
 printf 'w49-preflight-script-start\n'
 CA=%q
-TOKEN=/kodama/secrets/KODAMA_TOKEN
+TOKEN=/kodema/secrets/KODEMA_TOKEN
 if ! test -r "$CA"; then printf 'w49-preflight: CA file is not readable\n' >&2; exit 1; fi
 if ! test -r "$TOKEN"; then printf 'w49-preflight: execution token is not readable\n' >&2; exit 1; fi
 export SSL_CERT_FILE="$CA" CURL_CA_BUNDLE="$CA" GIT_SSL_CAINFO="$CA"
@@ -185,7 +185,7 @@ status="$(printf 'header = "Authorization: Bearer %%s"\n' "$(cat "$TOKEN")" | \
   curl -sS --noproxy '*' --max-time 30 --cacert "$CA" -X GET -K - \
   -H 'Content-Type: application/json' \
   --data '{"input":{}}' -o /workspace/api-probe.json -w '%%{http_code}' \
-  "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION")"
+  "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION")"
 if [ "$status" != 200 ]; then
   printf 'w49-preflight: API inspect status %%s\n' "$status" >&2
   cat /workspace/api-probe.json >&2 || true
@@ -199,8 +199,8 @@ fi
 cat > /workspace/git-askpass <<'ASKPASS'
 #!/bin/sh
 case "$1" in
-  *Username*) printf '%%s' kodama ;;
-  *) cat /kodama/secrets/KODAMA_TOKEN ;;
+  *Username*) printf '%%s' kodema ;;
+  *) cat /kodema/secrets/KODEMA_TOKEN ;;
 esac
 ASKPASS
 chmod 700 /workspace/git-askpass

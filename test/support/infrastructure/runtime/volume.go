@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // WorkspaceLabel is the workspace ownership label.
-const WorkspaceLabel = "kodama.dev/workspace"
+const WorkspaceLabel = "kodema.dev/workspace"
 
 // RunPodman runs one Podman CLI command with the explicit harness environment
 // and no shell.
@@ -29,8 +29,8 @@ func RunPodman(ctx context.Context, args ...string) (harness.Result, error) {
 }
 
 // CreateWorkspaceVolume creates the labelled named volume the Shell would
-// provision before activation. The kodama.dev/workspace label is what the
-// adapter checks; the kodama.test/owner labels scope every cleanup to this run.
+// provision before activation. The kodema.dev/workspace label is what the
+// adapter checks; the kodema.test/owner labels scope every cleanup to this run.
 func CreateWorkspaceVolume(ctx context.Context, name, workspaceID, shardID string) error {
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(workspaceID) == "" {
 		return errors.New("runtimesupport: workspace volume needs a name and workspace id")

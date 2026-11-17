@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/service"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/service"
 )
 
 // outageConnector models a broker that stays down for the immediate reconnect

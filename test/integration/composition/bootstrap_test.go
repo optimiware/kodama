@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestBootstrapSeedsAdminAndAuthenticatesDevTokens proves the first-admin seed

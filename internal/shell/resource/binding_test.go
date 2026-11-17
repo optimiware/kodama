@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/service"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/service"
 )
 
 func validBinding() resource.Binding {

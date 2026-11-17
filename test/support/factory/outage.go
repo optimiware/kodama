@@ -11,8 +11,8 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // Broker outage evidence helpers.

@@ -79,7 +79,7 @@ func newTLSFixture(t testing.TB, hosts ...string) *TLSFixture {
 	caKey := newFixtureKey(t)
 	caTemplate := &x509.Certificate{
 		SerialNumber:          newCertificateSerial(t),
-		Subject:               pkix.Name{CommonName: "Kodama Factory Test CA", Organization: []string{"Kodama Test"}},
+		Subject:               pkix.Name{CommonName: "Kodema Factory Test CA", Organization: []string{"Kodema Test"}},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(tlsValidity),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
@@ -99,7 +99,7 @@ func newTLSFixture(t testing.TB, hosts ...string) *TLSFixture {
 	leafKey := newFixtureKey(t)
 	leafTemplate := &x509.Certificate{
 		SerialNumber: newCertificateSerial(t),
-		Subject:      pkix.Name{CommonName: "kodama-factory-service", Organization: []string{"Kodama Test"}},
+		Subject:      pkix.Name{CommonName: "kodema-factory-service", Organization: []string{"Kodema Test"}},
 		NotBefore:    now.Add(-time.Hour),
 		NotAfter:     now.Add(tlsValidity),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
@@ -130,7 +130,7 @@ func newTLSFixture(t testing.TB, hosts ...string) *TLSFixture {
 		t.Fatalf("factory: TLS fixture CA PEM is not a usable certificate pool")
 	}
 
-	caFile := filepath.Join(t.TempDir(), "kodama-factory-ca.pem")
+	caFile := filepath.Join(t.TempDir(), "kodema-factory-ca.pem")
 	if err := os.WriteFile(caFile, caPEM, 0o644); err != nil {
 		t.Fatalf("factory: write TLS fixture CA file: %v", err)
 	}

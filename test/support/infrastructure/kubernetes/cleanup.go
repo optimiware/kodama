@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // registryMu guards the active cluster registry so parallel tests do not race
@@ -60,7 +60,7 @@ func CleanupActiveClusters(ctx context.Context) error {
 }
 
 // newSweepKind builds the no-download kind client used by the cleanup paths.
-// It reuses KODAMA_KIND_BIN, a PATH kind, or the already verified pinned cache
+// It reuses KODEMA_KIND_BIN, a PATH kind, or the already verified pinned cache
 // file. A missing binary is reported as errKindBinaryAbsent so the caller can
 // skip silently; any other resolution failure (for example a corrupted cache)
 // is surfaced. A caller-supplied logger is kept; otherwise NewKind's no-op

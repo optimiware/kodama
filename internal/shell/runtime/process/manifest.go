@@ -20,11 +20,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/kernel/script"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/script"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 const (
@@ -112,7 +112,7 @@ func stderrPath(resourceRoot string) string {
 	return filepath.Join(resourceRoot, logsDirectoryName, stderrName)
 }
 
-// hostPath maps one confined logical /kodama path onto the host resource root.
+// hostPath maps one confined logical /kodema path onto the host resource root.
 func hostPath(resourceRoot, logical string) string {
 	return filepath.Join(resourceRoot, logical)
 }
@@ -340,7 +340,7 @@ func buildMaterialization(request engine.PrepareRequest) (workspace.Materializat
 
 // finalEnvironment merges the admitted literal environment in declaration
 // order and appends the unshadowable reserved context.
-func finalEnvironment(request engine.PrepareRequest, kodamaURL string) ([]string, error) {
+func finalEnvironment(request engine.PrepareRequest, kodemaURL string) ([]string, error) {
 	env := make([]string, 0, len(request.Container.Env)+4)
 	for _, entry := range request.Container.Env {
 		if _, err := id.ParseEnvName(string(entry.Name)); err != nil {
@@ -349,7 +349,7 @@ func finalEnvironment(request engine.PrepareRequest, kodamaURL string) ([]string
 		env = append(env, string(entry.Name)+"="+entry.Value)
 	}
 	env = append(env,
-		id.EnvURL+"="+kodamaURL,
+		id.EnvURL+"="+kodemaURL,
 		id.EnvExecution+"="+string(request.Identity.ExecutionID),
 		id.EnvAction+"="+string(request.ActionName),
 	)

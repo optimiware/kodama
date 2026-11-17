@@ -12,11 +12,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/transport/ops"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
 type rejectingCodec struct{}
@@ -627,7 +627,7 @@ func TestRouterSanitizeLogsTheCauseWithoutCredentials(t *testing.T) {
 	operation, _ := authorize.LookupOperation("task.read")
 	h.prepare(operation)
 	h.probeFor(operation.Name).handler.setFunc(func(context.Context, ops.AuthorizedCall) (api.Result, error) {
-		return api.Result{}, fmt.Errorf(`connect postgres://kodama_runtime:%s@db/kodama failed: header "Authorization: Bearer %s": constraint violation`,
+		return api.Result{}, fmt.Errorf(`connect postgres://kodema_runtime:%s@db/kodema failed: header "Authorization: Bearer %s": constraint violation`,
 			dsnSecret, bearerToken)
 	})
 
@@ -856,12 +856,12 @@ func TestRedactForLogCoversEveryCredentialShape(t *testing.T) {
 		},
 		{
 			name:    "PASSWORD literal",
-			text:    `syntax error at or near "ALTER ROLE kodama_runtime PASSWORD 'hunter2'"`,
+			text:    `syntax error at or near "ALTER ROLE kodema_runtime PASSWORD 'hunter2'"`,
 			secrets: []string{"hunter2"},
 		},
 		{
 			name:    "PASSWORD E literal with doubled quote and backslash",
-			text:    `ALTER ROLE "kodama_runtime" PASSWORD E'it''s-\\-secret'`,
+			text:    `ALTER ROLE "kodema_runtime" PASSWORD E'it''s-\\-secret'`,
 			secrets: []string{"it''s", `\`, "secret"},
 		},
 		{
@@ -916,7 +916,7 @@ func TestRedactForLogCoversEveryCredentialShape(t *testing.T) {
 		},
 		{
 			name:    "postgres password with at sign",
-			text:    "dial postgres://kodama_runtime:p@ss-tail-sentinel@db:5432/kodama failed",
+			text:    "dial postgres://kodema_runtime:p@ss-tail-sentinel@db:5432/kodema failed",
 			secrets: []string{"p@ss-tail-sentinel", "ss-tail-sentinel"},
 		},
 		{
@@ -981,7 +981,7 @@ func TestRedactForLogCoversEveryCredentialShape(t *testing.T) {
 		},
 		{
 			name:    "PASSWORD dollar-quoted literal",
-			text:    "ALTER ROLE kodama_runtime PASSWORD $$dollar-quoted-sentinel$$",
+			text:    "ALTER ROLE kodema_runtime PASSWORD $$dollar-quoted-sentinel$$",
 			secrets: []string{"dollar-quoted-sentinel"},
 		},
 		{
@@ -1011,7 +1011,7 @@ func TestRedactForLogCoversEveryCredentialShape(t *testing.T) {
 		},
 		{
 			name:    "PASSWORD dollar-quoted literal across a newline",
-			text:    "ALTER ROLE kodama_runtime PASSWORD $$first-line\ndollar-newline-sentinel$$",
+			text:    "ALTER ROLE kodema_runtime PASSWORD $$first-line\ndollar-newline-sentinel$$",
 			secrets: []string{"dollar-newline-sentinel"},
 		},
 		{
@@ -1093,7 +1093,7 @@ func TestRouterSanitizeLogWriterRedactsNamedCredentialForms(t *testing.T) {
 	h.prepare(operation)
 	h.probeFor(operation.Name).handler.setFunc(func(context.Context, ops.AuthorizedCall) (api.Result, error) {
 		return api.Result{}, fmt.Errorf("wrap failed:\n-----BEGIN EC PRIVATE KEY-----\n%s\n-----END EC PRIVATE KEY-----\n"+
-			"ALTER ROLE kodama_runtime PASSWORD E'it''s-%s': Authorization: Token %s", pemSecret, sqlSecret, scheme)
+			"ALTER ROLE kodema_runtime PASSWORD E'it''s-%s': Authorization: Token %s", pemSecret, sqlSecret, scheme)
 	})
 	_, err := h.invoke(operation.Name, api.Request{}, nil)
 	mustCode(t, err, fault.InternalFailure)

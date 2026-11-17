@@ -9,15 +9,15 @@ import (
 	"strconv"
 	"strings"
 
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // RunOwnerEnv overrides the owner pid recorded in cleanup labels. A helper
 // process started by the suite sets it to the parent suite's pid so the
 // resources it creates stay scoped to, and cleanable by, the run that spawned
 // it.
-const RunOwnerEnv = "KODAMA_TEST_RUN_OWNER_PID"
+const RunOwnerEnv = "KODEMA_TEST_RUN_OWNER_PID"
 
 // RunOwnerPID is the owner-pid label value that scopes this run's resources.
 func RunOwnerPID() string {
@@ -30,7 +30,7 @@ func RunOwnerPID() string {
 }
 
 // RunLabels are the labels every suite-created container and volume carries.
-// They never replace a product label such as kodama.dev/workspace; they only
+// They never replace a product label such as kodema.dev/workspace; they only
 // add the run scope a sweep may filter on.
 func RunLabels() map[string]string {
 	return map[string]string{

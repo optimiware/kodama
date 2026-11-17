@@ -4,22 +4,22 @@ output "cloud" {
 }
 
 output "cluster_name" {
-  description = "Logical Kodama cluster name."
+  description = "Logical Kodema cluster name."
   value       = var.cluster_name
 }
 
 output "name_prefix" {
-  description = "Standardized resource name prefix (kodama-<cluster_name>)."
+  description = "Standardized resource name prefix (kodema-<cluster_name>)."
   value       = local.name_prefix
 }
 
 output "installation_id" {
-  description = "Deterministic Kodama installation identifier."
+  description = "Deterministic Kodema installation identifier."
   value       = local.installation_id
 }
 
 output "environment" {
-  description = "Kodama installation environment."
+  description = "Kodema installation environment."
   value       = var.environment
 }
 
@@ -64,12 +64,12 @@ output "tenant_namespaces" {
 }
 
 output "key_adapter" {
-  description = "Kodama key adapter name for the cloud provider."
+  description = "Kodema key adapter name for the cloud provider."
   value       = local.key_adapter
 }
 
 output "key_ref_prefix" {
-  description = "Kodama key reference prefix for the cloud provider."
+  description = "Kodema key reference prefix for the cloud provider."
   value       = local.key_ref_prefix
 }
 

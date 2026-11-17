@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 func stopRequest(request engine.PrepareRequest) engine.StopRequest {

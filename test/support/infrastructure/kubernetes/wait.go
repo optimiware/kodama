@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // nodeList is the subset of `kubectl get nodes -o json` the barrier reads.

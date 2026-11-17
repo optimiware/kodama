@@ -3,7 +3,7 @@ package definition
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // TestSnapshotCarriesTaskID pins the prepare context: the admitted snapshot

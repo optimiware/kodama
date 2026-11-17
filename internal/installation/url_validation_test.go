@@ -24,14 +24,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // productionURLDocument renders a complete production document over the given
 // database and NATS URLs. Every other setting is valid, so only the URL under
 // test can cause a refusal.
 func productionURLDocument(databaseURL, natsURL string) docFields {
-	fields := productionDoc("aws-kms", "aws-kms:alias/kodama")
+	fields := productionDoc("aws-kms", "aws-kms:alias/kodema")
 	fields.databaseURL = databaseURL
 	fields.natsURL = natsURL
 	return fields
@@ -48,7 +48,7 @@ func environmentRuntimeDocument(environment, runtime string) docFields {
 	case "test":
 		fields = testDoc()
 	case "production":
-		fields = productionDoc("aws-kms", "aws-kms:alias/kodama")
+		fields = productionDoc("aws-kms", "aws-kms:alias/kodema")
 	default:
 		fields = docFields{environment: environment, runtime: runtime}
 	}
@@ -114,7 +114,7 @@ func TestPreflightEnvironmentRuntimeMatrix(t *testing.T) {
 // tls:// without userinfo and without a fragment. Plain nats://, plain tcp, ws,
 // wss and every other scheme are refused.
 func TestPreflightProductionNATSTLSVectors(t *testing.T) {
-	const databaseURL = "postgres://kodama:pg-hunter2@database.example:5432/kodama?sslmode=verify-full"
+	const databaseURL = "postgres://kodema:pg-hunter2@database.example:5432/kodema?sslmode=verify-full"
 
 	accepted := []struct {
 		name string
@@ -203,7 +203,7 @@ func TestPreflightProductionNATSTLSVectors(t *testing.T) {
 // uppercase spellings and keyword-form DSNs are refused.
 func TestPreflightProductionPostgresTLSVectors(t *testing.T) {
 	const natsURL = "tls://nats.example:4222"
-	const base = "postgres://kodama:pg-hunter2@database.example:5432/kodama"
+	const base = "postgres://kodema:pg-hunter2@database.example:5432/kodema"
 
 	accepted := []struct {
 		name string
@@ -211,14 +211,14 @@ func TestPreflightProductionPostgresTLSVectors(t *testing.T) {
 	}{
 		{name: "verify full", dsn: base + "?sslmode=verify-full"},
 		{name: "verify full with other options", dsn: base + "?connect_timeout=10&sslmode=verify-full"},
-		{name: "verify full with application name", dsn: base + "?application_name=kodama_runtime&sslmode=verify-full"},
+		{name: "verify full with application name", dsn: base + "?application_name=kodema_runtime&sslmode=verify-full"},
 		{name: "verify full with root cert", dsn: base + "?sslmode=verify-full&sslrootcert=system"},
 		{name: "verify full connect timeout zero", dsn: base + "?sslmode=verify-full&connect_timeout=0"},
-		{name: "verify full ipv6", dsn: "postgres://kodama:pg-hunter2@[2001:db8::1]:5432/kodama?sslmode=verify-full"},
+		{name: "verify full ipv6", dsn: "postgres://kodema:pg-hunter2@[2001:db8::1]:5432/kodema?sslmode=verify-full"},
 		{name: "verify full percent encoded", dsn: base + "?sslmode=verify%2Dfull"},
-		{name: "port omitted", dsn: "postgres://kodama:pg-hunter2@database.example/kodama?sslmode=verify-full"},
-		{name: "max port", dsn: "postgres://kodama:pg-hunter2@database.example:65535/kodama?sslmode=verify-full"},
-		{name: "hyphenated host", dsn: "postgres://kodama:pg-hunter2@db-1.example/kodama?sslmode=verify-full"},
+		{name: "port omitted", dsn: "postgres://kodema:pg-hunter2@database.example/kodema?sslmode=verify-full"},
+		{name: "max port", dsn: "postgres://kodema:pg-hunter2@database.example:65535/kodema?sslmode=verify-full"},
+		{name: "hyphenated host", dsn: "postgres://kodema:pg-hunter2@db-1.example/kodema?sslmode=verify-full"},
 	}
 	for _, testCase := range accepted {
 		t.Run("accepted "+testCase.name, func(t *testing.T) {
@@ -253,18 +253,18 @@ func TestPreflightProductionPostgresTLSVectors(t *testing.T) {
 		{name: "sslmode percent space", dsn: base + "?sslmode=verify-full%20", secret: "pg-hunter2"},
 		{name: "sslmode missing letter", dsn: base + "?sslmode=verify-ful", secret: "pg-hunter2"},
 		{name: "sslmode extra letter", dsn: base + "?sslmode=verify-fullx", secret: "pg-hunter2"},
-		{name: "keyword form", dsn: "host=database.example user=kodama password=pg-hunter2 dbname=kodama sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "keyword form without password", dsn: "host=database.example dbname=kodama sslmode=verify-full"},
-		{name: "uppercase scheme", dsn: "POSTGRES://kodama:pg-hunter2@database.example:5432/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "postgresql scheme", dsn: "postgresql://kodama:pg-hunter2@database.example:5432/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "other scheme", dsn: "foo://kodama:pg-hunter2@database.example:5432/kodama?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "keyword form", dsn: "host=database.example user=kodema password=pg-hunter2 dbname=kodema sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "keyword form without password", dsn: "host=database.example dbname=kodema sslmode=verify-full"},
+		{name: "uppercase scheme", dsn: "POSTGRES://kodema:pg-hunter2@database.example:5432/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "postgresql scheme", dsn: "postgresql://kodema:pg-hunter2@database.example:5432/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "other scheme", dsn: "foo://kodema:pg-hunter2@database.example:5432/kodema?sslmode=verify-full", secret: "pg-hunter2"},
 		{name: "fragment with weaker sslmode", dsn: base + "?sslmode=verify-full#&sslmode=disable", secret: "pg-hunter2"},
 		{name: "fragment marker and query", dsn: base + "?sslmode=verify-full#fragment", secret: "pg-hunter2"},
 		{name: "empty fragment marker", dsn: base + "?sslmode=verify-full#", secret: "pg-hunter2"},
 		// The '#' guard is the whole raw string, so a '#' inside an allowed
 		// query value (not only after the sslmode pair) is refused too: without
 		// the guard pgx would treat the remainder as query text.
-		{name: "fragment inside root cert value", dsn: base + "?sslrootcert=/etc/kodama/pg-ca/ca.crt#x&sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "fragment inside root cert value", dsn: base + "?sslrootcert=/etc/kodema/pg-ca/ca.crt#x&sslmode=verify-full", secret: "pg-hunter2"},
 		{name: "fragment inside application name", dsn: base + "?application_name=app#x&sslmode=verify-full", secret: "pg-hunter2"},
 		// A query pair without '=' must be refused without a slice panic.
 		{name: "query pair without equals", dsn: base + "?sslmode=verify-full&host", secret: "pg-hunter2"},
@@ -273,11 +273,11 @@ func TestPreflightProductionPostgresTLSVectors(t *testing.T) {
 		// pgx refuses a second '=' inside a query value; the allowlist does too.
 		{name: "equals inside application name", dsn: base + "?application_name=a=b&sslmode=verify-full", secret: "pg-hunter2"},
 		// The port must be a plain decimal run: a signed port is refused.
-		{name: "signed port", dsn: "postgres://database.example:+5/kodama?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "signed port", dsn: "postgres://database.example:+5/kodema?sslmode=verify-full", secret: "pg-hunter2"},
 		// pgx refuses bytes after the closing IPv6 bracket.
-		{name: "ipv6 trailing byte", dsn: "postgres://[::1]x/kodama?sslmode=verify-full"},
+		{name: "ipv6 trailing byte", dsn: "postgres://[::1]x/kodema?sslmode=verify-full"},
 		// A percent-encoded database name is refused; it could smuggle '/'.
-		{name: "percent encoded database name", dsn: "postgres://database.example/%6Bodama?sslmode=verify-full"},
+		{name: "percent encoded database name", dsn: "postgres://database.example/%6Bodema?sslmode=verify-full"},
 		// A percent escape that decodes to whitespace is refused even though
 		// the raw bytes are printable.
 		{name: "decoded whitespace application name", dsn: base + "?application_name=%20&sslmode=verify-full"},
@@ -287,7 +287,7 @@ func TestPreflightProductionPostgresTLSVectors(t *testing.T) {
 		{name: "host override unix socket", dsn: base + "?sslmode=verify-full&host=/var/run/postgresql", secret: "pg-hunter2"},
 		{name: "host override empty", dsn: base + "?sslmode=verify-full&host=", secret: "pg-hunter2"},
 		{name: "hostaddr override", dsn: base + "?sslmode=verify-full&hostaddr=10.0.0.1", secret: "pg-hunter2"},
-		{name: "service", dsn: base + "?sslmode=verify-full&service=kodama", secret: "pg-hunter2"},
+		{name: "service", dsn: base + "?sslmode=verify-full&service=kodema", secret: "pg-hunter2"},
 		{name: "passfile", dsn: base + "?sslmode=verify-full&passfile=/tmp/pgpass", secret: "pg-hunter2"},
 		{name: "sslcert", dsn: base + "?sslmode=verify-full&sslcert=/tmp/client.crt", secret: "pg-hunter2"},
 		{name: "sslkey", dsn: base + "?sslmode=verify-full&sslkey=/tmp/client.key", secret: "pg-hunter2"},
@@ -303,25 +303,25 @@ func TestPreflightProductionPostgresTLSVectors(t *testing.T) {
 		{name: "malformed percent value", dsn: base + "?sslmode=verify%zzfull", secret: "pg-hunter2"},
 		{name: "malformed percent key", dsn: base + "?%zz=value&sslmode=verify-full", secret: "pg-hunter2"},
 		{name: "malformed percent other value", dsn: base + "?application_name=%zz&sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "empty host", dsn: "postgres:///kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "query host unix socket", dsn: "postgres:///kodama?host=/var/run/postgresql&sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "percent encoded unix host", dsn: "postgres://%2Fvar%2Frun%2Fpostgresql/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "comma host list", dsn: "postgres://database.example,/var/run/postgresql/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "empty host element", dsn: "postgres://,database.example/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "two host elements", dsn: "postgres://a.example,b.example/kodama?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "empty host", dsn: "postgres:///kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "query host unix socket", dsn: "postgres:///kodema?host=/var/run/postgresql&sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "percent encoded unix host", dsn: "postgres://%2Fvar%2Frun%2Fpostgresql/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "comma host list", dsn: "postgres://database.example,/var/run/postgresql/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "empty host element", dsn: "postgres://,database.example/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "two host elements", dsn: "postgres://a.example,b.example/kodema?sslmode=verify-full", secret: "pg-hunter2"},
 		{name: "missing database path", dsn: "postgres://database.example?sslmode=verify-full", secret: "pg-hunter2"},
 		{name: "empty database path", dsn: "postgres://database.example/?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "nested database path", dsn: "postgres://database.example/kodama/extra?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "port zero", dsn: "postgres://database.example:0/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "port too large", dsn: "postgres://database.example:65536/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "port not numeric", dsn: "postgres://database.example:abc/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "empty port", dsn: "postgres://database.example:/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "encoded at in userinfo", dsn: "postgres://user%40x:pg-hunter2@database.example:5432/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "encoded colon in userinfo", dsn: "postgres://user:p%3Ahunter2@database.example:5432/kodama?sslmode=verify-full", secret: "hunter2"},
-		{name: "two at signs", dsn: "postgres://a@b:pg-hunter2@database.example:5432/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "empty userinfo", dsn: "postgres://@database.example:5432/kodama?sslmode=verify-full", secret: "pg-hunter2"},
-		{name: "unterminated ipv6", dsn: "postgres://[2001:db8::1/kodama?sslmode=verify-full"},
-		{name: "empty ipv6", dsn: "postgres://[]/kodama?sslmode=verify-full"},
+		{name: "nested database path", dsn: "postgres://database.example/kodema/extra?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "port zero", dsn: "postgres://database.example:0/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "port too large", dsn: "postgres://database.example:65536/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "port not numeric", dsn: "postgres://database.example:abc/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "empty port", dsn: "postgres://database.example:/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "encoded at in userinfo", dsn: "postgres://user%40x:pg-hunter2@database.example:5432/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "encoded colon in userinfo", dsn: "postgres://user:p%3Ahunter2@database.example:5432/kodema?sslmode=verify-full", secret: "hunter2"},
+		{name: "two at signs", dsn: "postgres://a@b:pg-hunter2@database.example:5432/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "empty userinfo", dsn: "postgres://@database.example:5432/kodema?sslmode=verify-full", secret: "pg-hunter2"},
+		{name: "unterminated ipv6", dsn: "postgres://[2001:db8::1/kodema?sslmode=verify-full"},
+		{name: "empty ipv6", dsn: "postgres://[]/kodema?sslmode=verify-full"},
 		{name: "embedded space", dsn: base + "?sslmode=verify full", secret: "pg-hunter2"},
 	}
 	for _, testCase := range refused {
@@ -350,7 +350,7 @@ func TestPreflightProductionPostgresTLSVectors(t *testing.T) {
 // alphabet.
 func TestPreflightProductionCredentialGrammar(t *testing.T) {
 	const hex48 = "0123456789abcdef0123456789abcdef0123456789abcdef"
-	const rootCert = "?sslmode=verify-full&sslrootcert=/etc/kodama/pg-ca/ca.crt"
+	const rootCert = "?sslmode=verify-full&sslrootcert=/etc/kodema/pg-ca/ca.crt"
 
 	accepted := []struct {
 		name string
@@ -358,23 +358,23 @@ func TestPreflightProductionCredentialGrammar(t *testing.T) {
 	}{
 		{
 			name: "runtime role with generated hex password",
-			dsn:  "postgres://kodama_runtime:" + hex48 + "@database:5432/kodama" + rootCert,
+			dsn:  "postgres://kodema_runtime:" + hex48 + "@database:5432/kodema" + rootCert,
 		},
 		{
 			name: "controller role with generated hex password",
-			dsn:  "postgres://kodama_controller:" + hex48 + "@database:5432/kodama" + rootCert,
+			dsn:  "postgres://kodema_controller:" + hex48 + "@database:5432/kodema" + rootCert,
 		},
 		{
 			name: "publisher role with generated hex password",
-			dsn:  "postgres://kodama_publisher:" + hex48 + "@database:5432/kodama" + rootCert,
+			dsn:  "postgres://kodema_publisher:" + hex48 + "@database:5432/kodema" + rootCert,
 		},
 		{
 			name: "auth role with generated hex password",
-			dsn:  "postgres://kodama_auth:" + hex48 + "@database:5432/kodama" + rootCert,
+			dsn:  "postgres://kodema_auth:" + hex48 + "@database:5432/kodema" + rootCert,
 		},
 		{
 			name: "url-safe password alphabet",
-			dsn:  "postgres://kodama_runtime:a-b.c_d~e@database:5432/kodama?sslmode=verify-full",
+			dsn:  "postgres://kodema_runtime:a-b.c_d~e@database:5432/kodema?sslmode=verify-full",
 		},
 	}
 	for _, testCase := range accepted {
@@ -391,10 +391,10 @@ func TestPreflightProductionCredentialGrammar(t *testing.T) {
 	}{
 		// Percent-encoded userinfo is refused on purpose (see the test
 		// comment above); pgx would decode each of these.
-		{name: "percent encoded at sign", dsn: "postgres://kodama_runtime:p%40ss@database:5432/kodama?sslmode=verify-full"},
-		{name: "percent encoded hash", dsn: "postgres://kodama_runtime:p%23x@database:5432/kodama?sslmode=verify-full"},
-		{name: "percent encoded percent", dsn: "postgres://kodama_runtime:p%25@database:5432/kodama?sslmode=verify-full"},
-		{name: "percent encoded slash and colon", dsn: "postgres://kodama_runtime:p%40ss%2Fw%3Ard@database:5432/kodama?sslmode=verify-full"},
+		{name: "percent encoded at sign", dsn: "postgres://kodema_runtime:p%40ss@database:5432/kodema?sslmode=verify-full"},
+		{name: "percent encoded hash", dsn: "postgres://kodema_runtime:p%23x@database:5432/kodema?sslmode=verify-full"},
+		{name: "percent encoded percent", dsn: "postgres://kodema_runtime:p%25@database:5432/kodema?sslmode=verify-full"},
+		{name: "percent encoded slash and colon", dsn: "postgres://kodema_runtime:p%40ss%2Fw%3Ard@database:5432/kodema?sslmode=verify-full"},
 	}
 	for _, testCase := range refused {
 		t.Run("refused "+testCase.name, func(t *testing.T) {
@@ -442,19 +442,19 @@ func TestPreflightDirectKeyFamilyValidation(t *testing.T) {
 		},
 		{
 			name:   "test keyfile reference",
-			config: keyFamilyTestConfig(KeyKeyfile, "keyfile:kodama"),
+			config: keyFamilyTestConfig(KeyKeyfile, "keyfile:kodema"),
 		},
 		{
 			name:   "production aws reference",
-			config: keyFamilyProductionConfig(KeyAWSKMS, "aws-kms:alias/kodama"),
+			config: keyFamilyProductionConfig(KeyAWSKMS, "aws-kms:alias/kodema"),
 		},
 		{
 			name:   "production gcp reference",
-			config: keyFamilyProductionConfig(KeyGCPKMS, "gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek"),
+			config: keyFamilyProductionConfig(KeyGCPKMS, "gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek"),
 		},
 		{
 			name:   "production scaleway reference",
-			config: keyFamilyProductionConfig(KeyScalewayKMS, "scw-kms:fr-par/kodama"),
+			config: keyFamilyProductionConfig(KeyScalewayKMS, "scw-kms:fr-par/kodema"),
 		},
 	}
 	for _, testCase := range accepted {
@@ -469,32 +469,32 @@ func TestPreflightDirectKeyFamilyValidation(t *testing.T) {
 		name   string
 		config Config
 	}{
-		{name: "production aws names gcp", config: keyFamilyProductionConfig(KeyAWSKMS, "gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek")},
-		{name: "production gcp names aws", config: keyFamilyProductionConfig(KeyGCPKMS, "aws-kms:alias/kodama")},
-		{name: "production scaleway names gcp", config: keyFamilyProductionConfig(KeyScalewayKMS, "gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek")},
+		{name: "production aws names gcp", config: keyFamilyProductionConfig(KeyAWSKMS, "gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek")},
+		{name: "production gcp names aws", config: keyFamilyProductionConfig(KeyGCPKMS, "aws-kms:alias/kodema")},
+		{name: "production scaleway names gcp", config: keyFamilyProductionConfig(KeyScalewayKMS, "gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek")},
 		{name: "production aws legacy arn", config: keyFamilyProductionConfig(KeyAWSKMS, "arn:aws:kms:eu-west-1:111122223333:key/example")},
 		// Prefix tricks that a Contains, lower-case or Trim-style family match
 		// would accept: the family prefix must be an exact case-sensitive
 		// prefix and the key name must carry no whitespace.
-		{name: "production aws uppercase prefix", config: keyFamilyProductionConfig(KeyAWSKMS, "AWS-KMS:alias/kodama")},
-		{name: "production aws leading space", config: keyFamilyProductionConfig(KeyAWSKMS, " aws-kms:alias/kodama")},
-		{name: "production aws trailing space", config: keyFamilyProductionConfig(KeyAWSKMS, "aws-kms:alias/kodama ")},
-		{name: "production aws space after prefix", config: keyFamilyProductionConfig(KeyAWSKMS, "aws-kms: alias/kodama")},
+		{name: "production aws uppercase prefix", config: keyFamilyProductionConfig(KeyAWSKMS, "AWS-KMS:alias/kodema")},
+		{name: "production aws leading space", config: keyFamilyProductionConfig(KeyAWSKMS, " aws-kms:alias/kodema")},
+		{name: "production aws trailing space", config: keyFamilyProductionConfig(KeyAWSKMS, "aws-kms:alias/kodema ")},
+		{name: "production aws space after prefix", config: keyFamilyProductionConfig(KeyAWSKMS, "aws-kms: alias/kodema")},
 		{name: "production aws hyphen variant", config: keyFamilyProductionConfig(KeyAWSKMS, "aws-kms-x:y")},
 		{name: "production aws tail names gcp", config: keyFamilyProductionConfig(KeyAWSKMS, "gcp-kms:aws-kms:x")},
-		{name: "production gcp uppercase prefix", config: keyFamilyProductionConfig(KeyGCPKMS, "GCP-KMS:projects/kodama")},
-		{name: "production gcp leading space", config: keyFamilyProductionConfig(KeyGCPKMS, " gcp-kms:projects/kodama")},
-		{name: "production gcp trailing space", config: keyFamilyProductionConfig(KeyGCPKMS, "gcp-kms:projects/kodama ")},
+		{name: "production gcp uppercase prefix", config: keyFamilyProductionConfig(KeyGCPKMS, "GCP-KMS:projects/kodema")},
+		{name: "production gcp leading space", config: keyFamilyProductionConfig(KeyGCPKMS, " gcp-kms:projects/kodema")},
+		{name: "production gcp trailing space", config: keyFamilyProductionConfig(KeyGCPKMS, "gcp-kms:projects/kodema ")},
 		{name: "production gcp hyphen variant", config: keyFamilyProductionConfig(KeyGCPKMS, "gcp-kms-x:y")},
 		{name: "production gcp tail names aws", config: keyFamilyProductionConfig(KeyGCPKMS, "aws-kms:gcp-kms:x")},
-		{name: "production scaleway uppercase prefix", config: keyFamilyProductionConfig(KeyScalewayKMS, "SCW-KMS:fr-par/kodama")},
-		{name: "production scaleway leading space", config: keyFamilyProductionConfig(KeyScalewayKMS, " scw-kms:fr-par/kodama")},
-		{name: "production scaleway trailing space", config: keyFamilyProductionConfig(KeyScalewayKMS, "scw-kms:fr-par/kodama ")},
+		{name: "production scaleway uppercase prefix", config: keyFamilyProductionConfig(KeyScalewayKMS, "SCW-KMS:fr-par/kodema")},
+		{name: "production scaleway leading space", config: keyFamilyProductionConfig(KeyScalewayKMS, " scw-kms:fr-par/kodema")},
+		{name: "production scaleway trailing space", config: keyFamilyProductionConfig(KeyScalewayKMS, "scw-kms:fr-par/kodema ")},
 		{name: "production scaleway hyphen variant", config: keyFamilyProductionConfig(KeyScalewayKMS, "scw-kms-x:y")},
 		{name: "production scaleway tail names aws", config: keyFamilyProductionConfig(KeyScalewayKMS, "aws-kms:scw-kms:x")},
-		{name: "test keyfile uppercase prefix", config: keyFamilyTestConfig(KeyKeyfile, "KEYFILE:kodama")},
-		{name: "test keyfile leading space", config: keyFamilyTestConfig(KeyKeyfile, " keyfile:kodama")},
-		{name: "test keyfile trailing space", config: keyFamilyTestConfig(KeyKeyfile, "keyfile:kodama ")},
+		{name: "test keyfile uppercase prefix", config: keyFamilyTestConfig(KeyKeyfile, "KEYFILE:kodema")},
+		{name: "test keyfile leading space", config: keyFamilyTestConfig(KeyKeyfile, " keyfile:kodema")},
+		{name: "test keyfile trailing space", config: keyFamilyTestConfig(KeyKeyfile, "keyfile:kodema ")},
 		{name: "test keyfile hyphen variant", config: keyFamilyTestConfig(KeyKeyfile, "keyfile-x:y")},
 		{name: "test keyfile tail names ephemeral", config: keyFamilyTestConfig(KeyKeyfile, "ephemeral:keyfile:x")},
 		{name: "development keyfile reference", config: Config{
@@ -503,7 +503,7 @@ func TestPreflightDirectKeyFamilyValidation(t *testing.T) {
 			Messaging:   MessagingMemory,
 			Runtime:     RuntimeProcess,
 			Keys:        KeyEphemeral,
-			KeyRef:      "keyfile:kodama",
+			KeyRef:      "keyfile:kodema",
 		}},
 		{name: "development cloud reference", config: Config{
 			Environment: EnvironmentDevelopment,
@@ -511,7 +511,7 @@ func TestPreflightDirectKeyFamilyValidation(t *testing.T) {
 			Messaging:   MessagingMemory,
 			Runtime:     RuntimeProcess,
 			Keys:        KeyEphemeral,
-			KeyRef:      "aws-kms:alias/kodama",
+			KeyRef:      "aws-kms:alias/kodema",
 		}},
 		{name: "test ephemeral reference", config: keyFamilyTestConfig(KeyKeyfile, "ephemeral:test")},
 	}
@@ -530,11 +530,11 @@ func TestPreflightDirectKeyFamilyValidation(t *testing.T) {
 		value string
 	}{
 		{name: "empty name", value: ""},
-		{name: "interior space", value: "alias/kodama key"},
-		{name: "interior tab", value: "alias/kodama\tkey"},
-		{name: "control byte", value: "alias/kodama\x01key"},
-		{name: "nul byte", value: "alias/kodama\x00key"},
-		{name: "del byte", value: "alias/kodama\x7fkey"},
+		{name: "interior space", value: "alias/kodema key"},
+		{name: "interior tab", value: "alias/kodema\tkey"},
+		{name: "control byte", value: "alias/kodema\x01key"},
+		{name: "nul byte", value: "alias/kodema\x00key"},
+		{name: "del byte", value: "alias/kodema\x7fkey"},
 	}
 	families := []struct {
 		name   string
@@ -557,7 +557,7 @@ func TestPreflightDirectKeyFamilyValidation(t *testing.T) {
 			return keyFamilyProductionConfig(KeyAWSKMS, KeyRefAWSKMSPrefix+"alias/"+name)
 		}},
 		{name: "gcp", config: func(name string) Config {
-			return keyFamilyProductionConfig(KeyGCPKMS, KeyRefGCPKMSPrefix+"projects/kodama/locations/global/keyRings/kodama/cryptoKeys/"+name)
+			return keyFamilyProductionConfig(KeyGCPKMS, KeyRefGCPKMSPrefix+"projects/kodema/locations/global/keyRings/kodema/cryptoKeys/"+name)
 		}},
 		{name: "scaleway", config: func(name string) Config {
 			return keyFamilyProductionConfig(KeyScalewayKMS, KeyRefScalewayKMSPrefix+name)
@@ -593,10 +593,10 @@ func TestPreflightRefusalsNeverEchoCredentials(t *testing.T) {
 				Messaging:   MessagingNATS,
 				Runtime:     RuntimeKubernetes,
 				Keys:        KeyAWSKMS,
-				DatabaseURL: "postgres://kodama@database.example:5432/kodama?sslmode=verify-full",
+				DatabaseURL: "postgres://kodema@database.example:5432/kodema?sslmode=verify-full",
 				NATSURL:     "nats://user:nats-hunter2@nats.example:4222",
-				PublicURL:   "https://kodama.example",
-				KeyRef:      "aws-kms:alias/kodama",
+				PublicURL:   "https://kodema.example",
+				KeyRef:      "aws-kms:alias/kodema",
 			},
 			secret: "nats-hunter2",
 		},
@@ -608,10 +608,10 @@ func TestPreflightRefusalsNeverEchoCredentials(t *testing.T) {
 				Messaging:   MessagingNATS,
 				Runtime:     RuntimeKubernetes,
 				Keys:        KeyAWSKMS,
-				DatabaseURL: "postgres://kodama:pg-hunter2@database.example:5432/kodama?sslmode=require",
+				DatabaseURL: "postgres://kodema:pg-hunter2@database.example:5432/kodema?sslmode=require",
 				NATSURL:     "tls://nats.example:4222",
-				PublicURL:   "https://kodama.example",
-				KeyRef:      "aws-kms:alias/kodama",
+				PublicURL:   "https://kodema.example",
+				KeyRef:      "aws-kms:alias/kodema",
 			},
 			secret: "pg-hunter2",
 		},
@@ -638,7 +638,7 @@ func TestPreflightRefusalsNeverEchoCredentials(t *testing.T) {
 // case-sensitive), and IPv6 hosts parse.
 func TestPreflightURLParserEdgeCases(t *testing.T) {
 	const natsURL = "tls://nats.example:4222"
-	const base = "postgres://kodama:pg-hunter2@database.example:5432/kodama"
+	const base = "postgres://kodema:pg-hunter2@database.example:5432/kodema"
 
 	t.Run("percent encoded sslmode accepted", func(t *testing.T) {
 		fields := productionURLDocument(base+"?sslmode=verify%2Dfull", natsURL)
@@ -654,13 +654,13 @@ func TestPreflightURLParserEdgeCases(t *testing.T) {
 	})
 
 	t.Run("uppercase scheme refused", func(t *testing.T) {
-		fields := productionURLDocument("POSTGRES://kodama@database.example:5432/kodama?sslmode=verify-full", "TLS://nats.example:4222")
+		fields := productionURLDocument("POSTGRES://kodema@database.example:5432/kodema?sslmode=verify-full", "TLS://nats.example:4222")
 		_, err := ParseConfig(strings.NewReader(fields.String()))
 		assertFaultClass(t, err, fault.InvalidInput)
 	})
 
 	t.Run("ipv6 hosts accepted", func(t *testing.T) {
-		fields := productionURLDocument("postgres://kodama@[2001:db8::1]:5432/kodama?sslmode=verify-full", "tls://[2001:db8::1]:4222")
+		fields := productionURLDocument("postgres://kodema@[2001:db8::1]:5432/kodema?sslmode=verify-full", "tls://[2001:db8::1]:4222")
 		if _, err := ParseConfig(strings.NewReader(fields.String())); err != nil {
 			t.Fatalf("ParseConfig refused IPv6 hosts: %v", err)
 		}
@@ -678,7 +678,7 @@ func TestPreflightURLParserEdgeCases(t *testing.T) {
 // validator and the package NATS validator refuse leading/trailing whitespace,
 // control bytes and a percent-encoded byte that decodes to whitespace.
 func TestProductionTransportValidatorsDirect(t *testing.T) {
-	const base = "postgres://kodama:pg-hunter2@database.example:5432/kodama"
+	const base = "postgres://kodema:pg-hunter2@database.example:5432/kodema"
 
 	refusedDSNs := []string{
 		" " + base + "?sslmode=verify-full",
@@ -692,9 +692,9 @@ func TestProductionTransportValidatorsDirect(t *testing.T) {
 		base + "?application_name=%20&sslmode=verify-full",
 		base + "?application_name=a=b&sslmode=verify-full",
 		base + "?application_name=app#x&sslmode=verify-full",
-		"postgres://database.example:+5/kodama?sslmode=verify-full",
-		"postgres://[::1]x/kodama?sslmode=verify-full",
-		"postgres://database.example/%6Bodama?sslmode=verify-full",
+		"postgres://database.example:+5/kodema?sslmode=verify-full",
+		"postgres://[::1]x/kodema?sslmode=verify-full",
+		"postgres://database.example/%6Bodema?sslmode=verify-full",
 	}
 	for _, dsn := range refusedDSNs {
 		if err := ValidateProductionPostgresURL(dsn); err == nil {
@@ -749,13 +749,13 @@ func TestPreflightTestEnvironmentRequiresHost(t *testing.T) {
 		mutate func(*docFields)
 	}{
 		{name: "database empty host with socket query", mutate: func(fields *docFields) {
-			fields.databaseURL = "postgres:///kodama?host=/sock"
+			fields.databaseURL = "postgres:///kodema?host=/sock"
 		}},
 		{name: "database empty host", mutate: func(fields *docFields) {
-			fields.databaseURL = "postgres:///kodama"
+			fields.databaseURL = "postgres:///kodema"
 		}},
 		{name: "database comma host", mutate: func(fields *docFields) {
-			fields.databaseURL = "postgres://a.example,b.example:5432/kodama"
+			fields.databaseURL = "postgres://a.example,b.example:5432/kodema"
 		}},
 		{name: "public empty host", mutate: func(fields *docFields) {
 			fields.publicURL = "https:///x"
@@ -784,7 +784,7 @@ func TestPreflightTestEnvironmentRequiresHost(t *testing.T) {
 			t.Fatalf("ParseConfig refused the declared test composition: %v", err)
 		}
 		fields := testDoc()
-		fields.databaseURL = "postgres://kodama@database/kodama"
+		fields.databaseURL = "postgres://kodema@database/kodema"
 		fields.natsURL = "nats://nats"
 		if _, err := ParseConfig(strings.NewReader(fields.String())); err != nil {
 			t.Fatalf("ParseConfig refused portless test URLs: %v", err)
@@ -801,9 +801,9 @@ func keyFamilyTestConfig(keys KeyAdapter, keyRef string) Config {
 		Messaging:   MessagingNATS,
 		Runtime:     RuntimePodman,
 		Keys:        keys,
-		DatabaseURL: "postgres://kodama@database.example:5432/kodama",
+		DatabaseURL: "postgres://kodema@database.example:5432/kodema",
 		NATSURL:     "nats://nats.example:4222",
-		PublicURL:   "https://kodama.test",
+		PublicURL:   "https://kodema.test",
 		KeyRef:      keyRef,
 	}
 }
@@ -817,9 +817,9 @@ func keyFamilyProductionConfig(keys KeyAdapter, keyRef string) Config {
 		Messaging:   MessagingNATS,
 		Runtime:     RuntimeKubernetes,
 		Keys:        keys,
-		DatabaseURL: "postgres://kodama@database.example:5432/kodama?sslmode=verify-full",
+		DatabaseURL: "postgres://kodema@database.example:5432/kodema?sslmode=verify-full",
 		NATSURL:     "tls://nats.example:4222",
-		PublicURL:   "https://kodama.example",
+		PublicURL:   "https://kodema.example",
 		KeyRef:      keyRef,
 	}
 }

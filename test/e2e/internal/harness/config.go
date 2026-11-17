@@ -18,7 +18,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 const (
@@ -61,7 +61,7 @@ const (
 	// subscription. It is optional for a plain local broker and required when
 	// the broker URL uses tls://.
 	InputNATSCAFile Input = "Q01_NATS_CA_FILE"
-	// InputNATSTokenFile is a private 0600 file holding the current Kodama
+	// InputNATSTokenFile is a private 0600 file holding the current Kodema
 	// bearer token a live probe presents as the broker auth token. The admin
 	// token file is accepted instead of a raw environment token.
 	InputNATSTokenFile Input = "Q01_NATS_TOKEN_FILE"

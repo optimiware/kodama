@@ -40,8 +40,8 @@ resource "google_sql_database_instance" "main" {
   ]
 }
 
-resource "google_sql_database" "kodama" {
-  name     = "kodama"
+resource "google_sql_database" "kodema" {
+  name     = "kodema"
   project  = var.project_id
   instance = google_sql_database_instance.main.name
 }

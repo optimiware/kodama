@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/installation"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/installation"
 )
 
 // These tests pin controller-restart behavior: a graceful controller shutdown

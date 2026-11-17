@@ -6,7 +6,7 @@
 set -eu
 w49_require_context
 w49_require_api_token || exit 1
-test "$(cat "$W49_WORKSPACE/execution-marker")" = "$KODAMA_EXECUTION"
+test "$(cat "$W49_WORKSPACE/execution-marker")" = "$KODEMA_EXECUTION"
 test "$(cat "$W49_WORKSPACE/run-marker")" = "$SMOKE_RUN_MARKER"
 expected_base=$(cat "$W49_INPUTS/expected_base")
 target_ref=$(cat "$W49_INPUTS/target_ref")
@@ -22,7 +22,7 @@ test -f answer.sh
 test -f test.sh
 test -f w49-run.txt
 git add -- answer.sh test.sh w49-run.txt
-git -c user.name=kodama -c user.email=kodama@example.invalid \
+git -c user.name=kodema -c user.email=kodema@example.invalid \
 	commit --quiet -m 'W49 protected candidate'
 candidate=$(git rev-parse HEAD)
 test "$candidate" != "$expected_base"

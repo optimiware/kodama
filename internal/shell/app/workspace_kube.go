@@ -22,11 +22,11 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // ClaimProvisioner is the one external effect the Kubernetes decorator adds:

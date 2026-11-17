@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 func startRequest(fx *fixture) engine.StartRequest {
@@ -563,10 +563,10 @@ func TestRemoveIsIdempotentAndIdentityScoped(t *testing.T) {
 		t.Fatalf("ContainerName returned error: %v", err)
 	}
 	otherRoot := filepath.Join(fx.root, string(otherWorkload))
-	if err := os.MkdirAll(filepath.Join(otherRoot, "kodama"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(otherRoot, "kodema"), 0o755); err != nil {
 		t.Fatalf("creating other workload root: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(otherRoot, "kodama", "keep"), []byte("keep"), 0o444); err != nil {
+	if err := os.WriteFile(filepath.Join(otherRoot, "kodema", "keep"), []byte("keep"), 0o444); err != nil {
 		t.Fatalf("seeding other workload: %v", err)
 	}
 	fx.libpod.setContainer(ContainerState{
@@ -592,7 +592,7 @@ func TestRemoveIsIdempotentAndIdentityScoped(t *testing.T) {
 	if hostFileExists(t, fx.workloadRoot()) {
 		t.Fatal("Remove left the identity's materialization behind")
 	}
-	if !hostFileExists(t, filepath.Join(otherRoot, "kodama", "keep")) {
+	if !hostFileExists(t, filepath.Join(otherRoot, "kodema", "keep")) {
 		t.Fatal("Remove deleted another identity's materialization")
 	}
 	if volume, ok := fx.libpod.volume(fx.volumeName); !ok {
@@ -695,7 +695,7 @@ func TestRemoveExhaustionLeavesVisiblePendingWork(t *testing.T) {
 		Libpod:    fx.libpod,
 		Files:     fx.files,
 		Root:      fx.root,
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Cleanup:   CleanupPolicy{Attempts: 2, Backoff: time.Second},
 		Clock:     fx.clock,
 	})
@@ -739,7 +739,7 @@ func TestRemoveCancellationDuringBackoff(t *testing.T) {
 		Libpod:    fx.libpod,
 		Files:     fx.files,
 		Root:      fx.root,
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Cleanup:   CleanupPolicy{Attempts: 3, Backoff: time.Second},
 		Clock:     fx.clock,
 	})
@@ -1174,7 +1174,7 @@ func TestRefreshCredentialReplacesTokenWithoutRestart(t *testing.T) {
 	if got := fx.files.countPath("Rename", fx.credentialPath()); got != renames+1 {
 		t.Fatalf("refresh renames = %d, want one atomic replacement", got-renames)
 	}
-	if !hostFileExists(t, filepath.Join(fx.kodamaRoot(), "secrets", "API_KEY")) {
+	if !hostFileExists(t, filepath.Join(fx.kodemaRoot(), "secrets", "API_KEY")) {
 		t.Fatal("refresh disturbed the declared secret mounts")
 	}
 }
@@ -1184,7 +1184,7 @@ func TestRefreshCredentialRecoversLostResponseAndAtomicity(t *testing.T) {
 	fx.prepare(t)
 	fx.seedRunning(t)
 
-	fx.files.injectBefore("Rename", "KODAMA_TOKEN", errFakeLost)
+	fx.files.injectBefore("Rename", "KODEMA_TOKEN", errFakeLost)
 	refresh, err := fx.adapter.RefreshCredential(context.Background(), engine.CredentialRequest{
 		Identity:   fx.request.Identity,
 		Credential: "tok-failed",
@@ -1199,7 +1199,7 @@ func TestRefreshCredentialRecoversLostResponseAndAtomicity(t *testing.T) {
 		t.Fatalf("failed replacement corrupted the previous token: %q", got)
 	}
 
-	fx.files.clear("Rename", "KODAMA_TOKEN")
+	fx.files.clear("Rename", "KODEMA_TOKEN")
 	refresh = fx.refresh(t, "tok-b")
 	if !refresh.Delivered {
 		t.Fatalf("retry refresh = %+v, want delivered", refresh)
@@ -1210,7 +1210,7 @@ func TestRefreshCredentialRecoversLostResponseAndAtomicity(t *testing.T) {
 
 	// A lost response after the rename still leaves the new token in place and
 	// a retry converges without a restart.
-	fx.files.injectAfter("Rename", "KODAMA_TOKEN", errFakeLost)
+	fx.files.injectAfter("Rename", "KODEMA_TOKEN", errFakeLost)
 	refresh, err = fx.adapter.RefreshCredential(context.Background(), engine.CredentialRequest{
 		Identity:   fx.request.Identity,
 		Credential: "tok-c",
@@ -1224,7 +1224,7 @@ func TestRefreshCredentialRecoversLostResponseAndAtomicity(t *testing.T) {
 	if got := readHostFile(t, fx.credentialPath()); string(got) != "tok-c" {
 		t.Fatalf("lost-response token = %q, want tok-c", got)
 	}
-	fx.files.clear("Rename", "KODAMA_TOKEN")
+	fx.files.clear("Rename", "KODEMA_TOKEN")
 	refresh = fx.refresh(t, "tok-c")
 	if !refresh.Delivered {
 		t.Fatalf("recovered refresh = %+v, want delivered", refresh)
@@ -1294,7 +1294,7 @@ func TestSecretValuesNeverAppearInDiagnostics(t *testing.T) {
 	}
 	assertClean("start error", err.Error(), result.Detail, fmt.Sprintf("%+v", result))
 
-	fx.files.injectBefore("Rename", "KODAMA_TOKEN", errFakeUnavailable)
+	fx.files.injectBefore("Rename", "KODEMA_TOKEN", errFakeUnavailable)
 	refresh, err := fx.adapter.RefreshCredential(context.Background(), engine.CredentialRequest{
 		Identity:   fx.request.Identity,
 		Credential: "tok-abc",

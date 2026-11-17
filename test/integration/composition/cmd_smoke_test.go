@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestKodactlRunsAgainstTheComposedApp drives one parameterized kodactl command
@@ -45,7 +45,7 @@ func TestKodactlRunsAgainstTheComposedApp(t *testing.T) {
 // answers MCP tools/list, and its cleanup fails the test unless Serve returns
 // after cancellation and Wait reports no error.
 //
-// The commands themselves are not driven here. Both cmd/kodama and cmd/kodactl
+// The commands themselves are not driven here. Both cmd/kodema and cmd/kodactl
 // are `package main` and expose no importable Run(ctx, args, io) seam, so this
 // suite exercises the same app.New entry they construct; their dispatch
 // behavior is covered by the cmd packages' own tests.

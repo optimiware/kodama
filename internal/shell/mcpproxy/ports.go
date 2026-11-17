@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
 )
 
 // Transport performs one bounded external MCP tool call. It receives only the

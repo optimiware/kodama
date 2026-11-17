@@ -21,7 +21,7 @@
 // The driver derives the object name with runtimekube.WorkspaceClaimName, so a
 // retry after a lost response addresses the identical PVC, and stamps exactly
 // the two ownership labels the adapter's unownedClaimReason validates
-// (kodama.dev/tenant, kodama.dev/workspace). No retention annotation is sent:
+// (kodema.dev/tenant, kodema.dev/workspace). No retention annotation is sent:
 // the adapter's Retain owns that marker. AccessMode must be one of the four
 // Kubernetes access modes (ReadWriteOnce, ReadOnlyMany, ReadWriteMany,
 // ReadWriteOncePod); any other value is refused before sending.
@@ -44,10 +44,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 const (
@@ -128,8 +128,8 @@ func TestCreateClaimSendsExactPVCBody(t *testing.T) {
 	    "name": %q,
 	    "namespace": %q,
 	    "labels": {
-	      "kodama.dev/tenant": %q,
-	      "kodama.dev/workspace": %q
+	      "kodema.dev/tenant": %q,
+	      "kodema.dev/workspace": %q
 	    }
 	  },
 	  "spec": {
@@ -532,7 +532,7 @@ func TestCreateClaimUncertainOutcomes(t *testing.T) {
 
 	t.Run("mismatched returned name", func(t *testing.T) {
 		api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
-			response := ownedClaimWire("kodama-workspace-someone-else", workspaceID)
+			response := ownedClaimWire("kodema-workspace-someone-else", workspaceID)
 			writeJSON(w, http.StatusCreated, response)
 		})
 		cluster := newClusterFor(t, api)

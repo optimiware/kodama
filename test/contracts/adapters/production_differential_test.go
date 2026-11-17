@@ -25,7 +25,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/optimiware/kodama/internal/installation"
+	"github.com/optimiware/kodema/internal/installation"
 )
 
 // productionPostgresDifferentialCorpusSize is the number of hand-written
@@ -38,7 +38,7 @@ const productionPostgresDifferentialCorpusSize = 115
 // and fuzz-like variants around keys, fragments, hosts, ports and userinfo.
 // DSNs carry a test password; the failure messages never echo a corpus entry.
 func productionPostgresDifferentialCorpus() []string {
-	const base = "postgres://kodama:pg-hunter2@database.example:5432/kodama"
+	const base = "postgres://kodema:pg-hunter2@database.example:5432/kodema"
 	return []string{
 		// Accepted forms.
 		base + "?sslmode=verify-full",
@@ -47,13 +47,13 @@ func productionPostgresDifferentialCorpus() []string {
 		base + "?connect_timeout=10&sslmode=verify-full",
 		base + "?connect_timeout=999999999999999999999&sslmode=verify-full",
 		base + "?connect_timeout=ten&sslmode=verify-full",
-		base + "?application_name=kodama_runtime&sslmode=verify-full",
+		base + "?application_name=kodema_runtime&sslmode=verify-full",
 		base + "?sslmode=verify-full&sslrootcert=system",
-		"postgres://kodama:pg-hunter2@[2001:db8::1]:5432/kodama?sslmode=verify-full",
-		"postgres://kodama:pg-hunter2@database.example/kodama?sslmode=verify-full",
-		"postgres://kodama:pg-hunter2@database.example:65535/kodama?sslmode=verify-full",
-		"postgres://kodama:pg-hunter2@db-1.example/kodama?sslmode=verify-full",
-		"postgres://database.example/kodama?sslmode=verify-full",
+		"postgres://kodema:pg-hunter2@[2001:db8::1]:5432/kodema?sslmode=verify-full",
+		"postgres://kodema:pg-hunter2@database.example/kodema?sslmode=verify-full",
+		"postgres://kodema:pg-hunter2@database.example:65535/kodema?sslmode=verify-full",
+		"postgres://kodema:pg-hunter2@db-1.example/kodema?sslmode=verify-full",
+		"postgres://database.example/kodema?sslmode=verify-full",
 
 		// Six parser-differential forms: a strict validator refuses them, and
 		// a mutant that accepts one must fail the pgx assertions below.
@@ -100,7 +100,7 @@ func productionPostgresDifferentialCorpus() []string {
 		base + "?sslmode=verify-full&host=database.example",
 		base + "?sslmode=verify-full&hostaddr=10.0.0.1",
 		base + "?sslmode=verify-full&port=5432",
-		base + "?sslmode=verify-full&service=kodama",
+		base + "?sslmode=verify-full&service=kodema",
 		base + "?sslmode=verify-full&passfile=/tmp/pgpass",
 		base + "?sslmode=verify-full&sslcert=/tmp/client.crt",
 		base + "?sslmode=verify-full&sslkey=/tmp/client.key",
@@ -134,14 +134,14 @@ func productionPostgresDifferentialCorpus() []string {
 		"postgres://@,/db?sslmode=verify-full",
 
 		// Scheme spellings.
-		"postgresql://kodama:pg-hunter2@database.example:5432/kodama?sslmode=verify-full",
-		"Postgres://kodama:pg-hunter2@database.example:5432/kodama?sslmode=verify-full",
-		"POSTGRES://kodama:pg-hunter2@database.example:5432/kodama?sslmode=verify-full",
-		"postgres:/kodama?sslmode=verify-full",
-		"postgres:database.example/kodama?sslmode=verify-full",
-		"foo://database.example/kodama?sslmode=verify-full",
-		"http://database.example/kodama?sslmode=verify-full",
-		"host=database.example dbname=kodama sslmode=verify-full",
+		"postgresql://kodema:pg-hunter2@database.example:5432/kodema?sslmode=verify-full",
+		"Postgres://kodema:pg-hunter2@database.example:5432/kodema?sslmode=verify-full",
+		"POSTGRES://kodema:pg-hunter2@database.example:5432/kodema?sslmode=verify-full",
+		"postgres:/kodema?sslmode=verify-full",
+		"postgres:database.example/kodema?sslmode=verify-full",
+		"foo://database.example/kodema?sslmode=verify-full",
+		"http://database.example/kodema?sslmode=verify-full",
+		"host=database.example dbname=kodema sslmode=verify-full",
 		"",
 		"   ",
 		" " + base + "?sslmode=verify-full",
@@ -153,22 +153,22 @@ func productionPostgresDifferentialCorpus() []string {
 		// Paths, ports and userinfo oddities.
 		"postgres://database.example?sslmode=verify-full",
 		"postgres://database.example/?sslmode=verify-full",
-		"postgres://database.example/kodama/extra?sslmode=verify-full",
-		"postgres://database.example/%6Bodama?sslmode=verify-full",
-		"postgres://database.example:0/kodama?sslmode=verify-full",
-		"postgres://database.example:65536/kodama?sslmode=verify-full",
-		"postgres://database.example:99999/kodama?sslmode=verify-full",
-		"postgres://database.example:-1/kodama?sslmode=verify-full",
-		"postgres://database.example:abc/kodama?sslmode=verify-full",
-		"postgres://database.example:/kodama?sslmode=verify-full",
-		"postgres://user%40x:pg-hunter2@database.example/kodama?sslmode=verify-full",
-		"postgres://user:p%3Ahunter2@database.example/kodama?sslmode=verify-full",
-		"postgres://a@b:pg-hunter2@database.example/kodama?sslmode=verify-full",
-		"postgres://@database.example/kodama?sslmode=verify-full",
-		"postgres://:pg-hunter2@database.example/kodama?sslmode=verify-full",
-		"postgres://[2001:db8::1/kodama?sslmode=verify-full",
-		"postgres://[]/kodama?sslmode=verify-full",
-		"postgres://[2001:db8::1]:0/kodama?sslmode=verify-full",
+		"postgres://database.example/kodema/extra?sslmode=verify-full",
+		"postgres://database.example/%6Bodema?sslmode=verify-full",
+		"postgres://database.example:0/kodema?sslmode=verify-full",
+		"postgres://database.example:65536/kodema?sslmode=verify-full",
+		"postgres://database.example:99999/kodema?sslmode=verify-full",
+		"postgres://database.example:-1/kodema?sslmode=verify-full",
+		"postgres://database.example:abc/kodema?sslmode=verify-full",
+		"postgres://database.example:/kodema?sslmode=verify-full",
+		"postgres://user%40x:pg-hunter2@database.example/kodema?sslmode=verify-full",
+		"postgres://user:p%3Ahunter2@database.example/kodema?sslmode=verify-full",
+		"postgres://a@b:pg-hunter2@database.example/kodema?sslmode=verify-full",
+		"postgres://@database.example/kodema?sslmode=verify-full",
+		"postgres://:pg-hunter2@database.example/kodema?sslmode=verify-full",
+		"postgres://[2001:db8::1/kodema?sslmode=verify-full",
+		"postgres://[]/kodema?sslmode=verify-full",
+		"postgres://[2001:db8::1]:0/kodema?sslmode=verify-full",
 	}
 }
 
@@ -226,26 +226,26 @@ func generatedProductionPostgresCorpus() []string {
 		"database.example:",
 	}
 	paths := []string{
-		"/kodama",
+		"/kodema",
 		"/",
 		"",
-		"/kodama/extra",
-		"/%6Bodama",
-		"/kodama-x.y_z",
-		"/KoDaMa",
+		"/kodema/extra",
+		"/%6Bodema",
+		"/kodema-x.y_z",
+		"/KoDeMa",
 	}
 	queries := []string{
 		"sslmode=verify-full",
 		"sslmode=verify%2Dfull",
 		"connect_timeout=10&sslmode=verify-full",
 		"sslmode=verify-full&sslrootcert=system",
-		"application_name=kodama_runtime&sslmode=verify-full",
+		"application_name=kodema_runtime&sslmode=verify-full",
 		"sslmode=verify-full&connect_timeout=0",
 		"sslmode=disable",
 		"sslmode=",
 		"sslmode=verify-full&ssl=true",
 		"sslmode=verify-full&host=/var/run/postgresql",
-		"sslmode=verify-full&service=kodama",
+		"sslmode=verify-full&service=kodema",
 		"sslmode=verify-full&hostaddr=10.0.0.1",
 		"connect_timeout=ten&sslmode=verify-full",
 		"connect_timeout=-1&sslmode=verify-full",

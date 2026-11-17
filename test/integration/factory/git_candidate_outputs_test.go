@@ -8,12 +8,12 @@ package factorytest
 // A Shell-launched container commits a real candidate on a granted work ref
 // through the workload relay, using only its mounted execution credential. It
 // then submits the declared `candidate` output through the HTTPS output
-// submitter: the submitter resolves the KODAMA_ACTION slug to the real action
+// submitter: the submitter resolves the KODEMA_ACTION slug to the real action
 // ID through execution.inspect and sends the current expected_version.
 //
 // The test observes the durable facts: the reported work-branch journal entry,
 // the real ref move with the seeded base as the candidate's parent, the promoted
-// action output, and the next action's materialized `/kodama/outputs/implement/
+// action output, and the next action's materialized `/kodema/outputs/implement/
 // candidate` file. The protected `main` ref stays at the seeded base.
 
 import (
@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -60,8 +60,8 @@ func TestFactoryCandidateWorkloadPublishesExactOutputs(t *testing.T) {
 	// materialized output and proves the next action sees the earlier output.
 	commands = append(commands, `printf 'candidate-output-submitted\n'`)
 	consume := []string{
-		`test -s /kodama/outputs/implement/candidate`,
-		`printf '%s' "$(cat /kodama/outputs/implement/candidate)" > /workspace/consume-candidate`,
+		`test -s /kodema/outputs/implement/candidate`,
+		`printf '%s' "$(cat /kodema/outputs/implement/candidate)" > /workspace/consume-candidate`,
 		`while [ ! -e ` + candidateOutputReleasePath + ` ]; do sleep 1; done`,
 	}
 
@@ -122,7 +122,7 @@ func TestFactoryCandidateWorkloadPublishesExactOutputs(t *testing.T) {
 
 	var materialized string
 	fixture.git.WaitFor(t,
-		"materialized output /kodama/outputs/implement/candidate execution="+executionID,
+		"materialized output /kodema/outputs/implement/candidate execution="+executionID,
 		candidateOutputTimeout, func() bool {
 			paths, err := fixture.OutputMaterializations("implement")
 			if err != nil || len(paths) == 0 {

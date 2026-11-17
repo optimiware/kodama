@@ -26,9 +26,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 const (
@@ -602,7 +602,7 @@ func TestScalewayKMSRefusesBadKeyReferences(t *testing.T) {
 	// Valid plain identifiers reach the request path.
 	for _, reference := range []string{
 		scalewayTestRef,
-		"scw-kms:nl-ams/kodama",
+		"scw-kms:nl-ams/kodema",
 		"scw-kms:fr-par/0",
 	} {
 		if _, err := client.Decrypt(context.Background(), secret.KeyRef(reference), []byte("blob")); err != nil {

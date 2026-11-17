@@ -24,9 +24,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Suite is one authenticated envelope-encryption suite.
@@ -340,5 +340,5 @@ func MountPath(name id.SecretName) (string, error) {
 	if _, err := id.ParseSecretName(string(name)); err != nil {
 		return "", fault.Wrap(fault.InvalidInput, "secret name is invalid", err)
 	}
-	return "/kodama/secrets/" + string(name), nil
+	return "/kodema/secrets/" + string(name), nil
 }

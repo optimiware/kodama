@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // fakeFS is the injected filesystem for kodactl tests. It mirrors the
@@ -251,7 +251,7 @@ func testNow() time.Time {
 // testConfig is a valid kodactl configuration.
 func testConfig() cli.Config {
 	return cli.Config{
-		ServerURL:      "https://kodama.example.com",
+		ServerURL:      "https://kodema.example.com",
 		Project:        "shop",
 		Output:         cli.OutputJSON,
 		TrustedOrigins: []string{"https://git.example.com/shop"},

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 // fakeStorage is a deterministic in-memory checkpoint backend. It is the only
@@ -81,7 +81,7 @@ func (storage *fakeStorage) CompareAndSwap(_ context.Context, record session.Rec
 		return "", fault.New(fault.VersionConflict, "stale session revision")
 	}
 	storage.seq++
-	ref, err := session.ParseRef(fmt.Sprintf("kodama-checkpoint/v1/ctx-%04d", storage.seq))
+	ref, err := session.ParseRef(fmt.Sprintf("kodema-checkpoint/v1/ctx-%04d", storage.seq))
 	if err != nil {
 		return "", err
 	}

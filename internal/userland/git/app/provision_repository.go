@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
-// RepositoryProvisionConfig is the complete `kodama git provision-repository`
+// RepositoryProvisionConfig is the complete `kodema git provision-repository`
 // input. The app boundary builds the operating-system dependencies around it.
 type RepositoryProvisionConfig struct {
 	// TenantID is the tenant the repository belongs to. Its admin repository
@@ -30,7 +30,7 @@ type RepositoryProvisionConfig struct {
 	// Environment is the exact child environment. A nil slice selects the
 	// documented isolated environment.
 	Environment []string
-	// HookBinary is the absolute kodama binary the installed hooks exec. A
+	// HookBinary is the absolute kodema binary the installed hooks exec. A
 	// zero value uses the running executable.
 	HookBinary string
 	// Executor is an optional injected command boundary.
@@ -106,7 +106,7 @@ func ProvisionRepository(ctx context.Context, config RepositoryProvisionConfig) 
 	if hookBinary == "" {
 		hookBinary, err = os.Executable()
 		if err != nil {
-			return RepositoryProvisionResult{}, fmt.Errorf("resolve kodama hook binary: %w", err)
+			return RepositoryProvisionResult{}, fmt.Errorf("resolve kodema hook binary: %w", err)
 		}
 	}
 	result, err := native.ProvisionRepository(ctx, native.RepositoryProvisionConfig{

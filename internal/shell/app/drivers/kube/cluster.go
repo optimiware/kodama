@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 const (
@@ -36,7 +36,7 @@ const (
 	mergePatchContentType = "application/merge-patch+json"
 
 	// userAgent identifies this driver without carrying any identity.
-	userAgent = "kodama-kubernetes-driver/1"
+	userAgent = "kodema-kubernetes-driver/1"
 	// errorDrainBytes bounds how much of an error response is drained so a
 	// keep-alive connection can be reused. The bytes are never inspected.
 	errorDrainBytes = 4 << 10

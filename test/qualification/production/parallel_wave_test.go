@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/suite"
+	"github.com/optimiware/kodema/test/suite"
 )
 
 // TestHarnessStageWavesClassifyEveryLiveProbe proves the wave lists and the

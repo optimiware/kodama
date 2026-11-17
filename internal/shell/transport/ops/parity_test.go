@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
-	"github.com/optimiware/kodama/internal/shell/transport/mcp"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/shell/transport/mcp"
 )
 
 var pathParameters = map[string]string{
@@ -98,7 +98,7 @@ func TestEveryRegistryOperationRoutesOnceThroughRESTAndMCP(t *testing.T) {
 	}
 	mcpEdge, err := mcp.NewEdge(mcp.Config{
 		Router:     h.router,
-		ServerInfo: api.MCPImplementation{Name: "kodama", Version: "test"},
+		ServerInfo: api.MCPImplementation{Name: "kodema", Version: "test"},
 	})
 	if err != nil {
 		t.Fatalf("mcp.NewEdge: %v", err)

@@ -5,7 +5,7 @@ package composition
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestBindingAndVerificationHappyPath proves the resource ownership path

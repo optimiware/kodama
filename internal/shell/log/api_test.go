@@ -1,6 +1,6 @@
 // Package log_test pins the retained/live log service API.
 //
-// Package kodama/internal/shell/log provides:
+// Package kodema/internal/shell/log provides:
 //
 //	// Clock is the injected authoritative time source for retention.
 //	type Clock interface {
@@ -81,7 +81,7 @@
 package log_test
 
 import (
-	"github.com/optimiware/kodama/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/log"
 )
 
 // Compile-time pins for the declarations the behavior tests consume.

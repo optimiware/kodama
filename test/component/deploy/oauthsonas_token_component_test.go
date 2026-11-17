@@ -245,7 +245,7 @@ func newOAuthTokenSandbox(t *testing.T) *oauthTokenSandbox {
 		"FAKE_OAUTHSONAS_ID_TOKEN=" + oauthTokenID,
 		"FAKE_OAUTHSONAS_REFRESH_TOKEN=" + oauthTokenRefresh,
 		"FAKE_OAUTHSONAS_BODY_SENTINEL=" + oauthTokenBody,
-		"OAUTHSONAS_URL=https://oauthsonas.kodama-system.svc.cluster.local:8443",
+		"OAUTHSONAS_URL=https://oauthsonas.kodema-system.svc.cluster.local:8443",
 		"OAUTHSONAS_ACCESS_CODE_FILE=" + box.codeFile,
 	}
 	return box
@@ -404,8 +404,8 @@ func TestOAuthSonasTokenPrintsOnlyTheAccessToken(t *testing.T) {
 func TestOAuthSonasTokenPassesCAAndResolveToCurl(t *testing.T) {
 	box := newOAuthTokenSandbox(t)
 	code, stdout, stderr := box.run(t, []string{"tenant-a-admin"}, "", map[string]string{
-		"OAUTHSONAS_CA":      "/etc/kodama/oidc-ca/ca.crt",
-		"OAUTHSONAS_RESOLVE": "oauthsonas.kodama-system.svc.cluster.local:8443:127.0.0.1",
+		"OAUTHSONAS_CA":      "/etc/kodema/oidc-ca/ca.crt",
+		"OAUTHSONAS_RESOLVE": "oauthsonas.kodema-system.svc.cluster.local:8443:127.0.0.1",
 	})
 	if code != 0 {
 		t.Fatalf("oauthsonas-token failed: exit %d\nstderr:\n%s", code, stderr)
@@ -415,8 +415,8 @@ func TestOAuthSonasTokenPassesCAAndResolveToCurl(t *testing.T) {
 	}
 	argv := strings.Join(box.recordedArgv(t, box.argvLog), "\n")
 	for _, want := range []string{
-		"--cacert\t/etc/kodama/oidc-ca/ca.crt",
-		"--resolve\toauthsonas.kodama-system.svc.cluster.local:8443:127.0.0.1",
+		"--cacert\t/etc/kodema/oidc-ca/ca.crt",
+		"--resolve\toauthsonas.kodema-system.svc.cluster.local:8443:127.0.0.1",
 	} {
 		if !strings.Contains(argv, want) {
 			t.Errorf("curl argv does not carry %q:\n%s", want, argv)
@@ -520,7 +520,7 @@ func TestOAuthSonasTokenRefusesInsecureAccessCodeSources(t *testing.T) {
 }
 
 // TestOAuthSonasTokenRefusesBadPersona pins the principal-id grammar. A
-// persona such as "oauthsonas|admin" is not a principal id Kodama can parse,
+// persona such as "oauthsonas|admin" is not a principal id Kodema can parse,
 // and a malformed persona must not reach the provider.
 func TestOAuthSonasTokenRefusesBadPersona(t *testing.T) {
 	for index, persona := range []string{"oauthsonas|admin", "admin space", "admin/admin", "admin:tenant", ""} {
@@ -544,13 +544,13 @@ func TestOAuthSonasTokenRefusesBadPersona(t *testing.T) {
 	}
 }
 
-// TestOAuthSonasTokenRefusesHTTPIssuer pins the https-only issuer: Kodama
+// TestOAuthSonasTokenRefusesHTTPIssuer pins the https-only issuer: Kodema
 // accepts only https issuers, so the script never sends a token request to an
 // http:// URL.
 func TestOAuthSonasTokenRefusesHTTPIssuer(t *testing.T) {
 	box := newOAuthTokenSandbox(t)
 	code, stdout, stderr := box.run(t, []string{"tenant-a-admin"}, "", map[string]string{
-		"OAUTHSONAS_URL": "http://oauthsonas.kodama-system.svc.cluster.local:8443",
+		"OAUTHSONAS_URL": "http://oauthsonas.kodema-system.svc.cluster.local:8443",
 	})
 	if code == 0 {
 		t.Fatalf("script accepted an http issuer")

@@ -25,7 +25,7 @@ resource "scaleway_object_bucket" "tofu_state" {
   }
 
   tags = {
-    app        = "kodama"
+    app        = "kodema"
     component  = "tofu-state"
     managed-by = "opentofu"
   }

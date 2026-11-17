@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // runTask dispatches the ergonomic `kodactl task` subcommands.
@@ -81,7 +81,7 @@ func runTaskCreate(ctx context.Context, config Config, args []string, ports Port
 	}
 	projectID := resolveProject(projectFlag, config, deps)
 	if projectID == "" {
-		return usage(ports.Err, fmt.Sprintf("task %s requires --project <id> or KODAMA_PROJECT", subcmd))
+		return usage(ports.Err, fmt.Sprintf("task %s requires --project <id> or KODEMA_PROJECT", subcmd))
 	}
 	if strings.TrimSpace(titleFlag) == "" {
 		return usage(ports.Err, fmt.Sprintf("task %s requires --title <text>", subcmd))
@@ -577,7 +577,7 @@ func runTaskList(ctx context.Context, config Config, args []string, ports Ports,
 	}
 	projectID := resolveProject(projectFlag, config, deps)
 	if projectID == "" {
-		return usage(ports.Err, "task list requires --project <id> or KODAMA_PROJECT")
+		return usage(ports.Err, "task list requires --project <id> or KODEMA_PROJECT")
 	}
 	if ports.Client == nil {
 		return failure(ports.Err, fmt.Errorf("no public client is configured"))

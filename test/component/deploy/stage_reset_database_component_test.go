@@ -89,8 +89,8 @@ func runResetPodScript(t *testing.T, script string, extraEnv ...string) resetPod
 	command := exec.Command("/bin/bash", "-ec", script)
 	command.Env = append([]string{
 		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
-		"KODAMA_ADMIN_DATABASE_URL=postgres://stage_admin:admin-secret@db.example:5432/rdb?sslmode=verify-full",
-		"KODAMA_DATABASE_URL=postgres://kodama_runtime:runtime-secret@db.example:5432/kodama?sslmode=verify-full",
+		"KODEMA_ADMIN_DATABASE_URL=postgres://stage_admin:admin-secret@db.example:5432/rdb?sslmode=verify-full",
+		"KODEMA_DATABASE_URL=postgres://kodema_runtime:runtime-secret@db.example:5432/kodema?sslmode=verify-full",
 		"FAKE_PSQL_LOG=" + log,
 		"FAKE_PSQL_STDIN=" + stdin,
 	}, extraEnv...)
@@ -114,7 +114,7 @@ func runResetPodScript(t *testing.T, script string, extraEnv ...string) resetPod
 }
 
 // TestStageResetConnectsToTheApplicationDatabase proves both database pods read
-// the application database from the kodama-database Secret, export it as
+// the application database from the kodema-database Secret, export it as
 // PGDATABASE and never connect to the database named by the admin URL.
 func TestStageResetConnectsToTheApplicationDatabase(t *testing.T) {
 	box := newResetSandbox(t)
@@ -127,14 +127,14 @@ func TestStageResetConnectsToTheApplicationDatabase(t *testing.T) {
 		t.Fatalf("read pod manifests: %v", err)
 	}
 	text := string(manifests)
-	secretRef := "secretKeyRef: {name: kodama-database, key: database_url}"
+	secretRef := "secretKeyRef: {name: kodema-database, key: database_url}"
 	if got := strings.Count(text, secretRef); got != 2 {
-		t.Errorf("kodama-database/database_url secretKeyRef appears %d times; want the pre-state and reset pods:\n%s", got, text)
+		t.Errorf("kodema-database/database_url secretKeyRef appears %d times; want the pre-state and reset pods:\n%s", got, text)
 	}
 
 	for _, generateName := range []string{
-		"kodama-stage-reset-preflight-",
-		"kodama-stage-reset-database-",
+		"kodema-stage-reset-preflight-",
+		"kodema-stage-reset-database-",
 	} {
 		script := resetPodScript(t, text, generateName)
 		if strings.Contains(script, "PGDATABASE=\"${BASH_REMATCH[6]}\"") {
@@ -144,7 +144,7 @@ func TestStageResetConnectsToTheApplicationDatabase(t *testing.T) {
 		if result.code != 0 {
 			t.Fatalf("%s script failed: exit %d\n%s", generateName, result.code, result.output)
 		}
-		if !strings.Contains(result.log, "PGDATABASE\tkodama") {
+		if !strings.Contains(result.log, "PGDATABASE\tkodema") {
 			t.Errorf("%s connected with a database other than the application one:\n%s", generateName, result.log)
 		}
 		if strings.Contains(result.log, "PGDATABASE\trdb") {
@@ -157,14 +157,14 @@ func TestStageResetConnectsToTheApplicationDatabase(t *testing.T) {
 		}
 	}
 	// The resolved name is pre-state evidence, not operator guesswork.
-	preflight := resetPodScript(t, text, "kodama-stage-reset-preflight-")
+	preflight := resetPodScript(t, text, "kodema-stage-reset-preflight-")
 	result := runResetPodScript(t, preflight)
 	for line := range strings.SplitSeq(result.output, "\n") {
 		if strings.HasPrefix(line, "resolved_database=") {
 			t.Logf("pre-state evidence %s", line)
 		}
 	}
-	if !strings.Contains(result.output, "resolved_database=kodama") {
+	if !strings.Contains(result.output, "resolved_database=kodema") {
 		t.Errorf("pre-state evidence does not record the resolved database name:\n%s", result.output)
 	}
 	if !strings.Contains(preflight, "resolved_database=") {
@@ -183,7 +183,7 @@ func TestStageResetConnectsToTheApplicationDatabase(t *testing.T) {
 
 // TestStageResetRefusesWithoutMigrationLedger proves both database pods refuse
 // before any mutating statement when the target database has no
-// kodama_meta.schema_migrations ledger (the empty admin database symptom).
+// kodema_meta.schema_migrations ledger (the empty admin database symptom).
 func TestStageResetRefusesWithoutMigrationLedger(t *testing.T) {
 	box := newResetSandbox(t)
 	code, output := box.run(t)
@@ -196,13 +196,13 @@ func TestStageResetRefusesWithoutMigrationLedger(t *testing.T) {
 	}
 	text := string(manifests)
 	for _, generateName := range []string{
-		"kodama-stage-reset-preflight-",
-		"kodama-stage-reset-database-",
+		"kodema-stage-reset-preflight-",
+		"kodema-stage-reset-database-",
 	} {
 		script := resetPodScript(t, text, generateName)
 		result := runResetPodScript(t, script, "FAKE_PSQL_CHECK=absent")
 		if result.code == 0 {
-			t.Errorf("%s accepted a database without kodama_meta.schema_migrations:\n%s", generateName, result.output)
+			t.Errorf("%s accepted a database without kodema_meta.schema_migrations:\n%s", generateName, result.output)
 		}
 		if !strings.Contains(result.output, "schema_migrations") {
 			t.Errorf("%s refusal does not name the missing ledger:\n%s", generateName, result.output)
@@ -219,17 +219,17 @@ func TestStageResetRefusesWithoutMigrationLedger(t *testing.T) {
 }
 
 // TestStageResetDatabaseOverrideMustMatchSecret proves an explicit
-// KODAMA_STAGE_DATABASE_NAME is bounded, reaches both pods, and is refused
+// KODEMA_STAGE_DATABASE_NAME is bounded, reaches both pods, and is refused
 // when it disagrees with the Secret's database_url.
 func TestStageResetDatabaseOverrideMustMatchSecret(t *testing.T) {
 	t.Run("unbounded override refused before mutation", func(t *testing.T) {
-		box := newResetSandbox(t).withEnv("KODAMA_STAGE_DATABASE_NAME=bad name;drop")
+		box := newResetSandbox(t).withEnv("KODEMA_STAGE_DATABASE_NAME=bad name;drop")
 		code, output := box.run(t)
 		if code == 0 {
 			t.Fatalf("stage-reset accepted an unbounded database override:\n%s", output)
 		}
-		if !strings.Contains(output, "KODAMA_STAGE_DATABASE_NAME") {
-			t.Errorf("refusal does not mention KODAMA_STAGE_DATABASE_NAME:\n%s", output)
+		if !strings.Contains(output, "KODEMA_STAGE_DATABASE_NAME") {
+			t.Errorf("refusal does not mention KODEMA_STAGE_DATABASE_NAME:\n%s", output)
 		}
 		if line := mutationCall(box.kubectlCalls(t)); line != "" {
 			t.Errorf("stage-reset mutated before refusing:\n%s", line)
@@ -240,7 +240,7 @@ func TestStageResetDatabaseOverrideMustMatchSecret(t *testing.T) {
 	})
 
 	t.Run("matching override reaches both pods", func(t *testing.T) {
-		box := newResetSandbox(t).withEnv("KODAMA_STAGE_DATABASE_NAME=kodama")
+		box := newResetSandbox(t).withEnv("KODEMA_STAGE_DATABASE_NAME=kodema")
 		code, output := box.run(t)
 		if code != 0 {
 			t.Fatalf("stage-reset apply failed: exit %d\n%s", code, output)
@@ -249,7 +249,7 @@ func TestStageResetDatabaseOverrideMustMatchSecret(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read pod manifests: %v", err)
 		}
-		if got := strings.Count(string(manifests), "{name: KODAMA_STAGE_DATABASE_NAME, value: 'kodama'}"); got != 2 {
+		if got := strings.Count(string(manifests), "{name: KODEMA_STAGE_DATABASE_NAME, value: 'kodema'}"); got != 2 {
 			t.Errorf("the override reaches %d database pods; want 2:\n%s", got, manifests)
 		}
 	})
@@ -266,15 +266,15 @@ func TestStageResetDatabaseOverrideMustMatchSecret(t *testing.T) {
 		}
 		text := string(manifests)
 		for _, generateName := range []string{
-			"kodama-stage-reset-preflight-",
-			"kodama-stage-reset-database-",
+			"kodema-stage-reset-preflight-",
+			"kodema-stage-reset-database-",
 		} {
 			script := resetPodScript(t, text, generateName)
-			result := runResetPodScript(t, script, "KODAMA_STAGE_DATABASE_NAME=other")
+			result := runResetPodScript(t, script, "KODEMA_STAGE_DATABASE_NAME=other")
 			if result.code == 0 {
 				t.Errorf("%s accepted an override that disagrees with the Secret:\n%s", generateName, result.output)
 			}
-			if !strings.Contains(result.output, "KODAMA_STAGE_DATABASE_NAME") {
+			if !strings.Contains(result.output, "KODEMA_STAGE_DATABASE_NAME") {
 				t.Errorf("%s refusal does not mention the override:\n%s", generateName, result.output)
 			}
 			if result.log != "" {

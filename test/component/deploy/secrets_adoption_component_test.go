@@ -3,9 +3,9 @@
 // Adoption tests for the reference bootstrap-secrets candidate (6289127) on
 // master. They pin the custody split that the candidate introduces:
 //
-//   - kodama-keys is created once and carries the KMS-wrapped KEK only; the
-//     KMS IAM credentials live in kodama-kms-credentials, reapplied every run;
-//   - kodama-database-admin is applied only when TF_VAR_postgres_admin_password
+//   - kodema-keys is created once and carries the KMS-wrapped KEK only; the
+//     KMS IAM credentials live in kodema-kms-credentials, reapplied every run;
+//   - kodema-database-admin is applied only when TF_VAR_postgres_admin_password
 //     is in the environment, and never reaches argv, the log or the disk;
 //   - the provider CA is required (no internal-CA fallback);
 //   - the four database DSNs are built from percent-encoded passwords, so a
@@ -180,11 +180,11 @@ func installOAuthSonasPKI(t *testing.T, box *sandbox) {
 	}
 	run("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "3650",
 		"-keyout", filepath.Join(pki, "ca.key"), "-out", filepath.Join(pki, "ca.crt"),
-		"-subj", "/CN=kodama-internal-ca")
+		"-subj", "/CN=kodema-internal-ca")
 	run("req", "-newkey", "rsa:2048", "-nodes",
 		"-keyout", filepath.Join(pki, "oauthsonas.key"),
 		"-out", filepath.Join(pki, "oauthsonas.csr"),
-		"-subj", "/CN=oauthsonas.kodama-system.svc.cluster.local")
+		"-subj", "/CN=oauthsonas.kodema-system.svc.cluster.local")
 	writeFile(t, filepath.Join(pki, "oauthsonas-ext.cnf"), "subjectAltName = DNS:oauthsonas\n")
 	run("x509", "-req", "-in", filepath.Join(pki, "oauthsonas.csr"),
 		"-CA", filepath.Join(pki, "ca.crt"), "-CAkey", filepath.Join(pki, "ca.key"),
@@ -235,7 +235,7 @@ func assertArgvCount(t *testing.T, label, body string, want int, sequence ...str
 // installation CA rather than another leaf.
 func assertOAuthSonasCertificate(t *testing.T, box *sandbox, certFile string) {
 	t.Helper()
-	const wantCNF = "subjectAltName = DNS:oauthsonas,DNS:oauthsonas.kodama-system,DNS:oauthsonas.kodama-system.svc,DNS:oauthsonas.kodama-system.svc.cluster.local,IP:127.0.0.1\n" +
+	const wantCNF = "subjectAltName = DNS:oauthsonas,DNS:oauthsonas.kodema-system,DNS:oauthsonas.kodema-system.svc,DNS:oauthsonas.kodema-system.svc.cluster.local,IP:127.0.0.1\n" +
 		"extendedKeyUsage = serverAuth\n"
 	cnfPath := filepath.Join(box.workDir, "pki", "oauthsonas-ext.cnf")
 	if body, err := os.ReadFile(cnfPath); err != nil {
@@ -247,9 +247,9 @@ func assertOAuthSonasCertificate(t *testing.T, box *sandbox, certFile string) {
 	san := certExtensionValue(t, box, certFile, "subjectAltName")
 	want := []string{
 		"DNS:oauthsonas",
-		"DNS:oauthsonas.kodama-system",
-		"DNS:oauthsonas.kodama-system.svc",
-		"DNS:oauthsonas.kodama-system.svc.cluster.local",
+		"DNS:oauthsonas.kodema-system",
+		"DNS:oauthsonas.kodema-system.svc",
+		"DNS:oauthsonas.kodema-system.svc.cluster.local",
 		"IP Address:127.0.0.1",
 	}
 	var got []string
@@ -266,11 +266,11 @@ func assertOAuthSonasCertificate(t *testing.T, box *sandbox, certFile string) {
 	}
 
 	subject := opensslOutput(t, box, "x509", "-in", certFile, "-noout", "-subject")
-	if !strings.Contains(subject, "CN=oauthsonas.kodama-system.svc.cluster.local") {
+	if !strings.Contains(subject, "CN=oauthsonas.kodema-system.svc.cluster.local") {
 		t.Errorf("certificate subject %q does not name the OAuthSonas service", subject)
 	}
 	issuer := opensslOutput(t, box, "x509", "-in", certFile, "-noout", "-issuer")
-	if !strings.Contains(issuer, "CN=kodama-internal-ca") {
+	if !strings.Contains(issuer, "CN=kodema-internal-ca") {
 		t.Errorf("certificate issuer %q is not the installation CA", issuer)
 	}
 }
@@ -353,10 +353,10 @@ func assertNoTempFiles(t *testing.T, box *sandbox, prefixes ...string) {
 }
 
 // TestBootstrapSecretsSplitsKMSSecretAndCreatesKEKOnce proves the candidate's
-// custody split: kodama-keys is created with the KEK ciphertext only and is
-// never touched on a second run, while kodama-kms-credentials is applied on
+// custody split: kodema-keys is created with the KEK ciphertext only and is
+// never touched on a second run, while kodema-kms-credentials is applied on
 // every run from a file so the IAM key never reaches argv. The KMS credentials
-// do not ride in kodama-keys, whose contents the application mounts.
+// do not ride in kodema-keys, whose contents the application mounts.
 func TestBootstrapSecretsSplitsKMSSecretAndCreatesKEKOnce(t *testing.T) {
 	box := newSandbox(t)
 	code, output := box.run(t, false)
@@ -365,26 +365,26 @@ func TestBootstrapSecretsSplitsKMSSecretAndCreatesKEKOnce(t *testing.T) {
 	}
 
 	lines := box.readKubectlArgv(t)
-	keys := createSecretArgv(lines, "kodama-keys")
+	keys := createSecretArgv(lines, "kodema-keys")
 	if keys == nil {
-		t.Fatal("no `create secret generic kodama-keys` argv was recorded")
+		t.Fatal("no `create secret generic kodema-keys` argv was recorded")
 	}
 	if !hasArgPrefix(keys, "--from-file=kek-v1.blob=") {
-		t.Errorf("kodama-keys is not created from the KEK ciphertext file: %v", keys)
+		t.Errorf("kodema-keys is not created from the KEK ciphertext file: %v", keys)
 	}
 	if hasArgPrefix(keys, "--from-env-file=") {
-		t.Errorf("kodama-keys is combined with an env-file; kubectl refuses that combination and the KEK Secret must carry the KEK only: %v", keys)
+		t.Errorf("kodema-keys is combined with an env-file; kubectl refuses that combination and the KEK Secret must carry the KEK only: %v", keys)
 	}
 	if hasArgPrefix(keys, "--from-literal=") {
-		t.Errorf("kodama-keys carries a literal value on argv: %v", keys)
+		t.Errorf("kodema-keys carries a literal value on argv: %v", keys)
 	}
 
-	creds := createSecretArgv(lines, "kodama-kms-credentials")
+	creds := createSecretArgv(lines, "kodema-kms-credentials")
 	if creds == nil {
-		t.Fatal("no `create secret generic kodama-kms-credentials` argv was recorded")
+		t.Fatal("no `create secret generic kodema-kms-credentials` argv was recorded")
 	}
 	if !hasArgPrefix(creds, "--from-env-file=") {
-		t.Errorf("kodama-kms-credentials does not read its values from a file: %v", creds)
+		t.Errorf("kodema-kms-credentials does not read its values from a file: %v", creds)
 	}
 	assertFormsAbsentFromArgv(t, lines, []credentialForm{
 		{label: "KMS access key", secret: kmsAccessStub},
@@ -407,9 +407,9 @@ func TestBootstrapSecretsSplitsKMSSecretAndCreatesKEKOnce(t *testing.T) {
 	// --from-file. The env-file itself reached kubectl through that dry-run
 	// call (asserted above); here the merged request must carry the CA.
 	stdin := box.readKubectlStdin(t)
-	for _, want := range []string{`"name": "kodama-database"`, `"ca.crt"`} {
+	for _, want := range []string{`"name": "kodema-database"`, `"ca.crt"`} {
 		if !strings.Contains(stdin, want) {
-			t.Errorf("the combined kodama-database request is missing %s:\n%s", want, stdin)
+			t.Errorf("the combined kodema-database request is missing %s:\n%s", want, stdin)
 		}
 	}
 
@@ -437,15 +437,15 @@ func TestBootstrapSecretsSplitsKMSSecretAndCreatesKEKOnce(t *testing.T) {
 		t.Fatalf("second bootstrap-secrets run failed: exit %d\n%s", code, output)
 	}
 	lines = box.readKubectlArgv(t)
-	if createSecretArgv(lines, "kodama-keys") != nil {
-		t.Errorf("kodama-keys was recreated on a second run; a new KEK makes every existing value unreadable")
+	if createSecretArgv(lines, "kodema-keys") != nil {
+		t.Errorf("kodema-keys was recreated on a second run; a new KEK makes every existing value unreadable")
 	}
-	if createSecretArgv(lines, "kodama-kms-credentials") == nil {
-		t.Errorf("kodama-kms-credentials was not reapplied on a second run")
+	if createSecretArgv(lines, "kodema-kms-credentials") == nil {
+		t.Errorf("kodema-kms-credentials was not reapplied on a second run")
 	}
 	tofuBody := box.readLogForTest(box.tofuLog)
 	if logHasArgvSequence(tofuBody, "output", "-raw", "database_ca_certificate") {
-		t.Errorf("a preserved kodama-database still read the provider CA; the database Secret should be left alone")
+		t.Errorf("a preserved kodema-database still read the provider CA; the database Secret should be left alone")
 	}
 	// Positive control for the absence check just above: the KMS credentials
 	// are still read on every run, so the log must contain that call and the
@@ -455,7 +455,7 @@ func TestBootstrapSecretsSplitsKMSSecretAndCreatesKEKOnce(t *testing.T) {
 	}
 }
 
-// TestBootstrapSecretsAdminSecretOnlyWithPassword proves kodama-database-admin
+// TestBootstrapSecretsAdminSecretOnlyWithPassword proves kodema-database-admin
 // is created only when TF_VAR_postgres_admin_password is set, is applied from
 // a file, never echoes the password, and works with master's descriptor shape
 // (no postgres.admin_database field).
@@ -466,8 +466,8 @@ func TestBootstrapSecretsAdminSecretOnlyWithPassword(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("bootstrap-secrets failed: exit %d\n%s", code, output)
 		}
-		if argv := createSecretArgv(box.readKubectlArgv(t), "kodama-database-admin"); argv != nil {
-			t.Errorf("kodama-database-admin was created without TF_VAR_postgres_admin_password: %v", argv)
+		if argv := createSecretArgv(box.readKubectlArgv(t), "kodema-database-admin"); argv != nil {
+			t.Errorf("kodema-database-admin was created without TF_VAR_postgres_admin_password: %v", argv)
 		}
 		if !strings.Contains(output, "TF_VAR_postgres_admin_password not set") {
 			t.Errorf("the run does not record that the admin Secret was left alone: %s", output)
@@ -482,15 +482,15 @@ func TestBootstrapSecretsAdminSecretOnlyWithPassword(t *testing.T) {
 			t.Fatalf("bootstrap-secrets with an admin password failed: exit %d\n%s", code, output)
 		}
 		lines := box.readKubectlArgv(t)
-		argv := createSecretArgv(lines, "kodama-database-admin")
+		argv := createSecretArgv(lines, "kodema-database-admin")
 		if argv == nil {
-			t.Fatal("kodama-database-admin was not created although TF_VAR_postgres_admin_password is set")
+			t.Fatal("kodema-database-admin was not created although TF_VAR_postgres_admin_password is set")
 		}
 		if !hasArgPrefix(argv, "--from-env-file=") {
-			t.Errorf("kodama-database-admin does not read its URL from a file: %v", argv)
+			t.Errorf("kodema-database-admin does not read its URL from a file: %v", argv)
 		}
 		if hasArgPrefix(argv, "--from-literal=") {
-			t.Errorf("kodama-database-admin carries a literal on argv: %v", argv)
+			t.Errorf("kodema-database-admin carries a literal on argv: %v", argv)
 		}
 		forms := []credentialForm{{label: "postgres admin password", secret: adminPasswordSentinel}}
 		assertFormsAbsentFromArgv(t, lines, forms)
@@ -505,13 +505,13 @@ func TestBootstrapSecretsAdminSecretOnlyWithPassword(t *testing.T) {
 		if strings.Contains(secretLog, "%") {
 			t.Errorf("a URL-safe administrator password was percent-encoded: %s", secretLog)
 		}
-		if !strings.Contains(secretLog, "admin_url=postgres://kodama_admin:"+adminPasswordSentinel+"@") {
+		if !strings.Contains(secretLog, "admin_url=postgres://kodema_admin:"+adminPasswordSentinel+"@") {
 			t.Errorf("the administrator password does not reach the env-file unchanged: %s", secretLog)
 		}
-		if !strings.Contains(secretLog, "admin_url=postgres://kodama_admin:") {
+		if !strings.Contains(secretLog, "admin_url=postgres://kodema_admin:") {
 			t.Errorf("admin_url does not use the descriptor's postgres.admin_user: %s", secretLog)
 		}
-		if !strings.Contains(secretLog, "@db.example:5432/kodama?sslmode=verify-full&sslrootcert=/etc/kodama/pg-ca/ca.crt") {
+		if !strings.Contains(secretLog, "@db.example:5432/kodema?sslmode=verify-full&sslrootcert=/etc/kodema/pg-ca/ca.crt") {
 			t.Errorf("admin_url does not fall back to postgres.database_name or does not use verify-full: %s", secretLog)
 		}
 		assertNoTempFiles(t, box, "admin-env.")
@@ -524,8 +524,8 @@ func TestBootstrapSecretsAdminSecretOnlyWithPassword(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("bootstrap-secrets failed: exit %d\n%s", code, output)
 		}
-		if createSecretArgv(box.readKubectlArgv(t), "kodama-database-admin") == nil {
-			t.Errorf("kodama-database-admin was not applied although the admin password is set; it must not depend on kodama-database being new")
+		if createSecretArgv(box.readKubectlArgv(t), "kodema-database-admin") == nil {
+			t.Errorf("kodema-database-admin was not applied although the admin password is set; it must not depend on kodema-database being new")
 		}
 	})
 }
@@ -548,12 +548,12 @@ func TestBootstrapSecretsRefusesNonURLSafePasswords(t *testing.T) {
 	for _, testCase := range unsafe {
 		t.Run(testCase.name, func(t *testing.T) {
 			box := newSandbox(t)
-			box.env = append(box.env, "KODAMA_DB_RUNTIME_PASSWORD="+testCase.value)
+			box.env = append(box.env, "KODEMA_DB_RUNTIME_PASSWORD="+testCase.value)
 			code, output := box.run(t, false)
 			if code == 0 {
 				t.Fatalf("bootstrap-secrets accepted a non-URL-safe runtime password:\n%s", output)
 			}
-			if !strings.Contains(output, "KODAMA_DB_RUNTIME_PASSWORD") {
+			if !strings.Contains(output, "KODEMA_DB_RUNTIME_PASSWORD") {
 				t.Errorf("the refusal does not name the offending variable:\n%s", output)
 			}
 			if !strings.Contains(output, "[A-Za-z0-9._~-]") {
@@ -569,9 +569,9 @@ func TestBootstrapSecretsRefusesNonURLSafePasswords(t *testing.T) {
 	}
 
 	for _, variable := range []string{
-		"KODAMA_DB_CONTROLLER_PASSWORD",
-		"KODAMA_DB_PUBLISHER_PASSWORD",
-		"KODAMA_DB_AUTH_PASSWORD",
+		"KODEMA_DB_CONTROLLER_PASSWORD",
+		"KODEMA_DB_PUBLISHER_PASSWORD",
+		"KODEMA_DB_AUTH_PASSWORD",
 		"TF_VAR_postgres_admin_password",
 	} {
 		t.Run(variable, func(t *testing.T) {
@@ -593,7 +593,7 @@ func TestBootstrapSecretsRefusesNonURLSafePasswords(t *testing.T) {
 	// env-file verbatim, so the refusals above are not a blanket rejection.
 	safe := "P28-DB.p.ss~w-rd_100"
 	box := newSandbox(t)
-	box.env = append(box.env, "KODAMA_DB_RUNTIME_PASSWORD="+safe)
+	box.env = append(box.env, "KODEMA_DB_RUNTIME_PASSWORD="+safe)
 	code, output := box.run(t, false)
 	if code != 0 {
 		t.Fatalf("bootstrap-secrets refused a URL-safe password: exit %d\n%s", code, output)
@@ -602,7 +602,7 @@ func TestBootstrapSecretsRefusesNonURLSafePasswords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read fake kubectl secret log: %v", err)
 	}
-	if !strings.Contains(string(body), "runtime:"+safe+"@") && !strings.Contains(string(body), "kodama_runtime:"+safe+"@") {
+	if !strings.Contains(string(body), "runtime:"+safe+"@") && !strings.Contains(string(body), "kodema_runtime:"+safe+"@") {
 		t.Errorf("the URL-safe runtime password did not reach the DSN unchanged: %s", body)
 	}
 }
@@ -616,8 +616,8 @@ func TestBootstrapSecretsRequiresProviderCA(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("bootstrap-secrets succeeded without the provider CA output:\n%s", output)
 	}
-	if createSecretArgv(box.readKubectlArgv(t), "kodama-database") != nil {
-		t.Errorf("kodama-database was created even though the provider CA was unavailable")
+	if createSecretArgv(box.readKubectlArgv(t), "kodema-database") != nil {
+		t.Errorf("kodema-database was created even though the provider CA was unavailable")
 	}
 	assertNoTempFiles(t, box, "db-env.", "db-ca.")
 	assertDatabaseSecretsCleanedNeedsNoSecrets(t, box)
@@ -655,8 +655,8 @@ func TestBootstrapSecretsValidatesDescriptorBeforeKubectl(t *testing.T) {
 		},
 		{
 			name:        "namespace",
-			old:         `"release_namespace": "kodama-system"`,
-			replacement: `"release_namespace": "kodama-system\n---\nevil: true"`,
+			old:         `"release_namespace": "kodema-system"`,
+			replacement: `"release_namespace": "kodema-system\n---\nevil: true"`,
 			want:        "namespace",
 		},
 	}
@@ -666,8 +666,8 @@ func TestBootstrapSecretsValidatesDescriptorBeforeKubectl(t *testing.T) {
   "environment": "production",
   "account_or_project_id": "project-1",
   "region": "fr-par",
-  "release_namespace": "kodama-system",
-  "postgres": {"host": "db.example", "port": 5432, "database_name": "kodama", "admin_user": "kodama_admin"},
+  "release_namespace": "kodema-system",
+  "postgres": {"host": "db.example", "port": 5432, "database_name": "kodema", "admin_user": "kodema_admin"},
   "kms": {"key_id": "fr-par/00000000-0000-0000-0000-000000000000", "key_ref": "scw-kms:fr-par/00000000-0000-0000-0000-000000000000", "key_adapter": "scw-kms"},
   "kubernetes": {"cluster_name": "stage", "storage_class": "sbs-default"},
   "tenants": ["tenant-a"]
@@ -723,8 +723,8 @@ func TestBootstrapSecretsValidatesSSLMode(t *testing.T) {
 	for _, mode := range []string{"disable", "allow", "prefer", "require", "verify-ca"} {
 		t.Run("refuses_"+mode, func(t *testing.T) {
 			box := newSandbox(t)
-			box.writeDescriptor(t, strings.Replace(readDescriptorForTest(t, box), `"database_name": "kodama"`,
-				`"database_name": "kodama", "ssl_mode": "`+mode+`"`, 1))
+			box.writeDescriptor(t, strings.Replace(readDescriptorForTest(t, box), `"database_name": "kodema"`,
+				`"database_name": "kodema", "ssl_mode": "`+mode+`"`, 1))
 			code, output := box.run(t, false)
 			if code == 0 {
 				t.Fatalf("bootstrap-secrets accepted ssl_mode %q:\n%s", mode, output)
@@ -732,8 +732,8 @@ func TestBootstrapSecretsValidatesSSLMode(t *testing.T) {
 			if !strings.Contains(output, "verify-full") {
 				t.Errorf("the refusal does not name verify-full:\n%s", output)
 			}
-			if createSecretArgv(box.readKubectlArgv(t), "kodama-database") != nil {
-				t.Errorf("kodama-database was created with ssl_mode %q", mode)
+			if createSecretArgv(box.readKubectlArgv(t), "kodema-database") != nil {
+				t.Errorf("kodema-database was created with ssl_mode %q", mode)
 			}
 			if stdin := box.readKubectlStdin(t); stdin != "" {
 				t.Errorf("ssl_mode %q reached a Secret manifest:\n%s", mode, stdin)
@@ -743,8 +743,8 @@ func TestBootstrapSecretsValidatesSSLMode(t *testing.T) {
 
 	t.Run("explicit_verify_full", func(t *testing.T) {
 		box := newSandbox(t)
-		box.writeDescriptor(t, strings.Replace(readDescriptorForTest(t, box), `"database_name": "kodama"`,
-			`"database_name": "kodama", "ssl_mode": "verify-full"`, 1))
+		box.writeDescriptor(t, strings.Replace(readDescriptorForTest(t, box), `"database_name": "kodema"`,
+			`"database_name": "kodema", "ssl_mode": "verify-full"`, 1))
 		code, output := box.run(t, false)
 		if code != 0 {
 			t.Fatalf("bootstrap-secrets failed: exit %d\n%s", code, output)
@@ -760,14 +760,14 @@ func TestBootstrapSecretsValidatesSSLMode(t *testing.T) {
 
 	t.Run("invalid_refused", func(t *testing.T) {
 		box := newSandbox(t)
-		box.writeDescriptor(t, strings.Replace(readDescriptorForTest(t, box), `"database_name": "kodama"`,
-			`"database_name": "kodama", "ssl_mode": "verify-full&sslrootcert=/x\nEVIL=1"`, 1))
+		box.writeDescriptor(t, strings.Replace(readDescriptorForTest(t, box), `"database_name": "kodema"`,
+			`"database_name": "kodema", "ssl_mode": "verify-full&sslrootcert=/x\nEVIL=1"`, 1))
 		code, output := box.run(t, false)
 		if code == 0 {
 			t.Fatalf("bootstrap-secrets accepted an injectable ssl_mode:\n%s", output)
 		}
-		if createSecretArgv(box.readKubectlArgv(t), "kodama-database") != nil {
-			t.Errorf("kodama-database was created with an invalid ssl_mode")
+		if createSecretArgv(box.readKubectlArgv(t), "kodema-database") != nil {
+			t.Errorf("kodema-database was created with an invalid ssl_mode")
 		}
 		if lines := box.readKubectlArgv(t); len(lines) != 0 {
 			t.Errorf("an invalid ssl_mode reached kubectl before being refused: %s", strings.Join(lines, "\n"))
@@ -798,8 +798,8 @@ func TestBootstrapSecretsKMSValuesCannotInjectEnvFile(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("bootstrap-secrets accepted a KMS access key containing a newline:\n%s", output)
 	}
-	if createSecretArgv(box.readKubectlArgv(t), "kodama-kms-credentials") != nil {
-		t.Errorf("kodama-kms-credentials was applied from an injectable value")
+	if createSecretArgv(box.readKubectlArgv(t), "kodema-kms-credentials") != nil {
+		t.Errorf("kodema-kms-credentials was applied from an injectable value")
 	}
 	if lines := box.readKubectlArgv(t); len(lines) != 0 {
 		t.Errorf("an injectable KMS credential reached kubectl before being refused: %s", strings.Join(lines, "\n"))
@@ -814,15 +814,15 @@ func TestBootstrapSecretsKMSValuesCannotInjectEnvFile(t *testing.T) {
 }
 
 // preservedSecretNames are the Secrets a second run against an existing
-// cluster must leave untouched. kodama-kms-credentials is deliberately absent:
+// cluster must leave untouched. kodema-kms-credentials is deliberately absent:
 // it is reapplied on every run so an IAM key can be rotated.
 var preservedSecretNames = []string{
-	"kodama-database",
-	"kodama-keys",
-	"kodama-tls",
-	"kodama-broker",
-	"kodama-broker-tls",
-	"kodama-workload-ca",
+	"kodema-database",
+	"kodema-keys",
+	"kodema-tls",
+	"kodema-broker",
+	"kodema-broker-tls",
+	"kodema-workload-ca",
 	"oauthsonas-tls",
 	"oauthsonas-access",
 }
@@ -831,10 +831,10 @@ var preservedSecretNames = []string{
 // Secret is reconciled once: with KUBECTL_SECRETS_PRESENT=1 (the fake kubectl
 // models an existing cluster) a second run creates none of them, generates no
 // password, KEK or access code, and never reads the provider CA for a
-// preserved kodama-database. Each absence check has a first-run positive
+// preserved kodema-database. Each absence check has a first-run positive
 // control, so a space/tab or record-format regression cannot make it vacuous.
 func TestBootstrapSecretsSecondRunPreservesSecrets(t *testing.T) {
-	box := newSandbox(t).withEnv("KODAMA_WITH_OAUTHSONAS=1")
+	box := newSandbox(t).withEnv("KODEMA_WITH_OAUTHSONAS=1")
 	// Pre-issue the OAuthSonas certificate so the script stays on its reuse
 	// path; the fixture is a real chain because the script verifies it.
 	installOAuthSonasPKI(t, box)
@@ -842,10 +842,10 @@ func TestBootstrapSecretsSecondRunPreservesSecrets(t *testing.T) {
 	// accidentally re-entered database branch is observable both as a create
 	// and as openssl work.
 	box.unsetEnv(
-		"KODAMA_DB_RUNTIME_PASSWORD",
-		"KODAMA_DB_CONTROLLER_PASSWORD",
-		"KODAMA_DB_PUBLISHER_PASSWORD",
-		"KODAMA_DB_AUTH_PASSWORD",
+		"KODEMA_DB_RUNTIME_PASSWORD",
+		"KODEMA_DB_CONTROLLER_PASSWORD",
+		"KODEMA_DB_PUBLISHER_PASSWORD",
+		"KODEMA_DB_AUTH_PASSWORD",
 	)
 
 	code, output := box.run(t, false)
@@ -880,8 +880,8 @@ func TestBootstrapSecretsSecondRunPreservesSecrets(t *testing.T) {
 	lines := box.readKubectlArgv(t)
 	created := kubectlCreatedSecrets(lines)
 	sort.Strings(created)
-	if got := strings.Join(created, ","); got != "kodama-kms-credentials" {
-		t.Errorf("a second run against an existing cluster created Secrets %v; only kodama-kms-credentials may be reapplied", created)
+	if got := strings.Join(created, ","); got != "kodema-kms-credentials" {
+		t.Errorf("a second run against an existing cluster created Secrets %v; only kodema-kms-credentials may be reapplied", created)
 	}
 	for _, name := range preservedSecretNames {
 		if kubectlCreatedSecret(lines, name) {
@@ -890,7 +890,7 @@ func TestBootstrapSecretsSecondRunPreservesSecrets(t *testing.T) {
 	}
 	tofuBody := box.readLogForTest(box.tofuLog)
 	if logHasArgvSequence(tofuBody, "output", "-raw", "database_ca_certificate") {
-		t.Errorf("a preserved kodama-database still read the provider CA:\n%s", tofuBody)
+		t.Errorf("a preserved kodema-database still read the provider CA:\n%s", tofuBody)
 	}
 	if !logHasArgvSequence(tofuBody, "output", "-json", "kms_credentials") {
 		t.Errorf("the second run's tofu log does not record the KMS credentials read; the CA absence check would be vacuous:\n%s", tofuBody)
@@ -902,7 +902,7 @@ func TestBootstrapSecretsSecondRunPreservesSecrets(t *testing.T) {
 	secretLog := box.readLogForTest(box.kubectlSecretLog)
 	for _, built := range []string{"database_url=postgres://", "controller_url=postgres://", "publisher_url=postgres://", "auth_url=postgres://"} {
 		if strings.Contains(secretLog, built) {
-			t.Errorf("a preserved kodama-database env-file was rebuilt (%s)", built)
+			t.Errorf("a preserved kodema-database env-file was rebuilt (%s)", built)
 		}
 	}
 	if !strings.Contains(secretLog, "SCW_ACCESS_KEY="+kmsAccessStub) {
@@ -912,11 +912,11 @@ func TestBootstrapSecretsSecondRunPreservesSecrets(t *testing.T) {
 
 // TestBootstrapSecretsRotatePKIRecreatesOnlyPKI proves --rotate-pki is the
 // explicit rotation path: with OAuthSonas enabled it recreates the five
-// in-cluster PKI Secrets (including oauthsonas-tls) and leaves kodama-database,
-// kodama-keys and oauthsonas-access alone, so passwords, the KEK and the
+// in-cluster PKI Secrets (including oauthsonas-tls) and leaves kodema-database,
+// kodema-keys and oauthsonas-access alone, so passwords, the KEK and the
 // access code are never regenerated by rotation.
 func TestBootstrapSecretsRotatePKIRecreatesOnlyPKI(t *testing.T) {
-	box := newSandbox(t).withEnv("KUBECTL_SECRETS_PRESENT=1", "KODAMA_WITH_OAUTHSONAS=1")
+	box := newSandbox(t).withEnv("KUBECTL_SECRETS_PRESENT=1", "KODEMA_WITH_OAUTHSONAS=1")
 	// Start from an existing, parsable leaf so the run cannot pass merely by
 	// finding no certificate to rotate.
 	installOAuthSonasPKI(t, box)
@@ -928,12 +928,12 @@ func TestBootstrapSecretsRotatePKIRecreatesOnlyPKI(t *testing.T) {
 		t.Fatalf("bootstrap-secrets --rotate-pki failed: exit %d\n%s", code, output)
 	}
 	lines := box.readKubectlArgv(t)
-	for _, name := range []string{"kodama-tls", "kodama-broker-tls", "kodama-broker", "kodama-workload-ca", "oauthsonas-tls"} {
+	for _, name := range []string{"kodema-tls", "kodema-broker-tls", "kodema-broker", "kodema-workload-ca", "oauthsonas-tls"} {
 		if !kubectlCreatedSecret(lines, name) {
 			t.Errorf("--rotate-pki did not recreate the PKI Secret %s", name)
 		}
 	}
-	for _, name := range []string{"kodama-database", "kodama-keys", "oauthsonas-access"} {
+	for _, name := range []string{"kodema-database", "kodema-keys", "oauthsonas-access"} {
 		if kubectlCreatedSecret(lines, name) {
 			t.Errorf("--rotate-pki recreated %s; rotation must not touch passwords, the KEK or the OAuthSonas access code", name)
 		}
@@ -941,11 +941,11 @@ func TestBootstrapSecretsRotatePKIRecreatesOnlyPKI(t *testing.T) {
 	created := kubectlCreatedSecrets(lines)
 	sort.Strings(created)
 	want := []string{
-		"kodama-broker",
-		"kodama-broker-tls",
-		"kodama-kms-credentials",
-		"kodama-tls",
-		"kodama-workload-ca",
+		"kodema-broker",
+		"kodema-broker-tls",
+		"kodema-kms-credentials",
+		"kodema-tls",
+		"kodema-workload-ca",
 		"oauthsonas-tls",
 	}
 	if strings.Join(created, ",") != strings.Join(want, ",") {
@@ -966,7 +966,7 @@ func TestBootstrapSecretsRotatePKIRecreatesOnlyPKI(t *testing.T) {
 // generates nothing and keeps every byte, and rotation generates a new CA and
 // new leaves, republishes oauthsonas-tls, and never touches the access code.
 func TestBootstrapSecretsRotatePKIWithOAuthSonasRegeneratesPKI(t *testing.T) {
-	box := newSandbox(t).withEnv("KODAMA_WITH_OAUTHSONAS=1")
+	box := newSandbox(t).withEnv("KODEMA_WITH_OAUTHSONAS=1")
 	clearPKIFixture(t, box)
 	pki := filepath.Join(box.workDir, "pki")
 	caPath := filepath.Join(pki, "ca.crt")
@@ -1091,7 +1091,7 @@ func TestBootstrapSecretsRotatePKIWithOAuthSonasRegeneratesPKI(t *testing.T) {
 // republish oauthsonas-tls, instead of serving a certificate no peer trusting
 // the current CA can verify.
 func TestBootstrapSecretsOAuthSonasReissuesLeafSignedByStaleCA(t *testing.T) {
-	box := newSandbox(t).withEnv("KODAMA_WITH_OAUTHSONAS=1")
+	box := newSandbox(t).withEnv("KODEMA_WITH_OAUTHSONAS=1")
 	clearPKIFixture(t, box)
 	pki := filepath.Join(box.workDir, "pki")
 	caPath := filepath.Join(pki, "ca.crt")
@@ -1112,7 +1112,7 @@ func TestBootstrapSecretsOAuthSonasReissuesLeafSignedByStaleCA(t *testing.T) {
 
 	// Rotate the installation CA with OAuthSonas disabled: the leaf on disk is
 	// deliberately left signed by the previous CA.
-	box.unsetEnv("KODAMA_WITH_OAUTHSONAS")
+	box.unsetEnv("KODEMA_WITH_OAUTHSONAS")
 	box.withEnv("KUBECTL_SECRETS_PRESENT=1")
 	box.resetLogs(t)
 	code, output = box.runArgs(t, false, "022", "--rotate-pki")
@@ -1136,7 +1136,7 @@ func TestBootstrapSecretsOAuthSonasReissuesLeafSignedByStaleCA(t *testing.T) {
 
 	// Enable OAuthSonas again without rotating: the stale leaf must be replaced
 	// and the in-cluster tls Secret republished.
-	box.withEnv("KODAMA_WITH_OAUTHSONAS=1")
+	box.withEnv("KODEMA_WITH_OAUTHSONAS=1")
 	box.resetLogs(t)
 	code, output = box.run(t, false)
 	if code != 0 {
@@ -1179,7 +1179,7 @@ func TestBootstrapSecretsOAuthSonasReissuesLeafSignedByStaleCA(t *testing.T) {
 // OAuthSonas access code is never placed on argv with --from-literal and its
 // 0600 file is removed.
 func TestBootstrapSecretsOAuthSonasAccessCodeUsesFileForm(t *testing.T) {
-	box := newSandbox(t).withEnv("KODAMA_WITH_OAUTHSONAS=1")
+	box := newSandbox(t).withEnv("KODEMA_WITH_OAUTHSONAS=1")
 	// Pre-issue a real certificate so ensure_oauthsonas_cert returns early on
 	// its reuse path.
 	installOAuthSonasPKI(t, box)
@@ -1262,7 +1262,7 @@ func TestBootstrapSecretsOAuthSonasReissuesMissingLeafPieces(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			box := newSandbox(t).withEnv("KODAMA_WITH_OAUTHSONAS=1")
+			box := newSandbox(t).withEnv("KODEMA_WITH_OAUTHSONAS=1")
 			clearPKIFixture(t, box)
 			pki := filepath.Join(box.workDir, "pki")
 			caPath := filepath.Join(pki, "ca.crt")
@@ -1359,7 +1359,7 @@ func TestBootstrapSecretsOAuthSonasReissuesMissingLeafPieces(t *testing.T) {
 // on ensure_oauthsonas_cert would otherwise publish a missing or stale
 // certificate.
 func TestBootstrapSecretsFailsWhenOAuthSonasLeafSigningFails(t *testing.T) {
-	box := newSandbox(t).withEnv("KODAMA_WITH_OAUTHSONAS=1", "OPENSSL_FAIL_OAUTHSONAS=1")
+	box := newSandbox(t).withEnv("KODEMA_WITH_OAUTHSONAS=1", "OPENSSL_FAIL_OAUTHSONAS=1")
 	// A real, reusable CA and leaf: the failure must come from the deliberate
 	// signing fault, not from an unparsable fixture.
 	installOAuthSonasPKI(t, box)
@@ -1393,7 +1393,7 @@ func TestBootstrapSecretsFailsWhenOAuthSonasLeafSigningFails(t *testing.T) {
 func TestBootstrapSecretsPKIFilesArePrivate(t *testing.T) {
 	for _, umask := range []string{"000", "022"} {
 		t.Run("umask_"+umask, func(t *testing.T) {
-			box := newSandbox(t).withEnv("KODAMA_WITH_OAUTHSONAS=1")
+			box := newSandbox(t).withEnv("KODEMA_WITH_OAUTHSONAS=1")
 			clearPKIFixture(t, box)
 			code, output := box.runArgs(t, false, umask)
 			if code != 0 {
@@ -1422,11 +1422,11 @@ func TestBootstrapSecretsPKIFilesArePrivate(t *testing.T) {
 				}
 			}
 			if keys != 5 {
-				t.Errorf("umask %s: found %d private keys, want 5 (CA, kodama, nats, client, oauthsonas)", umask, keys)
+				t.Errorf("umask %s: found %d private keys, want 5 (CA, kodema, nats, client, oauthsonas)", umask, keys)
 			}
 			// Positive control: the files whose modes were checked are the
 			// generated PKI, not an empty directory.
-			for _, name := range []string{"ca.crt", "kodama.crt", "nats.crt", "client.crt", "oauthsonas.crt"} {
+			for _, name := range []string{"ca.crt", "kodema.crt", "nats.crt", "client.crt", "oauthsonas.crt"} {
 				if _, statErr := os.Stat(filepath.Join(pki, name)); statErr != nil {
 					t.Errorf("umask %s: %s was not generated: %v", umask, name, statErr)
 				}
@@ -1449,7 +1449,7 @@ func parseOpenSSLDate(t *testing.T, value string) time.Time {
 // TestBootstrapSecretsPKILeafValidityIs825Days pins the leaf lifetime both in
 // the signing argv and in the certificate the run actually produces.
 func TestBootstrapSecretsPKILeafValidityIs825Days(t *testing.T) {
-	box := newSandbox(t).withEnv("KODAMA_WITH_OAUTHSONAS=1")
+	box := newSandbox(t).withEnv("KODEMA_WITH_OAUTHSONAS=1")
 	clearPKIFixture(t, box)
 	code, output := box.run(t, false)
 	if code != 0 {
@@ -1459,7 +1459,7 @@ func TestBootstrapSecretsPKILeafValidityIs825Days(t *testing.T) {
 	assertArgvCount(t, "leaf validity", all, 4, "-days", "825")
 
 	pki := filepath.Join(box.workDir, "pki")
-	for _, name := range []string{"kodama", "nats", "client", "oauthsonas"} {
+	for _, name := range []string{"kodema", "nats", "client", "oauthsonas"} {
 		certPath := filepath.Join(pki, name+".crt")
 		body := opensslOutput(t, box, "x509", "-in", certPath, "-noout", "-dates")
 		var notBefore, notAfter time.Time
@@ -1489,7 +1489,7 @@ func TestBootstrapSecretsPKILeafValidityIs825Days(t *testing.T) {
 // that does not rotate keeps them (pinned here so a change to that gate is
 // deliberate).
 func TestBootstrapSecretsRegeneratesPKIWhenNATSCertMissing(t *testing.T) {
-	box := newSandbox(t).withEnv("KODAMA_WITH_OAUTHSONAS=1")
+	box := newSandbox(t).withEnv("KODEMA_WITH_OAUTHSONAS=1")
 	clearPKIFixture(t, box)
 	pki := filepath.Join(box.workDir, "pki")
 	caPath := filepath.Join(pki, "ca.crt")
@@ -1549,7 +1549,7 @@ func TestBootstrapSecretsRegeneratesPKIWhenNATSCertMissing(t *testing.T) {
 	if kubectlCreatedSecret(lines, "oauthsonas-access") {
 		t.Errorf("a plain re-run recreated oauthsonas-access; the access code must stay stable")
 	}
-	for _, name := range []string{"kodama-tls", "kodama-broker-tls", "kodama-broker", "kodama-workload-ca"} {
+	for _, name := range []string{"kodema-tls", "kodema-broker-tls", "kodema-broker", "kodema-workload-ca"} {
 		if kubectlCreatedSecret(lines, name) {
 			t.Errorf("a plain re-run republished %s although --rotate-pki was not requested", name)
 		}

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestCompositionNeverRendersCredentialsOrSecretValues scans the captured logs,

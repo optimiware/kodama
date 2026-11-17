@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // Command is one native Git command. It never carries a credential.

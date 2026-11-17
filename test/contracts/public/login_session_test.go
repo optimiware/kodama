@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestSessionRecordShape pins the v2 session member set and JSON names. The
@@ -207,7 +207,7 @@ func TestFileSessionStoreRecordPersistence(t *testing.T) {
 	now := time.Date(2026, 2, 3, 5, 5, 6, 0, time.UTC)
 	files := newReferenceFileSystem()
 	files.dirs["/home"] = 0o755
-	path := "/home/engineer/.config/kodama/session.json"
+	path := "/home/engineer/.config/kodema/session.json"
 	store := cli.FileSessionStore{Path: path, Files: files, Now: func() time.Time { return now }}
 	record := loginRecord(now)
 	record.ExpiresAt = now.Add(time.Hour)
@@ -230,7 +230,7 @@ func TestFileSessionStoreRecordPersistence(t *testing.T) {
 	if file.mode != 0o600 {
 		t.Errorf("session file mode = %o; want 600", file.mode)
 	}
-	for _, dir := range []string{"/home/engineer/.config", "/home/engineer/.config/kodama"} {
+	for _, dir := range []string{"/home/engineer/.config", "/home/engineer/.config/kodema"} {
 		if mode := files.dirs[dir]; mode != 0o700 {
 			t.Errorf("created session parent %s mode = %o; want 700", dir, mode)
 		}
@@ -304,7 +304,7 @@ func TestFileSessionStoreRecordRefusals(t *testing.T) {
 	}
 	for name, record := range cases {
 		files := newReferenceFileSystem()
-		path := "/home/engineer/.kodama/session.json"
+		path := "/home/engineer/.kodema/session.json"
 		store := cli.FileSessionStore{Path: path, Files: files, Now: func() time.Time { return now }}
 		if err := store.SaveRecord(context.Background(), record); err == nil {
 			t.Errorf("SaveRecord accepted %s", name)
@@ -323,7 +323,7 @@ func TestFileSessionStoreRecordRefusals(t *testing.T) {
 func TestFileSessionStoreLoadRecordLegacy(t *testing.T) {
 	now := time.Date(2026, 2, 3, 5, 5, 6, 0, time.UTC)
 	files := newReferenceFileSystem()
-	path := "/home/engineer/.kodama/session.json"
+	path := "/home/engineer/.kodema/session.json"
 	files.files[path] = referenceFile{
 		data: []byte(`{"kind":"session","token":"AT-LEGACY","expires_at":"2026-02-03T06:05:06Z"}`),
 		mode: 0o600,

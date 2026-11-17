@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // TenantKeyMaterial is the encrypted member set of one tenant derivation key.

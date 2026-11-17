@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/principal"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/principal"
 )
 
 const (
-	cookieBrowserSession  = "__kodama_auth_session"
+	cookieBrowserSession  = "__kodema_auth_session"
 	csrfPurposeAuthorize  = "authorize"
 	csrfPurposeDevice     = "device"
 	csrfPurposeGitHubInit = "gh_setup"
@@ -357,9 +357,9 @@ func (server *Server) renderGitHubManifestForm(w http.ResponseWriter, txID, org,
 	server.store.putGitHubSetupTx(setupState, txID, browserID, now)
 
 	issuerURL, _ := url.Parse(server.config.Issuer)
-	appLabel := "Kodama Auth"
+	appLabel := "Kodema Auth"
 	if issuerURL != nil && issuerURL.Hostname() != "" {
-		appLabel = fmt.Sprintf("Kodama Auth (%s)", issuerURL.Hostname())
+		appLabel = fmt.Sprintf("Kodema Auth (%s)", issuerURL.Hostname())
 	}
 	if len(appLabel) > 34 {
 		appLabel = appLabel[:34]
@@ -646,7 +646,7 @@ func (server *Server) exchangeUpstreamOIDCUser(ctx context.Context, code, codeVe
 		}
 	} else {
 		subject = "oidc:" + server.config.UpstreamOIDC.Issuer + ":" + claims.Subject
-		// Never publish an unverified email claim into the minted Kodama JWT.
+		// Never publish an unverified email claim into the minted Kodema JWT.
 		email = ""
 	}
 	if name == "" {
@@ -717,7 +717,7 @@ func (server *Server) outboundRequest(ctx context.Context, method, target string
 		return nil, 0, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "kodama-auth")
+	req.Header.Set("User-Agent", "kodema-auth")
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}

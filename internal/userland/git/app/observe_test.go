@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 func TestObserverReadsCurrentRef(t *testing.T) {

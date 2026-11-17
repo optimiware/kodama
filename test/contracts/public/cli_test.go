@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestCLIConfigInputs pins the kodactl configuration inputs: a trusted server
@@ -15,8 +15,8 @@ import (
 // origins. Insecure, ambiguous and unknown configuration is refused.
 func TestCLIConfigInputs(t *testing.T) {
 	valid := cli.Config{
-		ServerURL:      "https://kodama.example.com",
-		CredentialFile: "/home/engineer/.kodama/session.json",
+		ServerURL:      "https://kodema.example.com",
+		CredentialFile: "/home/engineer/.kodema/session.json",
 		Output:         cli.OutputJSON,
 		TrustedOrigins: []string{"https://git.example.com/shop", "https://git.example.com:8443/other"},
 	}
@@ -54,16 +54,16 @@ func TestCLIConfigInputs(t *testing.T) {
 	}
 	for _, invalid := range []cli.Config{
 		{},
-		{ServerURL: "http://kodama.example.com"},
-		{ServerURL: "https://user:pass@kodama.example.com"},
-		{ServerURL: "https://kodama.example.com/#fragment"},
-		{ServerURL: "https://kodama.example.com/?query=1"},
-		{ServerURL: "kodama.example.com"},
-		{ServerURL: "https://kodama.example.com", Output: "yaml"},
-		{ServerURL: "https://kodama.example.com", CredentialFile: "relative/session.json"},
-		{ServerURL: "https://kodama.example.com", TrustedOrigins: []string{"http://git.example.com/shop"}},
-		{ServerURL: "https://kodama.example.com", TrustedOrigins: []string{"https://user@git.example.com/shop"}},
-		{ServerURL: "https://kodama.example.com", TrustedOrigins: []string{"git.example.com/shop"}},
+		{ServerURL: "http://kodema.example.com"},
+		{ServerURL: "https://user:pass@kodema.example.com"},
+		{ServerURL: "https://kodema.example.com/#fragment"},
+		{ServerURL: "https://kodema.example.com/?query=1"},
+		{ServerURL: "kodema.example.com"},
+		{ServerURL: "https://kodema.example.com", Output: "yaml"},
+		{ServerURL: "https://kodema.example.com", CredentialFile: "relative/session.json"},
+		{ServerURL: "https://kodema.example.com", TrustedOrigins: []string{"http://git.example.com/shop"}},
+		{ServerURL: "https://kodema.example.com", TrustedOrigins: []string{"https://user@git.example.com/shop"}},
+		{ServerURL: "https://kodema.example.com", TrustedOrigins: []string{"git.example.com/shop"}},
 	} {
 		if err := invalid.Validate(); err == nil {
 			t.Errorf("Config.Validate accepted %+v", invalid)
@@ -77,9 +77,9 @@ func TestCLIConfigInputs(t *testing.T) {
 	}
 
 	for _, body := range []string{
-		`{"server_url":"https://kodama.example.com","extra":1}`,
-		`{"server_url":"https://kodama.example.com","trusted_origins":"https://git.example.com"}`,
-		`{"server_url":"https://kodama.example.com","output":"yaml"}`,
+		`{"server_url":"https://kodema.example.com","extra":1}`,
+		`{"server_url":"https://kodema.example.com","trusted_origins":"https://git.example.com"}`,
+		`{"server_url":"https://kodema.example.com","output":"yaml"}`,
 		`not json`,
 		`[]`,
 	} {
@@ -171,13 +171,13 @@ func TestTrustedOriginMatching(t *testing.T) {
 	}
 }
 
-// TestHelperDecision pins the credential helper: username kodama plus the
+// TestHelperDecision pins the credential helper: username kodema plus the
 // current token only for a registered trusted origin, never for store/erase,
 // unregistered targets, insecure schemes or expired credentials.
 func TestHelperDecision(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	config := cli.Config{
-		ServerURL:      "https://kodama.example.com",
+		ServerURL:      "https://kodema.example.com",
 		TrustedOrigins: []string{"https://git.example.com/shop"},
 	}
 	credential := client.Credential{
@@ -193,8 +193,8 @@ func TestHelperDecision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HelperDecision(get): %v", err)
 	}
-	if response.Username != "kodama" || response.Password != credential.Token {
-		t.Fatalf("helper response = %+v; want username kodama and the current token", response)
+	if response.Username != "kodema" || response.Password != credential.Token {
+		t.Fatalf("helper response = %+v; want username kodema and the current token", response)
 	}
 	if rendered := response.String(); strings.Contains(rendered, credential.Token) {
 		t.Fatalf("HelperResponse.String() leaks the token: %s", rendered)
@@ -242,12 +242,12 @@ func TestHelperDecision(t *testing.T) {
 	// service credential is not a helper session. A human session must carry
 	// an expiry; only a mounted execution session may omit it.
 	for _, source := range []client.CredentialKind{client.KindSession, client.KindExecution} {
-		session := cli.Session{Source: source, TokenPath: "/run/kodama/token", ExpiresAt: now.Add(time.Hour)}
+		session := cli.Session{Source: source, TokenPath: "/run/kodema/token", ExpiresAt: now.Add(time.Hour)}
 		if err := session.Validate(); err != nil {
 			t.Errorf("valid session source %q refused: %v", source, err)
 		}
 	}
-	if err := (cli.Session{Source: client.KindService, TokenPath: "/run/kodama/token", ExpiresAt: now}).Validate(); err == nil {
+	if err := (cli.Session{Source: client.KindService, TokenPath: "/run/kodema/token", ExpiresAt: now}).Validate(); err == nil {
 		t.Error("Session.Validate accepted a service credential as a helper session")
 	}
 	if err := (cli.Session{Source: client.KindExecution, TokenPath: "token", ExpiresAt: now}).Validate(); err == nil {

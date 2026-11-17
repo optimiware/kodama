@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/transport/mcp"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/transport/mcp"
 )
 
-const smokeImage = "registry.example.com/kodama/base@sha256:cae662172fd450bb0cd710a769079c05bfc5d8e35efa6576edc7d0377afdd4a2"
+const smokeImage = "registry.example.com/kodema/base@sha256:cae662172fd450bb0cd710a769079c05bfc5d8e35efa6576edc7d0377afdd4a2"
 
 const smokePipeline = `actions:
   - name: inspect

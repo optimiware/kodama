@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // Registry ports and media types used by the conformance suite.
@@ -54,7 +54,7 @@ func StartRegistry(t *testing.T, auth bool) *Registry {
 	if auth {
 		spec.Env = map[string]string{
 			"REGISTRY_AUTH":               "silly",
-			"REGISTRY_AUTH_SILLY_REALM":   "kodama-test",
+			"REGISTRY_AUTH_SILLY_REALM":   "kodema-test",
 			"REGISTRY_AUTH_SILLY_SERVICE": "registry",
 			"REGISTRY_HTTP_SECRET":        "i02c-registry-secret",
 		}
@@ -100,7 +100,7 @@ func (instance *Registry) Reference(repository, tag string) string {
 
 // BasicCredential is the installation credential the silly controller accepts.
 func BasicCredential() registry.Credential {
-	return registry.Credential{Scheme: registry.CredentialBasic, Username: "kodama", Password: "test-only"}
+	return registry.Credential{Scheme: registry.CredentialBasic, Username: "kodema", Password: "test-only"}
 }
 
 // Resolver builds the registry adapter against this real registry. The

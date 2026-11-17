@@ -19,11 +19,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/flow"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/execution"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/flow"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/execution"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // lifecycleSecretMarker is staged output content that must never reach a

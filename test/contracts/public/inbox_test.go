@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // inboxNow is one fixed observation time so the vectors stay deterministic.

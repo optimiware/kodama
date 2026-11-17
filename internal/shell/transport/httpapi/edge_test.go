@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
-	"github.com/optimiware/kodama/internal/shell/transport/ops"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
 // TestEdgeRoutesSixFixedEndpoints pins the six product-fixed S08 endpoints to
@@ -455,7 +455,7 @@ func TestEdgeLogsTheCauseChainWithoutCredentials(t *testing.T) {
 		bodySecret  = "SENTINEL-REQUEST-BODY"
 		authHeader  = "SENTINEL-X-AUTH-TOKEN"
 	)
-	cause := fmt.Errorf(`dial postgres://kodama_runtime:%s@db:5432/kodama: respect header "Authorization: Bearer %s": header "X-Auth-Token: %s": query failed`,
+	cause := fmt.Errorf(`dial postgres://kodema_runtime:%s@db:5432/kodema: respect header "Authorization: Bearer %s": header "X-Auth-Token: %s": query failed`,
 		dsnSecret, bearerToken, authHeader)
 	router := &fakeRouter{fn: func(context.Context, ops.Invocation) (api.Result, error) {
 		return api.Result{}, fault.Wrap(fault.InternalFailure, "internal failure", cause)
@@ -507,7 +507,7 @@ func TestEdgeLogWriterRedactsNamedCredentialForms(t *testing.T) {
 		bearerSecret   = "edge-bearer-sentinel"
 	)
 	cause := fmt.Errorf("decode failed:\n-----BEGIN RSA PRIVATE KEY-----\n%s\n-----END RSA PRIVATE KEY-----\n"+
-		"ALTER ROLE kodama_runtime PASSWORD '%s': password=%s: presented Bearer %s",
+		"ALTER ROLE kodema_runtime PASSWORD '%s': password=%s: presented Bearer %s",
 		pemSecret, sqlSecret, assignedSecret, bearerSecret)
 	router := &fakeRouter{fn: func(context.Context, ops.Invocation) (api.Result, error) {
 		return api.Result{}, fault.Wrap(fault.InternalFailure, "internal failure", cause)

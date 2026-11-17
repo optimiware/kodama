@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
 )
 
 // dockerConfigBytes renders a Docker config.json with the supplied auths
@@ -41,7 +41,7 @@ func basicCredential(user, password string) string {
 // anonymous rather than refused.
 func TestDockerConfigCredentialFile(t *testing.T) {
 	const (
-		user     = "kodama"
+		user     = "kodema"
 		password = "registry-password-do-not-leak"
 		token    = "hub-identity-token-do-not-leak"
 	)
@@ -179,7 +179,7 @@ func TestDockerConfigCredentialFileRefusals(t *testing.T) {
 // authentication and the resolved digest is still the immutable body hash.
 func TestDockerConfigCredentialFileFeedsResolution(t *testing.T) {
 	const (
-		user     = "kodama"
+		user     = "kodema"
 		password = "resolution-password-do-not-leak"
 	)
 	body := singleManifestBody

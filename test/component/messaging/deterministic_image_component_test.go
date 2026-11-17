@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // startFixtureEnvironment starts the real local registry and resolves the

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 func setupStarted(t *testing.T) (*fakeCluster, *fakeClock, *Adapter, engine.PrepareRequest) {

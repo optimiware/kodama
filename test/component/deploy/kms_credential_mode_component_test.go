@@ -5,7 +5,7 @@
 //
 //   - scw-kms authenticates with a static IAM API key. The Scaleway root
 //     exports kms_credentials, scripts/bootstrap-secrets creates
-//     kodama-kms-credentials, scripts/deploy names it in the values, and the
+//     kodema-kms-credentials, scripts/deploy names it in the values, and the
 //     chart requires it in production and reads it through a non-optional
 //     envFrom.
 //   - aws-kms authenticates with EKS IRSA and gcp-kms with GKE Workload
@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	kmsCredentialsSecretName    = "kodama-kms-credentials"
+	kmsCredentialsSecretName    = "kodema-kms-credentials"
 	awsRoleARNAnnotation        = "eks.amazonaws.com/role-arn"
 	gcpServiceAccountAnnotation = "iam.gke.io/gcp-service-account"
 )
@@ -45,7 +45,7 @@ type kmsCredentialMode struct {
 	cloud   string
 	adapter string
 	// staticSecret is true when the adapter reads a static credential from
-	// kodama-kms-credentials; false when it uses the pod's workload identity.
+	// kodema-kms-credentials; false when it uses the pod's workload identity.
 	staticSecret bool
 	// annotation is the ServiceAccount annotation a workload-identity adapter
 	// needs, and identity an example of its value.
@@ -58,12 +58,12 @@ type kmsCredentialMode struct {
 // TestKMSCredentialModeMatchesRootsAndBootstrap.
 var kmsCredentialModes = []kmsCredentialMode{
 	{cloud: "scw", adapter: "scw-kms", staticSecret: true},
-	{cloud: "aws", adapter: "aws-kms", annotation: awsRoleARNAnnotation, identity: "arn:aws:iam::123456789012:role/kodama-stage-kms-controller"},
-	{cloud: "gcp", adapter: "gcp-kms", annotation: gcpServiceAccountAnnotation, identity: "kodama-stage-ctrl@demo-project.iam.gserviceaccount.com"},
+	{cloud: "aws", adapter: "aws-kms", annotation: awsRoleARNAnnotation, identity: "arn:aws:iam::123456789012:role/kodema-stage-kms-controller"},
+	{cloud: "gcp", adapter: "gcp-kms", annotation: gcpServiceAccountAnnotation, identity: "kodema-stage-ctrl@demo-project.iam.gserviceaccount.com"},
 }
 
-// adapterArgs selects the key adapter. prefix is "" for the kodama chart and
-// "kodama." for the stack chart.
+// adapterArgs selects the key adapter. prefix is "" for the kodema chart and
+// "kodema." for the stack chart.
 func adapterArgs(prefix, adapter string) []string {
 	return []string{"--set", prefix + "config.keyAdapter=" + adapter}
 }
@@ -93,17 +93,17 @@ func joinArgs(groups ...[]string) []string {
 	return args
 }
 
-// stageKodamaChartSchemaOnly stages the kodama chart without the template
+// stageKodemaChartSchemaOnly stages the kodema chart without the template
 // guard, so only values.schema.json can refuse a render.
-func stageKodamaChartSchemaOnly(t *testing.T) (string, string) {
+func stageKodemaChartSchemaOnly(t *testing.T) (string, string) {
 	t.Helper()
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 	deploymentPath := filepath.Join(chart, "templates", "deployment.yaml")
 	body := readFileForTest(t, deploymentPath)
-	withoutInclude := strings.Replace(body, "{{- include \"kodama.validateExtraEnv\" . }}\n", "", 1)
+	withoutInclude := strings.Replace(body, "{{- include \"kodema.validateExtraEnv\" . }}\n", "", 1)
 	if withoutInclude == body {
-		t.Fatal("staged deployment.yaml does not include the kodama.validateExtraEnv guard")
+		t.Fatal("staged deployment.yaml does not include the kodema.validateExtraEnv guard")
 	}
 	rewriteStagedFile(t, deploymentPath, withoutInclude)
 	if err := os.Remove(filepath.Join(chart, "templates", "_extraenv.tpl")); err != nil {
@@ -112,12 +112,12 @@ func stageKodamaChartSchemaOnly(t *testing.T) (string, string) {
 	return helm, chart
 }
 
-// stageKodamaChartTemplateOnly stages the kodama chart without the schema's
+// stageKodemaChartTemplateOnly stages the kodema chart without the schema's
 // conditional rules, so only templates/_extraenv.tpl can refuse a render.
-func stageKodamaChartTemplateOnly(t *testing.T) (string, string) {
+func stageKodemaChartTemplateOnly(t *testing.T) (string, string) {
 	t.Helper()
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 	schemaPath := filepath.Join(chart, "values.schema.json")
 	schema := map[string]any{}
 	if err := json.Unmarshal([]byte(readFileForTest(t, schemaPath)), &schema); err != nil {
@@ -152,7 +152,7 @@ func assertNoCredentialSecretReference(t *testing.T, rendered string) {
 	if strings.Contains(rendered, kmsCredentialsSecretName) {
 		t.Errorf("rendered output references %s:\n%s", kmsCredentialsSecretName, rendered)
 	}
-	server := workloadContainer(t, renderedObjectNamed(t, rendered, "Deployment", "kodama"), "kodama")
+	server := workloadContainer(t, renderedObjectNamed(t, rendered, "Deployment", "kodema"), "kodema")
 	if envFrom, present := server["envFrom"]; present {
 		t.Errorf("control-plane container has an envFrom source: %v", envFrom)
 	}
@@ -180,20 +180,20 @@ func assertNoCredentialSecretReference(t *testing.T, rendered string) {
 // projected IRSA token is otherwise readable by root only).
 func assertWorkloadIdentityPod(t *testing.T, rendered string, mode kmsCredentialMode) {
 	t.Helper()
-	serviceAccount := renderedObjectNamed(t, rendered, "ServiceAccount", "kodama")
+	serviceAccount := renderedObjectNamed(t, rendered, "ServiceAccount", "kodema")
 	metadata := objectAtKey(t, serviceAccount, "metadata")
-	if got := stringAtKey(t, metadata, "namespace"); got != "kodama-system" {
-		t.Errorf("ServiceAccount namespace = %q, want the release namespace kodama-system", got)
+	if got := stringAtKey(t, metadata, "namespace"); got != "kodema-system" {
+		t.Errorf("ServiceAccount namespace = %q, want the release namespace kodema-system", got)
 	}
 	annotations := objectAtKey(t, metadata, "annotations")
 	if got := annotations[mode.annotation]; got != mode.identity {
 		t.Errorf("ServiceAccount annotation %s = %v, want %s", mode.annotation, got, mode.identity)
 	}
 
-	deployment := renderedObjectNamed(t, rendered, "Deployment", "kodama")
+	deployment := renderedObjectNamed(t, rendered, "Deployment", "kodema")
 	pod := podSpecOf(t, deployment)
-	if got := stringAtKey(t, pod, "serviceAccountName"); got != "kodama" {
-		t.Errorf("control-plane serviceAccountName = %q, want the annotated ServiceAccount kodama", got)
+	if got := stringAtKey(t, pod, "serviceAccountName"); got != "kodema" {
+		t.Errorf("control-plane serviceAccountName = %q, want the annotated ServiceAccount kodema", got)
 	}
 	if automount, present := pod["automountServiceAccountToken"]; present && automount == false {
 		t.Error("control-plane pod disables its ServiceAccount token")
@@ -206,20 +206,20 @@ func assertWorkloadIdentityPod(t *testing.T, rendered string, mode kmsCredential
 	if fsGroup, ok := intAtKey(securityContext, "fsGroup"); !ok || fsGroup != runAsUser {
 		t.Errorf("control-plane pod fsGroup = %v, want %d so the non-root user can read the projected identity token", securityContext["fsGroup"], runAsUser)
 	}
-	if got := stringAtKey(t, renderedEnvEntry(t, deployment, "KODAMA_KEY_ADAPTER"), "value"); got != mode.adapter {
-		t.Errorf("KODAMA_KEY_ADAPTER = %q, want %s", got, mode.adapter)
+	if got := stringAtKey(t, renderedEnvEntry(t, deployment, "KODEMA_KEY_ADAPTER"), "value"); got != mode.adapter {
+		t.Errorf("KODEMA_KEY_ADAPTER = %q, want %s", got, mode.adapter)
 	}
 	// The KEK blob is still mounted: workload identity replaces the
 	// credential, not the wrapped key.
-	if got := stringAtKey(t, objectAtKey(t, renderedVolume(t, deployment, "keys"), "secret"), "secretName"); got != "kodama-keys" {
-		t.Errorf("keys volume reads Secret %q, want kodama-keys", got)
+	if got := stringAtKey(t, objectAtKey(t, renderedVolume(t, deployment, "keys"), "secret"), "secretName"); got != "kodema-keys" {
+		t.Errorf("keys volume reads Secret %q, want kodema-keys", got)
 	}
 }
 
 // TestKMSCredentialModeMatchesRootsAndBootstrap pins the static facts behind
 // the per-adapter rule: only the root of a static-credential adapter exports
 // kms_credentials, and scripts/bootstrap-secrets creates
-// kodama-kms-credentials in the scw branch alone. If either changes, the
+// kodema-kms-credentials in the scw branch alone. If either changes, the
 // chart rule and this inventory must change with it.
 func TestKMSCredentialModeMatchesRootsAndBootstrap(t *testing.T) {
 	facts := readDeploymentFacts(t)
@@ -251,15 +251,15 @@ func TestKMSCredentialModeMatchesRootsAndBootstrap(t *testing.T) {
 	}
 }
 
-// TestKodamaChartWorkloadIdentityAdaptersRenderNoCredentialSecret proves a
+// TestKodemaChartWorkloadIdentityAdaptersRenderNoCredentialSecret proves a
 // production aws-kms or gcp-kms installation renders without the static
 // credential Secret and references it nowhere, whether the value is removed or
-// left at the chart default, for the kodama chart and through the stack chart.
+// left at the chart default, for the kodema chart and through the stack chart.
 // The chart renders no Job, so the control-plane Deployment is the only
 // workload that loads the keys.
-func TestKodamaChartWorkloadIdentityAdaptersRenderNoCredentialSecret(t *testing.T) {
+func TestKodemaChartWorkloadIdentityAdaptersRenderNoCredentialSecret(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 	stackHelm, stack := stageStackChart(t)
 
 	for _, mode := range kmsCredentialModes {
@@ -277,9 +277,9 @@ func TestKodamaChartWorkloadIdentityAdaptersRenderNoCredentialSecret(t *testing.
 			{
 				name:    "without secrets.kmsCredentials",
 				helm:    helm,
-				release: "kodama",
+				release: "kodema",
 				chart:   chart,
-				args: kodamaProductionArgs(joinArgs(
+				args: kodemaProductionArgs(joinArgs(
 					adapterArgs("", mode.adapter),
 					serviceAccountAnnotationArgs(t, "", annotations),
 					withoutKMSCredentialsArgs(""),
@@ -288,9 +288,9 @@ func TestKodamaChartWorkloadIdentityAdaptersRenderNoCredentialSecret(t *testing.
 			{
 				name:    "default secrets.kmsCredentials is ignored",
 				helm:    helm,
-				release: "kodama",
+				release: "kodema",
 				chart:   chart,
-				args: kodamaProductionArgs(joinArgs(
+				args: kodemaProductionArgs(joinArgs(
 					adapterArgs("", mode.adapter),
 					serviceAccountAnnotationArgs(t, "", annotations),
 				)...),
@@ -298,22 +298,22 @@ func TestKodamaChartWorkloadIdentityAdaptersRenderNoCredentialSecret(t *testing.
 			{
 				name:    "stack chart without secrets.kmsCredentials",
 				helm:    stackHelm,
-				release: "kodama-stack",
+				release: "kodema-stack",
 				chart:   stack,
 				args: stackProductionArgs(joinArgs(
-					adapterArgs("kodama.", mode.adapter),
-					serviceAccountAnnotationArgs(t, "kodama.", annotations),
-					withoutKMSCredentialsArgs("kodama."),
+					adapterArgs("kodema.", mode.adapter),
+					serviceAccountAnnotationArgs(t, "kodema.", annotations),
+					withoutKMSCredentialsArgs("kodema."),
 				)...),
 			},
 			{
 				name:    "stack chart default secrets.kmsCredentials is ignored",
 				helm:    stackHelm,
-				release: "kodama-stack",
+				release: "kodema-stack",
 				chart:   stack,
 				args: stackProductionArgs(joinArgs(
-					adapterArgs("kodama.", mode.adapter),
-					serviceAccountAnnotationArgs(t, "kodama.", annotations),
+					adapterArgs("kodema.", mode.adapter),
+					serviceAccountAnnotationArgs(t, "kodema.", annotations),
 				)...),
 			},
 		} {
@@ -331,24 +331,24 @@ func TestKodamaChartWorkloadIdentityAdaptersRenderNoCredentialSecret(t *testing.
 	}
 }
 
-// TestKodamaChartStaticCredentialAdapterKeepsRequiredSecret proves the
+// TestKodemaChartStaticCredentialAdapterKeepsRequiredSecret proves the
 // Scaleway rule is unchanged: a production scw-kms render reads
-// kodama-kms-credentials through exactly one non-optional envFrom and needs no
+// kodema-kms-credentials through exactly one non-optional envFrom and needs no
 // ServiceAccount annotation.
-func TestKodamaChartStaticCredentialAdapterKeepsRequiredSecret(t *testing.T) {
+func TestKodemaChartStaticCredentialAdapterKeepsRequiredSecret(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 	for _, mode := range kmsCredentialModes {
 		if !mode.staticSecret {
 			continue
 		}
 		t.Run(mode.adapter, func(t *testing.T) {
-			rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs(adapterArgs("", mode.adapter)...)...)
+			rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs(adapterArgs("", mode.adapter)...)...)
 			if err != nil {
 				t.Fatalf("helm template refused a production %s render: %v\n%s", mode.adapter, err, rendered)
 			}
-			assertKMSCredentialsEnvFrom(t, renderedDocument(t, rendered, "Deployment", "kodama"))
-			server := workloadContainer(t, renderedObjectNamed(t, rendered, "Deployment", "kodama"), "kodama")
+			assertKMSCredentialsEnvFrom(t, renderedDocument(t, rendered, "Deployment", "kodema"))
+			server := workloadContainer(t, renderedObjectNamed(t, rendered, "Deployment", "kodema"), "kodema")
 			envFrom, ok := server["envFrom"].([]any)
 			if !ok || len(envFrom) != 1 {
 				t.Fatalf("rendered envFrom = %v, want exactly the KMS credentials Secret", server["envFrom"])
@@ -360,7 +360,7 @@ func TestKodamaChartStaticCredentialAdapterKeepsRequiredSecret(t *testing.T) {
 			if _, present := secretRef["optional"]; present {
 				t.Errorf("production %s envFrom carries an optional flag: %v", mode.adapter, secretRef)
 			}
-			serviceAccount := renderedObjectNamed(t, rendered, "ServiceAccount", "kodama")
+			serviceAccount := renderedObjectNamed(t, rendered, "ServiceAccount", "kodema")
 			if annotations, present := objectAtKey(t, serviceAccount, "metadata")["annotations"]; present {
 				t.Errorf("%s ServiceAccount renders annotations without any configured: %v", mode.adapter, annotations)
 			}
@@ -368,24 +368,24 @@ func TestKodamaChartStaticCredentialAdapterKeepsRequiredSecret(t *testing.T) {
 	}
 }
 
-// TestKodamaChartKMSCredentialRuleSchemaAndTemplateAgree runs every credential
+// TestKodemaChartKMSCredentialRuleSchemaAndTemplateAgree runs every credential
 // case through three charts: the real one, one with the template guard removed
 // (the schema decides alone) and one with the schema conditions removed (the
 // template guard decides alone). All three must give the expected verdict, so
 // neither layer is weaker than the other and a renderer that skips schema
 // validation is still refused.
-func TestKodamaChartKMSCredentialRuleSchemaAndTemplateAgree(t *testing.T) {
+func TestKodemaChartKMSCredentialRuleSchemaAndTemplateAgree(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	full := filepath.Join(charts, "kodama")
-	_, schemaOnly := stageKodamaChartSchemaOnly(t)
-	_, templateOnly := stageKodamaChartTemplateOnly(t)
+	full := filepath.Join(charts, "kodema")
+	_, schemaOnly := stageKodemaChartSchemaOnly(t)
+	_, templateOnly := stageKodemaChartTemplateOnly(t)
 
 	const (
 		secretGuard     = "production requires secrets.kmsCredentials.existingSecret"
 		annotationGuard = "production requires serviceAccount.annotations["
 	)
-	awsIdentity := map[string]string{awsRoleARNAnnotation: "arn:aws:iam::123456789012:role/kodama-stage-kms-controller"}
-	gcpIdentity := map[string]string{gcpServiceAccountAnnotation: "kodama-stage-ctrl@demo-project.iam.gserviceaccount.com"}
+	awsIdentity := map[string]string{awsRoleARNAnnotation: "arn:aws:iam::123456789012:role/kodema-stage-kms-controller"}
+	gcpIdentity := map[string]string{gcpServiceAccountAnnotation: "kodema-stage-ctrl@demo-project.iam.gserviceaccount.com"}
 	externalServiceAccount := []string{"--set", "serviceAccount.create=false"}
 
 	for _, testCase := range []struct {
@@ -518,7 +518,7 @@ func TestKodamaChartKMSCredentialRuleSchemaAndTemplateAgree(t *testing.T) {
 				{name: "schema alone", chart: schemaOnly, want: testCase.wantSchema},
 				{name: "template guard alone", chart: templateOnly, want: testCase.wantGuard},
 			} {
-				rendered, err := renderChartArgs(t, helm, "kodama", layer.chart, kodamaProductionArgs(testCase.args...)...)
+				rendered, err := renderChartArgs(t, helm, "kodema", layer.chart, kodemaProductionArgs(testCase.args...)...)
 				if !testCase.refused {
 					if err != nil {
 						t.Errorf("%s refused the render: %v\n%s", layer.name, err, rendered)
@@ -540,21 +540,21 @@ func TestKodamaChartKMSCredentialRuleSchemaAndTemplateAgree(t *testing.T) {
 	}
 }
 
-// TestKodamaChartExternalServiceAccountSkipsAnnotationGuard proves the
+// TestKodemaChartExternalServiceAccountSkipsAnnotationGuard proves the
 // annotation guard covers only a ServiceAccount the chart creates: with
 // serviceAccount.create=false the chart renders no ServiceAccount, cannot see
 // the operator's annotations and must not block the render.
-func TestKodamaChartExternalServiceAccountSkipsAnnotationGuard(t *testing.T) {
+func TestKodemaChartExternalServiceAccountSkipsAnnotationGuard(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 	for _, mode := range kmsCredentialModes {
 		if mode.staticSecret {
 			continue
 		}
 		t.Run(mode.adapter, func(t *testing.T) {
-			rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs(joinArgs(
+			rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs(joinArgs(
 				adapterArgs("", mode.adapter),
-				[]string{"--set", "serviceAccount.create=false", "--set", "serviceAccount.name=kodama-external"},
+				[]string{"--set", "serviceAccount.create=false", "--set", "serviceAccount.name=kodema-external"},
 			)...)...)
 			if err != nil {
 				t.Fatalf("helm template refused an externally managed ServiceAccount: %v\n%s", err, rendered)
@@ -562,8 +562,8 @@ func TestKodamaChartExternalServiceAccountSkipsAnnotationGuard(t *testing.T) {
 			if got := renderedKindCount(rendered, "ServiceAccount"); got != 0 {
 				t.Errorf("serviceAccount.create=false rendered %d ServiceAccounts", got)
 			}
-			pod := podSpecOf(t, renderedObjectNamed(t, rendered, "Deployment", "kodama"))
-			if got := stringAtKey(t, pod, "serviceAccountName"); got != "kodama-external" {
+			pod := podSpecOf(t, renderedObjectNamed(t, rendered, "Deployment", "kodema"))
+			if got := stringAtKey(t, pod, "serviceAccountName"); got != "kodema-external" {
 				t.Errorf("control-plane serviceAccountName = %q, want the external ServiceAccount", got)
 			}
 			assertNoCredentialSecretReference(t, rendered)
@@ -571,22 +571,22 @@ func TestKodamaChartExternalServiceAccountSkipsAnnotationGuard(t *testing.T) {
 	}
 }
 
-// TestKodamaChartNonProductionKMSReferenceStaysOptional pins the unchanged
+// TestKodemaChartNonProductionKMSReferenceStaysOptional pins the unchanged
 // development and test behaviour: a named Secret is referenced with
 // optional: true for every adapter, and a profile that names none renders no
 // reference instead of failing.
-func TestKodamaChartNonProductionKMSReferenceStaysOptional(t *testing.T) {
+func TestKodemaChartNonProductionKMSReferenceStaysOptional(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 	for _, profile := range []string{"development", "test"} {
 		for _, mode := range kmsCredentialModes {
 			t.Run(profile+"/"+mode.adapter, func(t *testing.T) {
 				base := joinArgs([]string{"--set", "environment=" + profile}, adapterArgs("", mode.adapter))
-				rendered, err := renderChartArgs(t, helm, "kodama", chart, base...)
+				rendered, err := renderChartArgs(t, helm, "kodema", chart, base...)
 				if err != nil {
 					t.Fatalf("helm template refused a %s render: %v\n%s", profile, err, rendered)
 				}
-				server := workloadContainer(t, renderedObjectNamed(t, rendered, "Deployment", "kodama"), "kodama")
+				server := workloadContainer(t, renderedObjectNamed(t, rendered, "Deployment", "kodema"), "kodema")
 				envFrom, ok := server["envFrom"].([]any)
 				if !ok || len(envFrom) != 1 {
 					t.Fatalf("%s envFrom = %v, want the optional KMS credentials Secret", profile, server["envFrom"])
@@ -599,7 +599,7 @@ func TestKodamaChartNonProductionKMSReferenceStaysOptional(t *testing.T) {
 					t.Errorf("%s envFrom does not mark the KMS credentials optional: %v", profile, secretRef)
 				}
 
-				rendered, err = renderChartArgs(t, helm, "kodama", chart, joinArgs(base, withoutKMSCredentialsArgs(""))...)
+				rendered, err = renderChartArgs(t, helm, "kodema", chart, joinArgs(base, withoutKMSCredentialsArgs(""))...)
 				if err != nil {
 					t.Fatalf("helm template refused a %s render without secrets.kmsCredentials: %v\n%s", profile, err, rendered)
 				}
@@ -612,7 +612,7 @@ func TestKodamaChartNonProductionKMSReferenceStaysOptional(t *testing.T) {
 // TestDescriptorCredentialModePerCloud runs the real
 // `scripts/deploy <cloud> render-values` for each cloud descriptor and proves
 // the generated values carry the cloud's credential mode: the Scaleway values
-// still name kodama-kms-credentials and no annotation, the AWS and GCP values
+// still name kodema-kms-credentials and no annotation, the AWS and GCP values
 // name no credential Secret and carry the workload-identity annotation. The
 // stack chart rendered from those values then references the Secret for
 // Scaleway only.
@@ -629,12 +629,12 @@ func TestDescriptorCredentialModePerCloud(t *testing.T) {
 				t.Fatalf("kmsCredentialModes has no entry for %s", testCase.cloud)
 			}
 			valuesPath, values := renderDescriptorValues(t, testCase.cloud, testCase.descriptorJSON(t))
-			kodama, ok := values["kodama"].(map[string]any)
+			kodema, ok := values["kodema"].(map[string]any)
 			if !ok {
-				t.Fatalf("rendered values have no kodama section: %v", values)
+				t.Fatalf("rendered values have no kodema section: %v", values)
 			}
 
-			secrets := objectAtKey(t, kodama, "secrets")
+			secrets := objectAtKey(t, kodema, "secrets")
 			wantSecrets := []string{"broker", "database", "keys", "natsAuth", "tls"}
 			if mode.staticSecret {
 				wantSecrets = []string{"broker", "database", "keys", "kmsCredentials", "natsAuth", "tls"}
@@ -648,9 +648,9 @@ func TestDescriptorCredentialModePerCloud(t *testing.T) {
 				}
 			}
 
-			serviceAccount := objectAtKey(t, kodama, "serviceAccount")
-			if got := stringAtKey(t, serviceAccount, "name"); got != "kodama" {
-				t.Errorf("%s serviceAccount.name = %q; the cloud identity binding trusts exactly kodama", testCase.cloud, got)
+			serviceAccount := objectAtKey(t, kodema, "serviceAccount")
+			if got := stringAtKey(t, serviceAccount, "name"); got != "kodema" {
+				t.Errorf("%s serviceAccount.name = %q; the cloud identity binding trusts exactly kodema", testCase.cloud, got)
 			}
 			if create, ok := serviceAccount["create"].(bool); !ok || !create {
 				t.Errorf("%s serviceAccount.create = %v, want true", testCase.cloud, serviceAccount["create"])
@@ -669,7 +669,7 @@ func TestDescriptorCredentialModePerCloud(t *testing.T) {
 				t.Fatalf("helm template refused the descriptor-derived values for %s: %v\n%s", testCase.cloud, err, rendered)
 			}
 			if mode.staticSecret {
-				assertKMSCredentialsEnvFrom(t, renderedDocument(t, rendered, "Deployment", "kodama"))
+				assertKMSCredentialsEnvFrom(t, renderedDocument(t, rendered, "Deployment", "kodema"))
 				return
 			}
 			assertNoCredentialSecretReference(t, rendered)
@@ -729,9 +729,9 @@ func renderDescriptorValues(t *testing.T, cloud, descriptor string) (string, map
 
 	command := exec.Command("bash", filepath.Join(repoRoot(t), "scripts", "deploy"), cloud, "render-values", "--cluster", "stage")
 	command.Env = append(os.Environ(),
-		"KODAMA_DEPLOY_STATE_DIR="+stateDir,
-		"KODAMA_IMAGE_REPOSITORY=registry.example.com/kodama",
-		"KODAMA_IMAGE_TAG=0.1.0",
+		"KODEMA_DEPLOY_STATE_DIR="+stateDir,
+		"KODEMA_IMAGE_REPOSITORY=registry.example.com/kodema",
+		"KODEMA_IMAGE_TAG=0.1.0",
 	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("scripts/deploy %s render-values failed: %v\n%s", cloud, err, output)
@@ -751,7 +751,7 @@ func renderDescriptorValues(t *testing.T, cloud, descriptor string) (string, map
 // renderDescriptorStack renders the stack chart from descriptor-derived values
 // plus the production OIDC inputs, as `scripts/deploy <cloud> helm` does.
 func renderDescriptorStack(helm, chart, valuesPath string) (string, error) {
-	args := []string{"template", "kodama-stage", chart, "--namespace", "kodama-system", "--values", valuesPath}
+	args := []string{"template", "kodema-stage", chart, "--namespace", "kodema-system", "--values", valuesPath}
 	args = append(args, stackProductionArgs()...)
 	command := exec.Command(helm, args...)
 	command.Dir = chart

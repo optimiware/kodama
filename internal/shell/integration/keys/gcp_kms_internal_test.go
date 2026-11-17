@@ -17,12 +17,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 const (
-	gcpInternalRef   = "gcp-kms:projects/kodama-prod/locations/global/keyRings/ring/cryptoKeys/kek"
+	gcpInternalRef   = "gcp-kms:projects/kodema-prod/locations/global/keyRings/ring/cryptoKeys/kek"
 	gcpInternalToken = `{"access_token":"gcp-internal-token","expires_in":3600,"token_type":"Bearer"}`
 	// gcpInternalReply decodes to "123456789" with the published CRC-32C
 	// check value.

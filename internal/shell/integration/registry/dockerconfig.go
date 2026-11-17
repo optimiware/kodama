@@ -3,7 +3,7 @@ package registry
 // Docker config.json credential source.
 //
 // The production entry points this source at one trusted file named by an
-// explicit environment setting (KODAMA_REGISTRY_CONFIG_FILE). The document is
+// explicit environment setting (KODEMA_REGISTRY_CONFIG_FILE). The document is
 // read once at startup: a missing, oversized or malformed file fails closed
 // before any resolution, and later edits are never observed. Entries are
 // ordinary Docker auths keys (a registry host, optionally with a scheme and a
@@ -21,7 +21,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // maxDockerConfigBytes bounds one credential file. A docker config.json is a

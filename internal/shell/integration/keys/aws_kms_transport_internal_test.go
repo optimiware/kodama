@@ -15,7 +15,7 @@ import (
 func awsTransportTestConfig() AWSKMSConfig {
 	return AWSKMSConfig{
 		Region:               "eu-west-3",
-		RoleARN:              "arn:aws:iam::111122223333:role/kodama-kms",
+		RoleARN:              "arn:aws:iam::111122223333:role/kodema-kms",
 		WebIdentityTokenFile: "/var/run/secrets/eks.amazonaws.com/serviceaccount/token",
 	}
 }

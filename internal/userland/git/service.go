@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // Sentinel errors reported by the independent Git service. Every refusal that

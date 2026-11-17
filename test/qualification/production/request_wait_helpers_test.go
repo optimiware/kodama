@@ -46,7 +46,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // Pinned request-wait probe vocabulary.
@@ -65,9 +65,9 @@ const (
 	requestWaitRunField         = "run"
 	requestWaitFingerprintField = "fingerprint"
 
-	requestWaitRetainedLabel      = "kodama.dev/retained"
-	requestWaitRetainedAnnotation = "kodama.dev/retained"
-	requestWaitSecretMountPath    = "/kodama/secrets"
+	requestWaitRetainedLabel      = "kodema.dev/retained"
+	requestWaitRetainedAnnotation = "kodema.dev/retained"
+	requestWaitSecretMountPath    = "/kodema/secrets"
 	requestWaitMaxPages           = 4
 	requestWaitOutputRetries      = 20
 	requestWaitPollInterval       = 500 * time.Millisecond
@@ -78,12 +78,12 @@ const (
 	// LabelWorkspace, LabelTenant) and the credential data key mirrors
 	// internal/id.SecretTokenName; TestHarnessRequestWaitPinsProductVocabulary
 	// refuses drift from the product declarations.
-	requestWaitLabelTenant    = "kodama.dev/tenant"
-	requestWaitLabelExecution = "kodama.dev/execution"
-	requestWaitLabelAction    = "kodama.dev/action"
-	requestWaitLabelWorkload  = "kodama.dev/workload"
-	requestWaitLabelWorkspace = "kodama.dev/workspace"
-	requestWaitTokenKey       = "KODAMA_TOKEN"
+	requestWaitLabelTenant    = "kodema.dev/tenant"
+	requestWaitLabelExecution = "kodema.dev/execution"
+	requestWaitLabelAction    = "kodema.dev/action"
+	requestWaitLabelWorkload  = "kodema.dev/workload"
+	requestWaitLabelWorkspace = "kodema.dev/workspace"
+	requestWaitTokenKey       = "KODEMA_TOKEN"
 
 	// requestWaitInboxPageLimit is the page size the probe asks task.inbox for.
 	// The served inbox handler bound a page at the old package-local 100 in the
@@ -168,10 +168,10 @@ type requestWaitPaths struct {
 // requestWaitDefaultPaths returns the frozen workload mounts.
 func requestWaitDefaultPaths() requestWaitPaths {
 	return requestWaitPaths{
-		TokenFile:    "/kodama/secrets/KODAMA_TOKEN",
-		CAFile:       "/etc/kodama/ca/ca.crt",
-		BeforeOutput: "/kodama/outputs/" + requestWaitBeforeName + "/" + requestWaitFingerprint,
-		AnswerOutput: "/kodama/outputs/" + requestWaitDecisionName + "/" + requestWaitAnswerOutput,
+		TokenFile:    "/kodema/secrets/KODEMA_TOKEN",
+		CAFile:       "/etc/kodema/ca/ca.crt",
+		BeforeOutput: "/kodema/outputs/" + requestWaitBeforeName + "/" + requestWaitFingerprint,
+		AnswerOutput: "/kodema/outputs/" + requestWaitDecisionName + "/" + requestWaitAnswerOutput,
 	}
 }
 
@@ -600,7 +600,7 @@ func (probe *requestWaitProbe) beforeCommands() []string {
 		`test -n "$FIRST_SHA"`,
 		`attempt=0`,
 		`submitted=0`,
-		fmt.Sprintf(`while [ "$attempt" -lt %d ]; do attempt=$((attempt+1)); INSPECT_CODE=$(curl -sS -X GET -o /dev/null -w '%%{http_code}' --cacert %s -H "Authorization: Bearer $(cat %s)" -H 'Content-Type: application/json' --data-binary '{}' "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION"); if [ "$INSPECT_CODE" != "200" ]; then echo "q02: the mounted execution credential was refused with status $INSPECT_CODE" >&2; exit 1; fi; INSPECT=$(curl -sS -X GET --cacert %s -H "Authorization: Bearer $(cat %s)" -H 'Content-Type: application/json' --data-binary '{}' "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION"); case "$INSPECT" in *'"operation":"execution.inspect"'*) ;; *) echo "q02: the execution inspection did not return a public result" >&2; exit 1 ;; esac; VERSION=$(printf '%%s' "$INSPECT" | grep -o '"version":[0-9]*' | head -n 1 | cut -d: -f2); ACTION=$(printf '%%s' "$INSPECT" | grep -o '"action_id":"[^"]*"' | head -n 1 | cut -d'"' -f4); test -n "$VERSION" || { echo "q02: the inspection carried no execution version" >&2; exit 1; }; test -n "$ACTION" || { echo "q02: the inspection carried no action id" >&2; exit 1; }; BODY=$(printf '{"input":{"outputs":{"%s":"%%s"}},"expected_version":%%s,"idempotency_key":"q02-out-%%s-%%s"}' "$FIRST_SHA" "$VERSION" "$attempt" "$FIRST_SHA"); OUTPUT_CODE=$(curl -sS -X PUT -o /dev/null -w '%%{http_code}' --cacert %s -H "Authorization: Bearer $(cat %s)" -H 'Content-Type: application/json' --data-binary "$BODY" "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION/actions/$ACTION/outputs"); case "$OUTPUT_CODE" in 200) submitted=1; break ;; 409) continue ;; *) echo "q02: the fingerprint output submission was refused with status $OUTPUT_CODE" >&2; exit 1 ;; esac; done`,
+		fmt.Sprintf(`while [ "$attempt" -lt %d ]; do attempt=$((attempt+1)); INSPECT_CODE=$(curl -sS -X GET -o /dev/null -w '%%{http_code}' --cacert %s -H "Authorization: Bearer $(cat %s)" -H 'Content-Type: application/json' --data-binary '{}' "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION"); if [ "$INSPECT_CODE" != "200" ]; then echo "q02: the mounted execution credential was refused with status $INSPECT_CODE" >&2; exit 1; fi; INSPECT=$(curl -sS -X GET --cacert %s -H "Authorization: Bearer $(cat %s)" -H 'Content-Type: application/json' --data-binary '{}' "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION"); case "$INSPECT" in *'"operation":"execution.inspect"'*) ;; *) echo "q02: the execution inspection did not return a public result" >&2; exit 1 ;; esac; VERSION=$(printf '%%s' "$INSPECT" | grep -o '"version":[0-9]*' | head -n 1 | cut -d: -f2); ACTION=$(printf '%%s' "$INSPECT" | grep -o '"action_id":"[^"]*"' | head -n 1 | cut -d'"' -f4); test -n "$VERSION" || { echo "q02: the inspection carried no execution version" >&2; exit 1; }; test -n "$ACTION" || { echo "q02: the inspection carried no action id" >&2; exit 1; }; BODY=$(printf '{"input":{"outputs":{"%s":"%%s"}},"expected_version":%%s,"idempotency_key":"q02-out-%%s-%%s"}' "$FIRST_SHA" "$VERSION" "$attempt" "$FIRST_SHA"); OUTPUT_CODE=$(curl -sS -X PUT -o /dev/null -w '%%{http_code}' --cacert %s -H "Authorization: Bearer $(cat %s)" -H 'Content-Type: application/json' --data-binary "$BODY" "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION/actions/$ACTION/outputs"); case "$OUTPUT_CODE" in 200) submitted=1; break ;; 409) continue ;; *) echo "q02: the fingerprint output submission was refused with status $OUTPUT_CODE" >&2; exit 1 ;; esac; done`,
 			requestWaitOutputRetries, ca, token, ca, token, requestWaitFingerprint, ca, token),
 		`test "$submitted" = "1" || { echo "q02: the fingerprint output submission did not converge" >&2; exit 1; }`,
 		fmt.Sprintf(`sleep %d`, int(probe.CaptureWindow.Seconds())),
@@ -627,7 +627,7 @@ func (probe *requestWaitProbe) afterCommands() []string {
 		`test -n "$AFTER_SHA"`,
 		`test -n "$FIRST_SHA"`,
 		`if [ "$AFTER_SHA" = "$FIRST_SHA" ]; then echo "q02: the post-wait action reused the old mounted credential" >&2; exit 1; fi`,
-		`NOW_CODE=$(curl -sS -X GET -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION")`,
+		`NOW_CODE=$(curl -sS -X GET -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION")`,
 		`if [ "$NOW_CODE" != "200" ]; then echo "q02: the fresh mounted credential was refused with status $NOW_CODE" >&2; exit 1; fi`,
 		`echo ` + shellQuote(requestWaitMarker(probe.RunMarker)),
 	}
@@ -1175,7 +1175,7 @@ func (probe *requestWaitProbe) assertRequestUnchanged(ctx context.Context, execu
 	}
 	// The product keeps the completed predecessor Job and Pod until the
 	// execution's terminal cleanup (internal/kernel/engine/cleanup.go:29-31)
-	// or the Job TTL (cmd/kodama/production.go:343 pins 600 s), so their
+	// or the Job TTL (cmd/kodema/production.go:343 pins 600 s), so their
 	// continued presence is not evidence that anything advanced. The refused
 	// resolution is proven inert by the absence of any live workload and of any
 	// workload labelled for an action other than the confirmed predecessor.
@@ -1740,10 +1740,10 @@ func requestWaitObjectList(data []byte) ([]requestWaitObject, error) {
 
 // requestWaitRequireLabels validates the pinned execution/action labels.
 func requestWaitRequireLabels(labels map[string]string, executionID, actionID string) error {
-	if labels["kodama.dev/execution"] != executionID {
+	if labels["kodema.dev/execution"] != executionID {
 		return fmt.Errorf("the object is not labelled for the observed execution")
 	}
-	if labels["kodama.dev/action"] != actionID {
+	if labels["kodema.dev/action"] != actionID {
 		return fmt.Errorf("the object is not labelled for the observed action")
 	}
 	return nil
@@ -1787,7 +1787,7 @@ func requestWaitNoWorkloadDetail(err error) string {
 // requestWaitNoWorkload requires no live Job or pod attributable to the
 // execution once its predecessor stop is confirmed.
 func requestWaitNoWorkload(ctx context.Context, cluster requestWaitCluster, namespace, executionID string) error {
-	selector := "kodama.dev/execution=" + executionID
+	selector := "kodema.dev/execution=" + executionID
 	for _, resource := range []string{"jobs", "pods"} {
 		data, err := cluster.ObjectList(ctx, namespace, resource, selector)
 		if err != nil {
@@ -1813,7 +1813,7 @@ func requestWaitRetainedWorkspace(ctx context.Context, cluster requestWaitCluste
 	if workspaceID == "" {
 		return fmt.Errorf("the request wait carries no workspace identity to prove retention")
 	}
-	data, err := cluster.ObjectList(ctx, namespace, "persistentvolumeclaims", "kodama.dev/workspace="+workspaceID)
+	data, err := cluster.ObjectList(ctx, namespace, "persistentvolumeclaims", "kodema.dev/workspace="+workspaceID)
 	if err != nil {
 		return fmt.Errorf("the workspace claim was not readable: %w", err)
 	}
@@ -2222,7 +2222,7 @@ func requestWaitCleanupWorkspace(ctx context.Context, cluster requestWaitCluster
 	if workspaceID == "" {
 		return nil
 	}
-	data, err := cluster.ObjectList(ctx, namespace, "persistentvolumeclaims", "kodama.dev/workspace="+workspaceID)
+	data, err := cluster.ObjectList(ctx, namespace, "persistentvolumeclaims", "kodema.dev/workspace="+workspaceID)
 	if err != nil {
 		return fmt.Errorf("the cleanup workspace claim was not readable: %w", err)
 	}

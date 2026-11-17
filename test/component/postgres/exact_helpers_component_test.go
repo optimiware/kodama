@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/store/units/execution/snapshotdoc"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // admittedActionWant is one expected admitted action of a stored snapshot.

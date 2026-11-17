@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestMain installs the harness signal handler and orphan sweep for this
@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 			code = 1
 		}
 		matrixPath := filepath.Join("..", "..", "support", "infrastructure", "postgres", "README.md")
-		if os.Getenv("KODAMA_UPDATE_UNIT_MATRIX") == "1" {
+		if os.Getenv("KODEMA_UPDATE_UNIT_MATRIX") == "1" {
 			if err := pgtest.WriteUnitStateMatrix(matrixPath); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				code = 1

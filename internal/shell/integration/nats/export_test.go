@@ -10,7 +10,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 const (

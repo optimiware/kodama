@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/agent"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/agent"
 )
 
 func askCall(question, assignment string) agent.ToolRequest {
@@ -389,9 +389,9 @@ func TestInvalidDurableReferencesAreRefused(t *testing.T) {
 		"/tmp/checkpoint",
 		"./checkpoint",
 		"file:///tmp/checkpoint",
-		"kodama-checkpoint/v2/ctx-1",
-		"kodama-checkpoint/v1/../ctx",
-		"kodama-checkpoint/v1/",
+		"kodema-checkpoint/v2/ctx-1",
+		"kodema-checkpoint/v1/../ctx",
+		"kodema-checkpoint/v1/",
 		strings.Repeat("a", agent.MaxCheckpointRefBytes+1),
 	}
 	for _, ref := range malformed {
@@ -430,7 +430,7 @@ func TestInvalidDurableReferencesAreRefused(t *testing.T) {
 		_, err := runtime.Run(context.Background(), agent.RunInput{
 			TaskID: "tsk-1", ExecutionID: "exec-2", Model: "fixture-model",
 			Messages:   []agent.Message{{Role: "user", Content: "continue"}},
-			RestoreRef: "kodama-checkpoint/v1/ctx-missing",
+			RestoreRef: "kodema-checkpoint/v1/ctx-missing",
 		})
 		if err == nil {
 			t.Fatal("missing checkpoint was treated as an empty success")

@@ -27,8 +27,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
 )
 
 // CredentialExpiredError reports a 401 on a release-smoke read. Installed

@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/service"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/service"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // TestServiceAdministrationCommitUnits pins the service administration seam.
@@ -356,7 +356,7 @@ func TestEventSubscribeContract(t *testing.T) {
 		t.Fatalf("event.MaxSubscribeSubjects = %d; want a positive bound", event.MaxSubscribeSubjects)
 	}
 	grant := event.SubscribeGrant{
-		Subjects:  []string{"kodama.v1.tenant-1.project-1.events"},
+		Subjects:  []string{"kodema.v1.tenant-1.project-1.events"},
 		Cursor:    5,
 		ExpiresAt: now.Add(time.Hour),
 	}
@@ -367,7 +367,7 @@ func TestEventSubscribeContract(t *testing.T) {
 		t.Fatalf("valid event subscribe grant refused for its scope: %v", err)
 	}
 	if err := (event.SubscribeGrant{
-		Subjects:  []string{"kodama.v1.tenant-1._.events"},
+		Subjects:  []string{"kodema.v1.tenant-1._.events"},
 		Cursor:    5,
 		ExpiresAt: now.Add(time.Hour),
 	}).ValidateFor(tenancy.Scope{TenantID: id.TenantID("tenant-1")}); err != nil {
@@ -383,13 +383,13 @@ func TestEventSubscribeContract(t *testing.T) {
 		g := grant
 		g.Subjects = make([]string, event.MaxSubscribeSubjects+1)
 		for index := range g.Subjects {
-			g.Subjects[index] = "kodama.v1.tenant-1.project-1.events"
+			g.Subjects[index] = "kodema.v1.tenant-1.project-1.events"
 		}
 		return g.Validate()
 	}())
 	assertInvalidInput(t, "event subscribe grant with a wildcard subject", func() error {
 		g := grant
-		g.Subjects = []string{"kodama.v1.tenant-1.project-1.*"}
+		g.Subjects = []string{"kodema.v1.tenant-1.project-1.*"}
 		return g.Validate()
 	}())
 	assertInvalidInput(t, "event subscribe grant with a malformed subject", func() error {
@@ -399,7 +399,7 @@ func TestEventSubscribeContract(t *testing.T) {
 	}())
 	assertInvalidInput(t, "event subscribe grant with mixed scopes", func() error {
 		g := grant
-		g.Subjects = []string{"kodama.v1.tenant-1.project-1.events", "kodama.v1.tenant-1.project-2.events"}
+		g.Subjects = []string{"kodema.v1.tenant-1.project-1.events", "kodema.v1.tenant-1.project-2.events"}
 		return g.Validate()
 	}())
 	assertInvalidInput(t, "event subscribe grant for a foreign scope", func() error {

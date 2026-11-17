@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 type cloudFactory struct {
@@ -43,13 +43,13 @@ func (factory cloudFactory) build(t *testing.T, client keys.KMSClient, config ke
 
 // cloudReference returns a provider-valid reference for the factory family.
 // Construction validates the full AWS/GCP grammar, so a generic
-// "<prefix>alias/kodama" is not a valid reference for every provider.
+// "<prefix>alias/kodema" is not a valid reference for every provider.
 func cloudReference(factory cloudFactory, name string) secret.KeyRef {
 	switch factory.name {
 	case "aws":
 		return secret.KeyRef(factory.prefix + "alias/" + name)
 	case "gcp":
-		return secret.KeyRef("gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/" + name)
+		return secret.KeyRef("gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/" + name)
 	default:
 		return secret.KeyRef(factory.prefix + name)
 	}
@@ -71,7 +71,7 @@ func cloudConfig(ref secret.KeyRef, current secret.KeyVersion, blobs map[secret.
 func TestCloudProviderRoundTrip(t *testing.T) {
 	for _, factory := range cloudFactories() {
 		t.Run(factory.name, func(t *testing.T) {
-			ref := cloudReference(factory, "kodama")
+			ref := cloudReference(factory, "kodema")
 			blob := cloudBlob(factory.name, 1)
 			client := newFakeKMS(map[string][]byte{string(blob): testKEK()})
 			provider := factory.build(t, client, cloudConfig(ref, 1, map[secret.KeyVersion][]byte{1: blob}), deterministicRandom(0x11))
@@ -128,7 +128,7 @@ func TestCloudProviderRoundTrip(t *testing.T) {
 func TestCloudProviderConfigurationRefusals(t *testing.T) {
 	for _, factory := range cloudFactories() {
 		t.Run(factory.name, func(t *testing.T) {
-			ref := cloudReference(factory, "kodama")
+			ref := cloudReference(factory, "kodema")
 			foreignPrefix := keys.GCPKeyRefPrefix
 			if factory.prefix == keys.GCPKeyRefPrefix {
 				foreignPrefix = keys.AWSKeyRefPrefix
@@ -149,8 +149,8 @@ func TestCloudProviderConfigurationRefusals(t *testing.T) {
 				config keys.CloudConfig
 			}{
 				{name: "empty key reference", client: client, config: cloudConfig("", 1, oneVersion())},
-				{name: "foreign prefix", client: client, config: cloudConfig(secret.KeyRef(foreignPrefix+"alias/kodama"), 1, oneVersion())},
-				{name: "missing prefix", client: client, config: cloudConfig("alias/kodama", 1, oneVersion())},
+				{name: "foreign prefix", client: client, config: cloudConfig(secret.KeyRef(foreignPrefix+"alias/kodema"), 1, oneVersion())},
+				{name: "missing prefix", client: client, config: cloudConfig("alias/kodema", 1, oneVersion())},
 				{name: "zero current version", client: client, config: cloudConfig(ref, 0, oneVersion())},
 				{name: "empty versions", client: client, config: cloudConfig(ref, 1, nil)},
 				{name: "missing current blob", client: client, config: cloudConfig(ref, 2, oneVersion())},
@@ -182,7 +182,7 @@ func TestCloudProviderConfigurationRefusals(t *testing.T) {
 func TestCloudProviderUnwrapsEachVersionOnce(t *testing.T) {
 	for _, factory := range cloudFactories() {
 		t.Run(factory.name, func(t *testing.T) {
-			ref := cloudReference(factory, "kodama")
+			ref := cloudReference(factory, "kodema")
 			kekOne := bytes.Repeat([]byte{0x11}, secret.DataKeyBytes)
 			kekTwo := bytes.Repeat([]byte{0x22}, secret.DataKeyBytes)
 			blobOne := cloudBlob(factory.name, 1)
@@ -264,7 +264,7 @@ func TestCloudProviderUnwrapsEachVersionOnce(t *testing.T) {
 func TestCloudProviderRotation(t *testing.T) {
 	for _, factory := range cloudFactories() {
 		t.Run(factory.name, func(t *testing.T) {
-			ref := cloudReference(factory, "kodama")
+			ref := cloudReference(factory, "kodema")
 			kekOne := bytes.Repeat([]byte{0x11}, secret.DataKeyBytes)
 			kekTwo := bytes.Repeat([]byte{0x22}, secret.DataKeyBytes)
 			blobOne := cloudBlob(factory.name, 1)
@@ -316,7 +316,7 @@ func TestCloudProviderRotation(t *testing.T) {
 func TestCloudProviderUnknownVersionOrReference(t *testing.T) {
 	for _, factory := range cloudFactories() {
 		t.Run(factory.name, func(t *testing.T) {
-			ref := cloudReference(factory, "kodama")
+			ref := cloudReference(factory, "kodema")
 			blob := cloudBlob(factory.name, 1)
 			client := newFakeKMS(map[string][]byte{string(blob): testKEK()})
 			provider := factory.build(t, client, cloudConfig(ref, 1, map[secret.KeyVersion][]byte{1: blob}), nil)
@@ -359,7 +359,7 @@ func TestCloudProviderUnknownVersionOrReference(t *testing.T) {
 func TestCloudProviderFaultMapping(t *testing.T) {
 	for _, factory := range cloudFactories() {
 		t.Run(factory.name, func(t *testing.T) {
-			ref := cloudReference(factory, "kodama")
+			ref := cloudReference(factory, "kodema")
 			blob := cloudBlob(factory.name, 1)
 			associatedData := testAssociatedBytes(t, testAssociated(1))
 
@@ -423,7 +423,7 @@ func TestCloudProviderFaultMapping(t *testing.T) {
 func TestCloudProviderMalformedKEKIsNotCached(t *testing.T) {
 	for _, factory := range cloudFactories() {
 		t.Run(factory.name, func(t *testing.T) {
-			ref := cloudReference(factory, "kodama")
+			ref := cloudReference(factory, "kodema")
 			blob := cloudBlob(factory.name, 1)
 			var calls atomic.Int32
 			client := &functionKMS{decrypt: func(_ context.Context, _ secret.KeyRef, _ []byte) ([]byte, error) {
@@ -454,7 +454,7 @@ func TestCloudProviderMalformedKEKIsNotCached(t *testing.T) {
 func TestCloudProviderCancellation(t *testing.T) {
 	for _, factory := range cloudFactories() {
 		t.Run(factory.name, func(t *testing.T) {
-			ref := cloudReference(factory, "kodama")
+			ref := cloudReference(factory, "kodema")
 			blob := cloudBlob(factory.name, 1)
 			associatedData := testAssociatedBytes(t, testAssociated(1))
 			request := secret.WrapRequest{KeyRef: ref, KeyVersion: 1, Plaintext: testDEK(), AssociatedData: associatedData}

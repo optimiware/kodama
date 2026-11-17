@@ -5,7 +5,7 @@ package git
 // A rewinding `RW+` update moves a branch back and leaves the discarded
 // commits unreachable; a later `git gc` would then prune them even though an
 // execution's retained evidence still names them. This file keeps one direct
-// ref per retained commit under refs/kodama/keep/<sha>, so the commit and its
+// ref per retained commit under refs/kodema/keep/<sha>, so the commit and its
 // ancestry stay reachable until no retained execution names it.
 //
 // The mechanism is deliberately policy-free: the caller supplies the
@@ -21,12 +21,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // KeepRefNamespace is the whole managed namespace. Smart-HTTP advertisement
 // hides this namespace so clients never see retention bookkeeping.
-const KeepRefNamespace = "refs/kodama"
+const KeepRefNamespace = "refs/kodema"
 
 // KeepRefPrefix is the managed namespace for retained-commit refs. A ref here
 // points directly at the commit named by its suffix.

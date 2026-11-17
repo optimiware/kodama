@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestTransportParityAcrossOperationFamilies proves the REST and MCP edges are

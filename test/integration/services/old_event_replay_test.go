@@ -33,8 +33,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -274,8 +274,8 @@ actions:
     image: %s
     timeout: 10m
     commands:
-      - test "$(cat /kodama/inputs/repository)" = %s
-      - test "$(cat /kodama/inputs/ref)" = %s
+      - test "$(cat /kodema/inputs/repository)" = %s
+      - test "$(cat /kodema/inputs/ref)" = %s
       - "%s"
 `, oldEventRepository, oldEventPushService, oldEventRef, harness.Image.Reference, oldEventRepository, oldEventRef, command))
 }

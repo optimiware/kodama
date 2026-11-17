@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/memory"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/memory"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 const (
@@ -53,7 +53,7 @@ func newStore() *memory.Store {
 // for a resolved definition.Subject. Tests seed this shape, never a
 // verify.Subject, so a decoder that accepts the wrong shape fails. A request
 // used as approval evidence carries its operation and resource in the immutable
-// subject alongside the effect fields (KODAMA.md, S05 §4).
+// subject alongside the effect fields (KODEMA.md, S05 §4).
 func storedRequestSubject() []byte {
 	return storedRequestSubjectFields(map[string]string{
 		"operation": "git.ref.update",

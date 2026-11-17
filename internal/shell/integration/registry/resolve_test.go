@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // TestResolveTagToDigest pins the core admission read: a mutable tag is a

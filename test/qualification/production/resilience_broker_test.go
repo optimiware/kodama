@@ -24,7 +24,7 @@ import (
 // context. If a previous run died and left statefulset/nats at zero, the probe
 // refuses to start and prints the exact manual recovery command:
 //
-//	kubectl --context <ctx> -n kodama-system scale statefulset nats --replicas=<n>
+//	kubectl --context <ctx> -n kodema-system scale statefulset nats --replicas=<n>
 func TestStageResilienceBrokerOutage(t *testing.T) {
 	config := loadStageConfig(t)
 	requireStageInputs(t, config, resilienceResilienceInputs()...)

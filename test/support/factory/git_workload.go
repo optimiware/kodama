@@ -14,7 +14,7 @@ package factory
 //     rootless pasta maps to host.containers.internal. That workload origin is
 //     added to both registered bindings through resource.binding.update.
 //   - authored workload commands that materialize the public CA inside
-//     /workspace, read /kodama/secrets/KODAMA_TOKEN for each Git authentication
+//     /workspace, read /kodema/secrets/KODEMA_TOKEN for each Git authentication
 //     and pass it only through Git's --config-env header mechanism. Redirects
 //     and tracing are off and TLS verification is never disabled.
 //
@@ -36,8 +36,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 const (
@@ -47,12 +47,12 @@ const (
 
 	gitWorkloadNameSuffix   = "git"
 	gitWorkloadImageTag     = "workload"
-	gitWorkloadTokenPath    = "/kodama/secrets/KODAMA_TOKEN"
-	gitWorkloadCAFile       = "/workspace/kodama-factory-ca.pem"
+	gitWorkloadTokenPath    = "/kodema/secrets/KODEMA_TOKEN"
+	gitWorkloadCAFile       = "/workspace/kodema-factory-ca.pem"
 	gitWorkloadWorkspace    = "/workspace"
 	gitWorkloadRepository   = "/workspace/git-workload-repository"
 	gitWorkloadProtectedRef = "refs/heads/main"
-	gitWorkloadAuthEnv      = "KODAMA_GIT_AUTHORIZATION"
+	gitWorkloadAuthEnv      = "KODEMA_GIT_AUTHORIZATION"
 	gitWorkloadBuildTimeout = 10 * time.Minute
 	gitWorkloadCleanupLimit = 3 * time.Minute
 )
@@ -121,7 +121,7 @@ func newGitWorkloadPlan(shardID string) (gitWorkloadPlan, error) {
 		BaseDigest: base.Digest,
 		LocalTag:   messaging.FixtureLocalTag(trimmed, gitWorkloadNameSuffix),
 		Repository: messaging.FixtureRepository(trimmed, gitWorkloadNameSuffix),
-		Marker:     "kodama-git-workload " + trimmed + "\n",
+		Marker:     "kodema-git-workload " + trimmed + "\n",
 	}
 	if plan.LocalTag == base.Tag || plan.Repository == base.Reference {
 		return gitWorkloadPlan{}, fmt.Errorf("workload image names collide with the shared base")
@@ -286,7 +286,7 @@ func workloadClonePushCommands(spec workloadGitSpec) ([]string, error) {
 		caMaterial += "\n"
 	}
 	commands := []string{
-		"cat > " + shellQuote(gitWorkloadCAFile) + " <<'KODAMA_WORKLOAD_CA'\n" + caMaterial + "KODAMA_WORKLOAD_CA",
+		"cat > " + shellQuote(gitWorkloadCAFile) + " <<'KODEMA_WORKLOAD_CA'\n" + caMaterial + "KODEMA_WORKLOAD_CA",
 		"export GIT_SSL_CAINFO=" + shellQuote(gitWorkloadCAFile),
 		"export GIT_CONFIG_NOSYSTEM=1",
 		"export GIT_CONFIG_GLOBAL=/dev/null",
@@ -300,22 +300,22 @@ func workloadClonePushCommands(spec workloadGitSpec) ([]string, error) {
 			shellQuote(spec.URL+"/info/refs?service=git-upload-pack"),
 		// Each invocation reads the mounted token afresh and supplies the
 		// derived Basic header only through Git's environment-based config.
-		"git_kodama() {\n" +
-			"  " + gitWorkloadAuthEnv + "=\"Authorization: Basic $(printf 'kodama:%s' \"$(cat " + shellQuote(gitWorkloadTokenPath) + ")\" | base64 -w0)\" \\\n" +
+		"git_kodema() {\n" +
+			"  " + gitWorkloadAuthEnv + "=\"Authorization: Basic $(printf 'kodema:%s' \"$(cat " + shellQuote(gitWorkloadTokenPath) + ")\" | base64 -w0)\" \\\n" +
 			"  git -c http.followRedirects=false --config-env=http.extraHeader=" + gitWorkloadAuthEnv + " \"$@\"\n" +
 			"}",
 		"rm -rf -- " + directory,
-		"git_kodama clone --quiet " + shellQuote(spec.URL) + " " + directory,
+		"git_kodema clone --quiet " + shellQuote(spec.URL) + " " + directory,
 		"cd " + directory,
 		"printf 'git workload commit for %s\\n' " + shellQuote(spec.WorkRef) + " > workload-commit.txt",
 		"git add -- workload-commit.txt",
-		"git -c user.name=kodama -c user.email=kodama@example.invalid commit --quiet -m 'G6-B workload push'",
-		"git_kodama push --quiet origin " + shellQuote("HEAD:"+spec.WorkRef),
+		"git -c user.name=kodema -c user.email=kodema@example.invalid commit --quiet -m 'G6-B workload push'",
+		"git_kodema push --quiet origin " + shellQuote("HEAD:"+spec.WorkRef),
 		// The same mounted execution credential may not move the protected
 		// main ref without the committed approval. The managed hook must
 		// refuse it; an accepted push is the authority defect this guard
 		// exists for.
-		"if git_kodama push --quiet origin " + shellQuote("HEAD:"+gitWorkloadProtectedRef) + " >/dev/null 2>&1; then\n" +
+		"if git_kodema push --quiet origin " + shellQuote("HEAD:"+gitWorkloadProtectedRef) + " >/dev/null 2>&1; then\n" +
 			"  printf 'protected-ref-accepted\\n' >&2\n" +
 			"  exit 1\n" +
 			"fi",
@@ -356,7 +356,7 @@ func workloadScanCommands(tokenPath, workspace string) []string {
 		"test -s " + token,
 		scan,
 		"cat " + token + " | tr -d '\\n' | scan_workspace_for_credential raw-token",
-		"cat " + token + " | tr -d '\\n' | sed 's/^/kodama:/' | base64 -w0 | scan_workspace_for_credential basic-token",
+		"cat " + token + " | tr -d '\\n' | sed 's/^/kodema:/' | base64 -w0 | scan_workspace_for_credential basic-token",
 		"printf '%s\\n' 'extraHeader' | scan_workspace_for_credential extra-header -i",
 		"printf 'repository-config-clean\\n'",
 	}

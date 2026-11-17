@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // AdminPort applies the three complete service-administration commit units.

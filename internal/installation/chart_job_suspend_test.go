@@ -6,7 +6,7 @@ package installation
 //
 // The checks below parse the literal rules of templates/rbac.yaml. The rendered
 // form of the same invariant is asserted by
-// TestKodamaChartsRenderExactRuntimeJobPermissions in test/component/deploy.
+// TestKodemaChartsRenderExactRuntimeJobPermissions in test/component/deploy.
 // Keeping the text check exact means a widened rule (jobs/status, a pod
 // finalizer, a wildcard, an extra API group or resource) fails here before a
 // render is attempted.
@@ -295,8 +295,8 @@ func checkChartRuntimeRole(body string) error {
 	}
 
 	for _, want := range []string{
-		"namespace: kodama-tenant-{{ $tenant }}",
-		"name: kodama-runtime",
+		"namespace: kodema-tenant-{{ $tenant }}",
+		"name: kodema-runtime",
 		"kind: Role",
 	} {
 		if !strings.Contains(roleChunk, want) {
@@ -306,10 +306,10 @@ func checkChartRuntimeRole(body string) error {
 
 	for _, want := range []string{
 		"kind: RoleBinding",
-		"namespace: kodama-tenant-{{ $tenant }}",
+		"namespace: kodema-tenant-{{ $tenant }}",
 		"roleRef:",
 		"kind: Role",
-		"name: kodama-runtime",
+		"name: kodema-runtime",
 		"kind: ServiceAccount",
 		"namespace: {{ $.Release.Namespace }}",
 	} {
@@ -320,7 +320,7 @@ func checkChartRuntimeRole(body string) error {
 	if got := strings.Count(bindingChunk, "- kind:"); got != 1 {
 		return fmt.Errorf("runtime RoleBinding has %d subjects, want exactly the installation ServiceAccount", got)
 	}
-	subject := `name: {{ if $.Values.serviceAccount }}{{ $.Values.serviceAccount.name | default "kodama" }}{{ else }}kodama{{ end }}`
+	subject := `name: {{ if $.Values.serviceAccount }}{{ $.Values.serviceAccount.name | default "kodema" }}{{ else }}kodema{{ end }}`
 	if !strings.Contains(bindingChunk, subject) {
 		return fmt.Errorf("runtime RoleBinding does not bind the configured ServiceAccount")
 	}
@@ -342,7 +342,7 @@ func checkChartRuntimeRole(body string) error {
 		return fmt.Errorf("ClusterRole read is not restricted with resourceNames")
 	}
 	for _, name := range namespaceRule.resourceNames {
-		if name != "kodama-tenant-{{ $tenant }}" {
+		if name != "kodema-tenant-{{ $tenant }}" {
 			return fmt.Errorf("ClusterRole reads an unexpected namespace %q", name)
 		}
 	}
@@ -465,10 +465,10 @@ func TestRuntimeRoleJobRuleMutationSensitivity(t *testing.T) {
 			return strings.Replace(body, "kind: Role\nmetadata:", "kind: ClusterRole\nmetadata:", 1)
 		}},
 		{"bind the wrong subject namespace", func(body string) string {
-			return strings.Replace(body, "namespace: {{ $.Release.Namespace }}", "namespace: kodama-tenant-{{ $tenant }}", 1)
+			return strings.Replace(body, "namespace: {{ $.Release.Namespace }}", "namespace: kodema-tenant-{{ $tenant }}", 1)
 		}},
 		{"bind a hardcoded ServiceAccount", func(body string) string {
-			return strings.Replace(body, `{{ $.Values.serviceAccount.name | default "kodama" }}`, `{{ $.Values.serviceAccount.name | default "kodama-admin" }}`, 1)
+			return strings.Replace(body, `{{ $.Values.serviceAccount.name | default "kodema" }}`, `{{ $.Values.serviceAccount.name | default "kodema-admin" }}`, 1)
 		}},
 	}
 

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 type fakeStorage struct{}
@@ -445,7 +445,7 @@ func TestHookHandlerRefusesOutOfBoundsObjectEnvironment(t *testing.T) {
 // the post-receive forged-handle test can seed an existing journal entry.
 func derivedEventID(pushID, repository, ref, old, new string) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{
-		"kodama-git-hook-v2", pushID, repository, ref, old, new,
+		"kodema-git-hook-v2", pushID, repository, ref, old, new,
 	}, "\x00")))
 	return hex.EncodeToString(sum[:])
 }

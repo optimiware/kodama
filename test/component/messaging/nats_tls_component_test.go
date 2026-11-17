@@ -8,11 +8,11 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	broker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	broker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // TestNATSTLSJetStream proves the NATS seam works against a real

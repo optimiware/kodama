@@ -1,4 +1,4 @@
-// Pre-authentication credential lookup over the kodama_auth role.
+// Pre-authentication credential lookup over the kodema_auth role.
 //
 // The lookup answers exactly one exact-kind/exact-id question and returns a
 // candidate scope that is never authority. The role has exact-column SELECT on
@@ -10,9 +10,9 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 // Credentials implements store.CredentialLookup over the auth-role pool.
@@ -21,7 +21,7 @@ type Credentials struct {
 }
 
 // NewCredentialLookup builds the read-only pre-authentication lookup over the
-// kodama_auth pool.
+// kodema_auth pool.
 func NewCredentialLookup(db DB) *Credentials {
 	return &Credentials{db: db}
 }

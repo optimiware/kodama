@@ -11,8 +11,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // liveJob is one queued live publication. The chunk bytes are already redacted

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/resource"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/resource"
 )
 
 // TestResourceOperationVocabulary pins the resource-operation vocabulary

@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
-	identityfixture "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
+	identityfixture "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 // fakePrincipalReader is the current-membership reader the OIDC resolver unit

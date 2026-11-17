@@ -20,10 +20,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/runtime"
 )
 
 const (
@@ -34,10 +34,10 @@ const (
 	Redacted = "[REDACTED]"
 	// WorkloadCAPath is the read-only mounted CA bundle path inside the
 	// container when Config.WorkloadCAFile is configured.
-	WorkloadCAPath = "/kodama/ca.crt"
+	WorkloadCAPath = "/kodema/ca.crt"
 	// EnvWorkloadCAFile exposes WorkloadCAPath in the container environment
 	// when Config.WorkloadCAFile is configured.
-	EnvWorkloadCAFile = "KODAMA_CA_FILE"
+	EnvWorkloadCAFile = "KODEMA_CA_FILE"
 )
 
 // Container statuses the adapter interprets. Any other status stays unknown.
@@ -54,16 +54,16 @@ const (
 // names the adapter derives, so a retry finds exactly the same object.
 const (
 	// LabelExecution names the execution.
-	LabelExecution = "kodama.dev/execution"
+	LabelExecution = "kodema.dev/execution"
 	// LabelAction names the action.
-	LabelAction = "kodama.dev/action"
+	LabelAction = "kodema.dev/action"
 	// LabelWorkload names the stable runtime workload identity.
-	LabelWorkload = "kodama.dev/workload"
+	LabelWorkload = "kodema.dev/workload"
 	// LabelWorkspace names the retained execution workspace.
-	LabelWorkspace = "kodama.dev/workspace"
+	LabelWorkspace = "kodema.dev/workspace"
 	// LabelIdempotencyKey carries the persisted idempotency key so a retry can
 	// be attributed to the original effect.
-	LabelIdempotencyKey = "kodama.dev/idempotency-key"
+	LabelIdempotencyKey = "kodema.dev/idempotency-key"
 )
 
 // Sentinel errors the Libpod seam wraps. The adapter interprets them; an absent
@@ -99,11 +99,11 @@ type Config struct {
 	Files Files
 	// Root is the daemon-visible adapter root; it must be absolute.
 	Root string
-	// KodamaURL is the reserved KODAMA_URL value injected into workloads.
-	KodamaURL string
+	// KodemaURL is the reserved KODEMA_URL value injected into workloads.
+	KodemaURL string
 	// WorkloadCAFile optionally names an absolute host PEM CA bundle mounted
-	// read-only at /kodama/ca.crt with KODAMA_CA_FILE=/kodama/ca.crt. Empty
-	// mounts no CA file and sets no KODAMA_CA_FILE variable.
+	// read-only at /kodema/ca.crt with KODEMA_CA_FILE=/kodema/ca.crt. Empty
+	// mounts no CA file and sets no KODEMA_CA_FILE variable.
 	WorkloadCAFile string
 	// Cleanup bounds cleanup attempts per Remove call.
 	Cleanup CleanupPolicy
@@ -214,7 +214,7 @@ type Adapter struct {
 	libpod        Libpod
 	files         Files
 	root          string
-	kodamaURL     string
+	kodemaURL     string
 	workloadCAPEM []byte
 	cleanup       CleanupPolicy
 	clock         Clock
@@ -238,8 +238,8 @@ func New(config Config) (*Adapter, error) {
 	if strings.TrimSpace(config.Root) == "" || !filepath.IsAbs(config.Root) {
 		return nil, fault.New(fault.InvalidInput, "podman adapter requires an absolute adapter root")
 	}
-	if strings.TrimSpace(config.KodamaURL) == "" {
-		return nil, fault.New(fault.InvalidInput, "podman adapter requires the Kodama URL")
+	if strings.TrimSpace(config.KodemaURL) == "" {
+		return nil, fault.New(fault.InvalidInput, "podman adapter requires the Kodema URL")
 	}
 	if config.Cleanup.Attempts < 1 {
 		return nil, fault.New(fault.InvalidInput, "podman adapter requires at least one cleanup attempt")
@@ -263,7 +263,7 @@ func New(config Config) (*Adapter, error) {
 		libpod:        config.Libpod,
 		files:         config.Files,
 		root:          filepath.Clean(config.Root),
-		kodamaURL:     config.KodamaURL,
+		kodemaURL:     config.KodemaURL,
 		workloadCAPEM: workloadCAPEM,
 		cleanup:       config.Cleanup,
 		clock:         clock,
@@ -368,7 +368,7 @@ func ContainerName(workload id.WorkloadID) (string, error) {
 	if _, err := id.ParseWorkloadID(string(workload)); err != nil {
 		return "", fault.Wrap(fault.InvalidInput, "workload id is invalid", err)
 	}
-	return "kodama-workload-" + stableDigest(string(workload)), nil
+	return "kodema-workload-" + stableDigest(string(workload)), nil
 }
 
 // WorkspaceVolumeName returns the deterministic name of one retained workspace
@@ -378,7 +378,7 @@ func WorkspaceVolumeName(workspace id.WorkspaceID) (string, error) {
 	if _, err := id.ParseWorkspaceID(string(workspace)); err != nil {
 		return "", fault.Wrap(fault.InvalidInput, "workspace id is invalid", err)
 	}
-	return "kodama-workspace-" + stableDigest(string(workspace)), nil
+	return "kodema-workspace-" + stableDigest(string(workspace)), nil
 }
 
 // stableDigest returns a short deterministic, DNS-safe digest of a stable

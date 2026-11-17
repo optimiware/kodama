@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // ensureLoopback is only implemented on Linux. Elsewhere the loopback-only
@@ -18,6 +18,6 @@ func ensureLoopback(t testing.TB) {
 	if loopbackUsable() {
 		return
 	}
-	harness.SkipOrFail(t, os.Getenv("KODAMA_REQUIRE_INFRA") == "1",
+	harness.SkipOrFail(t, os.Getenv("KODEMA_REQUIRE_INFRA") == "1",
 		fmt.Errorf("loopback is unusable and cannot be enabled on this platform"))
 }

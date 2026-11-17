@@ -27,10 +27,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/userland/cli"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/userland/cli"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -53,8 +53,8 @@ func TestFactoryGitCredentialHelperAuthority(t *testing.T) {
 	if stderr != "" {
 		t.Fatalf("the trusted helper request wrote diagnostics: %s", stderr)
 	}
-	if want := "username=kodama\npassword=" + executionToken + "\n"; stdout != want {
-		t.Fatalf("trusted helper response = %q; want username kodama and the live execution credential", stdout)
+	if want := "username=kodema\npassword=" + executionToken + "\n"; stdout != want {
+		t.Fatalf("trusted helper response = %q; want username kodema and the live execution credential", stdout)
 	}
 	helperPassword := credentialHelperPassword(t, stdout)
 
@@ -105,7 +105,7 @@ func TestFactoryGitCredentialHelperAuthority(t *testing.T) {
 	mainBefore := fixture.git.RemoteRef(t, factory.GitProjectRepository, gitMainRef)
 	text, code := fixture.push(directory, helperPassword, "HEAD:"+gitMainRef)
 	text = requireRefusal(t, "helper-credential protected push", text, code)
-	if !strings.Contains(text, "kodama git: update rejected") {
+	if !strings.Contains(text, "kodema git: update rejected") {
 		t.Fatalf("the helper credential did not reach the managed main hook: %s", text)
 	}
 	if main := fixture.git.RemoteRef(t, factory.GitProjectRepository, gitMainRef); main != mainBefore {
@@ -145,7 +145,7 @@ func TestFactoryGitCredentialHelperAuthority(t *testing.T) {
 	}
 	writeCredentialHelperTokenValue(t, tokenPath, freshToken)
 	stdout, _ = runCredentialHelper(t, binary, configPath, repositoryURL)
-	if want := "username=kodama\npassword=" + freshToken + "\n"; stdout != want {
+	if want := "username=kodema\npassword=" + freshToken + "\n"; stdout != want {
 		t.Fatalf("fresh helper response = %q; want the fresh execution credential", stdout)
 	}
 	freshPassword := credentialHelperPassword(t, stdout)
@@ -182,8 +182,8 @@ func TestFactoryGitCredentialHelperAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HelperDecision(execution control): %v", err)
 	}
-	if executionAnswer.Username != "kodama" || executionAnswer.Password != freshToken {
-		t.Fatalf("execution helper control = %+v; want username kodama and the fresh token", executionAnswer)
+	if executionAnswer.Username != "kodema" || executionAnswer.Password != freshToken {
+		t.Fatalf("execution helper control = %+v; want username kodema and the fresh token", executionAnswer)
 	}
 	if rendered := executionAnswer.String(); strings.Contains(rendered, freshToken) {
 		t.Fatalf("HelperResponse.String() leaks the token: %s", rendered)
@@ -220,7 +220,7 @@ func buildCredentialHelperBinary(t *testing.T) string {
 }
 
 // credentialHelperEnvironment isolates the helper from the caller's HOME and
-// kodama configuration. The explicit --config supplies everything it needs.
+// kodema configuration. The explicit --config supplies everything it needs.
 func credentialHelperEnvironment(t *testing.T) []string {
 	t.Helper()
 	return []string{
@@ -251,7 +251,7 @@ func runCredentialHelper(t *testing.T, binary, configPath, target string) (strin
 func credentialHelperPassword(t *testing.T, stdout string) string {
 	t.Helper()
 	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
-	if len(lines) != 2 || lines[0] != "username=kodama" || !strings.HasPrefix(lines[1], "password=") {
+	if len(lines) != 2 || lines[0] != "username=kodema" || !strings.HasPrefix(lines[1], "password=") {
 		t.Fatalf("helper answer %q is not the exact username/password shape", stdout)
 	}
 	password := strings.TrimPrefix(lines[1], "password=")
@@ -284,7 +284,7 @@ func writeCredentialHelperConfig(t *testing.T, serverURL, tokenPath, repositoryU
 // path.
 func writeCredentialHelperToken(t *testing.T, token string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "KODAMA_TOKEN")
+	path := filepath.Join(t.TempDir(), "KODEMA_TOKEN")
 	writeCredentialHelperTokenValue(t, path, token)
 	return path
 }

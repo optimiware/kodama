@@ -1,6 +1,6 @@
 # S09 — Userland, Git, agents, and optional capabilities
 
-Source: [Userland](../../KODAMA.md#4-userland-agents-and-software-delivery). Owners: P10, P11, P22–P27. AC: 5, 8, 10, 14, 20.
+Source: [Userland](../../KODEMA.md#4-userland-agents-and-software-delivery). Owners: P10, P11, P22–P27. AC: 5, 8, 10, 14, 20.
 
 ## 1. Public client and CLI
 
@@ -10,11 +10,11 @@ Source: [Userland](../../KODAMA.md#4-userland-agents-and-software-delivery). Own
 
 ## 2. Independent Git service
 
-`kodama git serve` owns Git binaries, smart HTTP, provisioning, hooks, access rules, storage, durable receive journal, reporting, retention and backups. Its code cannot import Shell/Kernel or access the factory DB/tenant keys. It authenticates as a service and uses public verification/report/query contracts.
+`kodema git serve` owns Git binaries, smart HTTP, provisioning, hooks, access rules, storage, durable receive journal, reporting, retention and backups. Its code cannot import Shell/Kernel or access the factory DB/tenant keys. It authenticates as a service and uses public verification/report/query contracts.
 
-Configuration is flags with environment defaults. Required: `--tenant` (`KODAMA_GIT_TENANT`), `--storage-root` (`KODAMA_GIT_STORAGE_ROOT`), `--journal-dir` (`KODAMA_GIT_JOURNAL_DIR`), `--base-url` (`KODAMA_BASE_URL`), `--credential-file` (`KODAMA_CREDENTIAL_FILE`). Optional: `--listen` (`KODAMA_GIT_LISTEN`, default `127.0.0.1:8081`), `--timeout` (`KODAMA_GIT_TIMEOUT`), repeatable `--resource repository=resource-id`. There is no `--policy` flag or `KODAMA_GIT_POLICY`: the access policy is the committed `conf/git.conf` of the tenant's `admin` repository. Native Git runs in an isolated environment: inherited `GIT_*` variables are dropped and global/system configuration is disabled.
+Configuration is flags with environment defaults. Required: `--tenant` (`KODEMA_GIT_TENANT`), `--storage-root` (`KODEMA_GIT_STORAGE_ROOT`), `--journal-dir` (`KODEMA_GIT_JOURNAL_DIR`), `--base-url` (`KODEMA_BASE_URL`), `--credential-file` (`KODEMA_CREDENTIAL_FILE`). Optional: `--listen` (`KODEMA_GIT_LISTEN`, default `127.0.0.1:8081`), `--timeout` (`KODEMA_GIT_TIMEOUT`), repeatable `--resource repository=resource-id`. There is no `--policy` flag or `KODEMA_GIT_POLICY`: the access policy is the committed `conf/git.conf` of the tenant's `admin` repository. Native Git runs in an isolated environment: inherited `GIT_*` variables are dropped and global/system configuration is disabled.
 
-Smart HTTP verifies actor and applies read rules. The managed `pre-receive` hook verifies every exact ref update of the whole push batch immediately before acceptance (no `update` hook is installed); after-the-fact webhooks are insufficient. Tenant workers and durable volumes are isolated; execution containers never mount repository storage. Repositories may bind their registered resource identity through `option resource = <resource-id>` in `admin/conf/git.conf` (with on-demand bare-repository and hook initialization on first authenticated access, without restarting `git serve`), or through startup `--resource` pins and `kodama git provision-repository`.
+Smart HTTP verifies actor and applies read rules. The managed `pre-receive` hook verifies every exact ref update of the whole push batch immediately before acceptance (no `update` hook is installed); after-the-fact webhooks are insufficient. Tenant workers and durable volumes are isolated; execution containers never mount repository storage. Repositories may bind their registered resource identity through `option resource = <resource-id>` in `admin/conf/git.conf` (with on-demand bare-repository and hook initialization on first authenticated access, without restarting `git serve`), or through startup `--resource` pins and `kodema git provision-repository`.
 
 ### Native Git minimum version
 
@@ -22,7 +22,7 @@ Smart HTTP verifies actor and applies read rules. The managed `pre-receive` hook
 
 ### Tenant provisioning
 
-`kodama git provision-tenant --tenant <id> --storage-root <dir> --journal-dir <dir>` creates the tenant's trusted `admin` repository. It runs independently of `git serve`, requires the same Git minimum, and probes the executor before any filesystem effect. It builds the repository in a private sibling staging directory with the files ref backend, `main` HEAD, managed `pre-receive`/`post-receive` hooks (no `update` hook) and exactly one parentless commit whose `conf/git.conf` is `repo admin` / `RW = @admin`; the receive-journal directory is prepared empty. The complete, flushed directory is published by one same-filesystem rename.
+`kodema git provision-tenant --tenant <id> --storage-root <dir> --journal-dir <dir>` creates the tenant's trusted `admin` repository. It runs independently of `git serve`, requires the same Git minimum, and probes the executor before any filesystem effect. It builds the repository in a private sibling staging directory with the files ref backend, `main` HEAD, managed `pre-receive`/`post-receive` hooks (no `update` hook) and exactly one parentless commit whose `conf/git.conf` is `repo admin` / `RW = @admin`; the receive-journal directory is prepared empty. The complete, flushed directory is published by one same-filesystem rename.
 
 Provisioning is idempotent and never repairs. A missing admin repository or trusted ref means "not provisioned"; an existing valid repository is validated and preserved byte-for-byte (`Created=false`), while an existing empty, damaged, symlinked or foreign-hook destination is refused without reseeding. A failure before publication leaves no canonical repository; a failure after publication reports uncertainty and keeps the repository, and a retry validates it. The committed repository, not a marker file or local store, is the durable provisioning state. The tenant directory is made private (0700) to the provisioning user; run the Git worker as that user.
 
@@ -41,9 +41,9 @@ Rules live in tenant `admin/conf/git.conf`. Repository names are tenant-relative
 
 Evaluate in order: first ref/principal match whose permission covers the attempt allows; matching deny refuses; no match refuses. Ref-less rule covers all refs; other refs match exactly or by prefix only when ending `/`. No regex or implicit Admin bypass.
 
-`option resource = <resource-id>` binds the repository stanza to its registered Kodama resource identity (refusing duplicate `option resource` lines in the same stanza and refusing any mismatch against a static `--resource` pin). `option approve.<ref> = <role>` additionally requires same-execution passed human-role request matching `git.ref.update`, resource, exact `ref`, `expected_base`, and `candidate`. Humans/services cannot directly update approval-guarded refs. Rule changes apply after accepting the `admin` push, affecting the next attempt.
+`option resource = <resource-id>` binds the repository stanza to its registered Kodema resource identity (refusing duplicate `option resource` lines in the same stanza and refusing any mismatch against a static `--resource` pin). `option approve.<ref> = <role>` additionally requires same-execution passed human-role request matching `git.ref.update`, resource, exact `ref`, `expected_base`, and `candidate`. Humans/services cannot directly update approval-guarded refs. Rule changes apply after accepting the `admin` push, affecting the next attempt.
 
-Provision defaults follow KODAMA.md: append-only Admin `admin` history; repository read for `@all`, work-branch `RW+` for Engineer/execution, default-branch `RW` for execution with Reviewer approval.
+Provision defaults follow KODEMA.md: append-only Admin `admin` history; repository read for `@all`, work-branch `RW+` for Engineer/execution, default-branch `RW` for execution with Reviewer approval.
 
 ### Receive/recovery sequence
 
@@ -53,13 +53,13 @@ Provision defaults follow KODAMA.md: append-only Admin `admin` history; reposito
 4. Observe Git result and durably record acceptance.
 5. Report verified `git.ref.updated`; retry report with identical identity/content.
 
-Uncertain mutation is reconciled from repository/journal evidence before any retry. A failed response is not permission to push again. Serialization is service-owned; Kodama has no cross-store transaction. Retain commits referenced by retained executions, discovering them through authorized queries and using events only as hints.
+Uncertain mutation is reconciled from repository/journal evidence before any retry. A failed response is not permission to push again. Serialization is service-owned; Kodema has no cross-store transaction. Retain commits referenced by retained executions, discovering them through authorized queries and using events only as hints.
 
 Unit seams include native-command executor, verification/report client, durable journal storage, ref observer and clock. Test rules, compare-and-swap intent, journal crash boundaries, reporting-only retry, retention, and no credential persistence using fakes. Actual Git protocol/hooks/ref atomicity require I03 after G2.
 
 ## 3. Agents and durable sessions
 
-External harnesses run as ordinary container commands. Native `kodama agent` adds planning/decomposition, tools, review/validation, Git operations, knowledge/Markdown skills, and usage/outcome/session records. No agent gets extra authority or a private execution engine.
+External harnesses run as ordinary container commands. Native `kodema agent` adds planning/decomposition, tools, review/validation, Git operations, knowledge/Markdown skills, and usage/outcome/session records. No agent gets extra authority or a private execution engine.
 
 P24 defines versioned external checkpoint references and restoration errors. Session bytes/transcripts live in Userland-controlled storage, not factory tables. P25 uses fake model/tool/client/checkpoint ports before integration; provider protocol/version and resource bounds freeze in C03.
 
@@ -77,7 +77,7 @@ A merge coordinator owns durable per-repository/ref serialization and uncertain-
 
 Model gateway and external MCP proxy are Shell capabilities calling the same authorizer. Resolve upstream credentials internally on use; never return them to callers. Model forwarding implements the frozen OpenAI-compatible subset, allowlists, request/token bounds, cancellation, streaming limits, and usage attribution. MCP proxy enforces configured upstream servers/tools under current caller authority.
 
-The Kodama MCP edge exposes Kodama operations; the external proxy invokes outside tools. Neither is an engine or required for plain pipelines. Unit-test protocol errors, denied models/tools, scope, credential redaction, usage, upstream failure and stream cancellation through fake transports.
+The Kodema MCP edge exposes Kodema operations; the external proxy invokes outside tools. Neither is an engine or required for plain pipelines. Unit-test protocol errors, denied models/tools, scope, credential redaction, usage, upstream failure and stream cancellation through fake transports.
 
 ## 6. Delivery recipes and artifacts
 

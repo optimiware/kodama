@@ -5,7 +5,7 @@
 //
 // The registry is the production implementation of git.ActorHandleIssuer and
 // git.ActorSource. The smart-HTTP handler places the handle, never the raw
-// credential, in KODAMA_ACTOR_REF; the native hook resolves that handle through
+// credential, in KODEMA_ACTOR_REF; the native hook resolves that handle through
 // the same registry. A credential is never persisted, logged or exported.
 package actors
 
@@ -19,10 +19,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 const (

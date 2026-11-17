@@ -13,11 +13,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/resource"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	identityunits "github.com/optimiware/kodama/internal/shell/store/units/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	identityunits "github.com/optimiware/kodema/internal/shell/store/units/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // verificationRow reads the entire verification row in a stable text shape,

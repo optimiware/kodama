@@ -15,7 +15,7 @@
 // of its sequential duration without oversubscribing Podman. Run it with an
 // explicit outer bound:
 //
-//	KODAMA_REQUIRE_INFRA=1 KODAMA_KIND_BIN=/path/to/kind \
+//	KODEMA_REQUIRE_INFRA=1 KODEMA_KIND_BIN=/path/to/kind \
 //	KIND_EXPERIMENTAL_PROVIDER=podman \
 //	go test -race -tags=component -count=1 -timeout=40m ./test/component/kubernetes/...
 //
@@ -33,19 +33,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
 )
 
 const (
-	testKodamaURL = "https://kodama.example.com"
+	testKodemaURL = "https://kodema.example.com"
 	testNamespace = "tenant-acme"
 	// workloadImage is the pinned workload image. The digest is resolved by the
 	// kind node's own registry pull; the tag is fixed, never "latest".
@@ -103,7 +103,7 @@ func testTenant() id.TenantID { return testNamespace }
 
 // requireInfra reports whether missing infrastructure must fail instead of
 // skipping, matching the infrastructure harness policy.
-func requireInfra() bool { return os.Getenv("KODAMA_REQUIRE_INFRA") == "1" }
+func requireInfra() bool { return os.Getenv("KODEMA_REQUIRE_INFRA") == "1" }
 
 // fixture is one isolated kind cluster, tenant namespace and adapter.
 type fixture struct {
@@ -190,7 +190,7 @@ func newFixture(t *testing.T, workspaceID id.WorkspaceID, options fixtureOptions
 		Cluster:   client,
 		Namespace: testNamespace,
 		TenantID:  testTenant(),
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Policy: runtimekube.Policy{
 			CPURequest:    "50m",
 			CPULimit:      "200m",

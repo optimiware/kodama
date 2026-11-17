@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // TestSubjectScopeCommandAndWildcardRefusal pins the scope-qualified subject
@@ -20,14 +20,14 @@ func TestSubjectScopeCommandAndWildcardRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EventSubject(project): %v", err)
 	}
-	if got, want := string(projectEvents), "kodama.v1.tenant-a.project-1.events"; got != want {
+	if got, want := string(projectEvents), "kodema.v1.tenant-a.project-1.events"; got != want {
 		t.Fatalf("project event subject = %q; want %q", got, want)
 	}
 	tenantEvents, err := nats.EventSubject(tenant)
 	if err != nil {
 		t.Fatalf("EventSubject(tenant): %v", err)
 	}
-	if got, want := string(tenantEvents), "kodama.v1.tenant-a._.events"; got != want {
+	if got, want := string(tenantEvents), "kodema.v1.tenant-a._.events"; got != want {
 		t.Fatalf("tenant event subject = %q; want %q", got, want)
 	}
 	if projectEvents == tenantEvents {
@@ -56,16 +56,16 @@ func TestSubjectScopeCommandAndWildcardRefusal(t *testing.T) {
 	// Command-style, wildcard, empty and extra tokens are not subjects.
 	invalid := []nats.Subject{
 		"",
-		"kodama.v1.tenant-a.project-1.commands",
-		"kodama.v1.tenant-a.project-1.events.start",
-		"kodama.v1.tenant-a.project-1.events.>",
-		"kodama.v1.tenant-a.project-1.events.*",
-		"kodama.v1.tenant-a.*.events",
-		"kodama.v1.tenant-a.>.events",
-		"kodama.v1.tenant-a..events",
-		"kodama.v1.tenant-a.project-1.invalidations.extra",
-		"kodama.v1.tenant-a.project-1.ingress.start",
-		"kodama.v2.tenant-a.project-1.events",
+		"kodema.v1.tenant-a.project-1.commands",
+		"kodema.v1.tenant-a.project-1.events.start",
+		"kodema.v1.tenant-a.project-1.events.>",
+		"kodema.v1.tenant-a.project-1.events.*",
+		"kodema.v1.tenant-a.*.events",
+		"kodema.v1.tenant-a.>.events",
+		"kodema.v1.tenant-a..events",
+		"kodema.v1.tenant-a.project-1.invalidations.extra",
+		"kodema.v1.tenant-a.project-1.ingress.start",
+		"kodema.v2.tenant-a.project-1.events",
 	}
 	for _, subject := range invalid {
 		if err := subject.Validate(); err == nil {
@@ -132,7 +132,7 @@ func TestIngressSubjectIsSeparateFromCommittedEventSubjects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IngressSubject: %v", err)
 	}
-	if got, want := string(ingress), "kodama.v1.tenant-a.project-1.ingress"; got != want {
+	if got, want := string(ingress), "kodema.v1.tenant-a.project-1.ingress"; got != want {
 		t.Fatalf("ingress subject = %q; want %q", got, want)
 	}
 	if err := ingress.Validate(); err != nil {
@@ -154,7 +154,7 @@ func TestIngressSubjectIsSeparateFromCommittedEventSubjects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tenant IngressSubject: %v", err)
 	}
-	if got, want := string(tenantIngress), "kodama.v1.tenant-a._.ingress"; got != want {
+	if got, want := string(tenantIngress), "kodema.v1.tenant-a._.ingress"; got != want {
 		t.Fatalf("tenant ingress subject = %q; want %q", got, want)
 	}
 	if tenantIngress == ingress {

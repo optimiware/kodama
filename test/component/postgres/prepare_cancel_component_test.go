@@ -17,13 +17,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/kernel/flow"
-	executionstore "github.com/optimiware/kodama/internal/shell/store/units/execution"
-	"github.com/optimiware/kodama/internal/shell/store/units/execution/snapshotdoc"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/flow"
+	executionstore "github.com/optimiware/kodema/internal/shell/store/units/execution"
+	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // prepareCancellationRuntime is a barrier-controlled Kernel runtime. Prepare

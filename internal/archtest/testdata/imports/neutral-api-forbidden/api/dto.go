@@ -1,3 +1,3 @@
 package api
 
-import _ "kodama/internal/id"
+import _ "kodema/internal/id"

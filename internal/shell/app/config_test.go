@@ -8,16 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/installation"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/installation"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // fakeKMS returns a fixed key-encryption key without any network call.
@@ -41,10 +41,10 @@ func validProductionInstallation() installation.Config {
 		Messaging:   installation.MessagingNATS,
 		Runtime:     installation.RuntimeKubernetes,
 		Keys:        installation.KeyAWSKMS,
-		DatabaseURL: "postgres://runtime@localhost:5432/kodama?sslmode=verify-full",
+		DatabaseURL: "postgres://runtime@localhost:5432/kodema?sslmode=verify-full",
 		NATSURL:     "tls://localhost:4222",
-		PublicURL:   "https://kodama.example",
-		KeyRef:      "aws-kms:alias/kodama",
+		PublicURL:   "https://kodema.example",
+		KeyRef:      "aws-kms:alias/kodema",
 	}
 }
 
@@ -62,9 +62,9 @@ func validProductionConfig(t *testing.T) Config {
 			Runtime:   runtime,
 			Workspace: runtime,
 			KMS:       fakeKMS{},
-			Cloud:     keys.CloudConfig{KeyRef: "aws-kms:alias/kodama", Current: secret.MinKeyVersion, Versions: map[secret.KeyVersion][]byte{secret.MinKeyVersion: make([]byte, 32)}},
+			Cloud:     keys.CloudConfig{KeyRef: "aws-kms:alias/kodema", Current: secret.MinKeyVersion, Versions: map[secret.KeyVersion][]byte{secret.MinKeyVersion: make([]byte, 32)}},
 			OIDC: oidc.Config{
-				OIDCConfig:    identity.OIDCConfig{Issuer: "https://issuer.example", Audience: "kodama"},
+				OIDCConfig:    identity.OIDCConfig{Issuer: "https://issuer.example", Audience: "kodema"},
 				JWKSURL:       "https://issuer.example/jwks",
 				Algorithms:    []string{oidc.AlgorithmRS256},
 				HTTPClient:    &http.Client{Transport: noNetworkTransport{}},
@@ -74,10 +74,10 @@ func validProductionConfig(t *testing.T) Config {
 				Clock:         time.Now,
 			},
 			Registry:      registry.Config{Transport: noNetworkTransport{}},
-			NATSTLS:       &natsdriver.TLSConfig{CAFile: "/etc/kodama/broker-tls/ca.crt", CertFile: "/etc/kodama/broker-tls/tls.crt", KeyFile: "/etc/kodama/broker-tls/tls.key"},
-			ControllerURL: "postgres://controller@localhost:5432/kodama?sslmode=verify-full",
-			PublisherURL:  "postgres://publisher@localhost:5432/kodama?sslmode=verify-full",
-			AuthURL:       "postgres://auth@localhost:5432/kodama?sslmode=verify-full",
+			NATSTLS:       &natsdriver.TLSConfig{CAFile: "/etc/kodema/broker-tls/ca.crt", CertFile: "/etc/kodema/broker-tls/tls.crt", KeyFile: "/etc/kodema/broker-tls/tls.key"},
+			ControllerURL: "postgres://controller@localhost:5432/kodema?sslmode=verify-full",
+			PublisherURL:  "postgres://publisher@localhost:5432/kodema?sslmode=verify-full",
+			AuthURL:       "postgres://auth@localhost:5432/kodema?sslmode=verify-full",
 		},
 	}
 }
@@ -174,7 +174,7 @@ func TestProductionRefusesEveryWeakerAdapter(t *testing.T) {
 		{"missing publisher URL", func(cfg *Config) { cfg.Production.PublisherURL = "" }, "requires a publisher database URL"},
 		{"missing auth URL", func(cfg *Config) { cfg.Production.AuthURL = "" }, "requires an auth database URL"},
 		{"foreign KMS key reference", func(cfg *Config) {
-			cfg.Production.Cloud.KeyRef = "gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek"
+			cfg.Production.Cloud.KeyRef = "gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek"
 		}, "does not belong to the selected cloud KMS adapter"},
 	}
 	for _, testCase := range cases {
@@ -233,7 +233,7 @@ func validMultiTenantProductionConfig(t *testing.T) Config {
 	template := func(tenant id.TenantID) *WorkspacePVC {
 		value := kubeTestTemplate()
 		value.TenantID = tenant
-		value.Namespace = "kodama-tenant-" + string(tenant)
+		value.Namespace = "kodema-tenant-" + string(tenant)
 		return &value
 	}
 	config.Production.Tenants = []ProductionTenant{
@@ -386,7 +386,7 @@ func TestProductionRefusesAmbiguousOrUnsafeTenantSets(t *testing.T) {
 }
 
 // TestProductionTenantNamespaceIDGrammar pins the tenant-id grammar the chart
-// uses to derive kodama-tenant-<tenant>: a lowercase DNS label no longer than
+// uses to derive kodema-tenant-<tenant>: a lowercase DNS label no longer than
 // 49 characters. id.ParseTenantID alone is looser, so startup refuses what
 // would otherwise fail only at the first namespace or claim use.
 func TestProductionTenantNamespaceIDGrammar(t *testing.T) {

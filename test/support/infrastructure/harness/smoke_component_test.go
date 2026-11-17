@@ -363,7 +363,7 @@ func TestShardIsolation(t *testing.T) {
 // TestKillRecoveryHelperProcess is the child process for TestKillRecovery. It
 // starts a container, publishes its name, and waits to be SIGKILLed.
 func TestKillRecoveryHelperProcess(t *testing.T) {
-	if os.Getenv("KODAMA_HARNESS_HELPER") != "1" {
+	if os.Getenv("KODEMA_HARNESS_HELPER") != "1" {
 		t.Skip("helper process only")
 	}
 	shard := NewShard(t)
@@ -372,9 +372,9 @@ func TestKillRecoveryHelperProcess(t *testing.T) {
 		Image: ImageRegistry,
 		Ports: []Port{{Container: 5000}},
 	})
-	nameFile := os.Getenv("KODAMA_HELPER_NAME_FILE")
+	nameFile := os.Getenv("KODEMA_HELPER_NAME_FILE")
 	if nameFile == "" {
-		t.Fatal("KODAMA_HELPER_NAME_FILE is not set")
+		t.Fatal("KODEMA_HELPER_NAME_FILE is not set")
 	}
 	if err := os.WriteFile(nameFile, []byte(container.Name), 0o644); err != nil {
 		t.Fatalf("write name file: %v", err)
@@ -386,7 +386,7 @@ func TestKillRecoveryHelperProcess(t *testing.T) {
 // TestKillRecovery proves that CleanupOrphans removes resources whose owner
 // test process was SIGKILLed.
 func TestKillRecovery(t *testing.T) {
-	podman := NewPodman(WithLogger(t.Logf), WithEvidenceDir(os.Getenv("KODAMA_EVIDENCE_DIR")))
+	podman := NewPodman(WithLogger(t.Logf), WithEvidenceDir(os.Getenv("KODEMA_EVIDENCE_DIR")))
 	requirePodman(t, podman)
 	ctx := context.Background()
 	if _, err := podman.EnsureImage(ctx, ImageRegistry); err != nil {
@@ -401,8 +401,8 @@ func TestKillRecovery(t *testing.T) {
 	}
 	helper := exec.Command(executable, "-test.run=^TestKillRecoveryHelperProcess$", "-test.v")
 	helper.Env = append(os.Environ(),
-		"KODAMA_HARNESS_HELPER=1",
-		"KODAMA_HELPER_NAME_FILE="+nameFile,
+		"KODEMA_HARNESS_HELPER=1",
+		"KODEMA_HELPER_NAME_FILE="+nameFile,
 	)
 	var output bytes.Buffer
 	helper.Stdout = &output
@@ -447,7 +447,7 @@ func TestKillRecovery(t *testing.T) {
 	}
 
 	shardID := strings.TrimSuffix(containerName, "-docker-io-library-registry-2-8-3")
-	networkName := "kodama-" + shardID
+	networkName := "kodema-" + shardID
 
 	// A foreign lane's sweep can race this one: the orphan listing sees a
 	// resource that another process removes before its inspect, so
@@ -457,11 +457,11 @@ func TestKillRecovery(t *testing.T) {
 	// runner injects that race deterministically while forwarding every real
 	// own-resource operation to Podman.
 	t.Run("foreign sweep race", func(t *testing.T) {
-		const foreignName = "kodama-foreign-lane-orphan"
+		const foreignName = "kodema-foreign-lane-orphan"
 		racing := NewPodman(
 			WithRunner(foreignOrphanRunner{real: ExecRunner{}, name: foreignName}),
 			WithLogger(t.Logf),
-			WithEvidenceDir(os.Getenv("KODAMA_EVIDENCE_DIR")),
+			WithEvidenceDir(os.Getenv("KODEMA_EVIDENCE_DIR")),
 		)
 		sweepErr := racing.CleanupOrphans(context.Background())
 		if sweepErr == nil {
@@ -496,7 +496,7 @@ func existsProbe(args []string) (kind, name string, ok bool) {
 func TestKillRecoveryCleanupVerdict(t *testing.T) {
 	const (
 		containerName = "orphan-container"
-		networkName   = "kodama-orphan"
+		networkName   = "kodema-orphan"
 	)
 	type probe struct {
 		exists bool

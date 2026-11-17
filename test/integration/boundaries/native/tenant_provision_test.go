@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 // provisionedEngineerPolicy is a valid accepted policy that keeps the admin
@@ -68,11 +68,11 @@ func harnessGitOutput(t *testing.T, harness *nativefix.Harness, repositoryPath s
 	return stdout
 }
 
-// provisionCLI runs the real `kodama` binary with the exact environment and
+// provisionCLI runs the real `kodema` binary with the exact environment and
 // returns stdout, stderr and the exit code.
 func provisionCLI(t *testing.T, environment []string, args ...string) (string, string, int) {
 	t.Helper()
-	command := exec.Command(kodamaBinary, args...)
+	command := exec.Command(kodemaBinary, args...)
 	command.Env = environment
 	var stdout, stderr strings.Builder
 	command.Stdout = &stdout
@@ -84,7 +84,7 @@ func provisionCLI(t *testing.T, environment []string, args ...string) (string, s
 	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		return stdout.String(), stderr.String(), exit.ExitCode()
 	}
-	t.Fatalf("run kodama %v: %v", args, err)
+	t.Fatalf("run kodema %v: %v", args, err)
 	return "", "", -1
 }
 
@@ -201,7 +201,7 @@ func TestTenantProvisionCLIIsolatesHostileHostConfiguration(t *testing.T) {
 		"--journal-dir", journalDirectory,
 	)
 	if code != 0 {
-		t.Fatalf("kodama git provision-tenant exited %d: %s", code, stderr)
+		t.Fatalf("kodema git provision-tenant exited %d: %s", code, stderr)
 	}
 	repositoryPath := filepath.Join(storageRoot, tenant, "admin")
 	if strings.TrimSpace(stdout) != repositoryPath {
@@ -266,14 +266,14 @@ func TestTenantProvisionCLIIsolatesHostileHostConfiguration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read installed hook %q: %v", name, err)
 		}
-		if !strings.Contains(string(data), "managed by kodama") {
+		if !strings.Contains(string(data), "managed by kodema") {
 			t.Fatalf("hook %q is not the managed hook: %q", name, data)
 		}
 	}
 	body := provisionBoundaryGit(t, assertions, "--git-dir="+repositoryPath, "cat-file", "-p", "HEAD")
 	for _, identity := range []string{
-		"author Kodama Provisioning <kodama@example.invalid>",
-		"committer Kodama Provisioning <kodama@example.invalid>",
+		"author Kodema Provisioning <kodema@example.invalid>",
+		"committer Kodema Provisioning <kodema@example.invalid>",
 	} {
 		if !strings.Contains(body, identity) {
 			t.Fatalf("initial commit does not carry the explicit identity %q: %q", identity, body)

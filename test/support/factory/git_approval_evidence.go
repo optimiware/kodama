@@ -18,10 +18,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/shell/request"
-	"github.com/optimiware/kodama/internal/shell/service"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/shell/request"
+	"github.com/optimiware/kodema/internal/shell/service"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // ApprovalAssignment is one decoded stored request assignment: either

@@ -1,8 +1,8 @@
 package authorize
 
 import (
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // This file is the declared operation registry: 58 operations in 12 families.

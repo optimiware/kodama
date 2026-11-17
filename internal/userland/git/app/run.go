@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 // ErrDisabled reports that `git serve` was asked to start without the
@@ -54,7 +54,7 @@ type Config struct {
 	Timeout          time.Duration
 	Logger           *slog.Logger
 
-	// HookBinary is the absolute kodama binary the installed bare-repository
+	// HookBinary is the absolute kodema binary the installed bare-repository
 	// hooks exec. A zero value uses the running executable.
 	HookBinary string
 	// HookSocketPath is the explicit private Unix socket path. A zero value
@@ -295,7 +295,7 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 	if hookBinary == "" {
 		hookBinary, err = os.Executable()
 		if err != nil {
-			return nil, fmt.Errorf("resolve kodama hook binary: %w", err)
+			return nil, fmt.Errorf("resolve kodema hook binary: %w", err)
 		}
 	}
 	// The trusted admin repository must validate its own policy pushes before

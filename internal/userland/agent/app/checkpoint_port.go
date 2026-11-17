@@ -8,9 +8,9 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/agent"
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/agent"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 // checkpointStatePrefix marks the encoded effect bookkeeping. The session
@@ -20,7 +20,7 @@ import (
 const checkpointStatePrefix = "checkpoint:"
 
 // checkpointUsagePrincipal is the reserved principal marker.
-const checkpointUsagePrincipal = "kodama-checkpoint"
+const checkpointUsagePrincipal = "kodema-checkpoint"
 
 // checkpointUsageModel is the reserved model marker of the real usage entry.
 const checkpointUsageModel = "agent"

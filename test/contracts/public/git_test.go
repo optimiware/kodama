@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	git "github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/api"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 func loadGitConfig(t *testing.T) git.Config {

@@ -39,7 +39,7 @@ package receipt_test
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/receipt"
 )
 
 // TestReceiptOutcomeVocabulary asserts the closed outcome vocabulary. An

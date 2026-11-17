@@ -3,8 +3,8 @@
 package composition
 
 // Composition evidence: both optional Shell gateways are configured from
-// the trusted files an operator names (KODAMA_MODELS_FILE and
-// KODAMA_TOOL_PROXY_FILE) and served through the real router and public edges,
+// the trusted files an operator names (KODEMA_MODELS_FILE and
+// KODEMA_TOOL_PROXY_FILE) and served through the real router and public edges,
 // and a named-but-malformed file is refused with no configuration returned
 // instead of silently falling back to a disabled or default surface.
 
@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/app"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/app"
 )
 
 // modelsConfigFile renders one valid trusted model-gateway file for the

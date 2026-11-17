@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/installation"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/installation"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // FixtureScope is the tenant/project every durable row belongs to.
@@ -135,7 +135,7 @@ func RequireDurableEqual(t testing.TB, want, got DurableSnapshot) {
 // ApplicationRoles is the cluster-level role set the migrations create and the
 // database dump references in object ownership and grants. A restored target
 // must already hold these roles: pg_dump records ownership and ACLs but never
-// creates roles, so `kodama migrate` remains the bootstrap step that makes a
+// creates roles, so `kodema migrate` remains the bootstrap step that makes a
 // restore possible.
 func ApplicationRoles() []string {
 	return []string{

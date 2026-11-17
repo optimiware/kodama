@@ -43,13 +43,13 @@ replace() {
 }
 
 printf '%s\n' "$new" >VERSION
-for chart in kodama kodama-stack; do
+for chart in kodema kodema-stack; do
   replace "deploy/charts/${chart}/Chart.yaml" "version: ${old}"$'\n' "version: ${new}"$'\n'
   replace "deploy/charts/${chart}/Chart.yaml" "appVersion: \"${old}\"" "appVersion: \"${new}\""
   replace "deploy/charts/${chart}/values.yaml" "tag: \"${old}\"" "tag: \"${new}\""
 done
-replace deploy/charts/kodama-stack/Chart.yaml "    version: \"${old}\"" "    version: \"${new}\""
-replace scripts/lib/deploy.sh "KODAMA_IMAGE_TAG:-${old}}" "KODAMA_IMAGE_TAG:-${new}}"
+replace deploy/charts/kodema-stack/Chart.yaml "    version: \"${old}\"" "    version: \"${new}\""
+replace scripts/lib/deploy.sh "KODEMA_IMAGE_TAG:-${old}}" "KODEMA_IMAGE_TAG:-${new}}"
 
 if [[ "$new" != *-* ]]; then
   # A release: the documents install it, and its changes get their section.
@@ -57,7 +57,7 @@ if [[ "$new" != *-* ]]; then
   [[ -n "$documented" ]] || die "README.md names no released version (git clone --branch v<version>)"
   if [[ "$documented" != "$new" ]]; then
     for file in README.md docs/runbooks/podman-quickstart.md; do
-      replace "$file" "kodama/kodama:${documented}" "kodama/kodama:${new}"
+      replace "$file" "kodema/kodema:${documented}" "kodema/kodema:${new}"
     done
     replace README.md "--branch v${documented} " "--branch v${new} "
   fi

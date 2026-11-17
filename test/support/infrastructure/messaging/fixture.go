@@ -20,8 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // The deterministic fixture image is the runnable artifact later recipe tests
@@ -62,8 +62,8 @@ const (
 
 	fixtureSourceDateEpoch = "SOURCE_DATE_EPOCH"
 
-	fixtureLocalTagPrefix = "localhost/kodama-fixture-"
-	fixtureRepositoryRoot = "kodama/fixture-"
+	fixtureLocalTagPrefix = "localhost/kodema-fixture-"
+	fixtureRepositoryRoot = "kodema/fixture-"
 )
 
 //go:embed Containerfile fixture.sh
@@ -724,7 +724,7 @@ func (builder *FixtureBuilder) Build(ctx context.Context, base FixtureBase, inpu
 		return FixtureImage{}, err
 	}
 
-	root, err := os.MkdirTemp("", "kodama-fixture-build-")
+	root, err := os.MkdirTemp("", "kodema-fixture-build-")
 	if err != nil {
 		return FixtureImage{}, fmt.Errorf("create fixture build scratch: %w", err)
 	}
@@ -803,7 +803,7 @@ func (builder *FixtureBuilder) Publish(ctx context.Context, instance *Registry, 
 	// reference, so that name must be cleaned up too. It is recorded before the
 	// push can create it: a failed push is still cleaned up.
 	builder.trackCreated(reference)
-	root, err := os.MkdirTemp("", "kodama-fixture-push-")
+	root, err := os.MkdirTemp("", "kodema-fixture-push-")
 	if err != nil {
 		return FixturePublication{}, fmt.Errorf("create fixture push scratch: %w", err)
 	}
@@ -903,7 +903,7 @@ var fixtureProbeSequence atomic.Uint64
 // fixtureProbeName returns one run-scoped probe container name. The kind names
 // the probe in a leaked-container sweep; the sequence keeps it unique.
 func fixtureProbeName(kind string) string {
-	return runtimesupport.RunScoped(fmt.Sprintf("kodama-fixture-%s-%d", kind, fixtureProbeSequence.Add(1)))
+	return runtimesupport.RunScoped(fmt.Sprintf("kodema-fixture-%s-%d", kind, fixtureProbeSequence.Add(1)))
 }
 
 // fixtureContainerIdentityArgs renders the explicit name and this run's cleanup
@@ -1131,8 +1131,8 @@ func (builder *FixtureBuilder) removeFixtureName(ctx context.Context, name strin
 }
 
 // fixtureNameOwned reports whether name is inside the fixture's own image
-// namespace. Local build tags live under localhost/kodama-fixture-; the
-// registry-qualified push and pull names live under <host>/kodama/fixture-.
+// namespace. Local build tags live under localhost/kodema-fixture-; the
+// registry-qualified push and pull names live under <host>/kodema/fixture-.
 // The check keeps cleanup away from a base image, a registry image or another
 // fixture's names.
 func fixtureNameOwned(name string) bool {
@@ -1154,7 +1154,7 @@ func fixtureNameOwned(name string) bool {
 	if len(parts) < 3 {
 		return false
 	}
-	return parts[len(parts)-2] == "kodama" && strings.HasPrefix(parts[len(parts)-1], "fixture-")
+	return parts[len(parts)-2] == "kodema" && strings.HasPrefix(parts[len(parts)-1], "fixture-")
 }
 
 // LocalImageNames lists local image names matching the exact reference prefix.

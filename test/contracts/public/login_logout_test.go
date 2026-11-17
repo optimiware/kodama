@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 func logoutDeps(fixture *loginFixture) cli.LogoutDeps {
@@ -143,7 +143,7 @@ func TestIDTokenVerification(t *testing.T) {
 	keys := loginJWKS(t, key)
 	expectations := cli.IDTokenExpectations{
 		Issuer:   "https://auth.example.com",
-		Audience: "kodama-api",
+		Audience: "kodema-api",
 		Nonce:    "nonce-value",
 		Now:      now,
 	}

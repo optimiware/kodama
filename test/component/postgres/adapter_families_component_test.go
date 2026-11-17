@@ -10,31 +10,31 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/flow"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/execution"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/inbox"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/request"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	executionstore "github.com/optimiware/kodama/internal/shell/store/units/execution"
-	"github.com/optimiware/kodama/internal/shell/store/units/execution/snapshotdoc"
-	"github.com/optimiware/kodama/internal/shell/store/units/platform"
-	"github.com/optimiware/kodama/internal/shell/store/units/readers"
-	"github.com/optimiware/kodama/internal/shell/store/units/work"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/trigger"
-	"github.com/optimiware/kodama/internal/shell/verify"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/flow"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/execution"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/inbox"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/request"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	executionstore "github.com/optimiware/kodema/internal/shell/store/units/execution"
+	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
+	"github.com/optimiware/kodema/internal/shell/store/units/platform"
+	"github.com/optimiware/kodema/internal/shell/store/units/readers"
+	"github.com/optimiware/kodema/internal/shell/store/units/work"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/trigger"
+	"github.com/optimiware/kodema/internal/shell/verify"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // adapterScoped returns the runtime-role scoped store the product uses for
@@ -439,7 +439,7 @@ func TestInboxAdapterOnPostgreSQL(t *testing.T) {
 		t.Fatalf("inbox kinds = %v; want all three", seen)
 	}
 	// A human without the operator role never sees a failed task, even in the
-	// same scope (KODAMA.md assigns failed-task follow-up to human operators).
+	// same scope (KODEMA.md assigns failed-task follow-up to human operators).
 	reviewerOnly := principal
 	reviewerOnly.ID = "principal-reviewer"
 	reviewerOnly.Roles = []tenancy.Role{tenancy.RoleReviewer}

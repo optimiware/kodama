@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	git "github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/fault"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 // statusActorVerifier is the smart-HTTP read verifier boundary used to inject
@@ -108,7 +108,7 @@ func statusRequest(t *testing.T, handler *git.SmartHTTP, route statusRoute) *htt
 		body = bytes.NewReader(nil)
 	}
 	request := httptest.NewRequest(route.method, route.target, body)
-	request.SetBasicAuth("kodama", "viewer-token")
+	request.SetBasicAuth("kodema", "viewer-token")
 	if route.contentType != "" {
 		request.Header.Set("Content-Type", route.contentType)
 	}

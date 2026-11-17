@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // ErrMalformedBackendResponse reports a `git http-backend` response that is not
@@ -343,7 +343,7 @@ func spoolBackendBody(reader io.Reader, limit int64) (io.Reader, int64, func(), 
 		return bytes.NewReader(initial), int64(len(initial)), nil, nil
 	}
 
-	spool, err := os.CreateTemp("", "kodama-git-body-*.tmp")
+	spool, err := os.CreateTemp("", "kodema-git-body-*.tmp")
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("create request body spool: %w", err)
 	}

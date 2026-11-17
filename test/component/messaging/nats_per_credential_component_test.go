@@ -15,14 +15,14 @@ import (
 
 	natsgo "github.com/nats-io/nats.go"
 
-	"github.com/optimiware/kodama/internal/id"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	broker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/internal/id"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	broker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // calloutValidity is the component test's current credential validity source.
@@ -47,15 +47,15 @@ func startCalloutNATS(t *testing.T) (*support.NATS, string, string, string) {
 	)
 
 	const (
-		shellUser     = "kodama-shell"
+		shellUser     = "kodema-shell"
 		shellPassword = "shell-password"
-		calloutUser   = "kodama-auth"
+		calloutUser   = "kodema-auth"
 		calloutPass   = "auth-password"
 	)
 	config := fmt.Sprintf(`port: 4222
-server_name: kodama-callout
+server_name: kodema-callout
 accounts {
-  KODAMA: {
+  KODEMA: {
     users: [
       { user: %q, password: %q }
       { user: %q, password: %q }
@@ -66,7 +66,7 @@ authorization {
   auth_callout {
     issuer: %q
     auth_users: [ %q, %q ]
-    account: KODAMA
+    account: KODEMA
   }
 }
 `, shellUser, shellPassword, calloutUser, calloutPass, issuerPub, shellUser, calloutUser)
@@ -86,8 +86,8 @@ authorization {
 	container, err := shard.Run(ctx, harness.RunSpec{
 		Image:   harness.ImageNATS,
 		Ports:   []harness.Port{{Container: support.NATSClientPort}, {Container: support.NATSMonitorPort}},
-		Volumes: []harness.Volume{{Name: dir, Target: "/etc/kodama-nats"}},
-		Cmd:     []string{"-c", "/etc/kodama-nats/nats.conf", "-m", fmt.Sprintf("%d", support.NATSMonitorPort)},
+		Volumes: []harness.Volume{{Name: dir, Target: "/etc/kodema-nats"}},
+		Cmd:     []string{"-c", "/etc/kodema-nats/nats.conf", "-m", fmt.Sprintf("%d", support.NATSMonitorPort)},
 	})
 	if err != nil {
 		t.Fatalf("start callout nats: %v", err)
@@ -145,7 +145,7 @@ func startCalloutService(t *testing.T, instance *support.NATS, issuerSeed string
 	callout, err := broker.NewCallout(broker.CalloutConfig{
 		Connection: client,
 		IssuerSeed: issuerSeed,
-		Account:    "KODAMA",
+		Account:    "KODEMA",
 		Principal:  directory,
 		Authorizer: directory,
 		Validity:   calloutValidity{},
@@ -349,7 +349,7 @@ func TestPerCredentialNATSAuthorization(t *testing.T) {
 	callout, err := broker.NewCallout(broker.CalloutConfig{
 		Connection: calloutClient,
 		IssuerSeed: issuerSeed,
-		Account:    "KODAMA",
+		Account:    "KODEMA",
 		Principal:  directory,
 		Authorizer: directory,
 		Validity:   calloutValidity{},

@@ -10,7 +10,7 @@
 # its lanes takes its own host slot through scripts/infra-slot.sh.
 #
 # The stage target is one stage session:
-#   1. it holds the host-wide stage lock (KODAMA_STAGE_LOCK, default scw-stage)
+#   1. it holds the host-wide stage lock (KODEMA_STAGE_LOCK, default scw-stage)
 #      for the whole run;
 #   2. test/e2e/internal/harness/run-stage.sh opens the port-forwards, acquires
 #      the four persona token files, describes the installation and removes all
@@ -54,8 +54,8 @@ if [[ "$target" != stage || "$dry_run" == 1 ]]; then
   exec go run ./test/suite/cmd/testsuite "$@"
 fi
 
-lock="${KODAMA_STAGE_LOCK:-scw-stage}"
-[[ "$lock" =~ ^[A-Za-z0-9._-]+$ ]] || die "KODAMA_STAGE_LOCK must be a simple lock name"
+lock="${KODEMA_STAGE_LOCK:-scw-stage}"
+[[ "$lock" =~ ^[A-Za-z0-9._-]+$ ]] || die "KODEMA_STAGE_LOCK must be a simple lock name"
 
 if [[ -n "$installation" ]]; then
   export Q01_INSTALLATION_FILE="$installation"

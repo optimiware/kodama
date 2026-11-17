@@ -45,11 +45,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/userland/git"
-	identityfixture "github.com/optimiware/kodama/test/support/boundaries/identity"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/userland/git"
+	identityfixture "github.com/optimiware/kodema/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -321,11 +321,11 @@ func runProtectedSubjectScenario(t *testing.T, fixture *gitHarness, options prot
 	waitProtectedActionRunning(t, fixture, evidence.executionID, "implement")
 	implementContainer := waitProtectedGoldenContainer(t, fixture, evidence.executionID, "implement")
 	evidence.executionToken = waitProtectedGoldenCredential(t, fixture, evidence.executionID, "implement")
-	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODAMA_TASK"); got != evidence.taskID {
-		t.Fatalf("implement KODAMA_TASK = %q; want the task %q", got, evidence.taskID)
+	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODEMA_TASK"); got != evidence.taskID {
+		t.Fatalf("implement KODEMA_TASK = %q; want the task %q", got, evidence.taskID)
 	}
 	if snapshot := protectedGoldenRead(t, fixture, implementContainer, protectedGoldenTaskFile); !json.Valid([]byte(snapshot)) {
-		t.Fatalf("implement /kodama/task.json is not valid JSON: %q", snapshot)
+		t.Fatalf("implement /kodema/task.json is not valid JSON: %q", snapshot)
 	}
 	requireProtectedGoldenCredentialUsable(t, fixture, evidence.executionID, evidence.executionToken)
 	releaseProtectedGoldenGate(t, fixture, implementContainer, protectedSubjectImplementGate)
@@ -424,7 +424,7 @@ func runProtectedSubjectScenario(t *testing.T, fixture *gitHarness, options prot
 		t.Fatalf("read the refused verification's stored requested approval: %v", err)
 	}
 	evidence.refusedApproval = approval
-	evidence.pushError = protectedSubjectLogLineContaining(t, evidence.logs, "kodama git: update rejected")
+	evidence.pushError = protectedSubjectLogLineContaining(t, evidence.logs, "kodema git: update rejected")
 	evidence.controlPushed = strings.Contains(evidence.logs, "subject-control-pushed")
 	evidence.hasAcceptedJournalFor = protectedEdgeHasAcceptedJournal(t, fixture, gitMainRef, evidence.candidate)
 	evidence.candidateAfterControl = fixture.git.RemoteRef(t, factory.GitProjectRepository, protectedSubjectControlRef)
@@ -654,20 +654,20 @@ func protectedSubjectRefusalIntegrateCommands(fixture *gitHarness, spec factory.
 		"test -s "+protectedGoldenImplementCandidatePath,
 		"test -s "+protectedGoldenTestCandidatePath,
 		"test -s "+protectedGoldenTestResultPath,
-		"kodama_subject_candidate=$(cat "+protectedGoldenImplementCandidatePath+")",
-		`test "$(cat `+protectedGoldenTestCandidatePath+`)" = "$kodama_subject_candidate"`,
-		`test "$(cat `+protectedGoldenTestResultPath+`)" = "pass:$kodama_subject_candidate"`,
-		"test \"$(cat "+protectedGoldenMarkerPath+")\" = \"$KODAMA_EXECUTION\"",
+		"kodema_subject_candidate=$(cat "+protectedGoldenImplementCandidatePath+")",
+		`test "$(cat `+protectedGoldenTestCandidatePath+`)" = "$kodema_subject_candidate"`,
+		`test "$(cat `+protectedGoldenTestResultPath+`)" = "pass:$kodema_subject_candidate"`,
+		"test \"$(cat "+protectedGoldenMarkerPath+")\" = \"$KODEMA_EXECUTION\"",
 		"cd "+protectedGoldenRepositoryDirectory,
-		`test "$(git rev-parse HEAD)" = "$kodama_subject_candidate"`,
-		`test "$kodama_subject_candidate" != `+shellQuoteForSubject(spec.ExpectedBase),
-		"if git merge-base --is-ancestor "+shellQuoteForSubject(spec.ExpectedBase)+` "$kodama_subject_candidate"; then :; else printf 'subject-candidate-not-descended-from-base\n' >&2; exit 1; fi`,
-		"if git_kodama push --quiet "+shellQuoteForSubject("--force-with-lease="+gitMainRef+":"+spec.ExpectedBase)+
-			" origin \"$kodama_subject_candidate\":"+gitMainRef+" 2>"+protectedSubjectRefusalError+"; then\n"+
+		`test "$(git rev-parse HEAD)" = "$kodema_subject_candidate"`,
+		`test "$kodema_subject_candidate" != `+shellQuoteForSubject(spec.ExpectedBase),
+		"if git merge-base --is-ancestor "+shellQuoteForSubject(spec.ExpectedBase)+` "$kodema_subject_candidate"; then :; else printf 'subject-candidate-not-descended-from-base\n' >&2; exit 1; fi`,
+		"if git_kodema push --quiet "+shellQuoteForSubject("--force-with-lease="+gitMainRef+":"+spec.ExpectedBase)+
+			" origin \"$kodema_subject_candidate\":"+gitMainRef+" 2>"+protectedSubjectRefusalError+"; then\n"+
 			"  printf 'subject-protected-push-accepted\n' >&2\n  exit 1\nfi",
 		"printf 'subject-protected-push-refused\\n'",
 		"cat "+protectedSubjectRefusalError+" >&2",
-		"if ! git_kodama push --quiet origin \"$kodama_subject_candidate\":"+controlRef+"; then\n"+
+		"if ! git_kodema push --quiet origin \"$kodema_subject_candidate\":"+controlRef+"; then\n"+
 			"  printf 'subject-control-push-refused\n' >&2\n  exit 1\nfi",
 		"printf 'subject-control-pushed\\n'",
 		"exit 1",
@@ -684,16 +684,16 @@ func protectedSubjectGitPrelude(fixture *gitHarness) []string {
 		caMaterial += "\n"
 	}
 	return []string{
-		"cat > /workspace/protected-subject-ca.pem <<'KODAMA_SUBJECT_CA'\n" + caMaterial + "KODAMA_SUBJECT_CA",
+		"cat > /workspace/protected-subject-ca.pem <<'KODEMA_SUBJECT_CA'\n" + caMaterial + "KODEMA_SUBJECT_CA",
 		"export GIT_SSL_CAINFO=/workspace/protected-subject-ca.pem",
 		"export GIT_CONFIG_NOSYSTEM=1",
 		"export GIT_CONFIG_GLOBAL=/dev/null",
 		"export GIT_ATTR_NOSYSTEM=1",
 		"export GIT_TERMINAL_PROMPT=0",
 		"export GIT_TRACE=0 GIT_TRACE_PACKET=0 GIT_TRACE_CURL=0 GIT_CURL_VERBOSE=0",
-		"git_kodama() {\n" +
-			"  KODAMA_SUBJECT_GIT_AUTHORIZATION=\"Authorization: Basic $(printf 'kodama:%s' \"$(cat /kodama/secrets/KODAMA_TOKEN)\" | base64 -w0)\" \\\n" +
-			"  git -c http.followRedirects=false --config-env=http.extraHeader=KODAMA_SUBJECT_GIT_AUTHORIZATION \"$@\"\n" +
+		"git_kodema() {\n" +
+			"  KODEMA_SUBJECT_GIT_AUTHORIZATION=\"Authorization: Basic $(printf 'kodema:%s' \"$(cat /kodema/secrets/KODEMA_TOKEN)\" | base64 -w0)\" \\\n" +
+			"  git -c http.followRedirects=false --config-env=http.extraHeader=KODEMA_SUBJECT_GIT_AUTHORIZATION \"$@\"\n" +
 			"}",
 	}
 }
@@ -825,7 +825,7 @@ func runProtectedSubjectCopiedScenario(t *testing.T, fixture *gitHarness) protec
 	commands := protectedSubjectGitPrelude(fixture)
 	commands = append(commands,
 		"rm -rf -- "+protectedGoldenRepositoryDirectory,
-		"git_kodama clone --quiet "+shellQuoteForSubject(fixture.git.WorkloadRepositoryURL(factory.GitProjectRepository))+
+		"git_kodema clone --quiet "+shellQuoteForSubject(fixture.git.WorkloadRepositoryURL(factory.GitProjectRepository))+
 			" "+protectedGoldenRepositoryDirectory,
 		"cd "+protectedGoldenRepositoryDirectory,
 		"git checkout --quiet --detach "+shellQuoteForSubject(candidate),
@@ -838,12 +838,12 @@ func runProtectedSubjectCopiedScenario(t *testing.T, fixture *gitHarness) protec
 		"printf 'copied-approval=role/reviewer\\n'",
 		"printf 'copied-candidate=%s\\n' "+shellQuoteForSubject(candidate),
 		"printf 'copied-test-result=pass:%s\\n' "+shellQuoteForSubject(candidate),
-		"if git_kodama push --quiet "+shellQuoteForSubject("--force-with-lease="+gitMainRef+":"+base)+
+		"if git_kodema push --quiet "+shellQuoteForSubject("--force-with-lease="+gitMainRef+":"+base)+
 			" origin "+shellQuoteForSubject(candidate+":"+gitMainRef)+" 2>"+protectedSubjectCopiedError+"; then\n"+
 			"  printf 'copied-approval-push-accepted\n' >&2\n  exit 1\nfi",
 		"printf 'copied-approval-push-refused\\n'",
 		"cat "+protectedSubjectCopiedError+" >&2",
-		"if ! git_kodama push --quiet origin "+shellQuoteForSubject(candidate+":"+protectedSubjectCopiedRef)+"; then\n"+
+		"if ! git_kodema push --quiet origin "+shellQuoteForSubject(candidate+":"+protectedSubjectCopiedRef)+"; then\n"+
 			"  printf 'copied-control-push-refused\n' >&2\n  exit 1\nfi",
 		"printf 'copied-control-pushed\\n'",
 		"exit 1",
@@ -960,7 +960,7 @@ func assertProtectedSubjectCopiedRefusal(t *testing.T, evidence protectedSubject
 		t.Fatalf("copied-string action = %+v; want the one declared container action",
 			evidence.finished.Actions[0])
 	}
-	if !containsAll(evidence.logs, "kodama git: update rejected") {
+	if !containsAll(evidence.logs, "kodema git: update rejected") {
 		t.Fatalf("copied-string protected push did not reach the managed hook:\n%s", evidence.logs)
 	}
 	if strings.Contains(evidence.logs, "copied-approval-push-accepted") {

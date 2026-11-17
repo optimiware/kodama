@@ -28,16 +28,16 @@ import (
 
 	natsgo "github.com/nats-io/nats.go"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
-	"github.com/optimiware/kodama/test/e2e/internal/smoke"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/smoke"
 )
 
 // liveBrokerInputs returns the extra inputs a live subscription probe needs
 // beyond the common installation. A tls:// broker (or an explicitly configured
 // CA) also needs the broker CA bundle: the stage broker only issues a
-// short-lived scoped user JWT after the client presents its current Kodama
+// short-lived scoped user JWT after the client presents its current Kodema
 // credential as the NATS auth token, and the probe mints that credential itself
 // (see liveSubscriberToken). Q01_NATS_TOKEN_FILE stays an optional override for
 // an installation that supplies its own store-backed service credential. A
@@ -161,13 +161,13 @@ func liveSubscriberToken(ctx context.Context, t *testing.T, instance *live, labe
 
 // liveEventSubject is the scope-qualified committed-event subject.
 func liveEventSubject(tenant, project string) string {
-	return fmt.Sprintf("kodama.v1.%s.%s.events", tenant, project)
+	return fmt.Sprintf("kodema.v1.%s.%s.events", tenant, project)
 }
 
 // liveLogSubject is the scope-qualified live-log subject for one
 // execution.
 func liveLogSubject(tenant, project, executionID string) string {
-	return fmt.Sprintf("kodama.v1.%s.%s.logs.%s", tenant, project, executionID)
+	return fmt.Sprintf("kodema.v1.%s.%s.logs.%s", tenant, project, executionID)
 }
 
 // liveLogChunk is the broker payload shape. It carries the execution identity

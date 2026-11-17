@@ -7,15 +7,15 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/service"
-	identitystore "github.com/optimiware/kodama/internal/shell/store/units/identity"
-	"github.com/optimiware/kodama/internal/shell/store/units/platform"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/verify"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/service"
+	identitystore "github.com/optimiware/kodema/internal/shell/store/units/identity"
+	"github.com/optimiware/kodema/internal/shell/store/units/platform"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/verify"
 )
 
 // readBindings is the enforcing Git service's binding: it declares the

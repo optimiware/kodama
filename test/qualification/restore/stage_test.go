@@ -1,7 +1,7 @@
 package restorequal
 
 // Q03 stage-destination guard and command-planner tests. The stage drill may
-// restore only into a new database explicitly named kodama-restore-<run-id> on
+// restore only into a new database explicitly named kodema-restore-<run-id> on
 // the same instance as the managed database, and may drop only that exact
 // run-created database (docs/tasks/finish-plan.md).
 //
@@ -58,13 +58,13 @@ const testInstanceID = "11111111-1111-4111-8111-111111111111"
 func validDestinationRequest() DestinationRequest {
 	return DestinationRequest{
 		Destination: Destination{
-			DatabaseName: "kodama-restore-abc123",
+			DatabaseName: "kodema-restore-abc123",
 			InstanceID:   testInstanceID,
 		},
-		SourceDatabase:    "kodama-source",
-		ManagedDatabase:   "kodama-managed",
+		SourceDatabase:    "kodema-source",
+		ManagedDatabase:   "kodema-managed",
 		SourceInstanceID:  testInstanceID,
-		ExistingDatabases: []string{"kodama-managed", "kodama-source", "postgres"},
+		ExistingDatabases: []string{"kodema-managed", "kodema-source", "postgres"},
 	}
 }
 
@@ -78,7 +78,7 @@ func TestStageDestinationGuard(t *testing.T) {
 			t.Fatalf("NewRunID: %v", err)
 		}
 		request := validDestinationRequest()
-		request.Destination.DatabaseName = "kodama-restore-" + runID
+		request.Destination.DatabaseName = "kodema-restore-" + runID
 		if err := CheckStageDestination(request); err != nil {
 			t.Fatalf("CheckStageDestination: %v", err)
 		}
@@ -101,19 +101,19 @@ func TestStageDestinationGuard(t *testing.T) {
 			name string
 			ok   bool
 		}{
-			{name: "kodama-restore-abc123", ok: true},
-			{name: "kodama-restore-" + strings.Repeat("a", 32), ok: true},
-			{name: "xkodama-restore-abc123", ok: false},
-			{name: " kodama-restore-abc123", ok: false},
-			{name: "\nkodama-restore-abc123", ok: false},
-			{name: "kodama-restore-" + strings.Repeat("a", 5), ok: false},
-			{name: "kodama-restore-" + strings.Repeat("a", 33), ok: false},
-			{name: "kodama-restore-ABC123", ok: false},
-			{name: "kodama-restore-abc_123", ok: false},
+			{name: "kodema-restore-abc123", ok: true},
+			{name: "kodema-restore-" + strings.Repeat("a", 32), ok: true},
+			{name: "xkodema-restore-abc123", ok: false},
+			{name: " kodema-restore-abc123", ok: false},
+			{name: "\nkodema-restore-abc123", ok: false},
+			{name: "kodema-restore-" + strings.Repeat("a", 5), ok: false},
+			{name: "kodema-restore-" + strings.Repeat("a", 33), ok: false},
+			{name: "kodema-restore-ABC123", ok: false},
+			{name: "kodema-restore-abc_123", ok: false},
 			{name: "restore-abc123", ok: false},
-			{name: "kodama-restore-", ok: false},
-			{name: "kodama-restore-abc123;drop", ok: false},
-			{name: "kodama-restore-abc123 --force", ok: false},
+			{name: "kodema-restore-", ok: false},
+			{name: "kodema-restore-abc123;drop", ok: false},
+			{name: "kodema-restore-abc123 --force", ok: false},
 		} {
 			request := validDestinationRequest()
 			request.Destination.DatabaseName = testCase.name
@@ -222,7 +222,7 @@ func TestStageDestinationGuard(t *testing.T) {
 			t.Fatalf("NewRunID: %v", err)
 		}
 		request := validDestinationRequest()
-		request.Destination.DatabaseName = "kodama-restore-" + runID
+		request.Destination.DatabaseName = "kodema-restore-" + runID
 		command, err := PlanStageRestore(StageRestoreRequest{BackupID: "backup-123", Destination: request})
 		if err != nil {
 			t.Fatalf("PlanStageRestore: %v", err)
@@ -233,7 +233,7 @@ func TestStageDestinationGuard(t *testing.T) {
 			Argv: []string{
 				"rdb", "backup", "restore", "backup-123",
 				"instance-id=" + testInstanceID,
-				"database-name=kodama-restore-" + runID,
+				"database-name=kodema-restore-" + runID,
 			},
 			EnvNames: []string{"SCW_ACCESS_KEY", "SCW_SECRET_KEY"},
 		}
@@ -248,7 +248,7 @@ func TestStageDestinationGuard(t *testing.T) {
 			"",
 			"--wait",
 			"-backup-123",
-			"database-name=kodama-source",
+			"database-name=kodema-source",
 			"a b",
 			"a=b",
 			"backup/../x",
@@ -267,7 +267,7 @@ func TestStageDestinationGuard(t *testing.T) {
 	t.Run("credentials exist only as environment variable names", func(t *testing.T) {
 		t.Setenv("SCW_ACCESS_KEY", "SCW-ACCESS-KEY-SENTINEL")
 		t.Setenv("SCW_SECRET_KEY", "SCW-SECRET-KEY-SENTINEL")
-		t.Setenv(DatabaseCredentialEnvName, "postgres://user:DB-PASSWORD-SENTINEL@example/kodama")
+		t.Setenv(DatabaseCredentialEnvName, "postgres://user:DB-PASSWORD-SENTINEL@example/kodema")
 		for _, name := range []string{"SCW_ACCESS_KEY", "SCW_SECRET_KEY", DatabaseCredentialEnvName} {
 			if got := os.Getenv(name); got == "" {
 				t.Fatalf("test environment %s is not set; the credential test would be vacuous", name)
@@ -279,7 +279,7 @@ func TestStageDestinationGuard(t *testing.T) {
 			t.Fatalf("NewRunID: %v", err)
 		}
 		request := validDestinationRequest()
-		request.Destination.DatabaseName = "kodama-restore-" + runID
+		request.Destination.DatabaseName = "kodema-restore-" + runID
 		command, err := PlanStageRestore(StageRestoreRequest{BackupID: "backup-123", Destination: request})
 		if err != nil {
 			t.Fatalf("PlanStageRestore: %v", err)
@@ -314,14 +314,14 @@ func TestStageDestinationGuard(t *testing.T) {
 			t.Fatalf("NewRunID: %v", err)
 		}
 		created := CreatedDatabase{
-			Name:       "kodama-restore-" + runID,
+			Name:       "kodema-restore-" + runID,
 			InstanceID: testInstanceID,
 			RunID:      runID,
 		}
 		command, err := PlanStageDrop(StageDropRequest{
 			Created:          created,
-			SourceDatabase:   "kodama-source",
-			ManagedDatabase:  "kodama-managed",
+			SourceDatabase:   "kodema-source",
+			ManagedDatabase:  "kodema-managed",
 			SourceInstanceID: testInstanceID,
 		})
 		if err != nil {
@@ -330,7 +330,7 @@ func TestStageDestinationGuard(t *testing.T) {
 		want := Command{
 			Kind:     CommandDrop,
 			Name:     "scw",
-			Argv:     []string{"rdb", "database", "delete", "name=kodama-restore-" + runID, "instance-id=" + testInstanceID},
+			Argv:     []string{"rdb", "database", "delete", "name=kodema-restore-" + runID, "instance-id=" + testInstanceID},
 			EnvNames: []string{"SCW_ACCESS_KEY", "SCW_SECRET_KEY"},
 		}
 		if !reflect.DeepEqual(command, want) {
@@ -342,26 +342,26 @@ func TestStageDestinationGuard(t *testing.T) {
 			mutate func(*StageDropRequest)
 		}{
 			{name: "name does not match the run", mutate: func(request *StageDropRequest) {
-				request.Created.Name = "kodama-restore-other1"
+				request.Created.Name = "kodema-restore-other1"
 			}},
 			{name: "run id is too short", mutate: func(request *StageDropRequest) {
 				request.Created.RunID = "abc"
-				request.Created.Name = "kodama-restore-abc"
+				request.Created.Name = "kodema-restore-abc"
 			}},
 			{name: "empty run id", mutate: func(request *StageDropRequest) {
 				request.Created.RunID = ""
 			}},
 			{name: "flag-shaped run id", mutate: func(request *StageDropRequest) {
 				request.Created.RunID = "--force"
-				request.Created.Name = "kodama-restore---force"
+				request.Created.Name = "kodema-restore---force"
 			}},
 			{name: "run id with an equals sign", mutate: func(request *StageDropRequest) {
 				request.Created.RunID = "abc=def"
-				request.Created.Name = "kodama-restore-abc=def"
+				request.Created.Name = "kodema-restore-abc=def"
 			}},
 			{name: "run id with whitespace", mutate: func(request *StageDropRequest) {
 				request.Created.RunID = "abc def"
-				request.Created.Name = "kodama-restore-abc def"
+				request.Created.Name = "kodema-restore-abc def"
 			}},
 			{name: "different instance", mutate: func(request *StageDropRequest) {
 				request.Created.InstanceID = "22222222-2222-4222-8222-222222222222"
@@ -382,8 +382,8 @@ func TestStageDestinationGuard(t *testing.T) {
 			t.Run(testCase.name, func(t *testing.T) {
 				request := StageDropRequest{
 					Created:          created,
-					SourceDatabase:   "kodama-source",
-					ManagedDatabase:  "kodama-managed",
+					SourceDatabase:   "kodema-source",
+					ManagedDatabase:  "kodema-managed",
 					SourceInstanceID: testInstanceID,
 				}
 				testCase.mutate(&request)
@@ -400,7 +400,7 @@ func TestStageDestinationGuard(t *testing.T) {
 			t.Fatalf("NewRunID: %v", err)
 		}
 		request := validDestinationRequest()
-		request.Destination.DatabaseName = "kodama-restore-" + runID
+		request.Destination.DatabaseName = "kodema-restore-" + runID
 		restore, err := PlanStageRestore(StageRestoreRequest{BackupID: "backup-123", Destination: request})
 		if err != nil {
 			t.Fatalf("PlanStageRestore: %v", err)
@@ -459,12 +459,12 @@ func TestStageDestinationGuard(t *testing.T) {
 		}
 		drop, err := PlanStageDrop(StageDropRequest{
 			Created: CreatedDatabase{
-				Name:       "kodama-restore-" + runID,
+				Name:       "kodema-restore-" + runID,
 				InstanceID: testInstanceID,
 				RunID:      runID,
 			},
-			SourceDatabase:   "kodama-source",
-			ManagedDatabase:  "kodama-managed",
+			SourceDatabase:   "kodema-source",
+			ManagedDatabase:  "kodema-managed",
 			SourceInstanceID: testInstanceID,
 		})
 		if err != nil {
@@ -483,7 +483,7 @@ func TestStageDestinationGuard(t *testing.T) {
 			t.Fatalf("drop argv = %v; want %v", ambiguous.calls[0].Argv, want)
 		}
 		for _, value := range ambiguous.calls[0].Argv {
-			if strings.Contains(value, "kodama-managed") || strings.Contains(value, "kodama-source") {
+			if strings.Contains(value, "kodema-managed") || strings.Contains(value, "kodema-source") {
 				t.Fatalf("drop argv targets a forbidden database: %v", ambiguous.calls[0].Argv)
 			}
 		}
@@ -500,7 +500,7 @@ func TestStageDestinationGuard(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewRunID: %v", err)
 		}
-		dbName := "kodama-restore-" + runID
+		dbName := "kodema-restore-" + runID
 		destination := Destination{DatabaseName: dbName, InstanceID: testInstanceID}
 		created := CreatedDatabase{Name: dbName, InstanceID: testInstanceID, RunID: runID}
 
@@ -512,7 +512,7 @@ func TestStageDestinationGuard(t *testing.T) {
 
 		notReady := &fakeStageVerifier{
 			instance:  StageInstanceStatus{Status: "Snapshot", Ready: false, BackupRetention: 7 * 24 * time.Hour},
-			databases: []string{"kodama", dbName},
+			databases: []string{"kodema", dbName},
 		}
 		got, err := VerifyStageRestore(context.Background(), notReady, destination, DefaultObjectives().PostgreSQLRecovery)
 		if err == nil || got.Outcome != OutcomeAccepted || got.MeetsPostgreSQLRecovery {
@@ -521,7 +521,7 @@ func TestStageDestinationGuard(t *testing.T) {
 
 		sqlFailed := &fakeStageVerifier{
 			instance:  parsed,
-			databases: []string{"kodama", dbName},
+			databases: []string{"kodema", dbName},
 			sqlErr:    errors.New("permission denied"),
 		}
 		got, err = VerifyStageRestore(context.Background(), sqlFailed, destination, DefaultObjectives().PostgreSQLRecovery)
@@ -531,7 +531,7 @@ func TestStageDestinationGuard(t *testing.T) {
 
 		verified := &fakeStageVerifier{
 			instance:  parsed,
-			databases: []string{"kodama", dbName},
+			databases: []string{"kodema", dbName},
 		}
 		got, err = VerifyStageRestore(context.Background(), verified, destination, DefaultObjectives().PostgreSQLRecovery)
 		if err != nil || got.Outcome != OutcomeConfirmed || !got.MeetsPostgreSQLRecovery {
@@ -541,7 +541,7 @@ func TestStageDestinationGuard(t *testing.T) {
 		if dropOutcome, err := VerifyStageDrop(context.Background(), verified, created); err == nil || dropOutcome != OutcomeAccepted {
 			t.Fatalf("drop while still listed = %v, %v; want accepted error", dropOutcome, err)
 		}
-		verified.databases = []string{"kodama"}
+		verified.databases = []string{"kodema"}
 		if dropOutcome, err := VerifyStageDrop(context.Background(), verified, created); err != nil || dropOutcome != OutcomeConfirmed {
 			t.Fatalf("verified drop = %v, %v; want confirmed, nil", dropOutcome, err)
 		}
@@ -556,13 +556,13 @@ func TestStageDestinationGuard(t *testing.T) {
 		validDrop := Command{
 			Kind:     CommandDrop,
 			Name:     "scw",
-			Argv:     []string{"rdb", "database", "delete", "name=kodama-restore-" + runID, "instance-id=" + testInstanceID},
+			Argv:     []string{"rdb", "database", "delete", "name=kodema-restore-" + runID, "instance-id=" + testInstanceID},
 			EnvNames: []string{"SCW_ACCESS_KEY", "SCW_SECRET_KEY"},
 		}
 		validRestore := Command{
 			Kind:     CommandRestore,
 			Name:     "scw",
-			Argv:     []string{"rdb", "backup", "restore", "backup-123", "instance-id=" + testInstanceID, "database-name=kodama-restore-" + runID},
+			Argv:     []string{"rdb", "backup", "restore", "backup-123", "instance-id=" + testInstanceID, "database-name=kodema-restore-" + runID},
 			EnvNames: []string{"SCW_ACCESS_KEY", "SCW_SECRET_KEY"},
 		}
 
@@ -582,16 +582,16 @@ func TestStageDestinationGuard(t *testing.T) {
 			}, command: Command{Kind: CommandDrop, Name: "sh", Argv: validDrop.Argv}},
 			{name: "hand-built drop with a positional database", execute: func(command Command) (Outcome, error) {
 				return ExecuteStageDrop(context.Background(), runner, command)
-			}, command: Command{Kind: CommandDrop, Name: "scw", Argv: []string{"rdb", "database", "delete", "kodama-managed", "instance-id=" + testInstanceID}}},
+			}, command: Command{Kind: CommandDrop, Name: "scw", Argv: []string{"rdb", "database", "delete", "kodema-managed", "instance-id=" + testInstanceID}}},
 			{name: "hand-built drop with a managed database name flag", execute: func(command Command) (Outcome, error) {
 				return ExecuteStageDrop(context.Background(), runner, command)
-			}, command: Command{Kind: CommandDrop, Name: "scw", Argv: []string{"rdb", "database", "delete", "name=kodama-managed", "instance-id=" + testInstanceID}}},
+			}, command: Command{Kind: CommandDrop, Name: "scw", Argv: []string{"rdb", "database", "delete", "name=kodema-managed", "instance-id=" + testInstanceID}}},
 			{name: "hand-built restore with an injected backup ID", execute: func(command Command) (Outcome, error) {
 				return ExecuteStageRestore(context.Background(), runner, command)
-			}, command: Command{Kind: CommandRestore, Name: "scw", Argv: []string{"rdb", "backup", "restore", "--wait", "instance-id=" + testInstanceID, "database-name=kodama-restore-" + runID}}},
+			}, command: Command{Kind: CommandRestore, Name: "scw", Argv: []string{"rdb", "backup", "restore", "--wait", "instance-id=" + testInstanceID, "database-name=kodema-restore-" + runID}}},
 			{name: "hand-built restore with a malformed instance", execute: func(command Command) (Outcome, error) {
 				return ExecuteStageRestore(context.Background(), runner, command)
-			}, command: Command{Kind: CommandRestore, Name: "scw", Argv: []string{"rdb", "backup", "restore", "backup-123", "instance-id=instance-1", "database-name=kodama-restore-" + runID}}},
+			}, command: Command{Kind: CommandRestore, Name: "scw", Argv: []string{"rdb", "backup", "restore", "backup-123", "instance-id=instance-1", "database-name=kodema-restore-" + runID}}},
 			{name: "hand-built drop with an unplanned environment name", execute: func(command Command) (Outcome, error) {
 				return ExecuteStageDrop(context.Background(), runner, command)
 			}, command: Command{Kind: CommandDrop, Name: "scw", Argv: validDrop.Argv, EnvNames: []string{"AWS_SECRET_ACCESS_KEY"}}},
@@ -625,7 +625,7 @@ func TestNewRunID(t *testing.T) {
 	}
 	for _, id := range []string{first, second} {
 		request := validDestinationRequest()
-		request.Destination.DatabaseName = "kodama-restore-" + id
+		request.Destination.DatabaseName = "kodema-restore-" + id
 		if err := CheckStageDestination(request); err != nil {
 			t.Fatalf("generated run ID %q does not form a valid destination: %v", id, err)
 		}

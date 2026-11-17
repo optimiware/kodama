@@ -12,7 +12,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // Input is one environment variable the qualification harness reads. Inputs

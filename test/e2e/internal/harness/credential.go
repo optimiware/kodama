@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // credentialPrefixes are the issued credential kinds whose literal text must
@@ -21,7 +21,7 @@ var credentialPrefixes = []string{"kodex.", "kodsvc."}
 const maxCredentialScanBytes = 8 << 20
 
 // base64MaterialLimit is the largest encoded credential form worth decoding.
-// A 4096-byte credential ("kodama:" + token) encodes to about 5.5 KB; the extra
+// A 4096-byte credential ("kodema:" + token) encodes to about 5.5 KB; the extra
 // room covers a configured username prefix and optional padding.
 const base64MaterialLimit = 4*((api.MaxCredentialBytes+128)/3) + 8
 

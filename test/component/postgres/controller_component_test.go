@@ -7,19 +7,19 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestControllerEventCommitOnPostgreSQL is the real proof of the engine
 // commit path: an execution-bound lifecycle event and audit row commit
-// atomically with the Kernel state write through the kodama_controller role,
+// atomically with the Kernel state write through the kodema_controller role,
 // under forced RLS, the 0013 INSERT grants and the 0014 INSERT policies. It also proves the
 // lock-after-scope order (plain SELECT derives the scope, then FOR UPDATE).
 func TestControllerEventCommitOnPostgreSQL(t *testing.T) {
@@ -198,7 +198,7 @@ func controllerEventUnit(scope tenancy.Scope, expectVersion uint64, executionID,
 
 // TestControllerUnscopedPolicyReadOnPostgreSQL proves the controller's declared
 // cross-scope SELECT policy in the production shape: an UNSCOPED session (no
-// kodama.tenant_id/project_id) reads executions from different tenants. It is a
+// kodema.tenant_id/project_id) reads executions from different tenants. It is a
 // raw-policy proof; the product Controller.Read adapter's own production shape
 // is asserted by TestControllerReadProductionShapeOnPostgreSQL.
 func TestControllerUnscopedPolicyReadOnPostgreSQL(t *testing.T) {

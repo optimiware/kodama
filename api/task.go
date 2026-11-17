@@ -19,7 +19,7 @@ import (
 const MaxTaskMetadataBytes = 16 << 10
 
 // Task reference bounds. A reference is a durable restoration pointer (a pushed
-// commit, an artifact digest or an external restoration URL), not a Kodama
+// commit, an artifact digest or an external restoration URL), not a Kodema
 // identity: the domain clones arbitrary strings and applies no character
 // grammar. The public DTO therefore bounds only the byte length and list size.
 const (

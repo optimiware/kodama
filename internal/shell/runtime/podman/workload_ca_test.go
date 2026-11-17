@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 func generateTestCAPEM(t *testing.T) []byte {
@@ -28,7 +28,7 @@ func generateTestCAPEM(t *testing.T) []byte {
 	}
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "kodama-local-ca"},
+		Subject:               pkix.Name{CommonName: "kodema-local-ca"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		IsCA:                  true,
@@ -57,7 +57,7 @@ func TestPodmanWorkloadCAMountsReadOnlyCertAndExposesEnvOptIn(t *testing.T) {
 		Libpod:         fx.libpod,
 		Files:          fx.files,
 		Root:           fx.root,
-		KodamaURL:      testKodamaURL,
+		KodemaURL:      testKodemaURL,
 		WorkloadCAFile: caFile,
 		Cleanup:        CleanupPolicy{Attempts: 2},
 		Clock:          fx.clock,
@@ -66,8 +66,8 @@ func TestPodmanWorkloadCAMountsReadOnlyCertAndExposesEnvOptIn(t *testing.T) {
 		t.Fatalf("New with WorkloadCAFile: %v", err)
 	}
 	fx.adapter = adapter
-	// Attempt to spoof KODAMA_CA_FILE in literal env; the adapter must override
-	// it with the authoritative /kodama/ca.crt path.
+	// Attempt to spoof KODEMA_CA_FILE in literal env; the adapter must override
+	// it with the authoritative /kodema/ca.crt path.
 	fx.request.Container.Env = append(fx.request.Container.Env,
 		definition.EnvVar{Name: EnvWorkloadCAFile, Value: "/tmp/evil.crt"})
 
@@ -75,10 +75,10 @@ func TestPodmanWorkloadCAMountsReadOnlyCertAndExposesEnvOptIn(t *testing.T) {
 
 	mountedHostCA := fx.hostPath(WorkloadCAPath)
 	if got := readHostFile(t, mountedHostCA); string(got) != string(caPEM) {
-		t.Fatalf("materialized /kodama/ca.crt mismatch")
+		t.Fatalf("materialized /kodema/ca.crt mismatch")
 	}
 	if mode := hostFileMode(t, mountedHostCA); mode != 0o444 {
-		t.Fatalf("/kodama/ca.crt mode = %o; want 0444", mode)
+		t.Fatalf("/kodema/ca.crt mode = %o; want 0444", mode)
 	}
 
 	// Start follows what Prepare wrote, not the adapter's current configuration.
@@ -119,7 +119,7 @@ func TestPodmanWorkloadCARefusesInvalidFiles(t *testing.T) {
 				Libpod:         newFakeLibpod(),
 				Files:          newFakeFiles(),
 				Root:           t.TempDir(),
-				KodamaURL:      testKodamaURL,
+				KodemaURL:      testKodemaURL,
 				WorkloadCAFile: tc.path,
 				Cleanup:        CleanupPolicy{Attempts: 1},
 				Clock:          newFakeClock(),

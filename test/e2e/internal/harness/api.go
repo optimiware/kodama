@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // defaultAPITimeout bounds one public request when the caller supplies no

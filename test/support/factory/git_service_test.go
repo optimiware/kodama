@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	"github.com/optimiware/kodama/internal/userland/git/app/actors"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	"github.com/optimiware/kodema/internal/userland/git/app/actors"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 // GitRepositoryAdmin and GitRepositoryProject name the two repositories the
@@ -90,7 +90,7 @@ func TestGitServiceConfigUsesProductionVerificationGraph(t *testing.T) {
 		ResourceIDs:      resourceIDs,
 		StorageRoot:      filepath.Join(root, "repositories"),
 		JournalDirectory: filepath.Join(root, "journal"),
-		HookBinary:       filepath.Join(root, "kodama"),
+		HookBinary:       filepath.Join(root, "kodema"),
 		HookSocketPath:   socketPath,
 		Listener:         listener,
 	})
@@ -158,7 +158,7 @@ func TestGitServiceConfigUsesProductionVerificationGraph(t *testing.T) {
 	if any(config.ActorHandles) != any(config.HookActors) {
 		t.Fatalf("smart HTTP and hooks use different actor registries")
 	}
-	if config.HookBinary != filepath.Join(root, "kodama") {
+	if config.HookBinary != filepath.Join(root, "kodema") {
 		t.Fatalf("config hook binary = %q", config.HookBinary)
 	}
 	if config.HookSocketPath != socketPath {
@@ -237,7 +237,7 @@ func TestGitServicePlanRefusesAnOverlongHookSocketPath(t *testing.T) {
 		ResourceIDs:      map[string]string{GitAdminRepository: "resource-i04-admin"},
 		StorageRoot:      filepath.Join(root, "repositories"),
 		JournalDirectory: filepath.Join(root, "journal"),
-		HookBinary:       filepath.Join(root, "kodama"),
+		HookBinary:       filepath.Join(root, "kodema"),
 		HookSocketPath:   overlong,
 		Listener:         listener,
 	})
@@ -334,7 +334,7 @@ func TestGitServicePlanWrapsTheListenerWithTLS(t *testing.T) {
 		ResourceIDs:      map[string]string{GitAdminRepository: "resource-i04-admin"},
 		StorageRoot:      filepath.Join(root, "repositories"),
 		JournalDirectory: filepath.Join(root, "journal"),
-		HookBinary:       filepath.Join(root, "kodama"),
+		HookBinary:       filepath.Join(root, "kodema"),
 		HookSocketPath:   filepath.Join(root, "socket", "hook.sock"),
 		Listener:         raw,
 		TLS:              tlsFixture.ServerConfig(),
@@ -403,7 +403,7 @@ func TestGitServicePlanRequiresPrivateCredentialFile(t *testing.T) {
 			ResourceIDs:      map[string]string{GitAdminRepository: "resource-i04-admin"},
 			StorageRoot:      filepath.Join(root, "repositories"),
 			JournalDirectory: filepath.Join(root, "journal"),
-			HookBinary:       filepath.Join(root, "kodama"),
+			HookBinary:       filepath.Join(root, "kodema"),
 			HookSocketPath:   filepath.Join(root, "socket", "hook.sock"),
 			Listener:         listener,
 		})
@@ -470,7 +470,7 @@ func TestGitServiceStartupFailureClosesOwnedResources(t *testing.T) {
 		ResourceIDs:      map[string]string{GitAdminRepository: "resource-i04-admin"},
 		StorageRoot:      filepath.Join(root, "repositories"),
 		JournalDirectory: filepath.Join(root, "journal"),
-		HookBinary:       filepath.Join(root, "kodama"),
+		HookBinary:       filepath.Join(root, "kodema"),
 		HookSocketPath:   filepath.Join(socketDirectory, "hook.sock"),
 		Listener:         listener,
 	})
@@ -582,7 +582,7 @@ func testPlan(t *testing.T) *gitServicePlan {
 		ResourceIDs:      map[string]string{GitAdminRepository: "resource-i04-admin"},
 		StorageRoot:      filepath.Join(root, "repositories"),
 		JournalDirectory: filepath.Join(root, "journal"),
-		HookBinary:       filepath.Join(root, "kodama"),
+		HookBinary:       filepath.Join(root, "kodema"),
 		HookSocketPath:   filepath.Join(root, "socket", "hook.sock"),
 		Listener:         listener,
 	})

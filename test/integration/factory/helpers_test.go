@@ -24,10 +24,10 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	identityfixture "github.com/optimiware/kodama/test/support/boundaries/identity"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	identityfixture "github.com/optimiware/kodema/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -297,8 +297,8 @@ func requestSubjectYAML(base, candidate string) map[string]any {
 // event, receipt or task metadata.
 func blockingCommands() []string {
 	return []string{
-		`test ! -e /kodama/task.json`,
-		`cat /kodama/secrets/KODAMA_TOKEN > ` + approvalTokenPath,
+		`test ! -e /kodema/task.json`,
+		`cat /kodema/secrets/KODEMA_TOKEN > ` + approvalTokenPath,
 		`while [ ! -e ` + approvalReleasePath + ` ]; do sleep 1; done`,
 		`exit 0`,
 	}

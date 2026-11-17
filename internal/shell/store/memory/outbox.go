@@ -4,8 +4,8 @@ import (
 	"context"
 	"sort"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
 )
 
 // Pending returns at most limit committed, unacknowledged event rows in durable

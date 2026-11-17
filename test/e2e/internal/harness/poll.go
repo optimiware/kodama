@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // Default poll bounds for live execution observation.

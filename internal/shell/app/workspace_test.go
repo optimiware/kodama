@@ -73,12 +73,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/installation"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	podmandriver "github.com/optimiware/kodama/internal/shell/app/drivers/podman"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/installation"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	podmandriver "github.com/optimiware/kodema/internal/shell/app/drivers/podman"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
 )
 
 // callLog records the order of the fake external effects.

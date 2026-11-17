@@ -22,7 +22,7 @@
 //     that the real parser must refuse with fault.InvalidInput.
 //   - examples/knowledge/** is bounded Markdown with no credential material.
 //   - examples/delivery/README.md carries the registry, digest, retry,
-//     idempotency, KODAMA_* context and readiness statements.
+//     idempotency, KODEMA_* context and readiness statements.
 package examples_test
 
 import (
@@ -37,10 +37,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // requiredPipelines is the shipped pipeline example inventory.
@@ -210,7 +210,7 @@ func TestPlannedReviewDeclaresApprovalRequest(t *testing.T) {
 
 // TestTaskHandoffReferencesDurableContext checks that the task handoff example
 // is ordinary container work: it persists durable context first and then asks
-// through the task-ask operation using KODAMA_TASK and durable references. An
+// through the task-ask operation using KODEMA_TASK and durable references. An
 // ask is a conversation message that cancels the current execution; it creates
 // no request action, carries no approval evidence, and cannot rely on
 // disposable workspace state.
@@ -238,7 +238,7 @@ func TestTaskHandoffReferencesDurableContext(t *testing.T) {
 	raw := string(readExample(t, rel))
 	body := strings.ToLower(raw)
 	for _, input := range decoded.Inputs {
-		materialized := "/kodama/inputs/" + string(input)
+		materialized := "/kodema/inputs/" + string(input)
 		if !strings.Contains(raw, materialized) {
 			t.Fatalf("%s must reference the admitted durable input %s", rel, materialized)
 		}
@@ -250,8 +250,8 @@ func TestTaskHandoffReferencesDurableContext(t *testing.T) {
 	}
 	ask := decoded.Actions[len(decoded.Actions)-1]
 	commands := strings.Join(ask.Container.Commands, "\n")
-	if !strings.Contains(commands, "$KODAMA_TASK") {
-		t.Fatalf("%s ask action must target the current task through $KODAMA_TASK", rel)
+	if !strings.Contains(commands, "$KODEMA_TASK") {
+		t.Fatalf("%s ask action must target the current task through $KODEMA_TASK", rel)
 	}
 	// The real CLI dispatches served operations only through `call`; there is no
 	// `kodactl task ...` subcommand.
@@ -261,10 +261,10 @@ func TestTaskHandoffReferencesDurableContext(t *testing.T) {
 	if strings.Contains(commands, "task ask") {
 		t.Fatalf("%s ask action invokes the nonexistent `kodactl task ask` subcommand", rel)
 	}
-	// /kodama/task.json carries no lifecycle version, so the example must read
+	// /kodema/task.json carries no lifecycle version, so the example must read
 	// the current task first and pass the returned version as expected-version.
 	if !strings.Contains(commands, `kodactl call task.read`) {
-		t.Fatalf("%s ask action must read the current task with `kodactl call task.read`; /kodama/task.json carries no lifecycle version", rel)
+		t.Fatalf("%s ask action must read the current task with `kodactl call task.read`; /kodema/task.json carries no lifecycle version", rel)
 	}
 	if !strings.Contains(commands, `--expected-version="$task_version"`) {
 		t.Fatalf("%s ask action must pass the read task version as --expected-version", rel)
@@ -284,11 +284,11 @@ func TestTaskHandoffReferencesDurableContext(t *testing.T) {
 	}
 	// A stable key derived from the task and the durable context makes an
 	// identical retry converge instead of asking twice.
-	if !strings.Contains(commands, `--idempotency-key="ask:${KODAMA_TASK}:$(cat /kodama/outputs/persist/context_commit)"`) {
-		t.Fatalf("%s ask action must derive a stable --idempotency-key from $KODAMA_TASK and the durable context commit", rel)
+	if !strings.Contains(commands, `--idempotency-key="ask:${KODEMA_TASK}:$(cat /kodema/outputs/persist/context_commit)"`) {
+		t.Fatalf("%s ask action must derive a stable --idempotency-key from $KODEMA_TASK and the durable context commit", rel)
 	}
 	for _, output := range persist.Container.Outputs {
-		materialized := "/kodama/outputs/" + string(persist.Name) + "/" + string(output)
+		materialized := "/kodema/outputs/" + string(persist.Name) + "/" + string(output)
 		if !strings.Contains(commands, materialized) {
 			t.Fatalf("%s ask action must pass the durable reference %s", rel, materialized)
 		}
@@ -336,8 +336,8 @@ func TestExampleHandoffReadsVersionFromJSONOutput(t *testing.T) {
 
 	// The table format is the CLI default, so an unpinned read renders the
 	// version in a form the extraction expression cannot match.
-	if !strings.Contains(commands, "KODAMA_OUTPUT=json kodactl call task.read") {
-		t.Fatalf("%s task.read must pin JSON output with KODAMA_OUTPUT=json; the default table rendering carries no matchable lifecycle_version", rel)
+	if !strings.Contains(commands, "KODEMA_OUTPUT=json kodactl call task.read") {
+		t.Fatalf("%s task.read must pin JSON output with KODEMA_OUTPUT=json; the default table rendering carries no matchable lifecycle_version", rel)
 	}
 
 	script := handoffReadSedScript(t, rel, commands)
@@ -696,8 +696,8 @@ var invalidPipelines = []string{
 	"undeclared-input-reference.yaml",
 	"both-kinds.yaml",           // container and request in one action
 	"push-glob-ref.yaml",        // on.push ref with a wildcard
-	"reserved-env.yaml",         // KODAMA_URL shadowing
-	"reserved-secret.yaml",      // KODAMA_TOKEN shadowing
+	"reserved-env.yaml",         // KODEMA_URL shadowing
+	"reserved-secret.yaml",      // KODEMA_TOKEN shadowing
 	"interpolated-subject.yaml", // expression instead of a direct lookup
 	"duplicate-action.yaml",     // duplicate action names
 	"no-actions.yaml",           // empty action list

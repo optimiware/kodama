@@ -30,7 +30,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // tlsTestValidityWindow is one test certificate validity interval.
@@ -269,7 +269,7 @@ func dialConfig(url, caFile string) Config {
 // system-root fallback), and that a TLS configuration without a CA bundle is
 // refused instead of silently connecting unverified.
 func TestNATSDialUsesConfiguredTrust(t *testing.T) {
-	ca := newTestCA(t, "kodama trusted test CA")
+	ca := newTestCA(t, "kodema trusted test CA")
 	serverIdentity := ca.issueLoopback(t, 10)
 	server := startFakeNATSServer(t, serverIdentity.serverTLS())
 
@@ -317,7 +317,7 @@ func TestNATSDialUsesConfiguredTrust(t *testing.T) {
 // roots), verification and hostname checks stay on, the TLS 1.2 floor is
 // explicit, and the client certificate is only installed when configured.
 func TestNATSClientTLSIsPrivateCAOnly(t *testing.T) {
-	ca := newTestCA(t, "kodama trusted test CA")
+	ca := newTestCA(t, "kodema trusted test CA")
 	config := Config{TLS: &TLSConfig{CAFile: ca.file}}
 	built, err := config.clientTLS()
 	if err != nil {
@@ -372,7 +372,7 @@ func TestNATSClientTLSIsPrivateCAOnly(t *testing.T) {
 // only advertises TLS as available, the dial is refused before any CONNECT (and
 // therefore before any credential) reaches the peer.
 func TestNATSTLSRefusesPlaintextPeer(t *testing.T) {
-	ca := newTestCA(t, "kodama trusted test CA")
+	ca := newTestCA(t, "kodema trusted test CA")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
@@ -406,7 +406,7 @@ func TestNATSTLSRefusesPlaintextPeer(t *testing.T) {
 // TestNATSTLSRefusesOldProtocolVersion proves the explicit TLS 1.2 floor is
 // enforced on the wire: a server limited to TLS 1.0-1.1 is refused.
 func TestNATSTLSRefusesOldProtocolVersion(t *testing.T) {
-	ca := newTestCA(t, "kodama trusted test CA")
+	ca := newTestCA(t, "kodema trusted test CA")
 	serverIdentity := ca.issueLoopback(t, 50)
 	oldServerTLS := serverIdentity.serverTLS()
 	oldServerTLS.MinVersion = tls.VersionTLS10
@@ -429,7 +429,7 @@ func TestNATSTLSRefusesOldProtocolVersion(t *testing.T) {
 // is valid now, so the refusal can only be the leaf's expiry.
 func TestNATSTLSRefusesExpiredServerCertificate(t *testing.T) {
 	now := time.Now().UTC()
-	ca := newTestCA(t, "kodama trusted test CA")
+	ca := newTestCA(t, "kodema trusted test CA")
 	if now.Before(ca.cert.NotBefore) || now.After(ca.cert.NotAfter) {
 		t.Fatalf("test CA is not valid now (%s..%s at %s); a refusal would be vacuous",
 			ca.cert.NotBefore.Format(time.RFC3339), ca.cert.NotAfter.Format(time.RFC3339), now.Format(time.RFC3339))
@@ -486,14 +486,14 @@ func TestNATSTLSRefusesExpiredServerCertificate(t *testing.T) {
 // missing required client certificate all fail, bounded, and no insecure
 // escape hatch exists in the configuration.
 func TestNATSTLSRejectsUntrustedServer(t *testing.T) {
-	trusted := newTestCA(t, "kodama trusted test CA")
+	trusted := newTestCA(t, "kodema trusted test CA")
 	serverIdentity := trusted.issueLoopback(t, 20)
 	server := startFakeNATSServer(t, serverIdentity.serverTLS())
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	t.Run("wrong CA", func(t *testing.T) {
-		untrusted := newTestCA(t, "kodama untrusted test CA")
+		untrusted := newTestCA(t, "kodema untrusted test CA")
 		started := time.Now()
 		_, err := Dial(ctx, Config{
 			URL:            server.URL(),
@@ -581,7 +581,7 @@ func TestNATSTLSRejectsUntrustedServer(t *testing.T) {
 // same client certificate and the same token authentication, then publishes on
 // the verified connection.
 func TestNATSTLSReconnectPreservesTrust(t *testing.T) {
-	ca := newTestCA(t, "kodama trusted test CA")
+	ca := newTestCA(t, "kodema trusted test CA")
 	serverIdentity := ca.issueLoopback(t, 30)
 	clientIdentity := ca.issue(t, 31, "client.test", nil, nil, x509.ExtKeyUsageClientAuth)
 
@@ -647,10 +647,10 @@ func TestNATSTLSReconnectPreservesTrust(t *testing.T) {
 // failures never render URL credentials, private-key material or CA file
 // content.
 func TestNATSTLSFailuresAreSecretFree(t *testing.T) {
-	ca := newTestCA(t, "kodama trusted test CA")
+	ca := newTestCA(t, "kodema trusted test CA")
 	serverIdentity := ca.issueLoopback(t, 40)
 	server := startFakeNATSServer(t, serverIdentity.serverTLS())
-	untrusted := newTestCA(t, "kodama untrusted test CA")
+	untrusted := newTestCA(t, "kodema untrusted test CA")
 	clientIdentity := ca.issue(t, 41, "client.test", nil, nil, x509.ExtKeyUsageClientAuth)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

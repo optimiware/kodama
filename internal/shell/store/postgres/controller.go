@@ -15,10 +15,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Controller implements store.Controller over the controller-role connection
@@ -28,7 +28,7 @@ type Controller struct {
 }
 
 // NewController builds the cross-scope controller seam over the
-// kodama_controller pool. The pool is bound to that role by configuration; the
+// kodema_controller pool. The pool is bound to that role by configuration; the
 // adapter never selects a role with SQL.
 func NewController(db DB) *Controller {
 	return &Controller{db: db}

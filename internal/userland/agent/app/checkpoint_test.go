@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/agent"
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/agent"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 var testNow = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
@@ -266,7 +266,7 @@ func TestCheckpointPortRefusesMissingCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCheckpointPort: %v", err)
 	}
-	_, err = port.Restore(context.Background(), "kodama-checkpoint/v1/"+checkpointKey("sess-1")+"-1")
+	_, err = port.Restore(context.Background(), "kodema-checkpoint/v1/"+checkpointKey("sess-1")+"-1")
 	if class, ok := fault.ClassOf(err); !ok || class != fault.NotFound {
 		t.Fatalf("Restore error = %v; want NotFound", err)
 	}
@@ -581,7 +581,7 @@ func TestCheckpointPortRefusesCorruptAndVersionMismatchedContext(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewCheckpointPort: %v", err)
 			}
-			restored, err := port.Restore(context.Background(), "kodama-checkpoint/v1/record-1")
+			restored, err := port.Restore(context.Background(), "kodema-checkpoint/v1/record-1")
 			if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
 				t.Fatalf("Restore error = %v; want InvalidInput", err)
 			}
@@ -643,7 +643,7 @@ func TestStorageRecordIsNotFabricated(t *testing.T) {
 	}
 	// A reference that parses as a checkpoint but names an unknown key must be
 	// missing, never an empty success.
-	unknown := session.Ref("kodama-checkpoint/v1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1")
+	unknown := session.Ref("kodema-checkpoint/v1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1")
 	if unknown == ref {
 		t.Fatal("test reference collided with the stored reference")
 	}
@@ -654,7 +654,7 @@ func TestStorageRecordIsNotFabricated(t *testing.T) {
 
 func TestStorageRefusesUnsupportedRefShape(t *testing.T) {
 	storage := newStorage(t)
-	if _, err := storage.Read(context.Background(), session.Ref("kodama-checkpoint/v1/not-ours")); !errors.Is(err, session.ErrCheckpointMissing) {
+	if _, err := storage.Read(context.Background(), session.Ref("kodema-checkpoint/v1/not-ours")); !errors.Is(err, session.ErrCheckpointMissing) {
 		t.Fatalf("Read error = %v; want ErrCheckpointMissing", err)
 	}
 }

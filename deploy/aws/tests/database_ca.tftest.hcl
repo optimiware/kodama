@@ -1,6 +1,6 @@
 # Proves the AWS deployment root exports the operator-supplied public RDS CA
 # certificate PEM bundle as `database_ca_certificate`, the exact output
-# `scripts/bootstrap-secrets` reads for the `kodama-database` Secret's ca.crt.
+# `scripts/bootstrap-secrets` reads for the `kodema-database` Secret's ca.crt.
 #
 # Every provider is mocked: these runs never contact AWS, TLS endpoints, a state
 # backend or any account. The fixture below is a synthetic self-signed CA
@@ -22,7 +22,7 @@ mock_provider "aws" {
 
   mock_resource "aws_iam_role" {
     defaults = {
-      arn = "arn:aws:iam::123456789012:role/kodama-mock"
+      arn = "arn:aws:iam::123456789012:role/kodema-mock"
     }
   }
 
@@ -35,9 +35,9 @@ mock_provider "aws" {
 
   mock_resource "aws_eks_cluster" {
     defaults = {
-      arn      = "arn:aws:eks:eu-west-1:123456789012:cluster/kodama-mock"
+      arn      = "arn:aws:eks:eu-west-1:123456789012:cluster/kodema-mock"
       endpoint = "https://mock.eks.amazonaws.com"
-      id       = "kodama-mock"
+      id       = "kodema-mock"
       identity = [
         {
           oidc = [
@@ -241,7 +241,7 @@ EOT
   }
 
   assert {
-    condition     = aws_db_parameter_group.main.name == "kodama-stage-pg17"
+    condition     = aws_db_parameter_group.main.name == "kodema-stage-pg17"
     error_message = "aws_db_parameter_group.main.name must derive the major version from postgres_engine_version."
   }
 

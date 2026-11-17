@@ -18,7 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
 )
 
 // CleanupOutcome separates the post-run cleanup errors this process caused

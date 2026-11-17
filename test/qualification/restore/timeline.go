@@ -6,7 +6,7 @@ package restorequal
 // stage drill skeleton.
 //
 // Sources:
-//   - KODAMA.md "Backup and recovery" (control-plane scope) and its initial
+//   - KODEMA.md "Backup and recovery" (control-plane scope) and its initial
 //     objectives: RPO ≤15 minutes, RTO ≤4 hours, 30-day PostgreSQL recovery.
 //   - docs/specs/10-production.md §4 (backup and restore) and §5 (retention and
 //     measured targets).
@@ -26,7 +26,7 @@ import (
 // measurement.
 var ErrInvalidTimeline = errors.New("invalid recovery timeline")
 
-// Objectives are the frozen recovery targets. See KODAMA.md line 517 and
+// Objectives are the frozen recovery targets. See KODEMA.md line 517 and
 // docs/specs/10-production.md §5: RPO ≤15 minutes, RTO ≤4 hours and 30-day
 // PostgreSQL recovery.
 type Objectives struct {

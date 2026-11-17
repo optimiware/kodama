@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // versionProbeExecutor scripts the one `git --version` command. It records the

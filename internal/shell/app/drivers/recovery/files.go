@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // OSFiles is the operating-system Files boundary. It never follows a symlink
@@ -126,7 +126,7 @@ func (OSFiles) WriteFile(ctx context.Context, path string, data []byte) error {
 		return fault.Wrap(fault.DependencyUnavailable, "write target is unreachable", statErr)
 	}
 
-	staged, err := os.CreateTemp(directory, ".kodama-recovery-*")
+	staged, err := os.CreateTemp(directory, ".kodema-recovery-*")
 	if err != nil {
 		return fault.Wrap(fault.DependencyUnavailable, "file write could not be staged", err)
 	}

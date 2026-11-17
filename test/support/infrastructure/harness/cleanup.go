@@ -26,7 +26,7 @@ func ProcessAlive(pid int) bool {
 }
 
 // CleanupOrphans removes containers, volumes and networks labelled
-// kodama.test=1 whose kodama.owner-pid is no longer alive. It never removes a
+// kodema.test=1 whose kodema.owner-pid is no longer alive. It never removes a
 // resource owned by a live process. Cleanup runs containers first, then
 // volumes, then networks.
 func (p *Podman) CleanupOrphans(ctx context.Context) error {
@@ -186,7 +186,7 @@ func HandleSignal(sig os.Signal, cleanup func(context.Context) error) int {
 }
 
 // cleanupForSignal removes every active shard's resources and then any
-// dead-owner resources labelled kodama.test=1.
+// dead-owner resources labelled kodema.test=1.
 func cleanupForSignal(ctx context.Context) error {
 	var errs []error
 	for _, shard := range snapshotShards() {

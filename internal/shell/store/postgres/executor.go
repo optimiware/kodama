@@ -3,8 +3,8 @@ package postgres
 import (
 	"context"
 
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 var _ store.Executor = (*Store)(nil)

@@ -121,7 +121,7 @@
 //
 // `helper` reads Ports.Credential only for get and delegates to
 // HelperDecision. A successful get writes exactly
-// "username=kodama\npassword=<token>\n" to Out; store/erase and every refusal
+// "username=kodema\npassword=<token>\n" to Out; store/erase and every refusal
 // (including a failed or empty credential source) write nothing and exit
 // ExitSuccess. Invalid syntax is ExitUsage. The token never appears on Err.
 package cli_test
@@ -132,14 +132,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestConfigProjectInput pins the pipeline-apply project input.
 func TestConfigProjectInput(t *testing.T) {
 	config := cli.Config{
-		ServerURL: "https://kodama.example.com",
+		ServerURL: "https://kodema.example.com",
 		Project:   "shop",
 		Output:    cli.OutputJSON,
 	}
@@ -164,10 +164,10 @@ func TestConfigProjectInput(t *testing.T) {
 	if parsed.Project != "shop" {
 		t.Fatalf("parsed project = %q; want shop", parsed.Project)
 	}
-	if err := (cli.Config{ServerURL: "https://kodama.example.com"}).Validate(); err != nil {
+	if err := (cli.Config{ServerURL: "https://kodema.example.com"}).Validate(); err != nil {
 		t.Fatalf("config without project refused: %v", err)
 	}
-	if _, err := cli.ParseConfig([]byte(`{"server_url":"https://kodama.example.com","project":"shop"}`)); err != nil {
+	if _, err := cli.ParseConfig([]byte(`{"server_url":"https://kodema.example.com","project":"shop"}`)); err != nil {
 		t.Fatalf("ParseConfig(project): %v", err)
 	}
 }
@@ -178,7 +178,7 @@ func TestConfigProjectInput(t *testing.T) {
 func TestSessionUnknownExpiry(t *testing.T) {
 	now := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 
-	execution := cli.Session{Source: client.KindExecution, TokenPath: "/run/kodama/token"}
+	execution := cli.Session{Source: client.KindExecution, TokenPath: "/run/kodema/token"}
 	if err := execution.Validate(); err != nil {
 		t.Fatalf("unknown-expiry execution session refused: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestSessionUnknownExpiry(t *testing.T) {
 		t.Fatal("unknown-expiry execution session is not usable")
 	}
 
-	human := cli.Session{Source: client.KindSession, TokenPath: "/home/engineer/.kodama/session.json"}
+	human := cli.Session{Source: client.KindSession, TokenPath: "/home/engineer/.kodema/session.json"}
 	if err := human.Validate(); err == nil {
 		t.Fatal("human session with unknown expiry was accepted")
 	}
@@ -196,7 +196,7 @@ func TestSessionUnknownExpiry(t *testing.T) {
 
 	expired := cli.Session{
 		Source:    client.KindExecution,
-		TokenPath: "/run/kodama/token",
+		TokenPath: "/run/kodema/token",
 		ExpiresAt: now.Add(-time.Second),
 	}
 	if err := expired.Validate(); err != nil {
@@ -216,7 +216,7 @@ func TestSessionUnknownExpiry(t *testing.T) {
 		t.Fatal("current execution session is not usable")
 	}
 
-	service := cli.Session{Source: client.KindService, TokenPath: "/run/kodama/token"}
+	service := cli.Session{Source: client.KindService, TokenPath: "/run/kodema/token"}
 	if err := service.Validate(); err == nil {
 		t.Fatal("service credential was accepted as a helper session")
 	}
@@ -253,7 +253,7 @@ func TestHelperDecisionExcludesServiceCredentials(t *testing.T) {
 		if err != nil {
 			t.Fatalf("HelperDecision(%s): %v", credential.Kind, err)
 		}
-		if response.Username != "kodama" || response.Password != credential.Token {
+		if response.Username != "kodema" || response.Password != credential.Token {
 			t.Fatalf("%s helper response = %+v", credential.Kind, response)
 		}
 	}

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	git "github.com/optimiware/kodama/internal/userland/git"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 var zeroObjectID = strings.Repeat("0", 40)

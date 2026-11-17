@@ -1,4 +1,4 @@
-// Event outbox over the events table with the kodama_publisher role.
+// Event outbox over the events table with the kodema_publisher role.
 //
 // The publisher role has events-only SELECT and a publish_state-column UPDATE.
 // It cannot read a domain table and cannot write any other event column.
@@ -12,11 +12,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Outbox implements event.Outbox over the publisher-role connection pool.
@@ -24,7 +24,7 @@ type Outbox struct {
 	db DB
 }
 
-// NewOutbox builds the durable event outbox over the kodama_publisher pool.
+// NewOutbox builds the durable event outbox over the kodema_publisher pool.
 func NewOutbox(db DB) *Outbox {
 	return &Outbox{db: db}
 }

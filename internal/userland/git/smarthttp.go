@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // ErrBodyTooLarge reports a smart-HTTP request body above the configured
@@ -89,7 +89,7 @@ type ReadActorVerifier interface {
 
 // ActorHandleIssuer turns one authenticated credential into an opaque handle
 // for the backend environment. The handle, never the raw credential, is placed
-// in KODAMA_ACTOR_REF.
+// in KODEMA_ACTOR_REF.
 type ActorHandleIssuer interface {
 	IssueActor(ctx context.Context, credential string) (string, error)
 }
@@ -109,7 +109,7 @@ type SmartHTTPConfig struct {
 	// the request context. When set, it takes precedence over ResourceID.
 	ResourceIDContext func(ctx context.Context, repository string) (string, error)
 	// SourceEvent mints the unique per-request push identity placed in the
-	// backend environment as KODAMA_SOURCE_EVENT. It is required: a repeated
+	// backend environment as KODEMA_SOURCE_EVENT. It is required: a repeated
 	// identical push must never reuse an earlier journal identity.
 	SourceEvent  func() (string, error)
 	MaxBodyBytes int64
@@ -497,7 +497,7 @@ func validRequestContentType(request *http.Request, service string) bool {
 }
 
 // smartCredential extracts the bearer token or the credential-helper password
-// for username `kodama`. The credential is returned only to the injected
+// for username `kodema`. The credential is returned only to the injected
 // verification/handle boundaries.
 func smartCredential(request *http.Request) (string, bool) {
 	header := request.Header.Get("Authorization")
@@ -517,7 +517,7 @@ func smartCredential(request *http.Request) (string, bool) {
 		return token, true
 	case strings.EqualFold(scheme, "Basic"):
 		username, password, ok := request.BasicAuth()
-		if !ok || username != "kodama" || password == "" || len(password) > api.MaxCredentialBytes {
+		if !ok || username != "kodema" || password == "" || len(password) > api.MaxCredentialBytes {
 			return "", false
 		}
 		return password, true
@@ -671,7 +671,7 @@ func (response *backendResponse) written() bool {
 // writeUnauthorized emits the uniform Basic challenge without revealing
 // whether a repository exists.
 func writeUnauthorized(writer http.ResponseWriter) {
-	writer.Header().Set("WWW-Authenticate", `Basic realm="kodama"`)
+	writer.Header().Set("WWW-Authenticate", `Basic realm="kodema"`)
 	writeRefusal(writer, http.StatusUnauthorized)
 }
 

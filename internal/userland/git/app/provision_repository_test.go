@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 const repositoryProvisionName = "shop/web"
 
-// repositoryProvisionDefaultRules is the exact block KODAMA.md defines for a
+// repositoryProvisionDefaultRules is the exact block KODEMA.md defines for a
 // provisioned repository: read for every principal, work-branch writes for
 // engineers and executions, execution writes to the default branch, and review
 // approval for the default branch.
@@ -78,7 +78,7 @@ func requireManagedRepositoryHooks(t *testing.T, repositoryPath string) {
 		if err != nil {
 			t.Fatalf("read %s hook: %v", phase, err)
 		}
-		if !strings.Contains(string(data), "managed by kodama") {
+		if !strings.Contains(string(data), "managed by kodema") {
 			t.Fatalf("%s hook is not the managed hook: %q", phase, data)
 		}
 		if !strings.Contains(string(data), "git hook "+phase) {
@@ -110,7 +110,7 @@ func writeRepositoryProvisionPolicy(t *testing.T, environment []string, adminPat
 	tree := strings.TrimSpace(requireProvisionGit(t, indexEnvironment,
 		"--git-dir="+adminPath, "write-tree"))
 	commit := strings.TrimSpace(requireProvisionGit(t, environment,
-		"-c", "user.name=Kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=Kodema", "-c", "user.email=kodema@example.invalid",
 		"--git-dir="+adminPath, "commit-tree", tree, "-p", parent, "-m", "policy update"))
 	requireProvisionGit(t, environment, "--git-dir="+adminPath,
 		"update-ref", native.CommittedPolicyRef, commit, parent)
@@ -162,8 +162,8 @@ func TestProvisionRepositoryWritesDefaultRulesOnce(t *testing.T) {
 	body := requireProvisionGit(t, config.Environment,
 		"--git-dir="+adminPath, "cat-file", "-p", native.CommittedPolicyRef)
 	for _, identity := range []string{
-		"author Kodama Provisioning <kodama@example.invalid>",
-		"committer Kodama Provisioning <kodama@example.invalid>",
+		"author Kodema Provisioning <kodema@example.invalid>",
+		"committer Kodema Provisioning <kodema@example.invalid>",
 	} {
 		if !strings.Contains(body, identity) {
 			t.Fatalf("repository policy commit does not carry %q: %q", identity, body)

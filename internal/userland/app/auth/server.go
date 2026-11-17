@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/principal"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/principal"
 )
 
 // Server is one constructed OIDC Provider and Social Login Broker.

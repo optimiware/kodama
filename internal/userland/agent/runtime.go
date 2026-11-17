@@ -9,8 +9,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // reservedToolNames are the authority-bearing names the runtime never forwards.
@@ -715,7 +715,7 @@ func toolDescription(native string) string {
 	if native == "task.ask" {
 		return "Ask the task owner one bounded question and assign the reply."
 	}
-	return "Invoke the native Kodama tool " + native + "."
+	return "Invoke the native Kodema tool " + native + "."
 }
 
 // assignCallIdentities records one assistant call turn. A provider call id is

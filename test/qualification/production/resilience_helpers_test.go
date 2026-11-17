@@ -26,7 +26,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 const (
@@ -44,10 +44,10 @@ const (
 	resilienceMaxEventPages = 200
 	// resilienceMaxLogPages bounds one retained-log read.
 	resilienceMaxLogPages = 50
-	// resilienceKodamaSelector is the controller Deployment's pod selector. It
-	// excludes a one-off kodama-migrate pod: only the control-plane component is
+	// resilienceKodemaSelector is the controller Deployment's pod selector. It
+	// excludes a one-off kodema-migrate pod: only the control-plane component is
 	// a controller replica this probe may measure or delete.
-	resilienceKodamaSelector = "app.kubernetes.io/name=kodama,app.kubernetes.io/component=control-plane"
+	resilienceKodemaSelector = "app.kubernetes.io/name=kodema,app.kubernetes.io/component=control-plane"
 	// resilienceNATSSelector is the stack NATS pod selector.
 	resilienceNATSSelector = "app.kubernetes.io/name=nats"
 	// resilienceNATSStatefulSet is the stage stack's NATS statefulset name.
@@ -626,7 +626,7 @@ func resilienceClaimRetained(data []byte) (bool, error) {
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return false, fmt.Errorf("workspace claim JSON is unreadable")
 	}
-	const marker = "kodama.dev/retained"
+	const marker = "kodema.dev/retained"
 	return wire.Metadata.Labels[marker] == "true" || wire.Metadata.Annotations[marker] == "true", nil
 }
 
@@ -1243,7 +1243,7 @@ func resilienceBrokerPipeline(image, marker string) []byte {
 // from the task answer on the replacement. Required image: any image with a
 // POSIX sh, echo, grep and sleep.
 func resilienceHandoffPipeline(image, answer, firstMarker, replacementMarker, timerMarker string) []byte {
-	command := "if grep -q '" + answer + "' /kodama/task.json 2>/dev/null; then\n" +
+	command := "if grep -q '" + answer + "' /kodema/task.json 2>/dev/null; then\n" +
 		"  echo " + replacementMarker + "\n" +
 		"  exit 0\n" +
 		"fi\n" +

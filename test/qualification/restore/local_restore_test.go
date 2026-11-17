@@ -6,7 +6,7 @@ package restorequal
 // PostgreSQL, NATS/JetStream) and the I02c local registry, and records a
 // timestamped recovery timeline. Run it only inside the host slot:
 //
-//	scripts/infra-slot.sh stack -- env KODAMA_REQUIRE_INFRA=1 \
+//	scripts/infra-slot.sh stack -- env KODEMA_REQUIRE_INFRA=1 \
 //	    go test -race -tags=qualification -count=1 -timeout=30m ./test/qualification/restore/...
 //
 // Destructive stage drills are coordinator-owned; this file never contacts a
@@ -19,14 +19,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/installation"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	recovery "github.com/optimiware/kodama/internal/shell/app/drivers/recovery"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	"github.com/optimiware/kodama/test/support/infrastructure/messaging"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
-	recoverysupport "github.com/optimiware/kodama/test/support/infrastructure/recovery"
+	"github.com/optimiware/kodema/internal/installation"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	recovery "github.com/optimiware/kodema/internal/shell/app/drivers/recovery"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/messaging"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
+	recoverysupport "github.com/optimiware/kodema/test/support/infrastructure/recovery"
 )
 
 // TestMain installs the harness signal handler and the label-scoped orphan
@@ -84,7 +84,7 @@ func TestLocalRestore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TimelineEvidence: %v", err)
 	}
-	evidence.SourceRevision = os.Getenv("KODAMA_Q03_SOURCE_REVISION")
+	evidence.SourceRevision = os.Getenv("KODEMA_Q03_SOURCE_REVISION")
 	evidence.UnrecoverableWorkspaces = append([]string(nil), drill.Result.UnrecoverableWorkspaces...)
 	evidence.Images = []ImageRecord{
 		{Tag: source.PostgresImageTag, Digest: source.PostgresImageDigest},

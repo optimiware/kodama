@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	podmandriver "github.com/optimiware/kodama/internal/shell/app/drivers/podman"
-	"github.com/optimiware/kodama/internal/shell/runtime/podman"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	podmandriver "github.com/optimiware/kodema/internal/shell/app/drivers/podman"
+	"github.com/optimiware/kodema/internal/shell/runtime/podman"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // TestPodmanKillHelperProcess is the child controller for
@@ -24,23 +24,23 @@ import (
 // creates the container, then blocks inside the start call after publishing a
 // marker. The parent SIGKILLs it between launch intent and observation.
 func TestPodmanKillHelperProcess(t *testing.T) {
-	if os.Getenv("KODAMA_RUNTIME_HELPER") != "1" {
+	if os.Getenv("KODEMA_RUNTIME_HELPER") != "1" {
 		t.Skip("helper process only")
 	}
-	root := os.Getenv("KODAMA_HELPER_ROOT")
-	socket := os.Getenv("KODAMA_HELPER_SOCKET")
-	marker := os.Getenv("KODAMA_HELPER_MARKER")
-	image := os.Getenv("KODAMA_HELPER_IMAGE")
+	root := os.Getenv("KODEMA_HELPER_ROOT")
+	socket := os.Getenv("KODEMA_HELPER_SOCKET")
+	marker := os.Getenv("KODEMA_HELPER_MARKER")
+	image := os.Getenv("KODEMA_HELPER_IMAGE")
 	// The parent chooses the complete run-scoped identity and workspace; the
 	// helper must never mint its own, or the killed controller's durable state
 	// and container would belong to a different run namespace.
 	identity := engine.EffectIdentity{
-		ExecutionID:    id.ExecutionID(os.Getenv("KODAMA_HELPER_EXECUTION")),
-		ActionID:       id.ActionID(os.Getenv("KODAMA_HELPER_ACTION")),
-		WorkloadID:     id.WorkloadID(os.Getenv("KODAMA_HELPER_WORKLOAD")),
-		IdempotencyKey: os.Getenv("KODAMA_HELPER_IDEMPOTENCY"),
+		ExecutionID:    id.ExecutionID(os.Getenv("KODEMA_HELPER_EXECUTION")),
+		ActionID:       id.ActionID(os.Getenv("KODEMA_HELPER_ACTION")),
+		WorkloadID:     id.WorkloadID(os.Getenv("KODEMA_HELPER_WORKLOAD")),
+		IdempotencyKey: os.Getenv("KODEMA_HELPER_IDEMPOTENCY"),
 	}
-	workspaceID := id.WorkspaceID(os.Getenv("KODAMA_HELPER_WORKSPACE"))
+	workspaceID := id.WorkspaceID(os.Getenv("KODEMA_HELPER_WORKSPACE"))
 	if identity.ExecutionID == "" || identity.WorkloadID == "" || workspaceID == "" {
 		t.Fatal("helper environment is missing the parent-chosen identity/workspace")
 	}
@@ -57,7 +57,7 @@ func TestPodmanKillHelperProcess(t *testing.T) {
 		Libpod:    runtimesupport.ScopedLibpod(&blockingStartLibpod{Libpod: libpod, marker: marker}),
 		Files:     files,
 		Root:      root,
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Cleanup:   podman.CleanupPolicy{Attempts: 1},
 	})
 	if err != nil {
@@ -102,16 +102,16 @@ func TestPodmanRuntimeKilledControllerBetweenLaunchAndObservation(t *testing.T) 
 	}
 	helper := exec.Command(executable, "-test.run=^TestPodmanKillHelperProcess$", "-test.v")
 	helper.Env = append(os.Environ(),
-		"KODAMA_RUNTIME_HELPER=1",
-		"KODAMA_HELPER_ROOT="+fixture.root,
-		"KODAMA_HELPER_SOCKET="+fixture.service.Socket(),
-		"KODAMA_HELPER_MARKER="+marker,
-		"KODAMA_HELPER_IMAGE="+fixture.image.Reference,
-		"KODAMA_HELPER_EXECUTION="+string(identity.ExecutionID),
-		"KODAMA_HELPER_ACTION="+string(identity.ActionID),
-		"KODAMA_HELPER_WORKLOAD="+string(identity.WorkloadID),
-		"KODAMA_HELPER_IDEMPOTENCY="+identity.IdempotencyKey,
-		"KODAMA_HELPER_WORKSPACE="+string(fixture.workspaceID),
+		"KODEMA_RUNTIME_HELPER=1",
+		"KODEMA_HELPER_ROOT="+fixture.root,
+		"KODEMA_HELPER_SOCKET="+fixture.service.Socket(),
+		"KODEMA_HELPER_MARKER="+marker,
+		"KODEMA_HELPER_IMAGE="+fixture.image.Reference,
+		"KODEMA_HELPER_EXECUTION="+string(identity.ExecutionID),
+		"KODEMA_HELPER_ACTION="+string(identity.ActionID),
+		"KODEMA_HELPER_WORKLOAD="+string(identity.WorkloadID),
+		"KODEMA_HELPER_IDEMPOTENCY="+identity.IdempotencyKey,
+		"KODEMA_HELPER_WORKSPACE="+string(fixture.workspaceID),
 		// The helper's container belongs to the parent suite's run scope, so a
 		// sweep by the parent still removes it and dead-owner cleanup sees the
 		// parent's pid, not the killed helper's.

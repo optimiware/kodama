@@ -145,7 +145,7 @@ func (c *EngineClient) EnsureVolume(ctx context.Context, name, instance string, 
 		}
 		if err := json.Unmarshal(body, &existing); err == nil {
 			if owner := existing.Labels[LabelInstance]; owner != instance {
-				return fmt.Errorf("refusing existing volume %q: not owned by kodama instance %q", name, instance)
+				return fmt.Errorf("refusing existing volume %q: not owned by kodema instance %q", name, instance)
 			}
 		}
 		return nil
@@ -256,7 +256,7 @@ func (c *EngineClient) InspectContainer(ctx context.Context, name string) (Conta
 	}, nil
 }
 
-// ListInstanceContainers returns containers carrying kodama.up.instance=<instance>.
+// ListInstanceContainers returns containers carrying kodema.up.instance=<instance>.
 func (c *EngineClient) ListInstanceContainers(ctx context.Context, instance string) ([]ContainerInfo, error) {
 	filterBytes, err := json.Marshal(map[string][]string{
 		"label": {LabelInstance + "=" + instance},
@@ -307,7 +307,7 @@ func (c *EngineClient) ListInstanceContainers(ctx context.Context, instance stri
 // volumes. A workload carries no instance label; its preparation directory
 // under stateDir names its installation.
 func (c *EngineClient) RemoveWorkloads(ctx context.Context, stateDir string) error {
-	q := url.Values{"all": {"true"}, "filters": {`{"label":["kodama.dev/workload"]}`}}
+	q := url.Values{"all": {"true"}, "filters": {`{"label":["kodema.dev/workload"]}`}}
 	status, body, err := c.doJSON(ctx, http.MethodGet, "/containers/json?"+q.Encode(), nil)
 	if err != nil {
 		return err
@@ -338,7 +338,7 @@ func (c *EngineClient) RemoveWorkloads(ctx context.Context, stateDir string) err
 			return err
 		}
 		for _, mount := range item.Mounts {
-			if mount.Type == "volume" && strings.HasPrefix(mount.Name, "kodama-workspace-") {
+			if mount.Type == "volume" && strings.HasPrefix(mount.Name, "kodema-workspace-") {
 				_ = c.RemoveVolume(ctx, mount.Name)
 			}
 		}

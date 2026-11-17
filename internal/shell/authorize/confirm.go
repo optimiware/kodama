@@ -3,7 +3,7 @@ package authorize
 import (
 	"fmt"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // Confirm compares the current authority facts an adapter read inside a commit

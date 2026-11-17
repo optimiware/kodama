@@ -13,17 +13,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 func newHarness(t *testing.T, options nativefix.Options) *nativefix.Harness {
 	t.Helper()
 	if options.BinaryPath == "" {
-		options.BinaryPath = kodamaBinary
+		options.BinaryPath = kodemaBinary
 	}
-	if options.Logger == nil && os.Getenv("KODAMA_TEST_DEBUG") != "" {
+	if options.Logger == nil && os.Getenv("KODEMA_TEST_DEBUG") != "" {
 		options.Logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 	harness, err := nativefix.NewHarness(t, options)
@@ -80,7 +80,7 @@ func requireRejectionMessage(t *testing.T, stderr string) {
 }
 
 // nativefixRejectionMessage mirrors the product's single sanitized diagnostic.
-const nativefixRejectionMessage = "kodama git: update rejected"
+const nativefixRejectionMessage = "kodema git: update rejected"
 
 func httpStatus(t *testing.T, harness *nativefix.Harness, token, path string) int {
 	t.Helper()
@@ -89,7 +89,7 @@ func httpStatus(t *testing.T, harness *nativefix.Harness, token, path string) in
 		t.Fatalf("NewRequest(%q): %v", path, err)
 	}
 	if token != "" {
-		request.SetBasicAuth("kodama", token)
+		request.SetBasicAuth("kodema", token)
 	}
 	response, err := nativefix.NewHTTPClient().Do(request)
 	if err != nil {

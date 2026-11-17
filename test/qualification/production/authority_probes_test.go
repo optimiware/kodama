@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // fakeEdgeRequest is one recorded request to a whole-probe fake edge.
@@ -100,7 +100,7 @@ func TestHarnessAPIPutBinding(t *testing.T) {
 		}
 		writePublicTestResult(t, writer, "pipeline.apply", `{"pipeline_id":"pipe-1","version":4}`)
 	}))
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestHarnessRoleAuthorityProbe(t *testing.T) {
 				writePublicTestError(writer, http.StatusNotFound, api.CodeNotFound)
 			}
 		}))
-		client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+		client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 		if err != nil {
 			t.Fatalf("build API helper: %v", err)
 		}
@@ -422,7 +422,7 @@ func TestHarnessServiceAuthorityProbe(t *testing.T) {
 			writePublicTestError(writer, http.StatusNotFound, api.CodeNotFound)
 		}
 	}))
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -505,7 +505,7 @@ func TestHarnessMCPTransportFailures(t *testing.T) {
 			}
 			http.Redirect(writer, request, "/elsewhere", http.StatusFound)
 		}))
-		client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+		client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 		if err != nil {
 			t.Fatalf("build API helper: %v", err)
 		}
@@ -524,7 +524,7 @@ func TestHarnessMCPTransportFailures(t *testing.T) {
 				gotPath = request.URL.Path
 				writer.WriteHeader(status)
 			}))
-			client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+			client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 			if err != nil {
 				t.Fatalf("build API helper: %v", err)
 			}
@@ -544,7 +544,7 @@ func TestHarnessMCPTransportFailures(t *testing.T) {
 func TestHarnessRenewalImagePreflight(t *testing.T) {
 	dir := t.TempDir()
 	paths := renewalPaths{
-		TokenFile:     filepath.Join(dir, "KODAMA_TOKEN"),
+		TokenFile:     filepath.Join(dir, "KODEMA_TOKEN"),
 		CAFile:        filepath.Join(dir, "ca.crt"),
 		SettledOutput: filepath.Join(dir, "fingerprint"),
 	}
@@ -582,13 +582,13 @@ func TestHarnessRenewalImagePreflight(t *testing.T) {
 // renewed mounted credential on the second action's GET.
 func TestHarnessRenewalProbeRealCurl(t *testing.T) {
 	if _, err := exec.LookPath("curl"); err != nil {
-		if os.Getenv("Q02_REQUIRE_STAGE") == "1" || os.Getenv("KODAMA_REQUIRE_INFRA") == "1" {
+		if os.Getenv("Q02_REQUIRE_STAGE") == "1" || os.Getenv("KODEMA_REQUIRE_INFRA") == "1" {
 			t.Fatalf("real curl is not available on the test host: %v", err)
 		}
 		t.Skip("real curl is not available on the test host")
 	}
 	if _, err := exec.LookPath("sha256sum"); err != nil {
-		if os.Getenv("Q02_REQUIRE_STAGE") == "1" || os.Getenv("KODAMA_REQUIRE_INFRA") == "1" {
+		if os.Getenv("Q02_REQUIRE_STAGE") == "1" || os.Getenv("KODEMA_REQUIRE_INFRA") == "1" {
 			t.Fatalf("sha256sum is not available on the test host: %v", err)
 		}
 		t.Skip("sha256sum is not available on the test host")
@@ -617,7 +617,7 @@ func TestHarnessRenewalProbeRealCurl(t *testing.T) {
 
 	dir := t.TempDir()
 	paths := renewalPaths{
-		TokenFile:     filepath.Join(dir, "KODAMA_TOKEN"),
+		TokenFile:     filepath.Join(dir, "KODEMA_TOKEN"),
 		CAFile:        filepath.Join(dir, "ca.crt"),
 		SettledOutput: filepath.Join(dir, "fingerprint"),
 	}

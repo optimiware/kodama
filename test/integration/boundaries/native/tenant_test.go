@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 func TestPerTenantStorageIsolation(t *testing.T) {

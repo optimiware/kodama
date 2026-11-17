@@ -48,14 +48,14 @@ func TestStagePersonasRefusesUnsafeInput(t *testing.T) {
 		args      []string
 		mutate    func(t *testing.T, setup *stagePersonasSetup)
 	}{
-		{name: "http api", overrides: map[string]string{"KODAMA_STAGE_API_URL": "http://127.0.0.1:18443"}},
-		{name: "foreign host", overrides: map[string]string{"KODAMA_STAGE_API_URL": "https://api.example.com"}},
-		{name: "user information", overrides: map[string]string{"KODAMA_STAGE_API_URL": "https://user:pass@127.0.0.1:18443"}},
-		{name: "missing token file", overrides: map[string]string{"KODAMA_STAGE_ADMIN_TOKEN_FILE": "/nonexistent/stage-admin-token"}},
-		{name: "token in environment", overrides: map[string]string{"KODAMA_STAGE_ADMIN_TOKEN": "supplied-in-environment"}},
+		{name: "http api", overrides: map[string]string{"KODEMA_STAGE_API_URL": "http://127.0.0.1:18443"}},
+		{name: "foreign host", overrides: map[string]string{"KODEMA_STAGE_API_URL": "https://api.example.com"}},
+		{name: "user information", overrides: map[string]string{"KODEMA_STAGE_API_URL": "https://user:pass@127.0.0.1:18443"}},
+		{name: "missing token file", overrides: map[string]string{"KODEMA_STAGE_ADMIN_TOKEN_FILE": "/nonexistent/stage-admin-token"}},
+		{name: "token in environment", overrides: map[string]string{"KODEMA_STAGE_ADMIN_TOKEN": "supplied-in-environment"}},
 		{name: "token in argv", args: []string{"supplied-in-argv"}},
-		{name: "missing issuer", overrides: map[string]string{"KODAMA_STAGE_ISSUER": ""}},
-		{name: "missing ca file", overrides: map[string]string{"KODAMA_STAGE_CA_FILE": "/nonexistent/ca.pem"}},
+		{name: "missing issuer", overrides: map[string]string{"KODEMA_STAGE_ISSUER": ""}},
+		{name: "missing ca file", overrides: map[string]string{"KODEMA_STAGE_CA_FILE": "/nonexistent/ca.pem"}},
 		{
 			name: "token file is not 0600",
 			mutate: func(t *testing.T, setup *stagePersonasSetup) {
@@ -81,9 +81,9 @@ func TestStagePersonasRefusesUnsafeInput(t *testing.T) {
 // TestStagePersonasGrantsExactRoles pins the authority-sensitive role table. Any
 // role added, removed or swapped for any of the four personas makes this fail.
 func TestStagePersonasGrantsExactRoles(t *testing.T) {
-	issuer := "https://oauthsonas.kodama-system.svc.cluster.local:8443"
+	issuer := "https://oauthsonas.kodema-system.svc.cluster.local:8443"
 	run := runStagePersonas(t, map[string]string{
-		"KODAMA_STAGE_ISSUER":        issuer,
+		"KODEMA_STAGE_ISSUER":        issuer,
 		"FAKE_CURL_PROJECT_CONFLICT": "1",
 	}, nil, func(*testing.T, *stagePersonasSetup) {})
 	if run.err != nil {
@@ -150,7 +150,7 @@ func TestStagePersonasGrantsExactRoles(t *testing.T) {
 // read-back is enforced, not merely logged.
 func TestStagePersonasFailsWhenReadbackOmitsAGrant(t *testing.T) {
 	run := runStagePersonas(t, map[string]string{
-		"FAKE_CURL_DROP_PRINCIPAL": expectedStagePrincipal("https://oauthsonas.kodama-system.svc.cluster.local:8443", "operator"),
+		"FAKE_CURL_DROP_PRINCIPAL": expectedStagePrincipal("https://oauthsonas.kodema-system.svc.cluster.local:8443", "operator"),
 	}, nil, func(*testing.T, *stagePersonasSetup) {})
 	if run.err == nil {
 		t.Fatalf("stage-personas accepted a read-back without the operator grant:\n%s", run.output)
@@ -285,7 +285,7 @@ func runStagePersonas(t *testing.T, overrides map[string]string, args []string, 
 	flagsLog := filepath.Join(root, "curl.flags")
 	state := setup.stateFile
 	grantsLog := filepath.Join(root, "grants.tsv")
-	issuer := "https://oauthsonas.kodama-system.svc.cluster.local:8443"
+	issuer := "https://oauthsonas.kodema-system.svc.cluster.local:8443"
 	initial := expectedStagePrincipal(issuer, "admin") + "\t" + `["engineer"]` + "\t4\n"
 	if err := os.WriteFile(state, []byte(initial), 0o600); err != nil {
 		t.Fatalf("write fake membership state: %v", err)
@@ -421,18 +421,18 @@ esac
 		"PATH":                          bin + ":/usr/local/bin:/usr/bin:/bin",
 		"HOME":                          t.TempDir(),
 		"TMPDIR":                        tempDir,
-		"KODAMA_STAGE_API_URL":          "https://127.0.0.1:18443",
-		"KODAMA_STAGE_CA_FILE":          setup.caFile,
-		"KODAMA_STAGE_ADMIN_TOKEN_FILE": setup.tokenFile,
-		"KODAMA_STAGE_PROJECT_ID":       "tenant-a",
-		"KODAMA_STAGE_ISSUER":           issuer,
-		"KODAMA_STAGE_EVIDENCE_DIR":     setup.evidenceDir,
+		"KODEMA_STAGE_API_URL":          "https://127.0.0.1:18443",
+		"KODEMA_STAGE_CA_FILE":          setup.caFile,
+		"KODEMA_STAGE_ADMIN_TOKEN_FILE": setup.tokenFile,
+		"KODEMA_STAGE_PROJECT_ID":       "tenant-a",
+		"KODEMA_STAGE_ISSUER":           issuer,
+		"KODEMA_STAGE_EVIDENCE_DIR":     setup.evidenceDir,
 		"FAKE_CURL_LOG":                 curlLog,
 		"FAKE_CURL_FLAGS":               flagsLog,
 		"FAKE_CURL_STATE":               state,
 		"FAKE_CURL_GRANTS":              grantsLog,
-		"KODAMA_STAGE_ADMIN_TOKEN":      "",
-		"KODAMA_STAGE_TOKEN":            "",
+		"KODEMA_STAGE_ADMIN_TOKEN":      "",
+		"KODEMA_STAGE_TOKEN":            "",
 	}
 	maps.Copy(environment, overrides)
 	if mutate != nil {

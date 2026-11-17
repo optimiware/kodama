@@ -3,10 +3,10 @@
 // Subjects are scope-qualified so a subscriber for one tenant/project cannot
 // receive another scope's events, logs or live invalidations:
 //
-//	kodama.v1.<tenant>.<project|_>.events
-//	kodama.v1.<tenant>.<project|_>.invalidations
-//	kodama.v1.<tenant>.<project|_>.logs.<execution>
-//	kodama.v1.<tenant>.<project|_>.ingress
+//	kodema.v1.<tenant>.<project|_>.events
+//	kodema.v1.<tenant>.<project|_>.invalidations
+//	kodema.v1.<tenant>.<project|_>.logs.<execution>
+//	kodema.v1.<tenant>.<project|_>.ingress
 //
 // The broker publishes already-committed event rows and live log chunks; it is
 // never the durable source of either. The ingress subject is the separate
@@ -24,19 +24,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // Subject prefix and the tenant-wide project placeholder.
 const (
 	// SubjectPrefix is the declared subject prefix.
-	SubjectPrefix = "kodama.v1"
+	SubjectPrefix = "kodema.v1"
 	// TenantWideProject is the project token for a tenant-scoped subject. A
 	// project identity is never encoded as this token, even though "_" is a
 	// syntactically valid id: buildSubject refuses such a project so the
@@ -107,7 +107,7 @@ func (subject Subject) Validate() error {
 	if len(tokens) < 5 {
 		return fault.New(fault.InvalidInput, fmt.Sprintf("subject %q is not scope-qualified", subject))
 	}
-	if tokens[0] != "kodama" || tokens[1] != "v1" {
+	if tokens[0] != "kodema" || tokens[1] != "v1" {
 		return fault.New(fault.InvalidInput, fmt.Sprintf("subject %q has an unknown prefix", subject))
 	}
 	if _, err := id.ParseTenantID(tokens[2]); err != nil {

@@ -15,7 +15,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // commitPattern accepts the lowercase object identity Git prints for a SHA-1
@@ -25,7 +25,7 @@ var commitPattern = regexp.MustCompile(`^([a-f0-9]{40}|[a-f0-9]{64})$`)
 // hookRejection is the Git service's public update-hook refusal message. A
 // failed push that does not carry it is a transport or authentication failure,
 // never evidence of policy enforcement.
-const hookRejection = "kodama git: update rejected"
+const hookRejection = "kodema git: update rejected"
 
 // CheckCommitIdentity requires one lowercase full object identity.
 func CheckCommitIdentity(label, value string) error {

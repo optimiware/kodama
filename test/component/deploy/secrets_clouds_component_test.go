@@ -12,7 +12,7 @@
 // against a friendlier fake; see descriptor_outputs_component_test.go.
 //
 // Custody is checked with the same planted canaries the existing secrets tests
-// use: the four KODAMA_DB_* sentinels, the deterministic 32-byte KEK
+// use: the four KODEMA_DB_* sentinels, the deterministic 32-byte KEK
 // (stubKEKRaw) in raw/hex/base64 form, and the KMS access/secret values. None
 // may appear in argv, stdout/stderr or a leftover file.
 package deploy
@@ -27,7 +27,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/internal/installation"
+	"github.com/optimiware/kodema/internal/installation"
 )
 
 // cloudKMSAccessStub is the fake Scaleway IAM access key the fake tofu emits.
@@ -127,18 +127,18 @@ var cloudSecretsCases = []cloudSecretsCase{
 		zone:             "eu-west-1a",
 		account:          "123456789012",
 		storageClass:     "gp3",
-		workloadIdentity: "arn:aws:iam::123456789012:role/kodama-controller",
+		workloadIdentity: "arn:aws:iam::123456789012:role/kodema-controller",
 	},
 	{
 		cloud:            "gcp",
 		adapter:          "gcp-kms",
-		keyID:            "projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek",
-		keyRef:           "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek",
+		keyID:            "projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek",
+		keyRef:           "gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek",
 		region:           "europe-west1",
 		zone:             "europe-west1-b",
 		account:          "demo-project",
 		storageClass:     "premium-rwo",
-		workloadIdentity: "kodama-controller@demo-project.iam.gserviceaccount.com",
+		workloadIdentity: "kodema-controller@demo-project.iam.gserviceaccount.com",
 	},
 }
 
@@ -148,19 +148,19 @@ func (c cloudSecretsCase) descriptor() map[string]any {
 	return map[string]any{
 		"cloud":                 c.cloud,
 		"cluster_name":          "stage",
-		"installation_id":       "kodama-" + c.cloud + "-stage",
+		"installation_id":       "kodema-" + c.cloud + "-stage",
 		"environment":           "production",
 		"cost_profile":          "cost-conscious",
 		"account_or_project_id": c.account,
 		"region":                c.region,
 		"zone":                  c.zone,
-		"release_namespace":     "kodama-system",
+		"release_namespace":     "kodema-system",
 		"tenants":               []string{"tenant-a"},
 		"postgres": map[string]any{
 			"instance_id":   "pg-" + c.cloud,
-			"instance_name": "kodama-" + c.cloud,
-			"database_name": "kodama",
-			"admin_user":    "kodama_admin",
+			"instance_name": "kodema-" + c.cloud,
+			"database_name": "kodema",
+			"admin_user":    "kodema_admin",
 			"host":          "db.example",
 			"port":          5432,
 			"ssl_mode":      "verify-full",
@@ -174,7 +174,7 @@ func (c cloudSecretsCase) descriptor() map[string]any {
 		"kubernetes": map[string]any{
 			"cluster_name":          "stage",
 			"storage_class":         c.storageClass,
-			"service_account_name":  "kodama",
+			"service_account_name":  "kodema",
 			"workload_identity_ref": c.workloadIdentity,
 		},
 	}
@@ -213,7 +213,7 @@ func prepareCloudWorkDir(t *testing.T, box *sandbox, cloud string) {
 	if err := os.MkdirAll(pki, 0o700); err != nil {
 		t.Fatalf("mkdir %s: %v", pki, err)
 	}
-	for _, name := range []string{"ca.crt", "kodama.crt", "nats.crt", "client.crt"} {
+	for _, name := range []string{"ca.crt", "kodema.crt", "nats.crt", "client.crt"} {
 		writeFile(t, filepath.Join(pki, name), "test-"+name+"\n")
 	}
 }
@@ -290,7 +290,7 @@ func assertCanariesAbsentFromTrees(t *testing.T, dirs []string, forms []credenti
 }
 
 // assertKEKSecretCreatedOnce checks the fake kubectl received exactly one
-// `kodama-keys` creation carrying kek-v1.blob from a 0600 file in a 0700
+// `kodema-keys` creation carrying kek-v1.blob from a 0600 file in a 0700
 // directory (the private temporary KEK directory).
 func assertKEKSecretCreatedOnce(t *testing.T, box *sandbox) {
 	t.Helper()
@@ -328,7 +328,7 @@ func assertKEKSecretCreatedOnce(t *testing.T, box *sandbox) {
 		}
 	}
 	if matches != 1 {
-		t.Fatalf("kubectl created kodama-keys %d times, want exactly once (the KEK is never regenerated)", matches)
+		t.Fatalf("kubectl created kodema-keys %d times, want exactly once (the KEK is never regenerated)", matches)
 	}
 }
 
@@ -469,15 +469,15 @@ func TestBootstrapSecretsSelectsKMSProviderPerCloud(t *testing.T) {
 			kubectlArgv := box.readKubectlArgv(t)
 			hasCredentialsSecret := false
 			for _, line := range kubectlArgv {
-				if strings.Contains(line, "kodama-kms-credentials") {
+				if strings.Contains(line, "kodema-kms-credentials") {
 					hasCredentialsSecret = true
 				}
 			}
 			if testCase.cloud == "scw" && !hasCredentialsSecret {
-				t.Error("scw did not reconcile kodama-kms-credentials")
+				t.Error("scw did not reconcile kodema-kms-credentials")
 			}
 			if testCase.cloud != "scw" && hasCredentialsSecret {
-				t.Errorf("%s created a Scaleway-only kodama-kms-credentials Secret", testCase.cloud)
+				t.Errorf("%s created a Scaleway-only kodema-kms-credentials Secret", testCase.cloud)
 			}
 
 			// No canary survives on disk in the cloud work directory or the
@@ -633,9 +633,9 @@ func installationDocument(adapter, keyRef string) string {
 		"state = postgres",
 		"messaging = nats",
 		"runtime = kubernetes",
-		"database_url = postgres://kodama@database:5432/kodama?sslmode=verify-full",
+		"database_url = postgres://kodema@database:5432/kodema?sslmode=verify-full",
 		"nats_url = tls://nats:4222",
-		"public_url = https://kodama.example",
+		"public_url = https://kodema.example",
 	}
 	if adapter != "" {
 		lines = append(lines, "keys = "+adapter)
@@ -677,9 +677,9 @@ func TestInstallationKeyReferenceGrammarPerCloud(t *testing.T) {
 		{name: "gcp bare prefix", adapter: "gcp-kms", keyRef: "gcp-kms:"},
 		{name: "scw bare prefix", adapter: "scw-kms", keyRef: "scw-kms:"},
 		{name: "space after prefix", adapter: "scw-kms", keyRef: "scw-kms: fr-par/key"},
-		{name: "uppercase prefix", adapter: "aws-kms", keyRef: "AWS-KMS:alias/kodama"},
-		{name: "unknown adapter", adapter: "azure-kms", keyRef: "aws-kms:alias/kodama"},
-		{name: "missing provider", adapter: "", keyRef: "aws-kms:alias/kodama"},
+		{name: "uppercase prefix", adapter: "aws-kms", keyRef: "AWS-KMS:alias/kodema"},
+		{name: "unknown adapter", adapter: "azure-kms", keyRef: "aws-kms:alias/kodema"},
+		{name: "missing provider", adapter: "", keyRef: "aws-kms:alias/kodema"},
 		{name: "missing reference", adapter: "aws-kms", keyRef: ""},
 	}
 	for _, testCase := range refusals {
@@ -746,9 +746,9 @@ func TestDescriptorRendersSchemaValidatedValuesPerCloud(t *testing.T) {
 
 			command := exec.Command("bash", filepath.Join(repoRoot(t), "scripts", "deploy"), testCase.cloud, "render-values", "--cluster", "stage")
 			command.Env = append(os.Environ(),
-				"KODAMA_DEPLOY_STATE_DIR="+stateDir,
-				"KODAMA_IMAGE_REPOSITORY=registry.example.com/kodama",
-				"KODAMA_IMAGE_TAG=0.1.0",
+				"KODEMA_DEPLOY_STATE_DIR="+stateDir,
+				"KODEMA_IMAGE_REPOSITORY=registry.example.com/kodema",
+				"KODEMA_IMAGE_TAG=0.1.0",
 			)
 			output, err := command.CombinedOutput()
 			if err != nil {
@@ -771,11 +771,11 @@ func TestDescriptorRendersSchemaValidatedValuesPerCloud(t *testing.T) {
 			if err := yaml.Unmarshal(body, &values); err != nil {
 				t.Fatalf("parse rendered values: %v", err)
 			}
-			kodama, ok := values["kodama"].(map[string]any)
+			kodema, ok := values["kodema"].(map[string]any)
 			if !ok {
-				t.Fatalf("rendered values have no kodama section:\n%s", body)
+				t.Fatalf("rendered values have no kodema section:\n%s", body)
 			}
-			config := kodama["config"].(map[string]any)
+			config := kodema["config"].(map[string]any)
 			if _, present := config["optionalCapabilities"]; present {
 				t.Errorf("rendered values still emit dead config.optionalCapabilities:\n%s", body)
 			}
@@ -792,7 +792,7 @@ func TestDescriptorRendersSchemaValidatedValuesPerCloud(t *testing.T) {
 			}
 
 			annotations := map[string]any{}
-			if serviceAccount, ok := kodama["serviceAccount"].(map[string]any); ok {
+			if serviceAccount, ok := kodema["serviceAccount"].(map[string]any); ok {
 				if recorded, ok := serviceAccount["annotations"].(map[string]any); ok {
 					annotations = recorded
 				}
@@ -813,7 +813,7 @@ func TestDescriptorRendersSchemaValidatedValuesPerCloud(t *testing.T) {
 			}
 
 			render := func(valuesFile string) (string, error) {
-				args := []string{"template", "kodama-stage", chart, "--namespace", "kodama-system", "--values", valuesFile}
+				args := []string{"template", "kodema-stage", chart, "--namespace", "kodema-system", "--values", valuesFile}
 				args = append(args, stackProductionArgs()...)
 				renderCommand := exec.Command(helm, args...)
 				renderCommand.Dir = chart
@@ -836,7 +836,7 @@ func TestDescriptorRendersSchemaValidatedValuesPerCloud(t *testing.T) {
 			// Negative control: the schema rejects an undeclared environment.
 			// If this render succeeds, helm validation is off and the positive
 			// render above proves nothing about the schema.
-			kodama["environment"] = "staging"
+			kodema["environment"] = "staging"
 			mutated, err := yaml.Marshal(values)
 			if err != nil {
 				t.Fatalf("encode mutated values: %v", err)
@@ -862,20 +862,20 @@ func TestDescriptorRendersSchemaValidatedValuesPerCloud(t *testing.T) {
 			writeFile(t, filepath.Join(oidcWorkDir, "descriptor.json"), testCase.descriptorJSON(t))
 			oidcCmd := exec.Command("bash", filepath.Join(repoRoot(t), "scripts", "deploy"), testCase.cloud, "render-values", "--cluster", "stage")
 			oidcCmd.Env = append(os.Environ(),
-				"KODAMA_DEPLOY_STATE_DIR="+oidcStateDir,
-				"KODAMA_IMAGE_REPOSITORY=ghcr.io/example/kodama",
-				"KODAMA_IMAGE_DIGEST=sha256:3333333333333333333333333333333333333333333333333333333333333333",
-				"KODAMA_OIDC_ISSUER=https://issuer.example",
-				"KODAMA_OIDC_AUDIENCE=kodama",
-				"KODAMA_OIDC_JWKS_URL=https://issuer.example/jwks",
-				"KODAMA_OIDC_TENANT_CLAIM=org_id",
-				"KODAMA_OIDC_SUBJECT_CLAIM=sub",
+				"KODEMA_DEPLOY_STATE_DIR="+oidcStateDir,
+				"KODEMA_IMAGE_REPOSITORY=ghcr.io/example/kodema",
+				"KODEMA_IMAGE_DIGEST=sha256:3333333333333333333333333333333333333333333333333333333333333333",
+				"KODEMA_OIDC_ISSUER=https://issuer.example",
+				"KODEMA_OIDC_AUDIENCE=kodema",
+				"KODEMA_OIDC_JWKS_URL=https://issuer.example/jwks",
+				"KODEMA_OIDC_TENANT_CLAIM=org_id",
+				"KODEMA_OIDC_SUBJECT_CLAIM=sub",
 			)
 			if out, err := oidcCmd.CombinedOutput(); err != nil {
 				t.Fatalf("render-values with OIDC env failed for %s: %v\n%s", testCase.cloud, err, out)
 			}
-			standaloneCmd := exec.Command(helm, "template", "kodama-stage", chart,
-				"--namespace", "kodama-system",
+			standaloneCmd := exec.Command(helm, "template", "kodema-stage", chart,
+				"--namespace", "kodema-system",
 				"--values", filepath.Join(oidcWorkDir, "values.generated.yaml"))
 			standaloneCmd.Dir = chart
 			if standaloneOut, err := standaloneCmd.CombinedOutput(); err != nil {
@@ -901,7 +901,7 @@ func TestBootstrapSecretsTenantCapPodSecurityAndMixedSecretMerge(t *testing.T) {
 		}
 		stdin := box.readKubectlStdin(t)
 		for _, want := range []string{
-			"name: kodama-tenant-" + tenant49,
+			"name: kodema-tenant-" + tenant49,
 			"pod-security.kubernetes.io/enforce: baseline",
 			"pod-security.kubernetes.io/warn: restricted",
 			"pod-security.kubernetes.io/audit: restricted",
@@ -931,7 +931,7 @@ func TestBootstrapSecretsTenantCapPodSecurityAndMixedSecretMerge(t *testing.T) {
 		envFile := filepath.Join(box.tempDir, "mixed.env")
 		fileOne := filepath.Join(box.tempDir, "one.pem")
 		fileTwo := filepath.Join(box.tempDir, "two.pem")
-		writeFile(t, envFile, "database_url=postgres://u@db:5432/kodama\n")
+		writeFile(t, envFile, "database_url=postgres://u@db:5432/kodema\n")
 		writeFile(t, fileOne, "FIRST-FILE-SENTINEL-CONTENT-123456")
 		writeFile(t, fileTwo, "SECOND-FILE-SENTINEL-CONTENT-654321")
 
@@ -939,7 +939,7 @@ func TestBootstrapSecretsTenantCapPodSecurityAndMixedSecretMerge(t *testing.T) {
 		snippet := `
 source <(sed -n '/^create_secret_mixed() {/,/^}/p' "$1")
 kcmd=(kubectl "--kubeconfig=$2")
-create_secret_mixed "kodama-system" "kodama-mixed" "$3" "ca.crt=$4" "extra.crt=$5"
+create_secret_mixed "kodema-system" "kodema-mixed" "$3" "ca.crt=$4" "extra.crt=$5"
 `
 		cmd := exec.Command("bash", "-c", snippet, "mixed-test",
 			script,

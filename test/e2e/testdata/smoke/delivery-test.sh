@@ -4,7 +4,7 @@
 # outputs twice through the mounted execution credential with the same
 # idempotency key; the identical retry must converge without a second effect.
 set -eu
-expected=$(cat /kodama/outputs/build/image)
+expected=$(cat /kodema/outputs/build/image)
 test -n "$SMOKE_IMAGE"
 test "$expected" = "$SMOKE_IMAGE"
 candidate=$(cat "$W49_WORKSPACE/ac08-candidate")
@@ -23,16 +23,16 @@ import urllib.error
 import urllib.request
 
 candidate = sys.argv[1]
-base = os.environ["KODAMA_URL"].rstrip("/")
+base = os.environ["KODEMA_URL"].rstrip("/")
 if not base.startswith("https://"):
-    raise SystemExit("KODAMA_URL must use https")
-execution = os.environ["KODAMA_EXECUTION"]
-action_name = os.environ["KODAMA_ACTION"]
+    raise SystemExit("KODEMA_URL must use https")
+execution = os.environ["KODEMA_EXECUTION"]
+action_name = os.environ["KODEMA_ACTION"]
 ca_file = os.environ.get("SMOKE_CA_FILE", "")
 
 
 def token():
-    with open("/kodama/secrets/KODAMA_TOKEN", "r", encoding="utf-8") as handle:
+    with open("/kodema/secrets/KODEMA_TOKEN", "r", encoding="utf-8") as handle:
         return handle.read().strip()
 
 

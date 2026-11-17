@@ -1,6 +1,6 @@
 # S04 — Persistence, atomicity, and idempotency
 
-Source: [core model](../../KODAMA.md#core-model), [tasks](../../KODAMA.md#tasks-and-role-inbox), [events](../../KODAMA.md#events-and-operations), [operations](../../KODAMA.md#public-operations). Owners: P07, P12, P13 and consuming capabilities. AC: 3, 4, 7, 12, 17, 18.
+Source: [core model](../../KODEMA.md#core-model), [tasks](../../KODEMA.md#tasks-and-role-inbox), [events](../../KODEMA.md#events-and-operations), [operations](../../KODEMA.md#public-operations). Owners: P07, P12, P13 and consuming capabilities. AC: 3, 4, 7, 12, 17, 18.
 
 ## 1. Relational model
 
@@ -18,7 +18,7 @@ Use ordinary SQL and explicit transactions. The following are record families, n
 | Events/audit | Stable IDs, ownership, subject/version, source/causation, committed publication intent |
 | Receipts | Scoped operation/key, content fingerprint, selected snapshot where applicable, durable result |
 | Verification | Calling service, actor identity, execution/action, binding/resource/operation/subject, requested approval and result |
-| Secrets | Exact fields in KODAMA.md; current encrypted value and scope-unique name |
+| Secrets | Exact fields in KODEMA.md; current encrypted value and scope-unique name |
 | Resources/cleanup | Stable identities, durable intents, observation evidence, pending reason/attempt bookkeeping |
 
 Requests stay action rows. Artifacts stay output values. Queued executions are dispatch records; no separate start-intent lifecycle. Git journals, access rules, agent transcript bytes, and artifact bytes are owned outside the factory database.

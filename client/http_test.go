@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // recordedRequest is one request observed by the fake RoundTripper.
@@ -114,7 +114,7 @@ func testPolicy() client.RetryPolicy {
 // newTransport builds one HTTPTransport with deterministic clock and sleep.
 func newTransport(roundTripper http.RoundTripper, source client.CredentialSource) *client.HTTPTransport {
 	return &client.HTTPTransport{
-		BaseURL:      "https://kodama.example.com",
+		BaseURL:      "https://kodema.example.com",
 		RoundTripper: roundTripper,
 		Source:       source,
 		Retry:        testPolicy(),
@@ -959,8 +959,8 @@ func TestHTTPTransportRefusesRedirects(t *testing.T) {
 	if len(recorded) != 1 {
 		t.Fatalf("requests = %d; want 1 (no redirect follow)", len(recorded))
 	}
-	if recorded[0].url.Host != "kodama.example.com" {
-		t.Fatalf("request host = %q; want kodama.example.com", recorded[0].url.Host)
+	if recorded[0].url.Host != "kodema.example.com" {
+		t.Fatalf("request host = %q; want kodema.example.com", recorded[0].url.Host)
 	}
 }
 
@@ -998,7 +998,7 @@ func TestHTTPTransportRefusesInvalidInvocations(t *testing.T) {
 		{
 			name: "invalid base URL",
 			transport: &client.HTTPTransport{
-				BaseURL:      "kodama.example.com",
+				BaseURL:      "kodema.example.com",
 				RoundTripper: &recordingRoundTripper{},
 				Source:       &fakeSource{credentials: []client.Credential{validCredential()}},
 				Retry:        testPolicy(),
@@ -1010,7 +1010,7 @@ func TestHTTPTransportRefusesInvalidInvocations(t *testing.T) {
 		{
 			name: "invalid retry policy",
 			transport: &client.HTTPTransport{
-				BaseURL:      "https://kodama.example.com",
+				BaseURL:      "https://kodema.example.com",
 				RoundTripper: &recordingRoundTripper{},
 				Source:       &fakeSource{credentials: []client.Credential{validCredential()}},
 				Retry:        client.RetryPolicy{},
@@ -1039,8 +1039,8 @@ func TestHTTPTransportRefusesInvalidInvocations(t *testing.T) {
 // credential read or request, while loopback development URLs stay usable.
 func TestHTTPTransportRefusesCleartextBearerOutsideLoopback(t *testing.T) {
 	refused := []string{
-		"http://kodama.example.com",
-		"http://kodama.example.com:8080",
+		"http://kodema.example.com",
+		"http://kodema.example.com:8080",
 		"http://localhost.evil.com",
 		"http://127.0.0.1.evil.com",
 		"http://user@127.0.0.1:8080",
@@ -1071,7 +1071,7 @@ func TestHTTPTransportRefusesCleartextBearerOutsideLoopback(t *testing.T) {
 		{"http://127.0.0.1:8080", "http", "127.0.0.1:8080"},
 		{"http://[::1]:8080", "http", "[::1]:8080"},
 		{"http://localhost:8080", "http", "localhost:8080"},
-		{"https://kodama.example.com", "https", "kodama.example.com"},
+		{"https://kodema.example.com", "https", "kodema.example.com"},
 	}
 	for _, testCase := range accepted {
 		t.Run("accept "+testCase.baseURL, func(t *testing.T) {

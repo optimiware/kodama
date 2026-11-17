@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // TestFactoryWithGitServiceProvisionsTenantAndRegistersRepositories proves the
@@ -113,7 +113,7 @@ func TestFactoryWithGitServiceProvisionsTenantAndRegistersRepositories(t *testin
 			if err != nil {
 				t.Fatalf("read %s hook of %s: %v", hook, repository, err)
 			}
-			if !strings.Contains(string(content), "# managed by kodama") {
+			if !strings.Contains(string(content), "# managed by kodema") {
 				t.Fatalf("%s hook of %s is not the managed product hook", hook, repository)
 			}
 			info, err := os.Stat(path)

@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 func TestEphemeralRoundTripAndReconstruction(t *testing.T) {
@@ -62,7 +62,7 @@ func TestEphemeralRefusesUnknownKeyVersion(t *testing.T) {
 
 func TestKeyfileRoundTripAcrossReconstruction(t *testing.T) {
 	path := writeKeyfile(t, filepath.Join(t.TempDir(), "kek"), testKEK(), 0o600)
-	ref := secret.KeyRef("keyfile:kodama")
+	ref := secret.KeyRef("keyfile:kodema")
 
 	first := newKeyfile(t, ref, path, deterministicRandom(0x11))
 	second := newKeyfile(t, ref, path, deterministicRandom(0x22))
@@ -87,7 +87,7 @@ func TestKeyfileRoundTripAcrossReconstruction(t *testing.T) {
 }
 
 func TestKeyfileConfigurationRefusals(t *testing.T) {
-	ref := secret.KeyRef("keyfile:kodama")
+	ref := secret.KeyRef("keyfile:kodema")
 
 	t.Run("empty key reference", func(t *testing.T) {
 		path := writeKeyfile(t, filepath.Join(t.TempDir(), "kek"), testKEK(), 0o600)
@@ -145,14 +145,14 @@ func TestKeyfileDoesNotCleanFilesItDidNotCreate(t *testing.T) {
 	directory := t.TempDir()
 	path := writeKeyfile(t, filepath.Join(directory, "kek"), testKEK(), 0o600)
 
-	provider := newKeyfile(t, "keyfile:kodama", path, deterministicRandom(0x11))
+	provider := newKeyfile(t, "keyfile:kodema", path, deterministicRandom(0x11))
 	cipher := newCipher(t, provider, deterministicRandom(0x42))
 	if _, err := cipher.Seal(context.Background(), testAssociated(1), []byte("value")); err != nil {
 		t.Fatalf("Seal: %v", err)
 	}
 
 	wrongLength := writeKeyfile(t, filepath.Join(directory, "short"), []byte{0x01, 0x02}, 0o600)
-	if _, err := keys.NewKeyfile("keyfile:kodama", wrongLength, deterministicRandom(0x11)); err == nil {
+	if _, err := keys.NewKeyfile("keyfile:kodema", wrongLength, deterministicRandom(0x11)); err == nil {
 		t.Fatal("short keyfile accepted")
 	}
 
@@ -176,7 +176,7 @@ func TestKeyfileDoesNotCleanFilesItDidNotCreate(t *testing.T) {
 
 func TestProvidersRefuseInvalidRequests(t *testing.T) {
 	path := writeKeyfile(t, filepath.Join(t.TempDir(), "kek"), testKEK(), 0o600)
-	keyfile := newKeyfile(t, "keyfile:kodama", path, deterministicRandom(0x11))
+	keyfile := newKeyfile(t, "keyfile:kodema", path, deterministicRandom(0x11))
 	ephemeral := newEphemeral(t, deterministicRandom(0x11))
 
 	for name, provider := range map[string]keys.Provider{"keyfile": keyfile, "ephemeral": ephemeral} {

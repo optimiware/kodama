@@ -3,7 +3,7 @@ package recoveryfix
 import (
 	"sync"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // SourceEvents is a controllable per-receive-pack push identity generator. The

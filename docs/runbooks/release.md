@@ -1,6 +1,6 @@
-# Releasing Kodama
+# Releasing Kodema
 
-This runbook describes how a Kodama version is built, versioned and published.
+This runbook describes how a Kodema version is built, versioned and published.
 
 - Workflows: [`release.yml`](../../.github/workflows/release.yml) and
   [`ci.yml`](../../.github/workflows/ci.yml)
@@ -26,11 +26,11 @@ A version has one of three forms:
 
 `0.1.0` is the first public release.
 
-`kodama version` and `kodactl version` print the version and the source
+`kodema version` and `kodactl version` print the version and the source
 revision of the binary:
 
 ```text
-kodama 0.1.0 (revision <40 hex>, go1.27.3, linux/amd64)
+kodema 0.1.0 (revision <40 hex>, go1.27.3, linux/amd64)
 ```
 
 `make build`, `make dist` and `scripts/image` stamp both values. A plain
@@ -40,18 +40,18 @@ kodama 0.1.0 (revision <40 hex>, go1.27.3, linux/amd64)
 
 | Artifact | Where |
 |---|---|
-| `kodama` image (`linux/amd64`, `linux/arm64`) | `ghcr.io/optimiware/kodama/kodama:<version>` (and `:latest` for non-prerelease versions); the release notes give the manifest index digest |
-| Charts `kodama` and `kodama-stack` | `oci://ghcr.io/optimiware/kodama/charts`, and attached to the GitHub release |
-| `kodama` and `kodactl` for linux and darwin, amd64 and arm64 | `kodama_<version>_<os>_<arch>.tar.gz` and `kodactl_<version>_<os>_<arch>.tar.gz` attached to the GitHub release |
+| `kodema` image (`linux/amd64`, `linux/arm64`) | `ghcr.io/optimiware/kodema/kodema:<version>` (and `:latest` for non-prerelease versions); the release notes give the manifest index digest |
+| Charts `kodema` and `kodema-stack` | `oci://ghcr.io/optimiware/kodema/charts`, and attached to the GitHub release |
+| `kodema` and `kodactl` for linux and darwin, amd64 and arm64 | `kodema_<version>_<os>_<arch>.tar.gz` and `kodactl_<version>_<os>_<arch>.tar.gz` attached to the GitHub release |
 | `SHA256SUMS` | attached to the GitHub release; covers the archives and chart packages |
 
 [`install.sh`](../../install.sh) installs the two archives of the latest
 release from those attachments. It is read from `master`, not from a release,
 so a change to it reaches users when it is merged. Releases before 0.2.1 have
-no `kodama` archive.
+no `kodema` archive.
 
 The packages are named after this repository because
-`ghcr.io/optimiware/kodama` holds the images of the archived v1 repository.
+`ghcr.io/optimiware/kodema` holds the images of the archived v1 repository.
 The image is published as a multi-architecture OCI manifest index covering
 `linux/amd64` and `linux/arm64`; non-prerelease versions (`PRERELEASE=false`)
 also push the `:latest` tag pointing to the same manifest digest. Nothing is
@@ -88,8 +88,8 @@ GitHub release exists, and the repository rules in
 tag and rewriting `master`. They are applied once per repository:
 
 ```sh
-gh api repos/optimiware/kodama/rulesets --method POST --input .github/rulesets/release-tags.json
-gh api repos/optimiware/kodama/rulesets --method POST --input .github/rulesets/master.json
+gh api repos/optimiware/kodema/rulesets --method POST --input .github/rulesets/release-tags.json
+gh api repos/optimiware/kodema/rulesets --method POST --input .github/rulesets/master.json
 ```
 
 To rehearse without publishing, start the workflow by hand on any branch. It
@@ -102,19 +102,19 @@ gh workflow run release.yml --ref <branch>
 ## Use a release
 
 ```sh
-# kodama and kodactl, into ~/.local/bin
-curl -fsSL https://raw.githubusercontent.com/optimiware/kodama/master/install.sh | KODAMA_VERSION=<version> sh
+# kodema and kodactl, into ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | KODEMA_VERSION=<version> sh
 
 # or by hand
 gh release download v<version> --pattern '*_linux_amd64.tar.gz' --pattern SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
 
 # image, pinned by the digest from the release notes
-export KODAMA_IMAGE_REPOSITORY=ghcr.io/optimiware/kodama/kodama
-export KODAMA_IMAGE_DIGEST=sha256:<64 hex>
+export KODEMA_IMAGE_REPOSITORY=ghcr.io/optimiware/kodema/kodema
+export KODEMA_IMAGE_DIGEST=sha256:<64 hex>
 
 # chart
-helm pull oci://ghcr.io/optimiware/kodama/charts/kodama-stack --version <version>
+helm pull oci://ghcr.io/optimiware/kodema/charts/kodema-stack --version <version>
 ```
 
 `scripts/deploy` deploys the chart of the checkout, not a published one; see

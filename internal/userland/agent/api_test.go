@@ -8,7 +8,7 @@
 //
 //	const (
 //	    CheckpointVersion     = 1
-//	    CheckpointRefPrefix   = "kodama-checkpoint/"
+//	    CheckpointRefPrefix   = "kodema-checkpoint/"
 //	    CheckpointRefVersion  = "v1"
 //	    MaxCheckpointRefBytes = 512
 //	    MaxToolArgumentBytes  = 64 << 10
@@ -115,7 +115,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/agent"
+	"github.com/optimiware/kodema/internal/userland/agent"
 )
 
 func TestDefaultLimitsAndValidation(t *testing.T) {
@@ -186,9 +186,9 @@ func TestOutcomeStatusVocabulary(t *testing.T) {
 
 func TestCheckpointReferenceFormat(t *testing.T) {
 	valid := []string{
-		"kodama-checkpoint/v1/ctx-0001",
-		"kodama-checkpoint/v1/a",
-		"kodama-checkpoint/v1/context.2026-01-02_03",
+		"kodema-checkpoint/v1/ctx-0001",
+		"kodema-checkpoint/v1/a",
+		"kodema-checkpoint/v1/context.2026-01-02_03",
 	}
 	for _, ref := range valid {
 		if !agent.ValidCheckpointRef(ref) {
@@ -199,22 +199,22 @@ func TestCheckpointReferenceFormat(t *testing.T) {
 		"",
 		"ctx-0001",
 		"ctx/0001",
-		"kodama-checkpoint/v2/ctx-0001",
-		"kodama-checkpoint/v1/",
-		"kodama-checkpoint/v1/../ctx",
-		"kodama-checkpoint/v1/CTX-0001",
+		"kodema-checkpoint/v2/ctx-0001",
+		"kodema-checkpoint/v1/",
+		"kodema-checkpoint/v1/../ctx",
+		"kodema-checkpoint/v1/CTX-0001",
 		"/tmp/ctx",
 		"./ctx",
 		"file:///tmp/ctx",
 		"checkpoint/v1/ctx-0001",
-		"kodama-checkpoint/v1/" + strings.Repeat("a", agent.MaxCheckpointRefBytes),
+		"kodema-checkpoint/v1/" + strings.Repeat("a", agent.MaxCheckpointRefBytes),
 	}
 	for _, ref := range refusals {
 		if agent.ValidCheckpointRef(ref) {
 			t.Errorf("ValidCheckpointRef(%q) = true; want refusal", ref)
 		}
 	}
-	if agent.CheckpointRefPrefix != "kodama-checkpoint/" || agent.CheckpointRefVersion != "v1" {
+	if agent.CheckpointRefPrefix != "kodema-checkpoint/" || agent.CheckpointRefVersion != "v1" {
 		t.Fatalf("checkpoint prefix/version = %q/%q", agent.CheckpointRefPrefix, agent.CheckpointRefVersion)
 	}
 	if agent.CheckpointVersion != 1 {
@@ -281,7 +281,7 @@ func TestRunInputValidation(t *testing.T) {
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("valid RunInput refused: %v", err)
 	}
-	if err := (agent.RunInput{TaskID: "tsk-1", ExecutionID: "exec-1", Model: "m", Messages: valid.Messages, RestoreRef: "kodama-checkpoint/v1/ctx-1"}).Validate(); err != nil {
+	if err := (agent.RunInput{TaskID: "tsk-1", ExecutionID: "exec-1", Model: "m", Messages: valid.Messages, RestoreRef: "kodema-checkpoint/v1/ctx-1"}).Validate(); err != nil {
 		t.Fatalf("restoring RunInput refused: %v", err)
 	}
 	invalid := []agent.RunInput{

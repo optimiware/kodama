@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 func pathExists(t *testing.T, path string) bool {
@@ -1307,7 +1307,7 @@ func TestRefreshCredentialReplacesOnlyMountedFile(t *testing.T) {
 		t.Fatalf("refresh = %+v; want delivered", refresh)
 	}
 	assertHostFile(t, fx.credentialPath(t), "tok-new")
-	assertHostFile(t, fx.hostPath(t, "/kodama/secrets/API_KEY"), "s3cr3t")
+	assertHostFile(t, fx.hostPath(t, "/kodema/secrets/API_KEY"), "s3cr3t")
 	if fx.executor.spawnCount() != 1 || fx.executor.spawnRequestCount() != 1 {
 		t.Fatal("RefreshCredential restarted the command")
 	}
@@ -1330,8 +1330,8 @@ func TestRefreshCredentialRecoversLostUpdateResponse(t *testing.T) {
 
 	// Either an in-place write or a temp-file rename may deliver the update;
 	// both lose the response after the effect is visible.
-	fx.files.injectAfter("WriteFile", "/KODAMA_TOKEN", errors.New("connection reset after write"))
-	fx.files.injectAfter("Rename", "/KODAMA_TOKEN", errors.New("connection reset after rename"))
+	fx.files.injectAfter("WriteFile", "/KODEMA_TOKEN", errors.New("connection reset after write"))
+	fx.files.injectAfter("Rename", "/KODEMA_TOKEN", errors.New("connection reset after rename"))
 
 	refresh, err := fx.adapter.RefreshCredential(context.Background(), engine.CredentialRequest{
 		Identity:   fx.request.Identity,
@@ -1352,8 +1352,8 @@ func TestRefreshCredentialRecoversLostUpdateResponse(t *testing.T) {
 		t.Fatal("a lost update restarted the command")
 	}
 
-	fx.files.clear("WriteFile", "/KODAMA_TOKEN")
-	fx.files.clear("Rename", "/KODAMA_TOKEN")
+	fx.files.clear("WriteFile", "/KODEMA_TOKEN")
+	fx.files.clear("Rename", "/KODEMA_TOKEN")
 	retry, err := fx.adapter.RefreshCredential(context.Background(), engine.CredentialRequest{
 		Identity:   fx.request.Identity,
 		Credential: "tok-lost",

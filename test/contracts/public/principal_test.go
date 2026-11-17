@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/userland/principal"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/userland/principal"
 )
 
 // TestUserlandPrincipalForOIDCMatchesShellOIDCDerivation pins that Userland's
@@ -20,21 +20,21 @@ func TestUserlandPrincipalForOIDCMatchesShellOIDCDerivation(t *testing.T) {
 		issuer  string
 		subject string
 	}{
-		{"https standard", "https://auth.kodama.example", "admin"},
+		{"https standard", "https://auth.kodema.example", "admin"},
 		{"trailing slash issuer", "https://tenant.eu.auth0.com/", "auth0|123456"},
 		{"loopback port", "http://127.0.0.1:8082", "reviewer"},
 		{"ipv6 loopback", "http://[::1]:8082", "engineer"},
-		{"github subject", "https://auth.kodama.example", "github:octocat"},
-		{"email subject", "https://auth.kodama.example", "email:reviewer@example.com"},
-		{"upstream oidc subject", "https://auth.kodama.example", "oidc:https://accounts.google.com:10987654321"},
+		{"github subject", "https://auth.kodema.example", "github:octocat"},
+		{"email subject", "https://auth.kodema.example", "email:reviewer@example.com"},
+		{"upstream oidc subject", "https://auth.kodema.example", "oidc:https://accounts.google.com:10987654321"},
 		{"separator left", "ab", "c"},
 		{"separator right", "a", "bc"},
-		{"embedded nul in subject", "https://auth.kodama.example", "part1\x00part2"},
-		{"unicode subject", "https://auth.kodama.example", "user-木の精-λ"},
-		{"long subject", "https://auth.kodama.example", strings.Repeat("s", 4096)},
-		{"whitespace preserved", " https://auth.kodama.example ", " sub "},
+		{"embedded nul in subject", "https://auth.kodema.example", "part1\x00part2"},
+		{"unicode subject", "https://auth.kodema.example", "user-木の精-λ"},
+		{"long subject", "https://auth.kodema.example", strings.Repeat("s", 4096)},
+		{"whitespace preserved", " https://auth.kodema.example ", " sub "},
 		{"empty issuer", "", "admin"},
-		{"empty subject", "https://auth.kodama.example", ""},
+		{"empty subject", "https://auth.kodema.example", ""},
 		{"both empty", "", ""},
 	}
 
@@ -61,7 +61,7 @@ func TestUserlandPrincipalForOIDCMatchesShellOIDCDerivation(t *testing.T) {
 	}
 
 	for i := range 256 {
-		issuer := fmt.Sprintf("https://issuer-%d.kodama.invalid:%d/path", i%17, 8000+i)
+		issuer := fmt.Sprintf("https://issuer-%d.kodema.invalid:%d/path", i%17, 8000+i)
 		var subject string
 		switch i % 3 {
 		case 0:

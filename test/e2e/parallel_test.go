@@ -6,14 +6,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
-	"github.com/optimiware/kodama/test/e2e/internal/smoke"
-	"github.com/optimiware/kodama/test/support/parallel"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/smoke"
+	"github.com/optimiware/kodema/test/support/parallel"
 )
 
 // e2eGate bounds how many live scenarios run at once against the installation
-// under test. KODAMA_E2E_CONCURRENCY=1 runs them one at a time.
-var e2eGate = &parallel.Gate{Env: "KODAMA_E2E_CONCURRENCY", Default: 6, Max: 32}
+// under test. KODEMA_E2E_CONCURRENCY=1 runs them one at a time.
+var e2eGate = &parallel.Gate{Env: "KODEMA_E2E_CONCURRENCY", Default: 6, Max: 32}
 
 // e2eParallel must be the first statement of a live scenario that tolerates
 // concurrent siblings in the same project. A scenario that asserts on

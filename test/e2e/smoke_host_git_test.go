@@ -40,10 +40,10 @@ func TestSmokeHostGitAskpassScoped(t *testing.T) {
 	origin := "https://git.example.test:18445"
 
 	username, err := run(origin, "Username for 'https://git.example.test:18445': ")
-	if err != nil || username != "kodama\n" {
-		t.Fatalf("matching username prompt = %q, err=%v; want kodama", username, err)
+	if err != nil || username != "kodema\n" {
+		t.Fatalf("matching username prompt = %q, err=%v; want kodema", username, err)
 	}
-	password, err := run(origin, "Password for 'https://kodama@git.example.test:18445': ")
+	password, err := run(origin, "Password for 'https://kodema@git.example.test:18445': ")
 	if err != nil || password != token {
 		t.Fatalf("matching password prompt returned %d bytes, err=%v; want the token", len(password), err)
 	}
@@ -90,7 +90,7 @@ func TestSmokeHostGitAuthenticationRefused(t *testing.T) {
 		}
 	}
 	for _, output := range []string{
-		"remote: kodama git: update rejected",
+		"remote: kodema git: update rejected",
 		"fatal: unable to access 'https://localhost:18445/': TLS handshake timeout",
 		"fatal: couldn't find remote ref refs/heads/work/x",
 	} {

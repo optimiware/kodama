@@ -24,7 +24,7 @@ package factory
 // here never rely on a negated pipeline for fail-fast behavior, never put a
 // credential in an argument, and never disable TLS verification.
 //
-// The HTTPS output submitter resolves KODAMA_ACTION (an action slug) to the real
+// The HTTPS output submitter resolves KODEMA_ACTION (an action slug) to the real
 // action ID through execution.inspect, sends the served `expected_version`
 // envelope, and retries only an explicit `version_conflict` with freshly read
 // state. Authorization reaches curl through `--config -` on stdin; the mounted
@@ -37,7 +37,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 const (
@@ -51,11 +51,11 @@ const (
 	protectedWorkloadRepositoryDirectory = "/workspace/git-protected-repository"
 	// protectedWorkloadMarkerPath records the execution that owns this
 	// workspace, so a replaced workspace cannot pass the later actions.
-	protectedWorkloadMarkerPath = "/workspace/.kodama-workspace-marker"
+	protectedWorkloadMarkerPath = "/workspace/.kodema-workspace-marker"
 	// protectedWorkloadOutputsRoot is the product-materialized output root.
-	protectedWorkloadOutputsRoot = "/kodama/outputs"
+	protectedWorkloadOutputsRoot = "/kodema/outputs"
 	// protectedWorkloadTaskFile is the product task snapshot path.
-	protectedWorkloadTaskFile = "/kodama/task.json"
+	protectedWorkloadTaskFile = "/kodema/task.json"
 	// protectedWorkloadProtectedRef is the only protected ref this path moves.
 	protectedWorkloadProtectedRef = "refs/heads/main"
 	// protectedWorkloadCandidateKey and protectedWorkloadTestResultKey are the
@@ -64,8 +64,8 @@ const (
 	protectedWorkloadTestResultKey = "test_result"
 	// protectedWorkloadProgramFile and protectedWorkloadTestFile are the
 	// deterministic fixture sources committed by the implement action.
-	protectedWorkloadProgramFile = "kodama-program.sh"
-	protectedWorkloadTestFile    = "kodama-test.sh"
+	protectedWorkloadProgramFile = "kodema-program.sh"
+	protectedWorkloadTestFile    = "kodema-test.sh"
 	// protectedWorkloadSubmitAttempts bounds the version-conflict retry loop.
 	protectedWorkloadSubmitAttempts = 5
 	// Default action names of the shared golden scenario.
@@ -188,7 +188,7 @@ func protectedWorkloadCandidateCommands(spec protectedWorkloadSpec) ([]string, e
 	commands = append(commands, protectedWorkloadOutputSubmitter(spec)...)
 	if spec.RequireTask {
 		commands = append(commands,
-			`test -n "$KODAMA_TASK"`,
+			`test -n "$KODEMA_TASK"`,
 			"test -s "+shellQuote(protectedWorkloadTaskFile),
 		)
 	}
@@ -197,26 +197,26 @@ func protectedWorkloadCandidateCommands(spec protectedWorkloadSpec) ([]string, e
 	testScript := shellQuote(protectedWorkloadTestFile)
 	commands = append(commands,
 		"rm -rf -- "+directory,
-		"git_kodama clone --quiet "+shellQuote(spec.URL)+" "+directory,
+		"git_kodema clone --quiet "+shellQuote(spec.URL)+" "+directory,
 		"cd "+directory,
 		// The checkout must be the reviewed base before the candidate exists.
 		`test "$(git rev-parse HEAD)" = `+shellQuote(spec.ExpectedBase),
 		// The marker names this execution so a replaced workspace is visible.
-		"printf '%s\\n' \"$KODAMA_EXECUTION\" > "+shellQuote(spec.MarkerPath),
-		"cat > "+program+" <<'KODAMA_PROTECTED_PROGRAM'\n"+protectedWorkloadProgram+"KODAMA_PROTECTED_PROGRAM",
+		"printf '%s\\n' \"$KODEMA_EXECUTION\" > "+shellQuote(spec.MarkerPath),
+		"cat > "+program+" <<'KODEMA_PROTECTED_PROGRAM'\n"+protectedWorkloadProgram+"KODEMA_PROTECTED_PROGRAM",
 		"chmod 0755 "+program,
-		"cat > "+testScript+" <<'KODAMA_PROTECTED_TEST'\n"+protectedWorkloadTest+"KODAMA_PROTECTED_TEST",
+		"cat > "+testScript+" <<'KODEMA_PROTECTED_TEST'\n"+protectedWorkloadTest+"KODEMA_PROTECTED_TEST",
 		"chmod 0755 "+testScript,
 		"git add -- "+program+" "+testScript,
-		"git -c user.name=kodama -c user.email=kodama@example.invalid commit --quiet -m 'I05 protected candidate'",
-		"kodama_candidate=$(git rev-parse HEAD)",
+		"git -c user.name=kodema -c user.email=kodema@example.invalid commit --quiet -m 'I05 protected candidate'",
+		"kodema_candidate=$(git rev-parse HEAD)",
 		`test "$(git rev-parse HEAD^)" = `+shellQuote(spec.ExpectedBase),
-		`test "$kodama_candidate" != `+shellQuote(spec.ExpectedBase),
-		"git_kodama push --quiet origin "+shellQuote("HEAD:"+spec.WorkRef),
+		`test "$kodema_candidate" != `+shellQuote(spec.ExpectedBase),
+		"git_kodema push --quiet origin "+shellQuote("HEAD:"+spec.WorkRef),
 	)
 	commands = append(commands, workloadScanCommands(spec.TokenPath, spec.Workspace)...)
 	commands = append(commands,
-		"kodama_submit_outputs \"candidate=$kodama_candidate\"",
+		"kodema_submit_outputs \"candidate=$kodema_candidate\"",
 		`printf 'candidate-output-submitted\n'`,
 	)
 	return commands, nil
@@ -233,19 +233,19 @@ func protectedWorkloadTestCommands(spec protectedWorkloadSpec) ([]string, error)
 	commands = append(commands, protectedWorkloadOutputSubmitter(spec)...)
 	commands = append(commands,
 		"test -s "+shellQuote(implementCandidate),
-		"kodama_test_candidate=$(cat "+shellQuote(implementCandidate)+")",
-		"kodama_test_marker=$(cat "+shellQuote(spec.MarkerPath)+")",
-		`test "$kodama_test_marker" = "$KODAMA_EXECUTION"`,
+		"kodema_test_candidate=$(cat "+shellQuote(implementCandidate)+")",
+		"kodema_test_marker=$(cat "+shellQuote(spec.MarkerPath)+")",
+		`test "$kodema_test_marker" = "$KODEMA_EXECUTION"`,
 		"cd "+directory,
-		`test "$(git rev-parse HEAD)" = "$kodama_test_candidate"`,
-		"kodama_test_status=$(git status --porcelain --untracked-files=no)",
-		`test -z "$kodama_test_status"`,
+		`test "$(git rev-parse HEAD)" = "$kodema_test_candidate"`,
+		"kodema_test_status=$(git status --porcelain --untracked-files=no)",
+		`test -z "$kodema_test_status"`,
 		"test -f "+shellQuote(protectedWorkloadTestFile),
 		"/bin/sh -e "+shellQuote(protectedWorkloadTestFile),
 	)
 	commands = append(commands, workloadScanCommands(spec.TokenPath, spec.Workspace)...)
 	commands = append(commands,
-		"kodama_submit_outputs \"candidate=$kodama_test_candidate\" \"test_result=pass:$kodama_test_candidate\"",
+		"kodema_submit_outputs \"candidate=$kodema_test_candidate\" \"test_result=pass:$kodema_test_candidate\"",
 		`printf 'test-outputs-submitted\n'`,
 	)
 	return commands, nil
@@ -264,17 +264,17 @@ func protectedWorkloadIntegrateCommands(spec protectedWorkloadSpec) ([]string, e
 		"test -s "+shellQuote(implementCandidate),
 		"test -s "+shellQuote(testCandidate),
 		"test -s "+shellQuote(testResult),
-		"kodama_integrate_candidate=$(cat "+shellQuote(implementCandidate)+")",
-		`test "$(cat `+shellQuote(testCandidate)+`)" = "$kodama_integrate_candidate"`,
-		`test "$(cat `+shellQuote(testResult)+`)" = "pass:$kodama_integrate_candidate"`,
-		"kodama_integrate_marker=$(cat "+shellQuote(spec.MarkerPath)+")",
-		`test "$kodama_integrate_marker" = "$KODAMA_EXECUTION"`,
+		"kodema_integrate_candidate=$(cat "+shellQuote(implementCandidate)+")",
+		`test "$(cat `+shellQuote(testCandidate)+`)" = "$kodema_integrate_candidate"`,
+		`test "$(cat `+shellQuote(testResult)+`)" = "pass:$kodema_integrate_candidate"`,
+		"kodema_integrate_marker=$(cat "+shellQuote(spec.MarkerPath)+")",
+		`test "$kodema_integrate_marker" = "$KODEMA_EXECUTION"`,
 		"cd "+shellQuote(spec.Directory),
-		`test "$(git rev-parse HEAD)" = "$kodama_integrate_candidate"`,
-		`test "$kodama_integrate_candidate" != `+shellQuote(spec.ExpectedBase),
-		"if git merge-base --is-ancestor "+shellQuote(spec.ExpectedBase)+` "$kodama_integrate_candidate"; then :; else printf 'candidate-is-not-descended-from-base\n' >&2; exit 1; fi`,
-		"git_kodama push --quiet "+shellQuote("--force-with-lease="+spec.ProtectedRef+":"+spec.ExpectedBase)+
-			" origin \"$kodama_integrate_candidate\":"+spec.ProtectedRef,
+		`test "$(git rev-parse HEAD)" = "$kodema_integrate_candidate"`,
+		`test "$kodema_integrate_candidate" != `+shellQuote(spec.ExpectedBase),
+		"if git merge-base --is-ancestor "+shellQuote(spec.ExpectedBase)+` "$kodema_integrate_candidate"; then :; else printf 'candidate-is-not-descended-from-base\n' >&2; exit 1; fi`,
+		"git_kodema push --quiet "+shellQuote("--force-with-lease="+spec.ProtectedRef+":"+spec.ExpectedBase)+
+			" origin \"$kodema_integrate_candidate\":"+spec.ProtectedRef,
 	)
 	commands = append(commands, workloadScanCommands(spec.TokenPath, spec.Workspace)...)
 	commands = append(commands, `printf 'protected-integration-pushed\n'`)
@@ -292,7 +292,7 @@ func protectedWorkloadSubmitCommands(spec protectedWorkloadSpec, outputs ...stri
 	commands := protectedWorkloadPrelude(spec)
 	commands = append(commands, protectedWorkloadOutputSubmitter(spec)...)
 	var call strings.Builder
-	call.WriteString("kodama_submit_outputs")
+	call.WriteString("kodema_submit_outputs")
 	for _, output := range outputs {
 		call.WriteString(" " + shellQuote(output))
 	}
@@ -308,15 +308,15 @@ func protectedWorkloadPrelude(spec protectedWorkloadSpec) []string {
 		caMaterial += "\n"
 	}
 	return []string{
-		"cat > " + shellQuote(spec.CAPath) + " <<'KODAMA_PROTECTED_CA'\n" + caMaterial + "KODAMA_PROTECTED_CA",
+		"cat > " + shellQuote(spec.CAPath) + " <<'KODEMA_PROTECTED_CA'\n" + caMaterial + "KODEMA_PROTECTED_CA",
 		"export GIT_SSL_CAINFO=" + shellQuote(spec.CAPath),
 		"export GIT_CONFIG_NOSYSTEM=1",
 		"export GIT_CONFIG_GLOBAL=/dev/null",
 		"export GIT_ATTR_NOSYSTEM=1",
 		"export GIT_TERMINAL_PROMPT=0",
 		"export GIT_TRACE=0 GIT_TRACE_PACKET=0 GIT_TRACE_CURL=0 GIT_CURL_VERBOSE=0",
-		"git_kodama() {\n" +
-			"  " + gitWorkloadAuthEnv + "=\"Authorization: Basic $(printf 'kodama:%s' \"$(cat " + shellQuote(spec.TokenPath) + ")\" | base64 -w0)\" \\\n" +
+		"git_kodema() {\n" +
+			"  " + gitWorkloadAuthEnv + "=\"Authorization: Basic $(printf 'kodema:%s' \"$(cat " + shellQuote(spec.TokenPath) + ")\" | base64 -w0)\" \\\n" +
 			"  git -c http.followRedirects=false --config-env=http.extraHeader=" + gitWorkloadAuthEnv + " \"$@\"\n" +
 			"}",
 	}
@@ -331,128 +331,128 @@ func protectedWorkloadPrelude(spec protectedWorkloadSpec) []string {
 func protectedWorkloadOutputSubmitter(spec protectedWorkloadSpec) []string {
 	token := shellQuote(spec.TokenPath)
 	ca := shellQuote(spec.CAPath)
-	inspectBody := shellQuote(filepath.Join(spec.Workspace, ".kodama-inspect.json"))
-	inspectRequestPath := filepath.Join(spec.Workspace, ".kodama-inspect-request.json")
+	inspectBody := shellQuote(filepath.Join(spec.Workspace, ".kodema-inspect.json"))
+	inspectRequestPath := filepath.Join(spec.Workspace, ".kodema-inspect-request.json")
 	inspectRequest := shellQuote(inspectRequestPath)
-	responseBody := shellQuote(filepath.Join(spec.Workspace, ".kodama-outputs-response.json"))
-	requestBody := shellQuote(filepath.Join(spec.Workspace, ".kodama-outputs.json"))
+	responseBody := shellQuote(filepath.Join(spec.Workspace, ".kodema-outputs-response.json"))
+	requestBody := shellQuote(filepath.Join(spec.Workspace, ".kodema-outputs.json"))
 	dataRequest := shellQuote("@" + inspectRequestPath)
 	return []string{
-		"kodama_http_get() {\n" +
-			"  kodama_http_output=$1\n" +
-			"  kodama_http_token=$(cat " + token + ") || return 1\n" +
-			"  if [ -z \"$kodama_http_token\" ]; then printf 'kodama-empty-token\\n' >&2; return 1; fi\n" +
+		"kodema_http_get() {\n" +
+			"  kodema_http_output=$1\n" +
+			"  kodema_http_token=$(cat " + token + ") || return 1\n" +
+			"  if [ -z \"$kodema_http_token\" ]; then printf 'kodema-empty-token\\n' >&2; return 1; fi\n" +
 			"  printf '%s' '{\"input\":{}}' > " + inspectRequest + "\n" +
-			"  kodama_http_status=$(printf 'header = \"Authorization: Bearer %s\"\\n' \"$kodama_http_token\" | " +
+			"  kodema_http_status=$(printf 'header = \"Authorization: Bearer %s\"\\n' \"$kodema_http_token\" | " +
 			"curl --config - --silent --show-error --proto '=https' --cacert " + ca +
 			" --connect-timeout 10 --max-time 30 --request GET --header 'Content-Type: application/json' " +
-			"--data-binary " + dataRequest + " --output \"$kodama_http_output\" --write-out '%{http_code}' " +
-			"\"$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION\") || { printf 'kodama-inspect-transport-failed\\n' >&2; return 1; }\n" +
-			"  printf '%s' \"$kodama_http_status\"\n" +
+			"--data-binary " + dataRequest + " --output \"$kodema_http_output\" --write-out '%{http_code}' " +
+			"\"$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION\") || { printf 'kodema-inspect-transport-failed\\n' >&2; return 1; }\n" +
+			"  printf '%s' \"$kodema_http_status\"\n" +
 			"}",
-		"kodama_http_put() {\n" +
-			"  kodama_put_body=$1\n" +
-			"  kodama_put_output=$2\n" +
-			"  kodama_put_action=$3\n" +
-			"  kodama_put_token=$(cat " + token + ") || return 1\n" +
-			"  if [ -z \"$kodama_put_token\" ]; then printf 'kodama-empty-token\\n' >&2; return 1; fi\n" +
-			"  kodama_put_status=$(printf 'header = \"Authorization: Bearer %s\"\\n' \"$kodama_put_token\" | " +
+		"kodema_http_put() {\n" +
+			"  kodema_put_body=$1\n" +
+			"  kodema_put_output=$2\n" +
+			"  kodema_put_action=$3\n" +
+			"  kodema_put_token=$(cat " + token + ") || return 1\n" +
+			"  if [ -z \"$kodema_put_token\" ]; then printf 'kodema-empty-token\\n' >&2; return 1; fi\n" +
+			"  kodema_put_status=$(printf 'header = \"Authorization: Bearer %s\"\\n' \"$kodema_put_token\" | " +
 			"curl --config - --silent --show-error --proto '=https' --cacert " + ca +
 			" --connect-timeout 10 --max-time 30 --header 'Content-Type: application/json' --request PUT " +
-			"--data-binary \"@$kodama_put_body\" --output \"$kodama_put_output\" --write-out '%{http_code}' " +
-			"\"$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION/actions/$kodama_put_action/outputs\") || { printf 'kodama-outputs-transport-failed\\n' >&2; return 1; }\n" +
-			"  printf '%s' \"$kodama_put_status\"\n" +
+			"--data-binary \"@$kodema_put_body\" --output \"$kodema_put_output\" --write-out '%{http_code}' " +
+			"\"$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION/actions/$kodema_put_action/outputs\") || { printf 'kodema-outputs-transport-failed\\n' >&2; return 1; }\n" +
+			"  printf '%s' \"$kodema_put_status\"\n" +
 			"}",
-		"kodama_execution_version() {\n" +
+		"kodema_execution_version() {\n" +
 			"  tr ',' '\\n' < \"$1\" | sed -n 's/^\"version\":\\([0-9][0-9]*\\)$/\\1/p' | head -n 1\n" +
 			"}",
-		"kodama_action_line() {\n" +
+		"kodema_action_line() {\n" +
 			"  sed 's/{\"action_id\":/\\n{\"action_id\":/g' \"$1\" | grep -F '\"name\":\"'\"$2\"'\"' | head -n 1\n" +
 			"}",
-		"kodama_action_id() {\n" +
+		"kodema_action_id() {\n" +
 			"  printf '%s\\n' \"$1\" | tr ',' '\\n' | sed -n 's/^{\"action_id\":\"\\([A-Za-z0-9_-]*\\)\"$/\\1/p' | head -n 1\n" +
 			"}",
-		"kodama_write_outputs_body() {\n" +
-			"  kodama_write_file=$1\n" +
-			"  kodama_write_version=$2\n" +
-			"  kodama_write_action=$3\n" +
+		"kodema_write_outputs_body() {\n" +
+			"  kodema_write_file=$1\n" +
+			"  kodema_write_version=$2\n" +
+			"  kodema_write_action=$3\n" +
 			"  shift 3\n" +
-			"  kodama_write_outputs=\n" +
-			"  for kodama_write_pair in \"$@\"; do\n" +
-			"    kodama_write_key=${kodama_write_pair%%=*}\n" +
-			"    kodama_write_value=${kodama_write_pair#*=}\n" +
-			"    case \"$kodama_write_key\" in\n" +
+			"  kodema_write_outputs=\n" +
+			"  for kodema_write_pair in \"$@\"; do\n" +
+			"    kodema_write_key=${kodema_write_pair%%=*}\n" +
+			"    kodema_write_value=${kodema_write_pair#*=}\n" +
+			"    case \"$kodema_write_key\" in\n" +
 			"      [a-z]*) ;;\n" +
-			"      *) printf 'kodama-invalid-output-key\\n' >&2; return 1 ;;\n" +
+			"      *) printf 'kodema-invalid-output-key\\n' >&2; return 1 ;;\n" +
 			"    esac\n" +
-			"    case \"$kodama_write_key\" in\n" +
-			"      *[!a-z0-9_-]*) printf 'kodama-invalid-output-key\\n' >&2; return 1 ;;\n" +
+			"    case \"$kodema_write_key\" in\n" +
+			"      *[!a-z0-9_-]*) printf 'kodema-invalid-output-key\\n' >&2; return 1 ;;\n" +
 			"    esac\n" +
-			"    case \"$kodama_write_value\" in\n" +
-			"      *[!A-Za-z0-9._:/+@=-]*) printf 'kodama-invalid-output-value\\n' >&2; return 1 ;;\n" +
+			"    case \"$kodema_write_value\" in\n" +
+			"      *[!A-Za-z0-9._:/+@=-]*) printf 'kodema-invalid-output-value\\n' >&2; return 1 ;;\n" +
 			"    esac\n" +
-			"    if [ -n \"$kodama_write_outputs\" ]; then kodama_write_outputs=\"$kodama_write_outputs,\"; fi\n" +
-			"    kodama_write_outputs=\"$kodama_write_outputs\\\"$kodama_write_key\\\":\\\"$kodama_write_value\\\"\"\n" +
+			"    if [ -n \"$kodema_write_outputs\" ]; then kodema_write_outputs=\"$kodema_write_outputs,\"; fi\n" +
+			"    kodema_write_outputs=\"$kodema_write_outputs\\\"$kodema_write_key\\\":\\\"$kodema_write_value\\\"\"\n" +
 			"  done\n" +
-			"  kodama_write_execution=$(printf '%s' \"$KODAMA_EXECUTION\" | tr '_' '-')\n" +
-			"  kodama_write_key=\"outputs-$(printf '%s' \"$kodama_write_execution\" | cut -c1-48)-$KODAMA_ACTION\"\n" +
+			"  kodema_write_execution=$(printf '%s' \"$KODEMA_EXECUTION\" | tr '_' '-')\n" +
+			"  kodema_write_key=\"outputs-$(printf '%s' \"$kodema_write_execution\" | cut -c1-48)-$KODEMA_ACTION\"\n" +
 			"  printf '{\"expected_version\":%s,\"idempotency_key\":\"%s\",\"input\":{\"execution_id\":\"%s\",\"action_id\":\"%s\",\"outputs\":{%s}}}' " +
-			"\"$kodama_write_version\" \"$kodama_write_key\" \"$KODAMA_EXECUTION\" \"$kodama_write_action\" \"$kodama_write_outputs\" > \"$kodama_write_file\"\n" +
+			"\"$kodema_write_version\" \"$kodema_write_key\" \"$KODEMA_EXECUTION\" \"$kodema_write_action\" \"$kodema_write_outputs\" > \"$kodema_write_file\"\n" +
 			"}",
-		"kodama_submit_outputs() {\n" +
-			"  case \"$KODAMA_EXECUTION\" in\n" +
-			"    ''|*[!A-Za-z0-9_-]*) printf 'kodama-invalid-execution\\n' >&2; return 1 ;;\n" +
+		"kodema_submit_outputs() {\n" +
+			"  case \"$KODEMA_EXECUTION\" in\n" +
+			"    ''|*[!A-Za-z0-9_-]*) printf 'kodema-invalid-execution\\n' >&2; return 1 ;;\n" +
 			"  esac\n" +
-			"  case \"$KODAMA_ACTION\" in\n" +
+			"  case \"$KODEMA_ACTION\" in\n" +
 			"    [a-z]*) ;;\n" +
-			"    *) printf 'kodama-invalid-action\\n' >&2; return 1 ;;\n" +
+			"    *) printf 'kodema-invalid-action\\n' >&2; return 1 ;;\n" +
 			"  esac\n" +
-			"  case \"$KODAMA_ACTION\" in\n" +
-			"    *[!a-z0-9-]*) printf 'kodama-invalid-action\\n' >&2; return 1 ;;\n" +
+			"  case \"$KODEMA_ACTION\" in\n" +
+			"    *[!a-z0-9-]*) printf 'kodema-invalid-action\\n' >&2; return 1 ;;\n" +
 			"  esac\n" +
-			"  kodama_submit_attempt=0\n" +
-			"  while [ \"$kodama_submit_attempt\" -lt " + fmt.Sprint(protectedWorkloadSubmitAttempts) + " ]; do\n" +
-			"    kodama_submit_attempt=$((kodama_submit_attempt + 1))\n" +
-			"    kodama_submit_status=$(kodama_http_get " + inspectBody + ") || return 1\n" +
-			"    if [ \"$kodama_submit_status\" != \"200\" ]; then\n" +
-			"      printf 'kodama-inspect-status %s\\n' \"$kodama_submit_status\" >&2\n" +
+			"  kodema_submit_attempt=0\n" +
+			"  while [ \"$kodema_submit_attempt\" -lt " + fmt.Sprint(protectedWorkloadSubmitAttempts) + " ]; do\n" +
+			"    kodema_submit_attempt=$((kodema_submit_attempt + 1))\n" +
+			"    kodema_submit_status=$(kodema_http_get " + inspectBody + ") || return 1\n" +
+			"    if [ \"$kodema_submit_status\" != \"200\" ]; then\n" +
+			"      printf 'kodema-inspect-status %s\\n' \"$kodema_submit_status\" >&2\n" +
 			"      cat " + inspectBody + " >&2\n" +
 			"      rm -f " + inspectBody + "\n" +
 			"      return 1\n" +
 			"    fi\n" +
-			"    kodama_submit_execution_version=$(kodama_execution_version " + inspectBody + ")\n" +
-			"    kodama_submit_action_line=$(kodama_action_line " + inspectBody + " \"$KODAMA_ACTION\")\n" +
-			"    kodama_submit_action_id=$(kodama_action_id \"$kodama_submit_action_line\")\n" +
-			"    if [ -z \"$kodama_submit_execution_version\" ] || [ -z \"$kodama_submit_action_id\" ]; then\n" +
-			"      printf 'kodama-inspect-unusable\\n' >&2\n" +
+			"    kodema_submit_execution_version=$(kodema_execution_version " + inspectBody + ")\n" +
+			"    kodema_submit_action_line=$(kodema_action_line " + inspectBody + " \"$KODEMA_ACTION\")\n" +
+			"    kodema_submit_action_id=$(kodema_action_id \"$kodema_submit_action_line\")\n" +
+			"    if [ -z \"$kodema_submit_execution_version\" ] || [ -z \"$kodema_submit_action_id\" ]; then\n" +
+			"      printf 'kodema-inspect-unusable\\n' >&2\n" +
 			"      rm -f " + inspectBody + "\n" +
 			"      return 1\n" +
 			"    fi\n" +
-			"    kodama_write_outputs_body " + requestBody + " \"$kodama_submit_execution_version\" \"$kodama_submit_action_id\" \"$@\" || { rm -f " + inspectBody + " " + requestBody + "; return 1; }\n" +
-			"    kodama_submit_put_status=$(kodama_http_put " + requestBody + " " + responseBody + " \"$kodama_submit_action_id\") || { rm -f " + inspectBody + " " + requestBody + "; return 1; }\n" +
+			"    kodema_write_outputs_body " + requestBody + " \"$kodema_submit_execution_version\" \"$kodema_submit_action_id\" \"$@\" || { rm -f " + inspectBody + " " + requestBody + "; return 1; }\n" +
+			"    kodema_submit_put_status=$(kodema_http_put " + requestBody + " " + responseBody + " \"$kodema_submit_action_id\") || { rm -f " + inspectBody + " " + requestBody + "; return 1; }\n" +
 			"    rm -f " + requestBody + "\n" +
-			"    case \"$kodama_submit_put_status\" in\n" +
+			"    case \"$kodema_submit_put_status\" in\n" +
 			"      200)\n" +
 			"        rm -f " + inspectBody + " " + responseBody + "\n" +
 			"        return 0\n" +
 			"        ;;\n" +
 			"      409)\n" +
 			"        grep -q '\"code\":\"version_conflict\"' " + responseBody + "\n" +
-			"        kodama_submit_conflict_status=$?\n" +
-			"        if [ \"$kodama_submit_conflict_status\" -ne 0 ]; then\n" +
-			"          printf 'kodama-outputs-conflict-unidentified\\n' >&2\n" +
+			"        kodema_submit_conflict_status=$?\n" +
+			"        if [ \"$kodema_submit_conflict_status\" -ne 0 ]; then\n" +
+			"          printf 'kodema-outputs-conflict-unidentified\\n' >&2\n" +
 			"          rm -f " + inspectBody + " " + responseBody + "\n" +
 			"          return 1\n" +
 			"        fi\n" +
 			"        ;;\n" +
 			"      *)\n" +
-			"        printf 'kodama-outputs-status %s\\n' \"$kodama_submit_put_status\" >&2\n" +
+			"        printf 'kodema-outputs-status %s\\n' \"$kodema_submit_put_status\" >&2\n" +
 			"        rm -f " + inspectBody + " " + responseBody + "\n" +
 			"        return 1\n" +
 			"        ;;\n" +
 			"    esac\n" +
 			"  done\n" +
-			"  printf 'kodama-outputs-retries-exhausted\\n' >&2\n" +
+			"  printf 'kodema-outputs-retries-exhausted\\n' >&2\n" +
 			"  rm -f " + inspectBody + " " + responseBody + "\n" +
 			"  return 1\n" +
 			"}",
@@ -535,7 +535,7 @@ printf '%s\n' "$(( $1 + $2 ))"
 // output submitter runs.
 const protectedWorkloadTest = `#!/bin/sh
 set -eu
-test "$(./kodama-program.sh 2 3)" = "5"
-test "$(./kodama-program.sh 0 0)" = "0"
-test "$(./kodama-program.sh -1 1)" = "0"
+test "$(./kodema-program.sh 2 3)" = "5"
+test "$(./kodema-program.sh 0 0)" = "0"
+test "$(./kodema-program.sh -1 1)" = "0"
 `

@@ -15,5 +15,5 @@ output "account_id" {
 
 output "state_key_template" {
   description = "Per-cluster S3 state key template."
-  value       = "kodama/aws/${var.account_id}/${var.region}/<cluster_name>/infrastructure.tfstate"
+  value       = "kodema/aws/${var.account_id}/${var.region}/<cluster_name>/infrastructure.tfstate"
 }

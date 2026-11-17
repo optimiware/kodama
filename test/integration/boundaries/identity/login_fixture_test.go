@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/internal/userland/cli"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 // fixtureAuthorizationURL builds one valid browser authorization request.
@@ -340,7 +340,7 @@ func TestFixtureDiscoveryFailureInjection(t *testing.T) {
 	}
 	t.Cleanup(server.Close)
 
-	response, err := server.Client().Get(server.URL() + "/.well-known/kodama-configuration")
+	response, err := server.Client().Get(server.URL() + "/.well-known/kodema-configuration")
 	if err != nil {
 		t.Fatalf("GET discovery: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestFixtureDiscoveryFailureInjection(t *testing.T) {
 	}
 
 	server.SetStatus(http.StatusBadGateway)
-	response, err = server.Client().Get(server.URL() + "/.well-known/kodama-configuration")
+	response, err = server.Client().Get(server.URL() + "/.well-known/kodema-configuration")
 	if err != nil {
 		t.Fatalf("GET failing discovery: %v", err)
 	}
@@ -363,7 +363,7 @@ func TestFixtureDiscoveryFailureInjection(t *testing.T) {
 	server.SetStatus(0)
 	server.SetDelay(50 * time.Millisecond)
 	started := time.Now()
-	response, err = server.Client().Get(server.URL() + "/.well-known/kodama-configuration")
+	response, err = server.Client().Get(server.URL() + "/.well-known/kodema-configuration")
 	if err != nil {
 		t.Fatalf("GET delayed discovery: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestFixtureDiscoveryFailureInjection(t *testing.T) {
 
 	server.SetDelay(0)
 	server.SetDrop(true)
-	if _, err := server.Client().Get(server.URL() + "/.well-known/kodama-configuration"); err == nil {
+	if _, err := server.Client().Get(server.URL() + "/.well-known/kodema-configuration"); err == nil {
 		t.Fatal("a dropped discovery connection returned a response")
 	}
 }

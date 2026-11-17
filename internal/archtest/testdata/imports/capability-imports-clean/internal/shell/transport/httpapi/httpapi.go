@@ -1,3 +1,3 @@
 package httpapi
 
-import _ "kodama/internal/shell/transport/mcp"
+import _ "kodema/internal/shell/transport/mcp"

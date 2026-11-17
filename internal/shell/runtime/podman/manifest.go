@@ -14,22 +14,22 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/kernel/script"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/script"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
-// Host layout constants. Every materialized logical path P under /kodama is
+// Host layout constants. Every materialized logical path P under /kodema is
 // written at filepath.Join(<root>/<workload>, P); the activation directory is
-// bind-mounted read-only at /kodama and the retained workspace volume at
+// bind-mounted read-only at /kodema and the retained workspace volume at
 // /workspace.
 const (
 	// activationRoot is the read-only bind destination of the activation data.
-	activationRoot = "/kodama"
+	activationRoot = "/kodema"
 	// entrypointScriptPath is the rendered fail-fast script inside the bind.
-	entrypointScriptPath = "/kodama/script"
+	entrypointScriptPath = "/kodema/script"
 	// readOnlyMode is the explicit read-only mode of every prepared file.
 	readOnlyMode = os.FileMode(0o444)
 	// directoryMode is the explicit mode of every prepared directory.
@@ -78,7 +78,7 @@ func workloadRoot(root string, workload id.WorkloadID) string {
 	return filepath.Join(root, string(workload))
 }
 
-// activationDir returns the daemon-visible directory bind-mounted at /kodama.
+// activationDir returns the daemon-visible directory bind-mounted at /kodema.
 func activationDir(root string, workload id.WorkloadID) string {
 	return filepath.Join(workloadRoot(root, workload), activationRoot)
 }
@@ -286,7 +286,7 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 		env = append(env, string(entry.Name)+"="+entry.Value)
 	}
 	env = append(env,
-		id.EnvURL+"="+a.kodamaURL,
+		id.EnvURL+"="+a.kodemaURL,
 		id.EnvExecution+"="+string(identity.ExecutionID),
 		id.EnvAction+"="+string(prepared.ActionName),
 	)

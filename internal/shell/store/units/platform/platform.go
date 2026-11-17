@@ -36,12 +36,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Schema table and column names used by these adapters. The names come
@@ -288,7 +288,7 @@ func notApplicableActorAuthority(kind identity.PrincipalKind) bool {
 // not applicable rather than malformed, but that exemption is limited to the two
 // kinds that hold actor authority without an execution: a human membership and a
 // service row. An execution actor's authority is its running execution, its
-// running container action and that action's deadline together (KODAMA.md), so
+// running container action and that action's deadline together (KODEMA.md), so
 // an execution actor that names no action has no deadline the commit could
 // guard, and the read is refused. An empty or unknown actor kind names no
 // applicable actor authority either, so it fails closed too. A supplied action

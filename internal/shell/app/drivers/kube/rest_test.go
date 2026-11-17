@@ -13,16 +13,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 const (
 	testImage = "registry.example.com/tools/build@sha256:" +
 		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	// testConfigMapKey is base64url("/kodama/inputs/input-a") without padding.
-	testConfigMapKey = "L2tvZGFtYS9pbnB1dHMvaW5wdXQtYQ"
+	// testConfigMapKey is base64url("/kodema/inputs/input-a") without padding.
+	testConfigMapKey = "L2tvZGVtYS9pbnB1dHMvaW5wdXQtYQ"
 )
 
 func namespacePath() string {
@@ -86,7 +86,7 @@ func testJob() runtimekube.Job {
 	podLabels := make(map[string]string, len(labels))
 	maps.Copy(podLabels, labels)
 	return runtimekube.Job{
-		Name:        "kodama-job-abc",
+		Name:        "kodema-job-abc",
 		Namespace:   testNamespace,
 		Labels:      labels,
 		Annotations: map[string]string{runtimekube.AnnotationIdempotencyKey: "idem-1"},
@@ -95,7 +95,7 @@ func testJob() runtimekube.Job {
 			Command: []string{"/bin/sh", "-ec", "echo hi"},
 			Env: []runtimekube.EnvVar{
 				{Name: "BUILD_MODE", Value: "release"},
-				{Name: "KODAMA_URL", Value: "https://kodama.example.com"},
+				{Name: "KODEMA_URL", Value: "https://kodema.example.com"},
 			},
 			Resources: runtimekube.Resources{
 				CPURequest:    "100m",
@@ -104,23 +104,23 @@ func testJob() runtimekube.Job {
 				MemoryLimit:   "256Mi",
 			},
 			Volumes: []runtimekube.Volume{
-				{Name: "workspace", MountPath: "/workspace", ClaimName: "kodama-workspace-abc"},
+				{Name: "workspace", MountPath: "/workspace", ClaimName: "kodema-workspace-abc"},
 				{
 					Name:          "activation",
-					MountPath:     "/kodama",
-					ConfigMapName: "kodama-activation-abc",
+					MountPath:     "/kodema",
+					ConfigMapName: "kodema-activation-abc",
 					ReadOnly:      true,
 					Items: []runtimekube.VolumeItem{
-						{Key: "/kodama/inputs/input-a", Path: "/kodama/inputs/input-a", Mode: 0o444},
+						{Key: "/kodema/inputs/input-a", Path: "/kodema/inputs/input-a", Mode: 0o444},
 					},
 				},
 				{
 					Name:       "credential",
-					MountPath:  "/kodama/secrets",
-					SecretName: "kodama-credential-abc",
+					MountPath:  "/kodema/secrets",
+					SecretName: "kodema-credential-abc",
 					ReadOnly:   true,
 					Items: []runtimekube.VolumeItem{
-						{Key: "API_KEY", Path: "/kodama/secrets/API_KEY", Mode: 0o444},
+						{Key: "API_KEY", Path: "/kodema/secrets/API_KEY", Mode: 0o444},
 					},
 				},
 			},
@@ -140,16 +140,16 @@ const testJobJSON = `{
   "apiVersion": "batch/v1",
   "kind": "Job",
   "metadata": {
-    "name": "kodama-job-abc",
+    "name": "kodema-job-abc",
     "namespace": "tenant-acme",
     "labels": {
-      "kodama.dev/tenant": "tenant-acme",
-      "kodama.dev/execution": "exec-1",
-      "kodama.dev/action": "build",
-      "kodama.dev/workload": "workload-1",
-      "kodama.dev/workspace": "workspace-1"
+      "kodema.dev/tenant": "tenant-acme",
+      "kodema.dev/execution": "exec-1",
+      "kodema.dev/action": "build",
+      "kodema.dev/workload": "workload-1",
+      "kodema.dev/workspace": "workspace-1"
     },
-    "annotations": {"kodama.dev/idempotency-key": "idem-1"}
+    "annotations": {"kodema.dev/idempotency-key": "idem-1"}
   },
   "spec": {
     "backoffLimit": 0,
@@ -158,11 +158,11 @@ const testJobJSON = `{
     "template": {
       "metadata": {
         "labels": {
-          "kodama.dev/tenant": "tenant-acme",
-          "kodama.dev/execution": "exec-1",
-          "kodama.dev/action": "build",
-          "kodama.dev/workload": "workload-1",
-          "kodama.dev/workspace": "workspace-1"
+          "kodema.dev/tenant": "tenant-acme",
+          "kodema.dev/execution": "exec-1",
+          "kodema.dev/action": "build",
+          "kodema.dev/workload": "workload-1",
+          "kodema.dev/workspace": "workspace-1"
         }
       },
       "spec": {
@@ -176,7 +176,7 @@ const testJobJSON = `{
             "command": ["/bin/sh", "-ec", "echo hi"],
             "env": [
               {"name": "BUILD_MODE", "value": "release"},
-              {"name": "KODAMA_URL", "value": "https://kodama.example.com"}
+              {"name": "KODEMA_URL", "value": "https://kodema.example.com"}
             ],
             "resources": {
               "requests": {"cpu": "100m", "memory": "64Mi"},
@@ -184,24 +184,24 @@ const testJobJSON = `{
             },
             "volumeMounts": [
               {"name": "workspace", "mountPath": "/workspace"},
-              {"name": "activation", "mountPath": "/kodama", "readOnly": true},
-              {"name": "credential", "mountPath": "/kodama/secrets", "readOnly": true}
+              {"name": "activation", "mountPath": "/kodema", "readOnly": true},
+              {"name": "credential", "mountPath": "/kodema/secrets", "readOnly": true}
             ]
           }
         ],
         "volumes": [
-          {"name": "workspace", "persistentVolumeClaim": {"claimName": "kodama-workspace-abc"}},
+          {"name": "workspace", "persistentVolumeClaim": {"claimName": "kodema-workspace-abc"}},
           {
             "name": "activation",
             "configMap": {
-              "name": "kodama-activation-abc",
+              "name": "kodema-activation-abc",
               "items": [{"key": "` + testConfigMapKey + `", "path": "inputs/input-a", "mode": 292}]
             }
           },
           {
             "name": "credential",
             "secret": {
-              "secretName": "kodama-credential-abc",
+              "secretName": "kodema-credential-abc",
               "items": [{"key": "API_KEY", "path": "API_KEY", "mode": 292}]
             }
           }
@@ -262,7 +262,7 @@ func TestCreateJobSendsPinnedManifest(t *testing.T) {
 		}
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"metadata": map[string]any{
-				"name":            "kodama-job-abc",
+				"name":            "kodema-job-abc",
 				"namespace":       testNamespace,
 				"resourceVersion": "42",
 				"labels":          testJobLabels(),
@@ -286,7 +286,7 @@ func TestCreateJobSendsPinnedManifest(t *testing.T) {
 	call := api.lastCall(t)
 	assertJSONEqual(t, call.Body, testJobJSON)
 
-	if created.Name != "kodama-job-abc" || created.ResourceVersion != "42" {
+	if created.Name != "kodema-job-abc" || created.ResourceVersion != "42" {
 		t.Fatalf("created job = %+v; want the server identity", created)
 	}
 	if created.Status.Active != 1 || created.Status.Succeeded != 0 || created.Status.Failed != 0 {
@@ -364,7 +364,7 @@ func TestCreateJobRetrySendsIdenticalImmutableRequest(t *testing.T) {
 func TestGetJobMapsStatusAndNotFound(t *testing.T) {
 	status := http.StatusOK
 	api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != jobPath("kodama-job-abc") {
+		if r.Method != http.MethodGet || r.URL.Path != jobPath("kodema-job-abc") {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		if status == http.StatusNotFound {
@@ -373,7 +373,7 @@ func TestGetJobMapsStatusAndNotFound(t *testing.T) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"metadata": map[string]any{
-				"name":            "kodama-job-abc",
+				"name":            "kodema-job-abc",
 				"namespace":       testNamespace,
 				"resourceVersion": "43",
 				"labels":          testJobLabels(),
@@ -390,11 +390,11 @@ func TestGetJobMapsStatusAndNotFound(t *testing.T) {
 	})
 	cluster := newClusterFor(t, api)
 
-	job, err := cluster.GetJob(context.Background(), testNamespace, "kodama-job-abc")
+	job, err := cluster.GetJob(context.Background(), testNamespace, "kodema-job-abc")
 	if err != nil {
 		t.Fatalf("GetJob: %v", err)
 	}
-	if job.Name != "kodama-job-abc" || job.ResourceVersion != "43" {
+	if job.Name != "kodema-job-abc" || job.ResourceVersion != "43" {
 		t.Fatalf("job identity = %+v", job)
 	}
 	if job.Status.Succeeded != 1 || job.Status.Active != 0 {
@@ -408,7 +408,7 @@ func TestGetJobMapsStatusAndNotFound(t *testing.T) {
 	}
 
 	status = http.StatusNotFound
-	if _, err := cluster.GetJob(context.Background(), testNamespace, "kodama-job-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
+	if _, err := cluster.GetJob(context.Background(), testNamespace, "kodema-job-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
 		t.Fatalf("404 error = %v; want ErrNotFound", err)
 	}
 }
@@ -424,7 +424,7 @@ func TestListJobsEncodesSelectorAndMapsItems(t *testing.T) {
 			"items": []any{
 				map[string]any{
 					"metadata": map[string]any{
-						"name":            "kodama-job-abc",
+						"name":            "kodema-job-abc",
 						"namespace":       testNamespace,
 						"resourceVersion": "44",
 						"labels":          testJobLabels(),
@@ -444,10 +444,10 @@ func TestListJobsEncodesSelectorAndMapsItems(t *testing.T) {
 		t.Fatalf("ListJobs: %v", err)
 	}
 	call := api.lastCall(t)
-	if want := "labelSelector=kodama.dev%2Fexecution%3Dexec-1%2Ckodama.dev%2Fworkload%3Dworkload-1"; call.RawQuery != want {
+	if want := "labelSelector=kodema.dev%2Fexecution%3Dexec-1%2Ckodema.dev%2Fworkload%3Dworkload-1"; call.RawQuery != want {
 		t.Fatalf("selector query = %q; want %q", call.RawQuery, want)
 	}
-	if len(jobs) != 1 || jobs[0].Name != "kodama-job-abc" || jobs[0].Status.Active != 1 {
+	if len(jobs) != 1 || jobs[0].Name != "kodema-job-abc" || jobs[0].Status.Active != 1 {
 		t.Fatalf("jobs = %+v; want one active Job", jobs)
 	}
 }
@@ -456,7 +456,7 @@ func TestListJobsEncodesSelectorAndMapsItems(t *testing.T) {
 func TestDeleteJobMapsNotFound(t *testing.T) {
 	status := http.StatusOK
 	api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || r.URL.Path != jobPath("kodama-job-abc") {
+		if r.Method != http.MethodDelete || r.URL.Path != jobPath("kodema-job-abc") {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		if status == http.StatusNotFound {
@@ -467,11 +467,11 @@ func TestDeleteJobMapsNotFound(t *testing.T) {
 	})
 	cluster := newClusterFor(t, api)
 
-	if err := cluster.DeleteJob(context.Background(), testNamespace, "kodama-job-abc"); err != nil {
+	if err := cluster.DeleteJob(context.Background(), testNamespace, "kodema-job-abc"); err != nil {
 		t.Fatalf("DeleteJob: %v", err)
 	}
 	status = http.StatusNotFound
-	if err := cluster.DeleteJob(context.Background(), testNamespace, "kodama-job-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
+	if err := cluster.DeleteJob(context.Background(), testNamespace, "kodema-job-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
 		t.Fatalf("404 error = %v; want ErrNotFound", err)
 	}
 }
@@ -523,7 +523,7 @@ func TestListPodsEncodesSelectorAndMapsEvidence(t *testing.T) {
 		t.Fatalf("ListPods: %v", err)
 	}
 	call := api.lastCall(t)
-	if want := "labelSelector=kodama.dev%2Fworkload%3Dworkload-1"; call.RawQuery != want {
+	if want := "labelSelector=kodema.dev%2Fworkload%3Dworkload-1"; call.RawQuery != want {
 		t.Fatalf("selector query = %q; want %q", call.RawQuery, want)
 	}
 	if len(pods) != 2 {
@@ -691,12 +691,12 @@ func TestReadPodLogsClassifiesStatusFailures(t *testing.T) {
 // immutable-snapshot retry semantics.
 func TestPutConfigMapEncodesPathsAndHandlesImmutableConflict(t *testing.T) {
 	configMap := runtimekube.ConfigMap{
-		Name:      "kodama-activation-abc",
+		Name:      "kodema-activation-abc",
 		Namespace: testNamespace,
 		Labels:    map[string]string{runtimekube.LabelWorkload: "workload-1"},
 		Data: map[string][]byte{
-			"/kodama/inputs/input-a": []byte("line1\n"),
-			"/kodama/task.json":      {0xff, 0x00},
+			"/kodema/inputs/input-a": []byte("line1\n"),
+			"/kodema/task.json":      {0xff, 0x00},
 		},
 		Immutable: true,
 	}
@@ -704,14 +704,14 @@ func TestPutConfigMapEncodesPathsAndHandlesImmutableConflict(t *testing.T) {
 	  "apiVersion": "v1",
 	  "kind": "ConfigMap",
 	  "metadata": {
-	    "name": "kodama-activation-abc",
+	    "name": "kodema-activation-abc",
 	    "namespace": "tenant-acme",
-	    "labels": {"kodama.dev/workload": "workload-1"}
+	    "labels": {"kodema.dev/workload": "workload-1"}
 	  },
 	  "immutable": true,
 	  "binaryData": {
 	    "` + testConfigMapKey + `": "bGluZTEK",
-	    "L2tvZGFtYS90YXNrLmpzb24": "/wA="
+	    "L2tvZGVtYS90YXNrLmpzb24": "/wA="
 	  }
 	}`
 
@@ -728,7 +728,7 @@ func TestPutConfigMapEncodesPathsAndHandlesImmutableConflict(t *testing.T) {
 						"labels":          configMap.Labels,
 					},
 					"immutable":  true,
-					"binaryData": map[string]string{testConfigMapKey: "bGluZTEK", "L2tvZGFtYS90YXNrLmpzb24": "/wA="},
+					"binaryData": map[string]string{testConfigMapKey: "bGluZTEK", "L2tvZGVtYS90YXNrLmpzb24": "/wA="},
 				})
 				return
 			}
@@ -750,7 +750,7 @@ func TestPutConfigMapEncodesPathsAndHandlesImmutableConflict(t *testing.T) {
 					"labels":          configMap.Labels,
 				},
 				"immutable":  true,
-				"binaryData": map[string]string{testConfigMapKey: "bGluZTEK", "L2tvZGFtYS90YXNrLmpzb24": "/wA="},
+				"binaryData": map[string]string{testConfigMapKey: "bGluZTEK", "L2tvZGVtYS90YXNrLmpzb24": "/wA="},
 			})
 		default:
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -767,11 +767,11 @@ func TestPutConfigMapEncodesPathsAndHandlesImmutableConflict(t *testing.T) {
 	if created.ResourceVersion != "7" {
 		t.Fatalf("created resource version = %q; want 7", created.ResourceVersion)
 	}
-	if string(created.Data["/kodama/inputs/input-a"]) != "line1\n" {
+	if string(created.Data["/kodema/inputs/input-a"]) != "line1\n" {
 		t.Fatalf("created data = %v; want the exact activation bytes", created.Data)
 	}
-	if len(created.Data["/kodama/task.json"]) != 2 || created.Data["/kodama/task.json"][0] != 0xff {
-		t.Fatalf("binary data did not round-trip: %v", created.Data["/kodama/task.json"])
+	if len(created.Data["/kodema/task.json"]) != 2 || created.Data["/kodema/task.json"][0] != 0xff {
+		t.Fatalf("binary data did not round-trip: %v", created.Data["/kodema/task.json"])
 	}
 
 	mode = "same"
@@ -801,9 +801,9 @@ func TestPutConfigMapRefusesAnUpdateVersion(t *testing.T) {
 	})
 	cluster := newClusterFor(t, api)
 	configMap := runtimekube.ConfigMap{
-		Name:            "kodama-activation-abc",
+		Name:            "kodema-activation-abc",
 		Namespace:       testNamespace,
-		Data:            map[string][]byte{"/kodama/task.json": []byte("{}")},
+		Data:            map[string][]byte{"/kodema/task.json": []byte("{}")},
 		Immutable:       true,
 		ResourceVersion: "7",
 	}
@@ -818,17 +818,17 @@ func TestPutConfigMapRefusesAnUpdateVersion(t *testing.T) {
 // and the 404 sentinel.
 func TestGetAndDeleteConfigMapMapNotFound(t *testing.T) {
 	api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != configMapPath("kodama-activation-abc") {
+		if r.URL.Path != configMapPath("kodema-activation-abc") {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		writeJSON(w, http.StatusNotFound, map[string]any{"kind": "Status", "reason": "NotFound"})
 	})
 	cluster := newClusterFor(t, api)
 
-	if _, err := cluster.GetConfigMap(context.Background(), testNamespace, "kodama-activation-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
+	if _, err := cluster.GetConfigMap(context.Background(), testNamespace, "kodema-activation-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
 		t.Fatalf("GetConfigMap 404 = %v; want ErrNotFound", err)
 	}
-	if err := cluster.DeleteConfigMap(context.Background(), testNamespace, "kodama-activation-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
+	if err := cluster.DeleteConfigMap(context.Background(), testNamespace, "kodema-activation-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
 		t.Fatalf("DeleteConfigMap 404 = %v; want ErrNotFound", err)
 	}
 }
@@ -838,36 +838,36 @@ func TestGetAndDeleteConfigMapMapNotFound(t *testing.T) {
 // resourceVersion-guarded update.
 func TestPutSecretCreatesUpsertsAndConditionallyUpdates(t *testing.T) {
 	secret := runtimekube.Secret{
-		Name:      "kodama-credential-abc",
+		Name:      "kodema-credential-abc",
 		Namespace: testNamespace,
 		Labels:    map[string]string{runtimekube.LabelWorkload: "workload-1"},
 		Data: map[string][]byte{
 			"API_KEY":      []byte("s3cr3t-value"),
-			"KODAMA_TOKEN": []byte("tok-abc"),
+			"KODEMA_TOKEN": []byte("tok-abc"),
 		},
 	}
 	createBody := `{
 	  "apiVersion": "v1",
 	  "kind": "Secret",
 	  "metadata": {
-	    "name": "kodama-credential-abc",
+	    "name": "kodema-credential-abc",
 	    "namespace": "tenant-acme",
-	    "labels": {"kodama.dev/workload": "workload-1"}
+	    "labels": {"kodema.dev/workload": "workload-1"}
 	  },
 	  "type": "Opaque",
-	  "data": {"API_KEY": "czNjcjN0LXZhbHVl", "KODAMA_TOKEN": "dG9rLWFiYw=="}
+	  "data": {"API_KEY": "czNjcjN0LXZhbHVl", "KODEMA_TOKEN": "dG9rLWFiYw=="}
 	}`
 	updateBody := `{
 	  "apiVersion": "v1",
 	  "kind": "Secret",
 	  "metadata": {
-	    "name": "kodama-credential-abc",
+	    "name": "kodema-credential-abc",
 	    "namespace": "tenant-acme",
-	    "labels": {"kodama.dev/workload": "workload-1"},
+	    "labels": {"kodema.dev/workload": "workload-1"},
 	    "resourceVersion": "9"
 	  },
 	  "type": "Opaque",
-	  "data": {"API_KEY": "czNjcjN0LXZhbHVl", "KODAMA_TOKEN": "dG9rLWFiYw=="}
+	  "data": {"API_KEY": "czNjcjN0LXZhbHVl", "KODEMA_TOKEN": "dG9rLWFiYw=="}
 	}`
 
 	mode := "create"
@@ -883,7 +883,7 @@ func TestPutSecretCreatesUpsertsAndConditionallyUpdates(t *testing.T) {
 						"labels":          secret.Labels,
 					},
 					"type": "Opaque",
-					"data": map[string]string{"API_KEY": "czNjcjN0LXZhbHVl", "KODAMA_TOKEN": "dG9rLWFiYw=="},
+					"data": map[string]string{"API_KEY": "czNjcjN0LXZhbHVl", "KODEMA_TOKEN": "dG9rLWFiYw=="},
 				})
 				return
 			}
@@ -897,7 +897,7 @@ func TestPutSecretCreatesUpsertsAndConditionallyUpdates(t *testing.T) {
 					"labels":          secret.Labels,
 				},
 				"type": "Opaque",
-				"data": map[string]string{"API_KEY": "b2xk", "KODAMA_TOKEN": "b2xk"},
+				"data": map[string]string{"API_KEY": "b2xk", "KODEMA_TOKEN": "b2xk"},
 			})
 		case r.Method == http.MethodPut && r.URL.Path == secretPath(secret.Name):
 			if mode == "stale" {
@@ -912,7 +912,7 @@ func TestPutSecretCreatesUpsertsAndConditionallyUpdates(t *testing.T) {
 					"labels":          secret.Labels,
 				},
 				"type": "Opaque",
-				"data": map[string]string{"API_KEY": "czNjcjN0LXZhbHVl", "KODAMA_TOKEN": "dG9rLWFiYw=="},
+				"data": map[string]string{"API_KEY": "czNjcjN0LXZhbHVl", "KODEMA_TOKEN": "dG9rLWFiYw=="},
 			})
 		default:
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -971,7 +971,7 @@ func TestPutSecretCreatesUpsertsAndConditionallyUpdates(t *testing.T) {
 func TestGetSecretDecodesDataAndMapsNotFound(t *testing.T) {
 	status := http.StatusOK
 	api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if (r.Method != http.MethodGet && r.Method != http.MethodDelete) || r.URL.Path != secretPath("kodama-credential-abc") {
+		if (r.Method != http.MethodGet && r.Method != http.MethodDelete) || r.URL.Path != secretPath("kodema-credential-abc") {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		if status == http.StatusNotFound {
@@ -980,34 +980,34 @@ func TestGetSecretDecodesDataAndMapsNotFound(t *testing.T) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"metadata": map[string]any{
-				"name":            "kodama-credential-abc",
+				"name":            "kodema-credential-abc",
 				"namespace":       testNamespace,
 				"resourceVersion": "12",
 				"labels":          map[string]string{runtimekube.LabelWorkload: "workload-1"},
 			},
 			"type":      "Opaque",
 			"immutable": true,
-			"data":      map[string]string{"API_KEY": "czNjcjN0LXZhbHVl", "KODAMA_TOKEN": "dG9rLWFiYw=="},
+			"data":      map[string]string{"API_KEY": "czNjcjN0LXZhbHVl", "KODEMA_TOKEN": "dG9rLWFiYw=="},
 		})
 	})
 	cluster := newClusterFor(t, api)
 
-	secret, err := cluster.GetSecret(context.Background(), testNamespace, "kodama-credential-abc")
+	secret, err := cluster.GetSecret(context.Background(), testNamespace, "kodema-credential-abc")
 	if err != nil {
 		t.Fatalf("GetSecret: %v", err)
 	}
 	if secret.ResourceVersion != "12" || !secret.Immutable {
 		t.Fatalf("secret metadata = %+v; want version 12 and immutable", secret)
 	}
-	if string(secret.Data["API_KEY"]) != "s3cr3t-value" || string(secret.Data["KODAMA_TOKEN"]) != "tok-abc" {
+	if string(secret.Data["API_KEY"]) != "s3cr3t-value" || string(secret.Data["KODEMA_TOKEN"]) != "tok-abc" {
 		t.Fatalf("secret data = %v; want the exact decoded values", secret.Data)
 	}
 
 	status = http.StatusNotFound
-	if _, err := cluster.GetSecret(context.Background(), testNamespace, "kodama-credential-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
+	if _, err := cluster.GetSecret(context.Background(), testNamespace, "kodema-credential-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
 		t.Fatalf("404 error = %v; want ErrNotFound", err)
 	}
-	if err := cluster.DeleteSecret(context.Background(), testNamespace, "kodama-credential-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
+	if err := cluster.DeleteSecret(context.Background(), testNamespace, "kodema-credential-abc"); !errors.Is(err, runtimekube.ErrNotFound) {
 		t.Fatalf("delete 404 error = %v; want ErrNotFound", err)
 	}
 }
@@ -1016,12 +1016,12 @@ func TestGetSecretDecodesDataAndMapsNotFound(t *testing.T) {
 // and a pending deletion timestamp.
 func TestGetClaimMapsMetadata(t *testing.T) {
 	api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != claimPath("kodama-workspace-abc") {
+		if r.Method != http.MethodGet || r.URL.Path != claimPath("kodema-workspace-abc") {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"metadata": map[string]any{
-				"name":              "kodama-workspace-abc",
+				"name":              "kodema-workspace-abc",
 				"namespace":         testNamespace,
 				"resourceVersion":   "11",
 				"labels":            map[string]string{runtimekube.LabelWorkspace: "workspace-1"},
@@ -1033,7 +1033,7 @@ func TestGetClaimMapsMetadata(t *testing.T) {
 	})
 	cluster := newClusterFor(t, api)
 
-	claim, err := cluster.GetClaim(context.Background(), testNamespace, "kodama-workspace-abc")
+	claim, err := cluster.GetClaim(context.Background(), testNamespace, "kodema-workspace-abc")
 	if err != nil {
 		t.Fatalf("GetClaim: %v", err)
 	}
@@ -1056,7 +1056,7 @@ func TestGetClaimMapsMetadata(t *testing.T) {
 // and refuses a stale expected version without patching.
 func TestUpdateClaimPatchesMetadataOnlyWithResourceVersion(t *testing.T) {
 	desired := runtimekube.Claim{
-		Name:            "kodama-workspace-abc",
+		Name:            "kodema-workspace-abc",
 		Namespace:       testNamespace,
 		ResourceVersion: "11",
 		Labels: map[string]string{
@@ -1069,12 +1069,12 @@ func TestUpdateClaimPatchesMetadataOnlyWithResourceVersion(t *testing.T) {
 	  "metadata": {
 	    "resourceVersion": "11",
 	    "labels": {
-	      "kodama.dev/tenant": "tenant-acme",
-	      "kodama.dev/workspace": "workspace-1",
+	      "kodema.dev/tenant": "tenant-acme",
+	      "kodema.dev/workspace": "workspace-1",
 	      "extra": null
 	    },
 	    "annotations": {
-	      "kodama.dev/retained": "true",
+	      "kodema.dev/retained": "true",
 	      "old-marker": null
 	    }
 	  }
@@ -1178,7 +1178,7 @@ func TestDeleteClaimVersionedSendsPreconditions(t *testing.T) {
 	deleteStatus := http.StatusOK
 	var deleteBody []byte
 	api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || r.URL.Path != claimPath("kodama-workspace-abc") {
+		if r.Method != http.MethodDelete || r.URL.Path != claimPath("kodema-workspace-abc") {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		deleteBody, _ = io.ReadAll(r.Body)
@@ -1196,12 +1196,12 @@ func TestDeleteClaimVersionedSendsPreconditions(t *testing.T) {
 	})
 	cluster := newClusterFor(t, api)
 
-	if err := cluster.DeleteClaimVersioned(context.Background(), testNamespace, "kodama-workspace-abc", "11"); err != nil {
+	if err := cluster.DeleteClaimVersioned(context.Background(), testNamespace, "kodema-workspace-abc", "11"); err != nil {
 		t.Fatalf("DeleteClaimVersioned: %v", err)
 	}
 	assertJSONEqual(t, deleteBody, versionedBody)
 
-	if err := cluster.DeleteClaim(context.Background(), testNamespace, "kodama-workspace-abc"); err != nil {
+	if err := cluster.DeleteClaim(context.Background(), testNamespace, "kodema-workspace-abc"); err != nil {
 		t.Fatalf("DeleteClaim: %v", err)
 	}
 	if len(deleteBody) != 0 {
@@ -1209,12 +1209,12 @@ func TestDeleteClaimVersionedSendsPreconditions(t *testing.T) {
 	}
 
 	deleteStatus = http.StatusConflict
-	if err := cluster.DeleteClaimVersioned(context.Background(), testNamespace, "kodama-workspace-abc", "11"); !errors.Is(err, runtimekube.ErrConflict) {
+	if err := cluster.DeleteClaimVersioned(context.Background(), testNamespace, "kodema-workspace-abc", "11"); !errors.Is(err, runtimekube.ErrConflict) {
 		t.Fatalf("stale delete error = %v; want ErrConflict", err)
 	}
 
 	deleteStatus = http.StatusNotFound
-	if err := cluster.DeleteClaimVersioned(context.Background(), testNamespace, "kodama-workspace-abc", "11"); !errors.Is(err, runtimekube.ErrNotFound) {
+	if err := cluster.DeleteClaimVersioned(context.Background(), testNamespace, "kodema-workspace-abc", "11"); !errors.Is(err, runtimekube.ErrNotFound) {
 		t.Fatalf("missing delete error = %v; want ErrNotFound", err)
 	}
 }

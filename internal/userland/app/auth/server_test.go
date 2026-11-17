@@ -29,9 +29,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/app/auth"
-	"github.com/optimiware/kodama/internal/userland/principal"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/app/auth"
+	"github.com/optimiware/kodema/internal/userland/principal"
 )
 
 func newPKCEPair(t *testing.T) (verifier, challenge string) {

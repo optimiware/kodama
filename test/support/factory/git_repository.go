@@ -24,16 +24,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/internal/id"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 const (
 	// gitAuthEnvironment is the environment entry carrying the transient Basic
 	// authorization value. Git reads it through --config-env, so the token never
 	// appears in argv, a URL or repository configuration.
-	gitAuthEnvironment = "KODAMA_GIT_AUTHORIZATION"
+	gitAuthEnvironment = "KODEMA_GIT_AUTHORIZATION"
 	// gitCommandTimeout bounds one fixture Git command that has no caller
 	// deadline of its own.
 	gitCommandTimeout = 2 * time.Minute
@@ -107,7 +107,7 @@ func (client hostGitClient) run(ctx context.Context, token, directory string, ar
 
 // basicAuthorization renders the Basic value Git reads from the environment.
 func basicAuthorization(token string) string {
-	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("kodama:"+token))
+	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("kodema:"+token))
 }
 
 // gitRepositorySpec is the complete fixture provisioning input.
@@ -199,7 +199,7 @@ func seedRepositoryHistory(ctx context.Context, client hostGitClient, scratch, r
 		return "", err
 	}
 	if err := runGitOK(ctx, client, worktree,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "--quiet", "-m", "seed "+branch); err != nil {
 		return "", err
 	}
@@ -234,7 +234,7 @@ func pushAdminPolicy(ctx context.Context, client hostGitClient, scratch, token, 
 		return "", err
 	}
 	if err := runGitOK(ctx, client, worktree,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "--quiet", "-m", "accept fixture repository policy"); err != nil {
 		return "", err
 	}
@@ -345,7 +345,7 @@ func (fixture *GitFixture) Commit(t testing.TB, directory, message string) strin
 		t.Fatalf("%v", err)
 	}
 	if err := runGitOK(ctx, fixture.client, directory,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "--quiet", "-m", message); err != nil {
 		t.Fatalf("%v", err)
 	}

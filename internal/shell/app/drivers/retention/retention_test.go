@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/postgres"
 )
 
 func TestRetainedCommitUsesTheEvidenceRule(t *testing.T) {

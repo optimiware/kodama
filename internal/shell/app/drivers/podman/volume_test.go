@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/fault"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
 )
 
 // workspaceVolume returns the exact volume the Shell must provision before the
@@ -26,7 +26,7 @@ func workspaceVolume(name, workspaceID string) runtimepodman.Volume {
 // request: exactly the volume name and the ownership labels, no extra driver or
 // option fields that could change where the workspace data lives.
 func TestCreateVolumeSendsExactNameAndLabels(t *testing.T) {
-	requested := workspaceVolume("kodama-workspace-abc", "workspace-abc")
+	requested := workspaceVolume("kodema-workspace-abc", "workspace-abc")
 	var got map[string]json.RawMessage
 	var method, path string
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +77,7 @@ func TestCreateVolumeSendsExactNameAndLabels(t *testing.T) {
 // requested ownership labels (extra run labels are harmless) the create is
 // idempotent success, never a second volume or an error.
 func TestCreateVolumeIdempotentSameOwner(t *testing.T) {
-	requested := workspaceVolume("kodama-workspace-abc", "workspace-abc")
+	requested := workspaceVolume("kodema-workspace-abc", "workspace-abc")
 	inspections := 0
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -85,14 +85,14 @@ func TestCreateVolumeIdempotentSameOwner(t *testing.T) {
 			w.WriteHeader(http.StatusConflict)
 		case http.MethodGet:
 			inspections++
-			if r.URL.Path != "/v5.0.0/libpod/volumes/kodama-workspace-abc/json" {
+			if r.URL.Path != "/v5.0.0/libpod/volumes/kodema-workspace-abc/json" {
 				t.Errorf("inspect path = %s", r.URL.Path)
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"Name": requested.Name,
 				"Labels": map[string]string{
 					runtimepodman.LabelWorkspace: "workspace-abc",
-					"kodama.test":                "1",
+					"kodema.test":                "1",
 				},
 			})
 		default:
@@ -120,7 +120,7 @@ func TestCreateVolumeIdempotentSameOwner(t *testing.T) {
 // by inspecting the volume, so a retry after a lost create response is
 // idempotent against the real daemon too.
 func TestCreateVolumeIdempotentDuplicateServerError(t *testing.T) {
-	requested := workspaceVolume("kodama-workspace-abc", "workspace-abc")
+	requested := workspaceVolume("kodema-workspace-abc", "workspace-abc")
 	inspections := 0
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -159,7 +159,7 @@ func TestCreateVolumeIdempotentDuplicateServerError(t *testing.T) {
 // duplicate conflict applies the same ownership check as 409: a same-named
 // volume with different labels is Forbidden, never adopted.
 func TestCreateVolumeDuplicateServerErrorRefusesForeignOwner(t *testing.T) {
-	requested := workspaceVolume("kodama-workspace-abc", "workspace-abc")
+	requested := workspaceVolume("kodema-workspace-abc", "workspace-abc")
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
@@ -190,7 +190,7 @@ func TestCreateVolumeDuplicateServerErrorRefusesForeignOwner(t *testing.T) {
 // documented duplicate conflict is reconciled: any other 5xx is a dependency
 // failure, and a same-named volume is not adopted from it.
 func TestCreateVolumeUnrelatedServerErrorIsDependencyFailure(t *testing.T) {
-	requested := workspaceVolume("kodama-workspace-abc", "workspace-abc")
+	requested := workspaceVolume("kodema-workspace-abc", "workspace-abc")
 	inspections := 0
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -232,12 +232,12 @@ func TestCreateVolumeRefusesForeignOwner(t *testing.T) {
 		labels map[string]string
 	}{
 		{name: "different workspace", labels: map[string]string{runtimepodman.LabelWorkspace: "workspace-other"}},
-		{name: "missing ownership label", labels: map[string]string{"kodama.test": "1"}},
+		{name: "missing ownership label", labels: map[string]string{"kodema.test": "1"}},
 		{name: "no labels", labels: nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			requested := workspaceVolume("kodama-workspace-abc", "workspace-abc")
+			requested := workspaceVolume("kodema-workspace-abc", "workspace-abc")
 			inspections := 0
 			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.Method {
@@ -282,7 +282,7 @@ func TestCreateVolumeCancellationBeforeSend(t *testing.T) {
 	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := client.CreateVolume(ctx, workspaceVolume("kodama-workspace-abc", "workspace-abc")); !errors.Is(err, ErrAmbiguous) {
+	if _, err := client.CreateVolume(ctx, workspaceVolume("kodema-workspace-abc", "workspace-abc")); !errors.Is(err, ErrAmbiguous) {
 		t.Fatalf("pre-cancel error = %v; want ErrAmbiguous", err)
 	}
 	if reached {
@@ -308,7 +308,7 @@ func TestCreateVolumeTransportFailureIsAmbiguous(t *testing.T) {
 		}
 		_ = conn.Close()
 	}))
-	_, err := client.CreateVolume(context.Background(), workspaceVolume("kodama-workspace-abc", "workspace-abc"))
+	_, err := client.CreateVolume(context.Background(), workspaceVolume("kodema-workspace-abc", "workspace-abc"))
 	if !errors.Is(err, ErrAmbiguous) {
 		t.Fatalf("transport error = %v; want ErrAmbiguous", err)
 	}
@@ -323,7 +323,7 @@ func TestCreateVolumeServerErrorIsDependencyFailure(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
-	_, err := client.CreateVolume(context.Background(), workspaceVolume("kodama-workspace-abc", "workspace-abc"))
+	_, err := client.CreateVolume(context.Background(), workspaceVolume("kodema-workspace-abc", "workspace-abc"))
 	if err == nil {
 		t.Fatal("volume create 500 reported success")
 	}
@@ -342,7 +342,7 @@ func TestCreateVolumeMalformedResponseIsRefused(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"Name":`))
 	}))
-	created, err := client.CreateVolume(context.Background(), workspaceVolume("kodama-workspace-abc", "workspace-abc"))
+	created, err := client.CreateVolume(context.Background(), workspaceVolume("kodema-workspace-abc", "workspace-abc"))
 	if err == nil {
 		t.Fatalf("malformed create response was accepted: %+v", created)
 	}

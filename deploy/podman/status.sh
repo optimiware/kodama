@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# status.sh: report the local Kodama install without printing a secret.
+# status.sh: report the local Kodema install without printing a secret.
 #
 # Exits 0 only when the installation descriptor is this installation's valid
 # private descriptor, the control plane answers /readyz 200, both owned TLS
@@ -22,13 +22,13 @@ printf 'prefix: %s\n' "$PREFIX"
 printf 'state:  %s\n' "$STATE_DIR"
 printf 'tenant: %s\n' "$TENANT"
 printf 'project: %s\n' "$PROJECT"
-printf 'kodama: %s\n' "$PUBLIC_URL"
+printf 'kodema: %s\n' "$PUBLIC_URL"
 printf 'git:    http://127.0.0.1:%s (loopback only)\n' "$GIT_PORT"
 printf 'git https: %s (workloads: %s)\n' "$GIT_PUBLIC_URL" "$GIT_WORKLOAD_URL"
 printf 'oauth:  %s\n' "$OIDC_ISSUER"
-printf 'ports:  KODAMA_LOCAL_HTTPS_PORT=%s KODAMA_LOCAL_OIDC_PORT=%s KODAMA_LOCAL_GIT_PORT=%s KODAMA_LOCAL_GIT_HTTPS_PORT=%s KODAMA_LOCAL_POSTGRES_PORT=%s KODAMA_LOCAL_NATS_PORT=%s\n' \
+printf 'ports:  KODEMA_LOCAL_HTTPS_PORT=%s KODEMA_LOCAL_OIDC_PORT=%s KODEMA_LOCAL_GIT_PORT=%s KODEMA_LOCAL_GIT_HTTPS_PORT=%s KODEMA_LOCAL_POSTGRES_PORT=%s KODEMA_LOCAL_NATS_PORT=%s\n' \
 	"$HTTPS_PORT" "$OIDC_PORT" "$GIT_PORT" "$GIT_HTTPS_PORT" "$POSTGRES_PORT" "$NATS_PORT"
-printf 'overrides: KODAMA_LOCAL_PREFIX KODAMA_LOCAL_STATE_DIR KODAMA_LOCAL_TENANT KODAMA_LOCAL_WORKLOAD_IMAGE KODAMA_LOCAL_EXTERNAL_HARNESS_IMAGE KODAMA_LOCAL_GIT_RESOURCES\n'
+printf 'overrides: KODEMA_LOCAL_PREFIX KODEMA_LOCAL_STATE_DIR KODEMA_LOCAL_TENANT KODEMA_LOCAL_WORKLOAD_IMAGE KODEMA_LOCAL_EXTERNAL_HARNESS_IMAGE KODEMA_LOCAL_GIT_RESOURCES\n'
 
 printf 'installation: %s\n' "$installation_file"
 if [ -f "$installation_file" ]; then
@@ -47,9 +47,9 @@ if [ -e "$STATE_DIR" ] && ! check_state_dir "$STATE_DIR" "$PREFIX" install; then
 	printf 'warning: %s does not carry the marker prefix=%s\n' "$STATE_DIR" "$PREFIX"
 fi
 
-printf '\ncontainers (label kodama.local.prefix=%s):\n' "$PREFIX"
-if podman ps -a --filter "label=kodama.local.prefix=${PREFIX}" --format '  {{.Names}}\t{{.Status}}' | grep -q .; then
-	podman ps -a --filter "label=kodama.local.prefix=${PREFIX}" --format '  {{.Names}}\t{{.Status}}'
+printf '\ncontainers (label kodema.local.prefix=%s):\n' "$PREFIX"
+if podman ps -a --filter "label=kodema.local.prefix=${PREFIX}" --format '  {{.Names}}\t{{.Status}}' | grep -q .; then
+	podman ps -a --filter "label=kodema.local.prefix=${PREFIX}" --format '  {{.Names}}\t{{.Status}}'
 else
 	printf '  none\n'
 	containers_ok=0
@@ -60,9 +60,9 @@ for name in "$container_server" "$container_git" "$container_oauth" "$container_
 	fi
 done
 
-printf '\nvolumes (label kodama.local.prefix=%s):\n' "$PREFIX"
-if podman volume ls --filter "label=kodama.local.prefix=${PREFIX}" --format '  {{.Name}}' | grep -q .; then
-	podman volume ls --filter "label=kodama.local.prefix=${PREFIX}" --format '  {{.Name}}'
+printf '\nvolumes (label kodema.local.prefix=%s):\n' "$PREFIX"
+if podman volume ls --filter "label=kodema.local.prefix=${PREFIX}" --format '  {{.Name}}' | grep -q .; then
+	podman volume ls --filter "label=kodema.local.prefix=${PREFIX}" --format '  {{.Name}}'
 else
 	printf '  none\n'
 fi

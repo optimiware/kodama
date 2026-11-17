@@ -18,9 +18,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
 )
 
 // liveInputs are the inputs every live e2e test requires. Q01_TLS_SERVER_NAME

@@ -45,7 +45,7 @@ func TestHarnessGitProbeAuthenticatedRead(t *testing.T) {
 	if !strings.Contains(string(body), "git-upload-pack") {
 		t.Fatalf("Git response body = %q", body)
 	}
-	if gotUser != "kodama" || gotPass != "git-token-value" {
+	if gotUser != "kodema" || gotPass != "git-token-value" {
 		t.Fatalf("Git Basic identity = %q/%q", gotUser, gotPass)
 	}
 	if gotPath != "/smoke/run-1/info/refs" || gotRaw != "service=git-upload-pack" {

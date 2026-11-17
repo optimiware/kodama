@@ -43,7 +43,7 @@ func TestHarnessRunStageCleansUpFakeStage(t *testing.T) {
 	assertRunStageCleansUp(t, run)
 }
 
-// TestHarnessRunStageAcceptsEnvelopeRefusalForReadiness proves the kodama
+// TestHarnessRunStageAcceptsEnvelopeRefusalForReadiness proves the kodema
 // readiness probe treats the edge's body-shape 400 as reachability: the real
 // edge decodes the request envelope before authentication, so an unauthenticated
 // bodyless GET is invalid_input rather than 401.
@@ -72,7 +72,7 @@ func TestHarnessRunStageFailsWhenEndpointUnreachable(t *testing.T) {
 	recorded := readMarker(t, run.marker)
 	assertNoInheritedToken(t, recorded, false)
 	assertWorkDirRemoved(t, run.tempDir)
-	for _, wanted := range []string{"started kodama", "started oauthsonas", "terminated kodama", "terminated oauthsonas"} {
+	for _, wanted := range []string{"started kodema", "started oauthsonas", "terminated kodema", "terminated oauthsonas"} {
 		if !strings.Contains(recorded, wanted) {
 			t.Fatalf("failure-path marker does not contain %q:\n%s", wanted, recorded)
 		}
@@ -188,7 +188,7 @@ func TestHarnessRunStageGeneratesStageDescriptor(t *testing.T) {
 		"Q01_STAGE_INSTALLATION_ID": "stage-test",
 		"Q01_DEPLOYED_REVISION":     strings.Repeat("a", 40),
 		"Q01_SERVER_IMAGE_DIGEST":   "sha256:" + strings.Repeat("b", 64),
-		"Q01_OAUTHSONAS_AUDIENCE":   "https://kodama.kodama-system.svc.cluster.local:8443",
+		"Q01_OAUTHSONAS_AUDIENCE":   "https://kodema.kodema-system.svc.cluster.local:8443",
 	})
 	if run.err != nil {
 		t.Fatalf("run-stage.sh failed: %v\n%s", run.err, redactRunStageOutput(run.output))
@@ -252,7 +252,7 @@ func TestHarnessRunStageGeneratesStageDescriptor(t *testing.T) {
 		t.Fatalf("generated descriptor identity = %+v", installation)
 	}
 	if installation.API.URL != "https://127.0.0.1:19443" ||
-		installation.API.TLSServerName != "kodama.kodama-system.svc.cluster.local" {
+		installation.API.TLSServerName != "kodema.kodema-system.svc.cluster.local" {
 		t.Fatalf("generated API block = %+v", installation.API)
 	}
 	if installation.Images.Tools == "" || installation.Images.ExternalHarness == "" {
@@ -304,7 +304,7 @@ func TestHarnessRunStageAcceptsExistingDescriptor(t *testing.T) {
 func TestHarnessRunStagePassesTLSBrokerInputs(t *testing.T) {
 	run := runFakeStage(t, "401", map[string]string{
 		"Q01_NATS_URL":             "tls://127.0.0.1:14222",
-		"Q01_NATS_TLS_SERVER_NAME": "nats.kodama-system.svc.cluster.local",
+		"Q01_NATS_TLS_SERVER_NAME": "nats.kodema-system.svc.cluster.local",
 	})
 	if run.err != nil {
 		t.Fatalf("run-stage.sh failed with TLS broker inputs: %v\n%s", run.err, redactRunStageOutput(run.output))
@@ -312,7 +312,7 @@ func TestHarnessRunStagePassesTLSBrokerInputs(t *testing.T) {
 	recorded := readMarker(t, run.marker)
 	for _, wanted := range []string{
 		"nats-url tls://127.0.0.1:14222",
-		"nats-server-name nats.kodama-system.svc.cluster.local",
+		"nats-server-name nats.kodema-system.svc.cluster.local",
 		"nats-ca installation",
 		"nats-token admin 600",
 	} {
@@ -356,9 +356,9 @@ func assertRunStageCleansUp(t *testing.T, run fakeStageRun) {
 		t.Fatalf("the stage runner did not select the non-Git smoke mode:\n%s", recorded)
 	}
 	for _, wanted := range []string{
-		"started kodama",
+		"started kodema",
 		"started oauthsonas",
-		"terminated kodama",
+		"terminated kodema",
 		"terminated oauthsonas",
 		"access 600 ",
 	} {
@@ -393,9 +393,9 @@ func assertRunStageCleansUp(t *testing.T, run fakeStageRun) {
 	}
 }
 
-// runFakeStage builds one isolated fake stage. kodamaCode is the readiness code
-// the fake curl prints for the kodama URL; OAuthSonas always answers 303.
-func runFakeStage(t *testing.T, kodamaCode string, overrides map[string]string) fakeStageRun {
+// runFakeStage builds one isolated fake stage. kodemaCode is the readiness code
+// the fake curl prints for the kodema URL; OAuthSonas always answers 303.
+func runFakeStage(t *testing.T, kodemaCode string, overrides map[string]string) fakeStageRun {
 	t.Helper()
 	realSleep, err := exec.LookPath("sleep")
 	if err != nil {
@@ -468,11 +468,11 @@ echo "curl-noproxy $has_noproxy" >> "$marker"
 if [ -n "${Q01_FAKE_CURL_DELAY:-}" ]; then
   "$Q01_REAL_SLEEP" "$Q01_FAKE_CURL_DELAY"
 fi
-kodama_code="${Q01_FAKE_KODAMA_CODE:-401}"
+kodema_code="${Q01_FAKE_KODEMA_CODE:-401}"
 for argument in "$@"; do
   case "$argument" in
-    *kodama.kodama-system.svc.cluster.local*) printf '%s' "$kodama_code"; exit 0 ;;
-    *oauthsonas.kodama-system.svc.cluster.local*) printf 303; exit 0 ;;
+    *kodema.kodema-system.svc.cluster.local*) printf '%s' "$kodema_code"; exit 0 ;;
+    *oauthsonas.kodema-system.svc.cluster.local*) printf 303; exit 0 ;;
   esac
 done
 printf 000
@@ -556,7 +556,7 @@ cat "$Q01_ADMIN_TOKEN_FILE" > "$Q01_FAKE_RESULT"`)
 		"PATH":                     bin + ":/usr/local/bin:/usr/bin:/bin",
 		"HOME":                     t.TempDir(),
 		"TMPDIR":                   tempDir,
-		"Q01_KUBE_CONTEXT":         "kodama-stage-k8s",
+		"Q01_KUBE_CONTEXT":         "kodema-stage-k8s",
 		"Q01_CA_PEM":               caPath,
 		"Q01_PROJECT_ID":           "tenant-a",
 		"Q01_TOKEN_SCRIPT":         tokenScript,
@@ -567,7 +567,7 @@ cat "$Q01_ADMIN_TOKEN_FILE" > "$Q01_FAKE_RESULT"`)
 		"Q01_CLEANUP_ATTEMPTS":     "50",
 		"Q01_CLEANUP_INTERVAL":     "0.01",
 		"Q01_REAL_SLEEP":           realSleep,
-		"Q01_FAKE_KODAMA_CODE":     kodamaCode,
+		"Q01_FAKE_KODEMA_CODE":     kodemaCode,
 		"Q01_FAKE_MARKER":          marker,
 		"Q01_FAKE_RESULT":          result,
 		"Q01_FAKE_DESCRIPTOR_OUT":  descriptor,

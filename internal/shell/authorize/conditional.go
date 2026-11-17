@@ -1,8 +1,8 @@
 package authorize
 
 import (
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"slices"
 )
 

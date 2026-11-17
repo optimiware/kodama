@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/runtime/podman"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/runtime/podman"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // TestPodmanRuntimeManifestEnvironmentPermissionsAndExit proves the real
@@ -24,13 +24,13 @@ func TestPodmanRuntimeManifestEnvironmentPermissionsAndExit(t *testing.T) {
 	identity := testIdentity("exec-c1", "action-c1", "workload-c1", "idem-c1")
 	commands := []string{
 		`env | sort > /workspace/env.txt`,
-		`stat -c '%a %u %g' /kodama/inputs/input-a > /workspace/modes.txt`,
-		`stat -c '%a %u %g' /kodama/secrets/API_KEY >> /workspace/modes.txt`,
-		`stat -c '%a %u %g' /kodama/script >> /workspace/modes.txt`,
-		`cat /kodama/inputs/input-a > /workspace/input-copy.txt`,
-		`cat /kodama/task.json > /workspace/task-copy.json`,
-		`cat /kodama/secrets/API_KEY`,
-		`cat /kodama/secrets/KODAMA_TOKEN`,
+		`stat -c '%a %u %g' /kodema/inputs/input-a > /workspace/modes.txt`,
+		`stat -c '%a %u %g' /kodema/secrets/API_KEY >> /workspace/modes.txt`,
+		`stat -c '%a %u %g' /kodema/script >> /workspace/modes.txt`,
+		`cat /kodema/inputs/input-a > /workspace/input-copy.txt`,
+		`cat /kodema/task.json > /workspace/task-copy.json`,
+		`cat /kodema/secrets/API_KEY`,
+		`cat /kodema/secrets/KODEMA_TOKEN`,
 		`echo done > /workspace/done.txt`,
 	}
 	request := fixture.request(identity, commands,
@@ -38,7 +38,7 @@ func TestPodmanRuntimeManifestEnvironmentPermissionsAndExit(t *testing.T) {
 		[]engine.SecretValue{{Name: "API_KEY", Value: "s3cr3t-value"}},
 		"tok-abc",
 	)
-	t.Setenv("KODAMA_HOST_CANARY", "must-not-leak")
+	t.Setenv("KODEMA_HOST_CANARY", "must-not-leak")
 	if _, err := fixture.adapter.Prepare(ctx, request); err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
@@ -62,22 +62,22 @@ func TestPodmanRuntimeManifestEnvironmentPermissionsAndExit(t *testing.T) {
 	env := string(readVolume(t, ctx, fixture, "env.txt"))
 	for _, want := range []string{
 		"BUILD_MODE=release",
-		"KODAMA_URL=" + testKodamaURL,
-		"KODAMA_EXECUTION=" + string(identity.ExecutionID),
-		"KODAMA_ACTION=build",
-		"KODAMA_TASK=task-1",
+		"KODEMA_URL=" + testKodemaURL,
+		"KODEMA_EXECUTION=" + string(identity.ExecutionID),
+		"KODEMA_ACTION=build",
+		"KODEMA_TASK=task-1",
 	} {
 		if !strings.Contains(env, want+"\n") && !strings.Contains(env, want) {
 			t.Fatalf("container environment is missing %q:\n%s", want, env)
 		}
 	}
-	if strings.Contains(env, "KODAMA_HOST_CANARY") {
+	if strings.Contains(env, "KODEMA_HOST_CANARY") {
 		t.Fatalf("host environment leaked into the container:\n%s", env)
 	}
 	if strings.Contains(env, "s3cr3t-value") || strings.Contains(env, "tok-abc") {
 		t.Fatalf("secret material appeared in the container environment:\n%s", env)
 	}
-	if strings.Contains(env, "API_KEY=") || strings.Contains(env, "KODAMA_TOKEN=") {
+	if strings.Contains(env, "API_KEY=") || strings.Contains(env, "KODEMA_TOKEN=") {
 		t.Fatalf("secret/credential name appeared as an environment variable:\n%s", env)
 	}
 

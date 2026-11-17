@@ -1,3 +1,3 @@
 package flow
 
-import _ "kodama/internal/kernel/definition"
+import _ "kodema/internal/kernel/definition"

@@ -230,7 +230,7 @@ func TestHarnessEvidenceWriterRefusesBasicConfiguredToken(t *testing.T) {
 	}
 	writer.Secrets = []Secret{"project-token-value"}
 	for _, basic := range []string{
-		base64.StdEncoding.EncodeToString([]byte("kodama:project-token-value")),
+		base64.StdEncoding.EncodeToString([]byte("kodema:project-token-value")),
 		base64.StdEncoding.EncodeToString([]byte("token:project-token-value")),
 	} {
 		_, err := writer.Write("basic-token", map[string]any{

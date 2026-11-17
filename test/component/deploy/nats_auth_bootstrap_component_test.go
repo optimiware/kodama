@@ -2,7 +2,7 @@
 
 // The broker authorization callout Secret is a hard stage prerequisite: the
 // integrated chart defaults to nats.auth.mode=callout and refuses to render
-// without kodama-nats-auth. These tests run the real scripts/bootstrap-secrets
+// without kodema-nats-auth. These tests run the real scripts/bootstrap-secrets
 // against fake Kubernetes/cloud binaries and compare what it writes with the
 // rendered chart's contract.
 //
@@ -34,7 +34,7 @@ import (
 // generator the production script invokes.
 var natsAuthKeyToolPath string
 
-const natsAuthSecretName = "kodama-nats-auth"
+const natsAuthSecretName = "kodema-nats-auth"
 
 // TestMain builds the NKey tool once for every test in this package.
 func TestMain(m *testing.M) {
@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 		os.Stderr.WriteString("locate repository root: " + err.Error() + "\n")
 		os.Exit(1)
 	}
-	dir, err := os.MkdirTemp("", "kodama-nats-auth-key-")
+	dir, err := os.MkdirTemp("", "kodema-nats-auth-key-")
 	if err != nil {
 		os.Stderr.WriteString("create tool directory: " + err.Error() + "\n")
 		os.Exit(1)
@@ -108,14 +108,14 @@ func natsAuthContract(t *testing.T) (secret string, account string, keys []strin
 		"account",
 	}
 
-	kodama := mapChild(t, values, "kodama")
-	secrets := mapChild(t, kodama, "secrets")
+	kodema := mapChild(t, values, "kodema")
+	secrets := mapChild(t, kodema, "secrets")
 	natsAuth := mapChild(t, secrets, "natsAuth")
 	if got := stringChild(t, natsAuth, "existingSecret"); got != secret {
-		t.Fatalf("kodama.secrets.natsAuth.existingSecret = %q; nats.auth.callout.existingSecret = %q; want one name", got, secret)
+		t.Fatalf("kodema.secrets.natsAuth.existingSecret = %q; nats.auth.callout.existingSecret = %q; want one name", got, secret)
 	}
 	if got := stringChild(t, natsAuth, "account"); got != account {
-		t.Fatalf("kodama.secrets.natsAuth.account = %q; nats.auth.callout.account = %q; want one value", got, account)
+		t.Fatalf("kodema.secrets.natsAuth.account = %q; nats.auth.callout.account = %q; want one value", got, account)
 	}
 	if secret != natsAuthSecretName {
 		t.Fatalf("chart callout Secret = %q; scripts/bootstrap-secrets creates %q", secret, natsAuthSecretName)
@@ -142,7 +142,7 @@ func stringChild(t *testing.T, parent map[string]any, key string) string {
 }
 
 // natsAuthFromFiles returns the key -> content map recorded for the
-// kodama-nats-auth creation and the keys from that create argv. It proves the
+// kodema-nats-auth creation and the keys from that create argv. It proves the
 // script hands kubectl exactly the chart's key set.
 func natsAuthFromFiles(t *testing.T, box *sandbox) (map[string]string, []kubectlFileRecord, []string) {
 	t.Helper()
@@ -566,7 +566,7 @@ func TestBootstrapSecretsNATSAuthRegeneratesIncompleteIssuerPair(t *testing.T) {
 // absence would generate a fresh issuer and fresh bypass passwords and apply
 // them over a Secret that still exists.
 func TestBootstrapSecretsNATSAuthFailsOnSecretProbeError(t *testing.T) {
-	box := newSandbox(t).withEnv("KUBECTL_FAIL_PATTERN=get secret kodama-nats-auth")
+	box := newSandbox(t).withEnv("KUBECTL_FAIL_PATTERN=get secret kodema-nats-auth")
 	code, output := box.run(t, false)
 	if code == 0 {
 		t.Fatalf("bootstrap-secrets accepted a failed Secret probe as absence:\n%s", output)
@@ -580,7 +580,7 @@ func TestBootstrapSecretsNATSAuthFailsOnSecretProbeError(t *testing.T) {
 }
 
 // bootstrapNATSAuthKeysAndAccount reads the bootstrap script's own contract:
-// the exact key list and account value it writes into kodama-nats-auth.
+// the exact key list and account value it writes into kodema-nats-auth.
 func bootstrapNATSAuthKeysAndAccount(t *testing.T) ([]string, string) {
 	t.Helper()
 	body, err := os.ReadFile(filepath.Join(repoRoot(t), "scripts", "bootstrap-secrets"))
@@ -588,17 +588,17 @@ func bootstrapNATSAuthKeysAndAccount(t *testing.T) ([]string, string) {
 		t.Fatalf("read scripts/bootstrap-secrets: %v", err)
 	}
 	script := string(body)
-	keysMatch := regexp.MustCompile(`(?ms)^KODAMA_NATS_AUTH_KEYS=\((.*?)\)`).FindStringSubmatch(script)
+	keysMatch := regexp.MustCompile(`(?ms)^KODEMA_NATS_AUTH_KEYS=\((.*?)\)`).FindStringSubmatch(script)
 	if keysMatch == nil {
-		t.Fatal("scripts/bootstrap-secrets has no KODAMA_NATS_AUTH_KEYS array")
+		t.Fatal("scripts/bootstrap-secrets has no KODEMA_NATS_AUTH_KEYS array")
 	}
 	keys := strings.Fields(keysMatch[1])
 	if len(keys) == 0 {
-		t.Fatal("scripts/bootstrap-secrets has an empty KODAMA_NATS_AUTH_KEYS array")
+		t.Fatal("scripts/bootstrap-secrets has an empty KODEMA_NATS_AUTH_KEYS array")
 	}
-	accountMatch := regexp.MustCompile(`(?m)^KODAMA_NATS_AUTH_ACCOUNT="([^"]+)"`).FindStringSubmatch(script)
+	accountMatch := regexp.MustCompile(`(?m)^KODEMA_NATS_AUTH_ACCOUNT="([^"]+)"`).FindStringSubmatch(script)
 	if accountMatch == nil || accountMatch[1] == "" {
-		t.Fatal("scripts/bootstrap-secrets has no KODAMA_NATS_AUTH_ACCOUNT value")
+		t.Fatal("scripts/bootstrap-secrets has no KODEMA_NATS_AUTH_ACCOUNT value")
 	}
 	return keys, accountMatch[1]
 }
@@ -623,17 +623,17 @@ func deployStageNATSAuthAccount(t *testing.T) string {
 // the production overrides, the same way scripts/deploy invokes Helm.
 func renderStackWithValuesFile(t *testing.T, helm, chart, valuesFile string) (string, error) {
 	t.Helper()
-	args := []string{"template", "kodama-stack", chart, "--namespace", "kodama-system", "-f", valuesFile}
-	args = append(args, productionOIDCArgs("kodama.")...)
+	args := []string{"template", "kodema-stack", chart, "--namespace", "kodema-system", "-f", valuesFile}
+	args = append(args, productionOIDCArgs("kodema.")...)
 	command := exec.Command(helm, args...)
 	command.Dir = chart
 	output, err := command.CombinedOutput()
 	return string(output), err
 }
 
-// secretKeyRefsFromWorkload collects every kodama-nats-auth key a workload's
+// secretKeyRefsFromWorkload collects every kodema-nats-auth key a workload's
 // containers read through secretKeyRef, and the literal
-// KODAMA_NATS_CALLOUT_ACCOUNT value it renders.
+// KODEMA_NATS_CALLOUT_ACCOUNT value it renders.
 func secretKeyRefsFromWorkload(t *testing.T, object map[string]any) (map[string]bool, string) {
 	t.Helper()
 	keys := map[string]bool{}
@@ -658,7 +658,7 @@ func secretKeyRefsFromWorkload(t *testing.T, object map[string]any) (map[string]
 				if !ok {
 					continue
 				}
-				if name, _ := variable["name"].(string); name == "KODAMA_NATS_CALLOUT_ACCOUNT" {
+				if name, _ := variable["name"].(string); name == "KODEMA_NATS_CALLOUT_ACCOUNT" {
 					account, _ = variable["value"].(string)
 				}
 				valueFrom, ok := variable["valueFrom"].(map[string]any)
@@ -719,7 +719,7 @@ func TestBootstrapSecretsNATSAuthRenderedWiringMatchesBootstrap(t *testing.T) {
 		name, _ := metadata["name"].(string)
 		switch {
 		case kind == "StatefulSet" && name == "nats":
-		case kind == "Deployment" && name == "kodama":
+		case kind == "Deployment" && name == "kodema":
 		default:
 			continue
 		}
@@ -730,7 +730,7 @@ func TestBootstrapSecretsNATSAuthRenderedWiringMatchesBootstrap(t *testing.T) {
 			accounts[label] = account
 		}
 	}
-	for _, label := range []string{"StatefulSet/nats", "Deployment/kodama"} {
+	for _, label := range []string{"StatefulSet/nats", "Deployment/kodema"} {
 		if _, ok := workloads[label]; !ok {
 			t.Fatalf("rendered stage stack has no %s", label)
 		}
@@ -749,7 +749,7 @@ func TestBootstrapSecretsNATSAuthRenderedWiringMatchesBootstrap(t *testing.T) {
 	// Both workloads must read the halves they need; a subset check over an
 	// empty or unrelated set would prove nothing.
 	for _, key := range []string{"shell-user", "shell-password", "callout-user", "callout-password"} {
-		for _, label := range []string{"StatefulSet/nats", "Deployment/kodama"} {
+		for _, label := range []string{"StatefulSet/nats", "Deployment/kodema"} {
 			if !workloads[label][key] {
 				t.Errorf("%s does not read %s key %q", label, natsAuthSecretName, key)
 			}
@@ -758,16 +758,16 @@ func TestBootstrapSecretsNATSAuthRenderedWiringMatchesBootstrap(t *testing.T) {
 	if !workloads["StatefulSet/nats"]["issuer.pub"] {
 		t.Errorf("StatefulSet/nats does not read the issuer public key")
 	}
-	if !workloads["Deployment/kodama"]["issuer.seed"] {
-		t.Errorf("Deployment/kodama does not read the issuer seed")
+	if !workloads["Deployment/kodema"]["issuer.seed"] {
+		t.Errorf("Deployment/kodema does not read the issuer seed")
 	}
 
-	renderedAccount, ok := accounts["Deployment/kodama"]
+	renderedAccount, ok := accounts["Deployment/kodema"]
 	if !ok || renderedAccount == "" {
-		t.Fatalf("Deployment/kodama renders no KODAMA_NATS_CALLOUT_ACCOUNT value")
+		t.Fatalf("Deployment/kodema renders no KODEMA_NATS_CALLOUT_ACCOUNT value")
 	}
 	if renderedAccount != bootstrapAccount {
-		t.Errorf("rendered KODAMA_NATS_CALLOUT_ACCOUNT = %q; scripts/bootstrap-secrets writes %q", renderedAccount, bootstrapAccount)
+		t.Errorf("rendered KODEMA_NATS_CALLOUT_ACCOUNT = %q; scripts/bootstrap-secrets writes %q", renderedAccount, bootstrapAccount)
 	}
 }
 

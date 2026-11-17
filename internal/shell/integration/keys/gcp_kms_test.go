@@ -32,17 +32,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 const (
 	// gcpTestRef is the accepted grammar: the full cryptoKey resource name.
-	gcpTestRef = "gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/kodama_KEK"
+	gcpTestRef = "gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/kodema_KEK"
 	// gcpTestPath is the only route the client may call: the resource name
 	// with the literal ":decrypt" custom-method suffix.
-	gcpTestPath = "/v1/projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/kodama_KEK:decrypt"
+	gcpTestPath = "/v1/projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/kodema_KEK:decrypt"
 	// gcpTestTokenPath is the only metadata entry the client may read.
 	gcpTestTokenPath = "/computeMetadata/v1/instance/service-accounts/default/token"
 	// gcpTestToken prefixes every token the stand-in metadata server issues.
@@ -324,7 +324,7 @@ func TestGCPKMSDecryptRequestsAndResult(t *testing.T) {
 	if decrypt.requestURI != gcpTestPath {
 		t.Fatalf("request URI = %q; want the exact path %q", decrypt.requestURI, gcpTestPath)
 	}
-	if !strings.HasSuffix(decrypt.requestURI, "/cryptoKeys/kodama_KEK:decrypt") {
+	if !strings.HasSuffix(decrypt.requestURI, "/cryptoKeys/kodema_KEK:decrypt") {
 		t.Fatalf("request URI = %q; want the literal :decrypt suffix", decrypt.requestURI)
 	}
 	if decrypt.rawQuery != "" {
@@ -396,22 +396,22 @@ func TestGCPKMSRefusesBadKeyReferencesBeforeAnyIO(t *testing.T) {
 	bad := []string{
 		"",
 		"gcp-kms:",
-		"gcp-kms:projects/kodama-prod",
-		"gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring",
-		"gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/",
-		"gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/key/cryptoKeyVersions/1",
-		"gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/key:decrypt",
-		"gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/../cryptoKeys/key",
-		"gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/%2e%2e",
-		"gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/key?x=1",
-		"gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/key#frag",
-		"gcp-kms:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/key\n",
-		"gcp-kms:projects/kodama-prod/locations/europe west1/keyRings/kodama-ring/cryptoKeys/key",
-		"gcp-kms:/v1/projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/key",
-		"GCP-KMS:projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/key",
-		"aws-kms:alias/kodama",
+		"gcp-kms:projects/kodema-prod",
+		"gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring",
+		"gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/",
+		"gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/key/cryptoKeyVersions/1",
+		"gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/key:decrypt",
+		"gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/../cryptoKeys/key",
+		"gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/%2e%2e",
+		"gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/key?x=1",
+		"gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/key#frag",
+		"gcp-kms:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/key\n",
+		"gcp-kms:projects/kodema-prod/locations/europe west1/keyRings/kodema-ring/cryptoKeys/key",
+		"gcp-kms:/v1/projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/key",
+		"GCP-KMS:projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/key",
+		"aws-kms:alias/kodema",
 		"scw-kms:fr-par/kid",
-		"projects/kodama-prod/locations/europe-west1/keyRings/kodama-ring/cryptoKeys/key",
+		"projects/kodema-prod/locations/europe-west1/keyRings/kodema-ring/cryptoKeys/key",
 	}
 	for _, reference := range bad {
 		plaintext, err := client.Decrypt(context.Background(), secret.KeyRef(reference), []byte("blob"))

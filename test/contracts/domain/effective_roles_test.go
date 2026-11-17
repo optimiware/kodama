@@ -24,8 +24,8 @@ package domaincontract
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func tenantScope() tenancy.Scope {

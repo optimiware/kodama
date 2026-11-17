@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/transport/ops"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
 // secretHandlers binds secret metadata, write and delete.
@@ -22,7 +22,7 @@ func secretHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				return api.Result{}, err
 			}
 			if request.SecretID == id.SecretTokenName {
-				return api.Result{}, fault.New(fault.InvalidInput, "reserved secret name KODAMA_TOKEN cannot be read")
+				return api.Result{}, fault.New(fault.InvalidInput, "reserved secret name KODEMA_TOKEN cannot be read")
 			}
 			name, nameErr := id.ParseSecretName(request.SecretID)
 			if nameErr != nil {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestCatalogForRoutesRefusesMissingSchema pins that construction refuses an

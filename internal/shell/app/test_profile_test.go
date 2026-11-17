@@ -1,6 +1,6 @@
 package app
 
-// The durable form of ProfileTest: `kodama server --profile test`
+// The durable form of ProfileTest: `kodema server --profile test`
 // composes PostgreSQL, NATS, the Podman runtime, a local keyfile, OIDC humans
 // and the file log sink through the same durable builder production uses. The
 // fully injected harness form (Config.Test == nil) is pinned by
@@ -22,28 +22,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/internal/shell/token"
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/shell/token"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
 )
 
 const (
-	durableRuntimeDSN    = "postgres://kodama_runtime:SENTINEL-RUNTIME-PW@db.test:5432/kodama?sslmode=disable"
-	durableControllerDSN = "postgres://kodama_controller:SENTINEL-CONTROLLER-PW@db.test:5432/kodama?sslmode=disable"
-	durablePublisherDSN  = "postgres://kodama_publisher:SENTINEL-PUBLISHER-PW@db.test:5432/kodama?sslmode=disable"
-	durableAuthDSN       = "postgres://kodama_auth:SENTINEL-AUTH-PW@db.test:5432/kodama?sslmode=disable"
+	durableRuntimeDSN    = "postgres://kodema_runtime:SENTINEL-RUNTIME-PW@db.test:5432/kodema?sslmode=disable"
+	durableControllerDSN = "postgres://kodema_controller:SENTINEL-CONTROLLER-PW@db.test:5432/kodema?sslmode=disable"
+	durablePublisherDSN  = "postgres://kodema_publisher:SENTINEL-PUBLISHER-PW@db.test:5432/kodema?sslmode=disable"
+	durableAuthDSN       = "postgres://kodema_auth:SENTINEL-AUTH-PW@db.test:5432/kodema?sslmode=disable"
 	durableKeyRef        = "keyfile:kek-v1"
 )
 
@@ -90,7 +90,7 @@ func durableTestConfig(t *testing.T, server *fakeNATSServer) Config {
 			DatabaseURL: durableRuntimeDSN,
 			NATSURL:     "nats://nats.test:4222",
 			KeyRef:      durableKeyRef,
-			PublicURL:   "https://kodama.test:8443",
+			PublicURL:   "https://kodema.test:8443",
 		},
 		InstallationID: "installation-test-1",
 		DataDir:        t.TempDir(),
@@ -102,7 +102,7 @@ func durableTestConfig(t *testing.T, server *fakeNATSServer) Config {
 			RuntimeReady:      func(context.Context) error { return nil },
 			KeyfilePath:       writeDurableKeyfile(t),
 			OIDC: oidc.Config{
-				OIDCConfig:    identity.OIDCConfig{Issuer: "https://issuer.example", Audience: "kodama"},
+				OIDCConfig:    identity.OIDCConfig{Issuer: "https://issuer.example", Audience: "kodema"},
 				JWKSURL:       "https://issuer.example/jwks",
 				Algorithms:    []string{oidc.AlgorithmRS256},
 				HTTPClient:    &http.Client{Transport: noNetworkTransport{}},
@@ -492,7 +492,7 @@ func TestProductionRefusesTestEntrySettings(t *testing.T) {
 		{"injected adapter", func(c *Config) { c.Adapters = &Adapters{Runtime: &fakeRuntime{}} }, "injected"},
 		{"kubernetes runtime", func(c *Config) { c.Installation.Runtime = installation.RuntimeKubernetes }, "podman"},
 		{"production environment", func(c *Config) { c.Installation.Environment = installation.EnvironmentProduction }, ""},
-		{"http public URL", func(c *Config) { c.Installation.PublicURL = "http://kodama.test" }, "public URL"},
+		{"http public URL", func(c *Config) { c.Installation.PublicURL = "http://kodema.test" }, "public URL"},
 		{"relative data dir", func(c *Config) { c.DataDir = "data" }, "data directory"},
 		{"no runtime", func(c *Config) { c.Test.Runtime = nil }, "runtime"},
 		{"no workspace", func(c *Config) { c.Test.Workspace = nil }, "workspace"},
@@ -504,8 +504,8 @@ func TestProductionRefusesTestEntrySettings(t *testing.T) {
 		{"no controller URL", func(c *Config) { c.Test.ControllerURL = "" }, "controller database URL"},
 		{"no publisher URL", func(c *Config) { c.Test.PublisherURL = "" }, "publisher database URL"},
 		{"no auth URL", func(c *Config) { c.Test.AuthURL = "" }, "auth database URL"},
-		{"controller URL scheme", func(c *Config) { c.Test.ControllerURL = "http://db.test/kodama" }, "controller database URL"},
-		{"auth URL host list", func(c *Config) { c.Test.AuthURL = "postgres://kodama_auth@a,b/kodama" }, "auth database URL"},
+		{"controller URL scheme", func(c *Config) { c.Test.ControllerURL = "http://db.test/kodema" }, "controller database URL"},
+		{"auth URL host list", func(c *Config) { c.Test.AuthURL = "postgres://kodema_auth@a,b/kodema" }, "auth database URL"},
 		{"broker certificate without key", func(c *Config) {
 			c.Test.NATSTLS = &natsdriver.TLSConfig{CertFile: "/etc/tls.crt"}
 		}, "broker"},

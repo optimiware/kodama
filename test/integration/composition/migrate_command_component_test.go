@@ -1,8 +1,8 @@
 //go:build component
 
-// This file proves `kodama migrate` end to end through the real CLI binary and
+// This file proves `kodema migrate` end to end through the real CLI binary and
 // a real PostgreSQL server: the target database comes from
-// KODAMA_DATABASE_URL, EnsureDatabase creates it, the reviewed migrations and
+// KODEMA_DATABASE_URL, EnsureDatabase creates it, the reviewed migrations and
 // role passwords are applied once, concurrent runs serialize, and no password
 // or connection URL ever reaches stdout or stderr.
 package composition
@@ -25,26 +25,26 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
-// kodamaCLI builds the real command binary once per test into its temporary
+// kodemaCLI builds the real command binary once per test into its temporary
 // directory. The component proof drives the same entrypoint the pod runs.
-func kodamaCLI(t *testing.T) string {
+func kodemaCLI(t *testing.T) string {
 	t.Helper()
 	root, err := moduleRoot()
 	if err != nil {
 		t.Fatalf("resolve the module root: %v", err)
 	}
-	binary := filepath.Join(t.TempDir(), "kodama")
-	build := exec.Command("go", "build", "-o", binary, "./cmd/kodama")
+	binary := filepath.Join(t.TempDir(), "kodema")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/kodema")
 	build.Dir = root
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build kodama: %v\n%s", err, output)
+		t.Fatalf("build kodema: %v\n%s", err, output)
 	}
 	return binary
 }
@@ -58,7 +58,7 @@ func moduleRoot() (string, error) {
 }
 
 // commandEnvironment renders one isolated child environment: only the explicit
-// map plus PATH, never the host's KODAMA_* values.
+// map plus PATH, never the host's KODEMA_* values.
 func commandEnvironment(values map[string]string) []string {
 	environment := []string{"PATH=" + os.Getenv("PATH")}
 	for name, value := range values {
@@ -80,12 +80,12 @@ func runMigrateBinary(binary string, values map[string]string) (stdout, stderr s
 	command.Stderr = &errOut
 	runErr := command.Run()
 	if ctx.Err() != nil {
-		return parseOut.String(), errOut.String(), -1, fmt.Errorf("kodama migrate timed out: %w", ctx.Err())
+		return parseOut.String(), errOut.String(), -1, fmt.Errorf("kodema migrate timed out: %w", ctx.Err())
 	}
 	if runErr != nil {
 		var exit *exec.ExitError
 		if !errors.As(runErr, &exit) {
-			return parseOut.String(), errOut.String(), -1, fmt.Errorf("run kodama migrate: %w\nstderr: %s", runErr, errOut.String())
+			return parseOut.String(), errOut.String(), -1, fmt.Errorf("run kodema migrate: %w\nstderr: %s", runErr, errOut.String())
 		}
 		return parseOut.String(), errOut.String(), exit.ExitCode(), nil
 	}
@@ -95,7 +95,7 @@ func runMigrateBinary(binary string, values map[string]string) (stdout, stderr s
 // runMigrateCommand builds one binary and runs it once.
 func runMigrateCommand(t *testing.T, values map[string]string) (stdout, stderr string, code int) {
 	t.Helper()
-	stdout, stderr, code, err := runMigrateBinary(kodamaCLI(t), values)
+	stdout, stderr, code, err := runMigrateBinary(kodemaCLI(t), values)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -125,7 +125,7 @@ func roleURL(t *testing.T, host, port, role, password, database string) string {
 	return parsed.String()
 }
 
-// migrateCommandEnvironment is one complete `kodama migrate` environment for a
+// migrateCommandEnvironment is one complete `kodema migrate` environment for a
 // target database, with sentinel passwords so every output can be checked.
 type migrateCommandEnv struct {
 	values    map[string]string
@@ -139,24 +139,24 @@ func migrateCommandFixture(t *testing.T, shard *pgtest.Shard, adminPassword, dat
 	t.Helper()
 	ctx := context.Background()
 	if _, err := pgtest.ExecSQL(ctx, shard.Admin(),
-		`CREATE ROLE kodama_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS PASSWORD '`+adminPassword+`'`); err != nil {
+		`CREATE ROLE kodema_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS PASSWORD '`+adminPassword+`'`); err != nil {
 		t.Fatalf("create the non-superuser administrator: %v", err)
 	}
 	host, port := hostPort(t, shard.Addr)
 	passwords := map[string]string{
-		"kodama_runtime":    "runtime-SENTINEL-p'w",
-		"kodama_controller": `controller-"pw"-SENTINEL`,
-		"kodama_publisher":  "publisher-SENTINEL",
-		"kodama_auth":       "auth-SENTINEL",
+		"kodema_runtime":    "runtime-SENTINEL-p'w",
+		"kodema_controller": `controller-"pw"-SENTINEL`,
+		"kodema_publisher":  "publisher-SENTINEL",
+		"kodema_auth":       "auth-SENTINEL",
 	}
 	roles := []struct{ env, role string }{
-		{"KODAMA_DATABASE_URL", "kodama_runtime"},
-		{"KODAMA_CONTROLLER_DATABASE_URL", "kodama_controller"},
-		{"KODAMA_PUBLISHER_DATABASE_URL", "kodama_publisher"},
-		{"KODAMA_AUTH_DATABASE_URL", "kodama_auth"},
+		{"KODEMA_DATABASE_URL", "kodema_runtime"},
+		{"KODEMA_CONTROLLER_DATABASE_URL", "kodema_controller"},
+		{"KODEMA_PUBLISHER_DATABASE_URL", "kodema_publisher"},
+		{"KODEMA_AUTH_DATABASE_URL", "kodema_auth"},
 	}
 	values := map[string]string{
-		"KODAMA_ADMIN_DATABASE_URL": roleURL(t, host, port, "kodama_admin", adminPassword, "postgres"),
+		"KODEMA_ADMIN_DATABASE_URL": roleURL(t, host, port, "kodema_admin", adminPassword, "postgres"),
 	}
 	var urls []string
 	for _, entry := range roles {
@@ -167,7 +167,7 @@ func migrateCommandFixture(t *testing.T, shard *pgtest.Shard, adminPassword, dat
 	return migrateCommandEnv{
 		values:    values,
 		passwords: passwords,
-		adminURL:  values["KODAMA_ADMIN_DATABASE_URL"],
+		adminURL:  values["KODEMA_ADMIN_DATABASE_URL"],
 		roleURLs:  urls,
 		database:  database,
 	}
@@ -194,7 +194,7 @@ func ledgerRows(t *testing.T, shard *pgtest.Shard, database string) int {
 	t.Helper()
 	super := componentDB(t, shard, "postgres", database)
 	rows, err := pgtest.QueryStringsN(context.Background(), super, 1,
-		`SELECT name FROM kodama_meta.schema_migrations`)
+		`SELECT name FROM kodema_meta.schema_migrations`)
 	if err != nil {
 		t.Fatalf("read the migration ledger: %v", err)
 	}
@@ -202,12 +202,12 @@ func ledgerRows(t *testing.T, shard *pgtest.Shard, database string) int {
 }
 
 // TestMigrateCommandRealPostgres runs the real command end to end: the database
-// named by KODAMA_DATABASE_URL is created and handed to kodama_owner, every
+// named by KODEMA_DATABASE_URL is created and handed to kodema_owner, every
 // reviewed migration is applied, the four role passwords are set, and a second
 // run is a no-op with the same secret-free output class.
 func TestMigrateCommandRealPostgres(t *testing.T) {
 	shard := pgtest.Start(t)
-	const database = "kodama_cli_owned"
+	const database = "kodema_cli_owned"
 	environment := migrateCommandFixture(t, shard, "admin-SENTINEL-pw", database)
 
 	stdout, stderr, code := runMigrateCommand(t, environment.values)
@@ -223,10 +223,10 @@ func TestMigrateCommandRealPostgres(t *testing.T) {
 	}
 	assertSecretFreeMigrateOutput(t, environment, stdout, stderr)
 
-	// The database named by KODAMA_DATABASE_URL exists and the handover left
-	// kodama_owner as its owner; the ledger holds every reviewed migration.
-	if owner := databaseOwner(t, shard.Admin(), database); owner != "kodama_owner" {
-		t.Fatalf("database owner = %q; want kodama_owner", owner)
+	// The database named by KODEMA_DATABASE_URL exists and the handover left
+	// kodema_owner as its owner; the ledger holds every reviewed migration.
+	if owner := databaseOwner(t, shard.Admin(), database); owner != "kodema_owner" {
+		t.Fatalf("database owner = %q; want kodema_owner", owner)
 	}
 	if rows := ledgerRows(t, shard, database); rows != want {
 		t.Fatalf("ledger rows = %d; want %d", rows, want)
@@ -248,7 +248,7 @@ func TestMigrateCommandRealPostgres(t *testing.T) {
 		t.Fatalf("second stdout = %q; want a no-op run", secondStdout)
 	}
 	assertSecretFreeMigrateOutput(t, environment, secondStdout, secondStderr)
-	if owner := databaseOwner(t, shard.Admin(), database); owner != "kodama_owner" {
+	if owner := databaseOwner(t, shard.Admin(), database); owner != "kodema_owner" {
 		t.Fatalf("second run changed the database owner to %q", owner)
 	}
 	if rows := ledgerRows(t, shard, database); rows != want {
@@ -259,7 +259,7 @@ func TestMigrateCommandRealPostgres(t *testing.T) {
 	// legitimate re-run configuration) must not wait on its own setup lock.
 	host, port := hostPort(t, shard.Addr)
 	sameDatabase := copyEnvironment(environment.values)
-	sameDatabase["KODAMA_ADMIN_DATABASE_URL"] = roleURL(t, host, port, "kodama_admin", "admin-SENTINEL-pw", database)
+	sameDatabase["KODEMA_ADMIN_DATABASE_URL"] = roleURL(t, host, port, "kodema_admin", "admin-SENTINEL-pw", database)
 	sameStdout, sameStderr, sameCode := runMigrateCommand(t, sameDatabase)
 	if sameCode != 0 {
 		t.Fatalf("same-database migrate exit code = %d; want 0 (stderr=%q)", sameCode, sameStderr)
@@ -275,7 +275,7 @@ func TestMigrateCommandRealPostgres(t *testing.T) {
 // reaches the ledger check and fails there.
 func TestMigrateCommandRefusesTamperedLedger(t *testing.T) {
 	shard := pgtest.Start(t)
-	const database = "kodama_cli_tampered"
+	const database = "kodema_cli_tampered"
 	environment := migrateCommandFixture(t, shard, "admin-SENTINEL-pw", database)
 
 	if stdout, stderr, code := runMigrateCommand(t, environment.values); code != 0 {
@@ -283,7 +283,7 @@ func TestMigrateCommandRefusesTamperedLedger(t *testing.T) {
 	}
 	super := componentDB(t, shard, "postgres", database)
 	if _, err := pgtest.ExecSQL(context.Background(), super,
-		`UPDATE kodama_meta.schema_migrations SET checksum = 'sha256:tampered' WHERE name = '0001_roles.sql'`); err != nil {
+		`UPDATE kodema_meta.schema_migrations SET checksum = 'sha256:tampered' WHERE name = '0001_roles.sql'`); err != nil {
 		t.Fatalf("tamper the migration ledger: %v", err)
 	}
 
@@ -309,11 +309,11 @@ func TestMigrateCommandRefusesTamperedLedger(t *testing.T) {
 // stream.
 func TestMigrateCommandRealPostgresRuntimeFailures(t *testing.T) {
 	shard := pgtest.Start(t)
-	environment := migrateCommandFixture(t, shard, "admin-SENTINEL-pw", "kodama_cli_failures")
+	environment := migrateCommandFixture(t, shard, "admin-SENTINEL-pw", "kodema_cli_failures")
 
 	t.Run("unreachable maintenance database", func(t *testing.T) {
 		values := copyEnvironment(environment.values)
-		values["KODAMA_ADMIN_DATABASE_URL"] = roleURL(t, "127.0.0.1", "1", "kodama_admin", "admin-SENTINEL-pw", "postgres")
+		values["KODEMA_ADMIN_DATABASE_URL"] = roleURL(t, "127.0.0.1", "1", "kodema_admin", "admin-SENTINEL-pw", "postgres")
 		stdout, stderr, code := runMigrateCommand(t, values)
 		if code != 1 {
 			t.Fatalf("exit code = %d; want 1 (stderr=%q)", code, stderr)
@@ -332,7 +332,7 @@ func TestMigrateCommandRealPostgresRuntimeFailures(t *testing.T) {
 			t.Fatalf("connect to the password shard: %v", err)
 		}
 		if _, err := connection.Exec(ctx,
-			`CREATE ROLE kodama_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS PASSWORD 'right-SENTINEL-pw'`); err != nil {
+			`CREATE ROLE kodema_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS PASSWORD 'right-SENTINEL-pw'`); err != nil {
 			connection.Close(ctx)
 			t.Fatalf("create the administrator: %v", err)
 		}
@@ -340,11 +340,11 @@ func TestMigrateCommandRealPostgresRuntimeFailures(t *testing.T) {
 
 		host, port := hostPort(t, address)
 		values := map[string]string{
-			"KODAMA_ADMIN_DATABASE_URL":      roleURL(t, host, port, "kodama_admin", "wrong-SENTINEL-pw", "postgres"),
-			"KODAMA_DATABASE_URL":            roleURL(t, host, port, "kodama_runtime", "runtime-SENTINEL", "kodama_password_failure"),
-			"KODAMA_CONTROLLER_DATABASE_URL": roleURL(t, host, port, "kodama_controller", "controller-SENTINEL", "kodama_password_failure"),
-			"KODAMA_PUBLISHER_DATABASE_URL":  roleURL(t, host, port, "kodama_publisher", "publisher-SENTINEL", "kodama_password_failure"),
-			"KODAMA_AUTH_DATABASE_URL":       roleURL(t, host, port, "kodama_auth", "auth-SENTINEL", "kodama_password_failure"),
+			"KODEMA_ADMIN_DATABASE_URL":      roleURL(t, host, port, "kodema_admin", "wrong-SENTINEL-pw", "postgres"),
+			"KODEMA_DATABASE_URL":            roleURL(t, host, port, "kodema_runtime", "runtime-SENTINEL", "kodema_password_failure"),
+			"KODEMA_CONTROLLER_DATABASE_URL": roleURL(t, host, port, "kodema_controller", "controller-SENTINEL", "kodema_password_failure"),
+			"KODEMA_PUBLISHER_DATABASE_URL":  roleURL(t, host, port, "kodema_publisher", "publisher-SENTINEL", "kodema_password_failure"),
+			"KODEMA_AUTH_DATABASE_URL":       roleURL(t, host, port, "kodema_auth", "auth-SENTINEL", "kodema_password_failure"),
 		}
 		stdout, stderr, code := runMigrateCommand(t, values)
 		if code != 1 {
@@ -360,12 +360,12 @@ func TestMigrateCommandRealPostgresRuntimeFailures(t *testing.T) {
 
 	t.Run("missing role URL is configuration", func(t *testing.T) {
 		values := copyEnvironment(environment.values)
-		values["KODAMA_AUTH_DATABASE_URL"] = ""
+		values["KODEMA_AUTH_DATABASE_URL"] = ""
 		stdout, stderr, code := runMigrateCommand(t, values)
 		if code != 2 {
 			t.Fatalf("exit code = %d; want 2 for a configuration failure (stderr=%q)", code, stderr)
 		}
-		if !strings.Contains(stderr, "KODAMA_AUTH_DATABASE_URL") {
+		if !strings.Contains(stderr, "KODEMA_AUTH_DATABASE_URL") {
 			t.Fatalf("stderr = %q; want the missing setting named", stderr)
 		}
 		assertSecretFreeMigrateOutput(t, environment, stdout, stderr)
@@ -376,12 +376,12 @@ func TestMigrateCommandRealPostgresRuntimeFailures(t *testing.T) {
 		// this exercises the database-creation failure itself: a runtime
 		// failure exits 1 and its diagnostic stays secret-free.
 		if _, err := pgtest.ExecSQL(context.Background(), shard.Admin(),
-			`CREATE ROLE kodama_nocreatedb LOGIN CREATEROLE NOCREATEDB NOSUPERUSER NOBYPASSRLS`); err != nil {
+			`CREATE ROLE kodema_nocreatedb LOGIN CREATEROLE NOCREATEDB NOSUPERUSER NOBYPASSRLS`); err != nil {
 			t.Fatalf("create the weak administrator: %v", err)
 		}
 		values := copyEnvironment(environment.values)
 		host, port := hostPort(t, shard.Addr)
-		values["KODAMA_ADMIN_DATABASE_URL"] = roleURL(t, host, port, "kodama_nocreatedb", "weak-SENTINEL-pw", "postgres")
+		values["KODEMA_ADMIN_DATABASE_URL"] = roleURL(t, host, port, "kodema_nocreatedb", "weak-SENTINEL-pw", "postgres")
 		stdout, stderr, code := runMigrateCommand(t, values)
 		if code != 1 {
 			t.Fatalf("exit code = %d; want 1 for a database-creation failure (stderr=%q)", code, stderr)
@@ -389,7 +389,7 @@ func TestMigrateCommandRealPostgresRuntimeFailures(t *testing.T) {
 		if !strings.Contains(stderr, "database creation failed") {
 			t.Fatalf("stderr = %q; want the fixed creation diagnostic", stderr)
 		}
-		for _, secret := range []string{values["KODAMA_ADMIN_DATABASE_URL"], "weak-SENTINEL-pw"} {
+		for _, secret := range []string{values["KODEMA_ADMIN_DATABASE_URL"], "weak-SENTINEL-pw"} {
 			if strings.Contains(stdout+stderr, secret) {
 				t.Fatalf("failure output rendered the weak administrator URL or password: %q", stdout+stderr)
 			}
@@ -400,7 +400,7 @@ func TestMigrateCommandRealPostgresRuntimeFailures(t *testing.T) {
 	t.Run("nonexistent administrator role", func(t *testing.T) {
 		values := copyEnvironment(environment.values)
 		host, port := hostPort(t, shard.Addr)
-		values["KODAMA_ADMIN_DATABASE_URL"] = roleURL(t, host, port, "kodama_absent", "absent-SENTINEL-pw", "postgres")
+		values["KODEMA_ADMIN_DATABASE_URL"] = roleURL(t, host, port, "kodema_absent", "absent-SENTINEL-pw", "postgres")
 		stdout, stderr, code := runMigrateCommand(t, values)
 		if code != 1 {
 			t.Fatalf("exit code = %d; want 1 (stderr=%q)", code, stderr)
@@ -414,7 +414,7 @@ func TestMigrateCommandRealPostgresRuntimeFailures(t *testing.T) {
 // ledger creation, so neither loses with a duplicate-schema/version conflict.
 func TestMigrateCommandParallelRunsConverge(t *testing.T) {
 	shard := pgtest.Start(t)
-	const database = "kodama_cli_parallel"
+	const database = "kodema_cli_parallel"
 	environment := migrateCommandFixture(t, shard, "admin-SENTINEL-pw", database)
 
 	type result struct {
@@ -422,7 +422,7 @@ func TestMigrateCommandParallelRunsConverge(t *testing.T) {
 		stderr string
 		code   int
 	}
-	binary := kodamaCLI(t)
+	binary := kodemaCLI(t)
 	results := make(chan result, 2)
 	var start sync.WaitGroup
 	start.Add(1)
@@ -461,8 +461,8 @@ func TestMigrateCommandParallelRunsConverge(t *testing.T) {
 	if rows := ledgerRows(t, shard, database); rows != want {
 		t.Fatalf("ledger rows = %d; want %d", rows, want)
 	}
-	if owner := databaseOwner(t, shard.Admin(), database); owner != "kodama_owner" {
-		t.Fatalf("database owner = %q; want kodama_owner", owner)
+	if owner := databaseOwner(t, shard.Admin(), database); owner != "kodema_owner" {
+		t.Fatalf("database owner = %q; want kodema_owner", owner)
 	}
 }
 
@@ -493,25 +493,25 @@ func TestMigrateCommandPasswordLiteralIsNotInjectable(t *testing.T) {
 
 	const adminPassword = "admin-SENTINEL-pw"
 	if _, err := pgtest.ExecSQL(ctx, admin,
-		`CREATE ROLE kodama_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS PASSWORD '`+adminPassword+`'`); err != nil {
+		`CREATE ROLE kodema_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS PASSWORD '`+adminPassword+`'`); err != nil {
 		t.Fatalf("create the non-superuser administrator: %v", err)
 	}
 	// The role-level setting makes every new administrator session use the
 	// pre-9.1 literal rules, the exact condition under which a plain quoted
 	// password is injectable.
-	if _, err := pgtest.ExecSQL(ctx, admin, `ALTER ROLE kodama_admin SET standard_conforming_strings = off`); err != nil {
+	if _, err := pgtest.ExecSQL(ctx, admin, `ALTER ROLE kodema_admin SET standard_conforming_strings = off`); err != nil {
 		t.Fatalf("disable standard_conforming_strings for the administrator: %v", err)
 	}
 
-	const database = "kodama_cli_injection"
-	const injectedPassword = `\'; CREATE ROLE kodama_evil2; --`
+	const database = "kodema_cli_injection"
+	const injectedPassword = `\'; CREATE ROLE kodema_evil2; --`
 	host, port := hostPort(t, shard.Addr)
 	values := map[string]string{
-		"KODAMA_ADMIN_DATABASE_URL":      roleURL(t, host, port, "kodama_admin", adminPassword, "postgres"),
-		"KODAMA_DATABASE_URL":            roleURL(t, host, port, "kodama_runtime", injectedPassword, database),
-		"KODAMA_CONTROLLER_DATABASE_URL": roleURL(t, host, port, "kodama_controller", "controller-SENTINEL", database),
-		"KODAMA_PUBLISHER_DATABASE_URL":  roleURL(t, host, port, "kodama_publisher", "publisher-SENTINEL", database),
-		"KODAMA_AUTH_DATABASE_URL":       roleURL(t, host, port, "kodama_auth", "auth-SENTINEL", database),
+		"KODEMA_ADMIN_DATABASE_URL":      roleURL(t, host, port, "kodema_admin", adminPassword, "postgres"),
+		"KODEMA_DATABASE_URL":            roleURL(t, host, port, "kodema_runtime", injectedPassword, database),
+		"KODEMA_CONTROLLER_DATABASE_URL": roleURL(t, host, port, "kodema_controller", "controller-SENTINEL", database),
+		"KODEMA_PUBLISHER_DATABASE_URL":  roleURL(t, host, port, "kodema_publisher", "publisher-SENTINEL", database),
+		"KODEMA_AUTH_DATABASE_URL":       roleURL(t, host, port, "kodema_auth", "auth-SENTINEL", database),
 	}
 	stdout, stderr, code := runMigrateCommand(t, values)
 	if code != 0 {
@@ -520,15 +520,15 @@ func TestMigrateCommandPasswordLiteralIsNotInjectable(t *testing.T) {
 	if strings.Contains(stdout+stderr, injectedPassword) {
 		t.Fatalf("migrate output rendered the injected password: %q", stdout+stderr)
 	}
-	evil, err := pgtest.ScalarString(ctx, admin, `SELECT count(*)::text FROM pg_roles WHERE rolname = 'kodama_evil2'`)
+	evil, err := pgtest.ScalarString(ctx, admin, `SELECT count(*)::text FROM pg_roles WHERE rolname = 'kodema_evil2'`)
 	if err != nil {
 		t.Fatalf("read the injected role: %v", err)
 	}
 	if evil != "0" {
-		t.Fatalf("the injected password created %s kodama_evil2 role(s)", evil)
+		t.Fatalf("the injected password created %s kodema_evil2 role(s)", evil)
 	}
-	if got, want := roleVerifier(t, admin, "kodama_runtime"), md5Verifier("kodama_runtime", injectedPassword); got != want {
-		t.Fatalf("kodama_runtime verifier = %q; want the exact configured password's verifier", got)
+	if got, want := roleVerifier(t, admin, "kodema_runtime"), md5Verifier("kodema_runtime", injectedPassword); got != want {
+		t.Fatalf("kodema_runtime verifier = %q; want the exact configured password's verifier", got)
 	}
 }
 
@@ -538,18 +538,18 @@ func TestEnsureDatabaseIsIdempotentRealPostgres(t *testing.T) {
 	ctx := context.Background()
 	shard := pgtest.Start(t)
 	if _, err := pgtest.ExecSQL(ctx, shard.Admin(),
-		`CREATE ROLE kodama_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS`); err != nil {
+		`CREATE ROLE kodema_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS`); err != nil {
 		t.Fatalf("create the administrator: %v", err)
 	}
 	host, port := hostPort(t, shard.Addr)
-	maintenance := roleURL(t, host, port, "kodama_admin", "unused", "postgres")
-	const database = "kodama_ensure_twice"
+	maintenance := roleURL(t, host, port, "kodema_admin", "unused", "postgres")
+	const database = "kodema_ensure_twice"
 	for run := 1; run <= 2; run++ {
 		if err := pgdriver.EnsureDatabase(ctx, maintenance, database); err != nil {
 			t.Fatalf("EnsureDatabase run %d: %v", run, err)
 		}
 	}
-	if owner := databaseOwner(t, shard.Admin(), database); owner != "kodama_admin" {
+	if owner := databaseOwner(t, shard.Admin(), database); owner != "kodema_admin" {
 		t.Fatalf("database owner = %q; want the connecting administrator", owner)
 	}
 }

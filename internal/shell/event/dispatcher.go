@@ -6,8 +6,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // Sequence is the durable ordering cursor of the event table.

@@ -1,6 +1,6 @@
 // Package secret_test pins the secret-custody management and resolution API.
 //
-// Package kodama/internal/shell/secret provides:
+// Package kodema/internal/shell/secret provides:
 //
 //	// Stored is one current stored secret: readable metadata, its creation
 //	// time and the encrypted envelope. It never carries plaintext.
@@ -134,7 +134,7 @@
 package secret_test
 
 import (
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // Compile-time pins for the declarations the behavior tests consume.

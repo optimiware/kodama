@@ -26,10 +26,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/services"
-	servicesapp "github.com/optimiware/kodama/internal/userland/services/app"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/services"
+	servicesapp "github.com/optimiware/kodema/internal/userland/services/app"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const emailIntakeServiceID = "email-intake-svc"
@@ -83,7 +83,7 @@ func emailIntakeMessage(messageID, subject, body string, extraHeaders ...string)
 	message.WriteString("Message-ID: " + messageID + "\r\n")
 	message.WriteString("Subject: " + subject + "\r\n")
 	message.WriteString("From: reporter@example.test\r\n")
-	message.WriteString("To: intake@kodama.test\r\n")
+	message.WriteString("To: intake@kodema.test\r\n")
 	message.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	for _, header := range extraHeaders {
 		message.WriteString(header + "\r\n")
@@ -253,12 +253,12 @@ func TestEmailIntakeServedCreateAndStart(t *testing.T) {
 	// Hostile headers select neither scope, pipeline nor role.
 	hostile := emailIntakeMessage("<email-hostile@example.test>", "Hostile headers",
 		"diagnose the hostile message\r\n",
-		"X-Kodama-Tenant: tenant-evil",
-		"X-Kodama-Project: project-evil",
-		"X-Kodama-Pipeline: pipeline-evil",
+		"X-Kodema-Tenant: tenant-evil",
+		"X-Kodema-Project: project-evil",
+		"X-Kodema-Pipeline: pipeline-evil",
 		"Pipeline-ID: pipeline-evil",
-		"X-Kodama-Role: admin",
-		"X-Kodama-Assignment: role/admin",
+		"X-Kodema-Role: admin",
+		"X-Kodema-Assignment: role/admin",
 		"Reply-To: attacker@evil.test",
 	)
 	hostileResult, err := runIntake(handler, hostile)

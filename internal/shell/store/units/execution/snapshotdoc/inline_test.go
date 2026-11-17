@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/store/units/execution/snapshotdoc"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
 )
 
 // TestInlineSnapshotOmitsPipelineBinding pins the pipeline-less document

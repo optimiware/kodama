@@ -29,7 +29,7 @@ const (
 	// summary. This matches the PostgreSQL evidence lane's per-process
 	// convention: the environment variable is a parent, never a directory
 	// shared by twins.
-	EvidenceDirEnv = "KODAMA_EVIDENCE_DIR"
+	EvidenceDirEnv = "KODEMA_EVIDENCE_DIR"
 
 	// summaryFileName is the results document published once per process.
 	summaryFileName = "messaging-results.json"
@@ -98,7 +98,7 @@ type stagedFile interface {
 }
 
 // InitEvidence creates this process's unique run directory under the supplied
-// evidence parent and exports it as KODAMA_EVIDENCE_DIR so the infrastructure
+// evidence parent and exports it as KODEMA_EVIDENCE_DIR so the infrastructure
 // harness records image digests into the same directory as the summary. It is
 // idempotent: the directory is created and exported once per process.
 func InitEvidence() (string, error) {
@@ -157,7 +157,7 @@ func Finalize(exitCode int) int {
 	return exitCode
 }
 
-// evidenceParent resolves the supplied parent directory. KODAMA_EVIDENCE_DIR
+// evidenceParent resolves the supplied parent directory. KODEMA_EVIDENCE_DIR
 // wins; otherwise the ignored local scratch parent
 // <module root>/.harness/evidence/I02c-messaging is used, so no tracked source
 // path is created.
@@ -182,7 +182,7 @@ func defaultEvidenceParent() string {
 			dir = parent
 		}
 	}
-	return filepath.Join(os.TempDir(), "kodama-i02c-evidence")
+	return filepath.Join(os.TempDir(), "kodema-i02c-evidence")
 }
 
 // createRunDir creates one process-unique run directory under parent. The

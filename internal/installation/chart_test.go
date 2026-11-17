@@ -18,7 +18,7 @@ import (
 func TestChartMetadata(t *testing.T) {
 	body := readText(t, chartPath(t, "Chart.yaml"))
 	requirePattern(t, body, `(?m)^apiVersion:\s*v2\s*$`, "Chart.yaml apiVersion")
-	requirePattern(t, body, `(?m)^name:\s*kodama\s*$`, "Chart.yaml name")
+	requirePattern(t, body, `(?m)^name:\s*kodema\s*$`, "Chart.yaml name")
 	requirePattern(t, body, `(?m)^version:\s*"?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?"?\s*$`, "Chart.yaml version")
 	requirePattern(t, body, `(?m)^appVersion:\s*\S+`, "Chart.yaml appVersion")
 }
@@ -214,7 +214,7 @@ func TestTenantNamespaceTemplate(t *testing.T) {
 	bodies := templateBodies(t)
 	name, body := templateContaining(t, bodies, "kind: Namespace")
 	requirePattern(t, body, `range\s+.*\.Values\.tenants`, name+" tenant range")
-	requirePattern(t, body, `kodama\.dev/tenant`, name+" tenant label")
+	requirePattern(t, body, `kodema\.dev/tenant`, name+" tenant label")
 	requirePattern(t, body, `(?m)^\s*kind:\s*Namespace\s*$`, name+" Namespace kind")
 }
 
@@ -228,7 +228,7 @@ func TestDefaultDenyNetworkPolicy(t *testing.T) {
 	requirePattern(t, body, `ports:`, name+" permitted ports")
 
 	lower := strings.ToLower(body)
-	for _, reachable := range []string{"kodama", "git"} {
+	for _, reachable := range []string{"kodema", "git"} {
 		if !strings.Contains(lower, reachable) {
 			t.Errorf("%s does not permit reachability to %s", name, reachable)
 		}
@@ -292,7 +292,7 @@ func TestControlPlaneServiceSchemaAndClusterIPGuard(t *testing.T) {
 		"type":        "ClusterIP",
 		"port":        float64(8443),
 		"targetPort":  float64(8443),
-		"annotations": map[string]any{"kodama.dev/internal": "true"},
+		"annotations": map[string]any{"kodema.dev/internal": "true"},
 	}
 	if err := validateAgainstSchema(service, valid, "service"); err != nil {
 		t.Fatalf("schema refused valid ClusterIP service: %v", err)
@@ -322,7 +322,7 @@ func TestControlPlaneServiceSchemaAndClusterIPGuard(t *testing.T) {
 func TestOptionalCapabilitiesRemovedAndRefused(t *testing.T) {
 	for _, path := range []string{
 		chartPath(t, "values.yaml"),
-		filepath.Join(repoRoot(t), "deploy", "charts", "kodama-stack", "values.yaml"),
+		filepath.Join(repoRoot(t), "deploy", "charts", "kodema-stack", "values.yaml"),
 	} {
 		if strings.Contains(readText(t, path), "optionalCapabilities") {
 			t.Errorf("%s still declares silent no-op optionalCapabilities", path)
@@ -377,7 +377,7 @@ func TestControlPlaneServiceAndRBACAndStorage(t *testing.T) {
 		t.Fatal("missing templates/service.yaml")
 	}
 	requirePattern(t, serviceBody, `(?m)^\s*kind:\s*Service\s*$`, "service.yaml Service kind")
-	requirePattern(t, serviceBody, `(?m)^\s*name:\s*kodama\s*$`, "service.yaml service name")
+	requirePattern(t, serviceBody, `(?m)^\s*name:\s*kodema\s*$`, "service.yaml service name")
 	requirePattern(t, serviceBody, `(?m)^\s*port:\s*`, "service.yaml service port")
 
 	saBody := bodies["serviceaccount.yaml"]
@@ -400,7 +400,7 @@ func TestControlPlaneServiceAndRBACAndStorage(t *testing.T) {
 		t.Fatal("missing templates/pvc.yaml")
 	}
 	requirePattern(t, pvcBody, `(?m)^\s*kind:\s*PersistentVolumeClaim\s*$`, "pvc.yaml PVC kind")
-	requirePattern(t, pvcBody, `(?m)^\s*name:\s*kodama-retained-logs\s*$`, "pvc.yaml retained logs claim")
+	requirePattern(t, pvcBody, `(?m)^\s*name:\s*kodema-retained-logs\s*$`, "pvc.yaml retained logs claim")
 
 	deployName, deployBody := templateContaining(t, bodies, "kind: Deployment")
 	requirePattern(t, deployBody, `livenessProbe:`, deployName+" liveness probe")
@@ -410,9 +410,9 @@ func TestControlPlaneServiceAndRBACAndStorage(t *testing.T) {
 func TestMultiCloudDeployStructure(t *testing.T) {
 	root := repoRoot(t)
 
-	stackChart := readText(t, filepath.Join(root, "deploy", "charts", "kodama-stack", "Chart.yaml"))
-	requirePattern(t, stackChart, `(?m)^name:\s*kodama-stack\s*$`, "kodama-stack Chart.yaml name")
-	requirePattern(t, stackChart, `repository:\s*"file://\.\./kodama"`, "kodama-stack subchart dependency")
+	stackChart := readText(t, filepath.Join(root, "deploy", "charts", "kodema-stack", "Chart.yaml"))
+	requirePattern(t, stackChart, `(?m)^name:\s*kodema-stack\s*$`, "kodema-stack Chart.yaml name")
+	requirePattern(t, stackChart, `repository:\s*"file://\.\./kodema"`, "kodema-stack subchart dependency")
 
 	contextVars := readText(t, filepath.Join(root, "deploy", "modules", "context", "variables.tf"))
 	requirePattern(t, contextVars, `variable\s+"cluster_name"`, "context module cluster_name variable")

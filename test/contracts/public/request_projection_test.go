@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // frozenCodec returns the strict codec of one registered operation.

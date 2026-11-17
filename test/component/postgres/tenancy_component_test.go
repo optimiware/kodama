@@ -6,15 +6,15 @@ import (
 	"context"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	identityunits "github.com/optimiware/kodama/internal/shell/store/units/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	tenancyadmin "github.com/optimiware/kodama/internal/shell/tenancy/admin"
-	"github.com/optimiware/kodama/internal/shell/token"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	identityunits "github.com/optimiware/kodema/internal/shell/store/units/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	tenancyadmin "github.com/optimiware/kodema/internal/shell/tenancy/admin"
+	"github.com/optimiware/kodema/internal/shell/token"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 func tenantKey(tenant string) token.TenantKey {

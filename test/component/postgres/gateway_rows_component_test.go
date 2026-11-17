@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/gateway"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/shell/gateway"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestGatewayUsageAndContentRowsOnPostgreSQL drives the gateway's real usage

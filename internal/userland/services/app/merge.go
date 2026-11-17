@@ -18,9 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/services"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/services"
 )
 
 // DefaultMergeLease bounds one coordinator claim when the configuration leaves

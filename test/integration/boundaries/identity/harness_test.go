@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 const (

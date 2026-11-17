@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/mcpproxy"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/mcpproxy"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // internalEndpoint starts one loopback MCP upstream and returns its trusted

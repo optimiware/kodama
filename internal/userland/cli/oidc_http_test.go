@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // oidcHit is one request the fake OIDC server observed. It never records a
@@ -121,10 +121,10 @@ func statusJSONHandler(status int, body string) http.HandlerFunc {
 	}
 }
 
-// oidcDocumentJSON builds one valid Kodama discovery document.
+// oidcDocumentJSON builds one valid Kodema discovery document.
 func oidcDocumentJSON(apiURL, issuer string) string {
 	return fmt.Sprintf(
-		`{"issuer":%q,"client_id":"kodactl","audience":"kodama-api",`+
+		`{"issuer":%q,"client_id":"kodactl","audience":"kodema-api",`+
 			`"authorization_endpoint":%q,"token_endpoint":%q,`+
 			`"device_authorization_endpoint":%q,"revocation_endpoint":%q,`+
 			`"scopes":["openid","profile"],"api_url":%q}`,
@@ -182,7 +182,7 @@ func TestHTTPOIDCDiscoverAcceptsBoundDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
-	if document.Issuer != server.url("") || document.ClientID != "kodactl" || document.Audience != "kodama-api" {
+	if document.Issuer != server.url("") || document.ClientID != "kodactl" || document.Audience != "kodema-api" {
 		t.Fatalf("document = %+v", document)
 	}
 	if document.APIURL != server.url("") {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 // TestRepositoryProvisionCLIDefaultRulesGovernAPush proves the operator
@@ -31,7 +31,7 @@ func TestRepositoryProvisionCLIDefaultRulesGovernAPush(t *testing.T) {
 		"--journal-dir", harness.JournalDir,
 	)
 	if code != 0 {
-		t.Fatalf("kodama git provision-tenant exited %d: %s", code, stderr)
+		t.Fatalf("kodema git provision-tenant exited %d: %s", code, stderr)
 	}
 	if !strings.Contains(stdout, filepath.Join(harness.StorageRoot, tenant, nativefix.AdminRepository)) {
 		t.Fatalf("provision-tenant stdout = %q; want the admin repository path", stdout)
@@ -45,7 +45,7 @@ func TestRepositoryProvisionCLIDefaultRulesGovernAPush(t *testing.T) {
 		"--resource", nativefix.ResourceID,
 	)
 	if code != 0 {
-		t.Fatalf("kodama git provision-repository exited %d: %s", code, stderr)
+		t.Fatalf("kodema git provision-repository exited %d: %s", code, stderr)
 	}
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	if len(lines) != 2 {
@@ -55,7 +55,7 @@ func TestRepositoryProvisionCLIDefaultRulesGovernAPush(t *testing.T) {
 	if lines[0] != wantMapping {
 		t.Fatalf("mapping line = %q; want %q", lines[0], wantMapping)
 	}
-	if !strings.Contains(lines[1], "restart kodama git serve") {
+	if !strings.Contains(lines[1], "restart kodema git serve") {
 		t.Fatalf("restart reminder = %q; want a git serve restart reminder", lines[1])
 	}
 

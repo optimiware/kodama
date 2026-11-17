@@ -70,7 +70,7 @@ func TestAWSExportsDatabaseCACertificate(t *testing.T) {
 
 	initOutput, initCode := runTofu(t, dir, env, 15*time.Minute, "init", "-backend=false", "-input=false")
 	if initCode != 0 {
-		t.Fatalf("tofu init -backend=false failed for the mocked AWS CA test; if the sandbox has no registry access, set TF_CLI_CONFIG_FILE to a provider mirror or KODAMA_TOFU_PLUGIN_CACHE_DIR to a pre-populated cache:\n%s", initOutput)
+		t.Fatalf("tofu init -backend=false failed for the mocked AWS CA test; if the sandbox has no registry access, set TF_CLI_CONFIG_FILE to a provider mirror or KODEMA_TOFU_PLUGIN_CACHE_DIR to a pre-populated cache:\n%s", initOutput)
 	}
 
 	output, code := runTofu(t, dir, env, 10*time.Minute, "test", "-test-directory=tests", "-verbose")
@@ -124,11 +124,11 @@ func prepareAWSSecretsRun(t *testing.T) (*sandbox, cloudSecretsCase, string, str
 
 // TestAWSDatabaseCAOutputFeedsBootstrapSecret runs the real bootstrap-secrets
 // AWS path with fake CLIs and proves the exported output reaches the
-// kodama-database Secret's ca.crt with the public 0644 mode. It also proves the
+// kodema-database Secret's ca.crt with the public 0644 mode. It also proves the
 // fail-closed refusal: a missing output stops the run before any KMS call and
-// before kodama-database is created.
+// before kodema-database is created.
 func TestAWSDatabaseCAOutputFeedsBootstrapSecret(t *testing.T) {
-	t.Run("exports to kodama-database ca.crt", func(t *testing.T) {
+	t.Run("exports to kodema-database ca.crt", func(t *testing.T) {
 		box, testCase, descriptorPath, kubeconfigPath := prepareAWSSecretsRun(t)
 		// Serve a real PEM bundle so the manifest assertion is about the
 		// operator-supplied certificate, not an arbitrary token.
@@ -156,7 +156,7 @@ func TestAWSDatabaseCAOutputFeedsBootstrapSecret(t *testing.T) {
 		// was consumed, not merely read.
 		wantCA := base64.StdEncoding.EncodeToString([]byte(bundle))
 		if stdin := box.readKubectlStdin(t); !strings.Contains(stdin, wantCA) {
-			t.Errorf("the kodama-database Secret manifest does not carry the database_ca_certificate bundle (base64 %s...)", wantCA[:16])
+			t.Errorf("the kodema-database Secret manifest does not carry the database_ca_certificate bundle (base64 %s...)", wantCA[:16])
 		}
 
 		modes := box.dbCAChmodRecords(t)
@@ -188,8 +188,8 @@ func TestAWSDatabaseCAOutputFeedsBootstrapSecret(t *testing.T) {
 			t.Error("the missing-output refusal happened after the AWS KMS encrypt; it must precede key wrapping")
 		}
 		for _, line := range box.readKubectlArgv(t) {
-			if strings.Contains(line, "create") && strings.Contains(line, "kodama-database") {
-				t.Errorf("bootstrap-secrets created kodama-database without a CA output:\n%s", line)
+			if strings.Contains(line, "create") && strings.Contains(line, "kodema-database") {
+				t.Errorf("bootstrap-secrets created kodema-database without a CA output:\n%s", line)
 			}
 		}
 	})

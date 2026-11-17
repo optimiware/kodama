@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // TestHarnessTokensAreFreshAndStrong proves the harness credentials are
@@ -92,13 +92,13 @@ func TestFactorySourcesNeverBindWildcard(t *testing.T) {
 //
 // The probe needs an IPv4 default route. A host without one cannot serve the
 // workload path at all, so the default build-tag-free unit baseline skips this
-// test honestly instead of failing; KODAMA_REQUIRE_INFRA=1 turns that skip into
+// test honestly instead of failing; KODEMA_REQUIRE_INFRA=1 turns that skip into
 // a failure, exactly like the shared infrastructure policy.
 func TestWorkloadBindAddressIsSpecific(t *testing.T) {
 	host, err := defaultRouteHost()
 	if err != nil {
 		if errors.Is(err, errNoDefaultRoute) {
-			harness.SkipOrFail(t, os.Getenv("KODAMA_REQUIRE_INFRA") == "1",
+			harness.SkipOrFail(t, os.Getenv("KODEMA_REQUIRE_INFRA") == "1",
 				fmt.Errorf("workload bind address probe: %w", err))
 		}
 		t.Fatalf("factory: %v", err)
@@ -459,7 +459,7 @@ func TestHostOnlyListenerRejectsMismatchedHostConnection(t *testing.T) {
 
 // TestOutputMaterializationsSeesMaterialization is the positive control for
 // Harness.OutputMaterializations: the helper must report a directory laid out
-// exactly like the adapter's <workloadRoot>/<workload>/kodama/outputs/<action>.
+// exactly like the adapter's <workloadRoot>/<workload>/kodema/outputs/<action>.
 // Without it an empty result in the integration suite would be indistinguishable
 // from a helper that can never see anything.
 func TestOutputMaterializationsSeesMaterialization(t *testing.T) {
@@ -474,7 +474,7 @@ func TestOutputMaterializationsSeesMaterialization(t *testing.T) {
 		t.Fatalf("empty runtime root reported materializations %v; want none", found)
 	}
 
-	materialized := filepath.Join(root, "workload-one", "kodama", "outputs", "produce")
+	materialized := filepath.Join(root, "workload-one", "kodema", "outputs", "produce")
 	if err := os.MkdirAll(materialized, 0o755); err != nil {
 		t.Fatalf("create materialization: %v", err)
 	}

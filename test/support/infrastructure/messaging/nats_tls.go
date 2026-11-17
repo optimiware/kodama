@@ -31,11 +31,11 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // natsTLSDir is where the generated material is mounted in the container.
-const natsTLSDir = "/etc/kodama-tls"
+const natsTLSDir = "/etc/kodema-tls"
 
 // NATSTLS is one real JetStream-enabled broker that requires verified mutual
 // TLS from a generated private CA.
@@ -58,11 +58,11 @@ type NATSTLS struct {
 // evidence.
 func StartNATSTLS(t *testing.T) *NATSTLS {
 	t.Helper()
-	ca := generateTestCA(t, "kodama component CA")
-	untrusted := generateTestCA(t, "kodama untrusted component CA")
+	ca := generateTestCA(t, "kodema component CA")
+	untrusted := generateTestCA(t, "kodema untrusted component CA")
 	server := ca.issue(t, 100, "nats", []string{"nats", "localhost"},
 		[]net.IP{net.ParseIP("127.0.0.1")}, x509.ExtKeyUsageServerAuth)
-	client := ca.issue(t, 101, "kodama-client", nil, nil, x509.ExtKeyUsageClientAuth)
+	client := ca.issue(t, 101, "kodema-client", nil, nil, x509.ExtKeyUsageClientAuth)
 
 	dir := t.TempDir()
 	writeTLSFile(t, dir, "ca.pem", ca.pem)

@@ -305,7 +305,7 @@ func TestMakeTestE2EHermeticTarget(t *testing.T) {
 			t.Fatalf("make -n test-e2e-hermetic does not print %q; output:\n%s", command, result.stdout)
 		}
 	}
-	for _, forbidden := range []string{"infra-slot", "KODAMA_REQUIRE_INFRA", "make baseline"} {
+	for _, forbidden := range []string{"infra-slot", "KODEMA_REQUIRE_INFRA", "make baseline"} {
 		if strings.Contains(result.stdout, forbidden) {
 			t.Fatalf("the hermetic e2e target prints %q:\n%s", forbidden, result.stdout)
 		}

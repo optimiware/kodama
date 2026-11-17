@@ -55,7 +55,7 @@ func TestActionNames(t *testing.T) {
 }
 
 func TestEnvNamesRejectReservedContext(t *testing.T) {
-	valid := []string{"A", "LOG_LEVEL", "KODAMA_X", strings.Repeat("A", MaxKeyLength)}
+	valid := []string{"A", "LOG_LEVEL", "KODEMA_X", strings.Repeat("A", MaxKeyLength)}
 	for _, input := range valid {
 		got, err := ParseEnvName(input)
 		if err != nil {
@@ -66,7 +66,7 @@ func TestEnvNamesRejectReservedContext(t *testing.T) {
 		}
 	}
 
-	reserved := []string{"KODAMA_URL", "KODAMA_EXECUTION", "KODAMA_ACTION", "KODAMA_TASK"}
+	reserved := []string{"KODEMA_URL", "KODEMA_EXECUTION", "KODEMA_ACTION", "KODEMA_TASK"}
 	for _, input := range reserved {
 		if _, err := ParseEnvName(input); !errors.Is(err, ErrInvalidName) {
 			t.Fatalf("ParseEnvName(%q) error = %v, want ErrInvalidName for reserved context", input, err)
@@ -101,8 +101,8 @@ func TestSecretNamesRejectReservedToken(t *testing.T) {
 		}
 	}
 
-	if _, err := ParseSecretName("KODAMA_TOKEN"); !errors.Is(err, ErrInvalidName) {
-		t.Fatalf("ParseSecretName(KODAMA_TOKEN) error = %v, want ErrInvalidName", err)
+	if _, err := ParseSecretName("KODEMA_TOKEN"); !errors.Is(err, ErrInvalidName) {
+		t.Fatalf("ParseSecretName(KODEMA_TOKEN) error = %v, want ErrInvalidName", err)
 	}
 
 	invalid := []string{

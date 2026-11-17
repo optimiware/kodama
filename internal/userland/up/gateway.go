@@ -19,7 +19,7 @@ const gatewayShutdownTimeout = 10 * time.Second
 
 // GatewayConfig configures the single-origin HTTPS reverse-proxy gateway.
 type GatewayConfig struct {
-	// ServerUpstream is the Kodama control-plane upstream URL (required).
+	// ServerUpstream is the Kodema control-plane upstream URL (required).
 	ServerUpstream string
 	// AuthHandler serves /auth/* in-process (required).
 	AuthHandler http.Handler
@@ -32,7 +32,7 @@ type GatewayConfig struct {
 	UpstreamRootCAs *x509.CertPool
 }
 
-// Gateway routes a single public HTTPS origin by path prefix across Kodama's
+// Gateway routes a single public HTTPS origin by path prefix across Kodema's
 // server, OIDC /auth/ issuer and /git/ smart-HTTP service without socat.
 type Gateway struct {
 	serverProxy *httputil.ReverseProxy
@@ -81,7 +81,7 @@ func NewGateway(cfg GatewayConfig) (*Gateway, error) {
 // ServeHTTP dispatches by path prefix:
 //   - /git and /git/*  -> git serve upstream (stripping /git when configured)
 //   - /auth and /auth/* -> OIDC issuer upstream
-//   - everything else   -> kodama server upstream
+//   - everything else   -> kodema server upstream
 func (gw *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !localPeer(r.RemoteAddr) {
 		http.Error(w, `{"code":"forbidden","message":"this stack serves its own machine only"}`, http.StatusForbidden)

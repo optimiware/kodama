@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
 )
 
 func isLogCollectionClass(err error, want fault.Class) bool {

@@ -7,8 +7,8 @@ package services
 //
 // Each scenario runs the agent fixture image as an ordinary container action.
 // The action reads its public credential from the mounted
-// /kodama/secrets/KODAMA_TOKEN and its external checkpoint capability from the
-// declared /kodama/secrets/KODAMA_CHECKPOINT_TOKEN secret, restores through the
+// /kodema/secrets/KODEMA_TOKEN and its external checkpoint capability from the
+// declared /kodema/secrets/KODEMA_CHECKPOINT_TOKEN secret, restores through the
 // real checkpoint adapter, and reports its observation as the single JSON
 // object on stdout.
 //
@@ -45,19 +45,19 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/userland/agent"
-	agentapp "github.com/optimiware/kodama/internal/userland/agent/app"
-	"github.com/optimiware/kodama/internal/userland/session"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/userland/agent"
+	agentapp "github.com/optimiware/kodema/internal/userland/agent/app"
+	"github.com/optimiware/kodema/internal/userland/session"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
-	agentFixtureBinary     = "/usr/local/bin/kodama-agent-workload"
-	agentFixtureMarker     = "/etc/kodama-agent-workload-marker"
+	agentFixtureBinary     = "/usr/local/bin/kodema-agent-workload"
+	agentFixtureMarker     = "/etc/kodema-agent-workload-marker"
 	agentFixtureAction     = "agent"
 	agentFixtureTimeout    = "10m"
 	agentFixtureWorkspace  = "handoff-marker"
@@ -283,7 +283,7 @@ func agentCACommand(harness *factory.Harness) string {
 	if !strings.HasSuffix(material, "\n") {
 		material += "\n"
 	}
-	return "cat > /workspace/fixture-ca.pem <<'KODAMA_AGENT_CA'\n" + material + "KODAMA_AGENT_CA"
+	return "cat > /workspace/fixture-ca.pem <<'KODEMA_AGENT_CA'\n" + material + "KODEMA_AGENT_CA"
 }
 
 // agentWorkloadCommand renders the exact workload invocation. The credential and
@@ -293,15 +293,15 @@ func agentCACommand(harness *factory.Harness) string {
 func agentWorkloadCommand(checkpointURL, mode string, failAfterRun bool, allowedTools ...string) string {
 	command := agentFixtureBinary +
 		" -mode " + agentShellQuote(mode) +
-		" -base-url \"$KODAMA_URL\"" +
-		" -credential-file /kodama/secrets/KODAMA_TOKEN" +
+		" -base-url \"$KODEMA_URL\"" +
+		" -credential-file /kodema/secrets/KODEMA_TOKEN" +
 		" -checkpoint-url " + agentShellQuote(checkpointURL) +
-		" -checkpoint-credential-file /kodama/secrets/KODAMA_CHECKPOINT_TOKEN" +
+		" -checkpoint-credential-file /kodema/secrets/KODEMA_CHECKPOINT_TOKEN" +
 		" -ca-file /workspace/fixture-ca.pem" +
 		" -marker-file " + agentShellQuote(agentFixtureMarker) +
 		" -project " + agentShellQuote(factory.ProjectID) +
-		" -task \"$KODAMA_TASK\"" +
-		" -execution \"$KODAMA_EXECUTION\"" +
+		" -task \"$KODEMA_TASK\"" +
+		" -execution \"$KODEMA_EXECUTION\"" +
 		" -model " + agentShellQuote(factory.ModelAlias)
 	if len(allowedTools) == 0 {
 		allowedTools = []string{"workspace.write"}
@@ -325,7 +325,7 @@ func agentPipeline(harness *factory.Harness, image, checkpointURL, mode string, 
 		Name:     agentFixtureAction,
 		Image:    image,
 		Timeout:  agentFixtureTimeout,
-		Secrets:  []string{"KODAMA_CHECKPOINT_TOKEN"},
+		Secrets:  []string{"KODEMA_CHECKPOINT_TOKEN"},
 		Commands: []string{agentCACommand(harness), agentWorkloadCommand(checkpointURL, mode, failAfterRun, allowedTools...)},
 	}}}
 }
@@ -347,9 +347,9 @@ func agentStartFixture(t *testing.T, fixture *factory.ModelFixture) (*factory.Ha
 				TenantID:  id.TenantID(factory.TenantID),
 				ProjectID: id.ProjectID(factory.ProjectID),
 			},
-			Names: []id.SecretName{"KODAMA_CHECKPOINT_TOKEN"},
+			Names: []id.SecretName{"KODEMA_CHECKPOINT_TOKEN"},
 		}),
-		factory.WithSecrets(map[string]string{"KODAMA_CHECKPOINT_TOKEN": service.Token()}),
+		factory.WithSecrets(map[string]string{"KODEMA_CHECKPOINT_TOKEN": service.Token()}),
 	)
 	workload := factory.EnsureAgentWorkload(t, harness)
 	return harness, service, workload
@@ -474,7 +474,7 @@ func agentUsageByExecution(t *testing.T, harness *factory.Harness) map[string]in
 // token is required: the same read without it is refused.
 func agentRequireCheckpointRefusesUnauthenticated(t *testing.T, service *factory.AgentCheckpointService) {
 	t.Helper()
-	body := `{"ref":"kodama-checkpoint/v1/` + strings.Repeat("a", 32) + `-1"}`
+	body := `{"ref":"kodema-checkpoint/v1/` + strings.Repeat("a", 32) + `-1"}`
 	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost,
 		service.Endpoint()+"/v1/checkpoints/read", strings.NewReader(body))
 	if err != nil {
@@ -863,7 +863,7 @@ func TestFactoryAgentCheckpointRestoreFailures(t *testing.T) {
 			reference := ""
 			switch testCase.name {
 			case "missing":
-				reference = "kodama-checkpoint/v1/" + strings.Repeat("b", 32) + "-1"
+				reference = "kodema-checkpoint/v1/" + strings.Repeat("b", 32) + "-1"
 			case "corrupt":
 				reference = agentSeedCorruptCheckpoint(t, service.Root())
 			case "expired":
@@ -924,7 +924,7 @@ func agentSeedExpiredCheckpoint(t *testing.T, root, taskID, executionID string) 
 func agentSeedCorruptCheckpoint(t *testing.T, root string) string {
 	t.Helper()
 	key := strings.Repeat("c", 32)
-	ref := "kodama-checkpoint/v1/" + key + "-1"
+	ref := "kodema-checkpoint/v1/" + key + "-1"
 	path := filepath.Join(root, "record-"+key+"-1.json")
 	if err := os.WriteFile(path, []byte("{not a checkpoint"), 0o600); err != nil {
 		t.Fatalf("seed corrupt checkpoint: %v", err)

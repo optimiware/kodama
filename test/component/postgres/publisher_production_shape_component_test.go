@@ -7,17 +7,17 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestPublisherProductionShapeOnPostgreSQL proves the publisher's declared
 // policies in the shape production actually uses: the outbox adapter runs
-// UNSCOPED (no kodama.tenant_id/project_id), so the PUBLIC events_scope policy
+// UNSCOPED (no kodema.tenant_id/project_id), so the PUBLIC events_scope policy
 // yields NULL and only the publisher's own SELECT/UPDATE policies admit rows.
 // It also pins the two effective out-of-set protections: RLS WITH CHECK in the
 // unscoped production shape, and the events_publish_state CHECK constraint when

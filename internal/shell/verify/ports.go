@@ -3,7 +3,7 @@ package verify
 import (
 	"context"
 
-	"github.com/optimiware/kodama/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/resource"
 )
 
 // ReportPort applies one complete verified-report commit unit.

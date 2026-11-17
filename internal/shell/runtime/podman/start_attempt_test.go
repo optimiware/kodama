@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 // TestAmbiguousStartIsNeverNeverStarted covers a transport error before and
@@ -516,7 +516,7 @@ func assertStartAttemptRecorded(t *testing.T, fx *fixture) {
 	if !hostFileExists(t, startAttemptPath(fx.root, fx.request.Identity.WorkloadID)) {
 		t.Fatal("no durable start attempt marker was recorded before the start request")
 	}
-	if hostFileExists(t, filepath.Join(fx.kodamaRoot(), startAttemptRecordName)) {
+	if hostFileExists(t, filepath.Join(fx.kodemaRoot(), startAttemptRecordName)) {
 		t.Fatal("the start attempt marker leaked into the read-only activation bind")
 	}
 }

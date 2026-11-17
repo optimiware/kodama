@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/agent"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/agent"
 )
 
 // eventLog records cross-port ordering without assuming goroutine timing.
@@ -162,7 +162,7 @@ func (store *fakeCheckpoints) Save(_ context.Context, checkpoint agent.Checkpoin
 		store.mu.Unlock()
 		return "", err
 	}
-	ref := fmt.Sprintf("kodama-checkpoint/v1/ctx-%d", index+1)
+	ref := fmt.Sprintf("kodema-checkpoint/v1/ctx-%d", index+1)
 	store.saves = append(store.saves, copyCheckpoint(checkpoint))
 	store.refs = append(store.refs, ref)
 	store.store[ref] = copyCheckpoint(checkpoint)

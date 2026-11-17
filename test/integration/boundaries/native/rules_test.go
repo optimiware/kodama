@@ -5,7 +5,7 @@ package native_test
 import (
 	"testing"
 
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 func TestOrderedRuleEnforcementAndDeleteRefusal(t *testing.T) {

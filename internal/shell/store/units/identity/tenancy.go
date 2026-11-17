@@ -6,12 +6,12 @@ import (
 	"encoding/hex"
 	"strconv"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	tenancyadmin "github.com/optimiware/kodama/internal/shell/tenancy/admin"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	tenancyadmin "github.com/optimiware/kodema/internal/shell/tenancy/admin"
 )
 
 // Compile-time pins: every tenancy administration port is implemented by one

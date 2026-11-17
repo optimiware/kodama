@@ -18,14 +18,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/store"
-	identityunits "github.com/optimiware/kodama/internal/shell/store/units/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/store"
+	identityunits "github.com/optimiware/kodema/internal/shell/store/units/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // registerCommand builds one complete real-service registration command for a
@@ -40,7 +40,7 @@ func registerCommand(scope tenancy.Scope, actor id.PrincipalID, bindingID, resou
 		TrustedOrigins:   []string{"https://git.example"},
 		Operations:       []resource.Operation{resource.OperationGitRefUpdate},
 		ReportableEvents: []string{"git.ref.updated"},
-		Metadata:         map[string]string{"repo": "kodama"},
+		Metadata:         map[string]string{"repo": "kodema"},
 		CallerKey:        callerKey,
 		Content:          requestContent(callerKey),
 	}
@@ -289,7 +289,7 @@ func TestRealRegisterReusesOwnedResourceRow(t *testing.T) {
 		TrustedOrigins:   []string{"https://git.example"},
 		Operations:       []resource.Operation{resource.OperationGitRefUpdate},
 		ReportableEvents: []string{"git.ref.updated"},
-		Metadata:         map[string]string{"repo": "kodama", "owner": "team"},
+		Metadata:         map[string]string{"repo": "kodema", "owner": "team"},
 		ExpectedVersion:  1,
 		CallerKey:        "caller-update-b",
 		Content:          requestContent("caller-update-b"),

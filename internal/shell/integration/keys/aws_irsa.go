@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // EKS IRSA (IAM Roles for Service Accounts) credentials for the AWS KMS client:
@@ -20,7 +20,7 @@ import (
 
 // awsDefaultRoleSessionName names the STS session when the configuration gives
 // none. It appears in CloudTrail and in the assumed-role ARN.
-const awsDefaultRoleSessionName = "kodama"
+const awsDefaultRoleSessionName = "kodema"
 
 // awsMaxWebIdentityTokenBytes bounds the projected service-account token. It is
 // the documented maximum length of the STS WebIdentityToken parameter.

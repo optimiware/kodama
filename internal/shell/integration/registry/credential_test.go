@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
 )
 
 // TestResolveBearerCredential pins bearer presentation, origin scoping and the
@@ -51,7 +51,7 @@ func TestResolveBearerCredential(t *testing.T) {
 // password anywhere outside the Authorization header.
 func TestResolveBasicCredential(t *testing.T) {
 	const (
-		username = "kodama"
+		username = "kodema"
 		password = "registry-password-do-not-leak"
 	)
 	body := singleManifestBody

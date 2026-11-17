@@ -35,8 +35,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/agent"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/userland/agent"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // WorkloadHost returns the host default-route address a workload edge binds.
@@ -52,15 +52,15 @@ const (
 
 	// AgentWorkloadCredentialPath is the mounted public credential file inside
 	// the workload. It mirrors the native workload's reserved mount.
-	AgentWorkloadCredentialPath = "/kodama/secrets/KODAMA_TOKEN"
+	AgentWorkloadCredentialPath = "/kodema/secrets/KODEMA_TOKEN"
 	// AgentWorkloadCheckpointTokenPath is the mounted external checkpoint
 	// service token. It is a fixture capability token, never a product
 	// credential.
-	AgentWorkloadCheckpointTokenPath = "/kodama/secrets/KODAMA_CHECKPOINT_TOKEN"
+	AgentWorkloadCheckpointTokenPath = "/kodema/secrets/KODEMA_CHECKPOINT_TOKEN"
 
-	agentWorkloadImagePath      = "/usr/local/bin/kodama-agent-workload"
-	agentWorkloadMarkerPath     = "/etc/kodama-agent-workload-marker"
-	agentWorkloadCAFilePath     = "/kodama/fixture-ca.pem"
+	agentWorkloadImagePath      = "/usr/local/bin/kodema-agent-workload"
+	agentWorkloadMarkerPath     = "/etc/kodema-agent-workload-marker"
+	agentWorkloadCAFilePath     = "/kodema/fixture-ca.pem"
 	agentWorkloadBuildTimeout   = 10 * time.Minute
 	agentWorkloadRunTimeout     = 3 * time.Minute
 	agentWorkloadCleanupLimit   = 2 * time.Minute
@@ -102,14 +102,14 @@ func newAgentWorkloadPlan(fixtureID string, base runtimesupport.PinnedImage) (ag
 	plan := agentWorkloadPlan{
 		FixtureID: trimmed,
 		Base:      base,
-		Tag:       "localhost/kodama-agent-workload-" + trimmed + ":workload",
-		Marker:    "kodama agent workload " + trimmed,
+		Tag:       "localhost/kodema-agent-workload-" + trimmed + ":workload",
+		Marker:    "kodema agent workload " + trimmed,
 	}
 	if plan.Tag == base.Tag || plan.Tag == reference {
 		return agentWorkloadPlan{}, fmt.Errorf("factory: agent workload tag %q collides with the shared base", plan.Tag)
 	}
 	plan.Containerfile = "FROM " + reference + "\n" +
-		"LABEL kodama.test/agent-workload=\"" + trimmed + "\"\n" +
+		"LABEL kodema.test/agent-workload=\"" + trimmed + "\"\n" +
 		"COPY agentworkload " + agentWorkloadImagePath + "\n" +
 		"COPY marker " + agentWorkloadMarkerPath + "\n"
 	return plan, nil
@@ -123,7 +123,7 @@ type AgentWorkloadImage struct {
 	// Digest is the built manifest digest (sha256:<64 hex>) in the local store.
 	Digest string
 	// Reference is the digest-pinned image reference
-	// (localhost/kodama-agent-workload-<id>@sha256:<64 hex>) launched by the
+	// (localhost/kodema-agent-workload-<id>@sha256:<64 hex>) launched by the
 	// fixture and suitable for a container action.
 	Reference string
 	// Tag is the fixture's unique local build name. It is the only name cleanup
@@ -435,10 +435,10 @@ func newAgentWorkloadCommand(image AgentWorkloadImage, spec agentWorkloadRunSpec
 	if !strings.Contains(image.Reference, "@sha256:") {
 		return agentWorkloadCommand{}, fmt.Errorf("factory: agent workload image reference %q is not digest-pinned", image.Reference)
 	}
-	name := fmt.Sprintf("kodama-agent-workload-%s-%s-%d", spec.Labels[FixtureLabel], spec.Mode, spec.Sequence)
+	name := fmt.Sprintf("kodema-agent-workload-%s-%s-%d", spec.Labels[FixtureLabel], spec.Mode, spec.Sequence)
 	labels := make(map[string]string, len(spec.Labels)+1)
 	maps.Copy(labels, spec.Labels)
-	labels["kodama.test/agent-workload"] = spec.Mode
+	labels["kodema.test/agent-workload"] = spec.Mode
 	keys := make([]string, 0, len(labels))
 	for key := range labels {
 		keys = append(keys, key)
@@ -500,11 +500,11 @@ func (workload *AgentWorkload) Run(t *testing.T, run AgentWorkloadRun) AgentWork
 	workload.mu.Unlock()
 
 	directory := t.TempDir()
-	credentialFile := filepath.Join(directory, "KODAMA_TOKEN")
+	credentialFile := filepath.Join(directory, "KODEMA_TOKEN")
 	if err := writeAgentWorkloadCredentialFile(credentialFile, run.Credential); err != nil {
 		t.Fatalf("factory: write the workload credential: %v", err)
 	}
-	checkpointFile := filepath.Join(directory, "KODAMA_CHECKPOINT_TOKEN")
+	checkpointFile := filepath.Join(directory, "KODEMA_CHECKPOINT_TOKEN")
 	if err := writeAgentWorkloadCredentialFile(checkpointFile, run.Checkpoint.Token()); err != nil {
 		t.Fatalf("factory: write the checkpoint credential: %v", err)
 	}

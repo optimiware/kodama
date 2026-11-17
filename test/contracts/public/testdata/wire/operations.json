@@ -852,7 +852,7 @@
       },
       "result": {
         "subjects": [
-          "kodama.v1.ten-1.prj-1.events"
+          "kodema.v1.ten-1.prj-1.events"
         ],
         "cursor": "djEKMA",
         "expires_at": "2026-01-02T04:04:05Z"

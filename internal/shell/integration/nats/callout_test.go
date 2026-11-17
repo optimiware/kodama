@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // calloutRequestJWT builds one NATS authorization request signed by a fresh
@@ -238,7 +238,7 @@ func TestCalloutIssuesScopedUserAndRefusesRevokedCredential(t *testing.T) {
 	callout, err := nats.NewCallout(nats.CalloutConfig{
 		Connection: connection,
 		IssuerSeed: seed,
-		Account:    "KODAMA",
+		Account:    "KODEMA",
 		Principal:  resolver,
 		Authorizer: authorizer,
 		Validity:   fakeValidity{until: testNow().Add(time.Hour)},
@@ -278,8 +278,8 @@ func TestCalloutIssuesScopedUserAndRefusesRevokedCredential(t *testing.T) {
 	if userClaims["sub"] != userNkey {
 		t.Fatalf("user jwt subject = %v; want %q", userClaims["sub"], userNkey)
 	}
-	if userClaims["aud"] != "KODAMA" {
-		t.Fatalf("user jwt audience = %v; want KODAMA", userClaims["aud"])
+	if userClaims["aud"] != "KODEMA" {
+		t.Fatalf("user jwt audience = %v; want KODEMA", userClaims["aud"])
 	}
 	userNATS, ok := userClaims["nats"].(map[string]any)
 	if !ok {
@@ -289,11 +289,11 @@ func TestCalloutIssuesScopedUserAndRefusesRevokedCredential(t *testing.T) {
 	subAllow := permissions["sub"].(map[string]any)["allow"].([]any)
 	hasEventSubject := false
 	for _, subject := range subAllow {
-		if subject == "kodama.v1.tenant-a.project-1.events" {
+		if subject == "kodema.v1.tenant-a.project-1.events" {
 			hasEventSubject = true
 		}
 		if strings.Contains(subject.(string), "*") || strings.Contains(subject.(string), ">") {
-			if subject != "_INBOX.>" && !strings.HasPrefix(subject.(string), "kodama.v1.tenant-a.project-1.") {
+			if subject != "_INBOX.>" && !strings.HasPrefix(subject.(string), "kodema.v1.tenant-a.project-1.") {
 				t.Fatalf("user jwt wildcard %q escapes the credential scope", subject)
 			}
 		}
@@ -339,7 +339,7 @@ func TestCalloutIssuesScopedUserAndRefusesRevokedCredential(t *testing.T) {
 	expired, err := nats.NewCallout(nats.CalloutConfig{
 		Connection: expiredConnection,
 		IssuerSeed: seed,
-		Account:    "KODAMA",
+		Account:    "KODEMA",
 		Principal:  resolver,
 		Authorizer: authorizer,
 		Validity:   fakeValidity{until: testNow()},
@@ -371,7 +371,7 @@ func TestCalloutRefusesMalformedAndForeignRequests(t *testing.T) {
 	callout, err := nats.NewCallout(nats.CalloutConfig{
 		Connection: connection,
 		IssuerSeed: seed,
-		Account:    "KODAMA",
+		Account:    "KODEMA",
 		Principal:  &fakePrincipalResolver{byToken: map[string]identity.Principal{testCredential: servicePrincipal(scope)}},
 		Authorizer: &fakeAuthorizer{decision: authorize.DecisionAllow},
 		Validity:   fakeValidity{until: testNow().Add(time.Hour)},
@@ -418,7 +418,7 @@ func TestCalloutRejectsWrongScopeGrant(t *testing.T) {
 	callout, err := nats.NewCallout(nats.CalloutConfig{
 		Connection: connection,
 		IssuerSeed: seed,
-		Account:    "KODAMA",
+		Account:    "KODEMA",
 		Principal:  resolver,
 		Authorizer: authorizer,
 		Validity:   fakeValidity{until: testNow().Add(time.Hour)},
@@ -464,7 +464,7 @@ func TestCalloutDeniesPublishWithoutGrant(t *testing.T) {
 			callout, err := nats.NewCallout(nats.CalloutConfig{
 				Connection: connection,
 				IssuerSeed: seed,
-				Account:    "KODAMA",
+				Account:    "KODEMA",
 				Principal:  &fakePrincipalResolver{byToken: map[string]identity.Principal{testCredential: testCase.principal}},
 				Authorizer: testCase.authorizer,
 				Validity:   fakeValidity{until: testNow().Add(time.Hour)},
@@ -511,7 +511,7 @@ func TestCalloutGrantLifetimeIsCapped(t *testing.T) {
 	callout, err := nats.NewCallout(nats.CalloutConfig{
 		Connection: connection,
 		IssuerSeed: seed,
-		Account:    "KODAMA",
+		Account:    "KODEMA",
 		Principal:  &fakePrincipalResolver{byToken: map[string]identity.Principal{testCredential: servicePrincipal(scope)}},
 		Authorizer: &fakeAuthorizer{decision: authorize.DecisionAllow},
 		Validity:   fakeValidity{until: until},
@@ -545,7 +545,7 @@ func TestCalloutGrantLifetimeIsCapped(t *testing.T) {
 	short, err := nats.NewCallout(nats.CalloutConfig{
 		Connection: shortConnection,
 		IssuerSeed: seed,
-		Account:    "KODAMA",
+		Account:    "KODEMA",
 		Principal:  &fakePrincipalResolver{byToken: map[string]identity.Principal{testCredential: servicePrincipal(scope)}},
 		Authorizer: &fakeAuthorizer{decision: authorize.DecisionAllow},
 		Validity:   fakeValidity{until: shortUntil},
@@ -574,7 +574,7 @@ func TestCalloutBoundsRequestWithDeadline(t *testing.T) {
 	callout, err := nats.NewCallout(nats.CalloutConfig{
 		Connection: connection,
 		IssuerSeed: seed,
-		Account:    "KODAMA",
+		Account:    "KODEMA",
 		Principal:  blockingResolver{},
 		Authorizer: &fakeAuthorizer{decision: authorize.DecisionAllow},
 		Validity:   fakeValidity{until: testNow().Add(time.Hour)},

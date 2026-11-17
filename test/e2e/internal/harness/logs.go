@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // ReassembleLog joins retained chunks of one action stream into their exact

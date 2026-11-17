@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestRunCallJSONOutput pins served-operation dispatch, the exact JSON body
@@ -124,7 +124,7 @@ func TestRunCallFailure(t *testing.T) {
 
 // TestRunUsageErrors pins the usage exit code and that no request is sent.
 func TestRunUsageErrors(t *testing.T) {
-	directory := "/repo/.kodama"
+	directory := "/repo/.kodema"
 	cases := []struct {
 		name   string
 		args   []string
@@ -141,7 +141,7 @@ func TestRunUsageErrors(t *testing.T) {
 		{name: "inspect without execution", args: []string{"inspect"}},
 		{name: "watch without execution", args: []string{"watch"}},
 		{name: "run without file", args: []string{"run"}},
-		{name: "run unknown flag", args: []string{"run", "/repo/.kodama/build.yaml", "--title", "x"}},
+		{name: "run unknown flag", args: []string{"run", "/repo/.kodema/build.yaml", "--title", "x"}},
 		{name: "pipeline apply without project", args: []string{"pipeline", "apply", directory}, config: func() cli.Config {
 			config := testConfig()
 			config.Project = ""
@@ -150,7 +150,7 @@ func TestRunUsageErrors(t *testing.T) {
 		{name: "helper invalid protocol", args: []string{"helper", "bogus", "https://git.example.com/shop/repo.git"}},
 		{name: "invalid config", args: []string{"call", "task.read"}, config: func() cli.Config {
 			config := testConfig()
-			config.ServerURL = "http://kodama.example.com"
+			config.ServerURL = "http://kodema.example.com"
 			return config
 		}},
 	}
@@ -390,7 +390,7 @@ func TestRunDoesNotRequireServerURLForHelper(t *testing.T) {
 	if code != cli.ExitSuccess {
 		t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
 	}
-	want := "username=kodama\npassword=" + humanCredential().Token + "\n"
+	want := "username=kodema\npassword=" + humanCredential().Token + "\n"
 	if out.String() != want {
 		t.Fatalf("stdout = %q; want %q", out.String(), want)
 	}

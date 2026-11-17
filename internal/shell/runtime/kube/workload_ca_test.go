@@ -4,8 +4,8 @@
 // workload CA projection, declared in api.go and manifest.go:
 //
 //	const WorkloadCAKey       = "ca.crt"          // literal Secret key, never encoded
-//	const WorkloadCAMountPath = "/etc/kodama/ca"  // fixed read-only mount root
-//	const WorkloadCAPath      = "/etc/kodama/ca/ca.crt"
+//	const WorkloadCAMountPath = "/etc/kodema/ca"  // fixed read-only mount root
+//	const WorkloadCAPath      = "/etc/kodema/ca/ca.crt"
 //
 //	type WorkloadCAConfig struct {
 //	    SecretName string // tenant-local, CA-only Secret; empty disables the mount
@@ -14,7 +14,7 @@
 //
 // The trust bundle is an ordinary Secret volume: exactly one item (the literal
 // key ca.crt) projected read-only at the fixed path, outside /workspace, the
-// activation snapshot (/kodama) and the credential mount (/kodama/secrets). The
+// activation snapshot (/kodema) and the credential mount (/kodema/secrets). The
 // adapter neither reads nor re-materializes the Secret, and adds no environment
 // variable: smoke workloads pass --cacert explicitly. The serving private key
 // stays in the control-plane Secret and is never projected into a workload.
@@ -25,14 +25,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 const (
 	// testWorkloadCASecret is the installation-provided, tenant-local CA-only
 	// Secret name used by the fixtures.
-	testWorkloadCASecret = "kodama-workload-ca"
+	testWorkloadCASecret = "kodema-workload-ca"
 	// testCAPEM is an obviously fake CA certificate. The adapter projects the
 	// bytes; it never parses them.
 	testCAPEM = "-----BEGIN CERTIFICATE-----\nMIIB-fake-workload-ca\n-----END CERTIFICATE-----\n"
@@ -71,11 +71,11 @@ func TestWorkloadCAMountUsesTrustedConfiguration(t *testing.T) {
 	if WorkloadCAKey != "ca.crt" {
 		t.Fatalf("WorkloadCAKey = %q; want the literal Secret key %q", WorkloadCAKey, "ca.crt")
 	}
-	if WorkloadCAMountPath != "/etc/kodama/ca" {
-		t.Fatalf("WorkloadCAMountPath = %q; want the fixed trust root %q", WorkloadCAMountPath, "/etc/kodama/ca")
+	if WorkloadCAMountPath != "/etc/kodema/ca" {
+		t.Fatalf("WorkloadCAMountPath = %q; want the fixed trust root %q", WorkloadCAMountPath, "/etc/kodema/ca")
 	}
-	if WorkloadCAPath != "/etc/kodama/ca/ca.crt" {
-		t.Fatalf("WorkloadCAPath = %q; want %q", WorkloadCAPath, "/etc/kodama/ca/ca.crt")
+	if WorkloadCAPath != "/etc/kodema/ca/ca.crt" {
+		t.Fatalf("WorkloadCAPath = %q; want %q", WorkloadCAPath, "/etc/kodema/ca/ca.crt")
 	}
 
 	fake, _, adapter := testSetupWithWorkloadCA(t, testWorkloadCASecret)
@@ -111,8 +111,8 @@ func TestWorkloadCAMountUsesTrustedConfiguration(t *testing.T) {
 	// The trust bundle must not become an unshadowable standard environment
 	// variable; workloads opt in with an explicit --cacert.
 	for _, name := range []string{
-		"KODAMA_CA",
-		"KODAMA_CA_PATH",
+		"KODEMA_CA",
+		"KODEMA_CA_PATH",
 		"SSL_CERT_FILE",
 		"SSL_CERT_DIR",
 		"REQUESTS_CA_BUNDLE",
@@ -171,7 +171,7 @@ func TestWorkloadCAMountIsConfined(t *testing.T) {
 		t.Errorf("CA item path %q is not under its mount %q", item.Path, volume.MountPath)
 	}
 	if err := workspace.ValidatePath(item.Path); err == nil {
-		t.Errorf("CA item path %q is an activation-materialized path; it must live outside the /kodama roots", item.Path)
+		t.Errorf("CA item path %q is an activation-materialized path; it must live outside the /kodema roots", item.Path)
 	}
 	if item.Path == workspace.ReservedCredentialPath {
 		t.Errorf("CA item path is the reserved execution credential %q", workspace.ReservedCredentialPath)
@@ -245,7 +245,7 @@ func TestWorkloadCAMountIsConfined(t *testing.T) {
 		"0a",
 		"a.b",
 		"ca.example",
-		"kodama-workload-ca",
+		"kodema-workload-ca",
 		// 63-character label: the label length boundary.
 		strings.Repeat("a", 63),
 		// 253-character name with valid labels: the subdomain length boundary.
@@ -278,7 +278,7 @@ func TestWorkloadCAMountIsConfined(t *testing.T) {
 // TestWorkloadTrustDoesNotExposeControlPlaneCredentials proves the projection
 // is CA-only: even when the configured Secret also carries a serving private
 // key, only ca.crt is mounted; the credential Secret keeps only declared
-// secrets plus KODAMA_TOKEN; the control-plane Secret is never referenced; and
+// secrets plus KODEMA_TOKEN; the control-plane Secret is never referenced; and
 // the service-account token is still not automounted.
 func TestWorkloadTrustDoesNotExposeControlPlaneCredentials(t *testing.T) {
 	fake, _, adapter := testSetupWithWorkloadCA(t, testWorkloadCASecret)
@@ -297,7 +297,7 @@ func TestWorkloadTrustDoesNotExposeControlPlaneCredentials(t *testing.T) {
 		t.Fatalf("seed CA Secret: %v", err)
 	}
 
-	const controlPlaneSecret = "kodama-control-plane-tls"
+	const controlPlaneSecret = "kodema-control-plane-tls"
 	if _, err := fake.PutSecret(context.Background(), Secret{
 		Name:      controlPlaneSecret,
 		Namespace: testNamespace,
@@ -349,7 +349,7 @@ func TestWorkloadTrustDoesNotExposeControlPlaneCredentials(t *testing.T) {
 	if credential == nil {
 		t.Fatal("adapter did not create the workload credential Secret")
 	}
-	wantKeys := map[string]bool{"API_KEY": true, "KODAMA_TOKEN": true}
+	wantKeys := map[string]bool{"API_KEY": true, "KODEMA_TOKEN": true}
 	if len(credential.Data) != len(wantKeys) {
 		t.Fatalf("credential Secret keys = %v; want exactly %v", credentialKeys(credential.Data), wantKeys)
 	}

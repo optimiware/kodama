@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
-	"github.com/optimiware/kodama/internal/shell/transport/mcp"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/shell/transport/mcp"
 )
 
 // TestScopeRules pins the ScopeResolver rule: a project-scoped
@@ -80,7 +80,7 @@ func TestRESTAndMCPParity(t *testing.T) {
 	}
 	mcpEdge, err := mcp.NewEdge(mcp.Config{
 		Router:     h.router,
-		ServerInfo: api.MCPImplementation{Name: "kodama", Version: "test"},
+		ServerInfo: api.MCPImplementation{Name: "kodema", Version: "test"},
 	})
 	if err != nil {
 		t.Fatalf("mcp.NewEdge: %v", err)

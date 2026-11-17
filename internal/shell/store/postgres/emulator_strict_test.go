@@ -11,7 +11,7 @@ import (
 )
 
 func TestEmulatorRejectsMalformedPredicates(t *testing.T) {
-	db := newEmuDB("kodama_controller", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	db := newEmuDB("kodema_controller", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	ctx := context.Background()
 	conn, err := db.Begin(ctx)
 	if err != nil {

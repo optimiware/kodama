@@ -9,7 +9,7 @@ package lifecycle
 //     execution and one receipt; task.create_and_start and task.reply replayed
 //     over MCP with the same idempotency key return the same identities and
 //     commit exactly one receipt each.
-//   - AC 11 materialization: the fresh execution receives /kodama/task.json
+//   - AC 11 materialization: the fresh execution receives /kodema/task.json
 //     carrying the answer and a brand-new workspace; the previous execution's
 //     /workspace scratch is absent.
 //   - AC 16 planned waits: asking while a workload runs stops it, clears the
@@ -36,14 +36,14 @@ package lifecycle
 // stay forbidden to that role. The tests assert both the projection and the
 // reply that uses it.
 //
-// Failed-task discovery (KODAMA.md line 218): an authorized human operator
+// Failed-task discovery (KODEMA.md line 218): an authorized human operator
 // discovers an open task whose current execution failed through the failed_task
 // inbox kind. The item carries only task_id, its Version is the task lifecycle
 // version and At is the failed execution's timestamp; it carries no
 // execution/action identity and no question projection. A reviewer-only
 // principal does not see it.
 //
-// KODAMA.md line 230 says "An authorized operator can start a fresh attempt or
+// KODEMA.md line 230 says "An authorized operator can start a fresh attempt or
 // cancel". The role matrix grants task.start to engineer and operator, with the
 // operator grant conditional on an OPEN task whose CURRENT execution is FAILED
 // (`failed_task_operator_start`). TestOperatorRetry proves the operator retry
@@ -64,13 +64,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
 	// handoffAnswer is the answer the restoring action of the successful
-	// handoff pipeline requires in /kodama/task.json.
+	// handoff pipeline requires in /kodema/task.json.
 	handoffAnswer = "approved-context-42"
 	// missingContextAnswer selects the restoring branch of the failing pipeline.
 	missingContextAnswer = "restore-after-ask-7"
@@ -592,7 +592,7 @@ func testTaskAskHandoff(t *testing.T, harness *factory.Harness) {
 // testTaskReply proves a stale question version and a principal outside the
 // assigned role are refused, then the assigned reviewer's reply queues a fresh
 // execution with a new workspace whose action reads the answer from
-// /kodama/task.json.
+// /kodema/task.json.
 func testTaskReply(t *testing.T, harness *factory.Harness) {
 	ctx := t.Context()
 	applied := applyPipeline(t, harness, "task-reply", handoffPipeline(t, harness))
@@ -712,7 +712,7 @@ func testTaskReply(t *testing.T, harness *factory.Harness) {
 	}
 
 	// The fresh execution runs the restoring action, which only succeeds when
-	// /kodama/task.json carries the answer.
+	// /kodema/task.json carries the answer.
 	fresh := waitExecution(t, harness, harness.ProjectToken, replied.ExecutionID)
 	requireSucceeded(t, fresh)
 	if fresh.TaskID != created.TaskID {
@@ -733,7 +733,7 @@ func testTaskReply(t *testing.T, harness *factory.Harness) {
 
 	// The reply reopened the task and queued the fresh execution; because that
 	// current execution then succeeded while the task was open, the task
-	// settles to done (KODAMA.md task-state table). The answer and both
+	// settles to done (KODEMA.md task-state table). The answer and both
 	// executions stay in the durable history.
 	after := waitTaskState(t, harness, harness.ProjectToken, created.TaskID, "done")
 	if after.State != "done" {
@@ -761,7 +761,7 @@ func testTaskReply(t *testing.T, harness *factory.Harness) {
 
 // testTaskMissingContext proves a fresh execution has no inherited scratch and
 // fails its restoring action when the durable context referenced by the
-// previous execution is missing, while /kodama/task.json still carries the
+// previous execution is missing, while /kodema/task.json still carries the
 // answer.
 func testTaskMissingContext(t *testing.T, harness *factory.Harness) {
 	ctx := t.Context()
@@ -793,7 +793,7 @@ func testTaskMissingContext(t *testing.T, harness *factory.Harness) {
 		t.Fatalf("reply reused the cancelled execution %q", created.ExecutionID)
 	}
 
-	// The restoring action selects its answer branch from /kodama/task.json and
+	// The restoring action selects its answer branch from /kodema/task.json and
 	// then requires the previous execution's /workspace marker. A fresh
 	// workspace has no such marker, so the action fails.
 	fresh := waitExecution(t, harness, harness.ProjectToken, replied.ExecutionID)
@@ -1388,7 +1388,7 @@ sleep 300`},
 }
 
 // handoffPipeline is one restoring action that succeeds only when
-// /kodama/task.json carries the handoff answer. The first execution has no
+// /kodema/task.json carries the handoff answer. The first execution has no
 // answer and stays running until the ask cancels it.
 func handoffPipeline(t *testing.T, harness *factory.Harness) []byte {
 	t.Helper()
@@ -1397,7 +1397,7 @@ func handoffPipeline(t *testing.T, harness *factory.Harness) []byte {
 			Name:    "restore",
 			Image:   harness.Image.Reference,
 			Timeout: containerTimeout,
-			Commands: []string{fmt.Sprintf(`if grep -q %q /kodama/task.json 2>/dev/null; then
+			Commands: []string{fmt.Sprintf(`if grep -q %q /kodema/task.json 2>/dev/null; then
   printf 'restored\n' > /workspace/restored
   exit 0
 fi
@@ -1408,7 +1408,7 @@ sleep 300`, handoffAnswer)},
 }
 
 // missingContextPipeline selects the restoring branch from the answer in
-// /kodama/task.json and then requires the previous execution's workspace
+// /kodema/task.json and then requires the previous execution's workspace
 // marker, which a fresh workspace cannot contain.
 func missingContextPipeline(t *testing.T, harness *factory.Harness) []byte {
 	t.Helper()
@@ -1417,7 +1417,7 @@ func missingContextPipeline(t *testing.T, harness *factory.Harness) []byte {
 			Name:    "restore",
 			Image:   harness.Image.Reference,
 			Timeout: containerTimeout,
-			Commands: []string{fmt.Sprintf(`if grep -q %q /kodama/task.json 2>/dev/null; then
+			Commands: []string{fmt.Sprintf(`if grep -q %q /kodema/task.json 2>/dev/null; then
   test -f /workspace/marker || { echo "missing durable context: /workspace/marker" >&2; exit 1; }
   exit 0
 fi
@@ -1436,7 +1436,7 @@ func replyReceiptPipeline(t *testing.T, harness *factory.Harness) []byte {
 			Name:    "restore",
 			Image:   harness.Image.Reference,
 			Timeout: containerTimeout,
-			Commands: []string{fmt.Sprintf(`if grep -q %q /kodama/task.json 2>/dev/null; then
+			Commands: []string{fmt.Sprintf(`if grep -q %q /kodema/task.json 2>/dev/null; then
   sleep 8
   exit 0
 fi

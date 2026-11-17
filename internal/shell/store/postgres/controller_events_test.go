@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // withControllerEventCommit sets the overridable declaration-derived switch on
@@ -56,7 +56,7 @@ func controllerEventSeedRows() []seamSeedRow {
 func newControllerEventHarness(t *testing.T, rows []seamSeedRow) (*Controller, *emuDB) {
 	t.Helper()
 	now := controllerEventClock()
-	db := newEmuDB("kodama_controller", now)
+	db := newEmuDB("kodema_controller", now)
 	seedEmulator(t, db, seamSeed{Rows: rows}, now)
 	return NewController(db), db
 }
@@ -548,7 +548,7 @@ func indexOfExecutionLock(calls []recordedCall) int {
 // returns zero rows, exactly as PostgreSQL's RLS UPDATE-policy filter does.
 func TestEmulatorControllerLockPolicyRequiresTransactionScope(t *testing.T) {
 	now := controllerEventClock()
-	db := newEmuDB("kodama_controller", now)
+	db := newEmuDB("kodema_controller", now)
 	seedEmulator(t, db, seamSeed{Rows: controllerEventSeedRows()}, now)
 	ctx := context.Background()
 	conn, err := db.Begin(ctx)
@@ -850,7 +850,7 @@ func TestControllerContractVectors(t *testing.T) {
 	for _, vector := range document.Vectors {
 		t.Run(vector.Name, func(t *testing.T) {
 			now := seamClock(vector.Clock)
-			db := newEmuDB("kodama_controller", now)
+			db := newEmuDB("kodema_controller", now)
 			seedEmulator(t, db, vector.Seed, now)
 			controller := NewController(db)
 			for index, step := range vector.Steps {

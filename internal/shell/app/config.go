@@ -10,23 +10,23 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/installation"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/installation"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 var (
@@ -111,7 +111,7 @@ type DevelopmentConfig struct {
 }
 
 // maxTenantNamespaceIDLength bounds a tenant id so the chart's derived
-// namespace kodama-tenant-<tenant> stays within the 63-character Kubernetes
+// namespace kodema-tenant-<tenant> stays within the 63-character Kubernetes
 // namespace limit (the prefix is 14 characters).
 const maxTenantNamespaceIDLength = 49
 
@@ -238,7 +238,7 @@ type Adapters struct {
 
 // NATSAuthConfig is the per-credential broker access configuration. The
 // control plane connects with User/Password (the broker's bypass user);
-// external clients present their Kodama credential to the Callout service.
+// external clients present their Kodema credential to the Callout service.
 type NATSAuthConfig struct {
 	// User and Password are the control-plane bypass credentials. They are
 	// required together and are never a per-user credential: the broker lists
@@ -326,13 +326,13 @@ type Config struct {
 	Models *ModelsConfig
 
 	// WorkloadURL optionally specifies the base URL workloads inside containers
-	// use to reach this Kodama server when it differs from Installation.PublicURL
+	// use to reach this Kodema server when it differs from Installation.PublicURL
 	// (such as https://host.containers.internal:8443 in the Podman test profile).
 	WorkloadURL string
 
 	// GitStorageRoot enables retained-commit keep refs. The retention loop
 	// keeps one ref per commit named by a retained execution under
-	// refs/kodama/keep/<sha> in every bare repository under this root's tenant
+	// refs/kodema/keep/<sha> in every bare repository under this root's tenant
 	// directories. GitRepositories optionally narrows that set to explicit
 	// tenant-relative names; an empty list enumerates storage. Leaving the root
 	// empty keeps the sweep disabled, and a repository list without a root is a

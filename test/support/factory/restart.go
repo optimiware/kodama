@@ -27,26 +27,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/installation"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/app"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	podmandriver "github.com/optimiware/kodama/internal/shell/app/drivers/podman"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	natsbroker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	identitystore "github.com/optimiware/kodama/internal/shell/store/units/identity"
-	"github.com/optimiware/kodama/internal/shell/store/units/readers"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/installation"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/app"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	podmandriver "github.com/optimiware/kodema/internal/shell/app/drivers/podman"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	natsbroker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	identitystore "github.com/optimiware/kodema/internal/shell/store/units/identity"
+	"github.com/optimiware/kodema/internal/shell/store/units/readers"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // controllerRestartTimeout bounds rebuilding one controller. It covers adapter
@@ -91,7 +91,7 @@ func (h *Harness) RestartController() {
 // serveController starts serving one constructed controller on the retained
 // public edge. The first controller uses the socket start bound before the
 // forwarder was created; a restarted controller re-binds the same address: the
-// workload's KODAMA_URL and the forwarder target name that port, and every
+// workload's KODEMA_URL and the forwarder target name that port, and every
 // workload started before the restart still dials it.
 func (h *Harness) serveController(composed *app.App) error {
 	listener := h.infra.rawListener
@@ -285,7 +285,7 @@ func (h *Harness) buildControllerConfig(ctx context.Context) (app.Config, func()
 			Libpod:    scoped,
 			Files:     files,
 			Root:      h.runtimeRoot,
-			KodamaURL: h.WorkloadURL,
+			KodemaURL: h.WorkloadURL,
 			Cleanup:   runtimepodman.CleanupPolicy{Attempts: 3, Backoff: 50 * time.Millisecond},
 			Clock:     infra.clock,
 		})
@@ -357,7 +357,7 @@ func (h *Harness) buildControllerConfig(ctx context.Context) (app.Config, func()
 			Keys:        installation.KeyKeyfile,
 			DatabaseURL: runtimeDSN,
 			NATSURL:     infra.nat.URL,
-			PublicURL:   "https://kodama.test",
+			PublicURL:   "https://kodema.test",
 			KeyRef:      KeyRef,
 		},
 		InstallationID:       InstallationID,
@@ -415,7 +415,7 @@ func (h *Harness) buildControllerConfig(ctx context.Context) (app.Config, func()
 // adapter over an existing kind cluster's kubeconfig. It mirrors the adapter
 // policy newKubernetesRuntime creates for the first controller; a restart uses a
 // new client so no in-memory state is shared with the stopped controller.
-func freshKubernetesAdapter(ctx context.Context, runtime *kubernetesRuntime, kodamaURL string, clock *TestClock) (*driverkube.Cluster, *runtimekube.Adapter, error) {
+func freshKubernetesAdapter(ctx context.Context, runtime *kubernetesRuntime, kodemaURL string, clock *TestClock) (*driverkube.Cluster, *runtimekube.Adapter, error) {
 	kubeconfig, err := runtime.Cluster.KubeconfigJSON(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("export kind kubeconfig: %w", err)
@@ -431,7 +431,7 @@ func freshKubernetesAdapter(ctx context.Context, runtime *kubernetesRuntime, kod
 		Cluster:   client,
 		Namespace: KubernetesNamespace,
 		TenantID:  id.TenantID(TenantID),
-		KodamaURL: kodamaURL,
+		KodemaURL: kodemaURL,
 		Policy: runtimekube.Policy{
 			CPURequest:    "50m",
 			CPULimit:      "200m",

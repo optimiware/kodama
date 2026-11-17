@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 type pushOutcome struct {

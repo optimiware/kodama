@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 // assertNoWorkloadEffect fails if Observe issued any effect beyond inspection.

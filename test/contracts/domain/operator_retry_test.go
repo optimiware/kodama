@@ -2,7 +2,7 @@ package domaincontract
 
 // The conditional operator retry grant on task.start.
 //
-// KODAMA.md "Conversation handoffs and fresh executions" says an authorized
+// KODEMA.md "Conversation handoffs and fresh executions" says an authorized
 // operator can start a fresh attempt on a failed open task. The registry
 // grants the operator role task.start ONLY when the task is open and its
 // CURRENT execution is failed. The condition is the
@@ -21,10 +21,10 @@ package domaincontract
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // TestTaskStartOperatorRegistryRow pins the grant set and the

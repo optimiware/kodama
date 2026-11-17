@@ -1,6 +1,6 @@
 package client
 
 import (
-	_ "kodama/api"
+	_ "kodema/api"
 	_ "net/http"
 )

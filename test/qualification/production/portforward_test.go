@@ -23,11 +23,11 @@ trap 'echo terminated >> "$Q02_FAKE_MARKER"; exit 0' TERM INT
 echo started >> "$Q02_FAKE_MARKER"
 while :; do sleep 0.05; done
 `)
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
-	forward, err := StartPortForward(context.Background(), "kubectl", guard, ReleaseNamespace, "kodama", 18443, 8443)
+	forward, err := StartPortForward(context.Background(), "kubectl", guard, ReleaseNamespace, "kodema", 18443, 8443)
 	if err != nil {
 		t.Fatalf("start port-forward: %v", err)
 	}
@@ -68,11 +68,11 @@ trap '' TERM INT
 echo started >> "$Q02_FAKE_MARKER"
 while :; do sleep 0.05; done
 `)
-	guard, err := NewGuard("kodama-stage-k8s")
+	guard, err := NewGuard("kodema-stage-k8s")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
-	forward, err := StartPortForward(context.Background(), "kubectl", guard, ReleaseNamespace, "kodama", 18444, 8443)
+	forward, err := StartPortForward(context.Background(), "kubectl", guard, ReleaseNamespace, "kodema", 18444, 8443)
 	if err != nil {
 		t.Fatalf("start port-forward: %v", err)
 	}

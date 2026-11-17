@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/shell/app"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/shell/app"
 )
 
 // TestOptionalCapabilitiesFailClosed proves the disabled model gateway, tool
@@ -74,10 +74,10 @@ func TestProductionProfileRefusesDevAdapters(t *testing.T) {
 		Messaging:   installation.MessagingNATS,
 		Runtime:     installation.RuntimeKubernetes,
 		Keys:        installation.KeyAWSKMS,
-		DatabaseURL: "postgres://kodama@localhost/kodama?sslmode=verify-full",
+		DatabaseURL: "postgres://kodema@localhost/kodema?sslmode=verify-full",
 		NATSURL:     "tls://localhost:4222",
-		PublicURL:   "https://kodama.example.com",
-		KeyRef:      "aws-kms:alias/kodama",
+		PublicURL:   "https://kodema.example.com",
+		KeyRef:      "aws-kms:alias/kodema",
 	}
 
 	t.Run("development authenticator and seed", func(t *testing.T) {

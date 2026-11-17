@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // startAuthorityTLSServer starts one TLS fixture server with the test PKI. The
@@ -172,7 +172,7 @@ func TestHarnessMCPToolsCall(t *testing.T) {
 		writeMCPTestResult(t, writer, "q02-1", "execution.list", `{"executions":[]}`)
 	}))
 
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestHarnessMCPErrorMapping(t *testing.T) {
 			writeMCPTestError(t, writer, "q02-1", -32603, api.CodeInternalFailure)
 		}
 	}))
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestHarnessAPIAlternateBinding(t *testing.T) {
 		}
 		writePublicTestResult(t, writer, "pipeline.start", `{"execution_id":"exec-stored","version":3}`)
 	}))
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestHarnessAPIVersionedMutations(t *testing.T) {
 		}
 		writePublicTestResult(t, writer, "service.credential.rotate", `{"state":"current","version":4}`)
 	}))
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build API helper: %v", err)
 	}
@@ -462,9 +462,9 @@ func TestHarnessRenewalProbeTiming(t *testing.T) {
 	if err := probe.validateLive(); err != nil {
 		t.Fatalf("the live renewal probe is not well formed: %v", err)
 	}
-	if probe.Paths.TokenFile != "/kodama/secrets/KODAMA_TOKEN" ||
-		probe.Paths.CAFile != "/etc/kodama/ca/ca.crt" ||
-		probe.Paths.SettledOutput != "/kodama/outputs/short-lived/fingerprint" {
+	if probe.Paths.TokenFile != "/kodema/secrets/KODEMA_TOKEN" ||
+		probe.Paths.CAFile != "/etc/kodema/ca/ca.crt" ||
+		probe.Paths.SettledOutput != "/kodema/outputs/short-lived/fingerprint" {
 		t.Fatalf("renewal paths = %+v, want the frozen workload mounts", probe.Paths)
 	}
 	if probe.FirstTimeout != renewalFirstTimeout {
@@ -517,14 +517,14 @@ const fakeInspectBody = `{"operation":"execution.inspect","body":{"execution_id"
 // replacement does not authenticate.
 func TestHarnessRenewalProbeCommands(t *testing.T) {
 	if _, err := exec.LookPath("sha256sum"); err != nil {
-		if os.Getenv("Q02_REQUIRE_STAGE") == "1" || os.Getenv("KODAMA_REQUIRE_INFRA") == "1" {
+		if os.Getenv("Q02_REQUIRE_STAGE") == "1" || os.Getenv("KODEMA_REQUIRE_INFRA") == "1" {
 			t.Fatalf("sha256sum is not available on the test host: %v", err)
 		}
 		t.Skip("sha256sum is not available on the test host")
 	}
 	dir := t.TempDir()
 	paths := renewalPaths{
-		TokenFile:     filepath.Join(dir, "KODAMA_TOKEN"),
+		TokenFile:     filepath.Join(dir, "KODEMA_TOKEN"),
 		CAFile:        filepath.Join(dir, "ca.crt"),
 		SettledOutput: filepath.Join(dir, "fingerprint"),
 	}
@@ -848,7 +848,7 @@ func joinCommands(commands []string) string { return strings.Join(commands, "\n"
 // runShell runs one generated workload script with the probe environment.
 func runShell(t *testing.T, script string) error {
 	t.Helper()
-	return runShellURL(t, script, "https://kodama.test.invalid:8443")
+	return runShellURL(t, script, "https://kodema.test.invalid:8443")
 }
 
 // runShellURL runs one generated workload script against a chosen API base URL.
@@ -858,9 +858,9 @@ func runShellURL(t *testing.T, script, apiURL string) error {
 	defer cancel()
 	command := exec.CommandContext(ctx, "/bin/sh", "-ec", script)
 	command.Env = append(os.Environ(),
-		"KODAMA_URL="+apiURL,
-		"KODAMA_EXECUTION=exec-one",
-		"KODAMA_ACTION=action-one",
+		"KODEMA_URL="+apiURL,
+		"KODEMA_EXECUTION=exec-one",
+		"KODEMA_ACTION=action-one",
 	)
 	output, err := command.CombinedOutput()
 	if err != nil {

@@ -17,8 +17,8 @@ package tenancy
 import (
 	"fmt"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // Role is one current human or service role in a membership.

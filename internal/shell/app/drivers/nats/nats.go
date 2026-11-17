@@ -32,11 +32,11 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	broker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	broker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // Config configures one broker client. Every dependency and bound is explicit;
@@ -331,7 +331,7 @@ func (c *Client) SubscribeInvalidations(ctx context.Context, scope tenancy.Scope
 }
 
 // SubscribeCallout subscribes to the broker's raw authorization-request
-// subject. The subject is not a scope-qualified Kodama subject: only the
+// subject. The subject is not a scope-qualified Kodema subject: only the
 // authorization service uses this path, and the broker protects the subject so
 // only the server can publish requests.
 func (c *Client) SubscribeCallout(ctx context.Context, subject string, handler func(context.Context, broker.CalloutRequest) error) (broker.Subscription, error) {

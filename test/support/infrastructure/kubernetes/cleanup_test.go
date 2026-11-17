@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // argValue returns the value following flag in args.
@@ -163,7 +163,7 @@ func TestClusterCloseSurfacesPersistentFailureAndKeepsRegistration(t *testing.T)
 
 // TestPostRunCleanupSweepsOwnPIDOrphansAndProtectsOthers proves the post-run
 // sweep deletes an own-pid cluster that is no longer registered, deletes a
-// dead-owner cluster, and never touches kodama-probe, a foreign name, or a live
+// dead-owner cluster, and never touches kodema-probe, a foreign name, or a live
 // other-pid cluster.
 func TestPostRunCleanupSweepsOwnPIDOrphansAndProtectsOthers(t *testing.T) {
 	otherLivePID := 424242
@@ -262,7 +262,7 @@ func TestCreateClusterFailureDeletesExactGeneratedName(t *testing.T) {
 
 // TestSweepDeadOwnersBestEffortResolvesVerifiedCacheWithoutDownload proves the
 // cleanup path reuses the already verified pinned cache file when no
-// KODAMA_KIND_BIN or PATH kind exists, refuses a wrong-digest cache file
+// KODEMA_KIND_BIN or PATH kind exists, refuses a wrong-digest cache file
 // without downloading, and silently skips only when no binary exists anywhere.
 func TestSweepDeadOwnersBestEffortResolvesVerifiedCacheWithoutDownload(t *testing.T) {
 	emptyPath := t.TempDir()

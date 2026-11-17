@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 // ErrCorruptCheckpoint reports unreadable or inconsistent checkpoint bytes. It

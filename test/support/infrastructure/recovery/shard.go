@@ -27,12 +27,12 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	podmandriver "github.com/optimiware/kodama/internal/shell/app/drivers/podman"
-	recovery "github.com/optimiware/kodama/internal/shell/app/drivers/recovery"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
-	"github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	podmandriver "github.com/optimiware/kodema/internal/shell/app/drivers/podman"
+	recovery "github.com/optimiware/kodema/internal/shell/app/drivers/recovery"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 const (
@@ -40,14 +40,14 @@ const (
 	NATSClientPort  = 4222
 	NATSMonitorPort = 8222
 	// StreamName and StreamSubjects are the declared event stream shape.
-	StreamName     = "KODAMA_EVENTS"
-	StreamSubjects = "kodama.v1.*.*.events"
+	StreamName     = "KODEMA_EVENTS"
+	StreamSubjects = "kodema.v1.*.*.events"
 	// DurableConsumer is the explicit consumer whose position the round trip
 	// compares.
 	DurableConsumer = "I02F_DURABLE"
 	// ServerName is pinned so the restored file store belongs to the same
 	// logical JetStream server.
-	ServerName = "kodama-i02f"
+	ServerName = "kodema-i02f"
 	// WorkspaceID and WorkspaceSentinel identify the disposable workspace that
 	// must never be captured.
 	WorkspaceID       = "workspace-i02f"
@@ -331,7 +331,7 @@ func (n *NATS) PublishEvents(t testing.TB, count int) {
 	js := n.JetStream(t)
 	ctx := n.Shard.Context()
 	for index := 1; index <= count; index++ {
-		subject := "kodama.v1.tenant-1.project-1.events"
+		subject := "kodema.v1.tenant-1.project-1.events"
 		payload := []byte(fmt.Sprintf(`{"id":"event-%d","type":"test.event"}`, index))
 		if _, err := js.Publish(ctx, subject, payload, jetstream.WithMsgID(fmt.Sprintf("event-%d", index))); err != nil {
 			t.Fatalf("publish event %d: %v", index, err)

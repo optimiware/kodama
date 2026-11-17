@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
 )
 
 // healthDelegate is the composed handler stand-in. It counts delegations and
@@ -451,7 +451,7 @@ func TestReadinessFailureBodyCarriesNoSecretOrVersion(t *testing.T) {
 		Closing: neverClosing,
 		Checks: []httpapi.ReadinessCheck{
 			func(context.Context) error {
-				return errors.New("postgres://runtime:SECRET-PASSWORD@db:5432/kodama version 9.9.9")
+				return errors.New("postgres://runtime:SECRET-PASSWORD@db:5432/kodema version 9.9.9")
 			},
 		},
 		Timeout: time.Second,

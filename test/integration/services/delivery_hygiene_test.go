@@ -22,8 +22,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/factory"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/test/support/factory"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // TestDeliveryPublishHelperLeavesSharedBaseImageUnchanged proves the publish
@@ -41,7 +41,7 @@ func TestDeliveryPublishHelperLeavesSharedBaseImageUnchanged(t *testing.T) {
 	}
 
 	published := deliveryPublishImage(t, registry, harness.Image,
-		"kodama/delivery-hygiene", "build-1")
+		"kodema/delivery-hygiene", "build-1")
 
 	// The published image must be this test's own image, not the shared base
 	// under another name.

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // padJSON pads one JSON document with insignificant trailing whitespace to

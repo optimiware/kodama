@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // installFakePodman puts a deterministic fake `podman` first on PATH. The
@@ -54,10 +54,10 @@ func TestProbeContainerCarriesFixtureLabel(t *testing.T) {
 		T:       t,
 		fixture: scope,
 		Image: runtimesupport.PinnedImage{
-			Reference: "localhost/kodama-fixture-probe:image",
+			Reference: "localhost/kodema-fixture-probe:image",
 		},
 	}
-	if err := h.StartProbeContainer(context.Background(), "probe-unit", "kodama.dev/execution", "execution-7"); err != nil {
+	if err := h.StartProbeContainer(context.Background(), "probe-unit", "kodema.dev/execution", "execution-7"); err != nil {
 		t.Fatalf("StartProbeContainer: %v", err)
 	}
 	raw, err := os.ReadFile(argsFile)
@@ -70,7 +70,7 @@ func TestProbeContainerCarriesFixtureLabel(t *testing.T) {
 		"--label", FixtureLabel+"="+scope.ID(),
 		"--label", harness.LabelTest+"=1",
 		"--label", harness.LabelOwnerPID+"="+runtimesupport.RunOwnerPID(),
-		"--label", "kodama.dev/execution=execution-7",
+		"--label", "kodema.dev/execution=execution-7",
 	)
 	if !strings.Contains("\x00"+strings.Join(args, "\x00")+"\x00", "\x00"+h.Image.Reference+"\x00") {
 		t.Fatalf("probe arguments %v do not name the harness image %q", args, h.Image.Reference)

@@ -10,13 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/kernel/script"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/script"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 func mustInputPath(t *testing.T, key id.InputKey) string {
@@ -260,7 +260,7 @@ func TestPrepareRefusesSymlinkEscape(t *testing.T) {
 	if err := os.MkdirAll(fx.workloadRoot(), 0o755); err != nil {
 		t.Fatalf("creating workload root: %v", err)
 	}
-	if err := os.Symlink(outside, fx.kodamaRoot()); err != nil {
+	if err := os.Symlink(outside, fx.kodemaRoot()); err != nil {
 		t.Fatalf("creating escape symlink: %v", err)
 	}
 
@@ -372,7 +372,7 @@ func TestStartBuildsPinnedContainerSpec(t *testing.T) {
 	if spec.RestartPolicy != "no" {
 		t.Fatalf("restart policy = %q, want no automatic replay", spec.RestartPolicy)
 	}
-	wantEntrypoint := []string{script.ShellPath, "/kodama/script"}
+	wantEntrypoint := []string{script.ShellPath, "/kodema/script"}
 	if len(spec.Entrypoint) != len(wantEntrypoint) ||
 		spec.Entrypoint[0] != wantEntrypoint[0] || spec.Entrypoint[1] != wantEntrypoint[1] {
 		t.Fatalf("entrypoint = %v, want %v", spec.Entrypoint, wantEntrypoint)
@@ -380,10 +380,10 @@ func TestStartBuildsPinnedContainerSpec(t *testing.T) {
 
 	wantEnv := []string{
 		joinEnv("BUILD_MODE", "release"),
-		joinEnv("KODAMA_URL", testKodamaURL),
-		joinEnv("KODAMA_EXECUTION", string(fx.request.Identity.ExecutionID)),
-		joinEnv("KODAMA_ACTION", string(fx.request.ActionName)),
-		joinEnv("KODAMA_TASK", string(fx.request.TaskID)),
+		joinEnv("KODEMA_URL", testKodemaURL),
+		joinEnv("KODEMA_EXECUTION", string(fx.request.Identity.ExecutionID)),
+		joinEnv("KODEMA_ACTION", string(fx.request.ActionName)),
+		joinEnv("KODEMA_TASK", string(fx.request.TaskID)),
 	}
 	if len(spec.Env) != len(wantEnv) {
 		t.Fatalf("env = %v, want exactly %v", spec.Env, wantEnv)
@@ -401,7 +401,7 @@ func TestStartBuildsPinnedContainerSpec(t *testing.T) {
 	}
 
 	if len(spec.Mounts) != 2 {
-		t.Fatalf("mounts = %+v, want exactly the kodama bind and the workspace volume", spec.Mounts)
+		t.Fatalf("mounts = %+v, want exactly the kodema bind and the workspace volume", spec.Mounts)
 	}
 	var bind, volume *Mount
 	for index := range spec.Mounts {
@@ -415,16 +415,16 @@ func TestStartBuildsPinnedContainerSpec(t *testing.T) {
 	if bind == nil {
 		t.Fatalf("mounts = %+v, want a directory bind", spec.Mounts)
 	}
-	if bind.Source != fx.kodamaRoot() {
-		t.Fatalf("bind source = %q, want the daemon-visible directory %q", bind.Source, fx.kodamaRoot())
+	if bind.Source != fx.kodemaRoot() {
+		t.Fatalf("bind source = %q, want the daemon-visible directory %q", bind.Source, fx.kodemaRoot())
 	}
-	if bind.Destination != "/kodama" || !bind.ReadOnly {
-		t.Fatalf("bind = %+v, want /kodama read-only", *bind)
+	if bind.Destination != "/kodema" || !bind.ReadOnly {
+		t.Fatalf("bind = %+v, want /kodema read-only", *bind)
 	}
 	if info, err := os.Stat(bind.Source); err != nil || !info.IsDir() {
 		t.Fatalf("bind source %q is not a directory: %v", bind.Source, err)
 	}
-	if !hostFileExists(t, filepath.Join(bind.Source, "secrets", "KODAMA_TOKEN")) {
+	if !hostFileExists(t, filepath.Join(bind.Source, "secrets", "KODEMA_TOKEN")) {
 		t.Fatal("the credential is not inside the daemon-visible bind directory")
 	}
 	if volume == nil {
@@ -466,12 +466,12 @@ func TestStartOmitsTaskContextWhenTaskFree(t *testing.T) {
 		t.Fatalf("CreateContainer calls = %d, want 1", len(specs))
 	}
 	for _, entry := range specs[0].Env {
-		if strings.HasPrefix(entry, "KODAMA_TASK=") {
+		if strings.HasPrefix(entry, "KODEMA_TASK=") {
 			t.Fatalf("task-free container carries %q", entry)
 		}
 	}
-	if specs[0].Env[len(specs[0].Env)-1] != joinEnv("KODAMA_ACTION", string(fx.request.ActionName)) {
-		t.Fatalf("reserved env does not end with KODAMA_ACTION: %v", specs[0].Env)
+	if specs[0].Env[len(specs[0].Env)-1] != joinEnv("KODEMA_ACTION", string(fx.request.ActionName)) {
+		t.Fatalf("reserved env does not end with KODEMA_ACTION: %v", specs[0].Env)
 	}
 }
 

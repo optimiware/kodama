@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // The native hook environment contract. The HTTP front handler places only an
@@ -20,15 +20,15 @@ import (
 // environment, the journal, a message or a log.
 const (
 	// EnvActorRef names the opaque actor handle set by the smart-HTTP handler.
-	EnvActorRef = "KODAMA_ACTOR_REF"
+	EnvActorRef = "KODEMA_ACTOR_REF"
 	// EnvRepository names the tenant-relative repository being pushed.
-	EnvRepository = "KODAMA_REPOSITORY"
+	EnvRepository = "KODEMA_REPOSITORY"
 	// EnvResourceID names the registered resource metadata identity.
-	EnvResourceID = "KODAMA_RESOURCE_ID"
+	EnvResourceID = "KODEMA_RESOURCE_ID"
 	// EnvSourceEvent names the unique per-push identity minted by the
 	// smart-HTTP handler. It is required: without a fresh identity an identical
 	// later push could settle a stale journal entry instead of verifying again.
-	EnvSourceEvent = "KODAMA_SOURCE_EVENT"
+	EnvSourceEvent = "KODEMA_SOURCE_EVENT"
 )
 
 // ActorSource resolves the opaque backend handle to the forwarded actor
@@ -82,7 +82,7 @@ var (
 const (
 	defaultHookMaxLineBytes = 4096
 	defaultHookMaxBatch     = 256
-	hookRejectionMessage    = "kodama git: update rejected"
+	hookRejectionMessage    = "kodema git: update rejected"
 )
 
 // NewHook validates the boundaries and returns the hook adapter.
@@ -389,7 +389,7 @@ func (hook *Hook) lookup(key string) (string, bool) {
 }
 
 // pushIdentity reads the required repository and unique per-push identity from
-// the native hook environment. A missing or malformed KODAMA_SOURCE_EVENT is a
+// the native hook environment. A missing or malformed KODEMA_SOURCE_EVENT is a
 // refusal: without a fresh push identity an identical repeat could settle a
 // stale journal entry instead of verifying again.
 func (hook *Hook) pushIdentity() (string, string, error) {
@@ -426,7 +426,7 @@ func (hook *Hook) batchEventIDs(updates []hookUpdate) ([]string, error) {
 // and settles the existing entry.
 func (hook *Hook) sourceEventID(pushID, repository string, update hookUpdate) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{
-		"kodama-git-hook-v2",
+		"kodema-git-hook-v2",
 		pushID,
 		repository,
 		update.ref,

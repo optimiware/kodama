@@ -22,9 +22,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/session"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/session"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // agentWorkloadTestExchange is one plain final-content provider exchange.
@@ -401,8 +401,8 @@ func TestAgentWorkloadCommandCarriesNoCredentialValue(t *testing.T) {
 	image := AgentWorkloadImage{
 		ImageID:       "sha256:" + strings.Repeat("b", 64),
 		Digest:        "sha256:" + strings.Repeat("b", 64),
-		Reference:     "localhost/kodama-agent-workload-fixture@sha256:" + strings.Repeat("b", 64),
-		Tag:           "localhost/kodama-agent-workload-fixture:workload",
+		Reference:     "localhost/kodema-agent-workload-fixture@sha256:" + strings.Repeat("b", 64),
+		Tag:           "localhost/kodema-agent-workload-fixture:workload",
 		BaseReference: "docker.io/library/alpine@sha256:" + strings.Repeat("a", 64),
 		BaseImageID:   "sha256:" + strings.Repeat("a", 64),
 		Marker:        "marker",
@@ -415,13 +415,13 @@ func TestAgentWorkloadCommandCarriesNoCredentialValue(t *testing.T) {
 		ExecutionID:              "exec-1",
 		Model:                    "fixture-model",
 		Messages:                 []string{"hello"},
-		RestoreRef:               "kodama-checkpoint/v1/" + strings.Repeat("c", 32) + "-1",
+		RestoreRef:               "kodema-checkpoint/v1/" + strings.Repeat("c", 32) + "-1",
 		APIURL:                   "http://host.containers.internal:1234",
 		CheckpointURL:            "http://host.containers.internal:5678",
 		CredentialFile:           "/run/credential",
 		CheckpointCredentialFile: "/run/checkpoint-credential",
 		CAFile:                   "/run/fixture-ca.pem",
-		Labels:                   map[string]string{"kodama.test": "1", "kodama.fixture": "fixture-a"},
+		Labels:                   map[string]string{"kodema.test": "1", "kodema.fixture": "fixture-a"},
 		Sequence:                 1,
 	}
 	first, err := newAgentWorkloadCommand(image, spec, secret, secret)
@@ -478,7 +478,7 @@ func TestAgentWorkloadCommandCarriesNoCredentialValue(t *testing.T) {
 // the runner mounts: owner-only permissions and no inherited value.
 func TestAgentWorkloadCredentialFileCarriesMode(t *testing.T) {
 	directory := t.TempDir()
-	path := filepath.Join(directory, "KODAMA_TOKEN")
+	path := filepath.Join(directory, "KODEMA_TOKEN")
 	if err := writeAgentWorkloadCredentialFile(path, "fixture-credential"); err != nil {
 		t.Fatalf("write credential: %v", err)
 	}

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
 )
 
 // yamlOperationCases lists the three operations that carry inline YAML and one

@@ -6,8 +6,8 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // devRegistry is the explicitly named development image resolver. It never

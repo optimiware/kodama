@@ -56,7 +56,7 @@ package skill_test
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/skill"
+	"github.com/optimiware/kodema/internal/userland/skill"
 )
 
 // TestContainsSecret pins the secret gate for supplied knowledge.

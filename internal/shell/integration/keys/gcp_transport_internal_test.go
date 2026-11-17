@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 func TestNewGCPKMSOwnsPrivateTransport(t *testing.T) {
@@ -210,7 +210,7 @@ func TestGCPKMSDialsBothEndpointsDirectlyDespiteProxies(t *testing.T) {
 		}
 		var dials gcpDialRecorder
 		client.tokens.client.Transport.(*http.Transport).DialContext = dials.DialContext
-		_, err = client.Decrypt(context.Background(), secret.KeyRef("gcp-kms:projects/kodama-prod/locations/global/keyRings/ring/cryptoKeys/kek"), []byte("blob"))
+		_, err = client.Decrypt(context.Background(), secret.KeyRef("gcp-kms:projects/kodema-prod/locations/global/keyRings/ring/cryptoKeys/kek"), []byte("blob"))
 		if class, ok := fault.ClassOf(err); !ok || class != fault.DependencyUnavailable {
 			t.Fatalf("refused metadata dial error = %v; want %q", err, fault.DependencyUnavailable)
 		}
@@ -244,7 +244,7 @@ func TestGCPKMSDialsBothEndpointsDirectlyDespiteProxies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: NewGCPKMS: %v", name, err)
 			}
-			_, err = client.Decrypt(context.Background(), secret.KeyRef("gcp-kms:projects/kodama-prod/locations/global/keyRings/ring/cryptoKeys/kek"), []byte("blob"))
+			_, err = client.Decrypt(context.Background(), secret.KeyRef("gcp-kms:projects/kodema-prod/locations/global/keyRings/ring/cryptoKeys/kek"), []byte("blob"))
 			if class, ok := fault.ClassOf(err); !ok || class != fault.DependencyUnavailable {
 				t.Fatalf("%s: refused dial error = %v; want %q", name, err, fault.DependencyUnavailable)
 			}

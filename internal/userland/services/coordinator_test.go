@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/services"
+	"github.com/optimiware/kodema/internal/userland/services"
 )
 
 func newCoordinator(t *testing.T, store services.CoordinationStore, effects services.MergeEffects, clock services.Clock, owner string) *services.Coordinator {

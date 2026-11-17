@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/runtime"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/runtime"
 )
 
 // TestRuntimeAdapterKinds pins the three explicit runtime families.

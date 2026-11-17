@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
 )
 
 // requiredBackupSources is the exact durable source set every backup set must
@@ -130,10 +130,10 @@ func (d *BackupDriver) Backup(ctx context.Context, plan installation.BackupPlan)
 
 	// The dump keeps object ownership and table/column ACLs. Stripping them
 	// (--no-owner/--no-privileges) would restore a database owned by the
-	// restoring administrator where kodama_runtime, kodama_controller,
-	// kodama_publisher and kodama_auth hold none of their declared grants.
+	// restoring administrator where kodema_runtime, kodema_controller,
+	// kodema_publisher and kodema_auth hold none of their declared grants.
 	// pg_dump never creates roles, so a restore requires the target to be
-	// bootstrapped by `kodama migrate` first.
+	// bootstrapped by `kodema migrate` first.
 	dump, err := d.executor.Exec(ctx, ExecRequest{
 		Container: d.container,
 		Argv:      []string{"pg_dump", "--format=custom", "--dbname", d.database},

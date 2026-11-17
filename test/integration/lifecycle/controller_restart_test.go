@@ -29,11 +29,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // restartActionTimeout keeps the action deadline clear of the Kubernetes Job

@@ -1,7 +1,7 @@
 // Package script tests the fail-fast entrypoint script generation required by
-// S07 §2 and KODAMA.md "Container actions": the adapter replaces the image
+// S07 §2 and KODEMA.md "Container actions": the adapter replaces the image
 // entrypoint with a fail-fast script that preserves the declared command bytes
-// and order, adds no tracing and injects no Kodama runner.
+// and order, adds no tracing and injects no Kodema runner.
 //
 // The tests exercise this package surface, which runtime adapters consume:
 //
@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 const expectedPreamble = "#!/bin/sh\nset -e\n"
@@ -132,7 +132,7 @@ func TestRenderInjectsNoTracingOrRunner(t *testing.T) {
 		"set -x", "set +e", "set -u", "set -o", "pipefail", "xtrace", "PS4",
 		"bash", "shopt", "[[", "local ", "function ", "source ", "$'", "<<<", "&>", "|&",
 		"trap", "eval ", "exec ",
-		"kodama", "kodactl", "runner",
+		"kodema", "kodactl", "runner",
 		"#!/usr/bin/env",
 	}
 	for _, token := range forbidden {

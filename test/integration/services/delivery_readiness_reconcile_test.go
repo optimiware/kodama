@@ -32,8 +32,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/factory"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/test/support/factory"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // TestDeliveryReadinessGatesTargetHealth proves readiness is a separate bounded
@@ -43,7 +43,7 @@ func TestDeliveryReadinessGatesTargetHealth(t *testing.T) {
 	harness := factory.Start(t)
 	registry := support.StartRegistry(t, false)
 	published := deliveryPublishImage(t, registry, harness.Image,
-		"kodama/delivery-readiness", "build-1")
+		"kodema/delivery-readiness", "build-1")
 	edgePort := deliveryRegistryEdge(t, registry)
 
 	positive := deliveryApply(t, harness, "delivery-readiness", deliveryPipelineDoc{
@@ -133,7 +133,7 @@ func TestDeliveryReadinessGatesTargetHealth(t *testing.T) {
 func TestDeliveryUncertainDeployIsObservedBeforeRepetition(t *testing.T) {
 	harness := factory.Start(t)
 	registry := support.StartRegistry(t, false)
-	published := deliveryPublishManifest(t, registry, "kodama/delivery-reconcile", "deploy-1")
+	published := deliveryPublishManifest(t, registry, "kodema/delivery-reconcile", "deploy-1")
 	edgePort := deliveryRegistryEdge(t, registry)
 
 	// The deploy records its intent and then fails after the effect: the target
@@ -187,7 +187,7 @@ func TestDeliveryUncertainDeployIsObservedBeforeRepetition(t *testing.T) {
 				Timeout: deliveryActionTimeout,
 				Outputs: []string{"observed"},
 				Commands: []string{
-					`test "$(cat /kodama/inputs/image)" = '` + published.Pinned + `'`,
+					`test "$(cat /kodema/inputs/image)" = '` + published.Pinned + `'`,
 					deliveryRegistryProbeCommand(edgePort, published.Repository, published.Digest),
 					`OBSERVED='observed:` + published.Digest + `'`,
 					deliverySubmitScript("observed", "OBSERVED"),
@@ -199,7 +199,7 @@ func TestDeliveryUncertainDeployIsObservedBeforeRepetition(t *testing.T) {
 				Timeout: deliveryActionTimeout,
 				Outputs: []string{"reconciled"},
 				Commands: []string{
-					`test "$(cat /kodama/outputs/observe/observed)" = 'observed:` + published.Digest + `'`,
+					`test "$(cat /kodema/outputs/observe/observed)" = 'observed:` + published.Digest + `'`,
 					`RECONCILED='reconciled:` + published.Digest + `'`,
 					deliverySubmitScript("reconciled", "RECONCILED"),
 				},

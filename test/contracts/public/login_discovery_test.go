@@ -1,8 +1,8 @@
 // Unauthenticated discovery vectors.
 //
-// The kodactl login flow is configured with the Kodama API URL only. It reads
+// The kodactl login flow is configured with the Kodema API URL only. It reads
 // one unauthenticated public discovery document from the fixed
-// /.well-known/kodama-configuration path, outside the 58-operation registry.
+// /.well-known/kodema-configuration path, outside the 58-operation registry.
 // The document is strictly decoded, bounded, validated and carries no secret
 // or JWKS material.
 package publiccontract
@@ -15,14 +15,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // loginDiscoveryJSON is the canonical valid discovery document body.
 const loginDiscoveryJSON = `{
   "issuer": "https://auth.example.com",
   "client_id": "kodactl",
-  "audience": "kodama-api",
+  "audience": "kodema-api",
   "authorization_endpoint": "https://auth.example.com/authorize",
   "token_endpoint": "https://auth.example.com/token",
   "device_authorization_endpoint": "https://auth.example.com/device",
@@ -108,7 +108,7 @@ func TestDiscoveryDocumentStrictDecode(t *testing.T) {
 		t.Fatalf("canonical discovery document refused: %v", err)
 	}
 	if document.Issuer != "https://auth.example.com" || document.ClientID != "kodactl" ||
-		document.Audience != "kodama-api" || document.APIURL != "https://api.example.com" {
+		document.Audience != "kodema-api" || document.APIURL != "https://api.example.com" {
 		t.Fatalf("decoded discovery document = %+v", document)
 	}
 	if len(document.Scopes) != 4 || document.Scopes[3] != "offline_access" {
@@ -128,7 +128,7 @@ func TestDiscoveryDocumentStrictDecode(t *testing.T) {
 		"wrong scope type":  strings.Replace(loginDiscoveryJSON, `["openid", "profile", "email", "offline_access"]`, `"openid"`, 1),
 		"missing issuer":    strings.Replace(loginDiscoveryJSON, `"issuer": "https://auth.example.com",`, ``, 1),
 		"missing client_id": strings.Replace(loginDiscoveryJSON, `"client_id": "kodactl",`, ``, 1),
-		"missing audience":  strings.Replace(loginDiscoveryJSON, `"audience": "kodama-api",`, ``, 1),
+		"missing audience":  strings.Replace(loginDiscoveryJSON, `"audience": "kodema-api",`, ``, 1),
 		"missing endpoints": strings.Replace(loginDiscoveryJSON, `"token_endpoint": "https://auth.example.com/token",`, ``, 1),
 		"missing scopes":    strings.Replace(loginDiscoveryJSON, `"scopes": ["openid", "profile", "email", "offline_access"],`, ``, 1),
 		"missing api_url": strings.Replace(loginDiscoveryJSON, `,
@@ -178,7 +178,7 @@ func TestDiscoveryDocumentEndpointValidation(t *testing.T) {
 		body := `{
   "issuer": "` + origin + `",
   "client_id": "kodactl",
-  "audience": "kodama-api",
+  "audience": "kodema-api",
   "authorization_endpoint": "` + origin + `/authorize",
   "token_endpoint": "` + origin + `/token",
   "device_authorization_endpoint": "` + origin + `/device",
@@ -234,7 +234,7 @@ func discoveryPaddedTo(t *testing.T, size int) []byte {
 // discovery route: a fixed root path, not one of the 58 operations, not
 // matchable by the operation router and not requiring a credential to decode.
 func TestDiscoveryRouteIsOutsideOperationRegistry(t *testing.T) {
-	if api.DiscoveryPath != "/.well-known/kodama-configuration" {
+	if api.DiscoveryPath != "/.well-known/kodema-configuration" {
 		t.Fatalf("api.DiscoveryPath = %q; want the fixed unauthenticated discovery path", api.DiscoveryPath)
 	}
 	if api.MaxDiscoveryBytes <= 0 {

@@ -15,8 +15,8 @@ package runtime
 import (
 	"context"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 // AdapterKind names one explicit runtime family.

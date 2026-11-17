@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // CursorPort reads the latest committed event-table sequence for one scope.

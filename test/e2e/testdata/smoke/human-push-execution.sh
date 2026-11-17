@@ -17,7 +17,7 @@ cd "$repo"
 git checkout -B w49-execution >/dev/null 2>&1 || true
 printf 'execution push %s\n' "$SMOKE_RUN_MARKER" >w49-execution.txt
 git add -- w49-execution.txt
-git -c user.name=kodama -c user.email=kodama@example.invalid \
+git -c user.name=kodema -c user.email=kodema@example.invalid \
 	commit --quiet -m 'W49 execution-originated push'
 w49_git push --quiet origin "HEAD:$SMOKE_EXECUTION_REF"
 printf 'w49-pushed-commit=%s\n' "$(git rev-parse HEAD)"
